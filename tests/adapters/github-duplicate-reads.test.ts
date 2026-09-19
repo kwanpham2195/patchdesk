@@ -110,6 +110,9 @@ class RoutingExecutor implements CommandExecutor {
   /** `normalizeCommandLabel` of every gh invocation, in call order. */
   readonly labels: Array<string> = [];
 
+  /** Replaces the branch-protection answer, so a test can choose how that one read fails. */
+  constructor(private readonly protection?: CommandExecution) {}
+
   async execute(input: {
     readonly argv: ReadonlyArray<string>;
   }): Promise<CommandExecution> {
@@ -133,7 +136,9 @@ class RoutingExecutor implements CommandExecutor {
       case "api GET repos/:owner/:repo/collaborators/:user/permission":
         return json({ role_name: "write" });
       case "api GET repos/:owner/:repo/branches/:branch/protection":
-        return json({ required_pull_request_reviews: null });
+        return this.protection ?? json({ required_pull_request_reviews: null });
+      case "api GET repos/:owner/:repo/rules/branches/:branch":
+        return json([]);
       case "api GET repos/:owner/:repo/pulls/:n/commits":
         return json([commitsPage]);
       default:
@@ -261,5 +266,94 @@ describe("getPullRequestPublishedFeedback gh cost", () => {
     expect(executor.labels).toContain(
       "api GET repos/:owner/:repo/branches/:branch/protection",
     );
+  });
+});
+
+const protectionLabel =
+  "api GET repos/:owner/:repo/branches/:branch/protection";
+
+const forbiddenProtection: CommandExecution = {
+  _tag: "Exited",
+  exitCode: 1,
+  stdout: "",
+  stderr: "HTTP 403: Resource not accessible by integration",
+};
+
+describe("branch protection gh cost", () => {
+  it("reads the protection endpoint twice when each consumer reads it itself", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    await adapter.getPullRequestPublishedFeedback({
+      profile,
+      pr,
+      baseBranch: "sit",
+    });
+    await adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" });
+
+    expect(
+      executor.labels.filter((label) => label === protectionLabel),
+    ).toHaveLength(2);
+  });
+
+  it("spends one protection read for both consumers of a cycle", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    const branchProtection = await adapter.readBranchProtection({
+      profile,
+      pr,
+      branch: "sit",
+    });
+    await expect(
+      adapter.getPullRequestPublishedFeedback({
+        profile,
+        pr,
+        baseBranch: "sit",
+        branchProtection,
+      }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    await expect(
+      adapter.getMergePolicyEvidence({
+        profile,
+        pr,
+        branch: "sit",
+        branchProtection,
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { branchProtection: { state: "available" } },
+    });
+
+    expect(
+      executor.labels.filter((label) => label === protectionLabel),
+    ).toHaveLength(1);
+  });
+
+  it("keeps each consumer's reading of a forbidden protection response", async () => {
+    const executor = new RoutingExecutor(forbiddenProtection);
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    // The same failure is fail-closed dismissal evidence and merely
+    // unavailable display evidence, which is why one response carries two
+    // Results rather than one.
+    await expect(
+      adapter.readBranchProtection({ profile, pr, branch: "sit" }),
+    ).resolves.toMatchObject({
+      dismissal: { _tag: "err" },
+      evidence: {
+        _tag: "ok",
+        value: { state: "unavailable", reason: "forbidden" },
+      },
+    });
   });
 });

@@ -1,7 +1,11 @@
 import type {
   GitHubPendingReviewGateway,
+  GitHubReadFailure,
   GitHubReader,
 } from "../adapters/github/github-adapter";
+import type { BranchProtectionRead } from "../adapters/github/github-merge-policy";
+import type { PullRequestRef } from "../domain/pull-request";
+import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type {
@@ -14,7 +18,11 @@ import type {
 } from "../adapters/storage/review-remote-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
-import { toMergeEvidence } from "../domain/github-context";
+import {
+  toMergeEvidence,
+  type GitHubMergePolicyEvidence,
+  type GitHubPublishedFeedback,
+} from "../domain/github-context";
 import {
   assembleConversation,
   noPublishedFeedback,
@@ -97,6 +105,7 @@ type ObservationGitHub = Pick<
       | "getPullRequestPublishedFeedback"
       | "getMergePolicyEvidence"
       | "getMergeOutcome"
+      | "readBranchProtection"
     >
   > &
   Pick<GitHubPendingReviewGateway, "getViewerPendingReview">;
@@ -288,6 +297,13 @@ export class ReviewObservationService {
       );
     }
 
+    // One branch-protection read for the two consumers below; they classify an
+    // unavailable response differently, so both readings travel together.
+    const branchProtection = this.dependencies.github.readBranchProtection?.({
+      profile,
+      pr: reviewRef(review),
+      branch: terminalRead.value.baseBranch,
+    });
     const [
       comments,
       checks,
@@ -310,23 +326,18 @@ export class ReviewObservationService {
         pr: reviewRef(review),
         expectedHeadSha: session.key.headSha,
       }),
-      this.dependencies.github.getPullRequestPublishedFeedback === undefined
-        ? Promise.resolve(undefined)
-        : this.dependencies.github.getPullRequestPublishedFeedback({
-            profile,
-            pr: reviewRef(review),
-            // The base branch whose protection decides `canDismiss`, so the
-            // feedback read does not re-read the pull request this observation
-            // already holds.
-            baseBranch: terminalRead.value.baseBranch,
-          }),
-      this.dependencies.github.getMergePolicyEvidence === undefined
-        ? Promise.resolve(undefined)
-        : this.dependencies.github.getMergePolicyEvidence({
-            profile,
-            pr: reviewRef(review),
-            branch: terminalRead.value.baseBranch,
-          }),
+      this.readPublishedFeedback(
+        profile,
+        reviewRef(review),
+        terminalRead.value.baseBranch,
+        branchProtection,
+      ),
+      this.readPolicyEvidence(
+        profile,
+        reviewRef(review),
+        terminalRead.value.baseBranch,
+        branchProtection,
+      ),
       this.readPending(profile, review),
     ]);
     if (
@@ -639,6 +650,44 @@ export class ReviewObservationService {
       session: session.value,
       represented: represented.value,
     });
+  }
+
+  /** The published feedback read, handed the branch protection this cycle already started. */
+  private async readPublishedFeedback(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+    baseBranch: string,
+    branchProtection: Promise<BranchProtectionRead> | undefined,
+  ): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure> | undefined> {
+    const read = this.dependencies.github.getPullRequestPublishedFeedback?.bind(
+      this.dependencies.github,
+    );
+    if (read === undefined) return undefined;
+    const protection = await branchProtection;
+    return read(
+      protection === undefined
+        ? { profile, pr, baseBranch }
+        : { profile, pr, baseBranch, branchProtection: protection },
+    );
+  }
+
+  /** The display-only merge evidence read, handed the same branch protection. */
+  private async readPolicyEvidence(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+    branch: string,
+    branchProtection: Promise<BranchProtectionRead> | undefined,
+  ): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure> | undefined> {
+    const read = this.dependencies.github.getMergePolicyEvidence?.bind(
+      this.dependencies.github,
+    );
+    if (read === undefined) return undefined;
+    const protection = await branchProtection;
+    return read(
+      protection === undefined
+        ? { profile, pr, branch }
+        : { profile, pr, branch, branchProtection: protection },
+    );
   }
 
   private async readPending(

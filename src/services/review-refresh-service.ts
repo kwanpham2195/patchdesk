@@ -1,4 +1,8 @@
-import type { GitHubReader } from "../adapters/github/github-adapter";
+import type {
+  GitHubReadFailure,
+  GitHubReader,
+} from "../adapters/github/github-adapter";
+import type { BranchProtectionRead } from "../adapters/github/github-merge-policy";
 import {
   assembleConversation,
   noPublishedFeedback,
@@ -20,6 +24,7 @@ import type { PullRequestRef } from "../domain/pull-request";
 import {
   toMergeEvidence,
   type GitHubComments,
+  type GitHubMergePolicyEvidence,
   type GitHubPublishedFeedback,
   type PullRequestSummary,
 } from "../domain/github-context";
@@ -77,6 +82,7 @@ export type ReviewRefreshDependencies = {
         | "getMergePolicyEvidence"
         | "getMergeOutcome"
         | "getPullRequestPublishedFeedback"
+        | "readBranchProtection"
       >
     >;
   readonly preparation: Pick<ReviewSessionPreparation, "prepare">;
@@ -165,6 +171,13 @@ export class ReviewRefreshService {
       return err({ reason: "terminal" });
     const currentRevision = reviewRevisionOf(current.value);
     if (currentRevision === undefined) return err({ reason: "github_read" });
+    // One branch-protection read for the two consumers below; they classify an
+    // unavailable response differently, so both readings travel together.
+    const branchProtection = this.dependencies.github.readBranchProtection?.({
+      profile,
+      pr: pullRequest,
+      branch: current.value.baseBranch,
+    });
     const [
       comments,
       commits,
@@ -195,23 +208,18 @@ export class ReviewRefreshService {
         pr: pullRequest,
         expectedHeadSha: current.value.headSha,
       }),
-      this.dependencies.github.getPullRequestPublishedFeedback === undefined
-        ? Promise.resolve(ok(undefined))
-        : this.dependencies.github.getPullRequestPublishedFeedback({
-            profile,
-            pr: pullRequest,
-            // The base branch whose protection decides `canDismiss`, so the
-            // feedback read does not re-read the pull request this refresh
-            // already holds.
-            baseBranch: current.value.baseBranch,
-          }),
-      this.dependencies.github.getMergePolicyEvidence === undefined
-        ? Promise.resolve(ok(undefined))
-        : this.dependencies.github.getMergePolicyEvidence({
-            profile,
-            pr: pullRequest,
-            branch: current.value.baseBranch,
-          }),
+      this.readPublishedFeedback(
+        profile,
+        pullRequest,
+        current.value.baseBranch,
+        branchProtection,
+      ),
+      this.readPolicyEvidence(
+        profile,
+        pullRequest,
+        current.value.baseBranch,
+        branchProtection,
+      ),
     ]);
     if (
       comments._tag === "err" ||
@@ -403,6 +411,44 @@ export class ReviewRefreshService {
       pendingReview,
     });
     return projected._tag === "ok" ? projected : err({ reason: "storage" });
+  }
+
+  /** The published feedback read, handed the branch protection this cycle already started. */
+  private async readPublishedFeedback(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+    baseBranch: string,
+    branchProtection: Promise<BranchProtectionRead> | undefined,
+  ): Promise<Result<GitHubPublishedFeedback | undefined, GitHubReadFailure>> {
+    const read = this.dependencies.github.getPullRequestPublishedFeedback?.bind(
+      this.dependencies.github,
+    );
+    if (read === undefined) return ok(undefined);
+    const protection = await branchProtection;
+    return read(
+      protection === undefined
+        ? { profile, pr, baseBranch }
+        : { profile, pr, baseBranch, branchProtection: protection },
+    );
+  }
+
+  /** The display-only merge evidence read, handed the same branch protection. */
+  private async readPolicyEvidence(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+    branch: string,
+    branchProtection: Promise<BranchProtectionRead> | undefined,
+  ): Promise<Result<GitHubMergePolicyEvidence | undefined, GitHubReadFailure>> {
+    const read = this.dependencies.github.getMergePolicyEvidence?.bind(
+      this.dependencies.github,
+    );
+    if (read === undefined) return ok(undefined);
+    const protection = await branchProtection;
+    return read(
+      protection === undefined
+        ? { profile, pr, branch }
+        : { profile, pr, branch, branchProtection: protection },
+    );
   }
 
   private async authoritativeTerminalState(

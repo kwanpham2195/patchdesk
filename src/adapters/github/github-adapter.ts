@@ -11,6 +11,7 @@ import { GitHubPullRequestReader } from "./github-pull-request-reader";
 import { GitHubThreadReader } from "./github-threads";
 import { GitHubThreadWriter } from "./github-thread-writer";
 import {
+  type BranchProtectionRead,
   GitHubMergePolicyReader,
   type KnownRepositoryRole,
 } from "./github-merge-policy";
@@ -388,6 +389,7 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly baseBranch?: string;
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     return this.conversation.getPullRequestPublishedFeedback(input);
   }
@@ -408,10 +410,19 @@ export class GitHubAdapter
     return this.mergePolicy.getBranchProtection(input);
   }
 
+  async readBranchProtection(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly branch: string;
+  }): Promise<BranchProtectionRead> {
+    return this.mergePolicy.readBranchProtection(input);
+  }
+
   async getMergePolicyEvidence(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly branch: string;
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
     return this.mergePolicy.getMergePolicyEvidence(input);
   }

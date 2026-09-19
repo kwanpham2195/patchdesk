@@ -64,6 +64,20 @@ function isKnownRepositoryRole(value: string): value is KnownRepositoryRole {
 }
 
 /**
+ * The two readings of one `branches/:branch/protection` response. They cannot
+ * share a Result: the dismissal reading answers a 404 with an unprotected
+ * branch and fails closed on everything else, while the display-only evidence
+ * reading records forbidden, missing, and unsupported as `unavailable`.
+ */
+export type BranchProtectionRead = {
+  readonly dismissal: Result<BranchProtectionEvidence, GitHubReadFailure>;
+  readonly evidence: Result<
+    GitHubMergePolicyEvidence["branchProtection"],
+    GitHubReadFailure
+  >;
+};
+
+/**
  * Reads what GitHub will allow on a merge -- review decision, required
  * checks, the viewer's repository role, branch protection -- and performs the
  * merge itself.
@@ -218,11 +232,39 @@ export class GitHubMergePolicyReader {
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
+    return (await this.readBranchProtection(input)).dismissal;
+  }
+
+  /**
+   * One `branches/:branch/protection` read, classified for both of its
+   * consumers, so a cycle that needs dismissal capability and display-only
+   * merge evidence spends one gh call rather than two.
+   */
+  async readBranchProtection(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly branch: string;
+  }): Promise<BranchProtectionRead> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
       host: input.profile.githubHost,
       path: `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`,
     });
+    return {
+      dismissal: this.dismissalEvidence(input.profile.githubHost, response),
+      evidence: parseOptionalPolicyResponse(
+        response,
+        "branchProtection",
+        (operation, failure) =>
+          this.commandFailure(operation, failure, input.profile.githubHost),
+      ),
+    };
+  }
+
+  private dismissalEvidence(
+    host: string,
+    response: Result<unknown, CommandFailure>,
+  ): Result<BranchProtectionEvidence, GitHubReadFailure> {
     // GitHub returns 404 for an unprotected branch (rather than an empty policy).
     // Treat that absence as affirmative unprotected evidence; other failures remain
     // fail-closed so malformed or unavailable permission evidence cannot grant writes.
@@ -230,11 +272,7 @@ export class GitHubMergePolicyReader {
       return ok({ protected: false, allowedDismissers: [] });
     }
     if (response._tag === "err")
-      return this.commandFailure(
-        "get_branch_protection",
-        response.error,
-        input.profile.githubHost,
-      );
+      return this.commandFailure("get_branch_protection", response.error, host);
     const parsed = v.safeParse(branchProtectionSchema, response.value);
     if (!parsed.success) return invalid("get_branch_protection");
     const rules = parsed.output.required_pull_request_reviews;
@@ -249,13 +287,10 @@ export class GitHubMergePolicyReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly branch: string;
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
     const [branchProtection, appliedRuleset] = await Promise.all([
-      this.ghJson(input.profile, {
-        kind: "rest",
-        host: input.profile.githubHost,
-        path: `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`,
-      }),
+      input.branchProtection ?? this.readBranchProtection(input),
       this.ghJson(input.profile, {
         kind: "rest",
         host: input.profile.githubHost,
@@ -264,11 +299,7 @@ export class GitHubMergePolicyReader {
     ]);
     const classify: CommandFailureClassifier = (operation, failure) =>
       this.commandFailure(operation, failure, input.profile.githubHost);
-    const branch = parseOptionalPolicyResponse(
-      branchProtection,
-      "branchProtection",
-      classify,
-    );
+    const branch = branchProtection.evidence;
     if (branch._tag === "err") return branch;
     const rules = parseOptionalPolicyResponse(
       appliedRuleset,

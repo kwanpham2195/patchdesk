@@ -50,7 +50,10 @@ import type {
   RepositoryPermissionEvidence,
 } from "./github-adapter";
 import type { GitHubPullRequestReader } from "./github-pull-request-reader";
-import type { GitHubMergePolicyReader } from "./github-merge-policy";
+import type {
+  BranchProtectionRead,
+  GitHubMergePolicyReader,
+} from "./github-merge-policy";
 
 /**
  * Asks the REST comment endpoints for `body_html` beside `body`, in the same
@@ -139,6 +142,8 @@ export class GitHubConversationReader {
     readonly pr: PullRequestRef;
     /** The branch whose protection decides `canDismiss`, when the caller already read it; otherwise this reader reads the pull request for it. */
     readonly baseBranch?: string;
+    /** The branch protection `canDismiss` derives from, when the caller already read it; otherwise this reader reads it. */
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     const [reviews, comments, issueComments, account, pullRequest] =
       await Promise.all([
@@ -171,7 +176,7 @@ export class GitHubConversationReader {
         // pull request, then the sequential permission and branch-protection
         // reads — the positional fixtures in
         // `tests/adapters/github-published-feedback.test.ts` are in that order.
-        input.baseBranch === undefined
+        input.baseBranch === undefined && input.branchProtection === undefined
           ? this.getPullRequest({ profile: input.profile, pr: input.pr })
           : undefined,
       ]);
@@ -205,13 +210,16 @@ export class GitHubConversationReader {
       input.baseBranch ??
       (pullRequest?._tag === "ok" ? pullRequest.value.baseBranch : undefined);
     const protection =
-      permission?._tag === "ok" && baseBranch !== undefined
-        ? await this.getBranchProtection({
-            profile: input.profile,
-            pr: input.pr,
-            branch: baseBranch,
-          })
-        : undefined;
+      permission?._tag !== "ok"
+        ? undefined
+        : (input.branchProtection?.dismissal ??
+          (baseBranch === undefined
+            ? undefined
+            : await this.getBranchProtection({
+                profile: input.profile,
+                pr: input.pr,
+                branch: baseBranch,
+              })));
     const canWrite =
       permission?._tag === "ok" &&
       permission.value.account === input.profile.ghAccount &&
