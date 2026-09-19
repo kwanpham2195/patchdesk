@@ -142,6 +142,22 @@ export type InvalidFetchedDiffRefs = {
   readonly _tag: "InvalidFetchedDiffRefs";
 };
 
+/**
+ * Which rendering a diff read is taken from. Exactly one is required, so
+ * `getPullRequestDiff` cannot be asked for a diff it has no source for
+ * (issue #293).
+ */
+export type PullRequestDiffSource =
+  | { readonly fetchedRefs: FetchedDiffRefs; readonly snapshot?: undefined }
+  | {
+      readonly fetchedRefs?: undefined;
+      /** Immutable remote comparison used only when no managed checkout exists. */
+      readonly snapshot: {
+        readonly baseSha: GitSha;
+        readonly headSha: GitSha;
+      };
+    };
+
 /** Safe identity projection from a successful local gh auth-status check. */
 export type AuthenticatedGitHubAccount = {
   readonly host: string;
@@ -447,13 +463,12 @@ export class GitHubAdapter
     return this.diffs.getPullRequestChecks(input);
   }
 
-  async getPullRequestDiff(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly fetchedRefs?: FetchedDiffRefs;
-    /** Immutable remote comparison used only when no managed checkout exists. */
-    readonly snapshot?: { readonly baseSha: GitSha; readonly headSha: GitSha };
-  }): Promise<Result<string, GitHubReadFailure>> {
+  async getPullRequestDiff(
+    input: {
+      readonly profile: WorkspaceProfileConfig;
+      readonly pr: PullRequestRef;
+    } & PullRequestDiffSource,
+  ): Promise<Result<string, GitHubReadFailure>> {
     return this.diffs.getPullRequestDiff(input);
   }
 

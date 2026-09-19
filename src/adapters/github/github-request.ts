@@ -3,10 +3,7 @@
  * argv array per call site, so a later change of transport is a change to the
  * runner rather than to every caller (ADR 0046).
  */
-export type GitHubRequest =
-  | GitHubRestRequest
-  | GitHubGraphQlRequest
-  | GitHubPullRequestDiffRequest;
+export type GitHubRequest = GitHubRestRequest | GitHubGraphQlRequest;
 
 /** The verbs this adapter sends; an absent method is a GET. */
 type GitHubRestMethod = "POST" | "PUT" | "PATCH" | "DELETE";
@@ -62,15 +59,6 @@ type GitHubGraphQlVariable =
       readonly values: ReadonlyArray<string>;
     };
 
-/** The one read that is not an API call: `gh pr diff` for a pull request with no local checkout. */
-type GitHubPullRequestDiffRequest = {
-  readonly kind: "pull_request_diff";
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-  readonly number: number;
-};
-
 /** The gh invocation a request becomes, minus the parts the runner owns. */
 export type GhInvocation = {
   readonly argv: ReadonlyArray<string>;
@@ -79,8 +67,6 @@ export type GhInvocation = {
 
 export function ghInvocationFor(request: GitHubRequest): GhInvocation {
   if (request.kind === "graphql") return { argv: graphQlArgv(request) };
-  if (request.kind === "pull_request_diff")
-    return { argv: pullRequestDiffArgv(request) };
   return restInvocation(request);
 }
 
@@ -126,19 +112,5 @@ function variableArgv(variable: GitHubGraphQlVariable): ReadonlyArray<string> {
   return [
     variable.kind === "string" ? "-f" : "-F",
     `${variable.name}=${variable.value}`,
-  ];
-}
-
-function pullRequestDiffArgv(
-  request: GitHubPullRequestDiffRequest,
-): ReadonlyArray<string> {
-  return [
-    "gh",
-    "pr",
-    "diff",
-    String(request.number),
-    "--repo",
-    `${request.host}/${request.owner}/${request.repo}`,
-    "--patch",
   ];
 }

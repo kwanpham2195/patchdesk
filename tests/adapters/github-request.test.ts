@@ -203,25 +203,6 @@ const cases: ReadonlyArray<{
       "labelIds[]=LA_two",
     ],
   },
-  {
-    name: "getPullRequestDiff — gh pr diff fallback",
-    request: {
-      kind: "pull_request_diff",
-      host: "github.com",
-      owner: "centraldigital",
-      repo: "patchdesk",
-      number: 42,
-    },
-    argv: [
-      "gh",
-      "pr",
-      "diff",
-      "42",
-      "--repo",
-      "github.com/centraldigital/patchdesk",
-      "--patch",
-    ],
-  },
 ];
 
 describe("ghInvocationFor", () => {

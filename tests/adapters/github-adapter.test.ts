@@ -1979,7 +1979,16 @@ describe("GitHubAdapter read boundary", () => {
         ],
       },
     });
-    expect(await adapter.getPullRequestDiff({ profile, pr })).toEqual({
+    expect(
+      await adapter.getPullRequestDiff({
+        profile,
+        pr,
+        snapshot: {
+          baseSha: mustParse(parseGitSha(baseSha)),
+          headSha: mustParse(parseGitSha(headSha)),
+        },
+      }),
+    ).toEqual({
       _tag: "ok",
       value: getDiff,
     });
@@ -2290,24 +2299,6 @@ describe("GitHubAdapter read boundary", () => {
       expect(result.value[0]).not.toHaveProperty("additions");
       expect(result.value[0]).not.toHaveProperty("deletions");
     }
-  });
-
-  it("does not execute a git diff fallback without fetched-ref evidence", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "pull request diff unavailable",
-      },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
-
-    expect(await adapter.getPullRequestDiff({ profile, pr })).toEqual({
-      _tag: "err",
-      error: { _tag: "GitHubReadFailed", operation: "get_diff" },
-    });
-    expect(executor.requests).toEqual([await golden("get-diff")]);
   });
 
   it("uses the immutable managed refs when fetched-ref evidence is supplied", async () => {
