@@ -15,11 +15,15 @@ import {
 } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import {
+  assignableUsersQuery,
   deleteThreadCommentMutation,
   maintainerInboxSearchQuery,
   mergePolicyQuery,
+  pullRequestReviewersQuery,
+  repositoryBranchesQuery,
   repositoryLabelsQuery,
   threadQuery,
+  watchedPullRequestsQuery,
 } from "../../src/adapters/github/github-graphql-queries";
 import { fullJsonMediaType } from "../../src/adapters/github/github-pull-request-reviews";
 import { ghInvocationFor } from "../../src/adapters/github/github-request";
@@ -153,7 +157,7 @@ const reviewComments: GitHubRestRequest = {
   path: "repos/centraldigital/patchdesk/pulls/42/comments?per_page=100&page=1",
 };
 
-/** The commits read, which no shadow window has compared, so it stays on gh. */
+/** The commits read, the one allowlisted read that follows `Link` pages. */
 const commits: GitHubRestRequest = {
   kind: "rest",
   paginate: true,
@@ -161,7 +165,14 @@ const commits: GitHubRestRequest = {
   path: "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
 };
 
-/** The three GraphQL queries T2 cut over, as their call sites write them. */
+/** The open pull request list, which no shadow window has compared, so it stays on gh. */
+const openPullRequests: GitHubRestRequest = {
+  kind: "rest",
+  host: "github.com",
+  path: "repos/centraldigital/patchdesk/pulls?state=open&per_page=100",
+};
+
+/** The GraphQL queries T2 cut over, as their call sites write them. */
 const mergePolicy: GitHubGraphQlRequest = {
   kind: "graphql",
   host: "github.com",
@@ -196,7 +207,6 @@ const inboxSearch: GitHubGraphQlRequest = {
   ],
 };
 
-/** A GraphQL read no shadow window has compared either, so it stays on gh too. */
 const repositoryLabels: GitHubGraphQlRequest = {
   kind: "graphql",
   host: "github.com",
@@ -204,6 +214,48 @@ const repositoryLabels: GitHubGraphQlRequest = {
   variables: [
     { kind: "typed", name: "owner", value: "centraldigital" },
     { kind: "typed", name: "name", value: "patchdesk" },
+  ],
+};
+const assignableUsers: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: assignableUsersQuery,
+  variables: [
+    { kind: "typed", name: "owner", value: "centraldigital" },
+    { kind: "typed", name: "name", value: "patchdesk" },
+    { kind: "typed", name: "search", value: "ann" },
+  ],
+};
+const pullRequestReviewers: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: pullRequestReviewersQuery,
+  variables: [
+    { kind: "typed", name: "owner", value: "centraldigital" },
+    { kind: "typed", name: "name", value: "patchdesk" },
+    { kind: "typed", name: "number", value: 42 },
+  ],
+};
+const repositoryBranches: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: repositoryBranchesQuery,
+  variables: [
+    { kind: "typed", name: "owner", value: "centraldigital" },
+    { kind: "typed", name: "name", value: "patchdesk" },
+    { kind: "string", name: "search", value: "release" },
+  ],
+};
+
+/** A GraphQL read no shadow window has exercised either, so it stays on gh too. */
+const watchedPullRequests: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: watchedPullRequestsQuery(1),
+  variables: [
+    { kind: "string", name: "owner0", value: "centraldigital" },
+    { kind: "string", name: "name0", value: "patchdesk" },
+    { kind: "typed", name: "number0", value: 42 },
   ],
 };
 
@@ -248,6 +300,7 @@ describe("httpServedReadLabels", () => {
       fullReviews,
       plainReviews,
       reviewComments,
+      commits,
     ].map(labelFor);
 
     expect(labels).toEqual([
@@ -257,33 +310,46 @@ describe("httpServedReadLabels", () => {
       "api GET repos/:owner/:repo/pulls/:n/reviews",
       "api GET repos/:owner/:repo/pulls/:n/reviews",
       "api GET repos/:owner/:repo/pulls/:n/comments",
+      "api GET repos/:owner/:repo/pulls/:n/commits",
     ]);
     for (const label of labels)
       expect(httpServedReadLabels.has(label)).toBe(true);
   });
 
-  it("names the three GraphQL labels a shadow window compared", () => {
-    const labels = [mergePolicy, threads, inboxSearch].map(labelFor);
+  it("names the GraphQL labels a shadow window compared", () => {
+    const labels = [
+      mergePolicy,
+      threads,
+      inboxSearch,
+      assignableUsers,
+      pullRequestReviewers,
+      repositoryBranches,
+      repositoryLabels,
+    ].map(labelFor);
 
     expect(labels).toEqual([
       "api graphql MergePolicy",
       "api graphql PullRequestThreads",
       "api graphql MaintainerInboxSearch",
+      "api graphql AssignableUsers",
+      "api graphql PullRequestReviewers",
+      "api graphql RepositoryBranches",
+      "api graphql RepositoryLabels",
     ]);
     for (const label of labels)
       expect(httpServedReadLabels.has(label)).toBe(true);
   });
 
-  it("leaves the commits read, which no shadow window compared, off the list", () => {
-    expect(labelFor(commits)).toBe(
-      "api GET repos/:owner/:repo/pulls/:n/commits",
-    );
-    expect(httpServedReadLabels.has(labelFor(commits))).toBe(false);
+  it("leaves the open pull request list, which no shadow window compared, off the list", () => {
+    expect(labelFor(openPullRequests)).toBe("api GET repos/:owner/:repo/pulls");
+    expect(httpServedReadLabels.has(labelFor(openPullRequests))).toBe(false);
   });
 
-  it("leaves every other GraphQL query off the list", () => {
-    expect(labelFor(repositoryLabels)).toBe("api graphql RepositoryLabels");
-    expect(httpServedReadLabels.has(labelFor(repositoryLabels))).toBe(false);
+  it("leaves a GraphQL query no shadow window exercised off the list", () => {
+    expect(labelFor(watchedPullRequests)).toBe(
+      "api graphql WatchedPullRequests",
+    );
+    expect(httpServedReadLabels.has(labelFor(watchedPullRequests))).toBe(false);
   });
 });
 
@@ -302,13 +368,13 @@ describe("routing a read to the HTTP transport", () => {
 
   it("leaves a read the allowlist does not name on gh, with no HTTP call", async () => {
     const { executor, http, runner } = harness({
-      execution: exited("[[]]"),
+      execution: exited("[]"),
     });
 
-    await expect(runner.ghJson(profile, commits)).resolves.toEqual(ok([[]]));
-    expect(executor.labels).toEqual([
-      "api GET repos/:owner/:repo/pulls/:n/commits",
-    ]);
+    await expect(runner.ghJson(profile, openPullRequests)).resolves.toEqual(
+      ok([]),
+    );
+    expect(executor.labels).toEqual(["api GET repos/:owner/:repo/pulls"]);
     expect(http.requests).toEqual([]);
   });
 
@@ -362,9 +428,9 @@ describe("routing a read to the HTTP transport", () => {
   it("leaves a GraphQL query the allowlist does not name on gh", async () => {
     const { executor, http, runner } = harness({ execution: exited("{}") });
 
-    await runner.ghJson(profile, repositoryLabels);
+    await runner.ghJson(profile, watchedPullRequests);
 
-    expect(executor.labels).toEqual(["api graphql RepositoryLabels"]);
+    expect(executor.labels).toEqual(["api graphql WatchedPullRequests"]);
     expect(http.requests).toEqual([]);
   });
 
@@ -433,27 +499,27 @@ describe("routing a read to the HTTP transport", () => {
 
   it("shadows only the reads the allowlist leaves on gh", async () => {
     const entries: Array<LogEntryInput> = [];
-    const shadowTransport = new RecordingShadowTransport(ok([[]]));
+    const shadowTransport = new RecordingShadowTransport(ok([]));
     const credentials = new StubCredentials();
     const runner = new GhRequestRunner(
-      new CommandRunner(new RecordingGhExecutor(exited("[[]]"))),
+      new CommandRunner(new RecordingGhExecutor(exited("[]"))),
       credentials,
       new TransportShadow(shadowTransport, credentials, (entry) =>
         entries.push(entry),
       ),
-      new RecordingHttpTransport(ok([[]])),
+      new RecordingHttpTransport(ok([])),
     );
 
     await runner.ghJson(profile, issueComments);
-    await runner.ghJson(profile, commits);
+    await runner.ghJson(profile, openPullRequests);
 
     // The comparison is detached, so wait for the one entry it writes.
     await vi.waitFor(() => expect(entries).toHaveLength(1));
     expect(entries[0]?.meta).toMatchObject({
-      label: "api GET repos/:owner/:repo/pulls/:n/commits",
+      label: "api GET repos/:owner/:repo/pulls",
       outcome: "match",
     });
-    expect(shadowTransport.requests).toEqual([commits]);
+    expect(shadowTransport.requests).toEqual([openPullRequests]);
   });
 });
 
@@ -556,6 +622,72 @@ describe("reads served over the real HTTP client", () => {
       },
     });
   });
+
+  /**
+   * The assignee and branch pickers put the maintainer's typed text straight
+   * into a GraphQL variable, so how that text encodes is most of what these
+   * two reads can differ on. gh sent the assignee search through `-F`
+   * (`github-collaborators.ts`) and the branch search through `-f`
+   * (`github-pull-request-reader.ts`), which is why only the first infers a
+   * type from the text.
+   */
+  const searchTexts = [
+    { name: "ordinary text", typed: "ann", inferred: "ann" },
+    {
+      name: "a quote and a backslash",
+      typed: 'o"neill\\src',
+      inferred: 'o"neill\\src',
+    },
+    { name: "non-ASCII text", typed: "café", inferred: "café" },
+    // Issue #279: `-F` inferred an all-digit field as an Int against
+    // `$search: String`, and the client infers from the same text, so the bug
+    // reaches GitHub identically rather than being fixed by the transport.
+    { name: "an all-digit string", typed: "2026", inferred: 2026 },
+    // gh's `-F` read a leading `@` as a filename to read the value from; the
+    // client has no filesystem step and sends the text as typed.
+    { name: "a leading @", typed: "@octocat", inferred: "@octocat" },
+  ] as const;
+
+  it.each(searchTexts)(
+    "sends an assignee search of $name the way gh's -F typed it",
+    async ({ typed, inferred }) => {
+      server.respondWith(json(200, { data: { repository: null } }));
+
+      await adapter().listAssignableUsers({ profile, repo: pr, query: typed });
+
+      expect(server.requests()[0]?.url).toBe("/graphql");
+      expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
+        query: assignableUsersQuery,
+        variables: {
+          owner: "centraldigital",
+          name: "patchdesk",
+          search: inferred,
+        },
+      });
+    },
+  );
+
+  it.each(searchTexts)(
+    "sends a branch search of $name as the String gh's -f sent",
+    async ({ typed }) => {
+      server.respondWith(json(200, { data: { repository: null } }));
+
+      await adapter().listRepositoryBranches({
+        profile,
+        repo: pr,
+        query: typed,
+      });
+
+      expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
+        query: repositoryBranchesQuery,
+        variables: {
+          owner: "centraldigital",
+          name: "patchdesk",
+          search: typed,
+        },
+      });
+    },
+  );
 
   it("still learns the rate limit the inbox search carries (ADR 0023)", async () => {
     const resetAt = "2099-01-01T00:00:00Z";

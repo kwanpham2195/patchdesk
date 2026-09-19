@@ -104,9 +104,14 @@ export const httpServedReadLabels: ReadonlySet<string> = new Set([
   "api GET repos/:owner/:repo/compare/:range",
   "api GET repos/:owner/:repo/pulls/:n/reviews",
   "api GET repos/:owner/:repo/pulls/:n/comments",
+  "api GET repos/:owner/:repo/pulls/:n/commits",
   "api graphql MergePolicy",
   "api graphql PullRequestThreads",
   "api graphql MaintainerInboxSearch",
+  "api graphql AssignableUsers",
+  "api graphql PullRequestReviewers",
+  "api graphql RepositoryBranches",
+  "api graphql RepositoryLabels",
 ]);
 
 /**

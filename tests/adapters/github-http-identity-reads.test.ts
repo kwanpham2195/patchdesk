@@ -296,66 +296,74 @@ describe("a failed compare read", () => {
 });
 
 /**
- * `pulls/:n/commits` stays on gh: no shadow window has compared it. These
- * pin what a later window would be cutting over — the client's `Link`
- * following must produce the array of pages `--slurp` produced, or the
- * 250-entry guard reads a truncated list as complete.
+ * T2 moved `pulls/:n/commits`, the one allowlisted read that paginates, onto
+ * the HTTP client. Its `Link` following has to produce the array of pages
+ * `--paginate --slurp` produced, because that is the shape the 250-entry
+ * truncation guard reads.
  */
 describe("the paginated commits read over HTTP", () => {
   const server = useFixtureServer();
 
-  /** The client's answer to the paginated read, as the stdout `--slurp` wrote. */
-  async function slurpedPages(
+  function httpAdapter(): GitHubAdapter {
+    const credentials = new StubCredentials();
+    return new GitHubAdapter(
+      new CommandRunner(new UnusableGhExecutor()),
+      credentials,
+      undefined,
+      server.client(credentials),
+    );
+  }
+
+  /** Answer the commits read with two `Link`-joined pages. */
+  function servePages(
     first: ReadonlyArray<RawCommit>,
     second: ReadonlyArray<RawCommit>,
-  ): Promise<string> {
+  ): void {
     const port = Number(new URL(server.origin().rest).port);
     server.respondWith(pagedCommits(first, second, port));
-    return JSON.stringify(
-      mustParse(
-        await server
-          .client(new StubCredentials())
-          .rest(profile, commitsRequest),
-      ),
-    );
   }
 
   it("answers one array of pages, as --paginate --slurp did", async () => {
     const [first, second] = [commitPage(1, 2), commitPage(3, 1)];
+    servePages(first, second);
 
-    const pages = await slurpedPages(first, second);
+    const pages = await server
+      .client(new StubCredentials())
+      .rest(profile, commitsRequest);
 
-    expect(pages).toBe(JSON.stringify([first, second]));
+    expect(JSON.stringify(mustParse(pages))).toBe(
+      JSON.stringify([first, second]),
+    );
     expect(server.requests().map((request) => request.url)).toEqual([
       "/repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
       "/repos/centraldigital/patchdesk/pulls/42/commits?per_page=100&page=2",
     ]);
   });
 
-  it("feeds the reader a listing it marks the head on", async () => {
-    const pages = await slurpedPages(
-      [rawCommit(headSha, 30)],
-      commitPage(1, 1),
-    );
+  it("marks the head on a listing the adapter read without a gh child", async () => {
+    servePages([rawCommit(headSha, 30)], commitPage(1, 1));
 
-    const commits = await new GitHubAdapter(
-      new CommandRunner(new StubGhExecutor([exited(pages)])),
-      new StubCredentials(),
-    ).getPullRequestCommits({ profile, pr, headSha });
+    const commits = await httpAdapter().getPullRequestCommits({
+      profile,
+      pr,
+      headSha,
+    });
 
     expect(mustParse(commits).map((commit) => commit.isHead)).toEqual([
       true,
       false,
     ]);
+    expect(server.requests()).toHaveLength(2);
   });
 
-  it("feeds the reader a listing that still trips the 250-entry guard", async () => {
-    const pages = await slurpedPages(commitPage(1, 200), commitPage(201, 50));
+  it("still trips the 250-entry guard on the pages the client followed", async () => {
+    servePages(commitPage(1, 200), commitPage(201, 50));
 
-    const commits = await new GitHubAdapter(
-      new CommandRunner(new StubGhExecutor([exited(pages)])),
-      new StubCredentials(),
-    ).getPullRequestCommits({ profile, pr, headSha });
+    const commits = await httpAdapter().getPullRequestCommits({
+      profile,
+      pr,
+      headSha,
+    });
 
     expect(commits).toEqual({
       _tag: "err",

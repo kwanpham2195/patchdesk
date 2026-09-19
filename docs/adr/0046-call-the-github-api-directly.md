@@ -115,7 +115,7 @@ served request is not shadowed because there is no `gh` answer left to compare
 it against. There is no fallback in either direction: an HTTP failure is the
 read's failure, classified from the response status rather than from stderr.
 
-As of T2 the list holds these fifteen labels, each of which read clean against
+As of T2 the list holds these twenty labels, each of which read clean against
 `gh` for a whole shadow window on two transports first:
 
     api GET repos/:owner/:repo/commits/:sha/check-runs
@@ -130,13 +130,28 @@ As of T2 the list holds these fifteen labels, each of which read clean against
     api GET repos/:owner/:repo/compare/:range
     api GET repos/:owner/:repo/pulls/:n/reviews
     api GET repos/:owner/:repo/pulls/:n/comments
+    api GET repos/:owner/:repo/pulls/:n/commits
     api graphql MergePolicy
     api graphql PullRequestThreads
     api graphql MaintainerInboxSearch
+    api graphql AssignableUsers
+    api graphql PullRequestReviewers
+    api graphql RepositoryBranches
+    api graphql RepositoryLabels
 
-None of them paginates in one call; the two GraphQL reads that follow a cursor
-do it as separate requests the adapter drives, each of which is routed here on
-its own.
+`pulls/:n/commits` is the one that paginates inside a single call: the client
+follows `Link` to the last page and answers the one array of page bodies
+`--paginate --slurp` answered with, which is the shape the 250-entry
+truncation guard reads. The two GraphQL reads that follow a cursor do it as
+separate requests the adapter drives, each of which is routed here on its own.
+
+**The maintainer's typed text is a variable, and its type is part of the
+comparison.** The assignee and branch pickers send what was typed as a GraphQL
+variable, so the assignee search keeps gh's `-F` inference and the branch
+search keeps `-f`'s plain String. Two consequences carry over unchanged rather
+than being fixed by the transport: an all-digit assignee search still reaches
+`$search: String` as an Int (issue #279), and a leading `@`, which gh's `-F`
+read as a filename to take the value from, now reaches GitHub as the text.
 
 **A GraphQL label is not enough to be served.** Queries and mutations share one
 endpoint and a mutation is labelled by its root field, so a mutation could
@@ -152,27 +167,34 @@ failure. The client classifies the same body through the same
 reached `CommandRateLimited` through the rate-limit phrase in its own stderr,
 and the HTTP transport has no stderr to read.
 
-Three REST reads stay on `gh`, none of them observed in a shadow window yet:
-`pulls/:n/commits`, `contents/:path`, and the open pull request list
-`repos/:owner/:repo/pulls`. The commits read is the only one that paginates,
-and a fixture-server test pins that the client's `Link` following answers the
-same array of pages `--paginate --slurp` answered with, which is the shape the
-250-entry truncation guard reads. It moves when a window has compared it.
+Two REST reads stay on `gh`, neither observed in a shadow window yet, and both
+for the same reason: as of T2 nothing outside the gateway port calls them, so
+no window running the app can reach them.
 
-Eleven GraphQL queries stay on `gh`, none of them exercised in a shadow window
-yet:
+- `api GET repos/:owner/:repo/contents/:path` — `getFileContents` has no
+  caller in `src/main`, `src/services`, or the renderer.
+- `api GET repos/:owner/:repo/pulls` — the open pull request list;
+  `listOpenPullRequests` has no caller there either.
 
-    api graphql MaintainerInbox
-    api graphql RepositoryLabels
-    api graphql AssignableUsers
-    api graphql PullRequestReviewers
-    api graphql RepositoryBranches
-    api graphql WatchedPullRequests
-    api graphql PendingReviewThreads
-    api graphql ReviewThreadComments
-    api graphql ReviewThreadTarget
-    api graphql ReviewCommentTarget
-    api graphql ConfirmCreatedCommentThread
+Seven GraphQL queries stay on `gh`, none of them exercised in a shadow window
+yet, each for a reason of its own:
+
+- `api graphql MaintainerInbox` — the unfiltered inbox listing. The inbox
+  service reads `MaintainerInboxSearch` instead, and
+  `listMaintainerPullRequests` has no caller outside the port.
+- `api graphql WatchedPullRequests` — the watched-pull-request poll, which
+  reads nothing while the profile watches none and answers from the cached
+  rate limit while a host's budget is spent.
+- `api graphql PendingReviewThreads` — read only while the maintainer holds a
+  pending review of their own.
+- `api graphql ReviewThreadComments` — the continuation page of one thread,
+  read only when a thread carries more comments than the first page held.
+- `api graphql ReviewThreadTarget` — runs inside the reply and resolve write
+  flows.
+- `api graphql ReviewCommentTarget` — runs inside the comment edit and delete
+  write flows.
+- `api graphql ConfirmCreatedCommentThread` — runs inside the thread-create
+  write flow.
 
 Every mutation stays on `gh` too, and stays there past T2 whatever its label:
 a mutation is labelled by its root field, so `isQueryDocument` rather than the
