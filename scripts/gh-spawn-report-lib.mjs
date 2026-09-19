@@ -44,6 +44,9 @@
  *   readonly calls: number;
  *   readonly subprocessMs: number;
  *   readonly rows: ReadonlyArray<SpawnRow>;
+ *   readonly httpCalls: number;
+ *   readonly httpMs: number;
+ *   readonly httpRows: ReadonlyArray<SpawnRow>;
  * }} Cycle
  */
 
@@ -111,6 +114,30 @@ export function readSpawnEntry(entry) {
 }
 
 /**
+ * Pull one GitHub HTTP request out of a parsed log line, as
+ * `GitHubHttpClient` wrote it (issue #276). A read served over HTTPS spawns
+ * nothing, so it is counted in its own column rather than folded into the
+ * spawns: "spawns per cycle" stays comparable with the program's history.
+ *
+ * @param {unknown} entry
+ * @returns {SpawnSample | undefined}
+ */
+export function readHttpRequestEntry(entry) {
+  const record = asRecord(entry);
+  if (record === undefined || record["topic"] !== "github-http") {
+    return undefined;
+  }
+  const fields = asRecord(record["meta"]);
+  if (fields === undefined) return undefined;
+  const label = asText(fields["label"]);
+  const durationMs = asFiniteNumber(fields["durationMs"]);
+  const endedAtMs = asInstantMs(record["at"]);
+  if (label === undefined) return undefined;
+  if (durationMs === undefined || endedAtMs === undefined) return undefined;
+  return { label, durationMs, startedAtMs: endedAtMs - durationMs };
+}
+
+/**
  * Pull one served request's window out of a parsed log line. Only the main
  * process's `http` entries are read: the renderer logs the same request again
  * under `api`, and counting both would double every cycle.
@@ -136,16 +163,18 @@ export function readRequestEntry(entry, route) {
 }
 
 /**
- * Read the spawns, and the windows of `route` when one is asked for, in one
- * pass over the file.
+ * Read the spawns, the GitHub HTTP requests, and the windows of `route` when
+ * one is asked for, in one pass over the file.
  *
  * @param {string} contents
  * @param {string | undefined} route
- * @returns {{ readonly samples: ReadonlyArray<SpawnSample>; readonly requests: ReadonlyArray<RequestWindow> }}
+ * @returns {{ readonly samples: ReadonlyArray<SpawnSample>; readonly httpSamples: ReadonlyArray<SpawnSample>; readonly requests: ReadonlyArray<RequestWindow> }}
  */
 export function collectLog(contents, route) {
   /** @type {Array<SpawnSample>} */
   const samples = [];
+  /** @type {Array<SpawnSample>} */
+  const httpSamples = [];
   /** @type {Array<RequestWindow>} */
   const requests = [];
   for (const line of contents.split("\n")) {
@@ -162,11 +191,16 @@ export function collectLog(contents, route) {
       samples.push(spawn);
       continue;
     }
+    const http = readHttpRequestEntry(parsed);
+    if (http !== undefined) {
+      httpSamples.push(http);
+      continue;
+    }
     if (route === undefined) continue;
     const request = readRequestEntry(parsed, route);
     if (request !== undefined) requests.push(request);
   }
-  return { samples, requests };
+  return { samples, httpSamples, requests };
 }
 
 /**
@@ -215,9 +249,26 @@ export function rowsFor(samples) {
 }
 
 /**
+ * Keep the samples that *started* inside the window, which is the same rule
+ * cycle membership uses.
+ *
+ * @param {ReadonlyArray<SpawnSample>} samples
+ * @param {{ readonly since?: number; readonly until?: number }} window
+ * @returns {ReadonlyArray<SpawnSample>}
+ */
+function within(samples, window) {
+  const since = window.since;
+  const until = window.until;
+  return samples.filter(
+    (sample) =>
+      (since === undefined || sample.startedAtMs >= since) &&
+      (until === undefined || sample.startedAtMs <= until),
+  );
+}
+
+/**
  * Group the spawn entries of a log file into one row per label, optionally
- * bounded to a window. A spawn is in the window when it *started* inside it,
- * which is the same rule cycle membership uses.
+ * bounded to a window.
  *
  * @param {string} contents
  * @param {{ readonly since?: number; readonly until?: number }} [window]
@@ -225,20 +276,26 @@ export function rowsFor(samples) {
  */
 export function summarizeSpawns(contents, window = {}) {
   const { samples } = collectLog(contents, undefined);
-  const since = window.since;
-  const until = window.until;
-  return rowsFor(
-    samples.filter(
-      (sample) =>
-        (since === undefined || sample.startedAtMs >= since) &&
-        (until === undefined || sample.startedAtMs <= until),
-    ),
-  );
+  return rowsFor(within(samples, window));
 }
 
 /**
- * Attribute each spawn to the request it ran inside, and report one cycle per
- * request of `route`.
+ * The same grouping over the GitHub HTTP requests, which a cutover label's
+ * calls land in instead of the spawn rows (issue #276).
+ *
+ * @param {string} contents
+ * @param {{ readonly since?: number; readonly until?: number }} [window]
+ * @returns {ReadonlyArray<SpawnRow>}
+ */
+export function summarizeHttpRequests(contents, window = {}) {
+  const { httpSamples } = collectLog(contents, undefined);
+  return rowsFor(within(httpSamples, window));
+}
+
+/**
+ * Attribute each spawn and each served HTTP request to the request it ran
+ * inside, and report one cycle per request of `route`. `ambiguous` counts
+ * spawns only, so it keeps comparing with the program's earlier windows.
  *
  * A spawn belongs to a request when its start falls between that request's
  * start and end. Requests of one route can overlap, so a spawn matching more
@@ -256,7 +313,7 @@ export function summarizeSpawns(contents, window = {}) {
  * @returns {{ readonly cycles: ReadonlyArray<Cycle>; readonly ambiguous: number }}
  */
 export function summarizeCycles(contents, route, window = {}) {
-  const { samples, requests } = collectLog(contents, route);
+  const { samples, httpSamples, requests } = collectLog(contents, route);
   const since = window.since;
   const until = window.until;
   const ordered = [...requests]
@@ -266,6 +323,36 @@ export function summarizeCycles(contents, route, window = {}) {
         (until === undefined || request.startedAtMs <= until),
     )
     .sort((left, right) => left.startedAtMs - right.startedAtMs);
+  const spawned = attribute(samples, ordered);
+  // A served HTTP request is attributed exactly as a spawn is, by when it
+  // started, so one route cycle reads the same whichever transport answered.
+  const served = attribute(httpSamples, ordered);
+
+  const cycles = ordered.map((request) => {
+    const owned = spawned.samplesByRequest.get(request) ?? [];
+    const ownedHttp = served.samplesByRequest.get(request) ?? [];
+    return {
+      request,
+      calls: owned.length,
+      subprocessMs: owned.reduce((total, one) => total + one.durationMs, 0),
+      rows: rowsFor(owned),
+      httpCalls: ownedHttp.length,
+      httpMs: ownedHttp.reduce((total, one) => total + one.durationMs, 0),
+      httpRows: rowsFor(ownedHttp),
+    };
+  });
+  return { cycles, ambiguous: spawned.ambiguous };
+}
+
+/**
+ * Attribute each sample to the request it started inside, latest-starting
+ * match first.
+ *
+ * @param {ReadonlyArray<SpawnSample>} samples
+ * @param {ReadonlyArray<RequestWindow>} ordered
+ * @returns {{ readonly samplesByRequest: Map<RequestWindow, Array<SpawnSample>>; readonly ambiguous: number }}
+ */
+function attribute(samples, ordered) {
   /** @type {Map<RequestWindow, Array<SpawnSample>>} */
   const samplesByRequest = new Map(ordered.map((request) => [request, []]));
   let ambiguous = 0;
@@ -280,17 +367,7 @@ export function summarizeCycles(contents, route, window = {}) {
     if (matches.length > 1) ambiguous += 1;
     samplesByRequest.get(owner)?.push(sample);
   }
-
-  const cycles = ordered.map((request) => {
-    const owned = samplesByRequest.get(request) ?? [];
-    return {
-      request,
-      calls: owned.length,
-      subprocessMs: owned.reduce((total, one) => total + one.durationMs, 0),
-      rows: rowsFor(owned),
-    };
-  });
-  return { cycles, ambiguous };
+  return { samplesByRequest, ambiguous };
 }
 
 /**
@@ -352,20 +429,28 @@ function boundLines(window) {
 }
 
 /**
- * Render the rows as fixed-width columns with a trailing total.
+ * Render the spawn rows as fixed-width columns with a trailing total, then
+ * the served GitHub HTTP requests as their own section. The two are never
+ * added together: a cutover label left the spawn table and joined the other
+ * one, and a count that mixed them could not show that (issue #276).
  *
  * @param {ReadonlyArray<SpawnRow>} rows
  * @param {string} source
  * @param {{ readonly since?: number; readonly until?: number }} [window]
+ * @param {ReadonlyArray<SpawnRow>} [httpRows]
  * @returns {string}
  */
-export function formatSpawnReport(rows, source, window = {}) {
+export function formatSpawnReport(rows, source, window = {}, httpRows = []) {
   return [
     `source: ${source}`,
     ...boundLines(window),
     `labels: ${rows.length}`,
     "",
+    "spawns",
     ...tableLines(rows, ""),
+    "",
+    `http requests: ${httpRows.reduce((total, row) => total + row.calls, 0)}`,
+    ...(httpRows.length === 0 ? [] : ["", ...tableLines(httpRows, "")]),
     "",
   ].join("\n");
 }
@@ -393,6 +478,8 @@ export function formatCycleReport(
     (total, cycle) => total + cycle.subprocessMs,
     0,
   );
+  const httpCalls = cycles.reduce((total, cycle) => total + cycle.httpCalls, 0);
+  const httpMs = cycles.reduce((total, cycle) => total + cycle.httpMs, 0);
   const wallMs = cycles.reduce(
     (total, cycle) =>
       total + (cycle.request.endedAtMs - cycle.request.startedAtMs),
@@ -414,11 +501,14 @@ export function formatCycleReport(
     "",
     ...cycles.flatMap((cycle, index) => [
       `cycle ${index + 1}  ${new Date(cycle.request.startedAtMs).toISOString()}  ${cycle.request.correlationId}`,
-      `  wall ${cycle.request.endedAtMs - cycle.request.startedAtMs} ms  spawns ${cycle.calls}  subprocess ${cycle.subprocessMs} ms`,
+      `  wall ${cycle.request.endedAtMs - cycle.request.startedAtMs} ms  spawns ${cycle.calls}  subprocess ${cycle.subprocessMs} ms  http ${cycle.httpCalls}  http time ${cycle.httpMs} ms`,
       ...tableLines(cycle.rows, "  "),
+      ...(cycle.httpRows.length === 0
+        ? []
+        : ["  http requests", ...tableLines(cycle.httpRows, "  ")]),
       "",
     ]),
-    `mean per cycle: spawns ${mean(calls)}  subprocess ${mean(subprocessMs)} ms  wall ${mean(wallMs)} ms`,
+    `mean per cycle: spawns ${mean(calls)}  subprocess ${mean(subprocessMs)} ms  http ${mean(httpCalls)}  http time ${mean(httpMs)} ms  wall ${mean(wallMs)} ms`,
     "",
   ].join("\n");
 }

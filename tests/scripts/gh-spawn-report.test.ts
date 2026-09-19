@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatCycleReport,
   formatShadowReport,
+  formatSpawnReport,
   summarizeCycles,
+  summarizeHttpRequests,
   summarizeShadow,
   summarizeSpawns,
 } from "../../scripts/gh-spawn-report-lib.mjs";
@@ -185,6 +188,130 @@ describe("window filtering", () => {
   });
 });
 
+/**
+ * A read the GitHub cutover moved onto HTTPS spawns nothing and writes this
+ * entry instead (issue #276). It is counted beside the spawns, never in them,
+ * so "spawns per cycle" keeps comparing with the program's earlier windows.
+ */
+const httpLine = (options: {
+  readonly endedAt: string;
+  readonly durationMs: number;
+  readonly label?: string;
+}): string =>
+  JSON.stringify({
+    schemaVersion: 1,
+    at: options.endedAt,
+    process: "main",
+    level: "debug",
+    topic: "github-http",
+    message: options.label ?? "api GET user",
+    meta: {
+      label: options.label ?? "api GET user",
+      status: 200,
+      durationMs: options.durationMs,
+    },
+  });
+
+describe("HTTP request accounting", () => {
+  it("keeps served requests out of the spawn rows", () => {
+    const contents = [
+      spawnLine({ endedAt: "2026-09-18T10:00:04.000Z", durationMs: 3000 }),
+      httpLine({ endedAt: "2026-09-18T10:00:04.400Z", durationMs: 400 }),
+    ].join("\n");
+
+    expect(summarizeSpawns(contents)).toEqual([
+      expect.objectContaining({
+        label: "gh api GET repos/:owner/:repo/pulls/:n",
+        calls: 1,
+      }),
+    ]);
+    expect(summarizeHttpRequests(contents)).toEqual([
+      expect.objectContaining({
+        label: "api GET user",
+        calls: 1,
+        totalMs: 400,
+      }),
+    ]);
+  });
+
+  it("keeps only the requests that started inside the window", () => {
+    const contents = [
+      httpLine({ endedAt: "2026-09-18T10:00:04.400Z", durationMs: 400 }),
+      httpLine({ endedAt: "2026-09-18T12:00:04.400Z", durationMs: 400 }),
+    ].join("\n");
+
+    expect(
+      summarizeHttpRequests(contents, {
+        since: Date.parse("2026-09-18T11:00:00.000Z"),
+      })[0]?.calls,
+    ).toBe(1);
+  });
+
+  it("attributes a served request to a cycle the way a spawn is attributed", () => {
+    const contents = [
+      requestLine({
+        endedAt: "2026-09-18T10:00:05.000Z",
+        durationMs: 5000,
+        correlationId: "cycle-1",
+      }),
+      // Started 10:00:01, inside the request.
+      httpLine({ endedAt: "2026-09-18T10:00:01.400Z", durationMs: 400 }),
+      // Started 09:59:58, before it.
+      httpLine({ endedAt: "2026-09-18T09:59:58.400Z", durationMs: 400 }),
+      spawnLine({ endedAt: "2026-09-18T10:00:04.000Z", durationMs: 3000 }),
+    ].join("\n");
+
+    const { cycles } = summarizeCycles(contents, route);
+
+    expect(cycles[0]?.httpCalls).toBe(1);
+    expect(cycles[0]?.httpMs).toBe(400);
+    expect(cycles[0]?.calls).toBe(1);
+    expect(cycles[0]?.rows.map((row) => row.label)).toEqual([
+      "gh api GET repos/:owner/:repo/pulls/:n",
+    ]);
+    expect(cycles[0]?.httpRows.map((row) => row.label)).toEqual([
+      "api GET user",
+    ]);
+  });
+
+  it("reports the two counts in their own columns", () => {
+    const contents = [
+      requestLine({
+        endedAt: "2026-09-18T10:00:05.000Z",
+        durationMs: 5000,
+        correlationId: "cycle-1",
+      }),
+      httpLine({ endedAt: "2026-09-18T10:00:01.400Z", durationMs: 400 }),
+      spawnLine({ endedAt: "2026-09-18T10:00:04.000Z", durationMs: 3000 }),
+    ].join("\n");
+    const { cycles, ambiguous } = summarizeCycles(contents, route);
+
+    const report = formatCycleReport(cycles, ambiguous, "log", route);
+
+    expect(report).toMatch(/spawns 1 {2}subprocess 3000 ms {2}http 1/);
+    expect(report).toMatch(
+      /mean per cycle: spawns 1 {2}subprocess 3000 ms {2}http 1 {2}http time 400 ms/,
+    );
+  });
+
+  it("names both streams in the default report", () => {
+    const contents = [
+      spawnLine({ endedAt: "2026-09-18T10:00:04.000Z", durationMs: 3000 }),
+      httpLine({ endedAt: "2026-09-18T10:00:04.400Z", durationMs: 400 }),
+    ].join("\n");
+
+    const report = formatSpawnReport(
+      summarizeSpawns(contents),
+      "log",
+      {},
+      summarizeHttpRequests(contents),
+    );
+
+    expect(report).toContain("spawns\ncalls");
+    expect(report).toMatch(/http requests: 1\n\ncalls/);
+  });
+});
+
 describe("parseArguments", () => {
   it("rejects a timestamp it cannot parse", () => {
     const parsed = parseArguments(["--since", "nonsense"]);
@@ -309,30 +436,6 @@ describe("shadow summary", () => {
         skipReason: "no_token",
       },
     ]);
-  });
-
-  it("separates a label skipped for a jq projection from a divergence", () => {
-    const rows = summarizeShadow(
-      [
-        shadowLine({
-          at: "2026-09-18T10:00:01.000Z",
-          outcome: "skipped",
-          reason: "jq_projection",
-        }),
-        shadowLine({
-          at: "2026-09-18T10:00:02.000Z",
-          outcome: "skipped",
-          reason: "jq_projection",
-        }),
-      ].join("\n"),
-    );
-
-    expect(rows[0]).toMatchObject({
-      calls: 2,
-      diverged: 0,
-      skipped: 2,
-      skipReason: "jq_projection",
-    });
   });
 
   it("keeps only the comparisons inside the window", () => {

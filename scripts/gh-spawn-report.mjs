@@ -4,11 +4,17 @@
  * Summarize the `command-spawn` log entries `NodeCommandExecutor` writes, one
  * row per normalized endpoint label.
  *
- * Every slow operation in this app is a `gh` or `git` child process, so the
+ * Every slow operation in this app was a `gh` or `git` child process, so the
  * question a performance slice has to answer is which endpoints a route hit
  * and how often it repeated one. The label collapses identical logical calls
  * (see `normalizeCommandLabel` in `src/adapters/github/command-runner.ts`), so
  * a repeated read shows up as a call count rather than as many distinct rows.
+ *
+ * A read the GitHub cutover moved onto HTTPS spawns nothing and writes a
+ * `github-http` entry under the same label instead (issue #276). Those are
+ * counted in their own section and their own per-cycle column, never added to
+ * the spawns, so "spawns per cycle" keeps meaning what the program's earlier
+ * measurements meant.
  *
  * Rows are ordered by label, not by cost, so two runs of this command diff
  * line by line.
@@ -36,6 +42,7 @@ import {
   formatShadowReport,
   formatSpawnReport,
   summarizeCycles,
+  summarizeHttpRequests,
   summarizeShadow,
   summarizeSpawns,
 } from "./gh-spawn-report-lib.mjs";
@@ -193,13 +200,14 @@ export async function reportGhSpawns({ args, readSource, output }) {
   }
 
   const rows = summarizeSpawns(contents, window);
-  if (rows.length === 0) {
+  const httpRows = summarizeHttpRequests(contents, window);
+  if (rows.length === 0 && httpRows.length === 0) {
     output.stderr(
-      `No command-spawn entries in ${logFile}. Run the app, then rerun this command.\n`,
+      `No command-spawn or github-http entries in ${logFile}. Run the app, then rerun this command.\n`,
     );
     return 1;
   }
-  output.stdout(formatSpawnReport(rows, logFile, window));
+  output.stdout(formatSpawnReport(rows, logFile, window, httpRows));
   return 0;
 }
 

@@ -7,6 +7,7 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
   classifyGraphqlErrorBody,
   classifyRestStatus,
+  normalizeCommandLabel,
   requestAbortContext,
   type CommandFailure,
 } from "./command-runner";
@@ -15,7 +16,12 @@ import {
   isEnterpriseServerHost,
   type GitHubCredentials,
 } from "./github-credentials";
-import type { GitHubGraphQlRequest, GitHubRestRequest } from "./github-request";
+import {
+  ghInvocationFor,
+  type GitHubGraphQlRequest,
+  type GitHubRequest,
+  type GitHubRestRequest,
+} from "./github-request";
 
 /** Mirrors `maxOutputBytes` in `NodeCommandExecutor`: a response larger than this must never be buffered into the main process. */
 const maxResponseBytes = 2 * 1024 * 1024;
@@ -69,6 +75,21 @@ export type GitHubRateLimitObservation = {
   readonly retryAfterSeconds?: number;
 };
 
+/**
+ * One settled HTTP request, as the request logger sees it. It carries the
+ * normalized endpoint label and nothing else the URL held, so no query string,
+ * header, or token can reach the log (ADR 0046). `status` is 0 when no
+ * response arrived at all.
+ *
+ * A read served here no longer spawns a child, so this is what keeps it
+ * countable in `scripts/gh-spawn-report.mjs` beside the spawns.
+ */
+export type GitHubHttpRequestRecord = {
+  readonly label: string;
+  readonly status: number;
+  readonly durationMs: number;
+};
+
 /** One GraphQL variable value, as gh's field-type inference produced it. */
 type GraphQlVariableValue = string | number | boolean | null;
 
@@ -106,6 +127,14 @@ export class GitHubHttpClient {
     ) => GitHubApiOrigin = gitHubApiOrigin,
     /** Defaults to the runtime's own fetch; `src/main` supplies Chromium's. */
     private readonly fetchRequest: GitHubFetch = fetch,
+    /**
+     * Fires once per HTTP request, a paginated read's every page included, so
+     * a served read is countable where a spawn used to be. Defaults to a
+     * no-op.
+     */
+    private readonly onRequest: (
+      record: GitHubHttpRequestRecord,
+    ) => void = () => undefined,
   ) {}
 
   /** Run a REST request as the profile's configured GitHub account. */
@@ -182,10 +211,15 @@ export class GitHubHttpClient {
     let url: string | undefined =
       `${this.origin(request.host).rest}/${request.path}`;
 
+    const label = labelOf(request);
     while (url !== undefined) {
-      const response = await this.fetchRequest(url, init);
-      this.observeRateLimit(request.host, response.headers);
-      const body = await readCappedText(response, budget);
+      const { response, body } = await this.fetchPage(
+        label,
+        url,
+        init,
+        request.host,
+        budget,
+      );
       if (body._tag === "err") return body;
       const failure = responseFailure(response.status, body.value);
       if (failure !== undefined) return err(failure);
@@ -204,7 +238,8 @@ export class GitHubHttpClient {
     token: string,
     signal: AbortSignal,
   ): Promise<Result<unknown, CommandFailure>> {
-    const response = await this.fetchRequest(
+    const { response, body } = await this.fetchPage(
+      labelOf(request),
       this.origin(request.host).graphql,
       {
         method: "POST",
@@ -220,11 +255,9 @@ export class GitHubHttpClient {
         }),
         signal,
       },
+      request.host,
+      { remaining: maxResponseBytes },
     );
-    this.observeRateLimit(request.host, response.headers);
-    const body = await readCappedText(response, {
-      remaining: maxResponseBytes,
-    });
     if (body._tag === "err") return body;
     const failure = responseFailure(response.status, body.value);
     if (failure !== undefined) return err(failure);
@@ -243,6 +276,34 @@ export class GitHubHttpClient {
       );
     }
     return ok(parsed.value);
+  }
+
+  /**
+   * One HTTP round trip and its whole body, recorded under the label the gh
+   * path would have logged. The record is written whatever the outcome, so a
+   * request that never got a response is still counted; a thrown error stays
+   * thrown, because `withRequestDeadline` owns what it classifies to.
+   */
+  private async fetchPage(
+    label: string,
+    url: string,
+    init: RequestInit,
+    host: string,
+    budget: ByteBudget,
+  ): Promise<{
+    readonly response: Response;
+    readonly body: Result<string, CommandFailure>;
+  }> {
+    const startedAt = Date.now();
+    let status = 0;
+    try {
+      const response = await this.fetchRequest(url, init);
+      status = response.status;
+      this.observeRateLimit(host, response.headers);
+      return { response, body: await readCappedText(response, budget) };
+    } finally {
+      this.onRequest({ label, status, durationMs: Date.now() - startedAt });
+    }
   }
 
   private observeRateLimit(host: string, headers: Headers): void {
@@ -308,6 +369,11 @@ function responseFailure(
   if (classified !== undefined) return classified;
   if (status >= 500) return { _tag: "CommandUnavailable" };
   return { _tag: "CommandFailed", stderr: body.slice(0, 1024) };
+}
+
+/** The label the same request spawned under, so one endpoint reads the same whichever transport served it. */
+function labelOf(request: GitHubRequest): string {
+  return normalizeCommandLabel(ghInvocationFor(request).argv);
 }
 
 /** JSON is parsed; anything else — a diff, an empty 204 — is the text gh would have written to stdout. */
