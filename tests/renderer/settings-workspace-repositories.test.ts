@@ -12,22 +12,22 @@ describe("mergeWatchlistEntries + groupWatchlistEntries", () => {
       {
         host: "github.com",
         owner: "centraldigital",
-        repo: "cfw-sales-crm-api",
-        localPath: "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+        repo: "acme-api",
+        localPath: "/Users/example/Work/acme/acme-api",
       },
     ];
     const entries = mergeWatchlistEntries([], watchedRepos);
     const { byRoot, other } = groupWatchlistEntries(entries, [
-      "/Users/kwanpham/Work/cfw",
+      "/Users/example/Work/acme",
     ]);
 
     expect(other).toEqual([]);
-    expect(byRoot.get("/Users/kwanpham/Work/cfw")).toEqual([
+    expect(byRoot.get("/Users/example/Work/acme")).toEqual([
       {
         host: "github.com",
         owner: "centraldigital",
-        repo: "cfw-sales-crm-api",
-        localPath: "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+        repo: "acme-api",
+        localPath: "/Users/example/Work/acme/acme-api",
       },
     ]);
   });
@@ -37,20 +37,20 @@ describe("mergeWatchlistEntries + groupWatchlistEntries", () => {
       {
         host: "github.com",
         owner: "centraldigital",
-        repo: "cfw-bo-customer-management-service",
+        repo: "acme-customer-service",
       },
     ];
     const entries = mergeWatchlistEntries([], watchedRepos);
     const { byRoot, other } = groupWatchlistEntries(entries, [
-      "/Users/kwanpham/Work/cfw",
+      "/Users/example/Work/acme",
     ]);
 
-    expect(byRoot.get("/Users/kwanpham/Work/cfw")).toEqual([]);
+    expect(byRoot.get("/Users/example/Work/acme")).toEqual([]);
     expect(other).toEqual([
       {
         host: "github.com",
         owner: "centraldigital",
-        repo: "cfw-bo-customer-management-service",
+        repo: "acme-customer-service",
         localPath: "",
       },
     ]);

@@ -93,7 +93,7 @@ const untitledSameRepo = {
 const otherOwner = {
   reviewId: "review-other-owner",
   owner: "centraldigital",
-  repo: "cfw-sales-crm-api",
+  repo: "acme-api",
   number: 98,
   sortedAt: OPENED_AT,
   lastOpenedAt: OPENED_AT,
@@ -214,7 +214,7 @@ describe("VisitedPullRequests", () => {
     expect(row.textContent).toContain("kwanpham2195/patchdesk#125 · ");
     // The titleless row carries the same rule in its fallback label.
     expect(screen.getByRole("button", { name: /#98/ }).textContent).toContain(
-      "centraldigital/cfw-sales-crm-api#98",
+      "centraldigital/acme-api#98",
     );
   });
 
