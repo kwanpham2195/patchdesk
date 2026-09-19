@@ -29,7 +29,11 @@ import {
   toCommitStatusSummary,
 } from "./github-wire-projections";
 import { invalid } from "./github-write-failures";
-import type { FetchedDiffRefs, GitHubFileContents } from "./github-adapter";
+import type {
+  FetchedDiffRefs,
+  GitHubFileContents,
+  PullRequestDiffSource,
+} from "./github-adapter";
 
 // Two source blobs travel through the 2 MiB Electron bridge, so each stays
 // below 512 KiB after allowing for JSON framing and multibyte text.
@@ -114,13 +118,12 @@ export class GitHubDiffReader {
     return ok({ overall: overallCheckStatus(summaries), checks: summaries });
   }
 
-  async getPullRequestDiff(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly fetchedRefs?: FetchedDiffRefs;
-    /** Immutable remote comparison used only when no managed checkout exists. */
-    readonly snapshot?: { readonly baseSha: GitSha; readonly headSha: GitSha };
-  }): Promise<Result<string, GitHubReadFailure>> {
+  async getPullRequestDiff(
+    input: {
+      readonly profile: WorkspaceProfileConfig;
+      readonly pr: PullRequestRef;
+    } & PullRequestDiffSource,
+  ): Promise<Result<string, GitHubReadFailure>> {
     if (input.fetchedRefs !== undefined) {
       const fetchedRefs = await this.verifyFetchedRefs(input.fetchedRefs);
       if (fetchedRefs._tag === "err") return fetchedRefs;
@@ -145,41 +148,15 @@ export class GitHubDiffReader {
           );
     }
 
-    if (input.snapshot !== undefined) {
-      const exact = await this.ghText(input.profile, {
-        kind: "rest",
-        host: input.profile.githubHost,
-        accept: "application/vnd.github.v3.diff",
-        path: `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.snapshot.baseSha}...${input.snapshot.headSha}`,
-      });
-      return exact._tag === "ok"
-        ? exact
-        : this.commandFailure(
-            "get_diff",
-            exact.error,
-            input.profile.githubHost,
-          );
-    }
-
-    const response = await this.ghText(input.profile, {
-      kind: "pull_request_diff",
+    const exact = await this.ghText(input.profile, {
+      kind: "rest",
       host: input.profile.githubHost,
-      owner: input.pr.owner,
-      repo: input.pr.repo,
-      number: input.pr.number,
+      accept: "application/vnd.github.v3.diff",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.snapshot.baseSha}...${input.snapshot.headSha}`,
     });
-    if (response._tag === "ok" && response.value.length > 0) return response;
-    if (
-      response._tag === "err" &&
-      response.error._tag === "CommandAuthenticationRequired"
-    ) {
-      return this.commandFailure(
-        "get_diff",
-        response.error,
-        input.profile.githubHost,
-      );
-    }
-    return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
+    return exact._tag === "ok"
+      ? exact
+      : this.commandFailure("get_diff", exact.error, input.profile.githubHost);
   }
 
   async getFileContents(input: {

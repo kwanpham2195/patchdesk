@@ -39,7 +39,6 @@ import type { GitHubReviewCoordinates } from "../../domain/patch";
 import {
   type AuthenticatedGitHubAccount,
   type BranchProtectionEvidence,
-  type FetchedDiffRefs,
   type GitHubCommentTarget,
   type GitHubFileContents,
   type GitHubMergeWriter,
@@ -49,6 +48,7 @@ import {
   type GitHubThreadTarget,
   type MergeOutcome,
   type PendingReviewComment,
+  type PullRequestDiffSource,
   type RepositoryBranchListing,
   type RepositoryPermissionEvidence,
   type WatchedPullRequestRead,
@@ -585,12 +585,12 @@ export class FakeGitHubAdapter
       : ok(undefined);
   }
 
-  async getPullRequestDiff(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly fetchedRefs?: FetchedDiffRefs;
-    readonly snapshot?: { readonly baseSha: GitSha; readonly headSha: GitSha };
-  }): Promise<Result<string, GitHubReadFailure>> {
+  async getPullRequestDiff(
+    input: {
+      readonly profile: WorkspaceProfileConfig;
+      readonly pr: PullRequestRef;
+    } & PullRequestDiffSource,
+  ): Promise<Result<string, GitHubReadFailure>> {
     void input;
     return this.values.diff === undefined
       ? missing("get_diff")

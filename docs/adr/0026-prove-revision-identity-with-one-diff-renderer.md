@@ -6,6 +6,12 @@
 > canonical patch hash — stands, but the canonical hash must always come
 > from one renderer instead of being re-derived from a local artifact.
 
+> **Note, 2026-09-19 (#293).** The `gh pr diff --patch` fallback described
+> below was unreachable — every caller supplies a snapshot or fetched refs —
+> and has been deleted. `getPullRequestDiff` now has two branches, and its
+> input type requires one of the two sources, so the rule below reads as
+> "adding a third branch".
+
 A review's revision identity is three fields on `ObservedRevisionIdentity`
 in `src/domain/review.ts`: `headSha`, `baseSha`, and `canonicalPatchHash`.
 `headSha` and `baseSha` are stored at open time and compared against

@@ -4,7 +4,7 @@ import type { PullRequestReviewsRead } from "./github-pull-request-reviews";
 import type {
   AuthenticatedGitHubAccount,
   BranchProtectionEvidence,
-  FetchedDiffRefs,
+  PullRequestDiffSource,
   RepositoryPermissionEvidence,
 } from "./github-adapter";
 import type {
@@ -193,13 +193,12 @@ export interface GitHubReader {
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
   }): Promise<Result<CheckSummary, GitHubReadFailure>>;
-  getPullRequestDiff(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly fetchedRefs?: FetchedDiffRefs;
-    /** Immutable remote comparison used only when no managed checkout exists. */
-    readonly snapshot?: { readonly baseSha: GitSha; readonly headSha: GitSha };
-  }): Promise<Result<string, GitHubReadFailure>>;
+  getPullRequestDiff(
+    input: {
+      readonly profile: WorkspaceProfileConfig;
+      readonly pr: PullRequestRef;
+    } & PullRequestDiffSource,
+  ): Promise<Result<string, GitHubReadFailure>>;
   /** Fetch one bounded text blob at an immutable revision for local diff hydration. */
   getFileContents(input: {
     readonly profile: WorkspaceProfileConfig;

@@ -1,9 +1,9 @@
 [
   "gh",
-  "pr",
-  "diff",
-  "42",
-  "--repo",
-  "github.com/centraldigital/patchdesk",
-  "--patch"
+  "api",
+  "--hostname",
+  "github.com",
+  "-H",
+  "Accept: application/vnd.github.v3.diff",
+  "repos/centraldigital/patchdesk/compare/1234567890abcdef1234567890abcdef12345678...abcdef1234567890abcdef1234567890abcdef12"
 ]
