@@ -612,9 +612,10 @@ function extractRestStatusFromStderr(
  * content where GitHub documents two distinct meanings behind the same code
  * (403: primary/secondary rate limit vs genuine forbidden; 422: the
  * one-pending-review-per-user constraint vs any other validation failure).
- * Returns undefined for a recognized-but-unmapped status (e.g. 5xx), which
- * falls through to the regex fallback and then generic CommandFailed —
- * unchanged from today's behavior for those codes.
+ * A 5xx is GitHub failing to answer rather than refusing, and its mutation may
+ * still have landed, so it maps to CommandUnavailable (ADR 0035, issue #288).
+ * Returns undefined for anything else, which falls through to the regex
+ * fallback and then generic CommandFailed.
  *
  * Exported so a transport that reads the status off the response itself can
  * feed it the same number instead of scraping one back out of gh's output
@@ -647,7 +648,11 @@ export function classifyRestStatus(
     case 429:
       return { _tag: "CommandRateLimited" };
     default:
-      return undefined;
+      // 501 is handled above: GitHub does not implement the endpoint at all,
+      // which is a refusal rather than a failure to answer.
+      return status >= 500 && status <= 599
+        ? { _tag: "CommandUnavailable" }
+        : undefined;
   }
 }
 
@@ -748,6 +753,9 @@ function classifyByStderrPattern(stderr: string): CommandFailure | undefined {
     return { _tag: "CommandPendingReview" };
   }
   if (isUnsupportedFailure(stderr)) return { _tag: "CommandUnsupported" };
+  // Checked before the 403/429 predicates below so a server error whose status
+  // never reached `(HTTP nnn)` still reads as unavailable, not as a refusal.
+  if (isServerErrorFailure(stderr)) return { _tag: "CommandUnavailable" };
   // GitHub's primary rate limit responds with HTTP 403, which also matches
   // isForbiddenFailure's bare `\b403\b`; check rate-limit wording first so a
   // 403 rate-limit response classifies as CommandRateLimited, not CommandForbidden.
@@ -821,6 +829,13 @@ function isPendingReviewFailure(stderr: string): boolean {
 
 function isRateLimitFailure(stderr: string): boolean {
   return /(?:\b429\b|rate[ -]?limit|too many requests|quota exceeded)/i.test(
+    stderr,
+  );
+}
+
+/** GitHub's own 5xx reason phrases, for a failure whose status never reached `(HTTP nnn)`. */
+function isServerErrorFailure(stderr: string): boolean {
+  return /(?:internal server error|bad gateway|service unavailable|gateway time-?out)/i.test(
     stderr,
   );
 }

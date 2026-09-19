@@ -13,6 +13,12 @@ export function optionalPolicyUnavailableReason(
   return undefined;
 }
 
+/**
+ * Only a status that means refusal earns a category that removes the write
+ * intent; everything else keeps the Review locked for reconciliation, because
+ * the mutation may already have landed (ADR 0035, issue #288). `CommandFailed`
+ * carries no status, so it is never a refusal here.
+ */
 export function writeFailure(failure: CommandFailure): GitHubWriteFailure {
   if (failure._tag === "CommandAuthenticationRequired")
     return {
@@ -40,12 +46,6 @@ export function writeFailure(failure: CommandFailure): GitHubWriteFailure {
       category: "rate_limited",
       message: "GitHub rate-limited this request.",
     };
-  if (failure._tag === "CommandFailed")
-    return {
-      _tag: "GitHubWriteFailure",
-      category: "rejected",
-      message: "GitHub rejected the review request.",
-    };
   return {
     _tag: "GitHubWriteFailure",
     category: "unavailable",
@@ -72,19 +72,6 @@ function forbiddenWriteMessage(reason: ForbiddenReason): string {
     case "unknown":
       return "GitHub blocked this write and did not say why. This is not necessarily temporary — check the repository's or organization's access settings on GitHub.";
   }
-}
-
-export function directSummaryWriteFailure(
-  failure: CommandFailure,
-): GitHubWriteFailure {
-  if (failure._tag === "CommandFailed") {
-    return {
-      _tag: "GitHubWriteFailure",
-      category: "unavailable",
-      message: "GitHub review request could not be confirmed.",
-    };
-  }
-  return writeFailure(failure);
 }
 
 export function invalid(

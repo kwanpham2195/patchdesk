@@ -41,7 +41,7 @@ import {
   parseLocation,
 } from "./github-wire-projections";
 import { extractImageRewrites } from "./github-image-rewrites";
-import { directSummaryWriteFailure, invalid } from "./github-write-failures";
+import { invalid, writeFailure } from "./github-write-failures";
 import { definedProps } from "../../domain/defined-props";
 import type {
   AuthenticatedGitHubAccount,
@@ -396,8 +396,7 @@ export class GitHubConversationReader {
         body: input.body,
       }),
     });
-    if (response._tag === "err")
-      return err(directSummaryWriteFailure(response.error));
+    if (response._tag === "err") return err(writeFailure(response.error));
     const raw = v.safeParse(directSummaryReceiptSchema, response.value);
     const receipt = raw.success
       ? parseDirectSummaryReceipt(raw.output, input.event)
