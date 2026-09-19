@@ -432,6 +432,7 @@ export function formatCycleReport(
  *   readonly label: string;
  *   readonly outcome: string;
  *   readonly firstDifference: string | undefined;
+ *   readonly reason: string | undefined;
  *   readonly atMs: number;
  * }} ShadowSample
  */
@@ -444,6 +445,7 @@ export function formatCycleReport(
  *   readonly diverged: number;
  *   readonly skipped: number;
  *   readonly firstDifference: string;
+ *   readonly skipReason: string;
  * }} ShadowRow
  */
 
@@ -474,6 +476,7 @@ export function readShadowEntry(entry) {
     label,
     outcome,
     firstDifference: asText(fields["firstDifference"]),
+    reason: asText(fields["reason"]),
     atMs,
   };
 }
@@ -519,6 +522,13 @@ export function summarizeShadow(contents, window = {}) {
       diverged: samples.filter((one) => one.outcome === "diverged").length,
       skipped: samples.filter((one) => one.outcome === "skipped").length,
       firstDifference: commonestFirstDifference(samples),
+      skipReason: commonest(
+        samples.flatMap((one) =>
+          one.outcome === "skipped" && one.reason !== undefined
+            ? [one.reason]
+            : [],
+        ),
+      ),
     });
   }
   return rows.sort((left, right) => left.label.localeCompare(right.label));
@@ -533,17 +543,26 @@ export function summarizeShadow(contents, window = {}) {
  * @returns {string}
  */
 function commonestFirstDifference(samples) {
+  return commonest(
+    samples.flatMap((sample) =>
+      sample.outcome === "diverged" && sample.firstDifference !== undefined
+        ? [sample.firstDifference]
+        : [],
+    ),
+  );
+}
+
+/**
+ * The value seen most often, or `-` when there is none. Ties break by the
+ * value itself, so two runs of the report over the same log read the same.
+ *
+ * @param {ReadonlyArray<string>} values
+ * @returns {string}
+ */
+function commonest(values) {
   /** @type {Map<string, number>} */
   const counts = new Map();
-  for (const sample of samples) {
-    if (sample.outcome !== "diverged" || sample.firstDifference === undefined) {
-      continue;
-    }
-    counts.set(
-      sample.firstDifference,
-      (counts.get(sample.firstDifference) ?? 0) + 1,
-    );
-  }
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
   const ranked = [...counts.entries()].sort(
     (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
   );
@@ -568,6 +587,7 @@ export function formatShadowReport(rows, source, window = {}) {
       String(row.skipped),
       row.label,
       row.firstDifference,
+      row.skipReason,
     ]),
     [
       String(rows.reduce((total, row) => total + row.calls, 0)),
@@ -575,6 +595,7 @@ export function formatShadowReport(rows, source, window = {}) {
       String(rows.reduce((total, row) => total + row.diverged, 0)),
       String(rows.reduce((total, row) => total + row.skipped, 0)),
       "TOTAL",
+      "",
       "",
     ],
   ];
@@ -584,9 +605,13 @@ export function formatShadowReport(rows, source, window = {}) {
       name.length,
     ),
   );
-  const labelWidth = cells.reduce(
-    (width, row) => Math.max(width, (row[header.length] ?? "").length),
-    "label".length,
+  const trailing = ["label", "first_difference", "skip_reason"];
+  const trailingWidths = trailing.map((name, column) =>
+    cells.reduce(
+      (width, row) =>
+        Math.max(width, (row[header.length + column] ?? "").length),
+      name.length,
+    ),
   );
   /**
    * @param {ReadonlyArray<string>} row
@@ -595,8 +620,9 @@ export function formatShadowReport(rows, source, window = {}) {
   const line = (row) =>
     [
       ...widths.map((width, column) => (row[column] ?? "").padStart(width)),
-      (row[header.length] ?? "").padEnd(labelWidth),
-      row[header.length + 1] ?? "",
+      ...trailingWidths.map((width, column) =>
+        (row[header.length + column] ?? "").padEnd(width),
+      ),
     ]
       .join("  ")
       .trimEnd();
@@ -606,7 +632,7 @@ export function formatShadowReport(rows, source, window = {}) {
     ...boundLines(window),
     `labels: ${rows.length}`,
     "",
-    line([...header, "label", "first_difference"]),
+    line([...header, ...trailing]),
     ...cells.map(line),
     "",
   ].join("\n");
