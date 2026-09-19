@@ -328,7 +328,10 @@ describe("ReviewPreparationJournal", () => {
         subject.sessionId,
       ),
     );
-    // The three artifacts `ReviewContextService.prepare` creates together.
+    // The three context-pack paths. Preparation no longer creates them — the
+    // Insight run builds the pack — but a journal written before that change
+    // can still be on disk naming all three, so recovery must keep removing
+    // them and `validatedDeletionSet` must keep allowing them.
     const targets = [
       subject.paths.preparedContextFile(subject.profileId, subject.sessionId),
       subject.paths.preparedReviewInputFile(

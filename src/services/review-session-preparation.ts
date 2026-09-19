@@ -1,5 +1,3 @@
-import { dirname } from "node:path";
-
 import {
   createFetchedDiffRefs,
   type GitHubReader,
@@ -31,9 +29,7 @@ import { definedProps } from "../domain/defined-props";
 import { KeyedMutex } from "../domain/keyed-mutex";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
-import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { ReviewContextService } from "./review-context-service";
 import {
   postDesktopNotification,
   type DesktopNotifier,
@@ -93,17 +89,10 @@ type WriteArtifactsResult = { readonly canonicalPatchHash?: ContentHash };
 type PreparationDependencies = {
   readonly profiles: ProfileStore;
   readonly sessions: ReviewSessionStore;
-  readonly github: Pick<
-    GitHubReader,
-    | "getPullRequest"
-    | "getPullRequestComments"
-    | "getPullRequestChecks"
-    | "getPullRequestDiff"
-  >;
+  readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestDiff">;
   readonly paths: PatchdeskPaths;
   readonly now: () => IsoTimestamp;
   readonly worktrees: ReviewWorktreeService;
-  readonly context: ReviewContextService;
   readonly artifacts: ReviewArtifactStorage;
   readonly lifecycleGate?: ReviewLifecycleGate;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
@@ -433,16 +422,7 @@ export class ReviewSessionPreparation {
             pr: input.input.pullRequest,
             snapshot: { baseSha: input.baseSha, headSha: input.headSha },
           });
-    const [comments, checks, diff, canonical] = await Promise.all([
-      this.dependencies.github.getPullRequestComments({
-        profile: input.profile,
-        pr: input.input.pullRequest,
-      }),
-      this.dependencies.github.getPullRequestChecks({
-        profile: input.profile,
-        pr: input.input.pullRequest,
-        headSha: input.headSha,
-      }),
+    const [diff, canonical] = await Promise.all([
       this.dependencies.github.getPullRequestDiff({
         profile: input.profile,
         pr: input.input.pullRequest,
@@ -452,7 +432,7 @@ export class ReviewSessionPreparation {
       }),
       canonicalDiff ?? Promise.resolve(undefined),
     ]);
-    if (comments._tag === "err" || checks._tag === "err" || diff._tag === "err")
+    if (diff._tag === "err")
       return await this.abort(input.journal, {
         _tag: "PreparationUnavailable",
       });
@@ -461,10 +441,6 @@ export class ReviewSessionPreparation {
         _tag: "SessionStorageUnavailable",
       });
     const normalizedPatch = normalizeReviewPatch(diff.value);
-    // The stored patch's own hash. It is also the canonical hash in snapshot
-    // mode, where `diff` already is GitHub's compare rendering; in worktree
-    // mode the canonical hash below comes from different bytes.
-    const normalizedPatchHash = hashReviewArtifactContent(normalizedPatch);
     const wrotePatch = await writeAtomicFile(patchPath, normalizedPatch);
     if (wrotePatch._tag === "err")
       return await this.abort(input.journal, {
@@ -477,7 +453,9 @@ export class ReviewSessionPreparation {
     // a PR must never become more fragile because of this proof (ADR 0026).
     let canonicalPatchHash: ContentHash | undefined;
     if (fetchedRefs === undefined) {
-      const parsed = parseContentHash(normalizedPatchHash);
+      const parsed = parseContentHash(
+        hashReviewArtifactContent(normalizedPatch),
+      );
       if (parsed._tag === "ok") canonicalPatchHash = parsed.value;
     } else if (canonical !== undefined && canonical._tag === "ok") {
       const parsed = parseContentHash(
@@ -485,48 +463,7 @@ export class ReviewSessionPreparation {
       );
       if (parsed._tag === "ok") canonicalPatchHash = parsed.value;
     }
-    const contextPath = this.dependencies.paths.preparedContextFile(
-      input.input.profileId,
-      input.sessionId,
-    );
-    const reviewInputPath = this.dependencies.paths.preparedReviewInputFile(
-      input.input.profileId,
-      input.sessionId,
-    );
-    const debugPath = this.dependencies.paths.preparedDebugFile(
-      input.input.profileId,
-      input.sessionId,
-    );
-    // One writer (`context.prepare` below) creates all three, so all three
-    // are recorded in one write before it runs.
-    const recorded = await input.journal.recordAll([
-      contextPath,
-      reviewInputPath,
-      debugPath,
-    ]);
-    if (recorded._tag === "err")
-      return await this.abort(input.journal, {
-        _tag: "SessionStorageUnavailable",
-      });
-    const context = await this.dependencies.context.prepare({
-      worktreePath:
-        input.prepared.mode === "worktree"
-          ? input.prepared.path
-          : input.worktreePath,
-      preparedDirectory: dirname(contextPath),
-      pr: {
-        title: `${input.input.pullRequest.owner}/${input.input.pullRequest.repo}#${input.input.pullRequest.number}`,
-        headSha: input.headSha,
-      },
-      comments: comments.value,
-      checks: checks.value,
-      changedFiles: changedFiles(diff.value),
-      patch: { path: patchPath, sha256: normalizedPatchHash },
-      rulePaths: input.profile.rulePaths,
-    });
-    return context._tag === "ok"
-      ? ok(definedProps({ canonicalPatchHash }))
-      : await this.abort(input.journal, { _tag: "PreparationUnavailable" });
+    return ok(definedProps({ canonicalPatchHash }));
   }
 
   private async abort(
@@ -583,18 +520,4 @@ function reviewRevisionOf(input: {
   return input.baseSha === undefined
     ? undefined
     : { headSha: input.headSha, baseSha: input.baseSha };
-}
-
-/**
- * Reads the new-side paths through the shared tokenizer rather than a `+++ b/`
- * prefix test, which silently dropped every git-quoted path (a space, a quote,
- * or a non-ASCII byte is enough) and would have read a hunk body line beginning
- * with `+++ b/` as a file.
- */
-function changedFiles(diff: string): ReadonlyArray<string> {
-  return tokenizeUnifiedPatch(diff).flatMap((token) =>
-    token.kind === "new_file_path" && token.path !== "/dev/null"
-      ? [token.path]
-      : [],
-  );
 }

@@ -31,7 +31,6 @@ import {
 import { err, ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { hashReviewArtifactContent } from "../../src/services/review-artifact-hash";
-import { ReviewContextService } from "../../src/services/review-context-service";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { ReviewSessionPreparation } from "../../src/services/review-session-preparation";
 import type { GitReadExecutor } from "../../src/services/review-worktree-service";
@@ -108,6 +107,8 @@ function github(
 ) {
   let getPullRequest = 0;
   let diffs = 0;
+  let commentReads = 0;
+  let checkReads = 0;
   const diffCalls: DiffInput[] = [];
   const summary = (head: GitSha, base: GitSha | undefined, isOpen: boolean) => {
     const result = {
@@ -133,6 +134,12 @@ function github(
       },
     },
     diffCalls,
+    get commentReads() {
+      return commentReads;
+    },
+    get checkReads() {
+      return checkReads;
+    },
     async getPullRequest() {
       const readIndex = getPullRequest;
       const head = heads[Math.min(readIndex, heads.length - 1)] ?? headSha;
@@ -147,10 +154,14 @@ function github(
       getPullRequest += 1;
       return ok(summary(head, base, isOpen));
     },
+    // Still here so a re-widened dependency would be caught by the counters
+    // rather than by a missing method.
     async getPullRequestComments() {
+      commentReads += 1;
       return ok({ threads: [], complete: true });
     },
     async getPullRequestChecks() {
+      checkReads += 1;
       return ok({ overall: "passing" as const, checks: [] });
     },
     async getPullRequestDiff(input: DiffInput) {
@@ -169,6 +180,8 @@ function github(
   > & {
     readonly counts: { readonly diffs: number };
     readonly diffCalls: ReadonlyArray<DiffInput>;
+    readonly commentReads: number;
+    readonly checkReads: number;
   };
 }
 
@@ -261,7 +274,6 @@ async function setup(
       },
       async () => (options.ghUnresolvable === true ? undefined : "/usr/bin/gh"),
     ),
-    context: new ReviewContextService(),
     artifacts: new ReviewArtifactStorage(paths, () => now),
   });
   return { paths, sessions, preparation, reader, notifications };
@@ -326,7 +338,7 @@ describe("ReviewSessionPreparation", () => {
     });
   });
 
-  it("prepares complete immutable patch, context, review-input, and debug artifacts", async () => {
+  it("prepares the immutable patch and leaves the context pack to the Insight run", async () => {
     const fixture = await setup();
     const prepared = await fixture.preparation.prepare({
       profileId,
@@ -340,26 +352,15 @@ describe("ReviewSessionPreparation", () => {
     if (prepared._tag === "err") return;
     const session = prepared.value.session;
     expect(await readFile(session.patchPath, "utf8")).toBe(patch);
-    expect(
-      await readFile(
-        fixture.paths.preparedContextFile(profileId, session.id),
-        "utf8",
-      ),
-    ).toContain("src/a.ts");
-    expect(
-      await readFile(
-        fixture.paths.preparedReviewInputFile(profileId, session.id),
-        "utf8",
-      ),
-    ).toContain("PR review input");
-    expect(
-      JSON.parse(
-        await readFile(
-          fixture.paths.preparedDebugFile(profileId, session.id),
-          "utf8",
-        ),
-      ),
-    ).toMatchObject({ inspectedFileCount: 0, searchCount: 0, gitShowCount: 0 });
+    // The pack is built on first Insight run instead; opening a Review pays
+    // for none of it. `tests/services/insight-context-pack.test.ts` owns the
+    // build.
+    for (const path of [
+      fixture.paths.preparedContextFile(profileId, session.id),
+      fixture.paths.preparedReviewInputFile(profileId, session.id),
+      fixture.paths.preparedDebugFile(profileId, session.id),
+    ])
+      expect(await present(path)).toBe(false);
     expect(
       await present(
         join(
@@ -371,34 +372,15 @@ describe("ReviewSessionPreparation", () => {
     expect(session.pr.baseSha).toBe(baseSha);
   });
 
-  it("lists a git-quoted changed path in the prepared context", async () => {
-    // Git C-quotes any path with a non-ASCII byte, so the `+++ b/` prefix test
-    // this list used to run never matched one and the file went unlisted.
-    const quotedPatch = [
-      'diff --git "a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"',
-      '--- "a/src/caf\\303\\251.ts"',
-      '+++ "b/src/caf\\303\\251.ts"',
-      "@@ -1 +1 @@",
-      "-old",
-      "+new",
-      "",
-    ].join("\n");
-    const fixture = await setup({ diffFor: () => quotedPatch });
+  it("reads neither comments nor checks while preparing", async () => {
+    const fixture = await setup();
 
-    const prepared = await fixture.preparation.prepare({
-      profileId,
-      pullRequest,
-    });
+    expect(
+      await fixture.preparation.prepare({ profileId, pullRequest }),
+    ).toMatchObject({ _tag: "ok" });
 
-    expect(prepared._tag).toBe("ok");
-    if (prepared._tag === "err") return;
-    const context = JSON.parse(
-      await readFile(
-        fixture.paths.preparedContextFile(profileId, prepared.value.session.id),
-        "utf8",
-      ),
-    );
-    expect(context).toMatchObject({ changedFiles: ["src/café.ts"] });
+    expect(fixture.reader.commentReads).toBe(0);
+    expect(fixture.reader.checkReads).toBe(0);
   });
 
   it("saves a metadata-only session when the managed fetch fails", async () => {

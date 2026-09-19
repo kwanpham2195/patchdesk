@@ -59,7 +59,7 @@ On the highest level, Patchdesk accepts two kinds of input:
 The ground state is local:
 
 - JSON files that describe each Review, Review session, and Insight run.
-- Immutable prepared artifacts for each session: the canonical patch, the model context, and the represented-review worktree.
+- Immutable prepared artifacts for each session: the canonical patch and the represented-review worktree. The model context pack is built on the first Insight run rather than at prepare, and is rebuilt whenever it does not describe the session's patch.
 - Cached remote snapshots that prove the represented GitHub state.
 
 Derived state is assembled per request:
@@ -136,7 +136,8 @@ Services compose domain functions with adapters.
 They implement the flows: open, refresh, analyze, walk through, comment, publish, merge, recover.
 
 - `review-workbench-controller.ts` is the facade for opening and loading a Review.
-- `review-session-preparation.ts` prepares one immutable session: fetch the PR, fetch the canonical diff, write the patch and prepared context, and create the represented-review worktree. `review-preparation-journal.ts` makes preparation resumable.
+- `review-session-preparation.ts` prepares one immutable session: fetch the PR, fetch the canonical diff, write the patch, and create the represented-review worktree. `review-preparation-journal.ts` makes preparation resumable.
+- `review-context-pack-service.ts` builds the model context pack (`context.json`, `review-input.md`, `debug.json`) when an Insight run first needs it, under the review lock that serializes runs. It needs no journal: a pack that does not name the session's current patch hash is rebuilt.
 - `review-refresh-service.ts` separates revision refresh from PR reconciliation (ADR "Separate PR reconciliation from revision refresh and merge confirmation").
 - `review-workbench-projection.ts` assembles the projection the renderer displays.
 - `review-operation-coordinator.ts` serializes every mutation or reconciliation for one Review.
