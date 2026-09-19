@@ -17,6 +17,14 @@ export interface GitHubCredentials {
   environmentFor(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<GitHubCommandEnvironment, CommandFailure>>;
+  /**
+   * The bearer token itself, for the HTTP transport that sends it as a request
+   * header (ADR 0046). `environmentFor` stays because `git` still needs the
+   * credential as a child-process environment.
+   */
+  tokenFor(
+    profile: WorkspaceProfileConfig,
+  ): Promise<Result<string, CommandFailure>>;
   /** Drop a cached credential the host rejected so the next call re-reads it. */
   forget(profile: WorkspaceProfileConfig): void;
   /**
@@ -51,10 +59,19 @@ export class GitHubCliCredentials implements GitHubCredentials {
   async environmentFor(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<GitHubCommandEnvironment, CommandFailure>> {
+    const token = await this.tokenFor(profile);
+    return token._tag === "err"
+      ? token
+      : ok(tokenEnvironment(profile.githubHost, token.value));
+  }
+
+  async tokenFor(
+    profile: WorkspaceProfileConfig,
+  ): Promise<Result<string, CommandFailure>> {
     const key = accountKey(profile);
     const cached = this.cached.get(key);
     if (cached !== undefined && cached.expiresAt > Date.now()) {
-      return ok(tokenEnvironment(profile.githubHost, cached.token));
+      return ok(cached.token);
     }
 
     const response = await this.commands.runText({
@@ -76,7 +93,7 @@ export class GitHubCliCredentials implements GitHubCredentials {
     if (token.length === 0)
       return err({ _tag: "CommandAuthenticationRequired" });
     this.cached.set(key, { token, expiresAt: Date.now() + credentialCacheMs });
-    return ok(tokenEnvironment(profile.githubHost, token));
+    return ok(token);
   }
 
   forget(profile: WorkspaceProfileConfig): void {
@@ -118,7 +135,13 @@ function tokenEnvironment(
     : { GH_TOKEN: token };
 }
 
-function isEnterpriseServerHost(host: GitHubHost): boolean {
+/**
+ * A host that is neither github.com nor a GitHub Enterprise Cloud tenant, and
+ * so carries its API under `/api/` on the host itself. Exported because the
+ * HTTP client's base-URL rule splits the same three ways (ADR 0046) and must
+ * not invent a second taxonomy.
+ */
+export function isEnterpriseServerHost(host: string): boolean {
   return host !== "github.com" && !host.endsWith(".ghe.com");
 }
 

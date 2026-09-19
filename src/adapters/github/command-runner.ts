@@ -554,13 +554,22 @@ function classifyStructuredFailure(
     if (classified !== undefined) return classified;
   }
 
-  const graphqlSignal = extractGraphqlErrorSignal(stdout);
-  if (graphqlSignal !== undefined) {
-    const classified = classifyGraphqlSignal(graphqlSignal);
-    if (classified !== undefined) return classified;
-  }
+  const graphqlFailure = classifyGraphqlErrorBody(stdout);
+  if (graphqlFailure !== undefined) return graphqlFailure;
 
   return undefined;
+}
+
+/**
+ * The GraphQL half of `classifyStructuredFailure`, exported for a transport
+ * that holds the response body itself rather than a child process's stdout
+ * (`github-http-client.ts`, ADR 0046).
+ */
+export function classifyGraphqlErrorBody(
+  body: string,
+): CommandFailure | undefined {
+  const signal = extractGraphqlErrorSignal(body);
+  return signal === undefined ? undefined : classifyGraphqlSignal(signal);
 }
 
 /**
@@ -640,8 +649,12 @@ function extractRestStatusFromStderr(
  * Returns undefined for a recognized-but-unmapped status (e.g. 5xx), which
  * falls through to the regex fallback and then generic CommandFailed —
  * unchanged from today's behavior for those codes.
+ *
+ * Exported so a transport that reads the status off the response itself can
+ * feed it the same number instead of scraping one back out of gh's output
+ * (`github-http-client.ts`, ADR 0046).
  */
-function classifyRestStatus(
+export function classifyRestStatus(
   status: number,
   message: string,
 ): CommandFailure | undefined {

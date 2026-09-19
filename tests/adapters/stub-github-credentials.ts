@@ -22,6 +22,10 @@ export class StubCredentials implements GitHubCredentials {
     return ok({ GH_TOKEN: "profile-token" });
   }
 
+  async tokenFor(): Promise<Result<string, CommandFailure>> {
+    return ok("profile-token");
+  }
+
   forget(profile: WorkspaceProfileConfig): void {
     this.forgotten.push(profile.ghAccount);
     this.verified.delete(key(profile));
