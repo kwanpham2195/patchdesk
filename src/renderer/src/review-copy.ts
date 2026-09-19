@@ -136,8 +136,8 @@ export const FINISH_REVIEW_MESSAGES: ContextualMessages = {
   timeout: UNCONFIRMED_SUBMISSION,
   pending_review: PENDING_REVIEW_EXISTS,
   stale_head: "The pull request changed. Refresh, then finish the review.",
-  rejected: "GitHub rejected the submission.",
-  github_rejected: "GitHub rejected the submission.",
+  github_rejected:
+    "The submission was refused. Refresh to see this review's current state, then finish it again.",
   no_pending_review: PENDING_REVIEW_CHANGED,
   pending_review_locked: PENDING_REVIEW_CHANGED,
   forbidden:
@@ -147,7 +147,8 @@ export const FINISH_REVIEW_MESSAGES: ContextualMessages = {
 /**
  * The "Check GitHub again" recovery beside an unconfirmed pending review.
  *
- * `github_rejected` is the one kind here that GitHub does not produce. The
+ * `github_rejected` names one exact local cause here rather than the generic
+ * refusal `safeMessage` falls back to. The
  * button calls `POST /v1/reviews/pending-review/recover`, whose only failure
  * is `mapGateFailure` in `pending-review-service.ts`; the single reason it
  * turns into `permission_denied` (409, and so into this kind) is the write
@@ -184,8 +185,8 @@ export const DIRECT_SUMMARY_MESSAGES: ContextualMessages = {
   pending_review: PENDING_REVIEW_EXISTS,
   stale_head:
     "The pull request changed. Refresh before submitting a review summary.",
-  rejected: "GitHub rejected the review summary.",
-  github_rejected: "GitHub rejected the review summary.",
+  github_rejected:
+    "The review summary was refused. Refresh to see this review's current state, then submit it again.",
   forbidden:
     "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
 };
@@ -247,8 +248,8 @@ export const DRAFT_STATE_MESSAGES: ContextualMessages = {
   outcome_unknown: UNCONFIRMED_DRAFT_STATE,
   ambiguous_write: UNCONFIRMED_DRAFT_STATE,
   timeout: UNCONFIRMED_DRAFT_STATE,
-  rejected: "GitHub rejected the draft change.",
-  github_rejected: "GitHub rejected the draft change.",
+  github_rejected:
+    "The draft change was refused. Refresh to see this pull request's current state, then try again.",
   rate_limited:
     "GitHub rate-limited this draft change. Wait a moment, then try again.",
   forbidden:
@@ -266,7 +267,6 @@ export const BASE_BRANCH_MESSAGES: ContextualMessages = {
   timeout: UNCONFIRMED_BASE_BRANCH,
   invalid_input:
     "This pull request already targets that branch, or the branch name is not valid.",
-  rejected: "GitHub rejected the base branch change.",
   github_rejected:
     "The base branch change was refused: this account may lack write access to this repository.",
   rate_limited:
@@ -284,8 +284,8 @@ export const RE_REQUEST_REVIEW_MESSAGES: ContextualMessages = {
   outcome_unknown: UNCONFIRMED_REVIEW_REQUEST,
   ambiguous_write: UNCONFIRMED_REVIEW_REQUEST,
   timeout: UNCONFIRMED_REVIEW_REQUEST,
-  rejected: "GitHub rejected the review request.",
-  github_rejected: "GitHub rejected the review request.",
+  github_rejected:
+    "The review request was refused. Refresh to see the current reviewers, then try again.",
   rate_limited:
     "GitHub rate-limited this review request. Wait a moment, then try again.",
   forbidden:
