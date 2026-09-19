@@ -44,14 +44,14 @@ afterEach(async () => {
   );
 });
 
-/** Three stored snapshots: one superseded, one a crashed prune left behind, one represented. */
+/** Three stored snapshots: one two adoptions old, one this adoption replaced, one represented. */
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-journal-"));
   roots.push(root);
   const paths = PatchdeskPaths.forTest(root);
   const remote = new ReviewRemoteStore(paths);
   const hashes: ContentHash[] = [];
-  for (const title of ["superseded", "leftover", "represented"]) {
+  for (const title of ["oldest", "previous", "represented"]) {
     const saved = await remote.saveCandidate({
       profileId,
       reviewId,
@@ -71,13 +71,14 @@ async function fixture() {
     remote,
     journals,
     removals,
+    previous: hashes[1],
     represented: hashes[2],
     directory: join(paths.reviewDirectory(profileId, reviewId), "remote"),
   };
 }
 
 describe("completeObservationJournal", () => {
-  it("removes the journal, then keeps only the snapshot the Review represents", async () => {
+  it("removes the journal, then keeps the represented snapshot and the one it replaced", async () => {
     const value = await fixture();
     expect(await readdir(value.directory)).toHaveLength(3);
     const completed = await completeObservationJournal(
@@ -87,10 +88,29 @@ describe("completeObservationJournal", () => {
         profileId,
         reviewId,
         representedSnapshotHash: value.represented,
+        previousSnapshotHash: value.previous,
       },
     );
     expect(completed).toMatchObject({ _tag: "ok" });
     expect(value.removals).toHaveLength(1);
+    expect((await readdir(value.directory)).sort()).toEqual(
+      [`${value.previous}.json`, `${value.represented}.json`].sort(),
+    );
+  });
+
+  it("keeps only the represented snapshot when it replaced nothing", async () => {
+    const value = await fixture();
+    const completed = await completeObservationJournal(
+      // SAFETY: as above, for the first adoption a Review ever completes.
+      { journals: value.journals, remote: value.remote } as never,
+      {
+        profileId,
+        reviewId,
+        representedSnapshotHash: value.represented,
+        previousSnapshotHash: undefined,
+      },
+    );
+    expect(completed).toMatchObject({ _tag: "ok" });
     expect(await readdir(value.directory)).toEqual([
       `${value.represented}.json`,
     ]);
@@ -111,7 +131,12 @@ describe("completeObservationJournal", () => {
         },
         remote: value.remote,
       } as never,
-      { profileId, reviewId, representedSnapshotHash: value.represented },
+      {
+        profileId,
+        reviewId,
+        representedSnapshotHash: value.represented,
+        previousSnapshotHash: value.previous,
+      },
     );
     expect(completed).toMatchObject({ _tag: "err" });
     // The journal still names the snapshot recovery will replay from.
@@ -128,7 +153,12 @@ describe("completeObservationJournal", () => {
           pruneExcept: () => Promise.reject(new Error("unreadable")),
         },
       } as never,
-      { profileId, reviewId, representedSnapshotHash: value.represented },
+      {
+        profileId,
+        reviewId,
+        representedSnapshotHash: value.represented,
+        previousSnapshotHash: value.previous,
+      },
     );
     expect(completed).toMatchObject({ _tag: "ok" });
     expect(await readdir(value.directory)).toHaveLength(3);

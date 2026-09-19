@@ -131,6 +131,11 @@ export class ReviewRemoteStore {
    * ever replaces one; this call is the only thing that frees a superseded
    * snapshot (#297). It lists the directory rather than taking a hash to
    * delete, so snapshots a crashed earlier prune left behind go too.
+   *
+   * `keep` holds more than the represented hash on purpose: a reader that
+   * loads the Review record and its snapshot in two steps without the Review
+   * lock needs the hash its record names to outlive one adoption. See
+   * `completeObservationJournal`, which decides what a caller keeps.
    */
   async pruneExcept(input: {
     readonly profileId: WorkspaceProfileId;

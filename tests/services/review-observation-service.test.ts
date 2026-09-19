@@ -500,9 +500,8 @@ describe("ReviewObservationService", () => {
       value: { freshness: { _tag: "Fresh" } },
     });
     if (review._tag === "ok") {
-      expect(review.value.representedRemote?.snapshotHash).not.toBe(
-        hashSnapshot(snapshot({ title: "old" })),
-      );
+      const oldHash = hashSnapshot(snapshot({ title: "old" }));
+      expect(review.value.representedRemote?.snapshotHash).not.toBe(oldHash);
       const snapshotHash = review.value.representedRemote?.snapshotHash;
       if (snapshotHash === undefined) throw new Error("missing snapshot");
       const remote = await value.remote.load({
@@ -517,12 +516,15 @@ describe("ReviewObservationService", () => {
           conversation: { prDescription: "current description" },
         },
       });
-      // The snapshot this one superseded goes with the adoption (#297).
+      // The adoption leaves this snapshot and the one it replaced, so an
+      // unlocked reader holding the older record still finds its file (#297).
       const directory = join(
         value.paths.reviewDirectory(profileId, value.review.id),
         "remote",
       );
-      expect(await readdir(directory)).toEqual([`${snapshotHash}.json`]);
+      expect((await readdir(directory)).sort()).toEqual(
+        [`${oldHash}.json`, `${snapshotHash}.json`].sort(),
+      );
     }
     await expect(
       new ReviewObservationJournalStore(value.paths).load(
