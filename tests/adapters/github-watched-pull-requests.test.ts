@@ -28,10 +28,10 @@ function mustParse<T, E>(result: Result<T, E>): T {
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -39,7 +39,7 @@ const profile = mustParse(
 );
 const ref = (number: number) => ({
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(number)),
 });
@@ -106,7 +106,7 @@ describe("GitHub watched pull request reader", () => {
     expect(request.variables).toContainEqual({
       kind: "string",
       name: "owner1",
-      value: "centraldigital",
+      value: "octo-org",
     });
     expect(request.variables).toContainEqual({
       kind: "typed",

@@ -32,9 +32,9 @@ function must<T>(result: Result<T, unknown>): T {
 }
 
 const identity: ReviewIdentity = {
-  profileId: must(parseWorkspaceProfileId("cfw")),
+  profileId: must(parseWorkspaceProfileId("acme")),
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
 };

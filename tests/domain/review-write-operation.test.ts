@@ -69,7 +69,7 @@ describe("review write operation", () => {
       parseReviewWriteOperation({
         ...stored,
         sessionId:
-          "github.com__centraldigital__patchdesk__pr-42__sha-33333333__base-22222222__abcdef123456",
+          "github.com__octo-org__patchdesk__pr-42__sha-33333333__base-22222222__abcdef123456",
       }),
     ).toEqual({
       _tag: "err",

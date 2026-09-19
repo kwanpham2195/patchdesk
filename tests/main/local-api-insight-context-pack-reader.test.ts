@@ -32,8 +32,8 @@ function must<T>(result: Result<T, unknown>): T {
 
 const host = must(parseGitHubHost("github.com"));
 const profile: WorkspaceProfileConfig = {
-  id: must(parseWorkspaceProfileId("cfw")),
-  label: "CFW",
+  id: must(parseWorkspaceProfileId("acme")),
+  label: "ACME",
   githubHost: host,
   ghAccount: "profile-account",
   workspaceRoots: [],
@@ -42,7 +42,7 @@ const profile: WorkspaceProfileConfig = {
 };
 const pr = {
   host,
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   number: must(parsePullRequestNumber(42)),
 };

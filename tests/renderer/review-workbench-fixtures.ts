@@ -65,7 +65,7 @@ export function projection(
       key: {
         profileId: "profile",
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         prNumber: 42,
         headSha: sha,
@@ -85,7 +85,7 @@ export function projection(
     pullRequest: {
       ref: {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       },

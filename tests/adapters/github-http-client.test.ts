@@ -46,14 +46,14 @@ describe("gitHubApiOrigin", () => {
 
 describe("GitHubHttpClient REST requests", () => {
   it("sends the profile account's credential as a bearer token", async () => {
-    fixture.respondWith(json(200, { login: "pmquan2cfw" }));
+    fixture.respondWith(json(200, { login: "octo-dev" }));
     const result = await fixture.client().rest(profile, {
       kind: "rest",
       host: "github.com",
       path: "user",
     });
 
-    expect(result).toEqual({ _tag: "ok", value: { login: "pmquan2cfw" } });
+    expect(result).toEqual({ _tag: "ok", value: { login: "octo-dev" } });
     expect(fixture.requests()[0]?.headers.authorization).toBe(
       "Bearer profile-token",
     );
@@ -67,7 +67,7 @@ describe("GitHubHttpClient REST requests", () => {
       kind: "rest",
       host: "github.com",
       method: "POST",
-      path: "repos/centraldigital/patchdesk/pulls/42/reviews",
+      path: "repos/octo-org/patchdesk/pulls/42/reviews",
       jsonBody: '{"commit_id":"abc"}',
     });
 
@@ -97,7 +97,7 @@ describe("GitHubHttpClient REST requests", () => {
       kind: "rest",
       host: "github.com",
       accept: "application/vnd.github.v3.diff",
-      path: "repos/centraldigital/patchdesk/compare/base...head",
+      path: "repos/octo-org/patchdesk/compare/base...head",
     });
 
     expect(result).toEqual({ _tag: "ok", value: "diff --git a/a.ts b/a.ts\n" });
@@ -115,7 +115,7 @@ describe("GitHubHttpClient REST requests", () => {
       kind: "rest",
       host: "github.com",
       method: "DELETE",
-      path: "repos/centraldigital/patchdesk/pulls/comments/9",
+      path: "repos/octo-org/patchdesk/pulls/comments/9",
     });
 
     expect(result).toEqual({ _tag: "ok", value: "" });
@@ -127,7 +127,7 @@ describe("GitHubHttpClient REST requests", () => {
       kind: "rest",
       host: "github.com",
       method: "DELETE",
-      path: "repos/centraldigital/patchdesk/pulls/42/reviews/9",
+      path: "repos/octo-org/patchdesk/pulls/42/reviews/9",
     });
 
     expect(result).toEqual({
@@ -145,7 +145,7 @@ describe("GitHubHttpClient REST requests", () => {
       kind: "rest",
       host: "github.com",
       method: "DELETE",
-      path: "repos/centraldigital/patchdesk/pulls/42/reviews/9",
+      path: "repos/octo-org/patchdesk/pulls/42/reviews/9",
     });
 
     expect(errorOf(result)).toEqual({ _tag: "CommandInvalidJson" });
@@ -167,7 +167,7 @@ describe("GitHubHttpClient REST requests", () => {
 
   it("follows every page and answers one array of pages", async () => {
     fixture.respondWith((request, response) => {
-      if (request.url === "/repos/centraldigital/patchdesk/pulls/42/commits") {
+      if (request.url === "/repos/octo-org/patchdesk/pulls/42/commits") {
         response.writeHead(200, {
           "Content-Type": "application/json",
           Link: `<${fixture.origin().rest}/page2>; rel="next"`,
@@ -182,7 +182,7 @@ describe("GitHubHttpClient REST requests", () => {
       kind: "rest",
       host: "github.com",
       paginate: true,
-      path: "repos/centraldigital/patchdesk/pulls/42/commits",
+      path: "repos/octo-org/patchdesk/pulls/42/commits",
     });
 
     expect(result).toEqual({
@@ -190,7 +190,7 @@ describe("GitHubHttpClient REST requests", () => {
       value: [[{ sha: "a" }], [{ sha: "b" }]],
     });
     expect(fixture.requests().map((entry) => entry.url)).toEqual([
-      "/repos/centraldigital/patchdesk/pulls/42/commits",
+      "/repos/octo-org/patchdesk/pulls/42/commits",
       "/page2",
     ]);
   });
@@ -266,7 +266,7 @@ describe("GitHubHttpClient response size", () => {
     const result = await fixture.client().rest(profile, {
       kind: "rest",
       host: "github.com",
-      path: "repos/centraldigital/patchdesk/pulls/42/files",
+      path: "repos/octo-org/patchdesk/pulls/42/files",
     });
 
     expect(errorOf(result)).toEqual({ _tag: "CommandFailed" });
@@ -393,7 +393,7 @@ describe("GitHubHttpClient injected fetch", () => {
       () => ({ rest: "https://api.example", graphql: "https://api.example" }),
       async (url, init) => {
         calls.push({ url, init });
-        return new Response('{"login":"pmquan2cfw"}', {
+        return new Response('{"login":"octo-dev"}', {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -406,7 +406,7 @@ describe("GitHubHttpClient injected fetch", () => {
       path: "user",
     });
 
-    expect(result).toEqual({ _tag: "ok", value: { login: "pmquan2cfw" } });
+    expect(result).toEqual({ _tag: "ok", value: { login: "octo-dev" } });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe("https://api.example/user");
     expect(new Headers(calls[0]?.init.headers).get("authorization")).toBe(
@@ -434,7 +434,7 @@ describe("GitHubHttpClient request records", () => {
 
   it("records one request under the label the gh path would have logged", async () => {
     const records: Array<GitHubHttpRequestRecord> = [];
-    fixture.respondWith(json(200, { login: "pmquan2cfw" }));
+    fixture.respondWith(json(200, { login: "octo-dev" }));
 
     await recordingClient(records).rest(profile, {
       kind: "rest",
@@ -466,7 +466,7 @@ describe("GitHubHttpClient request records", () => {
   it("records every page of a paginated read", async () => {
     const records: Array<GitHubHttpRequestRecord> = [];
     fixture.respondWith((request, response) => {
-      if (request.url === "/repos/centraldigital/patchdesk/pulls/42/commits") {
+      if (request.url === "/repos/octo-org/patchdesk/pulls/42/commits") {
         response.writeHead(200, {
           "Content-Type": "application/json",
           Link: `<${fixture.origin().rest}/page2>; rel="next"`,
@@ -482,7 +482,7 @@ describe("GitHubHttpClient request records", () => {
       kind: "rest",
       host: "github.com",
       paginate: true,
-      path: "repos/centraldigital/patchdesk/pulls/42/commits",
+      path: "repos/octo-org/patchdesk/pulls/42/commits",
     });
 
     expect(records.map((record) => record.label)).toEqual([

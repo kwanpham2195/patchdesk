@@ -32,8 +32,8 @@ import {
 
 const dashboard = {
   profile: {
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
     ghAccount: "patchdesk",
   },

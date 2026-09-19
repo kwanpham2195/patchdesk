@@ -30,13 +30,13 @@ afterEach(async () =>
   ),
 );
 
-const profileId = mustParse(parseWorkspaceProfileId("cfw"));
+const profileId = mustParse(parseWorkspaceProfileId("acme"));
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -109,7 +109,7 @@ describe("POST /v1/watched-pull-requests", () => {
   it("watches a pull request and answers the watched list", async () => {
     const fixture = await routeFixture(1);
     const response = await fixture.post({
-      profileId: "cfw",
+      profileId: "acme",
       pullRequest: pullRequest(99),
     });
 
@@ -122,7 +122,7 @@ describe("POST /v1/watched-pull-requests", () => {
   it("refuses the 21st watch with the tag and limit, before reading GitHub", async () => {
     const fixture = await routeFixture(20);
     const response = await fixture.post({
-      profileId: "cfw",
+      profileId: "acme",
       pullRequest: pullRequest(99),
     });
 
@@ -136,7 +136,7 @@ describe("POST /v1/watched-pull-requests", () => {
   it("rejects a body with an unknown field", async () => {
     const fixture = await routeFixture(0);
     const response = await fixture.post({
-      profileId: "cfw",
+      profileId: "acme",
       pullRequest: pullRequest(99),
       extra: true,
     });

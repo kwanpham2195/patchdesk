@@ -41,7 +41,7 @@ test("desktop bridge opens the canonical represented workbench without removed R
     const paths = PatchdeskPaths.forTest(root);
     const seeded = await seedRepresentedReview(paths);
     await new ProfileStore(paths).saveConfig({
-      lastSelectedProfileId: "cfw",
+      lastSelectedProfileId: "acme",
       recentPrs: [],
     });
     const started = await startLocalApiServer({
@@ -105,7 +105,7 @@ test("desktop bridge opens the canonical represented workbench without removed R
       page.getByRole("button", { name: "Unwatch", exact: true }),
     ).toBeVisible();
     const watched = await new WatchedPullRequestStore(paths).load(
-      must(parseWorkspaceProfileId("cfw")),
+      must(parseWorkspaceProfileId("acme")),
     );
     expect(
       watched._tag === "ok" && watched.value.map((entry) => entry.ref.number),
@@ -126,7 +126,7 @@ function summary() {
   return {
     ref: {
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 1,
     },
@@ -147,9 +147,9 @@ function summary() {
 async function seedRepresentedReview(
   paths: PatchdeskPaths,
 ): Promise<{ readonly reviewId: string }> {
-  const profileId = must(parseWorkspaceProfileId("cfw"));
+  const profileId = must(parseWorkspaceProfileId("acme"));
   const host = must(parseGitHubHost("github.com"));
-  const owner = must(parseGitHubOwner("centraldigital"));
+  const owner = must(parseGitHubOwner("octo-org"));
   const repo = must(parseGitHubRepoName("patchdesk"));
   const number = must(parsePullRequestNumber(1));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
@@ -157,8 +157,8 @@ async function seedRepresentedReview(
   await new ProfileStore(paths).save(
     must(
       parseWorkspaceProfileConfig({
-        id: "cfw",
-        label: "CFW",
+        id: "acme",
+        label: "ACME",
         githubHost: "github.com",
         ghAccount: "fixture",
         workspaceRoots: [],

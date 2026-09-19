@@ -1175,7 +1175,7 @@ test("long workbench content keeps full values accessible without viewport overf
       await expect(heading).toHaveAttribute("title", title);
       await expect(
         page.getByText(
-          "centraldigital-platform-engineering-maintainers/patchdesk-desktop-review-workbench-with-a-long-repository-name",
+          "octo-org-platform-engineering-maintainers/patchdesk-desktop-review-workbench-with-a-long-repository-name",
           { exact: false },
         ),
       ).toBeVisible();

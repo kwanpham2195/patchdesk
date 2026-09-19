@@ -1,3 +1,3 @@
 github.com
-  ✓ Logged in to github.com account pmquan2cfw (keyring)
+  ✓ Logged in to github.com account octo-dev (keyring)
   - Active account: true

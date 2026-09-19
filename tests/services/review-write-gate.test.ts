@@ -36,11 +36,11 @@ const must = <T>(result: Result<T, unknown>): T =>
     : (() => {
         throw new Error("fixture");
       })();
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const key = {
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
   headSha: must(parseGitSha("1".repeat(40))),
@@ -67,7 +67,7 @@ describe("ReviewWriteGate", () => {
     const profile = must(
       parseWorkspaceProfileConfig({
         id: profileId,
-        label: "CFW",
+        label: "ACME",
         githubHost: "github.com",
         ghAccount: "fixture",
         workspaceRoots: [],
@@ -267,7 +267,7 @@ describe("ReviewWriteGate revision agreement", () => {
   const profile = must(
     parseWorkspaceProfileConfig({
       id: profileId,
-      label: "CFW",
+      label: "ACME",
       githubHost: "github.com",
       ghAccount: "fixture",
       workspaceRoots: [],

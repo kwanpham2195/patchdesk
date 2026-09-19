@@ -34,7 +34,7 @@ export type WriteInventoryEntry = {
   readonly request: GitHubRequest;
 };
 
-const owner = "centraldigital";
+const owner = "octo-org";
 const repo = "patchdesk";
 const reviewId = "9001";
 const commentId = "2412345678";

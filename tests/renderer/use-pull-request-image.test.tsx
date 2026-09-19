@@ -17,11 +17,11 @@ import {
 } from "./fake-desktop-response";
 
 const parsed = parsePullRequestInput(
-  "https://github.com/centraldigital/patchdesk/pull/42",
+  "https://github.com/octo-org/patchdesk/pull/42",
 );
 if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
 const source: PullRequestImageSource = {
-  profileId: "centraldigital",
+  profileId: "octo-org",
   pullRequest: parsed.value,
 };
 
@@ -75,9 +75,9 @@ describe("usePullRequestImage", () => {
       path: "/v1/reviews/markdown-image",
       method: "POST",
       body: {
-        profileId: "centraldigital",
+        profileId: "octo-org",
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
         url: src,

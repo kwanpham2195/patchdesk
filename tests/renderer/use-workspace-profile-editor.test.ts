@@ -17,12 +17,12 @@ import {
 } from "./fake-desktop-response";
 
 const profile: Profile = {
-  id: "cfw",
-  label: "CFW",
+  id: "acme",
+  label: "ACME",
   githubHost: "github.com",
   ghAccount: "patchdesk",
-  workspaceRoots: ["/workspace/cfw"],
-  rulePaths: ["/workspace/cfw/AGENTS.md"],
+  workspaceRoots: ["/workspace/acme"],
+  rulePaths: ["/workspace/acme/AGENTS.md"],
 };
 
 const dashboard: Dashboard = { profile, dashboard: { repos: [] } };
@@ -49,12 +49,12 @@ describe("useWorkspaceProfileEditor", () => {
         path: "/v1/profiles",
         method: "PUT",
         body: {
-          id: "cfw",
+          id: "acme",
           label: "Renamed",
           githubHost: "github.com",
           ghAccount: "patchdesk",
-          workspaceRoots: ["/workspace/cfw"],
-          rulePaths: ["/workspace/cfw/AGENTS.md"],
+          workspaceRoots: ["/workspace/acme"],
+          rulePaths: ["/workspace/acme/AGENTS.md"],
         },
       }),
     );
@@ -217,7 +217,7 @@ describe("useWorkspaceProfileEditor", () => {
     await waitFor(() =>
       expect(result.current.status.label.state).toBe("failed"),
     );
-    expect(result.current.persisted.label).toBe("CFW");
+    expect(result.current.persisted.label).toBe("ACME");
     // The typed value stays on screen so the edit can be retried.
     expect(result.current.scalars.label).toBe("Renamed");
   });
@@ -235,7 +235,7 @@ describe("useWorkspaceProfileEditor", () => {
       result.current.editListEntry(
         "rulePaths",
         added.id,
-        "/workspace/cfw/CONTRIBUTING.md",
+        "/workspace/acme/CONTRIBUTING.md",
       ),
     );
     act(() => result.current.commitList("rulePaths"));
@@ -244,8 +244,8 @@ describe("useWorkspaceProfileEditor", () => {
     expect(profileSaveBodies(desktopApi)[0]).toEqual(
       expect.objectContaining({
         rulePaths: [
-          "/workspace/cfw/AGENTS.md",
-          "/workspace/cfw/CONTRIBUTING.md",
+          "/workspace/acme/AGENTS.md",
+          "/workspace/acme/CONTRIBUTING.md",
         ],
       }),
     );
@@ -255,13 +255,13 @@ describe("useWorkspaceProfileEditor", () => {
     const desktopApi = installDesktopApi();
     const { result } = renderEditor();
 
-    act(() => result.current.editScalar("label", "  CFW  "));
+    act(() => result.current.editScalar("label", "  ACME  "));
     act(() => result.current.commitScalar("label"));
     act(() => result.current.commitList("workspaceRoots"));
 
     expect(profileSaveBodies(desktopApi)).toHaveLength(0);
     // The commit still normalises what the input shows.
-    expect(result.current.scalars.label).toBe("CFW");
+    expect(result.current.scalars.label).toBe("ACME");
   });
 
   it("creates the workspace on the first save of a profile that was never persisted", async () => {
@@ -338,7 +338,9 @@ describe("useWorkspaceProfileEditor", () => {
 
     expect(result.current.status.workspaceRoots.state).toBe("failed");
     expect(profileSaveBodies(desktopApi)).toHaveLength(0);
-    expect(result.current.persisted.workspaceRoots).toEqual(["/workspace/cfw"]);
+    expect(result.current.persisted.workspaceRoots).toEqual([
+      "/workspace/acme",
+    ]);
   });
 });
 

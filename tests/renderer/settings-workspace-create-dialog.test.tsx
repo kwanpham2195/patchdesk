@@ -33,7 +33,7 @@ describe("New workspace dialog", () => {
     expect(
       await screen.findByRole("combobox", { name: "Account" }),
     ).toBeTruthy();
-    await user.type(screen.getByLabelText("Name"), "Central Digital");
+    await user.type(screen.getByLabelText("Name"), "Octo Org");
     await user.click(screen.getByRole("button", { name: "Create workspace" }));
 
     await vi.waitFor(() =>
@@ -41,7 +41,7 @@ describe("New workspace dialog", () => {
         path: "/v1/profiles",
         method: "POST",
         body: {
-          label: "Central Digital",
+          label: "Octo Org",
           githubHost: "github.com",
           ghAccount: "patchdesk",
           workspaceRoots: [],
@@ -52,7 +52,7 @@ describe("New workspace dialog", () => {
     expect(desktopApi.request).toHaveBeenCalledWith({
       path: "/v1/profiles/select",
       method: "POST",
-      body: { id: "central-digital" },
+      body: { id: "octo-org" },
     });
     await vi.waitFor(() => expect(onCreated).toHaveBeenCalled());
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -138,7 +138,7 @@ describe("New workspace dialog", () => {
     const onOpenChange = vi.fn();
 
     renderDialog({ onOpenChange });
-    await user.type(screen.getByLabelText("Name"), "Central Digital");
+    await user.type(screen.getByLabelText("Name"), "Octo Org");
     await user.click(screen.getByRole("button", { name: "Create workspace" }));
 
     expect(await screen.findByRole("alert")).toBeTruthy();
@@ -152,7 +152,7 @@ describe("New workspace dialog", () => {
     const onOpenChange = vi.fn();
 
     renderDialog({ onOpenChange });
-    await user.type(screen.getByLabelText("Name"), "Central Digital");
+    await user.type(screen.getByLabelText("Name"), "Octo Org");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -206,7 +206,7 @@ function installDesktopApi(
         ? failure({ error: "storage" })
         : // The id the service derived from the name, which is the value the
           // dialog must select rather than one it invented.
-          success({ id: "central-digital" }),
+          success({ id: "octo-org" }),
     "/v1/profiles/select": () => success({}),
   });
   return desktop;

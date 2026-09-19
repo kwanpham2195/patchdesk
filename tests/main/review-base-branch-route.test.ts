@@ -12,7 +12,7 @@ import type {
 const parsedResumeAt = parseIsoTimestamp("2026-09-17T10:00:00.000Z");
 if (parsedResumeAt._tag === "err") throw new Error("invalid fixture");
 const resumeAt = parsedResumeAt.value;
-const reviewId = "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456";
+const reviewId = "acme__octo-org__patchdesk__pr-42__review-abcdef123456";
 
 function routeFixture(
   answer: Result<BaseBranchListOutcome, BaseBranchListFailure>,
@@ -47,7 +47,7 @@ describe("GET /v1/reviews/base-branch", () => {
       }),
     );
     const response = await fixture.get(
-      `profileId=cfw&reviewId=${reviewId}&query=rel`,
+      `profileId=acme&reviewId=${reviewId}&query=rel`,
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -82,7 +82,7 @@ describe("GET /v1/reviews/base-branch", () => {
   for (const [tag, [outcome, body]] of Object.entries(failures)) {
     it(`answers ${tag} as data`, async () => {
       const response = await routeFixture(ok(outcome)).get(
-        `profileId=cfw&reviewId=${reviewId}`,
+        `profileId=acme&reviewId=${reviewId}`,
       );
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual(body);
@@ -91,14 +91,14 @@ describe("GET /v1/reviews/base-branch", () => {
 
   it("answers a missing Review with 404", async () => {
     const response = await routeFixture(err("not_found")).get(
-      `profileId=cfw&reviewId=${reviewId}`,
+      `profileId=acme&reviewId=${reviewId}`,
     );
     expect(response.status).toBe(404);
   });
 
   it("rejects an unparseable Review id before reaching the service", async () => {
     const fixture = routeFixture(err("not_found"));
-    const response = await fixture.get("profileId=cfw&reviewId=nope");
+    const response = await fixture.get("profileId=acme&reviewId=nope");
     expect(response.status).toBe(400);
     expect(fixture.inputs).toEqual([]);
   });

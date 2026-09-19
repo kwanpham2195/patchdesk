@@ -141,7 +141,7 @@ function mustParse<T, E>(result: Result<T, E>): T {
 
 export const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };

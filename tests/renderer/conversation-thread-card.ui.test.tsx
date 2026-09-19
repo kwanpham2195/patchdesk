@@ -37,7 +37,7 @@ afterEach(() => {
 
 const pullRequest = (() => {
   const parsed = parsePullRequestInput(
-    "https://github.com/centraldigital/patchdesk/pull/42",
+    "https://github.com/octo-org/patchdesk/pull/42",
   );
   if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
   return parsed.value;
@@ -699,12 +699,12 @@ describe("ConversationThreadCard", () => {
             {
               id: "c-1",
               author: "reviewer",
-              body: "![Screenshot](/centraldigital/patchdesk/raw/main/shot.png)",
+              body: "![Screenshot](/octo-org/patchdesk/raw/main/shot.png)",
               createdAt: "2026-08-01T00:00:00.000Z",
             },
           ],
         })}
-        bodyContext={{ pullRequest, profileId: "centraldigital" }}
+        bodyContext={{ pullRequest, profileId: "octo-org" }}
       />,
     );
 
@@ -720,7 +720,7 @@ describe("ConversationThreadCard", () => {
             {
               id: "c-1",
               author: "reviewer",
-              body: "![Screenshot](/centraldigital/patchdesk/raw/main/shot.png)",
+              body: "![Screenshot](/octo-org/patchdesk/raw/main/shot.png)",
               createdAt: "2026-08-01T00:00:00.000Z",
             },
           ],

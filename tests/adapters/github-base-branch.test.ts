@@ -26,10 +26,10 @@ function mustParse<T, E>(result: Result<T, E>): T {
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -37,7 +37,7 @@ const profile = mustParse(
 );
 const repo = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
 };
 
@@ -81,7 +81,7 @@ describe("GitHub base-branch adapter", () => {
     expect(request.variables).toContainEqual({
       kind: "typed",
       name: "owner",
-      value: "centraldigital",
+      value: "octo-org",
     });
     expect(request.variables).toContainEqual({
       kind: "typed",

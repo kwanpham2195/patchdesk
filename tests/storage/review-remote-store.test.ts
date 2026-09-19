@@ -26,11 +26,11 @@ const must = <T>(result: Result<T, unknown>): T =>
     : (() => {
         throw new Error("fixture");
       })();
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const identity = {
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
 };
@@ -160,7 +160,7 @@ describe("ReviewRemoteStore", () => {
             comments: [
               {
                 id: "c",
-                author: "pmquan2",
+                author: "octo-dev",
                 body: "test",
                 // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
                 createdAt: "2026-08-01T00:05:00.000Z" as never,
@@ -210,7 +210,7 @@ describe("ReviewRemoteStore", () => {
             comments: [
               {
                 id: "c1",
-                author: "pmquan2",
+                author: "octo-dev",
                 authorAvatarUrl: "https://avatars.githubusercontent.com/u/1",
                 body: "has an avatar",
                 // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.

@@ -27,7 +27,7 @@ describe("compact merge command", () => {
           warnings: [],
         }}
         context={{
-          repo: "centraldigital/patchdesk",
+          repo: "octo-org/patchdesk",
           prNumber: 42,
           title: "Protect review writes",
           base: "sit",
@@ -67,13 +67,13 @@ describe("compact merge command", () => {
           // are intentionally bypassed because this test does not exercise parsing.
           {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 42,
           } as never
         }
         context={{
-          repo: "centraldigital/patchdesk",
+          repo: "octo-org/patchdesk",
           prNumber: 42,
           title: "Protect review writes",
           base: "sit",
@@ -88,7 +88,7 @@ describe("compact merge command", () => {
       .setup()
       .click(screen.getByRole("button", { name: "Open on GitHub" }));
     expect(openExternalHttps).toHaveBeenCalledWith(
-      "https://github.com/centraldigital/patchdesk/pull/42",
+      "https://github.com/octo-org/patchdesk/pull/42",
     );
   });
 
@@ -113,7 +113,7 @@ describe("compact merge command", () => {
           ],
         }}
         context={{
-          repo: "centraldigital/patchdesk",
+          repo: "octo-org/patchdesk",
           prNumber: 42,
           title: "Protect review writes",
           base: "sit",
@@ -145,7 +145,7 @@ describe("compact merge command", () => {
       <CompactMergeCommand
         readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
         context={{
-          repo: "centraldigital/patchdesk",
+          repo: "octo-org/patchdesk",
           prNumber: 42,
           title: "Protect review writes",
           base: "sit",
@@ -173,7 +173,7 @@ describe("compact merge command", () => {
       <CompactMergeCommand
         readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
         context={{
-          repo: "centraldigital/patchdesk",
+          repo: "octo-org/patchdesk",
           prNumber: 42,
           title: "Protect review writes",
           base: "sit",
@@ -202,7 +202,7 @@ describe("compact merge command", () => {
       <CompactMergeCommand
         readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
         context={{
-          repo: "centraldigital/patchdesk",
+          repo: "octo-org/patchdesk",
           prNumber: 42,
           title: "Protect review writes",
           base: "sit",
@@ -242,7 +242,7 @@ describe("compact merge command", () => {
       <CompactMergeCommand
         readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
         context={{
-          repo: "centraldigital/patchdesk",
+          repo: "octo-org/patchdesk",
           prNumber: 42,
           title: "Protect review writes",
           base: "sit",
@@ -299,7 +299,7 @@ describe("compact merge command", () => {
           }}
           mergeReasons={reasons}
           context={{
-            repo: "centraldigital/patchdesk",
+            repo: "octo-org/patchdesk",
             prNumber: 42,
             title: "Protect review writes",
             base: "sit",
@@ -338,7 +338,7 @@ it("offers read-side recovery after a failed merge without issuing a second merg
     <CompactMergeCommand
       readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
       context={{
-        repo: "centraldigital/patchdesk",
+        repo: "octo-org/patchdesk",
         prNumber: 42,
         title: "Protect review writes",
         base: "sit",
@@ -374,7 +374,7 @@ it("preserves confirmed terminal merge UI when refresh is required", async () =>
         warnings: [{ code: "request_changes" }],
       }}
       context={{
-        repo: "centraldigital/patchdesk",
+        repo: "octo-org/patchdesk",
         prNumber: 42,
         title: "Protect review writes",
         base: "sit",
@@ -420,7 +420,7 @@ it("guards submit and check in the same tick while showing pending spinners", as
     <CompactMergeCommand
       readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
       context={{
-        repo: "centraldigital/patchdesk",
+        repo: "octo-org/patchdesk",
         prNumber: 42,
         title: "Protect review writes",
         base: "sit",

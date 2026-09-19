@@ -72,9 +72,9 @@ const ghPath = "/opt/my tools/bin/gh";
 const resolveGh = async (): Promise<string | undefined> => ghPath;
 
 const ids = {
-  profileId: must(parseWorkspaceProfileId("cfw")),
+  profileId: must(parseWorkspaceProfileId("acme")),
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   number: must(parsePullRequestNumber(42)),
   baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
@@ -83,7 +83,7 @@ const ids = {
 
 const profile: WorkspaceProfileConfig = {
   id: ids.profileId,
-  label: "CFW",
+  label: "ACME",
   githubHost: ids.host,
   ghAccount: "profile-account",
   workspaceRoots: [],
@@ -93,7 +93,7 @@ const profile: WorkspaceProfileConfig = {
 
 const sessionId = must(
   parseReviewSessionId(
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab",
+    "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab",
   ),
 );
 
@@ -143,8 +143,8 @@ describe("ReviewWorktreeService", () => {
         await realpath(local),
         "fetch",
         "origin",
-        `${ids.baseSha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/base`,
-        `${ids.sha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/head`,
+        `${ids.baseSha}:refs/patchdesk/reviews/acme/github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/base`,
+        `${ids.sha}:refs/patchdesk/reviews/acme/github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/head`,
         "--no-tags",
       ]);
       expect(
@@ -208,7 +208,7 @@ describe("ReviewWorktreeService", () => {
       // nonzero on the other, and the exit status does not say which. Neither
       // ref may be left behind on the user's checkout.
       const managedRefs =
-        "refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab";
+        "refs/patchdesk/reviews/acme/github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab";
       expect(
         git.calls
           .filter((argv) => argv.includes("update-ref"))

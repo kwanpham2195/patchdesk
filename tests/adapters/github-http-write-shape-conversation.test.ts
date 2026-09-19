@@ -61,7 +61,7 @@ describe("inline thread creation over HTTP", () => {
       kind: "rest",
       host: "github.com",
       method: "POST",
-      path: "repos/centraldigital/patchdesk/pulls/42/comments",
+      path: "repos/octo-org/patchdesk/pulls/42/comments",
       jsonBody: JSON.stringify({
         body: "note",
         commit_id: headSha,
@@ -166,7 +166,7 @@ describe("comment edit and delete over HTTP", () => {
       kind: "rest",
       host: "github.com",
       method: "PATCH",
-      path: `repos/centraldigital/patchdesk/pulls/comments/${commentRestId}`,
+      path: `repos/octo-org/patchdesk/pulls/comments/${commentRestId}`,
       jsonBody: JSON.stringify({ body: "edited" }),
     });
   });
@@ -193,7 +193,7 @@ describe("comment edit and delete over HTTP", () => {
       kind: "rest",
       host: "github.com",
       method: "DELETE",
-      path: `repos/centraldigital/patchdesk/pulls/comments/${commentRestId}`,
+      path: `repos/octo-org/patchdesk/pulls/comments/${commentRestId}`,
     });
   });
 });

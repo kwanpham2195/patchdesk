@@ -5,7 +5,7 @@
   "github.com",
   "--method",
   "PUT",
-  "repos/centraldigital/patchdesk/pulls/42/merge",
+  "repos/octo-org/patchdesk/pulls/42/merge",
   "--input",
   "-"
 ]

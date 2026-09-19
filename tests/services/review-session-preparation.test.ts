@@ -38,7 +38,7 @@ import { ReviewWorktreeService } from "../../src/services/review-worktree-servic
 
 const roots: string[] = [];
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
-const profileId = "cfw" as never;
+const profileId = "acme" as never;
 const headSha = value(parseGitSha("2".repeat(40)));
 const changedHeadSha = value(parseGitSha("3".repeat(40)));
 const baseSha = value(parseGitSha("1".repeat(40)));
@@ -48,7 +48,7 @@ const now = value(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 // (a bare hostname, slug-shaped owner/repo names, and a positive integer).
 const pullRequest = {
   host: "github.com" as never,
-  owner: "centraldigital" as never,
+  owner: "octo-org" as never,
   repo: "patchdesk" as never,
   number: 42 as never,
 };
@@ -225,7 +225,7 @@ async function setup(
   const profile = value(
     parseWorkspaceProfileConfig({
       id: profileId,
-      label: "CFW",
+      label: "ACME",
       githubHost: "github.com",
       ghAccount: "fixture",
       workspaceRoots: [],

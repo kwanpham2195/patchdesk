@@ -38,7 +38,7 @@ export const must = <T>(value: Result<T, unknown>): T => {
   if (value._tag === "ok") return value.value;
   throw new Error("fixture value is invalid");
 };
-export const profileId = must(parseWorkspaceProfileId("cfw"));
+export const profileId = must(parseWorkspaceProfileId("acme"));
 export const headSha = must(parseGitSha("a".repeat(40)));
 export const baseSha = must(parseGitSha("b".repeat(40)));
 export const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
@@ -127,7 +127,7 @@ export async function fixture(
     key: {
       profileId,
       host: must(parseGitHubHost("github.com")),
-      owner: must(parseGitHubOwner("centraldigital")),
+      owner: must(parseGitHubOwner("octo-org")),
       repo: must(parseGitHubRepoName("patchdesk")),
       prNumber: must(parsePullRequestNumber(42)),
       headSha,

@@ -5,7 +5,7 @@ import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 
 describe("ReviewLifecycleGate", () => {
   it("serializes profile mutations while allowing other profiles to proceed", async () => {
-    const profile = parseWorkspaceProfileId("cfw");
+    const profile = parseWorkspaceProfileId("acme");
     if (profile._tag === "err") throw new Error("fixture");
     const otherProfile = parseWorkspaceProfileId("other");
     if (otherProfile._tag === "err") throw new Error("fixture");

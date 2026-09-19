@@ -4,11 +4,11 @@ import { createReview, markReviewTerminal } from "../../src/domain/review";
 
 const identity = {
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
-  profileId: "cfw" as never,
+  profileId: "acme" as never,
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
   host: "github.com" as never,
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
-  owner: "centraldigital" as never,
+  owner: "octo-org" as never,
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
   repo: "patchdesk" as never,
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
@@ -23,7 +23,7 @@ describe("Review lifecycle", () => {
       identity,
       currentSessionId:
         // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__439aa21713b5" as never,
+        "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__439aa21713b5" as never,
       // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
       headSha: "abcdef1234567890abcdef1234567890abcdef12" as never,
       createdAt: now,

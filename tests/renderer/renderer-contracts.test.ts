@@ -14,11 +14,11 @@ import {
 } from "../../src/renderer/src/renderer-contracts";
 
 const sessionProjection = {
-  id: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
+  id: "github.com__octo-org__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
   key: {
     profileId: "acme",
     host: "github.com",
-    owner: "centraldigital",
+    owner: "octo-org",
     repo: "patchdesk",
     prNumber: 42,
     headSha: "2222222222222222222222222222222222222222",
@@ -29,7 +29,7 @@ const reviewProjection = {
   state: "review",
   viewerLogin: "fixture",
   review: {
-    id: "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456",
+    id: "github.com__octo-org__patchdesk__pr-42__review-abcdef123456",
     status: "open",
   },
   session: sessionProjection,
@@ -94,7 +94,7 @@ describe("parseInboxResponse", () => {
         repos: [
           {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "acme-api",
             localPath: "/Users/example/Work/acme/acme-api",
           },
@@ -114,7 +114,7 @@ describe("parseInboxResponse", () => {
         repos: [
           {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "acme-customer-service",
           },
         ],
@@ -127,7 +127,7 @@ describe("parseInboxResponse", () => {
     remoteState: "open" as const,
     identity: {
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 42,
     },
@@ -407,7 +407,7 @@ describe("parseWorkbenchResponse", () => {
       pullRequest: {
         ref: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
           number: 42,
         },

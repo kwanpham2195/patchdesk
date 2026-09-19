@@ -14,7 +14,7 @@ const REFUSE_AFTER_MS = 4 * 60 * 60 * 1000; // pins the four-hour refuse rule
 // identity types these fixtures never need to parse.
 const repository = {
   host: "github.com",
-  owner: "centraldigital",
+  owner: "octo-org",
   repo: "patchdesk",
 } as never;
 
@@ -36,7 +36,7 @@ describe("MaintainerInboxService", () => {
                   summary: {
                     ref: {
                       host: "github.com",
-                      owner: "centraldigital",
+                      owner: "octo-org",
                       repo: "patchdesk",
                       number: 42,
                     },
@@ -69,7 +69,7 @@ describe("MaintainerInboxService", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
-      service.list({ id: "cfw", ghAccount: "fixture" } as never, repository),
+      service.list({ id: "acme", ghAccount: "fixture" } as never, repository),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { rows: [{ recommendedAction: { kind: "run_review" } }] },
@@ -98,7 +98,7 @@ describe("MaintainerInboxService", () => {
                   summary: {
                     ref: {
                       host: "github.com",
-                      owner: "centraldigital",
+                      owner: "octo-org",
                       repo: "patchdesk",
                       number: 42,
                     },
@@ -138,15 +138,13 @@ describe("MaintainerInboxService", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     const result = await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
       { filter: { state: "merged" }, pageSize: 25 },
     );
 
     expect(stateFilters).toEqual(["merged"]);
-    expect(searchQueries).toEqual([
-      "repo:centraldigital/patchdesk is:pr is:merged",
-    ]);
+    expect(searchQueries).toEqual(["repo:octo-org/patchdesk is:pr is:merged"]);
     expect(result).toMatchObject({
       _tag: "ok",
       value: {
@@ -188,13 +186,11 @@ describe("MaintainerInboxService search query", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
     );
 
-    expect(searchQueries).toEqual([
-      "repo:centraldigital/patchdesk is:pr is:open",
-    ]);
+    expect(searchQueries).toEqual(["repo:octo-org/patchdesk is:pr is:open"]);
   });
 
   it("composes selected labels into the search query as label qualifiers", async () => {
@@ -221,13 +217,13 @@ describe("MaintainerInboxService search query", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
       { filter: { state: "open", labels: ["bug", "p0"] }, pageSize: 25 },
     );
 
     expect(searchQueries).toEqual([
-      'repo:centraldigital/patchdesk is:pr is:open label:"bug" label:"p0"',
+      'repo:octo-org/patchdesk is:pr is:open label:"bug" label:"p0"',
     ]);
   });
 
@@ -256,14 +252,14 @@ describe("MaintainerInboxService search query", () => {
     // A preset, not a queue: it composes beside the state and the label
     // qualifiers rather than replacing them.
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
-    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", ghAccount: "fixture" } as never;
     await service.list(profile, repository, {
       filter: { state: "open", labels: ["bug"], preset: "awaiting_my_review" },
       pageSize: 25,
     });
 
     expect(searchQueries).toEqual([
-      'repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me label:"bug"',
+      'repo:octo-org/patchdesk is:pr is:open user-review-requested:@me label:"bug"',
     ]);
   });
 
@@ -291,14 +287,12 @@ describe("MaintainerInboxService search query", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
       { filter: { state: "open" }, pageSize: 25 },
     );
 
-    expect(searchQueries).toEqual([
-      "repo:centraldigital/patchdesk is:pr is:open",
-    ]);
+    expect(searchQueries).toEqual(["repo:octo-org/patchdesk is:pr is:open"]);
   });
 
   it("rejects a page token minted under a different preset", async () => {
@@ -324,7 +318,7 @@ describe("MaintainerInboxService search query", () => {
     );
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
-    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", ghAccount: "fixture" } as never;
     const firstPage = await service.list(profile, repository, {
       filter: { state: "open", preset: "awaiting_my_review" },
       pageSize: 25,
@@ -370,7 +364,7 @@ describe("MaintainerInboxService search query", () => {
     );
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
-    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", ghAccount: "fixture" } as never;
     const firstPage = await service.list(profile, repository, {
       filter: { state: "open", labels: ["bug"] },
       pageSize: 25,
@@ -409,7 +403,7 @@ describe("MaintainerInboxService match count", () => {
           summary: {
             ref: {
               host: "github.com",
-              owner: "centraldigital",
+              owner: "octo-org",
               repo: "patchdesk",
               number,
             },
@@ -455,7 +449,7 @@ describe("MaintainerInboxService match count", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     const result = await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
       { filter: { state: "merged" }, pageSize: 10 },
     );
@@ -493,7 +487,7 @@ describe("MaintainerInboxService rate-limited reads", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
-      service.list({ id: "cfw", ghAccount: "fixture" } as never, repository),
+      service.list({ id: "acme", ghAccount: "fixture" } as never, repository),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
@@ -531,7 +525,7 @@ describe("MaintainerInboxService rate-limited reads", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     const result = await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
     );
     expect(result).toMatchObject({
@@ -580,7 +574,7 @@ describe("MaintainerInboxService forbidden reads (plan 009)", () => {
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
       service.list(
-        { id: "cfw", ghAccount: "fixture" } as never,
+        { id: "acme", ghAccount: "fixture" } as never,
         forbiddenRepository,
       ),
     ).resolves.toMatchObject({
@@ -598,7 +592,7 @@ describe("MaintainerInboxService cache writes", () => {
   const now = "2026-08-01T00:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to
   // WorkspaceProfileConfig; only the fields the service reads are set.
-  const profile = { id: "cfw", ghAccount: "fixture" } as never;
+  const profile = { id: "acme", ghAccount: "fixture" } as never;
 
   function pullRequestEntry(number: number, cursor: string) {
     return {
@@ -607,7 +601,7 @@ describe("MaintainerInboxService cache writes", () => {
         summary: {
           ref: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number,
           },
@@ -838,7 +832,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
   const now = "2026-08-01T04:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to
   // WorkspaceProfileConfig; only the fields the service reads are set.
-  const profile = { id: "cfw", ghAccount: "fixture" } as never;
+  const profile = { id: "acme", ghAccount: "fixture" } as never;
 
   function serviceWithCache(cache: {
     readonly read: () => Promise<Result<MaintainerInboxCache, StorageFailure>>;
@@ -947,7 +941,7 @@ describe("MaintainerInboxService page token validation", () => {
 
     // SAFETY: the minimal profile contains every field read by list().
     const result = await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
     );
 
@@ -961,7 +955,7 @@ describe("MaintainerInboxService page token validation", () => {
     );
     expect(token.repository).toEqual({
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
     });
     expect(token.cursor).toBe("cursor-after-empty-page");
@@ -991,7 +985,7 @@ describe("MaintainerInboxService page token validation", () => {
       service.list(
         // SAFETY: the malformed-token path only reads the profile id and
         // account supplied by this focused fixture.
-        { id: "cfw", ghAccount: "fixture" } as never,
+        { id: "acme", ghAccount: "fixture" } as never,
         repository,
         {
           filter: { state: "open" },
@@ -1024,7 +1018,7 @@ describe("MaintainerInboxService page token validation", () => {
 
     // SAFETY: the malformed-token path only reads the profile id and account
     // supplied by this focused fixture.
-    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", ghAccount: "fixture" } as never;
 
     // Mint a token by hand that records a size of 10, then request it back
     // at size 25 — the mismatch must be rejected before any GitHub read.
@@ -1035,7 +1029,7 @@ describe("MaintainerInboxService page token validation", () => {
         size: 10,
         repository: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
       }),
@@ -1074,7 +1068,7 @@ describe("MaintainerInboxService page token validation", () => {
 
     // SAFETY: the wrong-repository-token path only reads the profile id and
     // account supplied by this focused fixture.
-    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", ghAccount: "fixture" } as never;
 
     // Mint a token for a different repository than the one being requested.
     const tokenForAnotherRepository = Buffer.from(
@@ -1084,7 +1078,7 @@ describe("MaintainerInboxService page token validation", () => {
         size: 25,
         repository: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "some-other-repo",
         },
       }),
@@ -1109,7 +1103,7 @@ describe("MaintainerInboxService page size", () => {
           summary: {
             ref: {
               host: "github.com",
-              owner: "centraldigital",
+              owner: "octo-org",
               repo: "patchdesk",
               number,
             },
@@ -1160,7 +1154,7 @@ describe("MaintainerInboxService page size", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads;
     // the one Selected repository returns 12 fixture rows above.
-    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", ghAccount: "fixture" } as never;
 
     const result = await service.list(profile, repository, {
       filter: { state: "open" },

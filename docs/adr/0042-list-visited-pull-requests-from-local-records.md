@@ -38,7 +38,7 @@ rows rather than the watchlist because unwatching a repository leaves its
 records in place — only retention deletes them — so its rows keep listing, and
 a bare `#412` beside another repository's `#412` is the collision the label
 exists to prevent. The owner is a separate cut because it is the expensive
-half: on a workspace where every row sits under one owner, `centraldigital/`
+half: on a workspace where every row sits under one owner, `octo-org/`
 was roughly half the line, distinguished nothing, and pushed the age off a
 titled row's meta line. The relative age is computed at render and
 does not tick. The open pull request's row is highlighted, carries

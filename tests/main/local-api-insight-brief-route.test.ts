@@ -19,8 +19,7 @@ import {
 const capability = "cap";
 const origin = "http://patchdesk.test";
 const runId = "insight-brief-1-aaaaaaaaaaaa-review";
-const reviewId =
-  "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa";
+const reviewId = "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa";
 const activity = {
   phase: "turn",
   reasoningLine: "Checking how citations resolve",
@@ -83,9 +82,8 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
 
   expect(
     await call("v1/reviews/insights/brief/run", {
-      profileId: "cfw",
-      reviewId:
-        "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      profileId: "acme",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
       type: "brief",
       provider: "pi",
       model: "model",
@@ -94,9 +92,8 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
   ).toBe(202);
   expect(
     await call("v1/reviews/insights/brief/cancel", {
-      profileId: "cfw",
-      reviewId:
-        "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      profileId: "acme",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
       type: "brief",
       runId,
     }),
@@ -107,9 +104,8 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
   // Brief route, the way the analysis and walkthrough routes already behave.
   expect(
     await call("v1/reviews/insights/brief/run", {
-      profileId: "cfw",
-      reviewId:
-        "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      profileId: "acme",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
       type: "analysis",
       provider: "pi",
       model: "model",
@@ -119,7 +115,7 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
 
   const polled = await fetch(
     new URL(
-      `v1/reviews/insights/runs/${runId}?profileId=cfw&reviewId=${reviewId}&type=brief`,
+      `v1/reviews/insights/runs/${runId}?profileId=acme&reviewId=${reviewId}&type=brief`,
       server.url,
     ),
     { headers: { Origin: origin, "X-Patchdesk-Capability": capability } },

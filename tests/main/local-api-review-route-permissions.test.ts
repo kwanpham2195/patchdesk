@@ -72,13 +72,13 @@ it("permits current Review-id routes and denies deleted routes", async () => {
   server = started.server;
 
   const current = await Promise.all([
-    call("v1/reviews/load", { profileId: "cfw", reviewId: seeded.reviewId }),
+    call("v1/reviews/load", { profileId: "acme", reviewId: seeded.reviewId }),
     call("v1/reviews/detect-updates", {
-      profileId: "cfw",
+      profileId: "acme",
       reviewId: seeded.reviewId,
     }),
     call("v1/reviews/refresh", {
-      profileId: "cfw",
+      profileId: "acme",
       reviewId: seeded.reviewId,
     }),
   ]);
@@ -101,7 +101,7 @@ it("permits current Review-id routes and denies deleted routes", async () => {
 
   const denied = await call(
     "v1/reviews/load",
-    { profileId: "cfw", reviewId: seeded.reviewId },
+    { profileId: "acme", reviewId: seeded.reviewId },
     "",
   );
   expect([401, 403]).toContain(denied);
@@ -150,7 +150,7 @@ function summary() {
   return {
     ref: {
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 1,
     },
@@ -171,22 +171,22 @@ function summary() {
 async function seedRepresentedReview(
   paths: PatchdeskPaths,
 ): Promise<{ readonly reviewId: string }> {
-  const profileId = must(parseWorkspaceProfileId("cfw"));
+  const profileId = must(parseWorkspaceProfileId("acme"));
   const host = must(parseGitHubHost("github.com"));
-  const owner = must(parseGitHubOwner("centraldigital"));
+  const owner = must(parseGitHubOwner("octo-org"));
   const repo = must(parseGitHubRepoName("patchdesk"));
   const number = must(parsePullRequestNumber(1));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
   const baseSha = must(parseGitSha("1234567890abcdef1234567890abcdef12345678"));
   await new ProfileStore(paths).saveConfig({
-    lastSelectedProfileId: "cfw",
+    lastSelectedProfileId: "acme",
     recentPrs: [],
   });
   await new ProfileStore(paths).save(
     must(
       parseWorkspaceProfileConfig({
-        id: "cfw",
-        label: "CFW",
+        id: "acme",
+        label: "ACME",
         githubHost: "github.com",
         ghAccount: "fixture",
         workspaceRoots: [],

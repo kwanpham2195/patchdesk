@@ -8,10 +8,10 @@ import { parseIsoTimestamp } from "../../src/domain/ids";
 import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 
 // SAFETY: This literal is a well-formed WorkspaceProfileId fixture.
-const profileId = "cfw" as never;
+const profileId = "acme" as never;
 const sessionId =
   // SAFETY: This literal is a well-formed head/base-aware ReviewSessionId fixture.
-  "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__000000000000" as never;
+  "github.com__octo-org__patchdesk__pr-42__sha-22222222__base-00000000__000000000000" as never;
 const at = parseIsoTimestamp("2026-07-18T00:00:00.000Z");
 
 function must<T>(

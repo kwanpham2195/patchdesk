@@ -95,7 +95,7 @@ function walkthroughProjection() {
       profileId: valueOf(parseWorkspaceProfileId("profile")),
       sessionId: valueOf(
         parseReviewSessionId(
-          "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
+          "github.com__octo-org__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
         ),
       ),
       headSha: valueOf(parseGitSha("2222222222222222222222222222222222222222")),

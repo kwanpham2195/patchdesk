@@ -53,10 +53,10 @@ export type FixtureServer = {
 };
 
 const profileResult = parseWorkspaceProfileConfig({
-  id: "cfw",
-  label: "CFW",
+  id: "acme",
+  label: "ACME",
   githubHost: "github.com",
-  ghAccount: "pmquan2cfw",
+  ghAccount: "octo-dev",
   workspaceRoots: [],
   rulePaths: [],
   repos: [],

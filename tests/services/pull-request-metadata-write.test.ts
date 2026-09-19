@@ -168,7 +168,7 @@ describe.each(services)(
           reviewId,
           pullRequest: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 42,
           },

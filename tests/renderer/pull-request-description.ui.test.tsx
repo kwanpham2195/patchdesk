@@ -11,7 +11,7 @@ import { installDesktopDouble, success } from "./fake-desktop-response";
 
 const pullRequest = (() => {
   const parsed = parsePullRequestInput(
-    "https://github.com/centraldigital/patchdesk/pull/42",
+    "https://github.com/octo-org/patchdesk/pull/42",
   );
   if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
   return parsed.value;
@@ -77,7 +77,7 @@ describe("PullRequestDescription", () => {
     renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
-          "# Context\n\n**Keep this**. [Docs](/centraldigital/patchdesk/wiki)\n\n<script>window.bad = true</script>\n\n[javascript](javascript:alert(1))\n\n[Other](https://example.com/docs)"
+          "# Context\n\n**Keep this**. [Docs](/octo-org/patchdesk/wiki)\n\n<script>window.bad = true</script>\n\n[javascript](javascript:alert(1))\n\n[Other](https://example.com/docs)"
         }
         pullRequest={pullRequest}
       />,
@@ -92,7 +92,7 @@ describe("PullRequestDescription", () => {
 
     await user.click(screen.getByRole("button", { name: "Docs" }));
     expect(openExternalHttps).toHaveBeenCalledWith(
-      "https://github.com/centraldigital/patchdesk/wiki",
+      "https://github.com/octo-org/patchdesk/wiki",
     );
 
     await user.click(screen.getByRole("button", { name: "Other" }));
@@ -107,7 +107,7 @@ describe("PullRequestDescription", () => {
     const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
-          '\u{1F4A1} <a href="/centraldigital/patchdesk/new/master?filename=x" class="Link--inTextBlock">Add a `code-review` agent skill</a> or configure MCP servers.'
+          '\u{1F4A1} <a href="/octo-org/patchdesk/new/master?filename=x" class="Link--inTextBlock">Add a `code-review` agent skill</a> or configure MCP servers.'
         }
         pullRequest={pullRequest}
       />,
@@ -121,7 +121,7 @@ describe("PullRequestDescription", () => {
 
     await user.click(link);
     expect(openExternalHttps).toHaveBeenCalledWith(
-      "https://github.com/centraldigital/patchdesk/new/master?filename=x",
+      "https://github.com/octo-org/patchdesk/new/master?filename=x",
     );
   });
 
@@ -129,7 +129,7 @@ describe("PullRequestDescription", () => {
     renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
-          "- **Changed** the route-planning solver.\n- Preserved [deterministic tie-breaking](https://github.com/centraldigital/patchdesk)."
+          "- **Changed** the route-planning solver.\n- Preserved [deterministic tie-breaking](https://github.com/octo-org/patchdesk)."
         }
         pullRequest={pullRequest}
       />,
@@ -151,7 +151,7 @@ describe("PullRequestDescription", () => {
       renderWithImageCache(
         <PullRequestDescriptionPreview
           markdown={
-            "[Same](https://github.com/centraldigital/patchdesk) and [Same](https://github.com/centraldigital/patchdesk)\n\n`dup` and `dup`"
+            "[Same](https://github.com/octo-org/patchdesk) and [Same](https://github.com/octo-org/patchdesk)\n\n`dup` and `dup`"
           }
           pullRequest={pullRequest}
         />,
@@ -175,10 +175,10 @@ describe("PullRequestDescription", () => {
     renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
-          "<details open><summary>Context</summary><p>Details</p></details>\n\n![Architecture diagram](/centraldigital/patchdesk/raw/main/diagram.png)\n\n<script>window.bad = true</script>"
+          "<details open><summary>Context</summary><p>Details</p></details>\n\n![Architecture diagram](/octo-org/patchdesk/raw/main/diagram.png)\n\n<script>window.bad = true</script>"
         }
         pullRequest={pullRequest}
-        profileId="centraldigital"
+        profileId="octo-org"
       />,
     );
 
@@ -199,9 +199,9 @@ describe("PullRequestDescription", () => {
     });
     const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
-        markdown="[![Quality Gate](/centraldigital/patchdesk/raw/main/badge.svg)](https://example.com/dashboard)"
+        markdown="[![Quality Gate](/octo-org/patchdesk/raw/main/badge.svg)](https://example.com/dashboard)"
         pullRequest={pullRequest}
-        profileId="centraldigital"
+        profileId="octo-org"
       />,
     );
 
@@ -219,10 +219,10 @@ describe("PullRequestDescription", () => {
     const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
-          '<a href="https://example.com/dashboard"><img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate"></a>'
+          '<a href="https://example.com/dashboard"><img src="/octo-org/patchdesk/raw/main/badge.svg" alt="Quality Gate"></a>'
         }
         pullRequest={pullRequest}
-        profileId="centraldigital"
+        profileId="octo-org"
       />,
     );
 
@@ -240,10 +240,10 @@ describe("PullRequestDescription", () => {
     const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
-          '[<img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate">](https://example.com/dashboard)'
+          '[<img src="/octo-org/patchdesk/raw/main/badge.svg" alt="Quality Gate">](https://example.com/dashboard)'
         }
         pullRequest={pullRequest}
-        profileId="centraldigital"
+        profileId="octo-org"
       />,
     );
 
@@ -261,10 +261,10 @@ describe("PullRequestDescription", () => {
     const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
-          '<div><a href="https://example.com/dashboard"><span><img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate"></span></a></div>'
+          '<div><a href="https://example.com/dashboard"><span><img src="/octo-org/patchdesk/raw/main/badge.svg" alt="Quality Gate"></span></a></div>'
         }
         pullRequest={pullRequest}
-        profileId="centraldigital"
+        profileId="octo-org"
       />,
     );
 
@@ -276,7 +276,7 @@ describe("PullRequestDescription", () => {
   it("keeps the placeholder for an image no profile can be fetched as", () => {
     renderWithImageCache(
       <PullRequestDescriptionPreview
-        markdown="![Architecture diagram](/centraldigital/patchdesk/raw/main/diagram.png)"
+        markdown="![Architecture diagram](/octo-org/patchdesk/raw/main/diagram.png)"
         pullRequest={pullRequest}
       />,
     );

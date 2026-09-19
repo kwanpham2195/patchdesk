@@ -38,10 +38,10 @@ afterEach(async () => {
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],

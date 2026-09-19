@@ -39,8 +39,8 @@ function must<T>(
 function fixtureProfile() {
   return must(
     parseWorkspaceProfileConfig({
-      id: "cfw",
-      label: "CFW",
+      id: "acme",
+      label: "ACME",
       githubHost: "github.com",
       ghAccount: "fixture",
       workspaceRoots: [],
@@ -105,7 +105,7 @@ async function saveSession(input: {
   const key = {
     profileId: input.profileId,
     host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("centraldigital")),
+    owner: must(parseGitHubOwner("octo-org")),
     repo: must(parseGitHubRepoName("patchdesk")),
     prNumber: must(parsePullRequestNumber(input.number)),
     baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
@@ -117,7 +117,7 @@ async function saveSession(input: {
   };
   const storageId =
     // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
-    `github.com__centraldigital__patchdesk__pr-${input.number}__sha-${input.number.toString(16).padStart(8, "0")}__0123456789ab` as never;
+    `github.com__octo-org__patchdesk__pr-${input.number}__sha-${input.number.toString(16).padStart(8, "0")}__0123456789ab` as never;
   const patchPath = must(
     parseAbsolutePath(input.paths.patchFile(key.profileId, storageId)),
   );
@@ -183,13 +183,13 @@ describe("ReviewDiffSourceService", () => {
       );
       for (const session of prepared)
         await service.load({
-          profileId: "cfw",
+          profileId: "acme",
           sessionId: session.id,
           path: "src/example.ts",
         });
       expect(reads).toBe(9);
       await service.load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId: prepared[0]?.id,
         path: "src/example.ts",
       });
@@ -203,12 +203,12 @@ describe("ReviewDiffSourceService", () => {
         patch: `${patch}#${"x".repeat(32 * 1024 * 1024)}`,
       });
       await service.load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId: oversized.id,
         path: "src/example.ts",
       });
       await service.load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId: oversized.id,
         path: "src/example.ts",
       });
@@ -226,9 +226,9 @@ describe("ReviewDiffSourceService", () => {
       const profileStore = new ProfileStore(paths);
       await profileStore.save(profile);
       const key = {
-        profileId: must(parseWorkspaceProfileId("cfw")),
+        profileId: must(parseWorkspaceProfileId("acme")),
         host: must(parseGitHubHost("github.com")),
-        owner: must(parseGitHubOwner("centraldigital")),
+        owner: must(parseGitHubOwner("octo-org")),
         repo: must(parseGitHubRepoName("patchdesk")),
         prNumber: must(parsePullRequestNumber(42)),
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
@@ -236,7 +236,7 @@ describe("ReviewDiffSourceService", () => {
       };
       const storageId =
         // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
+        "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
       const patchPath = must(
         parseAbsolutePath(paths.patchFile(key.profileId, storageId)),
       );
@@ -299,7 +299,7 @@ describe("ReviewDiffSourceService", () => {
         },
       );
       const loaded = await service.load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId,
         path: "src/example.ts",
       });
@@ -325,8 +325,8 @@ describe("ReviewDiffSourceService", () => {
           worktreePath,
           "merge-base",
           "--end-of-options",
-          `refs/patchdesk/reviews/cfw/${sessionId}/base`,
-          `refs/patchdesk/reviews/cfw/${sessionId}/head`,
+          `refs/patchdesk/reviews/acme/${sessionId}/base`,
+          `refs/patchdesk/reviews/acme/${sessionId}/head`,
         ],
         [
           "git",
@@ -344,12 +344,12 @@ describe("ReviewDiffSourceService", () => {
           "show",
           "--no-textconv",
           "--end-of-options",
-          `refs/patchdesk/reviews/cfw/${sessionId}/head:src/example.ts`,
+          `refs/patchdesk/reviews/acme/${sessionId}/head:src/example.ts`,
         ],
       ]);
       expect(git.calls.flat()).not.toContain("gh");
       await service.load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId,
         path: "src/example.ts",
       });
@@ -370,7 +370,7 @@ describe("ReviewDiffSourceService", () => {
         ].join("\n"),
       );
       await service.load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId,
         path: "src/example.ts",
       });
@@ -390,7 +390,7 @@ describe("ReviewDiffSourceService", () => {
       const key = {
         profileId: profile.id,
         host: must(parseGitHubHost("github.com")),
-        owner: must(parseGitHubOwner("centraldigital")),
+        owner: must(parseGitHubOwner("octo-org")),
         repo: must(parseGitHubRepoName("patchdesk")),
         prNumber: must(parsePullRequestNumber(42)),
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
@@ -398,7 +398,7 @@ describe("ReviewDiffSourceService", () => {
       };
       const storageId =
         // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
+        "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
       const patchPath = must(
         parseAbsolutePath(paths.patchFile(key.profileId, storageId)),
       );
@@ -442,7 +442,7 @@ describe("ReviewDiffSourceService", () => {
         profiles,
         new ReviewSessionStore(paths),
         new SourceGit({ base: "\0", head: "\0" }),
-      ).load({ profileId: "cfw", sessionId, path: "src/example.ts" });
+      ).load({ profileId: "acme", sessionId, path: "src/example.ts" });
 
       expect(loaded).toEqual({
         _tag: "ok",
@@ -462,7 +462,7 @@ describe("ReviewDiffSourceService", () => {
       const key = {
         profileId: profile.id,
         host: must(parseGitHubHost("github.com")),
-        owner: must(parseGitHubOwner("centraldigital")),
+        owner: must(parseGitHubOwner("octo-org")),
         repo: must(parseGitHubRepoName("patchdesk")),
         prNumber: must(parsePullRequestNumber(42)),
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
@@ -470,7 +470,7 @@ describe("ReviewDiffSourceService", () => {
       };
       const sessionId =
         // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
+        "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
       const patchPath = must(
         parseAbsolutePath(paths.patchFile(key.profileId, sessionId)),
       );
@@ -513,7 +513,7 @@ describe("ReviewDiffSourceService", () => {
         new ReviewSessionStore(paths),
         new SourceGit({ base: "before\n", head: "different\n" }),
       ).load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId: session.id,
         path: "src/example.ts",
       });
@@ -565,7 +565,7 @@ describe("ReviewDiffSourceService", () => {
           sessions,
           new SourceGit(source),
         ).load({
-          profileId: "cfw",
+          profileId: "acme",
           sessionId: session.id,
           path: "src/example.ts",
         });
@@ -611,7 +611,7 @@ describe("ReviewDiffSourceService", () => {
         sessions,
         newGit,
       ).load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId: newSession.id,
         path: "src/new.ts",
       });
@@ -649,7 +649,7 @@ describe("ReviewDiffSourceService", () => {
         sessions,
         deletedGit,
       ).load({
-        profileId: "cfw",
+        profileId: "acme",
         sessionId: deletedSession.id,
         path: "src/deleted.ts",
       });

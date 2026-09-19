@@ -14,7 +14,7 @@ import type { parseStoredBrief } from "../../src/domain/stored-brief";
 // identity types these fixtures never need to parse.
 const repository = {
   host: "github.com",
-  owner: "centraldigital",
+  owner: "octo-org",
   repo: "patchdesk",
 } as never;
 
@@ -34,9 +34,9 @@ type RetainedFixture =
  */
 const storedBrief = {
   snapshot: {
-    profileId: "cfw",
+    profileId: "acme",
     sessionId:
-      "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__abcdef123456",
+      "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__abcdef123456",
     headSha: "a".repeat(40),
     patchHash: "d".repeat(64),
   },
@@ -48,9 +48,9 @@ describe("MaintainerInboxService insight readiness", () => {
   const earlierHeadSha = "c".repeat(40);
   const session = {
     key: {
-      profileId: "cfw",
+      profileId: "acme",
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       prNumber: 42,
       headSha,
@@ -70,7 +70,7 @@ describe("MaintainerInboxService insight readiness", () => {
               summary: {
                 ref: {
                   host: "github.com",
-                  owner: "centraldigital",
+                  owner: "octo-org",
                   repo: "patchdesk",
                   number: 42,
                 },
@@ -159,7 +159,7 @@ describe("MaintainerInboxService insight readiness", () => {
       ...(withStore ? [insights as never] : []),
     );
     const listed = await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
     );
     if (listed._tag === "err") throw new Error("expected an inbox page");

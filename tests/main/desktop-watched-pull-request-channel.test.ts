@@ -34,10 +34,10 @@ describe("desktop watched-pull-request change channel", () => {
     const stop = subscribeToWatchedPullRequestChanges(bus, (profileId) =>
       received.push(profileId),
     );
-    sendWatchedPullRequestChange(bus, "cfw");
+    sendWatchedPullRequestChange(bus, "acme");
     stop();
     sendWatchedPullRequestChange(bus, "opn");
 
-    expect(received).toEqual(["cfw"]);
+    expect(received).toEqual(["acme"]);
   });
 });

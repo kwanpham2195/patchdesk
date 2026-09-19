@@ -25,15 +25,15 @@ const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
   throw new Error("fixture");
 };
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const reviewId = must(
-  parseReviewId("cfw__centraldigital__patchdesk__pr-42__review-abcdef123456"),
+  parseReviewId("acme__octo-org__patchdesk__pr-42__review-abcdef123456"),
 );
 const headSha = must(parseGitSha("1".repeat(40)));
 const sessionKey = {
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
   headSha,
@@ -767,7 +767,7 @@ describe("InlineConversationService durable write lifecycle", () => {
 describe("FakeGitHubAdapter ownership parity", () => {
   const fixturePr = {
     host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("centraldigital")),
+    owner: must(parseGitHubOwner("octo-org")),
     repo: must(parseGitHubRepoName("patchdesk")),
     number: must(parsePullRequestNumber(42)),
   };
@@ -894,7 +894,7 @@ describe("InlineConversationService recovery notification", () => {
         reviewId,
         pullRequest: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
           number: 42,
         },

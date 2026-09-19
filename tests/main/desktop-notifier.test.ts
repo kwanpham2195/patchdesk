@@ -97,7 +97,7 @@ describe("createDesktopNotifier", () => {
     await flush();
 
     expect(notifications.shown).toMatchObject([
-      { title: "Analysis finished", body: "centraldigital/patchdesk#42" },
+      { title: "Analysis finished", body: "octo-org/patchdesk#42" },
     ]);
     expect(logs).toEqual([
       {
@@ -136,7 +136,7 @@ describe("createDesktopNotifier", () => {
     notifications.shown[0]?.click();
 
     expect(notifications.shown).toMatchObject([
-      { body: "centraldigital/patchdesk#42" },
+      { body: "octo-org/patchdesk#42" },
     ]);
     expect(clicks).toEqual([{ kind: "pullRequest", pullRequest }]);
   });
@@ -262,8 +262,7 @@ describe("decideDesktopNotification", () => {
     },
   );
 
-  const otherReviewId =
-    "cfw__centraldigital__patchdesk__pr-7__review-0123456789ab";
+  const otherReviewId = "acme__octo-org__patchdesk__pr-7__review-0123456789ab";
   it.each([
     { focused: false, on: "same Review", expected: "show" },
     { focused: false, on: "other Review", expected: "show" },

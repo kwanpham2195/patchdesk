@@ -11,7 +11,7 @@ describe("mergeWatchlistEntries + groupWatchlistEntries", () => {
     const watchedRepos: ReadonlyArray<Repo> = [
       {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "acme-api",
         localPath: "/Users/example/Work/acme/acme-api",
       },
@@ -25,7 +25,7 @@ describe("mergeWatchlistEntries + groupWatchlistEntries", () => {
     expect(byRoot.get("/Users/example/Work/acme")).toEqual([
       {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "acme-api",
         localPath: "/Users/example/Work/acme/acme-api",
       },
@@ -36,7 +36,7 @@ describe("mergeWatchlistEntries + groupWatchlistEntries", () => {
     const watchedRepos: ReadonlyArray<Repo> = [
       {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "acme-customer-service",
       },
     ];
@@ -49,7 +49,7 @@ describe("mergeWatchlistEntries + groupWatchlistEntries", () => {
     expect(other).toEqual([
       {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "acme-customer-service",
         localPath: "",
       },

@@ -33,10 +33,10 @@ function mustParse<T, E>(
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -45,7 +45,7 @@ const profile = mustParse(
 
 const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };

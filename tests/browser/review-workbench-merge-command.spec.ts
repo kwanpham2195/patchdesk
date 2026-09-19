@@ -23,7 +23,7 @@ test("PR overview merge command contains long context and keeps controls actiona
       await expect(section).toBeVisible();
       await expect(
         section.getByText(
-          /centraldigital-platform-engineering-maintainers\/patchdesk-desktop-review-workbench/,
+          /octo-org-platform-engineering-maintainers\/patchdesk-desktop-review-workbench/,
         ),
       ).toBeVisible();
 

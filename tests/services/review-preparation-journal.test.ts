@@ -58,11 +58,11 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-preparation-journal-"));
   roots.push(root);
   const paths = PatchdeskPaths.forTest(root);
-  const profileId = must(parseWorkspaceProfileId("cfw"));
+  const profileId = must(parseWorkspaceProfileId("acme"));
   const sessionId = createReviewSessionId({
     profileId,
     host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("centraldigital")),
+    owner: must(parseGitHubOwner("octo-org")),
     repo: must(parseGitHubRepoName("patchdesk")),
     prNumber: must(parsePullRequestNumber(42)),
     headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
@@ -203,7 +203,7 @@ function persistedSession(
   prNumberOverride?: number,
 ) {
   const host = must(parseGitHubHost("github.com"));
-  const owner = must(parseGitHubOwner("centraldigital"));
+  const owner = must(parseGitHubOwner("octo-org"));
   const repo = must(parseGitHubRepoName("patchdesk"));
   const prNumber = must(parsePullRequestNumber(prNumberOverride ?? 42));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
@@ -252,9 +252,9 @@ describe("ReviewPreparationJournal", () => {
     );
     roots.push(root);
     const paths = PatchdeskPaths.forTest(root);
-    const profileId = parseWorkspaceProfileId("cfw");
+    const profileId = parseWorkspaceProfileId("acme");
     const host = parseGitHubHost("github.com");
-    const owner = parseGitHubOwner("centraldigital");
+    const owner = parseGitHubOwner("octo-org");
     const repo = parseGitHubRepoName("patchdesk");
     const prNumber = parsePullRequestNumber(42);
     const headSha = parseGitSha("abcdef1234567890abcdef1234567890abcdef12");

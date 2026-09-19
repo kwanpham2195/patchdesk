@@ -27,7 +27,7 @@ type Deferred<T> = {
   readonly resolve: (value: T) => void;
 };
 
-const profileId = unwrap(parseWorkspaceProfileId("cfw"));
+const profileId = unwrap(parseWorkspaceProfileId("acme"));
 const secondProfileId = unwrap(parseWorkspaceProfileId("opn"));
 
 function unwrap<T>(result: Result<T, InvalidDomainValue>): T {
@@ -227,7 +227,7 @@ describe("retention sweep scheduler", () => {
       at: "2026-08-01T00:00:00.000Z",
       category: "cleanup",
       phase: "retention_sweep",
-      profileId: "cfw",
+      profileId: "acme",
       retryable: true,
       detail: "profile sweep failed",
     });

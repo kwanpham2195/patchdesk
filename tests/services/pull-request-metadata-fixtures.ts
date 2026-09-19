@@ -32,20 +32,20 @@ export const must = <T>(result: Result<T, unknown>): T => {
   throw new Error("fixture");
 };
 
-export const profileId = must(parseWorkspaceProfileId("cfw"));
+export const profileId = must(parseWorkspaceProfileId("acme"));
 export const reviewId = must(
-  parseReviewId("cfw__centraldigital__patchdesk__pr-42__review-abcdef123456"),
+  parseReviewId("acme__octo-org__patchdesk__pr-42__review-abcdef123456"),
 );
 export const headSha = must(parseGitSha("1".repeat(40)));
 export const sessionId = must(
   parseReviewSessionId(
-    "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
+    "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
   ),
 );
 export const sessionKey = {
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
   headSha,

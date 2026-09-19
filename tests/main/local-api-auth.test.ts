@@ -165,7 +165,7 @@ describe("local API current Review capability boundary", () => {
     const paths = PatchdeskPaths.forTest(root);
     const profileId = must(parseWorkspaceProfileId("profile"));
     const host = must(parseGitHubHost("github.com"));
-    const owner = must(parseGitHubOwner("centraldigital"));
+    const owner = must(parseGitHubOwner("octo-org"));
     const repo = must(parseGitHubRepoName("patchdesk"));
     const number = must(parsePullRequestNumber(42));
     const headSha = must(
@@ -322,7 +322,7 @@ describe("local API current Review capability boundary", () => {
           await post(api, route, {
             profileId: "profile",
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 42,
           })
@@ -349,7 +349,7 @@ describe("local API current Review capability boundary", () => {
           await post(api, route, {
             profileId: "profile",
             reviewId:
-              "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456",
+              "github.com__octo-org__patchdesk__pr-42__review-abcdef123456",
           })
         ).status,
         route,
@@ -364,7 +364,7 @@ describe("local API current Review capability boundary", () => {
       .mockResolvedValue(ok(undefined));
     const api = await start();
     const reviewId =
-      "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456";
+      "github.com__octo-org__patchdesk__pr-42__review-abcdef123456";
     const labelChangeWrite = {
       _tag: "LabelChange",
       added: ["bug"],
@@ -474,7 +474,7 @@ describe("GET /v1/inbox request boundaries", () => {
               repos: [
                 {
                   host: "github.com",
-                  owner: "centraldigital",
+                  owner: "octo-org",
                   repo: "patchdesk",
                 },
               ],
@@ -520,7 +520,7 @@ describe("GET /v1/inbox request boundaries", () => {
     // come back as an unreadable command failure, so the request never goes.
     const query = new URLSearchParams({
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
     });
     for (const index of [1, 2, 3, 4, 5])
@@ -578,7 +578,7 @@ describe("GET /v1/inbox request boundaries", () => {
       expect(response.status, preset).toBe(200);
       expect(adapter.calls.searchMaintainerPullRequests).toContainEqual(
         expect.objectContaining({
-          searchQuery: `repo:centraldigital/patchdesk is:pr is:open ${qualifier}`,
+          searchQuery: `repo:octo-org/patchdesk is:pr is:open ${qualifier}`,
         }),
       );
     }
@@ -594,7 +594,7 @@ describe("GET /v1/inbox request boundaries", () => {
     expect(response.status).toBe(200);
     expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
-        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+        searchQuery: "repo:octo-org/patchdesk is:pr is:open",
       }),
     ]);
   });
@@ -643,7 +643,7 @@ describe("GET /v1/inbox request boundaries", () => {
     expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
         searchQuery:
-          "repo:centraldigital/patchdesk is:pr is:open review:approved status:failure",
+          "repo:octo-org/patchdesk is:pr is:open review:approved status:failure",
       }),
     ]);
   });
@@ -680,7 +680,7 @@ describe("GET /v1/inbox request boundaries", () => {
     expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
         searchQuery:
-          'repo:centraldigital/patchdesk is:pr is:open author:"octocat" base:"release/1.0"',
+          'repo:octo-org/patchdesk is:pr is:open author:"octocat" base:"release/1.0"',
       }),
     ]);
   });
@@ -695,7 +695,7 @@ describe("GET /v1/inbox request boundaries", () => {
     expect(response.status).toBe(200);
     expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
-        searchQuery: 'repo:centraldigital/patchdesk is:pr is:open author:"@me"',
+        searchQuery: 'repo:octo-org/patchdesk is:pr is:open author:"@me"',
       }),
     ]);
   });
@@ -710,8 +710,7 @@ describe("GET /v1/inbox request boundaries", () => {
     expect(response.status).toBe(200);
     expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
-        searchQuery:
-          'repo:centraldigital/patchdesk is:pr is:open author:"invalid"',
+        searchQuery: 'repo:octo-org/patchdesk is:pr is:open author:"invalid"',
       }),
     ]);
   });
@@ -763,7 +762,7 @@ describe("GET /v1/inbox request boundaries", () => {
 
     const response = await fetch(
       new URL(
-        "v1/inbox?host=github.com&owner=centraldigital&repo=patchdesk",
+        "v1/inbox?host=github.com&owner=octo-org&repo=patchdesk",
         api.url,
       ),
       { headers: headers() },
@@ -774,7 +773,7 @@ describe("GET /v1/inbox request boundaries", () => {
       expect.objectContaining({
         repo: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
       }),
@@ -808,7 +807,7 @@ describe("GET /v1/inbox/labels", () => {
               repos: [
                 {
                   host: "github.com",
-                  owner: "centraldigital",
+                  owner: "octo-org",
                   repo: "patchdesk",
                 },
               ],
@@ -849,7 +848,7 @@ describe("GET /v1/inbox/labels", () => {
 
     const response = await fetch(
       new URL(
-        "v1/inbox/labels?host=github.com&owner=centraldigital&repo=patchdesk",
+        "v1/inbox/labels?host=github.com&owner=octo-org&repo=patchdesk",
         api.url,
       ),
       { headers: headers() },
@@ -865,7 +864,7 @@ describe("GET /v1/inbox/labels", () => {
       expect.objectContaining({
         repo: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
       }),

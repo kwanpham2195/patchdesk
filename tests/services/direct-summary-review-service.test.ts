@@ -16,17 +16,17 @@ import { ReviewOperationCoordinator } from "../../src/services/review-operation-
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
-const profileId = "cfw" as never;
+const profileId = "acme" as never;
 // SAFETY: this literal matches parseReviewId's <host>__owner__repo__pr-N__review-<hex> shape.
 const reviewId =
-  "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+  "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
 // SAFETY: these literals are 40-character hex strings, matching parseGitSha's format.
 const headSha = "a".repeat(40) as never;
 // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
 const baseSha = "b".repeat(40) as never;
 // SAFETY: this literal matches createReviewSessionId's head/base-aware shape.
 const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
+  "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
 // SAFETY: this literal is a well-formed ISO 8601 instant, matching parseIsoTimestamp's format.
 const now = "2026-08-09T11:35:00.000Z" as never;
 // SAFETY: these literals are well-formed ISO 8601 instants, matching parseIsoTimestamp's format.
@@ -49,7 +49,7 @@ function session(
     key: {
       profileId,
       host: "github.com" as never,
-      owner: "centraldigital" as never,
+      owner: "octo-org" as never,
       repo: "patchdesk" as never,
       // SAFETY: this literal is a positive integer, matching parsePullRequestNumber's format.
       prNumber: 42 as never,

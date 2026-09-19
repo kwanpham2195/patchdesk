@@ -416,11 +416,11 @@ describe("ReviewRefreshService", () => {
             comments: [
               {
                 id: "c",
-                author: "pmquan2",
+                author: "octo-dev",
                 body: "test",
                 createdAt: commentAt,
                 updatedAt: commentAt,
-                url: "https://github.com/centraldigital/patchdesk/pull/42#discussion_r1",
+                url: "https://github.com/octo-org/patchdesk/pull/42#discussion_r1",
                 location: {
                   path: must(parseRepoRelativePath("a.go")),
                   line: 1,
@@ -456,11 +456,11 @@ describe("ReviewRefreshService", () => {
         issueComments: [
           {
             id: "ic-1",
-            author: "pmquan2",
+            author: "octo-dev",
             body: "A plain conversation comment.",
             createdAt: issueCommentAt,
             updatedAt: issueCommentAt,
-            url: "https://github.com/centraldigital/patchdesk/pull/42#issuecomment-1",
+            url: "https://github.com/octo-org/patchdesk/pull/42#issuecomment-1",
             canEdit: false,
             canDelete: false,
           },

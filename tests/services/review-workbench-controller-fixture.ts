@@ -11,7 +11,7 @@ import { ok } from "../../src/domain/result";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 
 // SAFETY: this literal is a well-formed WorkspaceProfileId slug.
-export const profileId = "cfw" as never;
+export const profileId = "acme" as never;
 // SAFETY: 40 lowercase hex characters are well-formed GitShas.
 export const headSha = "a".repeat(40) as never;
 // SAFETY: 40 lowercase hex characters are a well-formed GitSha fixture.
@@ -21,13 +21,13 @@ export const baseSha = "b".repeat(40) as never;
 export const at = "2026-08-09T11:35:00.000Z" as never;
 // SAFETY: this literal matches the branded head/base-aware ReviewSessionId slug format.
 export const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
+  "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
 // SAFETY: these literals are well-formed GitHubHost/GitHubOwner/
 // GitHubRepoName/PullRequestNumber values, matching their branded shapes.
 export const identity = {
   profileId,
   host: "github.com" as never,
-  owner: "centraldigital" as never,
+  owner: "octo-org" as never,
   repo: "patchdesk" as never,
   prNumber: 42 as never,
 };

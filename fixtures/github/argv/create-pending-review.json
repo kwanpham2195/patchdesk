@@ -5,7 +5,7 @@
   "github.com",
   "--method",
   "POST",
-  "repos/centraldigital/patchdesk/pulls/42/reviews",
+  "repos/octo-org/patchdesk/pulls/42/reviews",
   "--input",
   "-"
 ]

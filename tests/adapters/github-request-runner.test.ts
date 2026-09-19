@@ -35,7 +35,7 @@ function runnerWith(answer: CannedAnswer = "{}") {
 const openPullRequests: GitHubRestRequest = {
   kind: "rest",
   host: "github.com",
-  path: "repos/centraldigital/patchdesk/pulls?state=open&per_page=100",
+  path: "repos/octo-org/patchdesk/pulls?state=open&per_page=100",
 };
 
 const reviewThreadTarget: GitHubGraphQlRequest = {
@@ -53,7 +53,7 @@ const lateReads: ReadonlyArray<readonly [string, GitHubRestRequest]> = [
     {
       kind: "rest",
       host: "github.com",
-      path: "repos/centraldigital/patchdesk/contents/src/app.ts?ref=main",
+      path: "repos/octo-org/patchdesk/contents/src/app.ts?ref=main",
     },
   ],
 ];
@@ -86,7 +86,7 @@ const lateQueries: ReadonlyArray<readonly [string, GitHubGraphQlRequest]> = [
       host: "github.com",
       document: watchedPullRequestsQuery(1),
       variables: [
-        { kind: "string", name: "owner0", value: "centraldigital" },
+        { kind: "string", name: "owner0", value: "octo-org" },
         { kind: "string", name: "name0", value: "patchdesk" },
         { kind: "typed", name: "number0", value: 42 },
       ],

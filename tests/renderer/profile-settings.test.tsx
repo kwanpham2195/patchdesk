@@ -20,12 +20,12 @@ import {
 } from "./fake-desktop-response";
 
 const profile: Profile = {
-  id: "cfw",
-  label: "CFW",
+  id: "acme",
+  label: "ACME",
   githubHost: "github.com",
   ghAccount: "patchdesk",
-  workspaceRoots: ["/workspace/cfw"],
-  rulePaths: ["/workspace/cfw/AGENTS.md"],
+  workspaceRoots: ["/workspace/acme"],
+  rulePaths: ["/workspace/acme/AGENTS.md"],
 };
 
 let desktop: DesktopDouble | undefined;
@@ -59,7 +59,7 @@ describe("workspace profile settings", () => {
         path: "/v1/profiles",
         method: "PUT",
         body: expect.objectContaining({
-          workspaceRoots: ["/workspace/cfw", "/picked/enterprise"],
+          workspaceRoots: ["/workspace/acme", "/picked/enterprise"],
         }),
       }),
     );
@@ -68,7 +68,7 @@ describe("workspace profile settings", () => {
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
     await user.type(
       screen.getByLabelText("Rule path 2"),
-      "/workspace/cfw/CONTRIBUTING.md",
+      "/workspace/acme/CONTRIBUTING.md",
     );
     await user.tab();
 
@@ -77,14 +77,14 @@ describe("workspace profile settings", () => {
         path: "/v1/profiles",
         method: "PUT",
         body: {
-          id: "cfw",
-          label: "CFW",
+          id: "acme",
+          label: "ACME",
           githubHost: "github.com",
           ghAccount: "patchdesk",
           workspaceRoots: ["/picked/enterprise"],
           rulePaths: [
-            "/workspace/cfw/AGENTS.md",
-            "/workspace/cfw/CONTRIBUTING.md",
+            "/workspace/acme/AGENTS.md",
+            "/workspace/acme/CONTRIBUTING.md",
           ],
         },
       }),
@@ -239,7 +239,7 @@ describe("workspace profile settings", () => {
         path: "/v1/profiles",
         method: "PUT",
         body: expect.objectContaining({
-          id: "cfw",
+          id: "acme",
           label: "Spaced label",
           githubHost: "github.example.test",
           ghAccount: "spaced-user",
@@ -268,7 +268,7 @@ describe("workspace profile settings", () => {
     expect(profileSaveRequests(desktopApi)).toHaveLength(1);
     // The typed value stays, so the edit can be retried where it was made.
     expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe(
-      "CFW changed",
+      "ACME changed",
     );
   });
   it("opens Advanced only when the workspace already carries a rule path", async () => {
@@ -295,7 +295,7 @@ describe("workspace profile settings", () => {
 
     await openWorkspaceCard(user);
 
-    expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe("CFW");
+    expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe("ACME");
   });
 
   it("uses the control-linked field error for a Settings-owned profile switch failure", () => {
@@ -356,12 +356,12 @@ describe("workspace profile settings", () => {
 describe("watchlist toggling", () => {
   it("ticking an unwatched repository adds it to the watchlist", async () => {
     const desktopApi = installDesktopApi({
-      suggestions: readyDiscovery("/workspace/cfw", [
+      suggestions: readyDiscovery("/workspace/acme", [
         {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
-          localPath: "/workspace/cfw/patchdesk",
+          localPath: "/workspace/acme/patchdesk",
         },
       ]),
     });
@@ -369,7 +369,7 @@ describe("watchlist toggling", () => {
 
     renderSettings();
 
-    const checkbox = await repositoryCheckbox("centraldigital/patchdesk");
+    const checkbox = await repositoryCheckbox("octo-org/patchdesk");
     expect(checkbox.getAttribute("aria-checked")).toBe("false");
     await user.click(checkbox);
 
@@ -378,11 +378,11 @@ describe("watchlist toggling", () => {
         path: "/v1/watchlist",
         method: "POST",
         body: {
-          profileId: "cfw",
+          profileId: "acme",
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
-          localPath: "/workspace/cfw/patchdesk",
+          localPath: "/workspace/acme/patchdesk",
         },
       }),
     );
@@ -390,16 +390,16 @@ describe("watchlist toggling", () => {
 
   it("unticking a watched repository removes it from the watchlist", async () => {
     const desktopApi = installDesktopApi({
-      suggestions: readyDiscovery("/workspace/cfw", []),
+      suggestions: readyDiscovery("/workspace/acme", []),
     });
     const watchedProfile: Profile = {
       ...profile,
       repos: [
         {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "watched-repo",
-          localPath: "/workspace/cfw/watched-repo",
+          localPath: "/workspace/acme/watched-repo",
         },
       ],
     };
@@ -407,7 +407,7 @@ describe("watchlist toggling", () => {
 
     renderSettings(undefined, watchedProfile);
 
-    const checkbox = await repositoryCheckbox("centraldigital/watched-repo");
+    const checkbox = await repositoryCheckbox("octo-org/watched-repo");
     expect(checkbox.getAttribute("aria-checked")).toBe("true");
     await user.click(checkbox);
 
@@ -416,9 +416,9 @@ describe("watchlist toggling", () => {
         path: "/v1/watchlist",
         method: "DELETE",
         body: {
-          profileId: "cfw",
+          profileId: "acme",
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "watched-repo",
         },
       }),
@@ -426,17 +426,15 @@ describe("watchlist toggling", () => {
   });
 
   it("renders a watched repository with no recorded local path", async () => {
-    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
+    installDesktopApi({ suggestions: readyDiscovery("/workspace/acme", []) });
     const watchedProfile: Profile = {
       ...profile,
-      repos: [
-        { host: "github.com", owner: "centraldigital", repo: "no-path-repo" },
-      ],
+      repos: [{ host: "github.com", owner: "octo-org", repo: "no-path-repo" }],
     };
 
     renderSettings(undefined, watchedProfile);
 
-    const checkbox = await repositoryCheckbox("centraldigital/no-path-repo");
+    const checkbox = await repositoryCheckbox("octo-org/no-path-repo");
     expect(checkbox.getAttribute("aria-checked")).toBe("true");
     const row = checkbox.closest("label");
     if (row === null)
@@ -444,27 +442,26 @@ describe("watchlist toggling", () => {
     // The row still renders with an empty local-path line rather than
     // omitting it or throwing, confirming the `localPath: ""` normalisation.
     expect(
-      within(row).getByText("centraldigital/no-path-repo").nextSibling
-        ?.textContent,
+      within(row).getByText("octo-org/no-path-repo").nextSibling?.textContent,
     ).toBe("");
   });
 
   it("renders a failed watchlist mutation as an action-local error", async () => {
     installDesktopApi({
       rejectWatchlist: true,
-      suggestions: readyDiscovery("/workspace/cfw", [
+      suggestions: readyDiscovery("/workspace/acme", [
         {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
-          localPath: "/workspace/cfw/patchdesk",
+          localPath: "/workspace/acme/patchdesk",
         },
       ]),
     });
     const user = userEvent.setup();
 
     renderSettings();
-    await user.click(await repositoryCheckbox("centraldigital/patchdesk"));
+    await user.click(await repositoryCheckbox("octo-org/patchdesk"));
 
     await vi.waitFor(() =>
       expect(
@@ -476,13 +473,13 @@ describe("watchlist toggling", () => {
   });
 
   it("shows a watched repository whose local path matches no saved workspace root", async () => {
-    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
+    installDesktopApi({ suggestions: readyDiscovery("/workspace/acme", []) });
     const watchedProfile: Profile = {
       ...profile,
       repos: [
         {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "outside-repo",
           localPath: "/elsewhere/outside-repo",
         },
@@ -499,7 +496,7 @@ describe("watchlist toggling", () => {
     );
     const checkbox = within(outsideGroup).getByRole("checkbox");
     expect(
-      within(outsideGroup).getByText("centraldigital/outside-repo"),
+      within(outsideGroup).getByText("octo-org/outside-repo"),
     ).toBeTruthy();
     expect(checkbox.getAttribute("aria-checked")).toBe("true");
   });
@@ -578,7 +575,7 @@ function installDesktopApi(
         options.suggestions === "reject"
           ? failure({ error: "storage" })
           : success(
-              options.suggestions ?? readyDiscovery("/workspace/cfw", []),
+              options.suggestions ?? readyDiscovery("/workspace/acme", []),
             ),
       "/v1/profiles": () => {
         if (options.rejectProfileSave === true)

@@ -54,14 +54,14 @@ async function writeArtifacts(
   await writeFile(
     contextPath,
     JSON.stringify({
-      pr: { title: "centraldigital/patchdesk#42", headSha },
+      pr: { title: "octo-org/patchdesk#42", headSha },
       changedFiles,
       checks: { overall: "passing" },
     }),
   );
   await writeFile(
     reviewInputPath,
-    "# PR review input\n\nPR: centraldigital/patchdesk#42\n",
+    "# PR review input\n\nPR: octo-org/patchdesk#42\n",
   );
   await writeFile(
     patchPath,
@@ -85,7 +85,7 @@ describe("model review preparation", () => {
         }),
       });
 
-      expect(prepared.prompt).toContain("centraldigital/patchdesk#42");
+      expect(prepared.prompt).toContain("octo-org/patchdesk#42");
       expect(prepared.prompt).toContain(
         "Review the complete represented pull request and decide whether it should merge.",
       );
@@ -298,7 +298,7 @@ describe("model review preparation", () => {
       await writeFile(
         contextPath,
         JSON.stringify({
-          pr: { title: "centraldigital/patchdesk#42", headSha },
+          pr: { title: "octo-org/patchdesk#42", headSha },
           changedFiles: ["src/review.ts"],
           checks: { overall: "passing" },
         }),

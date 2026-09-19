@@ -105,8 +105,8 @@ async function fixture(
   const profiles = new ProfileStore(paths);
   const profile = must(
     parseWorkspaceProfileConfig({
-      id: "cfw",
-      label: "CFW",
+      id: "acme",
+      label: "ACME",
       githubHost: "github.com",
       ghAccount: "fixture",
       workspaceRoots: [],

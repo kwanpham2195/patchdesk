@@ -20,10 +20,10 @@ afterEach(() => {
 
 const SNAPSHOT: NarrativeSnapshot = {
   // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-  profileId: "cfw" as never,
+  profileId: "acme" as never,
   sessionId:
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-    "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456" as never,
+    "github.com__octo-org__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456" as never,
   // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
   headSha: "2222222222222222222222222222222222222222" as never,
   // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.

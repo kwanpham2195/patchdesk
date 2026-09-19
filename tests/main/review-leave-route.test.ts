@@ -16,8 +16,8 @@ type LeaveBody = {
 };
 
 const shown = {
-  profileId: "cfw",
-  reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+  profileId: "acme",
+  reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
   headSha: "a".repeat(40),
   seenThrough: "2026-08-09T11:00:00.000Z",
 };

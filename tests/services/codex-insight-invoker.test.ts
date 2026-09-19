@@ -34,10 +34,10 @@ async function fixture(
   // SAFETY: this fixture only exercises CodexInsightInvoker's path-ownership and provider checks,
   // never WorkspaceProfileId/ReviewSessionId's own validation, so a plain string in the right shape
   // stands in for the branded type without pulling in the parser.
-  const profileId = "cfw" as never;
+  const profileId = "acme" as never;
   // SAFETY: same as above — this fixture never exercises ReviewSessionId's own parser.
   const sessionId =
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__439aa21713b5" as never;
+    "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__439aa21713b5" as never;
   const worktree = paths.worktreeDirectory(profileId, sessionId);
   const reviewInput = paths.preparedReviewInputFile(profileId, sessionId);
   const context = paths.preparedContextFile(profileId, sessionId);
@@ -84,8 +84,7 @@ async function fixture(
   // code paths as real InsightInvocationInput values.
   const input = {
     profileId,
-    reviewId:
-      "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+    reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
     sessionId,
     runId: "insight-analysis-1-aaaaaaaaaaaa-review",
     type: options.type ?? "analysis",

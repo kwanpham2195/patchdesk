@@ -7,7 +7,7 @@ import { err, ok } from "../../src/domain/result";
 // repository parameter; the plain strings stand in for the branded types.
 const repository = {
   host: "github.com",
-  owner: "centraldigital",
+  owner: "octo-org",
   repo: "patchdesk",
 } as never;
 
@@ -17,9 +17,9 @@ const earlierHeadSha = "c".repeat(40);
 describe("MaintainerInboxService last-looked head", () => {
   const session = {
     key: {
-      profileId: "cfw",
+      profileId: "acme",
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       prNumber: 42,
       headSha,
@@ -39,7 +39,7 @@ describe("MaintainerInboxService last-looked head", () => {
               summary: {
                 ref: {
                   host: "github.com",
-                  owner: "centraldigital",
+                  owner: "octo-org",
                   repo: "patchdesk",
                   number: 42,
                 },
@@ -81,7 +81,7 @@ describe("MaintainerInboxService last-looked head", () => {
     );
     // SAFETY: only the profile fields the service reads are set.
     const listed = await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
+      { id: "acme", ghAccount: "fixture" } as never,
       repository,
     );
     if (listed._tag === "err") throw new Error("expected an inbox page");

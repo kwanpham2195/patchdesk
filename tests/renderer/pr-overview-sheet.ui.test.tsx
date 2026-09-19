@@ -20,7 +20,7 @@ function fixturePullRequest(): NonNullable<
   CanonicalReviewOverview["pullRequest"]
 > {
   const parsed = parsePullRequestInput(
-    "https://github.com/centraldigital/patchdesk/pull/42",
+    "https://github.com/octo-org/patchdesk/pull/42",
   );
   if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
   return parsed.value;
@@ -30,7 +30,7 @@ function baseOverview(
   overrides: Partial<CanonicalReviewOverview> = {},
 ): CanonicalReviewOverview {
   return {
-    repository: "centraldigital/patchdesk",
+    repository: "octo-org/patchdesk",
     prNumber: 42,
     title: "Protect review writes",
     summary: "",
