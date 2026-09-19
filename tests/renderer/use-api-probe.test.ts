@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
 import {
   useApiProbe,
+  useEnvironmentCheck,
   type ApiProbeState,
 } from "../../src/renderer/src/hooks/use-api-probe";
 import {
@@ -182,6 +183,43 @@ describe("useApiProbe", () => {
     rerender({ parse: stable });
     await waitFor(() => expect(result.current.kind).toBe("loaded"));
     expect(probeCalls(probeBridge)).toBe(3);
+  });
+
+  // The route holds the launch's `gh auth status` answer, so which of the two
+  // paths goes out is what decides whether `gh` is asked again.
+  it("asks gh again only for a request the user asked for", async () => {
+    const environment = installDesktopDouble({
+      "/v1/environment": () =>
+        success({
+          git: "ready",
+          gh: "ready",
+          githubAuth: "ready",
+          githubAccounts: [],
+        }),
+    });
+    desktop = environment;
+    const { rerender } = renderHook(
+      ({ attempt }) =>
+        useEnvironmentCheck({
+          restartKey: attempt,
+          askGhAgain: attempt > 0,
+        }),
+      { initialProps: { attempt: 0 } },
+    );
+
+    await waitFor(() =>
+      expect(environment.request).toHaveBeenCalledWith({
+        path: "/v1/environment",
+      }),
+    );
+
+    rerender({ attempt: 1 });
+
+    await waitFor(() =>
+      expect(environment.request).toHaveBeenCalledWith({
+        path: "/v1/environment?recheck=1",
+      }),
+    );
   });
 
   it("does not let a superseded response overwrite the newer one", async () => {

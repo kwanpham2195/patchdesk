@@ -92,18 +92,21 @@ export function useApiProbe<Value>(
  * flow hands `useReviewingAsProbe`'s result to its account card and reads
  * `git` off the same response.
  *
- * The local API holds the launch's `gh auth status` answer, so a plain mount
- * is free after the first one. A non-zero `restartKey` is the user having
- * pressed Re-check, which is the one request that must ask `gh` again:
- * `recheck=1` is what tells the route to drop what it holds.
+ * The local API holds the launch's `gh auth status` answer, so a mount that
+ * happens to render a screen is free after the first one. `askGhAgain` is for
+ * the request the user asked for — the Re-check button, and opening the New
+ * workspace dialog, which has no Re-check of its own and is where a maintainer
+ * who just ran `gh auth login` looks for the new account. It sends
+ * `recheck=1`, which tells the route to drop what it holds.
  */
-export function useEnvironmentCheck(
-  restartKey: number,
-): ApiProbeState<EnvironmentCheckResponse> {
+export function useEnvironmentCheck(probe: {
+  readonly restartKey: number;
+  readonly askGhAgain: boolean;
+}): ApiProbeState<EnvironmentCheckResponse> {
   return useApiProbe(
     {
-      path: restartKey === 0 ? "/v1/environment" : "/v1/environment?recheck=1",
-      restartKey,
+      path: probe.askGhAgain ? "/v1/environment?recheck=1" : "/v1/environment",
+      restartKey: probe.restartKey,
     },
     parseEnvironmentCheckResponse,
   );
