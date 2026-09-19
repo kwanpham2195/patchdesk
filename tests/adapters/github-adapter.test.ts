@@ -9,7 +9,18 @@ import {
   CommandRunner,
   type CommandExecution,
   type CommandExecutor,
+  type CommandRequest,
 } from "../../src/adapters/github/command-runner";
+import type { GitHubServedTransport } from "../../src/adapters/github/gh-request-runner";
+import {
+  ghInvocationFor,
+  type GhInvocation,
+} from "../../src/adapters/github/github-request";
+import {
+  noChildProcesses,
+  orderedTransport,
+  type HttpTransportDouble,
+} from "./github-transport-doubles";
 import {
   createFetchedDiffRefs,
   FakeGitHubAdapter,
@@ -26,6 +37,7 @@ import {
   GitHubCliCredentials,
   type GitHubCredentials,
 } from "../../src/adapters/github/github-credentials";
+import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
 import {
   parseGitHubHost,
   parseGitHubLogin,
@@ -90,23 +102,14 @@ const pr: PullRequestRef = {
   number: mustParse(parsePullRequestNumber(42)),
 };
 
+/** The child-process double the `CommandRunner` and local-git suites still need. */
 class FakeProcessExecutor implements CommandExecutor {
   readonly requests: Array<ReadonlyArray<string>> = [];
-  readonly stdin: Array<string | undefined> = [];
-  readonly environments: Array<Readonly<Record<string, string>> | undefined> =
-    [];
 
   constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
 
-  async execute(input: {
-    readonly argv: ReadonlyArray<string>;
-    readonly timeoutMs: number;
-    readonly stdin?: string;
-    readonly environment?: Readonly<Record<string, string>>;
-  }): Promise<CommandExecution> {
+  async execute(input: CommandRequest): Promise<CommandExecution> {
     this.requests.push(input.argv);
-    this.stdin.push(input.stdin);
-    this.environments.push(input.environment);
     const response = this.responses[this.requests.length - 1];
     if (response === undefined)
       throw new Error("Missing fake command response");
@@ -115,10 +118,28 @@ class FakeProcessExecutor implements CommandExecutor {
 }
 
 function testAdapter(
-  commands: CommandRunner,
+  http: GitHubServedTransport,
+  commands: CommandRunner = noChildProcesses(),
   credentials: GitHubCredentials = new StubCredentials(),
 ): GitHubAdapter {
-  return new GitHubAdapter(commands, credentials);
+  return new GitHubAdapter(commands, credentials, http);
+}
+
+/**
+ * The gh invocation one recorded request describes. The golden argv fixtures
+ * still state what the adapter asks GitHub for, whatever carries it.
+ */
+function sent(transport: HttpTransportDouble, index: number): GhInvocation {
+  const request = transport.requests[index];
+  if (request === undefined)
+    throw new Error(`No GitHub request at index ${index}`);
+  return ghInvocationFor(request);
+}
+
+function sentArgv(
+  transport: HttpTransportDouble,
+): Array<ReadonlyArray<string>> {
+  return transport.requests.map((request) => ghInvocationFor(request).argv);
 }
 
 async function golden(name: string): Promise<ReadonlyArray<string>> {
@@ -301,16 +322,7 @@ describe("CommandRunner", () => {
     describe("GitHubAdapter direct summary writes", () => {
       it("fails closed when gh exits generically after the request may have dispatched", async () => {
         const adapter = testAdapter(
-          new CommandRunner(
-            new FakeProcessExecutor([
-              {
-                _tag: "Exited",
-                exitCode: 1,
-                stdout: "",
-                stderr: "HTTP 502: Bad Gateway",
-              },
-            ]),
-          ),
+          orderedTransport([{ _tag: "CommandUnavailable" }]),
         );
 
         await expect(
@@ -343,32 +355,15 @@ describe("CommandRunner", () => {
 describe("GitHubAdapter merge outcome", () => {
   it("reads merged, open, and closed-unmerged outcomes without a write command", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({
-              state: "closed",
-              merged_at: "2026-08-01T00:00:00Z",
-              merge_commit_sha: headSha,
-            }),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ state: "open" }),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ state: "closed", merged_at: null }),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        JSON.stringify({
+          state: "closed",
+          merged_at: "2026-08-01T00:00:00Z",
+          merge_commit_sha: headSha,
+        }),
+        JSON.stringify({ state: "open" }),
+        JSON.stringify({ state: "closed", merged_at: null }),
+      ]),
     );
 
     await expect(
@@ -402,21 +397,11 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
   ];
 
   it("reads bounded classic review fields and applied rule types", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(branchProtection),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(rules),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      JSON.stringify(branchProtection),
+      JSON.stringify(rules),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" }),
     ).resolves.toEqual({
@@ -433,7 +418,7 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
         appliedRuleset: { state: "available", value: { rules } },
       },
     });
-    expect(executor.requests).toEqual([
+    expect(sentArgv(transport)).toEqual([
       [
         "gh",
         "api",
@@ -453,28 +438,16 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
 
   it("treats a zero approval count as unavailable policy evidence", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({
-              required_pull_request_reviews: {
-                required_approving_review_count: 0,
-                dismiss_stale_reviews: false,
-                require_code_owner_reviews: false,
-              },
-            }),
-            stderr: "",
+      orderedTransport([
+        JSON.stringify({
+          required_pull_request_reviews: {
+            required_approving_review_count: 0,
+            dismiss_stale_reviews: false,
+            require_code_owner_reviews: false,
           },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify([]),
-            stderr: "",
-          },
-        ]),
-      ),
+        }),
+        JSON.stringify([]),
+      ]),
     );
     await expect(
       adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" }),
@@ -490,29 +463,14 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
   });
 
   it.each([
-    ["403", "forbidden"],
-    ["404", "not_found"],
-    ["405", "unsupported"],
+    ["403", { _tag: "CommandForbidden", reason: "unknown" }, "forbidden"],
+    ["404", { _tag: "CommandNotFound" }, "not_found"],
+    ["405", { _tag: "CommandUnsupported" }, "unsupported"],
   ] as const)(
     "maps an optional endpoint HTTP %s response to unavailable evidence",
-    async (status, reason) => {
+    async (_status, failure, reason) => {
       const adapter = testAdapter(
-        new CommandRunner(
-          new FakeProcessExecutor([
-            {
-              _tag: "Exited",
-              exitCode: 1,
-              stdout: "",
-              stderr: `HTTP ${status}: endpoint unavailable`,
-            },
-            {
-              _tag: "Exited",
-              exitCode: 0,
-              stdout: JSON.stringify(rules),
-              stderr: "",
-            },
-          ]),
-        ),
+        orderedTransport([failure, JSON.stringify(rules)]),
       );
       await expect(
         adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" }),
@@ -528,26 +486,14 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
 
   it("returns a typed adapter failure for malformed successful payloads", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({
-              required_pull_request_reviews: {
-                required_approving_review_count: "two",
-              },
-            }),
-            stderr: "",
+      orderedTransport([
+        JSON.stringify({
+          required_pull_request_reviews: {
+            required_approving_review_count: "two",
           },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(rules),
-            stderr: "",
-          },
-        ]),
-      ),
+        }),
+        JSON.stringify(rules),
+      ]),
     );
     await expect(
       adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" }),
@@ -562,17 +508,7 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
 
   it("returns a typed adapter failure when an optional endpoint times out", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          { _tag: "TimedOut", stdout: "", stderr: "" },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(rules),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([{ _tag: "CommandTimedOut" }, JSON.stringify(rules)]),
     );
     await expect(
       adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" }),
@@ -606,22 +542,10 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
     rulesPayload: RulesFixture,
   ): ReturnType<GitHubAdapter["getMergePolicyEvidence"]> {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(branchProtection),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(rulesPayload),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        JSON.stringify(branchProtection),
+        JSON.stringify(rulesPayload),
+      ]),
     );
     return adapter.getMergePolicyEvidence({ profile, pr, branch: "sit" });
   }
@@ -755,16 +679,7 @@ describe("GitHubAdapter repository label permission", () => {
     "maps collaborator role %s to canManageLabels %s",
     async (role_name, canManageLabels) => {
       const adapter = testAdapter(
-        new CommandRunner(
-          new FakeProcessExecutor([
-            {
-              _tag: "Exited",
-              exitCode: 0,
-              stdout: JSON.stringify({ role_name }),
-              stderr: "",
-            },
-          ]),
-        ),
+        orderedTransport([JSON.stringify({ role_name })]),
       );
       await expect(
         adapter.getRepositoryPermission({
@@ -781,16 +696,7 @@ describe("GitHubAdapter repository label permission", () => {
 
   it("keeps pullRequestsWrite denied for triage even though labels are permitted", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ role_name: "triage" }),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([JSON.stringify({ role_name: "triage" })]),
     );
     await expect(
       adapter.getRepositoryPermission({ profile, pr, account: "pmquan2cfw" }),
@@ -810,16 +716,7 @@ describe("GitHubAdapter repository label permission", () => {
     // degrade to an explicit, safe "unknown" state rather than failing the
     // whole read closed the way a strict picklist would.
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ role_name: "security-champion" }),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([JSON.stringify({ role_name: "security-champion" })]),
     );
     await expect(
       adapter.getRepositoryPermission({ profile, pr, account: "pmquan2cfw" }),
@@ -961,15 +858,10 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor(
-      Array.from({ length: 2 }, () => ({
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: JSON.stringify(page),
-        stderr: "",
-      })),
+    const transport = orderedTransport(
+      Array.from({ length: 2 }, () => JSON.stringify(page)),
     );
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
@@ -1008,11 +900,11 @@ describe("GitHubAdapter read boundary", () => {
       _tag: "ok",
       value: { entries: [{ pullRequest: { summary: { isOpen: false } } }] },
     });
-    expect(executor.requests).toHaveLength(2);
+    expect(transport.requests).toHaveLength(2);
     // Requests the default inbox page size (25) explicitly.
-    expect(executor.requests[0]).toContain("first=25");
-    expect(executor.requests[0]).toContain("state=OPEN");
-    expect(executor.requests[1]).toContain("state=MERGED");
+    expect(sent(transport, 0).argv).toContain("first=25");
+    expect(sent(transport, 0).argv).toContain("state=OPEN");
+    expect(sent(transport, 1).argv).toContain("state=MERGED");
   });
 
   it("sends the requested page size as the GraphQL first value", async () => {
@@ -1026,15 +918,8 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(emptyPage),
-        stderr: "",
-      },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(emptyPage)]);
+    const adapter = testAdapter(transport);
 
     await adapter.listMaintainerPullRequests({
       profile,
@@ -1042,31 +927,24 @@ describe("GitHubAdapter read boundary", () => {
       pageSize: 10,
     });
 
-    expect(executor.requests).toHaveLength(1);
-    expect(executor.requests[0]).toContain("first=10");
+    expect(transport.requests).toHaveLength(1);
+    expect(sent(transport, 0).argv).toContain("first=10");
   });
 
   it("retains the continuation cursor for an empty non-final page", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({
-              data: {
-                repository: {
-                  pullRequests: {
-                    edges: [],
-                    pageInfo: { hasNextPage: true, endCursor: "cursor-empty" },
-                  },
-                },
+      orderedTransport([
+        JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                edges: [],
+                pageInfo: { hasNextPage: true, endCursor: "cursor-empty" },
               },
-            }),
-            stderr: "",
+            },
           },
-        ]),
-      ),
+        }),
+      ]),
     );
 
     await expect(
@@ -1127,15 +1005,8 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(page),
-        stderr: "",
-      },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(page)]);
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
@@ -1168,10 +1039,8 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(page)]);
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listRepositoryLabels({ profile, repo: pr });
 
@@ -1186,7 +1055,7 @@ describe("GitHubAdapter read boundary", () => {
       },
     });
     expect(
-      executor.requests[0]?.some((argument) =>
+      sent(transport, 0).argv.some((argument) =>
         argument.includes("labels(first: 100)"),
       ),
     ).toBe(true);
@@ -1216,10 +1085,8 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(page)]);
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listRepositoryLabels({ profile, repo: pr });
 
@@ -1262,10 +1129,8 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(page)]);
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listRepositoryLabels({ profile, repo: pr });
 
@@ -1301,10 +1166,8 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(page)]);
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listAssignableUsers({ profile, repo: pr });
 
@@ -1328,7 +1191,7 @@ describe("GitHubAdapter read boundary", () => {
     expect(result.value.users[1]).not.toHaveProperty("name");
     expect(result.value.users[1]).not.toHaveProperty("avatarUrl");
     expect(
-      executor.requests[0]?.some((argument) =>
+      sent(transport, 0).argv.some((argument) =>
         argument.includes("assignableUsers(first: 100"),
       ),
     ).toBe(true);
@@ -1342,62 +1205,51 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const withQuery = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
-    ]);
-    await testAdapter(new CommandRunner(withQuery)).listAssignableUsers({
+    const withQuery = orderedTransport([JSON.stringify(page)]);
+    await testAdapter(withQuery).listAssignableUsers({
       profile,
       repo: pr,
       query: "octo",
     });
     expect(
-      withQuery.requests[0]?.some((argument) => argument === "search=octo"),
+      sent(withQuery, 0).argv.some((argument) => argument === "search=octo"),
     ).toBe(true);
 
-    const withoutQuery = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
-    ]);
-    await testAdapter(new CommandRunner(withoutQuery)).listAssignableUsers({
+    const withoutQuery = orderedTransport([JSON.stringify(page)]);
+    await testAdapter(withoutQuery).listAssignableUsers({
       profile,
       repo: pr,
     });
     expect(
-      withoutQuery.requests[0]?.some((argument) =>
+      sent(withoutQuery, 0).argv.some((argument) =>
         argument.startsWith("search="),
       ),
     ).toBe(false);
   });
 
   it("sends addAssigneesToAssignable/removeAssigneesFromAssignable with repeated assigneeIds[] flags", async () => {
-    const okResponse: CommandExecution = {
-      _tag: "Exited",
-      exitCode: 0,
-      stdout: JSON.stringify({ data: {} }),
-      stderr: "",
-    };
-    const addExecutor = new FakeProcessExecutor([okResponse]);
-    const addResult = await testAdapter(
-      new CommandRunner(addExecutor),
-    ).addAssigneesToAssignable({
+    const okResponse = JSON.stringify({ data: {} });
+    const addTransport = orderedTransport([okResponse]);
+    const addResult = await testAdapter(addTransport).addAssigneesToAssignable({
       profile,
       assignableId: "PR_node",
       assigneeIds: ["U_a", "U_b"],
     });
     expect(addResult).toEqual({ _tag: "ok", value: undefined });
-    expect(addExecutor.requests[0]).toContain("assigneeIds[]=U_a");
-    expect(addExecutor.requests[0]).toContain("assigneeIds[]=U_b");
-    expect(addExecutor.requests[0]).toContain("assignableId=PR_node");
+    expect(sent(addTransport, 0).argv).toContain("assigneeIds[]=U_a");
+    expect(sent(addTransport, 0).argv).toContain("assigneeIds[]=U_b");
+    expect(sent(addTransport, 0).argv).toContain("assignableId=PR_node");
 
-    const removeExecutor = new FakeProcessExecutor([okResponse]);
+    const removeTransport = orderedTransport([okResponse]);
     const removeResult = await testAdapter(
-      new CommandRunner(removeExecutor),
+      removeTransport,
     ).removeAssigneesFromAssignable({
       profile,
       assignableId: "PR_node",
       assigneeIds: ["U_a"],
     });
     expect(removeResult).toEqual({ _tag: "ok", value: undefined });
-    expect(removeExecutor.requests[0]).toContain("assigneeIds[]=U_a");
+    expect(sent(removeTransport, 0).argv).toContain("assigneeIds[]=U_a");
   });
 
   it("fetches a pull request's reviewer state: requested reviewers, both review views, and suggestions", async () => {
@@ -1458,10 +1310,8 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(page)]);
+    const adapter = testAdapter(transport);
 
     const result = await adapter.getPullRequestReviewers({ profile, pr });
 
@@ -1494,36 +1344,29 @@ describe("GitHubAdapter read boundary", () => {
       },
     });
     expect(
-      executor.requests[0]?.some((argument) =>
+      sent(transport, 0).argv.some((argument) =>
         argument.includes("PullRequestReviewers"),
       ),
     ).toBe(true);
-    expect(executor.requests[0]).toContain(`number=${pr.number}`);
+    expect(sent(transport, 0).argv).toContain(`number=${pr.number}`);
   });
 
   it("sends requestReviews as an additive union:true mutation with repeated userIds[] flags", async () => {
-    const okResponse: CommandExecution = {
-      _tag: "Exited",
-      exitCode: 0,
-      stdout: JSON.stringify({ data: {} }),
-      stderr: "",
-    };
-    const executor = new FakeProcessExecutor([okResponse]);
+    const okResponse = JSON.stringify({ data: {} });
+    const transport = orderedTransport([okResponse]);
 
-    const result = await testAdapter(
-      new CommandRunner(executor),
-    ).requestReviews({
+    const result = await testAdapter(transport).requestReviews({
       profile,
       pullRequestId: "PR_node",
       userIds: ["U_a", "U_b"],
     });
 
     expect(result).toEqual({ _tag: "ok", value: undefined });
-    expect(executor.requests[0]).toContain("userIds[]=U_a");
-    expect(executor.requests[0]).toContain("userIds[]=U_b");
-    expect(executor.requests[0]).toContain("pullRequestId=PR_node");
+    expect(sent(transport, 0).argv).toContain("userIds[]=U_a");
+    expect(sent(transport, 0).argv).toContain("userIds[]=U_b");
+    expect(sent(transport, 0).argv).toContain("pullRequestId=PR_node");
     expect(
-      executor.requests[0]?.some(
+      sent(transport, 0).argv.some(
         (argument) =>
           argument.startsWith("query=") && argument.includes("union: true"),
       ),
@@ -1531,43 +1374,31 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("removes requested reviewers via the subtractive DELETE endpoint, sending only the named logins as its body", async () => {
-    const okResponse: CommandExecution = {
-      _tag: "Exited",
-      exitCode: 0,
-      stdout: JSON.stringify({}),
-      stderr: "",
-    };
-    const executor = new FakeProcessExecutor([okResponse]);
+    const okResponse = JSON.stringify({});
+    const transport = orderedTransport([okResponse]);
 
-    const result = await testAdapter(
-      new CommandRunner(executor),
-    ).removeRequestedReviewers({
+    const result = await testAdapter(transport).removeRequestedReviewers({
       profile,
       pr,
       logins: ["octocat"],
     });
 
     expect(result).toEqual({ _tag: "ok", value: undefined });
-    expect(executor.requests[0]).toContain("--method");
-    expect(executor.requests[0]).toContain("DELETE");
-    expect(executor.requests[0]).toContain(
+    expect(sent(transport, 0).argv).toContain("--method");
+    expect(sent(transport, 0).argv).toContain("DELETE");
+    expect(sent(transport, 0).argv).toContain(
       `repos/${pr.owner}/${pr.repo}/pulls/${pr.number}/requested_reviewers`,
     );
     // The subtractive REST body carries exactly the named logins — never a
     // recomputed "remaining reviewers" set.
-    expect(executor.stdin[0]).toBe(JSON.stringify({ reviewers: ["octocat"] }));
+    expect(sent(transport, 0).stdin).toBe(
+      JSON.stringify({ reviewers: ["octocat"] }),
+    );
   });
 
   it("classifies a CommandRateLimited listMaintainerPullRequests failure as GitHubRateLimited", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "gh: API rate limit exceeded for user ID 123.",
-      },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([{ _tag: "CommandRateLimited" }]);
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
@@ -1594,21 +1425,11 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(successPage),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "gh: API rate limit exceeded for user ID 123.",
-      },
+    const transport = orderedTransport([
+      JSON.stringify(successPage),
+      { _tag: "CommandRateLimited" },
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
 
     const first = await adapter.listMaintainerPullRequests({
       profile,
@@ -1633,17 +1454,10 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("classifies the live OmisePayments IP-allow-list GraphQL FORBIDDEN failure as GitHubForbidden/ip_allow_list (plan 009)", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout:
-          '{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-17T12:00:00Z"},"repository":null},"errors":[{"type":"FORBIDDEN","path":["repository"],"extensions":{"saml_failure":false},"locations":[{"line":2,"column":3}],"message":"Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource."}]}',
-        stderr:
-          "gh: Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.",
-      },
+    const transport = orderedTransport([
+      { _tag: "CommandForbidden", reason: "ip_allow_list" },
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
@@ -1718,15 +1532,8 @@ describe("GitHubAdapter read boundary", () => {
           },
         },
       };
-      const executor = new FakeProcessExecutor([
-        {
-          _tag: "Exited",
-          exitCode: 0,
-          stdout: JSON.stringify(emptyPage),
-          stderr: "",
-        },
-      ]);
-      const adapter = testAdapter(new CommandRunner(executor));
+      const transport = orderedTransport([JSON.stringify(emptyPage)]);
+      const adapter = testAdapter(transport);
 
       await adapter.searchMaintainerPullRequests({
         profile,
@@ -1736,11 +1543,11 @@ describe("GitHubAdapter read boundary", () => {
         pageSize: 25,
       });
 
-      expect(executor.requests).toHaveLength(1);
-      expect(executor.requests[0]).toContain(
+      expect(transport.requests).toHaveLength(1);
+      expect(sent(transport, 0).argv).toContain(
         "search=repo:centraldigital/patchdesk is:pr is:open",
       );
-      expect(executor.requests[0]).toContain("first=25");
+      expect(sent(transport, 0).argv).toContain("first=25");
     });
 
     it("returns issueCount, GitHub's true repository-wide match count, from the response", async () => {
@@ -1754,15 +1561,8 @@ describe("GitHubAdapter read boundary", () => {
           },
         },
       };
-      const executor = new FakeProcessExecutor([
-        {
-          _tag: "Exited",
-          exitCode: 0,
-          stdout: JSON.stringify(page),
-          stderr: "",
-        },
-      ]);
-      const adapter = testAdapter(new CommandRunner(executor));
+      const transport = orderedTransport([JSON.stringify(page)]);
+      const adapter = testAdapter(transport);
 
       const result = await adapter.searchMaintainerPullRequests({
         profile,
@@ -1799,28 +1599,10 @@ describe("GitHubAdapter read boundary", () => {
         },
       };
       const listAdapter = testAdapter(
-        new CommandRunner(
-          new FakeProcessExecutor([
-            {
-              _tag: "Exited",
-              exitCode: 0,
-              stdout: JSON.stringify(listPage),
-              stderr: "",
-            },
-          ]),
-        ),
+        orderedTransport([JSON.stringify(listPage)]),
       );
       const searchAdapter = testAdapter(
-        new CommandRunner(
-          new FakeProcessExecutor([
-            {
-              _tag: "Exited",
-              exitCode: 0,
-              stdout: JSON.stringify(searchPage),
-              stderr: "",
-            },
-          ]),
-        ),
+        orderedTransport([JSON.stringify(searchPage)]),
       );
 
       const listResult = await listAdapter.listMaintainerPullRequests({
@@ -1853,51 +1635,16 @@ describe("GitHubAdapter read boundary", () => {
         payload("get-statuses.json"),
         payload("get-diff.patch"),
       ]);
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: listOpenPrs,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: getPr,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: getComments,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: getChecks,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: getStatuses,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: getDiff,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: '{"login":"pmquan2cfw"}',
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      listOpenPrs,
+      getPr,
+      getComments,
+      getChecks,
+      getStatuses,
+      getDiff,
+      '{"login":"pmquan2cfw"}',
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
 
     expect(
       await adapter.listOpenPullRequests({ profile, repo: pr }),
@@ -2007,7 +1754,7 @@ describe("GitHubAdapter read boundary", () => {
         golden("get-diff"),
         golden("auth-status"),
       ]),
-    ).resolves.toEqual(executor.requests);
+    ).resolves.toEqual(sentArgv(transport));
   });
 
   it("normalizes GitHub's degenerate single-line LEFT thread anchor", async () => {
@@ -2040,15 +1787,8 @@ describe("GitHubAdapter read boundary", () => {
         pageInfo: { hasNextPage: false, endCursor: null },
       },
     };
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(fixture),
-        stderr: "",
-      },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([JSON.stringify(fixture)]);
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getPullRequestComments({ profile, pr }),
     ).resolves.toEqual({
@@ -2087,21 +1827,11 @@ describe("GitHubAdapter read boundary", () => {
       hasNextPage: false,
       endCursor: null,
     };
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(first),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(second),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      JSON.stringify(first),
+      JSON.stringify(second),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
 
     await expect(
       adapter.getPullRequestComments({ profile, pr }),
@@ -2112,7 +1842,7 @@ describe("GitHubAdapter read boundary", () => {
         threads: [{ id: "thread-1" }, { id: "thread-2" }],
       },
     });
-    expect(executor.requests[1]).toContain("cursor=threads-page-2");
+    expect(sent(transport, 1).argv).toContain("cursor=threads-page-2");
   });
 
   it("marks a repeated review-thread cursor incomplete", async () => {
@@ -2127,22 +1857,7 @@ describe("GitHubAdapter read boundary", () => {
       endCursor: "repeat",
     };
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(first),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(second),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([JSON.stringify(first), JSON.stringify(second)]),
     );
 
     await expect(
@@ -2178,22 +1893,7 @@ describe("GitHubAdapter read boundary", () => {
       },
     };
     const complete = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(outer),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(replies),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([JSON.stringify(outer), JSON.stringify(replies)]),
     );
     await expect(
       complete.getPullRequestComments({ profile, pr }),
@@ -2211,22 +1911,7 @@ describe("GitHubAdapter read boundary", () => {
     });
 
     const partial = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(outer),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 1,
-            stdout: "",
-            stderr: "network unavailable",
-          },
-        ]),
-      ),
+      orderedTransport([JSON.stringify(outer), { _tag: "CommandFailed" }]),
     );
     await expect(
       partial.getPullRequestComments({ profile, pr }),
@@ -2248,16 +1933,9 @@ describe("GitHubAdapter read boundary", () => {
         hasNextPage: true,
         endCursor: `page-${index}`,
       };
-      return {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: JSON.stringify(page),
-        stderr: "",
-      };
+      return JSON.stringify(page);
     });
-    const adapter = testAdapter(
-      new CommandRunner(new FakeProcessExecutor(responses)),
-    );
+    const adapter = testAdapter(orderedTransport(responses));
 
     await expect(
       adapter.getPullRequestComments({ profile, pr }),
@@ -2269,24 +1947,17 @@ describe("GitHubAdapter read boundary", () => {
 
   it("returns a degraded summary when optional GitHub metadata is absent", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify([
-              pullRequestPayload({
-                labels: [],
-                additions: undefined,
-                deletions: undefined,
-                changed_files: undefined,
-                mergeable_state: undefined,
-              }),
-            ]),
-            stderr: "",
-          },
+      orderedTransport([
+        JSON.stringify([
+          pullRequestPayload({
+            labels: [],
+            additions: undefined,
+            deletions: undefined,
+            changed_files: undefined,
+            mergeable_state: undefined,
+          }),
         ]),
-      ),
+      ]),
     );
 
     const result = await adapter.listOpenPullRequests({ profile, repo: pr });
@@ -2322,7 +1993,10 @@ describe("GitHubAdapter read boundary", () => {
         stderr: "",
       },
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(
+      orderedTransport([]),
+      new CommandRunner(executor),
+    );
 
     expect(
       await adapter.getPullRequestDiff({
@@ -2375,15 +2049,8 @@ describe("GitHubAdapter read boundary", () => {
   });
 
   it("uses an immutable GitHub comparison when no managed checkout is available", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: "diff --git a/exact.ts b/exact.ts\n",
-        stderr: "",
-      },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport(["diff --git a/exact.ts b/exact.ts\n"]);
+    const adapter = testAdapter(transport);
 
     expect(
       await adapter.getPullRequestDiff({
@@ -2398,7 +2065,7 @@ describe("GitHubAdapter read boundary", () => {
       _tag: "ok",
       value: "diff --git a/exact.ts b/exact.ts\n",
     });
-    expect(executor.requests).toEqual([
+    expect(sentArgv(transport)).toEqual([
       [
         "gh",
         "api",
@@ -2427,7 +2094,10 @@ describe("GitHubAdapter read boundary", () => {
     const executor = new FakeProcessExecutor([
       { _tag: "Exited", exitCode: 1, stdout: "", stderr: "unknown revision" },
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(
+      orderedTransport([]),
+      new CommandRunner(executor),
+    );
 
     expect(
       await adapter.getPullRequestDiff({
@@ -2465,7 +2135,10 @@ describe("GitHubAdapter read boundary", () => {
     const executor = new FakeProcessExecutor([
       { _tag: "Exited", exitCode: 0, stdout: `${headSha}\n`, stderr: "" },
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(
+      orderedTransport([]),
+      new CommandRunner(executor),
+    );
 
     expect(
       await adapter.getPullRequestDiff({
@@ -2490,17 +2163,9 @@ describe("GitHubAdapter read boundary", () => {
 
   it("classifies a successful status for a different gh account as github_auth", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout:
-              "github.com\n  ✓ Logged in to github.com account another-user (keyring)\n",
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        "github.com\n  ✓ Logged in to github.com account another-user (keyring)\n",
+      ]),
     );
 
     expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
@@ -2511,17 +2176,9 @@ describe("GitHubAdapter read boundary", () => {
 
   it("classifies a configured account that is listed but inactive as github_auth", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout:
-              "github.com\n  ✓ Logged in to github.com account pmquan2cfw (keyring)\n  - Active account: false\n  ✓ Logged in to github.com account another-user (keyring)\n  - Active account: true\n",
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        "github.com\n  ✓ Logged in to github.com account pmquan2cfw (keyring)\n  - Active account: false\n  ✓ Logged in to github.com account another-user (keyring)\n  - Active account: true\n",
+      ]),
     );
 
     expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
@@ -2532,16 +2189,7 @@ describe("GitHubAdapter read boundary", () => {
 
   it("classifies malformed valid JSON GitHub responses without exposing payloads", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: await payload("malformed-get-pr.json"),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([await payload("malformed-get-pr.json")]),
     );
 
     expect(await adapter.getPullRequest({ profile, pr })).toEqual({
@@ -2552,16 +2200,7 @@ describe("GitHubAdapter read boundary", () => {
 
   it("maps missing local GitHub auth to github_auth", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 1,
-            stdout: "",
-            stderr: "not logged into any GitHub hosts",
-          },
-        ]),
-      ),
+      orderedTransport([{ _tag: "CommandAuthenticationRequired" }]),
     );
     expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
       _tag: "err",
@@ -2570,44 +2209,32 @@ describe("GitHubAdapter read boundary", () => {
   });
   it("lists pull request commits with immutable parsing and head marking", async () => {
     const olderSha = "1111111111111111111111111111111111111111";
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(pullRequestPayload()),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify([
-          [
-            {
-              sha: olderSha,
-              html_url:
-                "https://github.com/centraldigital/patchdesk/commit/111",
-              commit: {
-                message: "Older change",
-                author: { name: "Older", date: "2026-07-16T11:00:00Z" },
-              },
+    const transport = orderedTransport([
+      JSON.stringify(pullRequestPayload()),
+      JSON.stringify([
+        [
+          {
+            sha: olderSha,
+            html_url: "https://github.com/centraldigital/patchdesk/commit/111",
+            commit: {
+              message: "Older change",
+              author: { name: "Older", date: "2026-07-16T11:00:00Z" },
             },
-          ],
-          [
-            {
-              sha: headSha,
-              html_url:
-                "https://github.com/centraldigital/patchdesk/commit/head",
-              commit: {
-                message: "Head change",
-                author: { name: "Head", date: "2026-07-16T12:00:00Z" },
-              },
+          },
+        ],
+        [
+          {
+            sha: headSha,
+            html_url: "https://github.com/centraldigital/patchdesk/commit/head",
+            commit: {
+              message: "Head change",
+              author: { name: "Head", date: "2026-07-16T12:00:00Z" },
             },
-          ],
-        ]),
-        stderr: "",
-      },
+          },
+        ],
+      ]),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getPullRequestCommits({ profile, pr }),
     ).resolves.toMatchObject({
@@ -2617,7 +2244,7 @@ describe("GitHubAdapter read boundary", () => {
         { sha: olderSha, message: "Older change", isHead: false },
       ],
     });
-    expect(executor.requests[1]).toEqual([
+    expect(sent(transport, 1).argv).toEqual([
       "gh",
       "api",
       "--paginate",
@@ -2636,21 +2263,11 @@ describe("GitHubAdapter read boundary", () => {
         author: { name: "Author", date: "2026-07-16T12:00:00Z" },
       },
     }));
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify(pullRequestPayload()),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify([commits]),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      JSON.stringify(pullRequestPayload()),
+      JSON.stringify([commits]),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getPullRequestCommits({ profile, pr }),
     ).resolves.toEqual({
@@ -2669,21 +2286,11 @@ describe("GitHubAdapter review write boundary", () => {
         payload("create-pending-review.json"),
         payload("submit-pending-review.json"),
       ]);
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({ id: 9001, state: "PENDING" }),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({ id: 9001, state: "SUBMITTED" }),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      JSON.stringify({ id: 9001, state: "PENDING" }),
+      JSON.stringify({ id: 9001, state: "SUBMITTED" }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
 
     await expect(
       adapter.createPendingReview({
@@ -2715,27 +2322,18 @@ describe("GitHubAdapter review write boundary", () => {
       }),
     ).resolves.toEqual({ _tag: "ok", value: { reviewId: "9001" } });
 
-    expect(executor.requests).toEqual([createArgv, submitArgv]);
-    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(
+    expect(sentArgv(transport)).toEqual([createArgv, submitArgv]);
+    expect(JSON.parse(sent(transport, 0).stdin ?? "{}")).toEqual(
       JSON.parse(createPayload),
     );
-    expect(JSON.parse(executor.stdin[1] ?? "{}")).toEqual(
+    expect(JSON.parse(sent(transport, 1).stdin ?? "{}")).toEqual(
       JSON.parse(submitPayload),
     );
   });
 
   it("rejects a create response unless GitHub confirms the review is pending", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ id: 9001, state: "SUBMITTED" }),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([JSON.stringify({ id: 9001, state: "SUBMITTED" })]),
     );
     await expect(
       adapter.createPendingReview({
@@ -2767,15 +2365,10 @@ describe("GitHubAdapter review write boundary", () => {
       golden("submit-pending-review"),
       payload("submit-summary-only-review.json"),
     ]);
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({ id: 9001, state: "SUBMITTED" }),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      JSON.stringify({ id: 9001, state: "SUBMITTED" }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.submitPendingReview({
         profile,
@@ -2785,53 +2378,43 @@ describe("GitHubAdapter review write boundary", () => {
         summaryBody: "Summary-only review.",
       }),
     ).resolves.toEqual({ _tag: "ok", value: { reviewId: "9001" } });
-    expect(executor.requests).toEqual([submitArgv]);
-    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(
+    expect(sentArgv(transport)).toEqual([submitArgv]);
+    expect(JSON.parse(sent(transport, 0).stdin ?? "{}")).toEqual(
       JSON.parse(summaryPayload),
     );
   });
 
   it("deletes a review comment through GitHub's id argument", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          data: { deletePullRequestReviewComment: { clientMutationId: "1" } },
-        }),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      JSON.stringify({
+        data: { deletePullRequestReviewComment: { clientMutationId: "1" } },
+      }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.deleteThreadComment({ profile, commentId: "PRRC_abc" }),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
     // GitHub rejects DeletePullRequestReviewCommentInput with a
     // pullRequestReviewCommentId argument; the mutation must pass id.
-    const request = executor.requests[0]?.join(" ") ?? "";
+    const request = sent(transport, 0).argv.join(" ");
     expect(request).toContain("deletePullRequestReviewComment(input:{id:$");
     expect(request).not.toContain("pullRequestReviewCommentId");
   });
 
   it("exposes the review a reply submits so the write journal can exclude it", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          data: {
-            addPullRequestReviewThreadReply: {
-              comment: {
-                id: "PRRC_reply",
-                pullRequestReview: { id: "PRR_review" },
-              },
+    const transport = orderedTransport([
+      JSON.stringify({
+        data: {
+          addPullRequestReviewThreadReply: {
+            comment: {
+              id: "PRRC_reply",
+              pullRequestReview: { id: "PRR_review" },
             },
           },
-        }),
-        stderr: "",
-      },
+        },
+      }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.createThreadReply({
         profile,
@@ -2842,42 +2425,27 @@ describe("GitHubAdapter review write boundary", () => {
       _tag: "ok",
       value: { commentId: "PRRC_reply", reviewId: "PRR_review" },
     });
-    const request = executor.requests[0]?.join(" ") ?? "";
+    const request = sent(transport, 0).argv.join(" ");
     expect(request).toContain("pullRequestReview{id}");
   });
 
   it("retries the read-back with backoff before confirming a thread", async () => {
     vi.useFakeTimers();
     try {
-      const restResponse = {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: JSON.stringify({ node_id: "PRRC_comment" }),
-        stderr: "",
-      };
-      const noMatchYet = {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: confirmThreadResponse([]),
-        stderr: "",
-      };
-      const nowConfirmed = {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: confirmThreadResponse([
-          {
-            id: "PRRT_thread",
-            comments: [{ id: "PRRC_comment", body: "Body" }],
-          },
-        ]),
-        stderr: "",
-      };
-      const executor = new FakeProcessExecutor([
+      const restResponse = JSON.stringify({ node_id: "PRRC_comment" });
+      const noMatchYet = confirmThreadResponse([]);
+      const nowConfirmed = confirmThreadResponse([
+        {
+          id: "PRRT_thread",
+          comments: [{ id: "PRRC_comment", body: "Body" }],
+        },
+      ]);
+      const transport = orderedTransport([
         restResponse,
         noMatchYet,
         nowConfirmed,
       ]);
-      const adapter = testAdapter(new CommandRunner(executor));
+      const adapter = testAdapter(transport);
       const pending = adapter.createInlineComment({
         profile,
         pr,
@@ -2890,7 +2458,7 @@ describe("GitHubAdapter review write boundary", () => {
         _tag: "ok",
         value: { commentId: "PRRC_comment", threadId: "PRRT_thread" },
       });
-      expect(executor.requests).toHaveLength(3);
+      expect(transport.requests).toHaveLength(3);
     } finally {
       vi.useRealTimers();
     }
@@ -2899,30 +2467,20 @@ describe("GitHubAdapter review write boundary", () => {
   it("does not upgrade when a matching comment id has a different body, and exhausts all attempts", async () => {
     vi.useFakeTimers();
     try {
-      const restResponse = {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: JSON.stringify({ node_id: "PRRC_comment" }),
-        stderr: "",
-      };
-      const idMatchWrongBody = {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: confirmThreadResponse([
-          {
-            id: "PRRT_thread",
-            comments: [{ id: "PRRC_comment", body: "A different body" }],
-          },
-        ]),
-        stderr: "",
-      };
-      const executor = new FakeProcessExecutor([
+      const restResponse = JSON.stringify({ node_id: "PRRC_comment" });
+      const idMatchWrongBody = confirmThreadResponse([
+        {
+          id: "PRRT_thread",
+          comments: [{ id: "PRRC_comment", body: "A different body" }],
+        },
+      ]);
+      const transport = orderedTransport([
         restResponse,
         idMatchWrongBody,
         idMatchWrongBody,
         idMatchWrongBody,
       ]);
-      const adapter = testAdapter(new CommandRunner(executor));
+      const adapter = testAdapter(transport);
       const pending = adapter.createInlineComment({
         profile,
         pr,
@@ -2936,7 +2494,7 @@ describe("GitHubAdapter review write boundary", () => {
         _tag: "ok",
         value: { commentId: "PRRC_comment" },
       });
-      expect(executor.requests).toHaveLength(4);
+      expect(transport.requests).toHaveLength(4);
     } finally {
       vi.useRealTimers();
     }
@@ -2945,25 +2503,15 @@ describe("GitHubAdapter review write boundary", () => {
   it("degrades the create receipt without upgrading when all read-back attempts are exhausted", async () => {
     vi.useFakeTimers();
     try {
-      const restResponse = {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: JSON.stringify({ node_id: "PRRC_comment" }),
-        stderr: "",
-      };
-      const noMatch = {
-        _tag: "Exited" as const,
-        exitCode: 0,
-        stdout: confirmThreadResponse([]),
-        stderr: "",
-      };
-      const executor = new FakeProcessExecutor([
+      const restResponse = JSON.stringify({ node_id: "PRRC_comment" });
+      const noMatch = confirmThreadResponse([]);
+      const transport = orderedTransport([
         restResponse,
         noMatch,
         noMatch,
         noMatch,
       ]);
-      const adapter = testAdapter(new CommandRunner(executor));
+      const adapter = testAdapter(transport);
       const pending = adapter.createInlineComment({
         profile,
         pr,
@@ -2977,42 +2525,37 @@ describe("GitHubAdapter review write boundary", () => {
         _tag: "ok",
         value: { commentId: "PRRC_comment" },
       });
-      expect(executor.requests).toHaveLength(4);
+      expect(transport.requests).toHaveLength(4);
     } finally {
       vi.useRealTimers();
     }
   });
 
   it("proves a review thread target with one bounded node query", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          data: {
-            node: {
-              id: "PRRT_thread",
-              comments: {
-                nodes: [
-                  {
-                    id: "PRRC_c1",
-                    pullRequest: {
-                      repository: {
-                        owner: { login: "centraldigital" },
-                        name: "patchdesk",
-                      },
-                      number: 42,
+    const transport = orderedTransport([
+      JSON.stringify({
+        data: {
+          node: {
+            id: "PRRT_thread",
+            comments: {
+              nodes: [
+                {
+                  id: "PRRC_c1",
+                  pullRequest: {
+                    repository: {
+                      owner: { login: "centraldigital" },
+                      name: "patchdesk",
                     },
+                    number: 42,
                   },
-                ],
-              },
+                },
+              ],
             },
           },
-        }),
-        stderr: "",
-      },
+        },
+      }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getReviewThreadTarget({
         profile,
@@ -3020,8 +2563,8 @@ describe("GitHubAdapter review write boundary", () => {
         threadId: mustParse(parseGitHubThreadId("PRRT_thread")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: true } });
-    const request = executor.requests[0]?.join(" ") ?? "";
-    expect(executor.requests).toHaveLength(1);
+    const request = sent(transport, 0).argv.join(" ");
+    expect(transport.requests).toHaveLength(1);
     expect(request).toContain("query ReviewThreadTarget($id: ID!)");
     expect(request).toContain("comments(first: 1)");
     expect(request).toContain("-F id=PRRT_thread");
@@ -3032,35 +2575,30 @@ describe("GitHubAdapter review write boundary", () => {
   });
 
   it("treats a thread from another pull request as not found without disclosing it", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          data: {
-            node: {
-              id: "PRRT_foreign",
-              comments: {
-                nodes: [
-                  {
-                    id: "PRRC_c1",
-                    pullRequest: {
-                      repository: {
-                        owner: { login: "centraldigital" },
-                        name: "patchdesk",
-                      },
-                      number: 99,
+    const transport = orderedTransport([
+      JSON.stringify({
+        data: {
+          node: {
+            id: "PRRT_foreign",
+            comments: {
+              nodes: [
+                {
+                  id: "PRRC_c1",
+                  pullRequest: {
+                    repository: {
+                      owner: { login: "centraldigital" },
+                      name: "patchdesk",
                     },
+                    number: 99,
                   },
-                ],
-              },
+                },
+              ],
             },
           },
-        }),
-        stderr: "",
-      },
+        },
+      }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getReviewThreadTarget({
         profile,
@@ -3071,15 +2609,10 @@ describe("GitHubAdapter review write boundary", () => {
   });
 
   it("treats a missing, typeless, or comment-less thread node as not found", async () => {
-    const missing = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({ data: { node: null } }),
-        stderr: "",
-      },
+    const missing = orderedTransport([
+      JSON.stringify({ data: { node: null } }),
     ]);
-    const adapter = testAdapter(new CommandRunner(missing));
+    const adapter = testAdapter(missing);
     await expect(
       adapter.getReviewThreadTarget({
         profile,
@@ -3087,15 +2620,10 @@ describe("GitHubAdapter review write boundary", () => {
         threadId: mustParse(parseGitHubThreadId("PRRT_gone")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
-    const wrongType = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({ data: { node: { id: "PRRT_thread" } } }),
-        stderr: "",
-      },
+    const wrongType = orderedTransport([
+      JSON.stringify({ data: { node: { id: "PRRT_thread" } } }),
     ]);
-    const adapter2 = testAdapter(new CommandRunner(wrongType));
+    const adapter2 = testAdapter(wrongType);
     await expect(
       adapter2.getReviewThreadTarget({
         profile,
@@ -3106,29 +2634,24 @@ describe("GitHubAdapter review write boundary", () => {
   });
 
   it("proves a review comment target with viewer authorship", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          data: {
-            node: {
-              id: "PRRC_comment",
-              viewerDidAuthor: true,
-              pullRequest: {
-                repository: {
-                  owner: { login: "centraldigital" },
-                  name: "patchdesk",
-                },
-                number: 42,
+    const transport = orderedTransport([
+      JSON.stringify({
+        data: {
+          node: {
+            id: "PRRC_comment",
+            viewerDidAuthor: true,
+            pullRequest: {
+              repository: {
+                owner: { login: "centraldigital" },
+                name: "patchdesk",
               },
+              number: 42,
             },
           },
-        }),
-        stderr: "",
-      },
+        },
+      }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getReviewCommentTarget({
         profile,
@@ -3139,36 +2662,31 @@ describe("GitHubAdapter review write boundary", () => {
       _tag: "ok",
       value: { found: true, viewerDidAuthor: true },
     });
-    const request = executor.requests[0]?.join(" ") ?? "";
+    const request = sent(transport, 0).argv.join(" ");
     expect(request).toContain("query ReviewCommentTarget($id: ID!)");
     expect(request).toContain("viewerDidAuthor");
     expect(request).not.toContain("body");
   });
 
   it("treats a foreign or non-authored comment as the completed target result", async () => {
-    const foreign = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          data: {
-            node: {
-              id: "PRRC_foreign",
-              viewerDidAuthor: true,
-              pullRequest: {
-                repository: {
-                  owner: { login: "centraldigital" },
-                  name: "patchdesk",
-                },
-                number: 99,
+    const foreign = orderedTransport([
+      JSON.stringify({
+        data: {
+          node: {
+            id: "PRRC_foreign",
+            viewerDidAuthor: true,
+            pullRequest: {
+              repository: {
+                owner: { login: "centraldigital" },
+                name: "patchdesk",
               },
+              number: 99,
             },
           },
-        }),
-        stderr: "",
-      },
+        },
+      }),
     ]);
-    const adapter = testAdapter(new CommandRunner(foreign));
+    const adapter = testAdapter(foreign);
     await expect(
       adapter.getReviewCommentTarget({
         profile,
@@ -3176,29 +2694,24 @@ describe("GitHubAdapter review write boundary", () => {
         commentId: "PRRC_foreign",
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
-    const notAuthor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          data: {
-            node: {
-              id: "PRRC_other",
-              viewerDidAuthor: false,
-              pullRequest: {
-                repository: {
-                  owner: { login: "centraldigital" },
-                  name: "patchdesk",
-                },
-                number: 42,
+    const notAuthor = orderedTransport([
+      JSON.stringify({
+        data: {
+          node: {
+            id: "PRRC_other",
+            viewerDidAuthor: false,
+            pullRequest: {
+              repository: {
+                owner: { login: "centraldigital" },
+                name: "patchdesk",
               },
+              number: 42,
             },
           },
-        }),
-        stderr: "",
-      },
+        },
+      }),
     ]);
-    const adapter2 = testAdapter(new CommandRunner(notAuthor));
+    const adapter2 = testAdapter(notAuthor);
     await expect(
       adapter2.getReviewCommentTarget({ profile, pr, commentId: "PRRC_other" }),
     ).resolves.toEqual({
@@ -3208,16 +2721,11 @@ describe("GitHubAdapter review write boundary", () => {
   });
 
   it("degrades the create receipt instead of failing when the thread read-back hard-fails, and does not retry", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({ node_id: "PRRC_comment" }),
-        stderr: "",
-      },
-      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 500" },
+    const transport = orderedTransport([
+      JSON.stringify({ node_id: "PRRC_comment" }),
+      { _tag: "CommandFailed" },
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.createInlineComment({
         profile,
@@ -3230,7 +2738,7 @@ describe("GitHubAdapter review write boundary", () => {
     // A transport/command error stops the read-back immediately: retrying
     // against a hard failure is a different problem than eventual
     // consistency, and the create must not be held hostage to it.
-    expect(executor.requests).toHaveLength(2);
+    expect(transport.requests).toHaveLength(2);
   });
 
   it("merges only through the explicit SHA-pinned GitHub endpoint", async () => {
@@ -3238,15 +2746,10 @@ describe("GitHubAdapter review write boundary", () => {
       golden("merge-pull-request"),
       payload("merge-pull-request.json"),
     ]);
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({ merged: true, sha: headSha }),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      JSON.stringify({ merged: true, sha: headSha }),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.mergePullRequest({
         profile,
@@ -3258,8 +2761,8 @@ describe("GitHubAdapter review write boundary", () => {
       _tag: "ok",
       value: { mergeCommitSha: mustParse(parseGitSha(headSha)) },
     });
-    expect(executor.requests).toEqual([mergeArgv]);
-    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual(
+    expect(sentArgv(transport)).toEqual([mergeArgv]);
+    expect(JSON.parse(sent(transport, 0).stdin ?? "{}")).toEqual(
       JSON.parse(mergePayload),
     );
   });
@@ -3366,27 +2869,18 @@ describe("GitHubAdapter pending-review gateway", () => {
     });
   }
 
-  const exited = (stdout: string): CommandExecution => ({
-    _tag: "Exited",
-    exitCode: 0,
-    stdout,
-    stderr: "",
-  });
-
   it("returns None only for a complete result with no viewer pending review", async () => {
-    const executor = new FakeProcessExecutor([
-      exited(
-        JSON.stringify([
-          {
-            id: 1,
-            state: "COMMENTED",
-            user: { login: "other" },
-            submitted_at: "2026-08-08T00:00:00Z",
-          },
-        ]),
-      ),
+    const transport = orderedTransport([
+      JSON.stringify([
+        {
+          id: 1,
+          state: "COMMENTED",
+          user: { login: "other" },
+          submitted_at: "2026-08-08T00:00:00Z",
+        },
+      ]),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getViewerPendingReview({
         profile,
@@ -3394,15 +2888,12 @@ describe("GitHubAdapter pending-review gateway", () => {
         account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { _tag: "None" } });
-    expect(executor.requests[0]).toContain(reviewListUrl);
+    expect(sent(transport, 0).argv).toContain(reviewListUrl);
   });
 
   it("imports the viewer's pending review with complete bounded thread/comment identity", async () => {
-    const executor = new FakeProcessExecutor([
-      exited(reviewsPayload()),
-      exited(threadsPayload()),
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([reviewsPayload(), threadsPayload()]);
+    const adapter = testAdapter(transport);
     const result = await adapter.getViewerPendingReview({
       profile,
       pr,
@@ -3424,7 +2915,7 @@ describe("GitHubAdapter pending-review gateway", () => {
     });
     // The GraphQL probe selects the owning review so the adapter can prove
     // which threads belong to the PENDING review.
-    expect(executor.requests[1]?.join(" ")).toContain(
+    expect(sent(transport, 1).argv.join(" ")).toContain(
       "pullRequestReview { id state }",
     );
   });
@@ -3437,11 +2928,8 @@ describe("GitHubAdapter pending-review gateway", () => {
         startDiffSide: undefined,
       }),
     });
-    const executor = new FakeProcessExecutor([
-      exited(reviewsPayload()),
-      exited(threads),
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([reviewsPayload(), threads]);
+    const adapter = testAdapter(transport);
     const result = await adapter.getViewerPendingReview({
       profile,
       pr,
@@ -3477,11 +2965,8 @@ describe("GitHubAdapter pending-review gateway", () => {
         },
       }),
     });
-    const executor = new FakeProcessExecutor([
-      exited(reviewsPayload()),
-      exited(threads),
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([reviewsPayload(), threads]);
+    const adapter = testAdapter(transport);
     // No actionable comments: an empty pending review is the unproven case.
     await expect(
       adapter.getViewerPendingReview({
@@ -3500,9 +2985,7 @@ describe("GitHubAdapter pending-review gateway", () => {
       submitted_at: "2026-08-08T00:00:00Z",
     }));
     const paginated = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([exited(JSON.stringify(fullReviews))]),
-      ),
+      orderedTransport([JSON.stringify(fullReviews)]),
     );
     await expect(
       paginated.getViewerPendingReview({
@@ -3516,9 +2999,7 @@ describe("GitHubAdapter pending-review gateway", () => {
       pageInfo: { hasNextPage: true, endCursor: "cursor" },
     });
     const incompleteThreads = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([exited(reviewsPayload()), exited(threads)]),
-      ),
+      orderedTransport([reviewsPayload(), threads]),
     );
     await expect(
       incompleteThreads.getViewerPendingReview({
@@ -3529,12 +3010,7 @@ describe("GitHubAdapter pending-review gateway", () => {
     ).resolves.toMatchObject({ _tag: "err" });
 
     const malformed = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          exited("{not-json"),
-          exited(threadsPayload()),
-        ]),
-      ),
+      orderedTransport(["{not-json", threadsPayload()]),
     );
     await expect(
       malformed.getViewerPendingReview({
@@ -3546,21 +3022,19 @@ describe("GitHubAdapter pending-review gateway", () => {
   });
 
   it("starts a review with its first thread and reads the full owner back", async () => {
-    const executor = new FakeProcessExecutor([
+    const transport = orderedTransport([
       // GitHub's live create-review response does not include the created
       // inline comment. Exact thread identity must come from read-back.
-      exited(
-        JSON.stringify({
-          id: reviewId,
-          node_id: reviewNodeId,
-          state: "PENDING",
-          commit_id: headSha,
-        }),
-      ),
-      exited(reviewsPayload()),
-      exited(threadsPayload()),
+      JSON.stringify({
+        id: reviewId,
+        node_id: reviewNodeId,
+        state: "PENDING",
+        commit_id: headSha,
+      }),
+      reviewsPayload(),
+      threadsPayload(),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     const result = await adapter.startPendingReviewWithThread({
       profile,
       pr,
@@ -3578,31 +3052,29 @@ describe("GitHubAdapter pending-review gateway", () => {
     expect(result.value.review.restId).toBe("9001");
     expect(result.value.createdThreadId).toBe(threadId);
     // REST Start owns the inline comment; Finish owns general feedback.
-    expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual({
+    expect(JSON.parse(sent(transport, 0).stdin ?? "{}")).toEqual({
       commit_id: headSha,
       comments: [
         { path: "src/review.ts", line: 7, side: "RIGHT", body: "Comment body" },
       ],
     });
-    expect(JSON.parse(executor.stdin[0] ?? "{}")).not.toHaveProperty("body");
+    expect(JSON.parse(sent(transport, 0).stdin ?? "{}")).not.toHaveProperty(
+      "body",
+    );
   });
 
   it("never fabricates a pending owner when the create read-back cannot be proven", async () => {
     const missingRead = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          exited(
-            JSON.stringify({
-              id: reviewId,
-              node_id: reviewNodeId,
-              state: "PENDING",
-              commit_id: headSha,
-              comments: [{ node_id: commentId }],
-            }),
-          ),
-          exited("[]"),
-        ]),
-      ),
+      orderedTransport([
+        JSON.stringify({
+          id: reviewId,
+          node_id: reviewNodeId,
+          state: "PENDING",
+          commit_id: headSha,
+          comments: [{ node_id: commentId }],
+        }),
+        "[]",
+      ]),
     );
     const result = await missingRead.startPendingReviewWithThread({
       profile,
@@ -3623,29 +3095,27 @@ describe("GitHubAdapter pending-review gateway", () => {
   });
 
   it("appends a thread through the spike-proven GraphQL mutation and reads back", async () => {
-    const executor = new FakeProcessExecutor([
-      exited(
-        JSON.stringify({
-          data: {
-            addPullRequestReviewThread: {
-              thread: {
-                id: threadId,
-                path: "src/review.ts",
-                line: 9,
-                startLine: 9,
-                diffSide: "RIGHT",
-                comments: {
-                  nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }],
-                },
+    const transport = orderedTransport([
+      JSON.stringify({
+        data: {
+          addPullRequestReviewThread: {
+            thread: {
+              id: threadId,
+              path: "src/review.ts",
+              line: 9,
+              startLine: 9,
+              diffSide: "RIGHT",
+              comments: {
+                nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }],
               },
             },
           },
-        }),
-      ),
-      exited(reviewsPayload()),
-      exited(threadsPayload()),
+        },
+      }),
+      reviewsPayload(),
+      threadsPayload(),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     const result = await adapter.addPendingReviewThread({
       profile,
       pr,
@@ -3659,7 +3129,7 @@ describe("GitHubAdapter pending-review gateway", () => {
       body: "More",
     });
     expect(result._tag).toBe("ok");
-    const request = executor.requests[0]?.join(" ") ?? "";
+    const request = sent(transport, 0).argv.join(" ");
     expect(request).toContain("addPullRequestReviewThread");
     expect(request).toContain("pullRequestReviewId:$reviewId");
   });
@@ -3669,30 +3139,28 @@ describe("GitHubAdapter pending-review gateway", () => {
     // `comments(first:100){nodes{id body}} pageInfo{hasNextPage}` shape made
     // GitHub reject the mutation at schema validation (409 github_rejected)
     // before any execution. The query must nest pageInfo under comments.
-    const executor = new FakeProcessExecutor([
-      exited(
-        JSON.stringify({
-          data: {
-            addPullRequestReviewThread: {
-              thread: {
-                id: threadId,
-                path: "src/review.ts",
-                line: 9,
-                startLine: 9,
-                diffSide: "RIGHT",
-                comments: {
-                  nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }],
-                  pageInfo: { hasNextPage: false },
-                },
+    const transport = orderedTransport([
+      JSON.stringify({
+        data: {
+          addPullRequestReviewThread: {
+            thread: {
+              id: threadId,
+              path: "src/review.ts",
+              line: 9,
+              startLine: 9,
+              diffSide: "RIGHT",
+              comments: {
+                nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }],
+                pageInfo: { hasNextPage: false },
               },
             },
           },
-        }),
-      ),
-      exited(reviewsPayload()),
-      exited(threadsPayload()),
+        },
+      }),
+      reviewsPayload(),
+      threadsPayload(),
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     const result = await adapter.addPendingReviewThread({
       profile,
       pr,
@@ -3706,7 +3174,7 @@ describe("GitHubAdapter pending-review gateway", () => {
       body: "More",
     });
     expect(result._tag).toBe("ok");
-    const request = executor.requests[0]?.join(" ") ?? "";
+    const request = sent(transport, 0).argv.join(" ");
     expect(request).toContain(
       "comments(first:100){nodes{id body} pageInfo{hasNextPage}}",
     );
@@ -3716,19 +3184,15 @@ describe("GitHubAdapter pending-review gateway", () => {
 
   it("rejects an append whose mutation response lacks thread identity", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          exited(
-            JSON.stringify({
-              data: {
-                addPullRequestReviewThread: {
-                  thread: { id: "PRRT_ok", comments: { nodes: [] } },
-                },
-              },
-            }),
-          ),
-        ]),
-      ),
+      orderedTransport([
+        JSON.stringify({
+          data: {
+            addPullRequestReviewThread: {
+              thread: { id: "PRRT_ok", comments: { nodes: [] } },
+            },
+          },
+        }),
+      ]),
     );
     const result = await adapter.addPendingReviewThread({
       profile,
@@ -3749,8 +3213,8 @@ describe("GitHubAdapter pending-review gateway", () => {
   });
 
   it("isolates the viewer's pending review from a foreign account", async () => {
-    const executor = new FakeProcessExecutor([exited(reviewsPayload())]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([reviewsPayload()]);
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getViewerPendingReview({
         profile,
@@ -3763,10 +3227,8 @@ describe("GitHubAdapter pending-review gateway", () => {
 
 describe("GitHubAdapter pending-review discard", () => {
   it("deletes the pending review through the dbacd62-proven REST endpoint and accepts the empty 204 body", async () => {
-    const executor = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: "", stderr: "" },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([""]);
+    const adapter = testAdapter(transport);
     await expect(
       adapter.discardPendingReview({
         profile,
@@ -3774,7 +3236,7 @@ describe("GitHubAdapter pending-review discard", () => {
         reviewId: mustParse(parseGitHubReviewRestId("9001")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
-    expect(executor.requests[0]).toEqual([
+    expect(sent(transport, 0).argv).toEqual([
       "gh",
       "api",
       "--hostname",
@@ -3786,15 +3248,8 @@ describe("GitHubAdapter pending-review discard", () => {
   });
 
   it("classifies a not-found discard as unavailable (conservative, never a confirmed absence)", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "gh: Not Found (HTTP 404)",
-      },
-    ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const transport = orderedTransport([{ _tag: "CommandNotFound" }]);
+    const adapter = testAdapter(transport);
     await expect(
       adapter.discardPendingReview({
         profile,
@@ -3808,15 +3263,10 @@ describe("GitHubAdapter pending-review discard", () => {
   });
 
   it("classifies a forbidden discard as forbidden with its specific reason, not the generic unavailable category", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "gh: Resource not accessible by integration (HTTP 403)",
-      },
+    const transport = orderedTransport([
+      { _tag: "CommandForbidden", reason: "unknown" },
     ]);
-    const adapter = testAdapter(new CommandRunner(executor));
+    const adapter = testAdapter(transport);
     await expect(
       adapter.discardPendingReview({
         profile,
@@ -3853,33 +3303,26 @@ describe("GitHubAdapter pending-review discard", () => {
 describe("GitHubAdapter direct summary reads", () => {
   it("ignores dismissed reviews while retaining submitted direct summaries", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
+      orderedTransport([
+        JSON.stringify([
           {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify([
-              {
-                id: 100,
-                user: { login: "pmquan2cfw" },
-                state: "DISMISSED",
-                commit_id: headSha,
-                submitted_at: "2026-08-01T00:00:00Z",
-                body: "Dismissed",
-              },
-              {
-                id: 101,
-                user: { login: "pmquan2cfw" },
-                state: "COMMENTED",
-                commit_id: headSha,
-                submitted_at: "2026-08-01T00:01:00Z",
-                body: "Summary",
-              },
-            ]),
-            stderr: "",
+            id: 100,
+            user: { login: "pmquan2cfw" },
+            state: "DISMISSED",
+            commit_id: headSha,
+            submitted_at: "2026-08-01T00:00:00Z",
+            body: "Dismissed",
+          },
+          {
+            id: 101,
+            user: { login: "pmquan2cfw" },
+            state: "COMMENTED",
+            commit_id: headSha,
+            submitted_at: "2026-08-01T00:01:00Z",
+            body: "Summary",
           },
         ]),
-      ),
+      ]),
     );
 
     await expect(
@@ -3911,48 +3354,78 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
     }),
   );
 
-  function credentialAdapter(executor: FakeProcessExecutor): GitHubAdapter {
+  /** One canned HTTP answer, as the account's credential earned it. */
+  type ServedAnswer = { readonly status: number; readonly body: string };
+
+  /**
+   * The adapter as production composes it: one `GitHubCliCredentials` shared
+   * with the HTTP client, so the profile's own `gh auth token` child is what
+   * authenticates every call (ADR 0046). The `Authorization` header each call
+   * carried is recorded, because that is where the account now reaches GitHub.
+   */
+  function servedAdapter(
+    executor: CommandExecutor,
+    answers: ReadonlyArray<ServedAnswer>,
+  ) {
+    const authorizations: Array<string | null> = [];
     const commands = new CommandRunner(executor);
-    return new GitHubAdapter(commands, new GitHubCliCredentials(commands));
+    const credentials = new GitHubCliCredentials(commands);
+    const http = new GitHubHttpClient(
+      credentials,
+      undefined,
+      undefined,
+      async (_url, init) => {
+        authorizations.push(new Headers(init.headers).get("authorization"));
+        const answer = answers[authorizations.length - 1];
+        if (answer === undefined) throw new Error("Missing fake GitHub answer");
+        return new Response(answer.body, {
+          status: answer.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+    return {
+      adapter: new GitHubAdapter(commands, credentials, http),
+      authorizations,
+    };
   }
 
   function exited(stdout: string): CommandExecution {
     return { _tag: "Exited", exitCode: 0, stdout, stderr: "" };
   }
 
+  const servedPullRequest: ServedAnswer = {
+    status: 200,
+    body: JSON.stringify(pullRequestPayload()),
+  };
+
   it("authenticates gh as the profile's account, not the machine-wide active account", async () => {
-    const executor = new FakeProcessExecutor([
-      exited("profile-token\n"),
-      exited(JSON.stringify(pullRequestPayload())),
-    ]);
+    const executor = new FakeProcessExecutor([exited("profile-token\n")]);
+    const served = servedAdapter(executor, [servedPullRequest]);
 
     await expect(
-      credentialAdapter(executor).getPullRequest({ profile, pr }),
+      served.adapter.getPullRequest({ profile, pr }),
     ).resolves.toMatchObject({ _tag: "ok" });
 
-    expect(executor.requests[0]).toEqual([
-      "gh",
-      "auth",
-      "token",
-      "--hostname",
-      "github.com",
-      "--user",
-      "pmquan2cfw",
+    expect(executor.requests).toEqual([
+      [
+        "gh",
+        "auth",
+        "token",
+        "--hostname",
+        "github.com",
+        "--user",
+        "pmquan2cfw",
+      ],
     ]);
-    expect(executor.requests[1]?.[0]).toBe("gh");
-    expect(executor.environments[1]).toEqual({ GH_TOKEN: "profile-token" });
+    expect(served.authorizations).toEqual(["Bearer profile-token"]);
   });
 
-  it("passes an Enterprise Server host its own token variable", async () => {
-    const executor = new FakeProcessExecutor([
-      exited("enterprise-token\n"),
-      exited(JSON.stringify(pullRequestPayload())),
-    ]);
+  it("reads an Enterprise Server host's credential under that host's own account", async () => {
+    const executor = new FakeProcessExecutor([exited("enterprise-token\n")]);
+    const served = servedAdapter(executor, [servedPullRequest]);
 
-    await credentialAdapter(executor).getPullRequest({
-      profile: enterpriseProfile,
-      pr,
-    });
+    await served.adapter.getPullRequest({ profile: enterpriseProfile, pr });
 
     expect(executor.requests[0]).toEqual([
       "gh",
@@ -3963,9 +3436,7 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
       "--user",
       "matthew-opn",
     ]);
-    expect(executor.environments[1]).toEqual({
-      GH_ENTERPRISE_TOKEN: "enterprise-token",
-    });
+    expect(served.authorizations).toEqual(["Bearer enterprise-token"]);
   });
 
   it("reports authentication failure without dispatching the call when the account has no stored credential", async () => {
@@ -3977,58 +3448,56 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
         stderr: "no oauth token found for github.com account pmquan2cfw",
       },
     ]);
+    const served = servedAdapter(executor, []);
 
     await expect(
-      credentialAdapter(executor).getPullRequest({ profile, pr }),
+      served.adapter.getPullRequest({ profile, pr }),
     ).resolves.toEqual({
       _tag: "err",
       error: { _tag: "GitHubAuthenticationFailed", operation: "get_pr" },
     });
     expect(executor.requests).toHaveLength(1);
+    expect(served.authorizations).toEqual([]);
   });
 
   it("reuses a resolved token and re-reads it after GitHub rejects the credential", async () => {
     const executor = new FakeProcessExecutor([
       exited("token-1\n"),
-      exited(JSON.stringify(pullRequestPayload())),
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr: "gh auth login",
-      },
       exited("token-2\n"),
-      exited(JSON.stringify(pullRequestPayload())),
     ]);
-    const adapter = credentialAdapter(executor);
+    const served = servedAdapter(executor, [
+      servedPullRequest,
+      { status: 401, body: JSON.stringify({ message: "Bad credentials" }) },
+      servedPullRequest,
+    ]);
 
-    await adapter.getPullRequest({ profile, pr });
-    await adapter.getPullRequest({ profile, pr });
-    await adapter.getPullRequest({ profile, pr });
+    await served.adapter.getPullRequest({ profile, pr });
+    await served.adapter.getPullRequest({ profile, pr });
+    await served.adapter.getPullRequest({ profile, pr });
 
     expect(executor.requests.map((request) => request.slice(0, 3))).toEqual([
       ["gh", "auth", "token"],
-      ["gh", "api", "--hostname"],
-      ["gh", "api", "--hostname"],
       ["gh", "auth", "token"],
-      ["gh", "api", "--hostname"],
     ]);
-    expect(executor.environments[2]).toEqual({ GH_TOKEN: "token-1" });
-    expect(executor.environments[4]).toEqual({ GH_TOKEN: "token-2" });
+    expect(served.authorizations).toEqual([
+      "Bearer token-1",
+      "Bearer token-1",
+      "Bearer token-2",
+    ]);
   });
 
   it("resolves the authenticated account against the profile's own credential", async () => {
-    const executor = new FakeProcessExecutor([
-      exited("profile-token\n"),
-      exited('{"login":"pmquan2cfw"}'),
+    const executor = new FakeProcessExecutor([exited("profile-token\n")]);
+    const served = servedAdapter(executor, [
+      { status: 200, body: '{"login":"pmquan2cfw"}' },
     ]);
 
     await expect(
-      credentialAdapter(executor).resolveAuthenticatedAccount(profile),
+      served.adapter.resolveAuthenticatedAccount(profile),
     ).resolves.toEqual({
       _tag: "ok",
       value: { host: "github.com", account: "pmquan2cfw" },
     });
-    expect(executor.environments[1]).toEqual({ GH_TOKEN: "profile-token" });
+    expect(served.authorizations).toEqual(["Bearer profile-token"]);
   });
 });

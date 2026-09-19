@@ -30,35 +30,17 @@ import {
 import { StubCredentials } from "./stub-github-credentials";
 
 /**
- * T1b moved the identity and terminal-precedence reads off `gh api` (issue
- * #276). The compare read is the one whose bytes are hashed into
- * `canonicalPatchHash` (ADR 0026), so what these tests pin is byte equality
- * with what gh handed over, and that a failed compare classifies to the same
- * tag on both transports.
+ * The compare read is the one whose bytes are hashed into `canonicalPatchHash`
+ * (ADR 0026), so what these tests pin is byte equality with what gh handed
+ * over, and that a failed compare classifies to the tag gh classified it to
+ * (issue #276).
  */
 
-/** Fails the test if a gh child is spawned for a read the allowlist serves over HTTP. */
+/** Fails the test if a child process is spawned for a read the client serves. */
 class UnusableGhExecutor implements CommandExecutor {
   async execute(input: CommandRequest): Promise<CommandExecution> {
     throw new Error(`No gh child may run for a served read: ${input.argv[1]}`);
   }
-}
-
-class StubGhExecutor implements CommandExecutor {
-  readonly argvs: Array<ReadonlyArray<string>> = [];
-
-  constructor(private readonly executions: ReadonlyArray<CommandExecution>) {}
-
-  async execute(input: CommandRequest): Promise<CommandExecution> {
-    this.argvs.push(input.argv);
-    const execution = this.executions[this.argvs.length - 1];
-    if (execution === undefined) throw new Error("Missing fake gh response");
-    return execution;
-  }
-}
-
-function exited(stdout: string): CommandExecution {
-  return { _tag: "Exited", exitCode: 0, stdout, stderr: "" };
 }
 
 function mustParse<T, E>(result: Result<T, E>): T {
@@ -196,19 +178,16 @@ describe("the compare read over HTTP", () => {
 
   it("hashes to what the same bytes hashed to through gh", async () => {
     server.respondWith(diffResponse(compareBytes));
-    const ghExecutor = new StubGhExecutor([
-      exited(compareBytes.toString("utf8")),
-    ]);
 
     const overHttp = await readDiff(httpAdapter());
-    const overGh = await readDiff(
-      new GitHubAdapter(new CommandRunner(ghExecutor), new StubCredentials()),
-    );
 
+    // gh handed its stdout over as one utf8 string; the hash is taken from the
+    // same bytes, so the client must reach it without normalizing any of them.
     expect(hashReviewArtifactContent(normalizeReviewPatch(overHttp))).toBe(
-      hashReviewArtifactContent(normalizeReviewPatch(overGh)),
+      hashReviewArtifactContent(
+        normalizeReviewPatch(compareBytes.toString("utf8")),
+      ),
     );
-    expect(ghExecutor.argvs).toHaveLength(1);
   });
 
   it("accepts a body at the cap the gh stdout buffer allowed", async () => {
@@ -224,72 +203,40 @@ describe("the compare read over HTTP", () => {
 describe("a failed compare read", () => {
   const server = useFixtureServer();
 
-  /** The tag `ghText` returns for the compare request on each transport. */
-  async function tagsFor(
+  /**
+   * The tag `ghText` returns for the compare request. Each expectation is the
+   * tag gh produced from its own stderr for the same status, so a compare that
+   * fails reads the same to every caller it used to (ADR 0046).
+   */
+  async function tagFor(
     status: number,
     body: { readonly message: string },
-    stderr: string,
-  ): Promise<{ overHttp: CommandFailure; overGh: CommandFailure }> {
+  ): Promise<CommandFailure> {
     const credentials = new StubCredentials();
     server.respondWith((_request, response) => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(body));
     });
-    const http = new GhRequestRunner(
-      new CommandRunner(new UnusableGhExecutor()),
-      credentials,
-      server.client(credentials),
-    );
-    const gh = new GhRequestRunner(
-      new CommandRunner(
-        new StubGhExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 1,
-            stdout: JSON.stringify({ ...body, status: String(status) }),
-            stderr,
-          },
-        ]),
-      ),
-      credentials,
-    );
-    return {
-      overHttp: errorOf(await http.ghText(profile, compareRequest)),
-      overGh: errorOf(await gh.ghText(profile, compareRequest)),
-    };
+    const runner = new GhRequestRunner(server.client(credentials));
+    return errorOf(await runner.ghText(profile, compareRequest));
   }
 
   it("reports a missing comparison the way gh reported it", async () => {
-    const { overHttp, overGh } = await tagsFor(
-      404,
-      { message: "Not Found" },
-      "gh: Not Found (HTTP 404)",
-    );
-
-    expect(overHttp).toEqual({ _tag: "CommandNotFound" });
-    expect(overGh).toEqual(overHttp);
+    await expect(tagFor(404, { message: "Not Found" })).resolves.toEqual({
+      _tag: "CommandNotFound",
+    });
   });
 
   it("reports a rejected comparison the way gh reported it", async () => {
-    const { overHttp, overGh } = await tagsFor(
-      422,
-      { message: "No common ancestor between the two commits." },
-      "gh: No common ancestor between the two commits. (HTTP 422)",
-    );
-
-    expect(overHttp).toEqual({ _tag: "CommandUnsupported" });
-    expect(overGh).toEqual(overHttp);
+    await expect(
+      tagFor(422, { message: "No common ancestor between the two commits." }),
+    ).resolves.toEqual({ _tag: "CommandUnsupported" });
   });
 
   it("reports a server error as unavailable rather than a rejection", async () => {
-    const { overHttp, overGh } = await tagsFor(
-      500,
-      { message: "Server Error" },
-      "gh: Server Error (HTTP 500)",
-    );
-
-    expect(overHttp).toEqual({ _tag: "CommandUnavailable" });
-    expect(overGh).toEqual(overHttp);
+    await expect(tagFor(500, { message: "Server Error" })).resolves.toEqual({
+      _tag: "CommandUnavailable",
+    });
   });
 });
 

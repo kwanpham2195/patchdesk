@@ -100,7 +100,6 @@ function pendingReviewOverHttp(trace: Trace) {
     new CommandRunner(new RefusingGhExecutor()),
     credentials,
     new TracingHttpTransport(trace),
-    true,
   );
   const sessions = recordingSessions(trace, {
     ...values.session,

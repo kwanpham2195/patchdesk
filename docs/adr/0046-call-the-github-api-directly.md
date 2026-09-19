@@ -114,15 +114,30 @@ clean reads rather than on a judgement (issue #292).
 
 ## Cutover record
 
-`httpServedReadLabels` in `gh-request-runner.ts` is the list of reads served
-over HTTPS, named by the label `normalizeCommandLabel` prints. A request is
-served there when the runner holds an HTTP transport, the request is a read,
-and its label is in the list; everything else spawns `gh api` unchanged. There
-is no fallback in either direction: an HTTP failure is the read's failure,
-classified from the response status rather than from stderr.
+**2026-09-19, T4: every request goes over HTTPS.** `GhRequestRunner` holds one
+transport and makes no routing decision. `httpServedReadLabels`,
+`httpServedWriteLabels`, `transportRouteFor`, `isReadRequest`,
+`PATCHDESK_GITHUB_TRANSPORT`, and `PATCHDESK_GITHUB_WRITES` are all deleted, and
+`gh api` has no call site left. There is no fallback in either direction: an
+HTTP failure is the call's failure, classified from the response status rather
+than from stderr. Rolling back is a git revert of this change, not a switch.
 
-As of T2 the list holds these twenty labels, each of which read clean against
-`gh` for a whole shadow window on two transports first:
+Nine labels moved at T4 without a comparison window of their own, because no
+window running the app could reach them. Three of them were compared once
+during the live write check, which ran the shadow over the lookups inside the
+write flows: `ConfirmCreatedCommentThread` 2 of 2 clean, `PendingReviewThreads`
+7 of 7 clean, `ReviewThreadTarget` 3 of 3 clean, no divergence. The other six
+moved on request-shape equality alone: `api GET
+repos/:owner/:repo/contents/:path`, `api GET repos/:owner/:repo/pulls`,
+`api graphql MaintainerInbox`, `api graphql WatchedPullRequests`,
+`api graphql ReviewThreadComments`, and `api graphql ReviewCommentTarget`. None
+of the nine used a `gh api` flag the client does not reproduce: each is a plain
+REST GET or a GraphQL document with the same `-f`/`-F` variable typing every
+cut-over query already uses, so no `--jq`, `--paginate`, `--slurp`, or `Accept`
+header changed shape.
+
+The twenty read labels below were cut over first, at T1a, T1b, and T2, each on
+a count of clean shadow comparisons rather than on a judgement:
 
     api GET repos/:owner/:repo/commits/:sha/check-runs
     api GET repos/:owner/:repo/commits/:sha/status
@@ -159,11 +174,12 @@ than being fixed by the transport: an all-digit assignee search still reaches
 `$search: String` as an Int (issue #279), and a leading `@`, which gh's `-F`
 read as a filename to take the value from, now reaches GitHub as the text.
 
-**A GraphQL label is not enough to be served.** Queries and mutations share one
-endpoint and a mutation is labelled by its root field, so a mutation could
-carry an allowlisted label. The routing therefore serves a GraphQL request only
-when `isQueryDocument` in `github-request.ts` also reads the document as a
-query.
+**A GraphQL label was not enough to be served.** Queries and mutations share
+one endpoint and a mutation is labelled by its root field, so a mutation could
+carry an allowlisted label. While the allowlists existed, the routing served a
+GraphQL request only when `isQueryDocument` in `github-request.ts` also read
+the document as a query. T4 removed the decision; `isQueryDocument` no longer
+gates anything.
 
 **A 200 carrying `errors` is a failure on both transports.** `gh api graphql`
 exited nonzero whenever the response held a non-empty `errors` array, partial
@@ -173,17 +189,15 @@ failure. The client classifies the same body through the same
 reached `CommandRateLimited` through the rate-limit phrase in its own stderr,
 and the HTTP transport has no stderr to read.
 
-Two REST reads stay on `gh`, neither observed in a shadow window yet, and both
-for the same reason: as of T2 nothing outside the gateway port calls them, so
-no window running the app can reach them.
+Why no shadow window reached the nine labels T4 moved. Two are REST reads
+nothing outside the gateway port calls:
 
 - `api GET repos/:owner/:repo/contents/:path` — `getFileContents` has no
   caller in `src/main`, `src/services`, or the renderer.
 - `api GET repos/:owner/:repo/pulls` — the open pull request list;
   `listOpenPullRequests` has no caller there either.
 
-Seven GraphQL queries stay on `gh`, none of them exercised in a shadow window
-yet, each for a reason of its own:
+Seven are GraphQL queries, each unreachable for a reason of its own:
 
 - `api graphql MaintainerInbox` — the unfiltered inbox listing. The inbox
   service reads `MaintainerInboxSearch` instead, and
@@ -204,8 +218,8 @@ yet, each for a reason of its own:
 
 Through T2 every mutation stayed on `gh` whatever its label: a mutation is
 labelled by its root field, so `isQueryDocument` rather than the allowlist is
-what kept it off the HTTPS path. T3 gives the writes an allowlist of their own,
-below.
+what kept it off the HTTPS path. T3 gave the writes an allowlist of their own,
+below, and T4 deleted both.
 
 **The compare read is hashed, so its bytes are the contract.** `Response.text()`
 and a default `TextDecoder` both strip a leading UTF-8 byte order mark; gh
@@ -215,27 +229,26 @@ client therefore decodes the response stream with `ignoreBOM`, so the bytes
 endings, non-ASCII text, and a missing trailing newline already survived
 unchanged.
 
-T2 extends the list; T3 adds a second one for the writes, below; T4 deletes
-both together with the last `gh api` argv and the gh-specific classification
-named under Consequences.
+T2 extended the list; T3 added a second one for the writes, below; T4 deleted
+both together with the last `gh api` argv. The gh-specific failure
+classification named under Consequences is the remaining step.
 
 ### The writes, and why their proof is different
 
 A read was proven by running both transports on the same call and comparing.
 A write cannot be sent twice, so there is no shadow and no comparison window.
 Its proof is three other things: request-shape equality against the `gh api`
-argv and stdin the same call encodes today, a failure-classification table
-driven from real HTTP responses and real socket conditions on a loopback
-server, and one manual live check the maintainer runs before the default
-flips.
+argv and stdin the same call encoded, a failure-classification table driven
+from real HTTP responses and real socket conditions on a loopback server, and
+one manual live check, recorded below, which the maintainer ran before the
+default flipped.
 
-`httpServedWriteLabels` in `gh-request-runner.ts` is the write half of the
-cutover record. `transportRouteFor` classifies every request as exactly one of
-read, write, or stays-on-gh; the read gate is the unchanged conservative
-predicate, so no write can reach the read path by matching a read label. A
-write label names **the method GitHub receives**, not the one in the argv:
-`gh api --input -` with no `--method` posts, so a body-carrying request
-normalizes to a GET label that would otherwise collide with a read's.
+The twenty-three write labels are listed here because they are what that check
+exercised. While `httpServedWriteLabels` existed, a write label named **the
+method GitHub receives**, not the one in the argv: `gh api --input -` with no
+`--method` posts, so a body-carrying request normalized to a GET label that
+would otherwise have collided with a read's. `restMethodFor` still holds that
+rule, because the client sends the same verb from it.
 
 Nine REST writes. All nine carry the default `Accept:
 application/vnd.github+json`, and only those with a body carry a
@@ -280,21 +293,18 @@ diff sides of `addPullRequestReviewThread` each pick a GraphQL field or an
 enum in the document rather than a variable, so the document is what differs
 and, for the first two pairs, the label too.
 
-**The write switch is temporary, and separate from the rollback.**
+**The write switch was temporary, and separate from the rollback.**
 `PATCHDESK_GITHUB_WRITES=http`, read once in `githubTransports()` beside the
-other two, serves those labels over HTTPS. Absent, every write stays on `gh`,
-which is the default: a write has no shadow, so it stays a per-launch opt-in
-until the live check below passes. `PATCHDESK_GITHUB_TRANSPORT=gh` still
-overrides it and puts writes back on `gh` with the reads. After the live check
-the default flips and `PATCHDESK_GITHUB_WRITES` goes; T4 deletes both
-allowlists.
+other two, served those labels over HTTPS while the default was still `gh`. It
+was a per-launch opt-in because a write has no shadow. The live check below
+passed on 2026-09-19 and T4 deleted the variable with both allowlists.
 
 **Three things the client had to be taught, found by writing the shape tests.**
 
 - *A body with no method is a POST.* `restMethodFor` in `github-request.ts` is
-  now the one place that rule lives, read by both the client's `method` and
-  the write label. No current call site relies on it — every write names its
-  method — but a request that did would have been sent as a GET.
+  the one place that rule lives, read by the client's `method`. No current call
+  site relies on it — every write names its method — but a request that did
+  would have been sent as a GET.
 - *The response body mode belongs to the caller, not to the media type.*
   `ghText` and `ghJson` are what `runText` and `runJson` were, so the client
   gained `restText`, which hands over the response bytes unparsed, while
@@ -389,6 +399,10 @@ because it happens below the `fetch` seam.
 
 ### Live write check
 
+> **Completed on 2026-09-19.** The run is recorded after the steps. The
+> procedure is kept because it is what the evidence means; it cannot be run
+> today, because `PATCHDESK_GITHUB_WRITES` is gone.
+
 Run before the default flips, against a throwaway pull request on a throwaway
 repository, with the dev app launched as
 `PATCHDESK_GITHUB_WRITES=http pnpm dev` and the log tail open. One of each
@@ -422,11 +436,52 @@ Record the run in this ADR's Cutover record with the date, the commit, and the
 `github-http` entry count for each label. A duplicate write, a stuck journal
 entry, or a recovery banner stops the flip.
 
-**The rollback switch is temporary.** `PATCHDESK_GITHUB_TRANSPORT=gh`, read
-once at composition, leaves every read on `gh` without a rebuild. It exists for the soak release that carries the first
-cutover and is deleted with the allowlist at T4. It is an operational
-rollback, not a fallback: nothing consults it per call, and no failure ever
-switches transport.
+#### The run
+
+2026-09-19, on commit `db25976d`, against throwaway draft pull request #318.
+Every write landed on GitHub exactly once, its write intent cleared, and no
+recovery banner appeared. No write went through `gh api`.
+
+`github-http` entries per label:
+
+| label | entries |
+| --- | --- |
+| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n` | 1 |
+| `DELETE repos/:owner/:repo/pulls/comments/:n` | 1 |
+| `PATCH repos/:owner/:repo/pulls/comments/:n` | 1 |
+| `POST repos/:owner/:repo/pulls/:n/comments` | 2 |
+| `POST repos/:owner/:repo/pulls/:n/reviews` | 3 |
+| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events` | 1 |
+| `addAssigneesToAssignable` | 1 |
+| `addLabelsToLabelable` | 1 |
+| `addPullRequestReviewThread` | 1 |
+| `addPullRequestReviewThreadReply` | 1 |
+| `convertPullRequestToDraft` | 1 |
+| `markPullRequestReadyForReview` | 1 |
+| `removeAssigneesFromAssignable` | 1 |
+| `removeLabelsFromLabelable` | 1 |
+| `resolveReviewThread` | 1 |
+| `unresolveReviewThread` | 1 |
+
+Step 8's reviewer request was skipped because it emails a real collaborator, so
+`requestReviews` and `DELETE repos/:owner/:repo/pulls/:n/requested_reviewers`
+were not exercised. Base-branch change and merge were skipped as optional, so
+neither was `updatePullRequest` nor `PUT repos/:owner/:repo/pulls/:n/merge`.
+`PUT repos/:owner/:repo/pulls/:n/reviews/:n/dismissals`,
+`updatePullRequestReviewComment`, and `deletePullRequestReviewComment` were not
+exercised either: the comment edit and delete went through their REST forms.
+Step 13's idle window ran from 13:13:41Z to 13:23:58Z; the comment posted after
+it landed once.
+
+The check also found a bug that neither transport causes, issue #322, fixed in
+pull request #324.
+
+**The rollback switch was temporary.** `PATCHDESK_GITHUB_TRANSPORT=gh`, read
+once at composition, left every read on `gh` without a rebuild. It existed for
+the soak release that carried the first cutover and was deleted with the
+allowlists at T4. It was an operational rollback, not a fallback: nothing
+consulted it per call, and no failure ever switched transport. Rolling back now
+is a git revert.
 
 A served read spawns nothing, so it writes one `github-http` log entry per
 request — method-bearing normalized label, status, duration, and no URL —
@@ -455,8 +510,8 @@ not resend a POST, but it also reads no system proxy, no PAC file, and no OS
 certificate store. Node 24's `--use-env-proxy` and `--use-system-ca` read
 environment variables, which a macOS app launched from Finder does not have,
 and `EnvHttpProxyAgent` would add a new `undici` dependency to reach the same
-place. After T4 removes `gh api`, a maintainer behind a proxy would have no
-working write path at all. It would close one resend window at the cost of
+place. With `gh api` gone, a maintainer behind a proxy would have no working
+write path at all. It would close one resend window at the cost of
 every proxied and private-CA install.
 
 **A dedicated session with `closeAllConnections()` before each write.** It

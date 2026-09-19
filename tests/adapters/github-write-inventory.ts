@@ -17,15 +17,15 @@ import type { GitHubRequest } from "../../src/adapters/github/github-request";
 
 /**
  * Every write request the GitHub adapter can send, one row per label, written
- * the way its call site writes it (issue #276, step T3). This is the inventory
- * ADR 0046's Cutover record lists: the routing suite asserts it covers
- * `httpServedWriteLabels` exactly, and the request-shape suites drive the real
- * adapter methods that produce these.
+ * the way its call site writes it (issue #276). This is the inventory ADR
+ * 0046's Cutover record lists: the runner suite asserts each row reaches the
+ * transport under the label named here, and the request-shape suites drive the
+ * real adapter methods that produce these.
  *
  * Three call sites share the `POST .../pulls/:n/reviews` row —
  * `createPendingReview`, `startPendingReviewWithThread`, and
- * `createDirectSummaryReview` — because one label is what the routing decides
- * on. The bodies differ, and each is asserted in its own request-shape test.
+ * `createDirectSummaryReview` — because one label covers all three. The bodies
+ * differ, and each is asserted in its own request-shape test.
  */
 export type WriteInventoryEntry = {
   readonly name: string;

@@ -257,18 +257,11 @@ export class GitHubAdapter
   constructor(
     commands: CommandRunner,
     credentials: GitHubCredentials = new GitHubCliCredentials(commands),
-    /** Serves the reads in `httpServedReadLabels` when one is supplied (issue #276). */
-    http?: GitHubServedTransport,
-    /** Also serves the writes in `httpServedWriteLabels` over that transport (issue #276, step T3). */
-    writesOverHttp: boolean = false,
+    /** Serves every GitHub API request this adapter makes (ADR 0046, issue #276). */
+    http: GitHubServedTransport,
   ) {
     this.credentials = credentials;
-    this.requests = new GhRequestRunner(
-      commands,
-      credentials,
-      http,
-      writesOverHttp,
-    );
+    this.requests = new GhRequestRunner(http);
     this.pullRequests = new GitHubPullRequestReader(this.requests);
     this.threads = new GitHubThreadReader(this.requests);
     this.threadWrites = new GitHubThreadWriter(this.requests);
