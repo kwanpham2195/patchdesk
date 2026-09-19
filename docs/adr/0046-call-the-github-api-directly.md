@@ -92,6 +92,10 @@ it is swallowed, so switching it on cannot change what a read returns or when.
 It doubles read traffic against the same 5000-per-hour limit, which is why it
 is off by default.
 
+A read `gh` projects with `jq` is recorded as skipped rather than compared:
+`gh` answers the projected value and the client the whole body, so the two are
+not comparable and a standing divergence there would bury the real ones.
+
 Each comparison writes one `transport-shadow` log entry carrying the normalized
 endpoint label, the outcome, and where the two first differed — never a
 response body, a token, or a header value.

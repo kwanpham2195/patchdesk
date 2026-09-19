@@ -236,6 +236,7 @@ const shadowLine = (options: {
   readonly outcome: "match" | "diverged" | "skipped";
   readonly label?: string;
   readonly firstDifference?: string;
+  readonly reason?: string;
 }): string =>
   JSON.stringify({
     schemaVersion: 1,
@@ -247,6 +248,7 @@ const shadowLine = (options: {
     meta: {
       label: options.label ?? "api GET user",
       outcome: options.outcome,
+      reason: options.reason,
       firstDifference: options.firstDifference,
       ghMs: 740,
       shadowMs: 420,
@@ -257,7 +259,11 @@ describe("shadow summary", () => {
   const contents = [
     spawnLine({ endedAt: "2026-09-18T10:00:04.000Z", durationMs: 3000 }),
     shadowLine({ at: "2026-09-18T10:00:01.000Z", outcome: "match" }),
-    shadowLine({ at: "2026-09-18T10:00:02.000Z", outcome: "skipped" }),
+    shadowLine({
+      at: "2026-09-18T10:00:02.000Z",
+      outcome: "skipped",
+      reason: "no_token",
+    }),
     shadowLine({
       at: "2026-09-18T10:00:03.000Z",
       outcome: "diverged",
@@ -291,6 +297,7 @@ describe("shadow summary", () => {
         diverged: 0,
         skipped: 0,
         firstDifference: "-",
+        skipReason: "-",
       },
       {
         label: "api GET user",
@@ -299,8 +306,33 @@ describe("shadow summary", () => {
         diverged: 3,
         skipped: 1,
         firstDifference: "$.login",
+        skipReason: "no_token",
       },
     ]);
+  });
+
+  it("separates a label skipped for a jq projection from a divergence", () => {
+    const rows = summarizeShadow(
+      [
+        shadowLine({
+          at: "2026-09-18T10:00:01.000Z",
+          outcome: "skipped",
+          reason: "jq_projection",
+        }),
+        shadowLine({
+          at: "2026-09-18T10:00:02.000Z",
+          outcome: "skipped",
+          reason: "jq_projection",
+        }),
+      ].join("\n"),
+    );
+
+    expect(rows[0]).toMatchObject({
+      calls: 2,
+      diverged: 0,
+      skipped: 2,
+      skipReason: "jq_projection",
+    });
   });
 
   it("keeps only the comparisons inside the window", () => {
@@ -330,8 +362,12 @@ describe("shadow summary", () => {
     );
 
     expect(report).toContain("labels: 2");
-    expect(report).toMatch(/calls\s+match\s+diverged\s+skipped\s+label/);
-    expect(report).toMatch(/5\s+1\s+3\s+1\s+api GET user\s+\$\.login/);
+    expect(report).toMatch(
+      /calls\s+match\s+diverged\s+skipped\s+label\s+first_difference\s+skip_reason/,
+    );
+    expect(report).toMatch(
+      /5\s+1\s+3\s+1\s+api GET user\s+\$\.login\s+no_token/,
+    );
     expect(report).toMatch(/6\s+2\s+3\s+1\s+TOTAL/);
   });
 });
