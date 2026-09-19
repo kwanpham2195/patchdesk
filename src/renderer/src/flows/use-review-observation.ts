@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
+import {
+  appendRecentWriteReceipts,
+  type RecentReviewWrite,
+} from "../../../domain/recent-review-write";
 import { requestJson } from "../api-client";
 import {
   parseWorkbenchResponse,
@@ -88,10 +91,12 @@ export function useReviewObservation({
 
   const appendRecentWrites = useCallback(
     (entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>): void => {
-      setRecentWrites((current) => [
-        ...current,
-        ...(Array.isArray(entries) ? entries : [entries]),
-      ]);
+      setRecentWrites((current) =>
+        appendRecentWriteReceipts(
+          current,
+          Array.isArray(entries) ? entries : [entries],
+        ),
+      );
     },
     [],
   );
