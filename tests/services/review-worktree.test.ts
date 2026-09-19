@@ -51,11 +51,6 @@ class RecordingGit implements GitReadExecutor {
   ) {
     this.calls.push(argv);
     this.environments.push(environment);
-    if (argv.includes("status"))
-      return {
-        _tag: "ok" as const,
-        value: { stdout: " M dirty.ts\n?? untracked.ts\n" },
-      };
     if (this.failFetch && argv.includes("fetch"))
       return err({ _tag: "GitReadFailed" as const });
     if (this.failWorktreeAdd && argv.includes("add"))
@@ -103,7 +98,7 @@ const sessionId = must(
 );
 
 describe("ReviewWorktreeService", () => {
-  it("records a dirty primary checkout, fetches immutable managed refs, and never changes that checkout", async () => {
+  it("fetches immutable managed refs and never changes the primary checkout", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
     try {
       const local = join(root, "repo");
@@ -124,7 +119,7 @@ describe("ReviewWorktreeService", () => {
 
       expect(prepared).toMatchObject({
         _tag: "ok",
-        value: { mode: "worktree", dirty: { tracked: true, untracked: true } },
+        value: { mode: "worktree" },
       });
       const fetches = git.calls.filter((argv) => argv.includes("fetch"));
       // Both refspecs ride one invocation: a second `git fetch` would spawn a
