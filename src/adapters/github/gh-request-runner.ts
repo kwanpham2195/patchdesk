@@ -17,6 +17,7 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import { parseGitHubTimestamp } from "./github-wire-projections";
 import {
   ghInvocationFor,
+  type GitHubGraphQlRequest,
   type GitHubRequest,
   type GitHubRestRequest,
 } from "./github-request";
@@ -105,13 +106,17 @@ export const httpServedReadLabels: ReadonlySet<string> = new Set([
 
 /**
  * The HTTP transport an allowlisted read is served through, narrowed to the
- * one call the runner makes of it. `GitHubHttpClient` satisfies it; a test
+ * two calls the runner makes of it. `GitHubHttpClient` satisfies it; a test
  * supplies its own.
  */
-export interface GitHubRestTransport {
+export interface GitHubServedTransport {
   rest(
     profile: WorkspaceProfileConfig,
     request: GitHubRestRequest,
+  ): Promise<Result<unknown, CommandFailure>>;
+  graphql(
+    profile: WorkspaceProfileConfig,
+    request: GitHubGraphQlRequest,
   ): Promise<Result<unknown, CommandFailure>>;
 }
 
@@ -164,7 +169,7 @@ export class GhRequestRunner {
      * every read stays on gh. There is no fallback in either direction: an
      * HTTP failure is this call's failure, and gh is not tried after it.
      */
-    private readonly http?: GitHubRestTransport,
+    private readonly http?: GitHubServedTransport,
   ) {}
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
@@ -210,13 +215,16 @@ export class GhRequestRunner {
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> | undefined {
     const http = this.http;
-    if (http === undefined || request.kind !== "rest") return undefined;
-    // A write, or a body with no method (`gh api --input` defaults to POST),
-    // stays on gh whatever its label normalizes to.
+    if (http === undefined) return undefined;
+    // Same conservative read predicate the shadow uses: a REST write, a REST
+    // body with no method (`gh api --input` defaults to POST), and a GraphQL
+    // mutation stay on gh whatever their label normalizes to.
     if (!isShadowableRead(request)) return undefined;
     const label = normalizeCommandLabel(ghInvocationFor(request).argv);
     if (!httpServedReadLabels.has(label)) return undefined;
-    return http.rest(profile, request);
+    return request.kind === "rest"
+      ? http.rest(profile, request)
+      : http.graphql(profile, request);
   }
 
   async runAsProfileAccount<T>(

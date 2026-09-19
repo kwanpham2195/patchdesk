@@ -106,7 +106,7 @@ export function isShadowableRead(request: GitHubRequest): boolean {
 }
 
 /** GraphQL sends reads and writes to one endpoint; only the document says which. */
-function isQueryDocument(document: string): boolean {
+export function isQueryDocument(document: string): boolean {
   const body = document.replace(/^(?:\s|#[^\n]*)*/, "");
   return body.startsWith("{") || /^query\b/.test(body);
 }

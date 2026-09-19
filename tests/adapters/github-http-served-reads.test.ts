@@ -11,12 +11,14 @@ import {
 import {
   GhRequestRunner,
   httpServedReadLabels,
-  type GitHubRestTransport,
+  type GitHubServedTransport,
 } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { repositoryLabelsQuery } from "../../src/adapters/github/github-graphql-queries";
 import { fullJsonMediaType } from "../../src/adapters/github/github-pull-request-reviews";
 import { ghInvocationFor } from "../../src/adapters/github/github-request";
 import type {
+  GitHubGraphQlRequest,
   GitHubRequest,
   GitHubRestRequest,
 } from "../../src/adapters/github/github-request";
@@ -35,10 +37,11 @@ import { json, profile, useFixtureServer } from "./github-http-fixture-server";
 import { StubCredentials } from "./stub-github-credentials";
 
 /**
- * T1a moved a first set of REST reads off `gh api` onto the HTTP client
- * (issue #276). What these tests pin is the routing decision itself: which
- * transport answers, that only one of them runs, and that a request the
- * allowlist does not name is untouched.
+ * T1a moved a first set of REST reads off `gh api` onto the HTTP client, and
+ * T2 widened the same routing to GraphQL (issue #276). What these tests pin is
+ * the routing decision itself: which transport answers, that only one of them
+ * runs, that a request the allowlist does not name is untouched, and that a
+ * mutation stays on gh whatever its label.
  */
 
 class RecordingGhExecutor implements CommandExecutor {
@@ -53,8 +56,8 @@ class RecordingGhExecutor implements CommandExecutor {
   }
 }
 
-class RecordingHttpTransport implements GitHubRestTransport {
-  readonly requests: Array<GitHubRestRequest> = [];
+class RecordingHttpTransport implements GitHubServedTransport {
+  readonly requests: Array<GitHubRequest> = [];
 
   constructor(
     private readonly answer: Result<unknown, CommandFailure> = ok({}),
@@ -63,6 +66,14 @@ class RecordingHttpTransport implements GitHubRestTransport {
   async rest(
     _profile: WorkspaceProfileConfig,
     request: GitHubRestRequest,
+  ): Promise<Result<unknown, CommandFailure>> {
+    this.requests.push(request);
+    return this.answer;
+  }
+
+  async graphql(
+    _profile: WorkspaceProfileConfig,
+    request: GitHubGraphQlRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     this.requests.push(request);
     return this.answer;
@@ -142,7 +153,18 @@ const commits: GitHubRestRequest = {
   path: "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
 };
 
-function labelFor(request: GitHubRestRequest): string {
+/** A GraphQL read no shadow window has compared either, so it stays on gh too. */
+const repositoryLabels: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: repositoryLabelsQuery,
+  variables: [
+    { kind: "typed", name: "owner", value: "centraldigital" },
+    { kind: "typed", name: "name", value: "patchdesk" },
+  ],
+};
+
+function labelFor(request: GitHubRequest): string {
   return normalizeCommandLabel(ghInvocationFor(request).argv);
 }
 
@@ -227,6 +249,15 @@ describe("routing a read to the HTTP transport", () => {
     expect(executor.labels).toEqual([
       "api GET repos/:owner/:repo/pulls/:n/commits",
     ]);
+    expect(http.requests).toEqual([]);
+  });
+
+  it("leaves a GraphQL query the allowlist does not name on gh", async () => {
+    const { executor, http, runner } = harness({ execution: exited("{}") });
+
+    await runner.ghJson(profile, repositoryLabels);
+
+    expect(executor.labels).toEqual(["api graphql RepositoryLabels"]);
     expect(http.requests).toEqual([]);
   });
 
