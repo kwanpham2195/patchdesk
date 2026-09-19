@@ -7,6 +7,8 @@ export function composerErrorMessage(cause: unknown): string {
       return "This pull request has changed. Refresh and try again.";
     if (cause.kind === "github_rejected" || cause.kind === "rejected")
       return "GitHub rejected this comment.";
+    if (cause.kind === "pending_review")
+      return "GitHub already holds an unfinished review on this pull request. Refresh, then add this comment to that review.";
     if (cause.kind === "revision_conflict")
       return "This comment cannot be published against the current diff.";
     if (cause.kind === "outcome_unknown")

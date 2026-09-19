@@ -143,6 +143,30 @@ describe("renderer API boundary", () => {
     expect(thrown.kind).toBe("assignee_cap_exceeded");
     expect(thrown.message).toContain("ten");
   });
+
+  it("classifies a pending-review collision as its own kind, not the 409 rejection bucket", async () => {
+    desktop = installDesktopDouble({
+      "/v1/reviews/pending-review/command": () => ({
+        ok: false,
+        status: 409,
+        body: { error: "pending_review" },
+        correlationId: "corr-pending-review",
+      }),
+    });
+
+    let thrown: unknown;
+    try {
+      await requestJson("/v1/reviews/pending-review/command", {
+        method: "POST",
+      });
+    } catch (cause: unknown) {
+      thrown = cause;
+    }
+
+    expect(thrown).toBeInstanceOf(PatchdeskApiError);
+    if (!(thrown instanceof PatchdeskApiError)) return;
+    expect(thrown.kind).toBe("pending_review");
+  });
 });
 
 const LogBatch = v.object({

@@ -22,11 +22,12 @@ import {
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
-import type {
-  PendingReviewAnchor,
-  PendingReviewRead,
-  PendingReviewThreadWrite,
-  ViewerPendingReview,
+import {
+  samePendingReviewAnchor,
+  type PendingReviewAnchor,
+  type PendingReviewRead,
+  type PendingReviewThreadWrite,
+  type ViewerPendingReview,
 } from "../../domain/pending-review";
 import type { GitHubWriteFailure } from "../../domain/github-write";
 import {
@@ -49,7 +50,6 @@ import {
   parseReviewId,
   pendingReviewAnchor,
   pendingReviewComment,
-  samePendingReviewAnchor,
 } from "./github-wire-projections";
 import { invalid, writeFailure } from "./github-write-failures";
 

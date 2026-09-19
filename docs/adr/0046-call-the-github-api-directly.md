@@ -426,6 +426,15 @@ observed pending review (`adoptObservedPendingReview`,
 `pending-review-service.ts:278`), so the state comes back on a read rather than
 through the write path.
 
+**Superseded by issue #319 (2026-09-19).** The paragraph above records what the
+code did until then. `executeWrite` now treats a `pending_review` refusal of a
+Start or AddThread as an unresolved outcome rather than a refusal. It reads the
+viewer's pending review once and adopts it as the confirmed result when one
+thread carries the intended body at the intended anchor, so a resent start
+confirms instead of dropping the intent. A read proving someone else's
+unfinished review answers `pending_review` and records that owner; a read that
+proves nothing keeps the intent and locks the Review the ADR 0035 way.
+
 Nothing here adds retry logic, and nothing should. What handles a duplicate is
 ADR 0035: the intent is persisted before the call, and a write whose outcome is
 unknown is reconciled by a read rather than re-sent. This is recorded as the

@@ -189,6 +189,43 @@ export function adoptObservedPendingReview(
   );
 }
 
+/** Whether two review anchors name the same side-aware line or range in one file. */
+export function samePendingReviewAnchor(
+  left: PendingReviewAnchor,
+  right: PendingReviewAnchor,
+): boolean {
+  return (
+    left.path === right.path &&
+    left.startLine === right.startLine &&
+    left.line === right.line &&
+    left.side === right.side
+  );
+}
+
+/**
+ * Which thread in an observed pending review one Start or AddThread intent
+ * created. A resent write leaves no request identity behind, so the only
+ * evidence is the exact body at the exact anchor — the same evidence
+ * `pendingReviewAfterWrite` uses to name the thread an acknowledged write
+ * created. Two matches are ADR 0035's ambiguous creation and stay Ambiguous.
+ */
+export function matchPendingReviewThread(
+  review: ViewerPendingReview,
+  anchor: PendingReviewAnchor,
+  body: string,
+):
+  | { readonly _tag: "Match"; readonly threadId: GitHubThreadId }
+  | { readonly _tag: "None" }
+  | { readonly _tag: "Ambiguous" } {
+  const matching = review.comments.filter(
+    (comment) =>
+      comment.body === body && samePendingReviewAnchor(comment.anchor, anchor),
+  );
+  const only = matching.length === 1 ? matching[0] : undefined;
+  if (only !== undefined) return { _tag: "Match", threadId: only.threadId };
+  return matching.length === 0 ? { _tag: "None" } : { _tag: "Ambiguous" };
+}
+
 /** Whether an operation can start from the current state. */
 export function canStartPendingReviewOperation(
   state: PendingReviewState,

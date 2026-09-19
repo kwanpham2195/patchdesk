@@ -792,18 +792,6 @@ export function toGitHubReviewComment(
     : { ...payload, start_line: comment.line, start_side: side };
 }
 
-export function samePendingReviewAnchor(
-  left: PendingReviewAnchor,
-  right: PendingReviewAnchor,
-): boolean {
-  return (
-    left.path === right.path &&
-    left.startLine === right.startLine &&
-    left.line === right.line &&
-    left.side === right.side
-  );
-}
-
 /** REST create-review comment shape for one pending-review start. */
 export function pendingReviewComment(
   anchor: PendingReviewAnchor,
