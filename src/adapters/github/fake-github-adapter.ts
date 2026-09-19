@@ -283,6 +283,7 @@ export class FakeGitHubAdapter
   async getPullRequestPublishedFeedback(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    readonly baseBranch?: string;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     void input;
     return ok(this.publishedFeedback());

@@ -221,3 +221,45 @@ describe("getPullRequestCommits gh cost", () => {
     ]);
   });
 });
+
+describe("getPullRequestPublishedFeedback gh cost", () => {
+  it("reads the pull request for its base branch when the caller supplied none", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    await expect(
+      adapter.getPullRequestPublishedFeedback({ profile, pr }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+
+    expect(executor.labels).toContain("api GET repos/:owner/:repo/pulls/:n");
+    expect(executor.labels).toContain(
+      "api GET repos/:owner/:repo/branches/:branch/protection",
+    );
+  });
+
+  it("spends no pull request read when the caller already holds the base branch", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    await expect(
+      adapter.getPullRequestPublishedFeedback({
+        profile,
+        pr,
+        baseBranch: "sit",
+      }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+
+    expect(executor.labels).not.toContain(
+      "api GET repos/:owner/:repo/pulls/:n",
+    );
+    expect(executor.labels).toContain(
+      "api GET repos/:owner/:repo/branches/:branch/protection",
+    );
+  });
+});

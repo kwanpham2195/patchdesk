@@ -200,6 +200,10 @@ export class ReviewRefreshService {
         : this.dependencies.github.getPullRequestPublishedFeedback({
             profile,
             pr: pullRequest,
+            // The base branch whose protection decides `canDismiss`, so the
+            // feedback read does not re-read the pull request this refresh
+            // already holds.
+            baseBranch: current.value.baseBranch,
           }),
       this.dependencies.github.getMergePolicyEvidence === undefined
         ? Promise.resolve(ok(undefined))

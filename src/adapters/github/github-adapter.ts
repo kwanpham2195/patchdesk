@@ -387,6 +387,7 @@ export class GitHubAdapter
   async getPullRequestPublishedFeedback(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    readonly baseBranch?: string;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     return this.conversation.getPullRequestPublishedFeedback(input);
   }

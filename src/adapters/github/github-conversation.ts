@@ -137,6 +137,8 @@ export class GitHubConversationReader {
   async getPullRequestPublishedFeedback(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    /** The branch whose protection decides `canDismiss`, when the caller already read it; otherwise this reader reads the pull request for it. */
+    readonly baseBranch?: string;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     const [reviews, comments, issueComments, account, pullRequest] =
       await Promise.all([
@@ -162,14 +164,16 @@ export class GitHubConversationReader {
           path: `repos/${input.pr.owner}/${input.pr.repo}/issues/${input.pr.number}/comments?per_page=100&page=1`,
         }),
         this.resolveAuthenticatedAccount(input.profile),
-        // The base branch this read needs for branch protection. It was already
-        // fetched unconditionally, so joining the batch costs nothing and drops
+        // The base branch this read needs for branch protection, for a caller
+        // that holds none of its own. Joining the batch costs nothing and drops
         // one sequential round trip from every Conversation load. The gh call
-        // order is now reviews, review comments, issue comments, `auth status`,
+        // order is then reviews, review comments, issue comments, `auth status`,
         // pull request, then the sequential permission and branch-protection
         // reads — the positional fixtures in
         // `tests/adapters/github-published-feedback.test.ts` are in that order.
-        this.getPullRequest({ profile: input.profile, pr: input.pr }),
+        input.baseBranch === undefined
+          ? this.getPullRequest({ profile: input.profile, pr: input.pr })
+          : undefined,
       ]);
     if (reviews._tag === "err")
       return this.commandFailure(
@@ -197,12 +201,15 @@ export class GitHubConversationReader {
             account: account.value.account,
           })
         : undefined;
+    const baseBranch =
+      input.baseBranch ??
+      (pullRequest?._tag === "ok" ? pullRequest.value.baseBranch : undefined);
     const protection =
-      permission?._tag === "ok" && pullRequest._tag === "ok"
+      permission?._tag === "ok" && baseBranch !== undefined
         ? await this.getBranchProtection({
             profile: input.profile,
             pr: input.pr,
-            branch: pullRequest.value.baseBranch,
+            branch: baseBranch,
           })
         : undefined;
     const canWrite =
