@@ -422,3 +422,192 @@ export function formatCycleReport(
     "",
   ].join("\n");
 }
+
+/**
+ * One shadowed read, as `TransportShadow` logged it (issue #292). The entry is
+ * written once both transports have settled, so `atMs` is when the comparison
+ * finished rather than when the read started.
+ *
+ * @typedef {{
+ *   readonly label: string;
+ *   readonly outcome: string;
+ *   readonly firstDifference: string | undefined;
+ *   readonly atMs: number;
+ * }} ShadowSample
+ */
+
+/**
+ * @typedef {{
+ *   readonly label: string;
+ *   readonly calls: number;
+ *   readonly match: number;
+ *   readonly diverged: number;
+ *   readonly skipped: number;
+ *   readonly firstDifference: string;
+ * }} ShadowRow
+ */
+
+const SHADOW_OUTCOMES = ["match", "diverged", "skipped"];
+
+/**
+ * Pull one `transport-shadow` entry out of a parsed log line, or return
+ * undefined for every other entry in the shared stream.
+ *
+ * @param {unknown} entry
+ * @returns {ShadowSample | undefined}
+ */
+export function readShadowEntry(entry) {
+  const record = asRecord(entry);
+  if (record === undefined || record["topic"] !== "transport-shadow") {
+    return undefined;
+  }
+  const fields = asRecord(record["meta"]);
+  if (fields === undefined) return undefined;
+  const label = asText(fields["label"]);
+  const outcome = asText(fields["outcome"]);
+  const atMs = asInstantMs(record["at"]);
+  if (label === undefined || atMs === undefined) return undefined;
+  if (outcome === undefined || !SHADOW_OUTCOMES.includes(outcome)) {
+    return undefined;
+  }
+  return {
+    label,
+    outcome,
+    firstDifference: asText(fields["firstDifference"]),
+    atMs,
+  };
+}
+
+/**
+ * Group the shadow entries of a log file into one row per label, so the
+ * cutover decision for a label is a number rather than a judgement.
+ *
+ * @param {string} contents
+ * @param {{ readonly since?: number; readonly until?: number }} [window]
+ * @returns {ReadonlyArray<ShadowRow>}
+ */
+export function summarizeShadow(contents, window = {}) {
+  const since = window.since;
+  const until = window.until;
+  /** @type {Map<string, Array<ShadowSample>>} */
+  const samplesByLabel = new Map();
+  for (const line of contents.split("\n")) {
+    if (line.trim().length === 0) continue;
+    /** @type {unknown} */
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const sample = readShadowEntry(parsed);
+    if (sample === undefined) continue;
+    if (since !== undefined && sample.atMs < since) continue;
+    if (until !== undefined && sample.atMs > until) continue;
+    const samples = samplesByLabel.get(sample.label) ?? [];
+    samples.push(sample);
+    samplesByLabel.set(sample.label, samples);
+  }
+
+  /** @type {Array<ShadowRow>} */
+  const rows = [];
+  for (const [label, samples] of samplesByLabel) {
+    rows.push({
+      label,
+      calls: samples.length,
+      match: samples.filter((one) => one.outcome === "match").length,
+      diverged: samples.filter((one) => one.outcome === "diverged").length,
+      skipped: samples.filter((one) => one.outcome === "skipped").length,
+      firstDifference: commonestFirstDifference(samples),
+    });
+  }
+  return rows.sort((left, right) => left.label.localeCompare(right.label));
+}
+
+/**
+ * Where this label's divergences most often started, which is the first thing
+ * to read when a label is not clean. Ties break by the path itself, so two
+ * runs of the report over the same log read the same.
+ *
+ * @param {ReadonlyArray<ShadowSample>} samples
+ * @returns {string}
+ */
+function commonestFirstDifference(samples) {
+  /** @type {Map<string, number>} */
+  const counts = new Map();
+  for (const sample of samples) {
+    if (sample.outcome !== "diverged" || sample.firstDifference === undefined) {
+      continue;
+    }
+    counts.set(
+      sample.firstDifference,
+      (counts.get(sample.firstDifference) ?? 0) + 1,
+    );
+  }
+  const ranked = [...counts.entries()].sort(
+    (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+  );
+  return ranked[0]?.[0] ?? "-";
+}
+
+/**
+ * Render one row per label, with the totals a cutover is judged on.
+ *
+ * @param {ReadonlyArray<ShadowRow>} rows
+ * @param {string} source
+ * @param {{ readonly since?: number; readonly until?: number }} [window]
+ * @returns {string}
+ */
+export function formatShadowReport(rows, source, window = {}) {
+  const header = ["calls", "match", "diverged", "skipped"];
+  const cells = [
+    ...rows.map((row) => [
+      String(row.calls),
+      String(row.match),
+      String(row.diverged),
+      String(row.skipped),
+      row.label,
+      row.firstDifference,
+    ]),
+    [
+      String(rows.reduce((total, row) => total + row.calls, 0)),
+      String(rows.reduce((total, row) => total + row.match, 0)),
+      String(rows.reduce((total, row) => total + row.diverged, 0)),
+      String(rows.reduce((total, row) => total + row.skipped, 0)),
+      "TOTAL",
+      "",
+    ],
+  ];
+  const widths = header.map((name, column) =>
+    cells.reduce(
+      (width, row) => Math.max(width, (row[column] ?? "").length),
+      name.length,
+    ),
+  );
+  const labelWidth = cells.reduce(
+    (width, row) => Math.max(width, (row[header.length] ?? "").length),
+    "label".length,
+  );
+  /**
+   * @param {ReadonlyArray<string>} row
+   * @returns {string}
+   */
+  const line = (row) =>
+    [
+      ...widths.map((width, column) => (row[column] ?? "").padStart(width)),
+      (row[header.length] ?? "").padEnd(labelWidth),
+      row[header.length + 1] ?? "",
+    ]
+      .join("  ")
+      .trimEnd();
+
+  return [
+    `source: ${source}`,
+    ...boundLines(window),
+    `labels: ${rows.length}`,
+    "",
+    line([...header, "label", "first_difference"]),
+    ...cells.map(line),
+    "",
+  ].join("\n");
+}

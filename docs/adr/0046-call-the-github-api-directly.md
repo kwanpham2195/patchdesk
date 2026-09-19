@@ -81,6 +81,24 @@ workspace profile names, resolved through the same `gh auth token` read and the
 same per-account cache. Only the carrier changes, from a child process
 environment variable to a request header in this process.
 
+## Shadow window
+
+No call site moves onto the HTTP client on the strength of a fixture. A launch
+with `PATCHDESK_TRANSPORT_SHADOW=1` runs the client concurrently with `gh` for
+every read and compares the two answers — byte equality for text, deep equality
+for parsed JSON, tag equality for a failure. **`gh`'s answer is always the one
+served**, the shadow is never awaited on the serving path, and every failure of
+it is swallowed, so switching it on cannot change what a read returns or when.
+It doubles read traffic against the same 5000-per-hour limit, which is why it
+is off by default.
+
+Each comparison writes one `transport-shadow` log entry carrying the normalized
+endpoint label, the outcome, and where the two first differed — never a
+response body, a token, or a header value.
+`node scripts/gh-spawn-report.mjs --shadow [--since <iso>] [--until <iso>]`
+sums those entries into one row per label, so a label is cut over on a count of
+clean reads rather than on a judgement (issue #292).
+
 ## Rejected alternatives
 
 **`gh api --cache`.** It keeps the spawn, which is the larger half of the cost:
