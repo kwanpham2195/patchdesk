@@ -54,6 +54,10 @@ import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
+import { GitHubAdapter } from "../adapters/github/github-adapter";
+import { GitHubCliCredentials } from "../adapters/github/github-credentials";
+import { ReviewContextPackService } from "../services/review-context-pack-service";
+import { ReviewContextService } from "../services/review-context-service";
 import {
   notificationSettingsOf,
   type Appearance,
@@ -339,6 +343,12 @@ function createInsightCoordinator(
       return providerInvokers[input.provider].invoke(input, options);
     },
   };
+  // Its own adapter, like the stores above: this function builds the
+  // coordinator before the local API container exists to share one.
+  const packCommands = new CommandRunner(
+    undefined,
+    logUnclassifiedCommandFailure,
+  );
   return new InsightRunCoordinator(
     new ReviewStore(paths),
     new ReviewSessionStore(paths),
@@ -347,6 +357,15 @@ function createInsightCoordinator(
     modelCatalog,
     { analysis: invoker, walkthrough: invoker, brief: invoker },
     operations,
+    new ReviewContextPackService({
+      profiles: new ProfileStore(paths),
+      github: new GitHubAdapter(
+        packCommands,
+        new GitHubCliCredentials(packCommands),
+      ),
+      context: new ReviewContextService(),
+      paths,
+    }),
     undefined,
     diagnostics,
     providerCatalog,
