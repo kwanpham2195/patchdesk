@@ -1,5 +1,20 @@
 # Import provider credentials and PATH from the login shell
 
+> **Amended 2026-09-19: the import runs beside the window, not before it.**
+> The rule below — nothing reads an imported key or PATH until the import has
+> finished — is unchanged. What changes is who waits. The window and the local
+> API no longer do: `app.whenReady` starts the import and
+> `desktopLifecycle.start()` together, and each reader waits for the import
+> itself, in `NodeCommandExecutor.execute` before it spawns a child, in
+> `PiInsightChildInvoker` before it reads a provider key, in
+> `LocalPiProviderCatalog.get` before it projects `configured`, and in
+> `discoverPathOnlyExecutable` before Codex discovery reads PATH
+> (`src/adapters/process/login-shell-import.ts`). The import still runs
+> exactly once and still bounds itself at three seconds, so a reader waits at
+> most as long as the app used to wait before opening at all. Read the
+> "Consequences" line about the wait sitting inside `app.whenReady` before the
+> local API starts as this instead (issue #295).
+
 > **Status: Accepted.** Refines ADR 0016, which keeps Codex discovery on
 > inherited PATH, and ADR 0018, which narrows what reaches an Insight child.
 > Neither is reversed: this decision changes where the main process's own PATH

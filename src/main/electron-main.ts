@@ -11,7 +11,11 @@ import {
 } from "electron";
 import { join } from "node:path";
 
-import { createDesktopLifecycle, type StartedLocalApi } from "./app-lifecycle";
+import {
+  createDesktopLifecycle,
+  startDesktopBesideLoginShellImport,
+  type StartedLocalApi,
+} from "./app-lifecycle";
 import { createDesktopMenuTemplate } from "./desktop-menu";
 import {
   answerWindowFullScreenReads,
@@ -75,6 +79,7 @@ import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-cata
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
 import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
 import { importLoginShellEnvironment } from "../adapters/process/login-shell-environment";
+import { startLoginShellEnvironmentImport } from "../adapters/process/login-shell-import";
 import { briefReachComputer } from "../services/brief-reach-service";
 import { CodexInsightInvoker } from "../services/codex-insight-invoker";
 import { InsightProviderCatalog } from "../services/insight-provider-catalog";
@@ -368,17 +373,19 @@ async function recoverInsights(
 }
 
 /** Imports the login shell's PATH and provider keys into this process, then records what changed by name. */
-async function importLoginShellEnvironmentOnce(): Promise<void> {
-  const imported = await importLoginShellEnvironment();
-  logs.write({
-    process: "main",
-    level: "info",
-    topic: "login-shell-environment",
-    message: `imported ${imported.importedNames.length} variables from the login shell`,
-    meta: {
-      names: imported.importedNames,
-      pathReplaced: imported.pathReplaced,
-    },
+function importLoginShellEnvironmentOnce(): Promise<void> {
+  return startLoginShellEnvironmentImport(async () => {
+    const imported = await importLoginShellEnvironment();
+    logs.write({
+      process: "main",
+      level: "info",
+      topic: "login-shell-environment",
+      message: `imported ${imported.importedNames.length} variables from the login shell`,
+      meta: {
+        names: imported.importedNames,
+        pathReplaced: imported.pathReplaced,
+      },
+    });
   });
 }
 
@@ -416,10 +423,6 @@ if (!app.requestSingleInstanceLock()) {
 
 function registerDesktopEvents(): void {
   void app.whenReady().then(async () => {
-    // Before anything reads a provider key or PATH: a Dock or Finder launch
-    // inherits the minimal launchd environment, so the login shell is where
-    // the maintainer's keys and their `codex` install actually are.
-    await importLoginShellEnvironmentOnce();
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         ...createDesktopMenuTemplate(
@@ -433,7 +436,17 @@ function registerDesktopEvents(): void {
         ),
       ]),
     );
-    const result = await desktopLifecycle.start();
+    // A Dock or Finder launch inherits the minimal launchd environment, so
+    // the login shell is where the maintainer's keys and their `codex`
+    // install actually are. Nothing on the way to the window needs them, so
+    // the import runs beside the local API and the window rather than before
+    // them, and each reader waits for it itself (ADR 0038, amended
+    // 2026-09-19).
+    const { started, imported } = startDesktopBesideLoginShellImport(
+      desktopLifecycle,
+      importLoginShellEnvironmentOnce,
+    );
+    const result = await started;
     if (result._tag === "local-api-unavailable") {
       dialog.showErrorBox(
         "Patchdesk could not start",
@@ -441,6 +454,7 @@ function registerDesktopEvents(): void {
       );
       app.exit(1);
     }
+    await imported;
   });
 
   app.on("second-instance", () => {

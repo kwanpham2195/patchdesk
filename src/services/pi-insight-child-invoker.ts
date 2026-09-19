@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { providerEnvironmentNames } from "../adapters/pi/pi-provider-catalog";
+import { whenLoginShellEnvironmentImported } from "../adapters/process/login-shell-import";
 
 import type {
   CommandFailure,
@@ -214,6 +215,10 @@ export class PiInsightChildInvoker implements InsightInvoker {
     const stdin = JSON.stringify(body);
     if (Buffer.byteLength(stdin, "utf8") > MAX_CHILD_STDIN_BYTES)
       return err({ reason: "execution_failed" });
+    // The child's provider credentials are read out of this process's
+    // environment, which the login shell may still be filling in (ADR 0038,
+    // amended 2026-09-19).
+    await whenLoginShellEnvironmentImported();
     const environment = productionChildEnvironment(body, this.environment);
     if (environment === undefined)
       return err({ reason: "runtime_unavailable" });

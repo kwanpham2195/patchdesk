@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { definedProps } from "../../domain/defined-props";
 import { ok, type Result } from "../../domain/result";
+import { whenLoginShellEnvironmentImported } from "../process/login-shell-import";
 
 /** A bounded, renderer-safe availability description. It never contains values or paths. */
 export type PiProviderStatus = {
@@ -204,6 +205,10 @@ export class LocalPiProviderCatalog {
   }
 
   async get(): Promise<Result<PiProviderCatalog, PiProviderCatalogFailure>> {
+    // Every status below reads a provider key out of the process
+    // environment, which the login shell may still be filling in (ADR 0038,
+    // amended 2026-09-19).
+    await whenLoginShellEnvironmentImported();
     const statuses = await Promise.all(
       PROVIDERS.map(async (provider) => this.status(provider)),
     );
