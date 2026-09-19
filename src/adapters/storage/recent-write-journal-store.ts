@@ -11,6 +11,7 @@ import {
 import type { LogEntryInput } from "../../domain/log-entry";
 import { err, ok, type Result } from "../../domain/result";
 import {
+  appendRecentWriteReceipts,
   parseRecentReviewWrite,
   type RecentReviewWrite,
 } from "../../domain/recent-review-write";
@@ -157,7 +158,7 @@ export class RecentWriteJournalStore {
     );
     const next: PersistedRecentWriteJournal = {
       schemaVersion: 1,
-      entries: [...kept, { ...entry, writtenAt }],
+      entries: appendRecentWriteReceipts(kept, [{ ...entry, writtenAt }]),
     };
     return writeAtomicJson(
       this.paths.recentWriteJournalFile(profileId, reviewId),

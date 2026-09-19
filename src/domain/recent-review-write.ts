@@ -172,6 +172,33 @@ function invalidRecentReviewWrite(): Result<never, InvalidRecentReviewWrite> {
 }
 
 /**
+ * Append receipts to a journal, dropping the ones the new receipts have made
+ * unsatisfiable. A `DiscardedThread` is proven by the thread's absence, so the
+ * `PendingThread` that created the same thread can never be found again and
+ * would otherwise withhold every later projection until it aged out.
+ */
+export function appendRecentWriteReceipts<T extends RecentReviewWrite>(
+  journal: ReadonlyArray<T>,
+  appended: ReadonlyArray<T>,
+): Array<T> {
+  const kept = journal.filter(
+    (entry) => !appended.some((receipt) => supersedes(receipt, entry)),
+  );
+  return [...kept, ...appended];
+}
+
+function supersedes(
+  receipt: RecentReviewWrite,
+  entry: RecentReviewWrite,
+): boolean {
+  return (
+    receipt._tag === "DiscardedThread" &&
+    entry._tag === "PendingThread" &&
+    entry.threadId === receipt.threadId
+  );
+}
+
+/**
  * Combine the durable own-write journal with a caller-supplied array (a
  * renderer's optimistic in-memory writes, or a request-supplied list).
  * Duplicates are harmless to a set-based journal lookup, but de-duplicating

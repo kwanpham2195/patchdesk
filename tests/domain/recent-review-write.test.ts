@@ -1,9 +1,33 @@
 import { describe, expect, it } from "vitest";
 
+import { parseGitHubThreadId } from "../../src/domain/ids";
 import {
+  appendRecentWriteReceipts,
   parseRecentReviewWrite,
   unionRecentWrites,
 } from "../../src/domain/recent-review-write";
+
+const threadId = parseGitHubThreadId("PRRT_thread");
+if (threadId._tag === "err") throw new Error("invalid fixture");
+const otherThreadId = parseGitHubThreadId("PRRT_other");
+if (otherThreadId._tag === "err") throw new Error("invalid fixture");
+
+describe("appendRecentWriteReceipts", () => {
+  it("drops only the pending receipt for the thread the discard removed", () => {
+    expect(
+      appendRecentWriteReceipts(
+        [
+          { _tag: "PendingThread", threadId: threadId.value },
+          { _tag: "PendingThread", threadId: otherThreadId.value },
+        ],
+        [{ _tag: "DiscardedThread", threadId: threadId.value }],
+      ),
+    ).toEqual([
+      { _tag: "PendingThread", threadId: otherThreadId.value },
+      { _tag: "DiscardedThread", threadId: threadId.value },
+    ]);
+  });
+});
 
 describe("unionRecentWrites", () => {
   it("dedupes a LabelChange entry the durable journal and the request both carry", () => {

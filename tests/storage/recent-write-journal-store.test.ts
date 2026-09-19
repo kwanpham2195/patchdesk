@@ -64,7 +64,10 @@ describe("RecentWriteJournalStore", () => {
       Comment: { _tag: "Comment", commentId: "PRRC_1", reviewId: "PRR_1" },
       ThreadState: { _tag: "ThreadState", threadId, state: "resolved" },
       PendingThread: { _tag: "PendingThread", threadId },
-      DiscardedThread: { _tag: "DiscardedThread", threadId },
+      DiscardedThread: {
+        _tag: "DiscardedThread",
+        threadId: must(parseGitHubThreadId("PRRT_discarded")),
+      },
       DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
       LabelChange: { _tag: "LabelChange", added: ["bug"], removed: ["wip"] },
       AssigneeChange: { _tag: "AssigneeChange", added: [], removed: ["hubot"] },
@@ -88,6 +91,35 @@ describe("RecentWriteJournalStore", () => {
     await expect(store.load(profileId, reviewId)).resolves.toEqual({
       _tag: "ok",
       value: Object.values(receipts),
+    });
+  });
+
+  it("drops the pending receipt for a thread whose discard is appended", async () => {
+    // Live residue behind #322: starting a review journals PendingThread X and
+    // discarding it journals DiscardedThread X, but a PendingThread can only
+    // ever be satisfied by finding the thread, which the discard just removed.
+    const { store } = await tempStore();
+    const threadId = must(parseGitHubThreadId("PRRT_thread"));
+    const otherThreadId = must(parseGitHubThreadId("PRRT_other"));
+    for (const receipt of [
+      { _tag: "PendingThread", threadId },
+      { _tag: "PendingThread", threadId: otherThreadId },
+      { _tag: "DiscardedThread", threadId },
+    ] satisfies ReadonlyArray<RecentReviewWrite>) {
+      const appended = await store.append(
+        profileId,
+        reviewId,
+        receipt,
+        writtenAt,
+      );
+      expect(appended._tag).toBe("ok");
+    }
+    await expect(store.load(profileId, reviewId)).resolves.toEqual({
+      _tag: "ok",
+      value: [
+        { _tag: "PendingThread", threadId: otherThreadId },
+        { _tag: "DiscardedThread", threadId },
+      ],
     });
   });
 
