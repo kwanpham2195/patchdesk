@@ -99,7 +99,7 @@
   },
   "packageManager": "pnpm@8.8.0+sha1.9922e8b650d393700209ccd81e0ebdbcbe43b0d3",
   "build": {
-    "appId": "com.octo-org.patchdesk",
+    "appId": "com.centraldigital.patchdesk",
     "productName": "Patchdesk",
     "asar": true,
     "asarUnpack": [],
