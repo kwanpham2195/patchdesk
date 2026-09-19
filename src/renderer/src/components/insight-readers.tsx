@@ -1,5 +1,5 @@
 import { definedProps } from "../../../domain/defined-props";
-import { parseUnifiedPatch } from "../../../domain/patch";
+import type { ParsedPatchFile } from "../../../domain/patch";
 import { BriefReader } from "./brief-reader";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
 import { AnalysisReader } from "./analysis-reader";
@@ -11,6 +11,8 @@ import type { InsightSelection } from "./insight-panels";
 
 type InsightReaderBuilderInput = {
   readonly workbench: WorkbenchResponse;
+  /** `workbench.fullPatch` already parsed, so a render does not reparse megabytes of diff text. */
+  readonly patchFiles: ReadonlyArray<ParsedPatchFile>;
   readonly selectedInsight: InsightSelection;
   readonly profileId: string;
   readonly reviewId: string;
@@ -69,6 +71,7 @@ export function walkthroughDiscussionState(
 
 export function buildInsightReaders({
   workbench,
+  patchFiles,
   selectedInsight,
   profileId,
   reviewId,
@@ -87,21 +90,14 @@ export function buildInsightReaders({
     baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
     headShort: workbench.session.key.headSha.slice(0, 7),
     commitCount: workbench.commits.length,
-    fileCount:
-      workbench.pullRequest?.changedFileCount ??
-      (workbench.fullPatch === undefined
-        ? 0
-        : parseUnifiedPatch(workbench.fullPatch).length),
+    fileCount: workbench.pullRequest?.changedFileCount ?? patchFiles.length,
     additions: workbench.pullRequest?.additions ?? 0,
     deletions: workbench.pullRequest?.deletions ?? 0,
-    changedFiles:
-      workbench.fullPatch === undefined
-        ? []
-        : parseUnifiedPatch(workbench.fullPatch).map((file) => ({
-            path: file.newPath,
-            additions: file.additions,
-            deletions: file.deletions,
-          })),
+    changedFiles: patchFiles.map((file) => ({
+      path: file.newPath,
+      additions: file.additions,
+      deletions: file.deletions,
+    })),
   };
   const analysisResult = workbench.insights.analysis.retained?.value;
   const pullRequest = workbench.pullRequest;
@@ -181,7 +177,7 @@ export function buildInsightReaders({
   const walkthroughAnnotations =
     walkthroughDiscussion === "available" && workbench.fullPatch !== undefined
       ? projectReadOnlyConversationAnnotations(
-          parseUnifiedPatch(workbench.fullPatch),
+          patchFiles,
           workbench.conversation.inline?.threads ?? [],
         )
       : undefined;
