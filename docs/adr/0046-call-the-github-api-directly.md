@@ -115,7 +115,7 @@ served request is not shadowed because there is no `gh` answer left to compare
 it against. There is no fallback in either direction: an HTTP failure is the
 read's failure, classified from the response status rather than from stderr.
 
-As of T1b the list holds these twelve labels, each of which read clean against
+As of T2 the list holds these fifteen labels, each of which read clean against
 `gh` for a whole shadow window on two transports first:
 
     api GET repos/:owner/:repo/commits/:sha/check-runs
@@ -130,9 +130,27 @@ As of T1b the list holds these twelve labels, each of which read clean against
     api GET repos/:owner/:repo/compare/:range
     api GET repos/:owner/:repo/pulls/:n/reviews
     api GET repos/:owner/:repo/pulls/:n/comments
+    api graphql MergePolicy
+    api graphql PullRequestThreads
+    api graphql MaintainerInboxSearch
 
-None of them paginates. Repository labels are read through GraphQL, not
-`repos/:owner/:repo/labels`, so they move with T2 rather than here.
+None of them paginates in one call; the two GraphQL reads that follow a cursor
+do it as separate requests the adapter drives, each of which is routed here on
+its own.
+
+**A GraphQL label is not enough to be served.** Queries and mutations share one
+endpoint and a mutation is labelled by its root field, so a mutation could
+carry an allowlisted label. The routing therefore serves a GraphQL request only
+when `isQueryDocument` also reads the document as a query, the same predicate
+the shadow uses to decide what it may run twice.
+
+**A 200 carrying `errors` is a failure on both transports.** `gh api graphql`
+exited nonzero whenever the response held a non-empty `errors` array, partial
+`data` beside it included, so every caller has only ever seen that as a
+failure. The client classifies the same body through the same
+`classifyGraphqlErrorBody`, which now maps `RATE_LIMITED` structurally: gh
+reached `CommandRateLimited` through the rate-limit phrase in its own stderr,
+and the HTTP transport has no stderr to read.
 
 Three REST reads stay on `gh`, none of them observed in a shadow window yet:
 `pulls/:n/commits`, `contents/:path`, and the open pull request list
