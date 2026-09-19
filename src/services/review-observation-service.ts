@@ -4,6 +4,8 @@ import type {
   GitHubReader,
 } from "../adapters/github/github-adapter";
 import type { BranchProtectionRead } from "../adapters/github/github-merge-policy";
+import type { PullRequestReviewsRead } from "../adapters/github/github-pull-request-reviews";
+import { definedProps } from "../domain/defined-props";
 import type { PullRequestRef } from "../domain/pull-request";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ProfileStore } from "../adapters/storage/profile-store";
@@ -106,6 +108,7 @@ type ObservationGitHub = Pick<
       | "getMergePolicyEvidence"
       | "getMergeOutcome"
       | "readBranchProtection"
+      | "readPullRequestReviews"
     >
   > &
   Pick<GitHubPendingReviewGateway, "getViewerPendingReview">;
@@ -309,6 +312,16 @@ export class ReviewObservationService {
             pr: reviewRef(review),
             branch: terminalRead.value.baseBranch,
           });
+    // Likewise one review-list read for published feedback and the pending
+    // read. Published feedback is the consumer that always awaits it; the
+    // pending read can return on an account failure before it gets there.
+    const pullRequestReviews =
+      this.dependencies.github.getPullRequestPublishedFeedback === undefined
+        ? undefined
+        : this.dependencies.github.readPullRequestReviews?.({
+            profile,
+            pr: reviewRef(review),
+          });
     const [
       comments,
       checks,
@@ -336,6 +349,7 @@ export class ReviewObservationService {
         reviewRef(review),
         terminalRead.value.baseBranch,
         branchProtection,
+        pullRequestReviews,
       ),
       this.readPolicyEvidence(
         profile,
@@ -343,7 +357,7 @@ export class ReviewObservationService {
         terminalRead.value.baseBranch,
         branchProtection,
       ),
-      this.readPending(profile, review),
+      this.readPending(profile, review, pullRequestReviews),
     ]);
     if (
       comments._tag === "err" ||
@@ -663,17 +677,22 @@ export class ReviewObservationService {
     pr: PullRequestRef,
     baseBranch: string,
     branchProtection: Promise<BranchProtectionRead> | undefined,
+    pullRequestReviews: Promise<PullRequestReviewsRead> | undefined,
   ): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure> | undefined> {
     const read = this.dependencies.github.getPullRequestPublishedFeedback?.bind(
       this.dependencies.github,
     );
     if (read === undefined) return undefined;
-    const protection = await branchProtection;
-    return read(
-      protection === undefined
-        ? { profile, pr, baseBranch }
-        : { profile, pr, baseBranch, branchProtection: protection },
-    );
+    const [protection, reviews] = await Promise.all([
+      branchProtection,
+      pullRequestReviews,
+    ]);
+    return read({
+      profile,
+      pr,
+      baseBranch,
+      ...definedProps({ branchProtection: protection, reviews }),
+    });
   }
 
   /** The display-only merge evidence read, handed the same branch protection. */
@@ -703,6 +722,7 @@ export class ReviewObservationService {
       ? T
       : never,
     review: Review,
+    pullRequestReviews: Promise<PullRequestReviewsRead> | undefined,
   ): Promise<{
     readonly read: PendingReviewRead;
     readonly available: boolean;
@@ -714,10 +734,12 @@ export class ReviewObservationService {
     const accountName = parseGitHubLogin(account.value.account);
     if (accountName._tag === "err")
       return { read: { _tag: "Unavailable" }, available: false };
+    const reviews = await pullRequestReviews;
     const pending = await this.dependencies.github.getViewerPendingReview({
       profile,
       pr: reviewRef(review),
       account: accountName.value,
+      ...definedProps({ reviews }),
     });
     return pending._tag === "ok"
       ? { read: pending.value, available: pending.value._tag !== "Unavailable" }

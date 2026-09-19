@@ -55,6 +55,7 @@ import {
 } from "./github-adapter";
 import type { WatchedSnapshot } from "../../domain/watched-pull-request";
 import type { BranchProtectionRead } from "./github-merge-policy";
+import type { PullRequestReviewsRead } from "./github-pull-request-reviews";
 import { samePullRequest } from "./github-wire-projections";
 import { missing } from "./github-write-failures";
 
@@ -287,6 +288,7 @@ export class FakeGitHubAdapter
     readonly pr: PullRequestRef;
     readonly baseBranch?: string;
     readonly branchProtection?: BranchProtectionRead;
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     void input;
     return ok(this.publishedFeedback());
@@ -659,6 +661,7 @@ export class FakeGitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly account: GitHubLogin;
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
     void input;
     const value = this.values.viewerPendingReview;

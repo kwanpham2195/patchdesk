@@ -1,5 +1,6 @@
 import type { GitHubReadFailure } from "./gh-request-runner";
 import type { BranchProtectionRead } from "./github-merge-policy";
+import type { PullRequestReviewsRead } from "./github-pull-request-reviews";
 import type {
   AuthenticatedGitHubAccount,
   BranchProtectionEvidence,
@@ -155,6 +156,8 @@ export interface GitHubReader {
     readonly baseBranch?: string;
     /** The branch protection `canDismiss` derives from, when the caller already read it; otherwise the adapter reads it. */
     readonly branchProtection?: BranchProtectionRead;
+    /** The pull request's review list, when the caller already read it; otherwise the adapter reads it. */
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>>;
   /** Bounded authenticated repository permission evidence used for record capabilities. */
   getRepositoryPermission?(input: {
@@ -174,6 +177,11 @@ export interface GitHubReader {
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<BranchProtectionRead>;
+  /** The one review-list read a cycle can hand to both `getPullRequestPublishedFeedback` and `getViewerPendingReview`. */
+  readPullRequestReviews?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<PullRequestReviewsRead>;
   getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -435,6 +443,8 @@ export interface GitHubPendingReviewGateway {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly account: GitHubLogin;
+    /** The pull request's review list, when the caller already read it; otherwise the adapter reads it. */
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<PendingReviewRead, GitHubReadFailure>>;
 
   /** Create the viewer's pending review with its first inline thread. */

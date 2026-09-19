@@ -10,6 +10,7 @@ import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { StubCredentials } from "./stub-github-credentials";
 import {
   parseGitHubHost,
+  parseGitHubLogin,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
@@ -110,8 +111,13 @@ class RoutingExecutor implements CommandExecutor {
   /** `normalizeCommandLabel` of every gh invocation, in call order. */
   readonly labels: Array<string> = [];
 
-  /** Replaces the branch-protection answer, so a test can choose how that one read fails. */
-  constructor(private readonly protection?: CommandExecution) {}
+  /** Replaces one endpoint's answer, so a test can choose how that read fails. */
+  constructor(
+    private readonly overrides: {
+      readonly protection?: CommandExecution;
+      readonly reviews?: CommandExecution;
+    } = {},
+  ) {}
 
   async execute(input: {
     readonly argv: ReadonlyArray<string>;
@@ -123,6 +129,7 @@ class RoutingExecutor implements CommandExecutor {
       case "api GET repos/:owner/:repo/pulls/:n":
         return json(pullRequestPayload);
       case "api GET repos/:owner/:repo/pulls/:n/reviews":
+        return this.overrides.reviews ?? json([]);
       case "api GET repos/:owner/:repo/pulls/:n/comments":
       case "api GET repos/:owner/:repo/issues/:n/comments":
         return json([]);
@@ -136,7 +143,10 @@ class RoutingExecutor implements CommandExecutor {
       case "api GET repos/:owner/:repo/collaborators/:user/permission":
         return json({ role_name: "write" });
       case "api GET repos/:owner/:repo/branches/:branch/protection":
-        return this.protection ?? json({ required_pull_request_reviews: null });
+        return (
+          this.overrides.protection ??
+          json({ required_pull_request_reviews: null })
+        );
       case "api GET repos/:owner/:repo/rules/branches/:branch":
         return json([]);
       case "api GET repos/:owner/:repo/pulls/:n/commits":
@@ -337,7 +347,7 @@ describe("branch protection gh cost", () => {
   });
 
   it("keeps each consumer's reading of a forbidden protection response", async () => {
-    const executor = new RoutingExecutor(forbiddenProtection);
+    const executor = new RoutingExecutor({ protection: forbiddenProtection });
     const adapter = new GitHubAdapter(
       new CommandRunner(executor),
       new StubCredentials(),
@@ -354,6 +364,91 @@ describe("branch protection gh cost", () => {
         _tag: "ok",
         value: { state: "unavailable", reason: "forbidden" },
       },
+    });
+  });
+});
+
+const reviewsLabel = "api GET repos/:owner/:repo/pulls/:n/reviews";
+
+const account = mustParse(parseGitHubLogin("pmquan2cfw"));
+
+describe("pull request reviews gh cost", () => {
+  it("reads the reviews endpoint twice when each consumer reads it itself", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    await adapter.getPullRequestPublishedFeedback({
+      profile,
+      pr,
+      baseBranch: "sit",
+    });
+    await adapter.getViewerPendingReview({ profile, pr, account });
+
+    expect(executor.labels.filter((label) => label === reviewsLabel)).toEqual([
+      reviewsLabel,
+      reviewsLabel,
+    ]);
+  });
+
+  it("spends one reviews read for both consumers of a cycle", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    const reviews = await adapter.readPullRequestReviews({ profile, pr });
+    await expect(
+      adapter.getPullRequestPublishedFeedback({
+        profile,
+        pr,
+        baseBranch: "sit",
+        reviews,
+      }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    await expect(
+      adapter.getViewerPendingReview({ profile, pr, account, reviews }),
+    ).resolves.toMatchObject({ _tag: "ok", value: { _tag: "None" } });
+
+    expect(executor.labels.filter((label) => label === reviewsLabel)).toEqual([
+      reviewsLabel,
+    ]);
+  });
+
+  it("keeps each consumer's operation name when the shared reviews read failed", async () => {
+    const executor = new RoutingExecutor({
+      reviews: {
+        _tag: "Exited",
+        exitCode: 1,
+        stdout: "",
+        stderr: "HTTP 500: Internal Server Error",
+      },
+    });
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    const reviews = await adapter.readPullRequestReviews({ profile, pr });
+    await expect(
+      adapter.getPullRequestPublishedFeedback({
+        profile,
+        pr,
+        baseBranch: "sit",
+        reviews,
+      }),
+    ).resolves.toMatchObject({
+      _tag: "err",
+      error: { operation: "get_reviews" },
+    });
+    await expect(
+      adapter.getViewerPendingReview({ profile, pr, account, reviews }),
+    ).resolves.toMatchObject({
+      _tag: "err",
+      error: { operation: "get_pending_review" },
     });
   });
 });
