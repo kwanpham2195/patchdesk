@@ -1,4 +1,3 @@
-import { net } from "electron";
 import { safeParse } from "valibot";
 
 import {
@@ -81,32 +80,15 @@ export function createReadOnlyGitExecutor(
 function transportShadow(
   credentials: GitHubCredentials,
   logs: Pick<AppLogService, "write">,
+  githubFetch: GitHubFetch | undefined,
 ): TransportShadow | undefined {
   if (process.env["PATCHDESK_TRANSPORT_SHADOW"] !== "1") return undefined;
   return new TransportShadow(
-    new GitHubHttpClient(credentials, undefined, undefined, chromiumFetch),
+    new GitHubHttpClient(credentials, undefined, undefined, githubFetch),
     credentials,
     (entry) => logs.write(entry),
   );
 }
-
-/**
- * The GitHub HTTP client's way onto the network: Chromium's stack, which
- * honours the system proxy and the system trust store that `gh` honoured and
- * Node's fetch does not (ADR 0046). This is the composition root, the only
- * layer allowed to know about Electron.
- *
- * Both options are load-bearing and were measured against Electron 43 rather
- * than assumed. `cache: "no-store"` keeps Chromium's HTTP cache out of the
- * path: GitHub answers an authenticated read with `Cache-Control: private,
- * max-age=60`, and by default a repeat call within that minute is served from
- * the cache without reaching GitHub. `credentials: "omit"` keeps the default
- * session's cookie jar out of it; by default a cookie GitHub set on one
- * response is sent back on the next. The bearer token is a header this client
- * sets itself, so neither is needed to authenticate.
- */
-const chromiumFetch: GitHubFetch = (url, init) =>
-  net.fetch(url, { ...init, cache: "no-store", credentials: "omit" });
 
 /** Every store, adapter and seam the loopback API's services are built from. */
 export type LocalApiStores = {
@@ -194,7 +176,7 @@ export async function buildLocalApiStores(
     new GitHubAdapter(
       commands,
       credentials,
-      transportShadow(credentials, logs),
+      transportShadow(credentials, logs, configuration.githubFetch),
     );
   const readOnlyGit = createReadOnlyGitExecutor(commands);
   const resolveGitHubCli =

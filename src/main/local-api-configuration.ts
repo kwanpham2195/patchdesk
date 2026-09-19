@@ -13,6 +13,7 @@ import type { WorkspaceProfileId } from "../domain/ids";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { TrashMover } from "../services/storage-management-service";
 import type { GitHubCredentials } from "../adapters/github/github-credentials";
+import type { GitHubFetch } from "../adapters/github/github-http-client";
 import type {
   GitHubMergeWriter,
   GitHubReader,
@@ -79,6 +80,13 @@ export type LocalApiConfiguration = {
   readonly readOnlyGit?: GitReadExecutor;
   /** Test-only profile credential seam; production resolves the configured gh account. */
   readonly githubCredentials?: GitHubCredentials;
+  /**
+   * How GitHub HTTP requests reach the network. The desktop entry point
+   * supplies Electron's `net.fetch` so Chromium's proxy and trust store carry
+   * them (ADR 0046); every other host of this API, and every test, leaves it
+   * absent and gets Node's own fetch.
+   */
+  readonly githubFetch?: GitHubFetch;
   /**
    * Test-only `gh` executable resolver seam. Production discovers `gh` fresh
    * on every managed fetch (via `discoverExecutable`, which adds the macOS
