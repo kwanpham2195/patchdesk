@@ -319,6 +319,50 @@ describe("ReviewPreparationJournal", () => {
     await expect(access(subject.journalFile)).rejects.toThrow();
   });
 
+  it("recordAll makes every target of one writer durable before it runs, and recovers all of them", async () => {
+    const subject = await fixture();
+    const journal = must(
+      await ReviewPreparationJournal.begin(
+        subject.paths,
+        subject.profileId,
+        subject.sessionId,
+      ),
+    );
+    // The three artifacts `ReviewContextService.prepare` creates together.
+    const targets = [
+      subject.paths.preparedContextFile(subject.profileId, subject.sessionId),
+      subject.paths.preparedReviewInputFile(
+        subject.profileId,
+        subject.sessionId,
+      ),
+      subject.paths.preparedDebugFile(subject.profileId, subject.sessionId),
+    ];
+
+    expect((await journal.recordAll(targets))._tag).toBe("ok");
+
+    // Recorded before any of them exists, which is what makes a crash during
+    // that writer recoverable no matter how far through it got.
+    expect(
+      JSON.parse(await readFile(subject.journalFile, "utf8")),
+    ).toMatchObject({ targets });
+    for (const target of targets) {
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, "artifact", "utf8");
+    }
+
+    await expect(
+      ReviewPreparationJournal.recover(
+        subject.paths,
+        worktrees(subject.paths),
+        unconsultedSessions(),
+      ),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
+
+    for (const target of targets)
+      await expect(access(target)).rejects.toThrow();
+    await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
   it("preserves an outside sentinel when a persisted target is absolute", async () => {
     const subject = await fixture();
     const sentinel = join(subject.root, "outside-absolute-sentinel");
