@@ -325,3 +325,40 @@ describe("GitHubHttpClient rate-limit headers", () => {
     expect(observed).toEqual([]);
   });
 });
+
+/**
+ * The main process injects Electron's `net.fetch` here, so that Chromium's
+ * stack — the system proxy and the system trust store — carries the request
+ * (ADR 0046). This is the seam that makes it possible without `src/adapters`
+ * importing Electron.
+ */
+describe("GitHubHttpClient injected fetch", () => {
+  it("sends the request through the fetch it was given", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = new GitHubHttpClient(
+      new StubCredentials(),
+      () => undefined,
+      () => ({ rest: "https://api.example", graphql: "https://api.example" }),
+      async (url, init) => {
+        calls.push({ url, init });
+        return new Response('{"login":"pmquan2cfw"}', {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+
+    const result = await client.rest(profile, {
+      kind: "rest",
+      host: "github.com",
+      path: "user",
+    });
+
+    expect(result).toEqual({ _tag: "ok", value: { login: "pmquan2cfw" } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://api.example/user");
+    expect(new Headers(calls[0]?.init.headers).get("authorization")).toBe(
+      "Bearer profile-token",
+    );
+  });
+});

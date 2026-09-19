@@ -26,6 +26,14 @@ const userAgent = "Patchdesk";
 const defaultAccept = "application/vnd.github+json";
 const restApiVersion = "2022-11-28";
 
+/**
+ * How a request reaches the network. Node's `fetch` is the default; the main
+ * process injects Electron's `net.fetch`, which uses Chromium's stack and so
+ * honours the system proxy and the system trust store the way `gh` did
+ * (ADR 0046).
+ */
+export type GitHubFetch = (url: string, init: RequestInit) => Promise<Response>;
+
 /** The REST and GraphQL roots one GitHub host answers on. */
 export type GitHubApiOrigin = {
   readonly rest: string;
@@ -103,6 +111,8 @@ export class GitHubHttpClient {
     private readonly origin: (
       host: string,
     ) => GitHubApiOrigin = gitHubApiOrigin,
+    /** Defaults to the runtime's own fetch; `src/main` supplies Chromium's. */
+    private readonly fetchRequest: GitHubFetch = fetch,
   ) {}
 
   /** Run a REST request as the profile's configured GitHub account. */
@@ -180,7 +190,7 @@ export class GitHubHttpClient {
       `${this.origin(request.host).rest}/${request.path}`;
 
     while (url !== undefined) {
-      const response = await fetch(url, init);
+      const response = await this.fetchRequest(url, init);
       this.observeRateLimit(request.host, response.headers);
       const body = await readCappedText(response, budget);
       if (body._tag === "err") return body;
@@ -201,20 +211,23 @@ export class GitHubHttpClient {
     token: string,
     signal: AbortSignal,
   ): Promise<Result<unknown, CommandFailure>> {
-    const response = await fetch(this.origin(request.host).graphql, {
-      method: "POST",
-      headers: new Headers({
-        Authorization: `Bearer ${token}`,
-        Accept: defaultAccept,
-        "Content-Type": "application/json",
-        "User-Agent": userAgent,
-      }),
-      body: JSON.stringify({
-        query: request.document,
-        variables: Object.fromEntries(request.variables.map(variableEntry)),
-      }),
-      signal,
-    });
+    const response = await this.fetchRequest(
+      this.origin(request.host).graphql,
+      {
+        method: "POST",
+        headers: new Headers({
+          Authorization: `Bearer ${token}`,
+          Accept: defaultAccept,
+          "Content-Type": "application/json",
+          "User-Agent": userAgent,
+        }),
+        body: JSON.stringify({
+          query: request.document,
+          variables: Object.fromEntries(request.variables.map(variableEntry)),
+        }),
+        signal,
+      },
+    );
     this.observeRateLimit(request.host, response.headers);
     const body = await readCappedText(response, {
       remaining: maxResponseBytes,
