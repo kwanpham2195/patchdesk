@@ -4,7 +4,7 @@ import type { CommandFailure, CommandRunner } from "./command-runner";
 import {
   GhRequestRunner,
   type GitHubReadFailure,
-  type GitHubRestTransport,
+  type GitHubServedTransport,
 } from "./gh-request-runner";
 import type { GitHubRequest } from "./github-request";
 import type { TransportShadow } from "./transport-shadow";
@@ -261,7 +261,7 @@ export class GitHubAdapter
     /** Compares the HTTP transport against gh for reads when one is supplied (issue #292). */
     shadow?: TransportShadow,
     /** Serves the reads in `httpServedReadLabels` when one is supplied (issue #276). */
-    http?: GitHubRestTransport,
+    http?: GitHubServedTransport,
   ) {
     this.credentials = credentials;
     this.requests = new GhRequestRunner(commands, credentials, shadow, http);
