@@ -91,12 +91,20 @@ export function useApiProbe<Value>(
  * a result. Within one screen the state is passed down instead: the first-run
  * flow hands `useReviewingAsProbe`'s result to its account card and reads
  * `git` off the same response.
+ *
+ * The local API holds the launch's `gh auth status` answer, so a plain mount
+ * is free after the first one. A non-zero `restartKey` is the user having
+ * pressed Re-check, which is the one request that must ask `gh` again:
+ * `recheck=1` is what tells the route to drop what it holds.
  */
 export function useEnvironmentCheck(
   restartKey: number,
 ): ApiProbeState<EnvironmentCheckResponse> {
   return useApiProbe(
-    { path: "/v1/environment", restartKey },
+    {
+      path: restartKey === 0 ? "/v1/environment" : "/v1/environment?recheck=1",
+      restartKey,
+    },
     parseEnvironmentCheckResponse,
   );
 }
