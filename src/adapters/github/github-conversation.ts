@@ -54,12 +54,11 @@ import type {
   BranchProtectionRead,
   GitHubMergePolicyReader,
 } from "./github-merge-policy";
-
-/**
- * Asks the REST comment endpoints for `body_html` beside `body`, in the same
- * request, so `extractImageRewrites` can learn which images GitHub proxied.
- */
-const fullJsonMediaType = "application/vnd.github.full+json";
+import {
+  fullJsonMediaType,
+  type PullRequestReviewsRead,
+  readPullRequestReviews,
+} from "./github-pull-request-reviews";
 
 /** Omits the field when GitHub proxied nothing, so a stored snapshot gains no empty object. */
 function imageRewritesOf(
@@ -144,15 +143,12 @@ export class GitHubConversationReader {
     readonly baseBranch?: string;
     /** The branch protection `canDismiss` derives from, when the caller already read it; otherwise this reader reads it. */
     readonly branchProtection?: BranchProtectionRead;
+    /** The pull request's review list, when the caller already read it; otherwise this reader reads it. */
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     const [reviews, comments, issueComments, account, pullRequest] =
       await Promise.all([
-        this.ghJson(input.profile, {
-          kind: "rest",
-          host: input.profile.githubHost,
-          accept: fullJsonMediaType,
-          path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
-        }),
+        input.reviews ?? readPullRequestReviews(this.requests, input),
         this.ghJson(input.profile, {
           kind: "rest",
           host: input.profile.githubHost,
@@ -180,10 +176,10 @@ export class GitHubConversationReader {
           ? this.getPullRequest({ profile: input.profile, pr: input.pr })
           : undefined,
       ]);
-    if (reviews._tag === "err")
+    if (reviews._tag === "Unreadable")
       return this.commandFailure(
         "get_reviews",
-        reviews.error,
+        reviews.failure,
         input.profile.githubHost,
       );
     if (comments._tag === "err")
@@ -240,9 +236,8 @@ export class GitHubConversationReader {
       account._tag === "ok" &&
       account.value.account === input.profile.ghAccount &&
       author === account.value.account;
-    const parsedReviews = v.safeParse(publishedReviewSchema, reviews.value);
     const parsedComments = v.safeParse(publishedCommentSchema, comments.value);
-    if (!parsedReviews.success || !parsedComments.success)
+    if (reviews._tag === "Unparsable" || !parsedComments.success)
       return invalid("get_reviews");
     const parsedIssueComments = v.safeParse(
       publishedIssueCommentSchema,
@@ -250,7 +245,7 @@ export class GitHubConversationReader {
     );
     if (!parsedIssueComments.success) return invalid("get_issue_comments");
     const publishedReviews: PublishedReview[] = [];
-    for (const review of parsedReviews.output) {
+    for (const review of reviews.reviews) {
       // PENDING reviews are started but not submitted; they carry no
       // submitted_at and are not published feedback.
       if (review.submitted_at === undefined || review.submitted_at === null)
@@ -367,7 +362,7 @@ export class GitHubConversationReader {
     // Every page is asked for 100 records, so a full page means GitHub has
     // more to give and this read cannot claim the whole conversation.
     const complete =
-      parsedReviews.output.length < 100 &&
+      reviews.reviews.length < 100 &&
       parsedComments.output.length < 100 &&
       parsedIssueComments.output.length < 100;
     const feedback = {

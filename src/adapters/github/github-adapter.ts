@@ -15,6 +15,10 @@ import {
   GitHubMergePolicyReader,
   type KnownRepositoryRole,
 } from "./github-merge-policy";
+import {
+  type PullRequestReviewsRead,
+  readPullRequestReviews,
+} from "./github-pull-request-reviews";
 import { GitHubPendingReviews } from "./github-pending-review";
 import { GitHubConversationReader } from "./github-conversation";
 import { GitHubDiffReader } from "./github-diff-reader";
@@ -390,8 +394,16 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly baseBranch?: string;
     readonly branchProtection?: BranchProtectionRead;
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     return this.conversation.getPullRequestPublishedFeedback(input);
+  }
+
+  async readPullRequestReviews(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<PullRequestReviewsRead> {
+    return readPullRequestReviews(this.requests, input);
   }
 
   async getRepositoryPermission(input: {
@@ -588,6 +600,7 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly account: GitHubLogin;
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
     return this.pendingReviews.getViewerPendingReview(input);
   }

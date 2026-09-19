@@ -36,10 +36,13 @@ import {
 import {
   addedReviewThreadSchema,
   pendingReviewThreadsResponseSchema,
-  publishedReviewSchema,
   reviewReceiptSchema,
   writtenNodeSchema,
 } from "./github-wire-schemas";
+import {
+  classifyPullRequestReviews,
+  type PullRequestReviewsRead,
+} from "./github-pull-request-reviews";
 import {
   parseGitHubTimestamp,
   parsePendingReview,
@@ -81,32 +84,43 @@ export class GitHubPendingReviews {
     return this.requests.commandFailure(operation, failure, host);
   }
 
+  /** This reader's own review-list read, on the default media type a write-safety read has always used. */
+  private async readReviews(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<PullRequestReviewsRead> {
+    return classifyPullRequestReviews(
+      await this.ghJson(input.profile, {
+        kind: "rest",
+        host: input.profile.githubHost,
+        path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
+      }),
+    );
+  }
+
   async getViewerPendingReview(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly account: GitHubLogin;
+    /** The pull request's review list, when the caller already read it; otherwise this reader reads it. */
+    readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
-    const reviews = await this.ghJson(input.profile, {
-      kind: "rest",
-      host: input.profile.githubHost,
-      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
-    });
-    if (reviews._tag === "err")
+    const reviews = input.reviews ?? (await this.readReviews(input));
+    if (reviews._tag === "Unreadable")
       return this.commandFailure(
         "get_pending_review",
-        reviews.error,
+        reviews.failure,
         input.profile.githubHost,
       );
-    const parsed = v.safeParse(publishedReviewSchema, reviews.value);
-    if (!parsed.success) return invalid("get_pending_review");
-    const pending = parsed.output.filter(
+    if (reviews._tag === "Unparsable") return invalid("get_pending_review");
+    const pending = reviews.reviews.filter(
       (review) =>
         review.state === "PENDING" && review.user?.login === input.account,
     );
     if (pending.length === 0) {
       // None is provable only with a complete bounded result; an incomplete
       // page is Unavailable, never proof that no pending review exists.
-      return parsed.output.length < 100
+      return reviews.reviews.length < 100
         ? ok({ _tag: "None" })
         : invalid("get_pending_review");
     }
