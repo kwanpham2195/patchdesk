@@ -160,10 +160,10 @@ They never parse raw input themselves and never trust the renderer's claims.
 
 The I/O layer. This is the only place that touches GitHub, files, and processes.
 
-- `github/github-adapter.ts` is the GitHub boundary. It runs the `gh` CLI through `command-runner.ts`, issues bounded REST and GraphQL queries, and maps every outcome to a typed result. `FakeGitHubAdapter` provides the same surface for tests.
-- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell.
-- `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every `gh` call runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory, are never logged or persisted, and reach the child only through its environment.
-- The three entries above describe the transport as it is built today. ADR 0046, "Call the GitHub API directly" (issue #276), decides to replace it: the main process will issue REST and GraphQL requests over HTTPS itself, and `gh` will keep only the commands that read its credential store. These entries change with the cutover, not before it.
+- `github/github-adapter.ts` is the GitHub boundary. It issues bounded REST and GraphQL queries and maps every outcome to a typed result. `FakeGitHubAdapter` provides the same surface for tests.
+- `github/github-http-client.ts` is the transport every one of those requests goes over: HTTPS from the main process, with the profile account's token as a bearer header (ADR 0046, issue #276). There is no second transport and no fallback; a failure is classified from the response status. `gh` keeps only `auth token`, `auth status`, `--version`, and the git credential helper.
+- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its remaining callers are `git` and `gh auth`.
+- `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every request runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory and are never logged or persisted.
 - `storage/json-file.ts` reads and writes one JSON value per file with atomic replacement and a sensitive-value guard.
 - `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, and others.
 - `storage/review-remote-store.ts` stores remote snapshots by content hash. A stored snapshot that does not match its hash fails the hash check and is never trusted.

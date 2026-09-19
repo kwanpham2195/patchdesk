@@ -2,11 +2,16 @@ import { StubCredentials } from "./stub-github-credentials";
 import { describe, expect, it } from "vitest";
 
 import {
-  CommandRunner,
-  type CommandExecution,
-  type CommandExecutor,
-} from "../../src/adapters/github/command-runner";
+  jsonAnswer,
+  noChildProcesses,
+  orderedTransport,
+  type HttpTransportDouble,
+} from "./github-transport-doubles";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import type {
+  GitHubRequest,
+  GitHubRestRequest,
+} from "../../src/adapters/github/github-request";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -47,28 +52,22 @@ const headSha = mustParse(
   parseGitSha("abcdef1234567890abcdef1234567890abcdef12"),
 );
 
-class FakeProcessExecutor implements CommandExecutor {
-  readonly requests: Array<ReadonlyArray<string>> = [];
-
-  constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
-
-  async execute(input: {
-    readonly argv: ReadonlyArray<string>;
-  }): Promise<CommandExecution> {
-    this.requests.push(input.argv);
-    const response = this.responses[this.requests.length - 1];
-    if (response === undefined)
-      throw new Error("Missing fake command response");
-    return response;
-  }
+function testAdapter(transport: HttpTransportDouble): GitHubAdapter {
+  return new GitHubAdapter(
+    noChildProcesses(),
+    new StubCredentials(),
+    transport,
+  );
 }
 
-function testAdapter(executor: FakeProcessExecutor): GitHubAdapter {
-  return new GitHubAdapter(new CommandRunner(executor), new StubCredentials());
+/** The recorded request, narrowed to the REST shape these writes send. */
+function restRequest(request: GitHubRequest | undefined): GitHubRestRequest {
+  if (request?.kind !== "rest") throw new Error("Expected a REST request");
+  return request;
 }
 
 function confirmThreadResponse(): string {
-  return JSON.stringify({
+  return jsonAnswer({
     data: {
       repository: {
         pullRequest: {
@@ -98,27 +97,17 @@ function confirmThreadResponse(): string {
 
 describe("GitHubThreadWriter REST receipts", () => {
   it("returns the REST comment id while using the node id to confirm its thread", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: JSON.stringify({
-          id: 201,
-          node_id: "PRRC_comment",
-          pull_request_review_id: 42,
-        }),
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: confirmThreadResponse(),
-        stderr: "",
-      },
+    const transport = orderedTransport([
+      jsonAnswer({
+        id: 201,
+        node_id: "PRRC_comment",
+        pull_request_review_id: 42,
+      }),
+      confirmThreadResponse(),
     ]);
 
     await expect(
-      testAdapter(executor).createInlineComment({
+      testAdapter(transport).createInlineComment({
         profile,
         pr,
         headSha,
@@ -136,19 +125,19 @@ describe("GitHubThreadWriter REST receipts", () => {
   });
 
   it("accepts GitHub's empty 204 response when deleting a published comment", async () => {
-    const executor = new FakeProcessExecutor([
-      { _tag: "Exited", exitCode: 0, stdout: "", stderr: "" },
-    ]);
+    const transport = orderedTransport([""]);
 
     await expect(
-      testAdapter(executor).deleteReviewComment({
+      testAdapter(transport).deleteReviewComment({
         profile,
         pr,
         commentId: "3888149868",
       }),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
-    const request = executor.requests[0]?.join(" ") ?? "";
-    expect(request).toContain("--method DELETE");
-    expect(request).toContain("pulls/comments/3888149868");
+    const request = restRequest(transport.requests[0]);
+    expect(request.method).toBe("DELETE");
+    expect(request.path).toBe(
+      "repos/centraldigital/patchdesk/pulls/comments/3888149868",
+    );
   });
 });

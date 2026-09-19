@@ -2,12 +2,18 @@ import { StubCredentials } from "./stub-github-credentials";
 import { describe, expect, it } from "vitest";
 
 import {
-  CommandRunner,
-  type CommandExecution,
-  type CommandExecutor,
-} from "../../src/adapters/github/command-runner";
+  jsonAnswer,
+  noChildProcesses,
+  orderedTransport,
+  type CannedAnswer,
+  type HttpTransportDouble,
+} from "./github-transport-doubles";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { assembleConversationEntries } from "../../src/adapters/github/github-conversation-assembly";
+import type {
+  GitHubRequest,
+  GitHubRestRequest,
+} from "../../src/adapters/github/github-request";
 import type {
   GitHubComments,
   GitHubPublishedFeedback,
@@ -51,45 +57,21 @@ const pr: PullRequestRef = {
   number: mustParse(parsePullRequestNumber(42)),
 };
 
-class FakeProcessExecutor implements CommandExecutor {
-  readonly requests: Array<ReadonlyArray<string>> = [];
-
-  constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
-
-  async execute(input: {
-    readonly argv: ReadonlyArray<string>;
-    readonly timeoutMs: number;
-    readonly stdin?: string;
-    readonly environment?: Readonly<Record<string, string>>;
-  }): Promise<CommandExecution> {
-    this.requests.push(input.argv);
-    const response = this.responses[this.requests.length - 1];
-    if (response === undefined)
-      throw new Error("Missing fake command response");
-    return response;
-  }
+function testAdapter(transport: HttpTransportDouble): GitHubAdapter {
+  return new GitHubAdapter(
+    noChildProcesses(),
+    new StubCredentials(),
+    transport,
+  );
 }
 
-function testAdapter(executor: CommandExecutor): GitHubAdapter {
-  return new GitHubAdapter(new CommandRunner(executor), new StubCredentials());
+/** The recorded request, narrowed to the REST shape these reads send. */
+function restRequest(request: GitHubRequest | undefined): GitHubRestRequest {
+  if (request?.kind !== "rest") throw new Error("Expected a REST request");
+  return request;
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- a fixture writer for whatever JSON one gh call is told to return; there is no narrower contract to parse it against.
-function json(value: unknown): CommandExecution {
-  return {
-    _tag: "Exited",
-    exitCode: 0,
-    stdout: JSON.stringify(value),
-    stderr: "",
-  };
-}
-
-const account: CommandExecution = {
-  _tag: "Exited",
-  exitCode: 0,
-  stdout: '{"login":"pmquan2cfw"}',
-  stderr: "",
-};
+const account = jsonAnswer({ login: "pmquan2cfw" });
 
 function pullRequestPayload() {
   return {
@@ -121,46 +103,45 @@ const reviewComment = {
 };
 
 /**
- * The gh calls `getPullRequestPublishedFeedback` makes, in order: reviews,
- * review comments, issue comments, `auth status`, pull request, then the
- * sequential permission and branch-protection reads. `FakeProcessExecutor`
- * answers positionally, so every fixture below is written in that order.
+ * The requests `getPullRequestPublishedFeedback` makes, in order: reviews,
+ * review comments, issue comments, the authenticated account, pull request,
+ * then the sequential permission and branch-protection reads. The transport
+ * double answers positionally, so every fixture below is written in that order.
  */
-function feedbackResponses(input: {
+function feedbackAnswers(input: {
   readonly reviews: ReadonlyArray<unknown>;
   readonly comments: ReadonlyArray<unknown>;
   readonly issueComments: ReadonlyArray<unknown>;
-  readonly permission: CommandExecution;
-  readonly protection?: CommandExecution;
-}): ReadonlyArray<CommandExecution> {
-  const responses = [
-    json(input.reviews),
-    json(input.comments),
-    json(input.issueComments),
+  readonly permission: CannedAnswer;
+  readonly protection?: CannedAnswer;
+}): ReadonlyArray<CannedAnswer> {
+  const answers = [
+    jsonAnswer(input.reviews),
+    jsonAnswer(input.comments),
+    jsonAnswer(input.issueComments),
     account,
-    json(pullRequestPayload()),
+    jsonAnswer(pullRequestPayload()),
     input.permission,
   ];
   return input.protection === undefined
-    ? responses
-    : [...responses, input.protection];
+    ? answers
+    : [...answers, input.protection];
 }
 
 describe("GitHubAdapter Published feedback capabilities", () => {
   it("requires authenticated owner and repository/branch evidence", async () => {
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [approvedReview],
         comments: [reviewComment],
         issueComments: [],
-        permission: json({ role_name: "write" }),
-        protection: json({ required_pull_request_reviews: null }),
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: jsonAnswer({ required_pull_request_reviews: null }),
       }),
     );
-    const result = await testAdapter(executor).getPullRequestPublishedFeedback({
-      profile,
-      pr,
-    });
+    const result = await testAdapter(transport).getPullRequestPublishedFeedback(
+      { profile, pr },
+    );
     expect(result).toMatchObject({
       _tag: "ok",
       value: {
@@ -171,22 +152,17 @@ describe("GitHubAdapter Published feedback capabilities", () => {
   });
 
   it("projects dismissal capability when GitHub reports an unprotected base branch as 404", async () => {
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [approvedReview],
         comments: [],
         issueComments: [],
-        permission: json({ role_name: "write" }),
-        protection: {
-          _tag: "Exited",
-          exitCode: 1,
-          stdout: "",
-          stderr: "HTTP 404: Branch not protected",
-        },
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: { _tag: "CommandNotFound" },
       }),
     );
     await expect(
-      testAdapter(executor).getPullRequestPublishedFeedback({ profile, pr }),
+      testAdapter(transport).getPullRequestPublishedFeedback({ profile, pr }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { reviews: [{ id: "7", canDismiss: true }] },
@@ -194,16 +170,16 @@ describe("GitHubAdapter Published feedback capabilities", () => {
   });
 
   it("fails closed when permission evidence is malformed while retaining records", async () => {
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [],
         comments: [reviewComment],
         issueComments: [],
-        permission: json({ permission: "owner" }),
+        permission: jsonAnswer({ permission: "owner" }),
       }),
     );
     await expect(
-      testAdapter(executor).getPullRequestPublishedFeedback({ profile, pr }),
+      testAdapter(transport).getPullRequestPublishedFeedback({ profile, pr }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { comments: [{ id: "8", canEdit: false, canDelete: false }] },
@@ -214,20 +190,20 @@ describe("GitHubAdapter Published feedback capabilities", () => {
     // A started-but-unsubmitted review has no submitted_at key at all; the
     // feedback read must tolerate it (and later detect/refresh passes) rather
     // than reporting GitHubResponseInvalid.
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [
           { id: 6, user: { login: "pmquan2cfw" }, body: "", state: "PENDING" },
           approvedReview,
         ],
         comments: [],
         issueComments: [],
-        permission: json({ role_name: "write" }),
-        protection: json({ required_pull_request_reviews: null }),
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: jsonAnswer({ required_pull_request_reviews: null }),
       }),
     );
     await expect(
-      testAdapter(executor).getPullRequestPublishedFeedback({ profile, pr }),
+      testAdapter(transport).getPullRequestPublishedFeedback({ profile, pr }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { reviews: [{ id: "7", canDismiss: true }] },
@@ -237,8 +213,8 @@ describe("GitHubAdapter Published feedback capabilities", () => {
 
 describe("GitHubAdapter issue comments", () => {
   it("reads the issues endpoint and projects a plain conversation comment", async () => {
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [],
         comments: [],
         issueComments: [
@@ -255,15 +231,14 @@ describe("GitHubAdapter issue comments", () => {
             html_url: "https://github.com/centraldigital/patchdesk/pull/42",
           },
         ],
-        permission: json({ role_name: "write" }),
-        protection: json({ required_pull_request_reviews: null }),
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: jsonAnswer({ required_pull_request_reviews: null }),
       }),
     );
-    const result = await testAdapter(executor).getPullRequestPublishedFeedback({
-      profile,
-      pr,
-    });
-    expect(executor.requests[2]?.at(-1)).toBe(
+    const result = await testAdapter(transport).getPullRequestPublishedFeedback(
+      { profile, pr },
+    );
+    expect(restRequest(transport.requests[2]).path).toBe(
       "repos/centraldigital/patchdesk/issues/42/comments?per_page=100&page=1",
     );
     expect(result).toMatchObject({
@@ -290,8 +265,8 @@ describe("GitHubAdapter issue comments", () => {
   });
 
   it("asks for body_html and carries GitHub's camo substitutions onto the comment", async () => {
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [],
         comments: [],
         issueComments: [
@@ -304,20 +279,19 @@ describe("GitHubAdapter issue comments", () => {
             created_at: "2026-08-02T00:00:00Z",
           },
         ],
-        permission: json({ role_name: "write" }),
-        protection: json({ required_pull_request_reviews: null }),
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: jsonAnswer({ required_pull_request_reviews: null }),
       }),
     );
-    const result = await testAdapter(executor).getPullRequestPublishedFeedback({
-      profile,
-      pr,
-    });
-    // The header has to reach gh, and the path has to stay last in the argv.
+    const result = await testAdapter(transport).getPullRequestPublishedFeedback(
+      { profile, pr },
+    );
+    // The media type has to reach GitHub, and each read has to address a
+    // repository path of its own.
     for (const index of [0, 1, 2]) {
-      expect(executor.requests[index]).toContain(
-        "Accept: application/vnd.github.full+json",
-      );
-      expect(executor.requests[index]?.at(-1)).toMatch(/^repos\//);
+      const request = restRequest(transport.requests[index]);
+      expect(request.accept).toBe("application/vnd.github.full+json");
+      expect(request.path).toMatch(/^repos\//);
     }
     expect(result).toMatchObject({
       _tag: "ok",
@@ -336,8 +310,8 @@ describe("GitHubAdapter issue comments", () => {
   });
 
   it("omits imageRewrites when GitHub proxied nothing", async () => {
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [],
         comments: [],
         issueComments: [
@@ -349,35 +323,33 @@ describe("GitHubAdapter issue comments", () => {
             created_at: "2026-08-02T00:00:00Z",
           },
         ],
-        permission: json({ role_name: "write" }),
-        protection: json({ required_pull_request_reviews: null }),
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: jsonAnswer({ required_pull_request_reviews: null }),
       }),
     );
-    const result = await testAdapter(executor).getPullRequestPublishedFeedback({
-      profile,
-      pr,
-    });
+    const result = await testAdapter(transport).getPullRequestPublishedFeedback(
+      { profile, pr },
+    );
     if (result._tag === "err") throw new Error("Expected a successful read");
     expect(result.value.issueComments[0]).not.toHaveProperty("imageRewrites");
   });
 
   it("accepts a comment with no user and a body at the schema's size limit", async () => {
     const body = "a".repeat(65_536);
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [],
         comments: [],
         issueComments: [
           { id: 10, user: null, body, created_at: "2026-08-02T00:00:00Z" },
         ],
-        permission: json({ role_name: "write" }),
-        protection: json({ required_pull_request_reviews: null }),
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: jsonAnswer({ required_pull_request_reviews: null }),
       }),
     );
-    const result = await testAdapter(executor).getPullRequestPublishedFeedback({
-      profile,
-      pr,
-    });
+    const result = await testAdapter(transport).getPullRequestPublishedFeedback(
+      { profile, pr },
+    );
     expect(result).toMatchObject({
       _tag: "ok",
       value: {
@@ -394,8 +366,8 @@ describe("GitHubAdapter issue comments", () => {
   });
 
   it("reports the read as incomplete when the issue comment page is full", async () => {
-    const executor = new FakeProcessExecutor(
-      feedbackResponses({
+    const transport = orderedTransport(
+      feedbackAnswers({
         reviews: [],
         comments: [],
         issueComments: Array.from({ length: 100 }, (_, index) => ({
@@ -404,12 +376,12 @@ describe("GitHubAdapter issue comments", () => {
           body: "comment",
           created_at: "2026-08-02T00:00:00Z",
         })),
-        permission: json({ role_name: "write" }),
-        protection: json({ required_pull_request_reviews: null }),
+        permission: jsonAnswer({ role_name: "write" }),
+        protection: jsonAnswer({ required_pull_request_reviews: null }),
       }),
     );
     await expect(
-      testAdapter(executor).getPullRequestPublishedFeedback({ profile, pr }),
+      testAdapter(transport).getPullRequestPublishedFeedback({ profile, pr }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { complete: false, incompleteReason: "pagination" },
@@ -417,15 +389,15 @@ describe("GitHubAdapter issue comments", () => {
   });
 
   it("fails the read when GitHub cannot serve the issue comments", async () => {
-    const executor = new FakeProcessExecutor([
-      json([]),
-      json([]),
-      { _tag: "Exited", exitCode: 1, stdout: "", stderr: "HTTP 500" },
+    const transport = orderedTransport([
+      jsonAnswer([]),
+      jsonAnswer([]),
+      { _tag: "CommandFailed", stderr: "HTTP 500" },
       account,
-      json(pullRequestPayload()),
+      jsonAnswer(pullRequestPayload()),
     ]);
     await expect(
-      testAdapter(executor).getPullRequestPublishedFeedback({ profile, pr }),
+      testAdapter(transport).getPullRequestPublishedFeedback({ profile, pr }),
     ).resolves.toMatchObject({
       _tag: "err",
       error: { operation: "get_issue_comments" },

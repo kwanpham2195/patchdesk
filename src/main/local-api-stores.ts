@@ -70,38 +70,17 @@ export function createReadOnlyGitExecutor(
   };
 }
 
-/** What a `GitHubAdapter` is built with beside `gh`: the served HTTP transport. */
-export type GitHubTransports = {
-  /** Serves the reads in `httpServedReadLabels`; absent leaves every read on gh (issue #276). */
-  readonly http: GitHubHttpClient | undefined;
-  /** Also serves the writes in `httpServedWriteLabels` over that transport (issue #276, step T3). */
-  readonly writesOverHttp: boolean;
-};
-
 /**
- * Builds the HTTP transport the GitHub adapter reads through. Both switches
- * are launch-wide, so they are read here once rather than consulted per call.
- *
- * `PATCHDESK_GITHUB_TRANSPORT=gh` is the soak release's rollback: it puts every
- * allowlisted read back on a `gh api` child without a rebuild. It is temporary
- * and goes with the allowlist at T4 (ADR 0046).
- *
- * `PATCHDESK_GITHUB_WRITES=http` serves the writes in `httpServedWriteLabels`
- * too. It is off by default because a write cannot be proven by comparison: it
- * stays a per-launch opt-in until the manual live check in ADR 0046 passes,
- * after which the default flips and this variable goes.
- * `PATCHDESK_GITHUB_TRANSPORT=gh` still overrides it, putting writes back on gh
- * with the reads.
+ * Builds the transport every GitHub API request the adapter makes is served
+ * over (ADR 0046, issue #276). There is no second transport and no switch:
+ * `gh` is reached only for sign-in and for git credentials.
  */
 export function githubTransports(
   credentials: GitHubCredentials,
   logs: Pick<AppLogService, "write">,
   githubFetch: GitHubFetch | undefined,
-): GitHubTransports {
-  if (process.env["PATCHDESK_GITHUB_TRANSPORT"] === "gh")
-    return { http: undefined, writesOverHttp: false };
-  const writesOverHttp = process.env["PATCHDESK_GITHUB_WRITES"] === "http";
-  const client = new GitHubHttpClient(
+): GitHubHttpClient {
+  return new GitHubHttpClient(
     credentials,
     undefined,
     undefined,
@@ -122,7 +101,6 @@ export function githubTransports(
       });
     },
   );
-  return { http: client, writesOverHttp };
 }
 
 /** Every store, adapter and seam the loopback API's services are built from. */
@@ -206,18 +184,12 @@ export async function buildLocalApiStores(
   });
   const credentials =
     configuration.githubCredentials ?? new GitHubCliCredentials(commands);
-  const transports = githubTransports(
-    credentials,
-    logs,
-    configuration.githubFetch,
-  );
   const github =
     configuration.github ??
     new GitHubAdapter(
       commands,
       credentials,
-      transports.http,
-      transports.writesOverHttp,
+      githubTransports(credentials, logs, configuration.githubFetch),
     );
   const readOnlyGit = createReadOnlyGitExecutor(commands);
   const resolveGitHubCli =

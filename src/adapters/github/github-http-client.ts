@@ -115,8 +115,7 @@ const graphQlErrorsSchema = v.looseObject({
 /**
  * Calls the GitHub API over HTTPS as the account a workspace profile names,
  * replacing the `gh api` child process every read and write paid for (ADR
- * 0046). The reads in `httpServedReadLabels` route through it; the rest still
- * spawn `gh`.
+ * 0046). Every request the GitHub adapter makes routes through it.
  *
  * Connections are kept alive by the runtime's own fetch dispatcher, which
  * pools per origin, so a burst of calls to one host repeats neither the
@@ -199,7 +198,7 @@ export class GitHubHttpClient {
   /**
    * Resolves the profile account's credential, runs the call with it, and
    * drops the credential the host rejected so the next call re-reads it —
-   * the same sequence `GhRequestRunner.runAsProfileAccount` performs.
+   * the sequence every call this client serves runs under.
    */
   private async asProfileAccount(
     profile: WorkspaceProfileConfig,

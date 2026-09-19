@@ -1,64 +1,70 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import type { LogEntryInput } from "../../src/domain/log-entry";
 import { githubTransports } from "../../src/main/local-api-stores";
+import { profile } from "../adapters/github-http-fixture-server";
 import { StubCredentials } from "../adapters/stub-github-credentials";
 
 /**
- * Which transports one launch builds. Both switches are read here rather than
- * per call, so this is the only place the rollback can be observed (ADR 0046,
- * issue #276).
+ * The one transport a launch builds (ADR 0046, issue #276). A request served
+ * here spawns no child, so the `github-http` log entry is what keeps it
+ * countable in `scripts/gh-spawn-report.mjs`; it carries the normalized label
+ * and nothing else the URL held.
  */
 
-const logs = { write: () => undefined };
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
+function recordingLogs() {
+  const entries: Array<LogEntryInput> = [];
+  return {
+    entries,
+    write: (entry: LogEntryInput): void => {
+      entries.push(entry);
+    },
+  };
+}
 
 describe("githubTransports", () => {
-  it("serves the allowlisted reads over HTTP by default", () => {
-    expect(
-      githubTransports(new StubCredentials(), logs, undefined).http,
-    ).toBeDefined();
+  it("serves a request through the injected fetch rather than the runtime's own", async () => {
+    const urls: Array<string> = [];
+    const logs = recordingLogs();
+    const client = githubTransports(new StubCredentials(), logs, (url) => {
+      urls.push(url);
+      return Promise.resolve(new Response("[]", { status: 200 }));
+    });
+
+    await client.rest(profile, {
+      kind: "rest",
+      host: "github.com",
+      path: "repos/centraldigital/patchdesk/pulls?state=open",
+    });
+
+    expect(urls).toEqual([
+      "https://api.github.com/repos/centraldigital/patchdesk/pulls?state=open",
+    ]);
   });
 
-  it("leaves writes on gh by default", () => {
-    expect(
-      githubTransports(new StubCredentials(), logs, undefined).writesOverHttp,
-    ).toBe(false);
-  });
+  it("logs one github-http entry per request, carrying no URL", async () => {
+    const logs = recordingLogs();
+    const client = githubTransports(new StubCredentials(), logs, () =>
+      Promise.resolve(new Response("{}", { status: 404 })),
+    );
 
-  it("serves writes over HTTP when the launch asked for them", () => {
-    vi.stubEnv("PATCHDESK_GITHUB_WRITES", "http");
+    await client.rest(profile, {
+      kind: "rest",
+      host: "github.com",
+      path: "repos/centraldigital/patchdesk/branches/main/protection",
+    });
 
-    expect(
-      githubTransports(new StubCredentials(), logs, undefined).writesOverHttp,
-    ).toBe(true);
-  });
-
-  it("keeps writes on gh when the rollback overrides the write switch", () => {
-    vi.stubEnv("PATCHDESK_GITHUB_WRITES", "http");
-    vi.stubEnv("PATCHDESK_GITHUB_TRANSPORT", "gh");
-
-    const transports = githubTransports(new StubCredentials(), logs, undefined);
-
-    expect(transports.http).toBeUndefined();
-    expect(transports.writesOverHttp).toBe(false);
-  });
-
-  it("ignores a write switch set to anything but http", () => {
-    vi.stubEnv("PATCHDESK_GITHUB_WRITES", "1");
-
-    expect(
-      githubTransports(new StubCredentials(), logs, undefined).writesOverHttp,
-    ).toBe(false);
-  });
-
-  it("puts every read back on gh when the launch asked for the rollback", () => {
-    vi.stubEnv("PATCHDESK_GITHUB_TRANSPORT", "gh");
-
-    expect(
-      githubTransports(new StubCredentials(), logs, undefined).http,
-    ).toBeUndefined();
+    expect(logs.entries).toHaveLength(1);
+    expect(logs.entries[0]).toMatchObject({
+      process: "main",
+      level: "debug",
+      topic: "github-http",
+      message: "api GET repos/:owner/:repo/branches/:branch/protection",
+      meta: {
+        label: "api GET repos/:owner/:repo/branches/:branch/protection",
+        status: 404,
+      },
+    });
+    expect(JSON.stringify(logs.entries[0])).not.toContain("centraldigital");
   });
 });

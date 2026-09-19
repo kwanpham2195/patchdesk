@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CommandRunner,
-  type CommandExecution,
-  type CommandExecutor,
-} from "../../src/adapters/github/command-runner";
+  noChildProcesses,
+  routedTransport,
+  type CannedAnswer,
+} from "./github-transport-doubles";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import {
   parseGitHubHost,
@@ -56,61 +56,29 @@ const pr: PullRequestRef = {
 
 const threadId = mustParse(parseGitHubThreadId("PRRT_thread"));
 
-class FakeGhExecutor implements CommandExecutor {
-  constructor(private readonly execution: CommandExecution) {}
-
-  async execute(): Promise<CommandExecution> {
-    return this.execution;
-  }
-}
-
-function adapterAnswering(execution: CommandExecution): GitHubAdapter {
+/** Every lookup this file makes is answered the same way, however often it is asked. */
+function adapterAnswering(answer: CannedAnswer): GitHubAdapter {
   return new GitHubAdapter(
-    new CommandRunner(new FakeGhExecutor(execution)),
+    noChildProcesses(),
     new StubCredentials(),
+    routedTransport(() => answer),
   );
 }
 
-/** A GraphQL error response as both transports deliver it: the body, and gh's nonzero exit. */
-function graphQlError(body: string, stderr: string): CommandExecution {
-  return { _tag: "Exited", exitCode: 1, stdout: body, stderr };
-}
+/** The failure a GraphQL `errors[0].type` of NOT_FOUND is classified into. */
+const nodeGone: CannedAnswer = { _tag: "CommandNotFound" };
 
-const notFoundBody = JSON.stringify({
-  data: { node: null },
-  errors: [
-    {
-      type: "NOT_FOUND",
-      path: ["node"],
-      message: "Could not resolve to a node with the global id of 'PRRT_gone'",
-    },
-  ],
-});
+/** An IP-allow-list refusal: a FORBIDDEN error whose message names the list. */
+const ipAllowListRefusal: CannedAnswer = {
+  _tag: "CommandForbidden",
+  reason: "ip_allow_list",
+};
 
-const forbiddenBody = JSON.stringify({
-  data: { node: null },
-  errors: [
-    {
-      type: "FORBIDDEN",
-      path: ["node"],
-      extensions: { saml_failure: false },
-      message:
-        "Although you appear to have the correct authorization credentials, the `centraldigital` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.",
-    },
-  ],
-});
-
-const rateLimitedBody = JSON.stringify({
-  errors: [
-    { type: "RATE_LIMITED", message: "API rate limit exceeded for user ID 1." },
-  ],
-});
+const rateLimited: CannedAnswer = { _tag: "CommandRateLimited" };
 
 describe("a review thread lookup GitHub refused to answer", () => {
   it("reports a node GitHub says does not exist as not a member", async () => {
-    const adapter = adapterAnswering(
-      graphQlError(notFoundBody, "gh: Could not resolve to a node"),
-    );
+    const adapter = adapterAnswering(nodeGone);
 
     await expect(
       adapter.getReviewThreadTarget({ profile, pr, threadId }),
@@ -118,9 +86,7 @@ describe("a review thread lookup GitHub refused to answer", () => {
   });
 
   it("reports a forbidden lookup as forbidden rather than as not a member", async () => {
-    const adapter = adapterAnswering(
-      graphQlError(forbiddenBody, "gh: IP allow list"),
-    );
+    const adapter = adapterAnswering(ipAllowListRefusal);
 
     await expect(
       adapter.getReviewThreadTarget({ profile, pr, threadId }),
@@ -135,9 +101,7 @@ describe("a review thread lookup GitHub refused to answer", () => {
   });
 
   it("reports a rate-limited lookup as rate limited rather than as not a member", async () => {
-    const adapter = adapterAnswering(
-      graphQlError(rateLimitedBody, "gh: API rate limit exceeded"),
-    );
+    const adapter = adapterAnswering(rateLimited);
 
     await expect(
       adapter.getReviewThreadTarget({ profile, pr, threadId }),
@@ -148,7 +112,7 @@ describe("a review thread lookup GitHub refused to answer", () => {
   });
 
   it("reports a lookup that never reached GitHub as a read failure", async () => {
-    const adapter = adapterAnswering({ _tag: "Unavailable" });
+    const adapter = adapterAnswering({ _tag: "CommandUnavailable" });
 
     await expect(
       adapter.getReviewThreadTarget({ profile, pr, threadId }),
@@ -159,11 +123,7 @@ describe("a review thread lookup GitHub refused to answer", () => {
   });
 
   it("reports a lookup that timed out as a read failure", async () => {
-    const adapter = adapterAnswering({
-      _tag: "TimedOut",
-      stdout: "",
-      stderr: "",
-    });
+    const adapter = adapterAnswering({ _tag: "CommandTimedOut" });
 
     await expect(
       adapter.getReviewThreadTarget({ profile, pr, threadId }),
@@ -176,9 +136,7 @@ describe("a review thread lookup GitHub refused to answer", () => {
 
 describe("a review comment lookup GitHub refused to answer", () => {
   it("reports a node GitHub says does not exist as not a member", async () => {
-    const adapter = adapterAnswering(
-      graphQlError(notFoundBody, "gh: Could not resolve to a node"),
-    );
+    const adapter = adapterAnswering(nodeGone);
 
     await expect(
       adapter.getReviewCommentTarget({ profile, pr, commentId: "PRRC_gone" }),
@@ -186,9 +144,7 @@ describe("a review comment lookup GitHub refused to answer", () => {
   });
 
   it("reports a forbidden lookup as forbidden rather than as not a member", async () => {
-    const adapter = adapterAnswering(
-      graphQlError(forbiddenBody, "gh: IP allow list"),
-    );
+    const adapter = adapterAnswering(ipAllowListRefusal);
 
     await expect(
       adapter.getReviewCommentTarget({ profile, pr, commentId: "PRRC_1" }),
@@ -203,7 +159,7 @@ describe("a review comment lookup GitHub refused to answer", () => {
   });
 
   it("reports a lookup that never reached GitHub as a read failure", async () => {
-    const adapter = adapterAnswering({ _tag: "Unavailable" });
+    const adapter = adapterAnswering({ _tag: "CommandUnavailable" });
 
     await expect(
       adapter.getReviewCommentTarget({ profile, pr, commentId: "PRRC_1" }),

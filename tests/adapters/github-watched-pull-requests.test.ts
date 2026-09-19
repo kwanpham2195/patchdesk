@@ -2,11 +2,15 @@ import { StubCredentials } from "./stub-github-credentials";
 import { describe, expect, it } from "vitest";
 
 import {
-  CommandRunner,
-  type CommandExecution,
-  type CommandExecutor,
-} from "../../src/adapters/github/command-runner";
+  jsonAnswer,
+  noChildProcesses,
+  orderedTransport,
+} from "./github-transport-doubles";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import type {
+  GitHubGraphQlRequest,
+  GitHubRequest,
+} from "../../src/adapters/github/github-request";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -14,7 +18,6 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
 } from "../../src/domain/ids";
-import type { RawJsonValue } from "../../src/domain/json";
 import { type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 
@@ -42,35 +45,19 @@ const ref = (number: number) => ({
 });
 const now = mustParse(parseIsoTimestamp("2026-09-17T10:00:00.000Z"));
 
-class FakeProcessExecutor implements CommandExecutor {
-  readonly requests: Array<ReadonlyArray<string>> = [];
-
-  constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
-
-  async execute(input: {
-    readonly argv: ReadonlyArray<string>;
-  }): Promise<CommandExecution> {
-    this.requests.push(input.argv);
-    const response = this.responses[this.requests.length - 1];
-    if (response === undefined)
-      throw new Error("Missing fake command response");
-    return response;
-  }
-}
-
-function exited(value: RawJsonValue): CommandExecution {
-  return {
-    _tag: "Exited",
-    exitCode: 0,
-    stdout: JSON.stringify(value),
-    stderr: "",
-  };
+/** The recorded request, narrowed to the GraphQL shape this read sends. */
+function graphQlRequest(
+  request: GitHubRequest | undefined,
+): GitHubGraphQlRequest {
+  if (request?.kind !== "graphql")
+    throw new Error("Expected a GraphQL request");
+  return request;
 }
 
 describe("GitHub watched pull request reader", () => {
   it("reads every watched pull request in one aliased call", async () => {
-    const executor = new FakeProcessExecutor([
-      exited({
+    const transport = orderedTransport([
+      jsonAnswer({
         data: {
           rateLimit: { remaining: 4000, resetAt: "2026-09-17T11:00:00Z" },
           pr0: {
@@ -93,8 +80,9 @@ describe("GitHub watched pull request reader", () => {
 
     await expect(
       new GitHubAdapter(
-        new CommandRunner(executor),
+        noChildProcesses(),
         new StubCredentials(),
+        transport,
       ).readWatchedPullRequests({ profile, refs: [ref(7), ref(8)], now }),
     ).resolves.toEqual({
       _tag: "ok",
@@ -112,15 +100,24 @@ describe("GitHub watched pull request reader", () => {
         { ref: ref(8), snapshot: undefined },
       ],
     });
-    expect(executor.requests).toHaveLength(1);
-    const argv = executor.requests[0] ?? [];
-    expect(argv[argv.indexOf("owner1=centraldigital") - 1]).toBe("-f");
-    expect(argv[argv.indexOf("number1=8") - 1]).toBe("-F");
+    expect(transport.requests).toHaveLength(1);
+    const request = graphQlRequest(transport.requests[0]);
+    // A string owner and a typed number, per alias, are what the query declares.
+    expect(request.variables).toContainEqual({
+      kind: "string",
+      name: "owner1",
+      value: "centraldigital",
+    });
+    expect(request.variables).toContainEqual({
+      kind: "typed",
+      name: "number1",
+      value: 8,
+    });
   });
 
   it("answers rate limited without a call while the host's spent limit has not reset", async () => {
-    const executor = new FakeProcessExecutor([
-      exited({
+    const transport = orderedTransport([
+      jsonAnswer({
         data: {
           rateLimit: { remaining: 0, resetAt: "2026-09-17T11:00:00Z" },
           pr0: { pullRequest: null },
@@ -128,8 +125,9 @@ describe("GitHub watched pull request reader", () => {
       }),
     ]);
     const adapter = new GitHubAdapter(
-      new CommandRunner(executor),
+      noChildProcesses(),
       new StubCredentials(),
+      transport,
     );
 
     await adapter.readWatchedPullRequests({ profile, refs: [ref(7)], now });
@@ -143,6 +141,6 @@ describe("GitHub watched pull request reader", () => {
         resumeAt: "2026-09-17T11:00:00.000Z",
       },
     });
-    expect(executor.requests).toHaveLength(1);
+    expect(transport.requests).toHaveLength(1);
   });
 });

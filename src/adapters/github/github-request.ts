@@ -1,7 +1,9 @@
 /**
  * What the GitHub adapter asks GitHub for, described once instead of as an
- * argv array per call site, so a later change of transport is a change to the
- * runner rather than to every caller (ADR 0046).
+ * argv array per call site. `GitHubHttpClient` reads it to build the HTTPS
+ * request; `ghInvocationFor` renders the `gh api` argv it used to be, which is
+ * now only what `normalizeCommandLabel` reads to name the call in a log entry
+ * (ADR 0046).
  */
 export type GitHubRequest = GitHubRestRequest | GitHubGraphQlRequest;
 
@@ -57,7 +59,7 @@ type GitHubGraphQlVariable =
       readonly values: ReadonlyArray<string>;
     };
 
-/** The gh invocation a request becomes, minus the parts the runner owns. */
+/** The gh invocation a request would have been, kept so one endpoint keeps the label it was logged under. */
 export type GhInvocation = {
   readonly argv: ReadonlyArray<string>;
   readonly stdin?: string;
@@ -65,29 +67,14 @@ export type GhInvocation = {
 
 /**
  * The verb GitHub actually receives for a REST request. An absent method is a
- * GET, except when the request carries a body: `gh api` sends `--input -`
- * without `--method` as a POST, so a body alone makes the request a write.
- * The HTTP client and the write routing both read the method from here, so
- * neither can disagree with what gh sent.
+ * GET, except when the request carries a body: `gh api` sent `--input -`
+ * without `--method` as a POST, so a body alone makes the request a write and
+ * the client keeps sending it as one.
  */
 export function restMethodFor(
   request: GitHubRestRequest,
 ): GitHubRestMethod | "GET" {
   return request.method ?? (request.jsonBody === undefined ? "GET" : "POST");
-}
-
-/**
- * Whether a request only reads, judged conservatively: anything that might
- * mutate is treated as a write. A REST request carrying a body but no method
- * is not a read — `gh api --input` defaults to POST. The transport routing
- * gates the read path on this, so no write can reach it by matching a read's
- * label (ADR 0046).
- */
-export function isReadRequest(request: GitHubRequest): boolean {
-  if (request.kind === "rest") {
-    return request.method === undefined && request.jsonBody === undefined;
-  }
-  return isQueryDocument(request.document);
 }
 
 /** GraphQL sends reads and writes to one endpoint; only the document says which. */

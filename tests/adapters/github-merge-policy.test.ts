@@ -2,10 +2,12 @@ import { StubCredentials } from "./stub-github-credentials";
 import { describe, expect, it } from "vitest";
 
 import {
-  CommandRunner,
-  type CommandExecution,
-  type CommandExecutor,
-} from "../../src/adapters/github/command-runner";
+  jsonAnswer,
+  noChildProcesses,
+  orderedTransport,
+  type CannedAnswer,
+  type HttpTransportDouble,
+} from "./github-transport-doubles";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import {
   parseGitHubHost,
@@ -48,48 +50,30 @@ const pr: PullRequestRef = {
   number: mustParse(parsePullRequestNumber(42)),
 };
 
-class FakeProcessExecutor implements CommandExecutor {
-  readonly requests: Array<ReadonlyArray<string>> = [];
-
-  constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
-
-  async execute(input: {
-    readonly argv: ReadonlyArray<string>;
-    readonly timeoutMs: number;
-    readonly stdin?: string;
-    readonly environment?: Readonly<Record<string, string>>;
-  }): Promise<CommandExecution> {
-    this.requests.push(input.argv);
-    const response = this.responses[this.requests.length - 1];
-    if (response === undefined)
-      throw new Error("Missing fake command response");
-    return response;
-  }
+function testAdapter(transport: HttpTransportDouble): GitHubAdapter {
+  return new GitHubAdapter(
+    noChildProcesses(),
+    new StubCredentials(),
+    transport,
+  );
 }
 
-function testAdapter(commands: CommandRunner): GitHubAdapter {
-  return new GitHubAdapter(commands, new StubCredentials());
-}
+/** A branch GitHub reports as unprotected answers the classic endpoint with a 404. */
+const branchNotProtected: CannedAnswer = { _tag: "CommandNotFound" };
+
+/** A branch-protection read the token may not make, with no reason GitHub names. */
+const protectionDenied: CannedAnswer = {
+  _tag: "CommandForbidden",
+  reason: "unknown",
+};
 
 describe("GitHubAdapter merge policy", () => {
   it("joins the exact-head rollup to required branch contexts", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(mergePolicyPayload()),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ contexts: ["unit"], checks: [] }),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        jsonAnswer(mergePolicyPayload()),
+        jsonAnswer({ contexts: ["unit"], checks: [] }),
+      ]),
     );
 
     await expect(
@@ -120,22 +104,7 @@ describe("GitHubAdapter merge policy", () => {
 
   it("accepts no classic required checks on a ruleset-managed branch", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(mergePolicyPayload()),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 1,
-            stdout: "",
-            stderr: "HTTP 404: Branch not protected",
-          },
-        ]),
-      ),
+      orderedTransport([jsonAnswer(mergePolicyPayload()), branchNotProtected]),
     );
 
     await expect(
@@ -164,24 +133,10 @@ describe("GitHubAdapter merge policy", () => {
 
   it("reads a head commit with no status-check rollup as no required checks", async () => {
     const adapter = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(
-              mergePolicyPayload({ statusCheckRollup: null }),
-            ),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ contexts: [], checks: [] }),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        jsonAnswer(mergePolicyPayload({ statusCheckRollup: null })),
+        jsonAnswer({ contexts: [], checks: [] }),
+      ]),
     );
 
     await expect(
@@ -213,24 +168,10 @@ describe("GitHubAdapter merge policy", () => {
     ] as const;
     for (const [raw, expected] of statuses) {
       const adapter = testAdapter(
-        new CommandRunner(
-          new FakeProcessExecutor([
-            {
-              _tag: "Exited",
-              exitCode: 0,
-              stdout: JSON.stringify(
-                mergePolicyPayload({ mergeStateStatus: raw }),
-              ),
-              stderr: "",
-            },
-            {
-              _tag: "Exited",
-              exitCode: 0,
-              stdout: JSON.stringify({ contexts: [], checks: [] }),
-              stderr: "",
-            },
-          ]),
-        ),
+        orderedTransport([
+          jsonAnswer(mergePolicyPayload({ mergeStateStatus: raw })),
+          jsonAnswer({ contexts: [], checks: [] }),
+        ]),
       );
       await expect(
         adapter.getMergePolicy({
@@ -244,24 +185,10 @@ describe("GitHubAdapter merge policy", () => {
       });
     }
     const missing = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(
-              mergePolicyPayload({ mergeStateStatus: undefined }),
-            ),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify({ contexts: [], checks: [] }),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        jsonAnswer(mergePolicyPayload({ mergeStateStatus: undefined })),
+        jsonAnswer({ contexts: [], checks: [] }),
+      ]),
     );
     await expect(
       missing.getMergePolicy({
@@ -277,16 +204,9 @@ describe("GitHubAdapter merge policy", () => {
 
   it("fails closed for a head mismatch, policy pagination cap, or branch-protection denial", async () => {
     const headMismatch = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(mergePolicyPayload({ headRefOid: baseSha })),
-            stderr: "",
-          },
-        ]),
-      ),
+      orderedTransport([
+        jsonAnswer(mergePolicyPayload({ headRefOid: baseSha })),
+      ]),
     );
     await expect(
       headMismatch.getMergePolicy({
@@ -299,19 +219,14 @@ describe("GitHubAdapter merge policy", () => {
       value: { complete: false, incompleteReason: "head_mismatch" },
     });
 
-    const pages = [0, 1, 2].map((index) => ({
-      _tag: "Exited" as const,
-      exitCode: 0,
-      stdout: JSON.stringify(
+    const pages = [0, 1, 2].map((index) =>
+      jsonAnswer(
         mergePolicyPayload({
           pageInfo: { hasNextPage: true, endCursor: `cursor-${index}` },
         }),
       ),
-      stderr: "",
-    }));
-    const pagination = testAdapter(
-      new CommandRunner(new FakeProcessExecutor(pages)),
     );
+    const pagination = testAdapter(orderedTransport(pages));
     await expect(
       pagination.getMergePolicy({
         profile,
@@ -324,22 +239,7 @@ describe("GitHubAdapter merge policy", () => {
     });
 
     const denied = testAdapter(
-      new CommandRunner(
-        new FakeProcessExecutor([
-          {
-            _tag: "Exited",
-            exitCode: 0,
-            stdout: JSON.stringify(mergePolicyPayload()),
-            stderr: "",
-          },
-          {
-            _tag: "Exited",
-            exitCode: 1,
-            stdout: "",
-            stderr: "HTTP 403: Resource not accessible",
-          },
-        ]),
-      ),
+      orderedTransport([jsonAnswer(mergePolicyPayload()), protectionDenied]),
     );
     await expect(
       denied.getMergePolicy({

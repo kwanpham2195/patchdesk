@@ -10,11 +10,11 @@
  * (see `normalizeCommandLabel` in `src/adapters/github/command-runner.ts`), so
  * a repeated read shows up as a call count rather than as many distinct rows.
  *
- * A read the GitHub cutover moved onto HTTPS spawns nothing and writes a
- * `github-http` entry under the same label instead (issue #276). Those are
- * counted in their own section and their own per-cycle column, never added to
- * the spawns, so "spawns per cycle" keeps meaning what the program's earlier
- * measurements meant.
+ * Every GitHub API request now goes over HTTPS, so it spawns nothing and
+ * writes a `github-http` entry under the same label instead (issue #276,
+ * ADR 0046). Those are counted in their own section and their own per-cycle
+ * column, never added to the spawns, so "spawns per cycle" keeps meaning what
+ * the program's earlier measurements meant.
  *
  * Rows are ordered by label, not by cost, so two runs of this command diff
  * line by line.

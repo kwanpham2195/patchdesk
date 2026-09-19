@@ -2,11 +2,15 @@ import { StubCredentials } from "./stub-github-credentials";
 import { describe, expect, it } from "vitest";
 
 import {
-  CommandRunner,
-  type CommandExecution,
-  type CommandExecutor,
-} from "../../src/adapters/github/command-runner";
+  jsonAnswer,
+  noChildProcesses,
+  orderedTransport,
+} from "./github-transport-doubles";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import type {
+  GitHubGraphQlRequest,
+  GitHubRequest,
+} from "../../src/adapters/github/github-request";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -37,108 +41,109 @@ const repo = {
   repo: mustParse(parseGitHubRepoName("patchdesk")),
 };
 
-class FakeProcessExecutor implements CommandExecutor {
-  readonly requests: Array<ReadonlyArray<string>> = [];
-
-  constructor(private readonly responses: ReadonlyArray<CommandExecution>) {}
-
-  async execute(input: {
-    readonly argv: ReadonlyArray<string>;
-  }): Promise<CommandExecution> {
-    this.requests.push(input.argv);
-    const response = this.responses[this.requests.length - 1];
-    if (response === undefined)
-      throw new Error("Missing fake command response");
-    return response;
-  }
-}
-
-function exited(stdout: string): CommandExecution {
-  return { _tag: "Exited", exitCode: 0, stdout, stderr: "" };
+/** The recorded request, narrowed to the GraphQL shape these reads send. */
+function graphQlRequest(
+  request: GitHubRequest | undefined,
+): GitHubGraphQlRequest {
+  if (request?.kind !== "graphql")
+    throw new Error("Expected a GraphQL request");
+  return request;
 }
 
 describe("GitHub base-branch adapter", () => {
   it("lists branch names with the search passed as a raw string", async () => {
-    const executor = new FakeProcessExecutor([
-      exited(
-        JSON.stringify({
-          data: {
-            rateLimit: { remaining: 4000, resetAt: "2026-09-17T10:00:00Z" },
-            repository: {
-              refs: {
-                totalCount: 140,
-                nodes: [{ name: "release/1.2" }, { name: "release/1.3" }],
-              },
+    const transport = orderedTransport([
+      jsonAnswer({
+        data: {
+          rateLimit: { remaining: 4000, resetAt: "2026-09-17T10:00:00Z" },
+          repository: {
+            refs: {
+              totalCount: 140,
+              nodes: [{ name: "release/1.2" }, { name: "release/1.3" }],
             },
           },
-        }),
-      ),
+        },
+      }),
     ]);
 
     await expect(
       new GitHubAdapter(
-        new CommandRunner(executor),
+        noChildProcesses(),
         new StubCredentials(),
+        transport,
       ).listRepositoryBranches({ profile, repo, query: "1" }),
     ).resolves.toEqual({
       _tag: "ok",
       value: { branches: ["release/1.2", "release/1.3"], totalCount: 140 },
     });
-    const argv = executor.requests[0] ?? [];
-    expect(argv.slice(0, 5)).toEqual([
-      "gh",
-      "api",
-      "graphql",
-      "--hostname",
-      "github.com",
-    ]);
-    expect(argv).toContain("owner=centraldigital");
-    expect(argv).toContain("name=patchdesk");
-    expect(argv[argv.indexOf("search=1") - 1]).toBe("-f");
+    const request = graphQlRequest(transport.requests[0]);
+    expect(request.host).toBe("github.com");
+    expect(request.variables).toContainEqual({
+      kind: "typed",
+      name: "owner",
+      value: "centraldigital",
+    });
+    expect(request.variables).toContainEqual({
+      kind: "typed",
+      name: "name",
+      value: "patchdesk",
+    });
+    // A string variable is what keeps a numeric-looking search a GraphQL String.
+    expect(request.variables).toContainEqual({
+      kind: "string",
+      name: "search",
+      value: "1",
+    });
   });
 
   it("omits the search variable when the query is empty", async () => {
-    const executor = new FakeProcessExecutor([
-      exited(
-        JSON.stringify({
-          data: { repository: { refs: { totalCount: 0, nodes: [] } } },
-        }),
-      ),
+    const transport = orderedTransport([
+      jsonAnswer({
+        data: { repository: { refs: { totalCount: 0, nodes: [] } } },
+      }),
     ]);
 
     await new GitHubAdapter(
-      new CommandRunner(executor),
+      noChildProcesses(),
       new StubCredentials(),
+      transport,
     ).listRepositoryBranches({ profile, repo, query: "" });
     expect(
-      (executor.requests[0] ?? []).some((arg) => arg.startsWith("search=")),
+      graphQlRequest(transport.requests[0]).variables.some(
+        (variable) => variable.name === "search",
+      ),
     ).toBe(false);
   });
 
   it("sends updatePullRequest with the branch as a raw string", async () => {
-    const executor = new FakeProcessExecutor([
-      exited(
-        JSON.stringify({
-          data: { updatePullRequest: { clientMutationId: null } },
-        }),
-      ),
+    const transport = orderedTransport([
+      jsonAnswer({ data: { updatePullRequest: { clientMutationId: null } } }),
     ]);
 
     await expect(
       new GitHubAdapter(
-        new CommandRunner(executor),
+        noChildProcesses(),
         new StubCredentials(),
+        transport,
       ).setPullRequestBaseBranch({
         profile,
         pullRequestId: "PR_node",
         branch: "2026",
       }),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
-    const argv = executor.requests[0] ?? [];
-    expect(argv.find((arg) => arg.startsWith("query="))).toContain(
+    const request = graphQlRequest(transport.requests[0]);
+    expect(request.document).toContain(
       "updatePullRequest(input: { pullRequestId: $pullRequestId, baseRefName: $baseRefName })",
     );
-    expect(argv[argv.indexOf("pullRequestId=PR_node") - 1]).toBe("-F");
-    expect(argv[argv.indexOf("baseRefName=2026") - 1]).toBe("-f");
+    expect(request.variables).toContainEqual({
+      kind: "typed",
+      name: "pullRequestId",
+      value: "PR_node",
+    });
+    expect(request.variables).toContainEqual({
+      kind: "string",
+      name: "baseRefName",
+      value: "2026",
+    });
   });
 });

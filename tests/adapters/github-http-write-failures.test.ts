@@ -280,7 +280,6 @@ describe("a write whose outcome GitHub never reported is unavailable", () => {
           graphql: "http://127.0.0.1:1/graphql",
         }),
       ),
-      true,
     );
 
     const result = await unreachable.updateReviewComment({
