@@ -388,6 +388,9 @@ export function insightRunCoordinator(
     // No row reaches a provider invocation.
     {} as never,
     coordinator,
+    // No row reaches the context pack: every row fails before the session
+    // load that precedes it.
+    { ensure: track.stub("contextPack.ensure", ok(undefined)) } as never,
     now,
   );
 }

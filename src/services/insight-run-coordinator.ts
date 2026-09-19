@@ -44,6 +44,7 @@ import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { InsightRecovery } from "./insight-recovery";
+import type { ReviewContextPackService } from "./review-context-pack-service";
 import { InsightRunExecutor } from "./insight-run-executor";
 import {
   InsightActivityBuffer,
@@ -151,6 +152,7 @@ export class InsightRunCoordinator {
     private readonly catalog: PiRuntimeModelCatalog,
     private readonly invokers: Readonly<Record<InsightType, InsightInvoker>>,
     private readonly operations: ReviewOperationCoordinator,
+    private readonly contextPack: ReviewContextPackService,
     private readonly now: () => IsoTimestamp = currentIsoTimestamp,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     private readonly providerCatalog?: InsightProviderCatalog,
@@ -246,6 +248,14 @@ export class InsightRunCoordinator {
       );
     const hash = parseContentHash(await contentHash(session.value.patchPath));
     if (hash._tag === "err") return err("storage_unavailable");
+    // The context pack is built here, not at prepare, and this runs under
+    // `withReviewLock` so concurrent runs on one Review cannot build twice.
+    // It precedes `beginInsightRun` so a failed build leaves no started run.
+    const pack = await this.contextPack.ensure({
+      session: session.value,
+      patchHash: hash.value,
+    });
+    if (pack._tag === "err") return err("storage_unavailable");
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "err") return err("storage_unavailable");
     const record = await this.insights.load(
