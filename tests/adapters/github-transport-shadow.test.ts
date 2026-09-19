@@ -381,28 +381,6 @@ describe("GhRequestRunner transport shadow", () => {
     expect(entries).toEqual([]);
   });
 
-  it("skips a read gh projects with jq, whose answers cannot be compared", async () => {
-    const { runner, transport, entries } = harness(
-      exited("pmquan2cfw\n"),
-      async () => ok({ login: "pmquan2cfw" }),
-    );
-
-    const result = await runner.ghText(profile, {
-      kind: "rest",
-      host: "github.com",
-      path: "user",
-      jq: ".login",
-    });
-
-    expect(result).toEqual({ _tag: "ok", value: "pmquan2cfw\n" });
-    expect(await shadowMeta(entries)).toMatchObject({
-      label: "api GET user",
-      outcome: "skipped",
-      reason: "jq_projection",
-    });
-    expect(transport.requests).toEqual([]);
-  });
-
   it("skips the comparison when the shadow cannot read the credential", async () => {
     const { runner, transport, entries } = harness(
       exited('{"number":42}'),

@@ -72,6 +72,11 @@ export const publishedIssueCommentSchema = v.array(
   }),
 );
 
+/** Who `GET user` says the credential authenticates as, read from the whole body rather than a gh `jq` projection (ADR 0046). */
+export const authenticatedUserSchema = v.looseObject({
+  login: v.string(),
+});
+
 /** The pull-request identity a thread or comment node carries. */
 export const pullRequestIdentitySchema = v.looseObject({
   number: v.number(),

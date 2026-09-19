@@ -66,7 +66,10 @@ import type {
 import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
 import type { GitHubWriteFailure } from "../../domain/github-write";
 import type { GitHubReviewCoordinates } from "../../domain/patch";
-import { reviewReceiptSchema } from "./github-wire-schemas";
+import {
+  authenticatedUserSchema,
+  reviewReceiptSchema,
+} from "./github-wire-schemas";
 import {
   isManagedFetchedRef,
   parsePendingReview,
@@ -279,14 +282,6 @@ export class GitHubAdapter
     return this.requests.ghJson(profile, request);
   }
 
-  /** Run a request that returns text as the profile's configured GitHub account. */
-  private async ghText(
-    profile: WorkspaceProfileConfig,
-    request: GitHubRequest,
-  ): Promise<Result<string, CommandFailure>> {
-    return this.requests.ghText(profile, request);
-  }
-
   async listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
@@ -492,19 +487,22 @@ export class GitHubAdapter
     // observation asks three times, and only the first need reach GitHub.
     if (this.credentials.verifiedAccount(profile) === profile.ghAccount)
       return ok({ host: profile.githubHost, account: profile.ghAccount });
-    const response = await this.ghText(profile, {
+    const response = await this.ghJson(profile, {
       // `gh auth status` exits nonzero if any stale, inactive account is
       // invalid, even when the configured active account can make API calls.
       // Ask GitHub who this invocation can actually authenticate as instead.
       kind: "rest",
       host: profile.githubHost,
       path: "user",
-      jq: ".login",
     });
-    if (
-      response._tag === "err" ||
-      response.value.trim() !== profile.ghAccount
-    ) {
+    if (response._tag === "err") {
+      return err({
+        _tag: "GitHubAuthenticationFailed",
+        operation: "auth_status",
+      });
+    }
+    const user = v.safeParse(authenticatedUserSchema, response.value);
+    if (!user.success || user.output.login !== profile.ghAccount) {
       return err({
         _tag: "GitHubAuthenticationFailed",
         operation: "auth_status",
