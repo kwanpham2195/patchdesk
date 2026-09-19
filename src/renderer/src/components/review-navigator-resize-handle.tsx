@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   type KeyboardEvent,
   type PointerEvent,
@@ -67,6 +68,22 @@ export function ReviewNavigatorResizeHandle({
   onResizeEnd,
 }: ReviewNavigatorResizeHandleProps): React.JSX.Element {
   const dragStart = useRef<DragStart | null>(null);
+  const pendingFrame = useRef<number | null>(null);
+  const pendingWidthRem = useRef<number | undefined>(undefined);
+
+  // A pointer fires move events faster than the browser paints, and every
+  // onResize re-renders the whole workbench, so a drag reports at most the
+  // latest position per frame. Ending the drag and unmounting both drop the
+  // frame still owed: it would otherwise land after the settled width and
+  // move the pane back.
+  const dropPendingResize = useCallback((): void => {
+    if (pendingFrame.current !== null)
+      window.cancelAnimationFrame(pendingFrame.current);
+    pendingFrame.current = null;
+    pendingWidthRem.current = undefined;
+  }, []);
+
+  useEffect(() => dropPendingResize, [dropPendingResize]);
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
@@ -91,19 +108,30 @@ export function ReviewNavigatorResizeHandle({
   const handlePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       const next = widthFromDrag(event);
-      if (next !== undefined) onResize(next);
+      if (next === undefined) return;
+      pendingWidthRem.current = next;
+      if (pendingFrame.current !== null) return;
+      pendingFrame.current = window.requestAnimationFrame(() => {
+        const latest = pendingWidthRem.current;
+        pendingFrame.current = null;
+        pendingWidthRem.current = undefined;
+        if (latest !== undefined) onResize(latest);
+      });
     },
     [onResize, widthFromDrag],
   );
 
   const handlePointerUp = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      const next = widthFromDrag(event);
+      // A frame still owed holds a width the parent has not seen, so it is the
+      // fallback when this event carries no width of its own.
+      const settled = widthFromDrag(event) ?? pendingWidthRem.current;
       dragStart.current = null;
+      dropPendingResize();
       event.currentTarget.releasePointerCapture(event.pointerId);
-      if (next !== undefined) onResizeEnd(next);
+      if (settled !== undefined) onResizeEnd(settled);
     },
-    [onResizeEnd, widthFromDrag],
+    [dropPendingResize, onResizeEnd, widthFromDrag],
   );
 
   // The browser can steal pointer capture mid-drag (a system gesture, an
@@ -113,11 +141,12 @@ export function ReviewNavigatorResizeHandle({
   // resizing from a stale start position.
   const handlePointerCancel = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      const next = widthFromDrag(event);
+      const settled = widthFromDrag(event) ?? pendingWidthRem.current;
       dragStart.current = null;
-      if (next !== undefined) onResizeEnd(next);
+      dropPendingResize();
+      if (settled !== undefined) onResizeEnd(settled);
     },
-    [onResizeEnd, widthFromDrag],
+    [dropPendingResize, onResizeEnd, widthFromDrag],
   );
 
   // Arrow keys repeat at roughly 30/sec while held, so persisting on every
