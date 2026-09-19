@@ -172,12 +172,17 @@ export class ReviewRefreshService {
     const currentRevision = reviewRevisionOf(current.value);
     if (currentRevision === undefined) return err({ reason: "github_read" });
     // One branch-protection read for the two consumers below; they classify an
-    // unavailable response differently, so both readings travel together.
-    const branchProtection = this.dependencies.github.readBranchProtection?.({
-      profile,
-      pr: pullRequest,
-      branch: current.value.baseBranch,
-    });
+    // unavailable response differently, so both readings travel together. Only
+    // the evidence read always awaits it, so an unwired one leaves nothing to
+    // share and nothing to own.
+    const branchProtection =
+      this.dependencies.github.getMergePolicyEvidence === undefined
+        ? undefined
+        : this.dependencies.github.readBranchProtection?.({
+            profile,
+            pr: pullRequest,
+            branch: current.value.baseBranch,
+          });
     const [
       comments,
       commits,

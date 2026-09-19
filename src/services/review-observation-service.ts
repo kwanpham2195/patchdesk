@@ -298,12 +298,17 @@ export class ReviewObservationService {
     }
 
     // One branch-protection read for the two consumers below; they classify an
-    // unavailable response differently, so both readings travel together.
-    const branchProtection = this.dependencies.github.readBranchProtection?.({
-      profile,
-      pr: reviewRef(review),
-      branch: terminalRead.value.baseBranch,
-    });
+    // unavailable response differently, so both readings travel together. Only
+    // the evidence read always awaits it, so an unwired one leaves nothing to
+    // share and nothing to own.
+    const branchProtection =
+      this.dependencies.github.getMergePolicyEvidence === undefined
+        ? undefined
+        : this.dependencies.github.readBranchProtection?.({
+            profile,
+            pr: reviewRef(review),
+            branch: terminalRead.value.baseBranch,
+          });
     const [
       comments,
       checks,
