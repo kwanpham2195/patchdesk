@@ -68,7 +68,7 @@ Derived state is assembled per request:
 - The retained Insight records, which are bound to the analyzed revision.
 
 The outputs are GitHub writes (comments, thread state changes, review submission, merge) and the projections rendered in the workbench.
-GitHub writes happen only from explicit maintainer actions on a Fresh review.
+GitHub writes happen only from explicit maintainer actions on a current Review session; the review-content writes also require a Fresh review.
 Model output is never authoritative by itself; Patchdesk validates it and decides what it may change.
 
 Startup is strictly ordered:
@@ -77,6 +77,10 @@ Startup is strictly ordered:
 2. The main process health-checks the API with that capability and the renderer origin.
 3. Only a healthy API opens the workbench window.
 4. A failed start shows an error box and exits. No Review or GitHub write was started.
+
+The login-shell environment import runs beside that sequence rather than inside it.
+`startDesktopBesideLoginShellImport` in `app-lifecycle.ts` starts the import first, keeps its promise, and starts the lifecycle next, so neither the local API nor the window waits for a shell to source the maintainer's dotfiles (ADR 0038, amended 2026-09-19).
+Each reader that needs an imported PATH or provider credential awaits that one promise for itself, and `electron-main.ts` awaits it after the window is up.
 
 ## Code Map
 
@@ -90,16 +94,20 @@ The Electron composition root.
 This directory builds every service and adapter and wires them together.
 It is the only place that knows about Electron.
 
-- `electron-main.ts` is the entry point. It enforces a single instance, registers window and lifecycle events, imports the login shell's PATH and provider keys before anything reads either, and records crashes before exit.
-- `app-lifecycle.ts` owns startup order: local API start, health check, workbench display, then shutdown in reverse.
+- `electron-main.ts` is the entry point. It enforces a single instance, registers window and lifecycle events, starts the login-shell import beside the desktop lifecycle, and records crashes before exit.
+- `app-lifecycle.ts` owns startup order: local API start, health check, workbench display, then shutdown in reverse. `startDesktopBesideLoginShellImport` sits beside that order rather than inside it.
 - `local-api.ts` starts the Hono API on `127.0.0.1` with a random port. It builds the container (`local-api-container.ts` over `local-api-stores.ts`), registers the route modules in `routes/`, and listens. Most routes parse their body with a Valibot schema, call a service, and serialize the typed result; the merge, inline-conversation, and Review recovery routes use strict schemas that reject unknown fields. The Settings, profile, and watchlist routes in `dashboard-routes.ts` parse inside `DashboardController` instead, the profile-select route reads one id field, and the diff-file route parses inside `ReviewDiffSourceService`.
+- `local-api.ts` also owns the app's recurring background work. `startRetentionSweepScheduler` sweeps each configured profile's retained data once every 24 hours, and `startWatchedPullRequestScheduler` polls the watched pull requests once at start and then on the interval Settings holds (ADR 0045). The server's `stop` settles both schedulers before it closes the HTTP server, and `electron-main.ts` is what turns them on.
+- `ipc-contract.ts` is the contract the preload and bridge bullets below describe: `DESKTOP_REQUEST_CHANNEL`, the closed `DesktopRequest` and `DesktopResponse` shapes, `PatchdeskDesktopApi`, and `APP_CAPABILITY_HEADER`. Every main-to-renderer channel name is a constant written here exactly once.
+- `github-capability-guards.ts` decides which GitHub write gateways the container may expose. `local-api-container.ts` builds the pending-review, direct-summary, and merge services only when the adapter structurally implements the matching gateway, and startup fails closed when the pending-review gateway is absent.
 - `desktop-bridge.ts` is the only IPC surface the renderer can reach. It validates the requested route against an allowlist, forwards the request to the local API with the capability and renderer-origin headers, caps responses at 8 MiB, and applies a 30-second timeout.
 - `app-capability.ts` generates the per-launch capability and compares presented values with constant-time equality.
 - `preload.ts` exposes the minimal `window.patchdesk` bridge to the sandboxed renderer: `request`, `openExternalHttps`, `onMenuAction` for the native menu, `onNotificationClick`, `onWatchedPullRequestChange`, `qaScrollDiagnosticsEnabled`, `setWindowAppearance`, and `onWindowFullScreen` with the `windowFullScreenAtLoad` and `appearanceAtLoad` values it reads as the renderer loads — the renderer cannot see native full screen for itself.
 - `renderer-origin.ts` parses and verifies the renderer origin.
 - `desktop-close-guard.ts` protects an unsaved review draft and an in-flight GitHub write during close.
 - `external-navigation.ts` opens external links only over HTTPS, with no credentials and no custom port. A link the user clicked in a rendered body may go to any host (`isUserActivatedExternalUrl`), because comment bodies link off GitHub constantly; a navigation the page starts on its own is still confined to the allowlisted hosts (`isAllowedExternalUrl`).
-- `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, and `desktop-menu.ts` hold small desktop concerns. `desktop-menu-channel.ts` and `desktop-full-screen-channel.ts` each keep both halves of a main-to-renderer channel in one module, so the channel name is written once.
+- `desktop-notifier.ts` posts the macOS notifications of ADR 0044. `decideDesktopNotification` is the pure silence rule, and `createDesktopNotifier` owns the settings read, Electron's `Notification`, and the click hand-off.
+- `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, `window-appearance.ts`, and `desktop-menu.ts` hold small desktop concerns. The five `desktop-*-channel.ts` modules each keep both halves of one main-to-renderer channel — menu action, full screen, appearance, notification click, watched pull request change — in one module, so the channel name is written once.
 
 **Architecture Invariant:** the renderer is sandboxed and has no Node.js access.
 The preload bridge is the only way out.
@@ -122,8 +130,9 @@ The types and invariants of the system. This is the **API Boundary** every other
 - `insight-record.ts` models the run lifecycle of an Insight: an `InsightRun` is `queued`, `running`, or `cancelling`, a run that produces a validated result becomes a `RetainedInsight` bound to the analyzed revision, and a run that ends without one becomes an `InsightFailure` whose reason is `cancelled`, `failed`, `invalid_result`, or `superseded`.
 - `pending-review.ts`, `merge-operation.ts`, and `direct-summary-review.ts` model write intents and their receipts.
 - `patch.ts` maps Findings to diff locations (`mapFindingLocation`, `toGitHubReviewCoordinates`), and `diff-anchor.ts` fingerprints the diff context around a `PendingReviewAnchor` so one inline command can be validated against the represented diff. Both read the patch through the tokenizer in `unified-patch.ts`.
+- `watched-pull-request.ts` models a watched pull request and the GitHub snapshot each poll is compared against. `diffWatchedSnapshot` derives the changes between two snapshots, and `checkWatchCapacity` refuses a 21st watch before GitHub is asked (ADR 0045).
 - `github-context.ts` describes the GitHub shapes the app consumes.
-- `contracts.ts` holds the schemas for the global config file.
+- `contracts.ts` holds the schemas for the global config file, including `NotificationSettings`: the two notification toggles and the watched pull request poll interval, stored and patched as one object.
 
 **Architecture Invariant:** the domain layer is pure.
 It does no I/O, knows nothing about Electron or HTTP, and never touches GitHub.
@@ -143,15 +152,21 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-operation-coordinator.ts` serializes every mutation or reconciliation for one Review.
 - `review-lifecycle-gate.ts` serializes durable lifecycle mutations per workspace profile.
 - `review-write-gate.ts` holds the two write preconditions: `requireFresh` for review-content writes — comment, publish, merge — and `requireCurrentSession` for pull-request metadata writes. Label, assignee, reviewer, base-branch, and draft-state writes need only a current, non-stale, non-terminal session (ADR 0025).
-- `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results.
+- `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results. It delegates the parts it owns: `insight-run-executor.ts` runs one invocation to its terminal state under the Review lock, `insight-recovery.ts` fails the runs a crash left marked active, `insight-result-validation.ts` validates the result a child submitted, and `insight-provider-catalog.ts` owns provider status, explicit Codex model discovery, and the provider, model, and effort revalidation immediately before a run.
+- `insight-activity-buffer.ts` keeps one running Insight's bounded activity trace in memory — the phase, the last reasoning line, at most 200 command rows, and the approval counts — which the run poll answers from and nothing ever persists (ADR 0043).
 - `pi-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
 - `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` per symbol name — over the proposed names and over the removed symbols it derives from the patch — in a represented-review worktree it first confirms with `git rev-parse HEAD`, so no model gains a search capability (ADR 0036).
-- `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows.
+- `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows. `merge-service.ts` performs the merge itself behind the merge controller, and `review-write-recovery-service.ts` reconciles a write whose outcome Patchdesk could not confirm, through complete GitHub reads only.
+- `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `base-branch-service.ts`, and `draft-state-service.ts` implement the conversation rail's pull-request metadata writes (ADR 0029). The shared plumbing is `pull-request-metadata-write.ts`: `resolvePullRequestWritePermission` reads the account's repository permission, and `runGuardedMetadataWrite` runs all five through the same admission, durable intent, mutation, and confirmation sequence.
+- `review-observation-service.ts` reconciles bounded GitHub state only after canonical same-revision proof, in a fixed candidate, journal, session, Review order; `review-observation-recovery.ts` replays an observation the process was interrupted partway through from that journal rather than from a new read.
 - `review-worktree-service.ts` owns the read-only git commands that create a session checkout.
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
 - `review-recovery-service.ts` recovers a Review after an interrupted operation.
 - `review-diagnostic-service.ts` and `app-log-service.ts` implement observability.
 - `maintainer-inbox-service.ts` and `inbox-refresh-coordinator.ts` implement the Pull requests screen. `dashboard-service.ts` now holds only workspace-repo discovery (`discoverWorkspaceRepos`), which Settings uses; its second pull-request scan was dead code and is deleted.
+- `dashboard-controller.ts` is the main-process composition root for the renderer's profile and dashboard actions. It owns the request parsing the `dashboard-routes.ts` bullet above defers to it, the profile store and Settings reads and patches, the inbox and its refresh coordinator, and the memoized first-run account detection.
+- `sidebar-listing-service.ts` lists the pull requests visited in one workspace profile, newest first and capped at 20 rows, from `ReviewStore.list` alone. It makes no GitHub call, and a terminal row carries the instant Patchdesk observed the state rather than a live one (ADR 0042).
+- `watched-pull-request-service.ts` owns each profile's watched pull requests: the watch and unwatch commands, and the poll that reads them all in one query, saves the new snapshots, and raises one notification event per change (ADR 0045). `desktop-notifier.ts` is the port those and every other notification are posted through (ADR 0044).
 
 **Architecture Invariant:** services receive parsed domain values.
 They never parse raw input themselves and never trust the renderer's claims.
@@ -162,7 +177,8 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 
 - `github/github-adapter.ts` is the GitHub boundary. It issues bounded REST and GraphQL queries and maps every outcome to a typed result. `FakeGitHubAdapter` provides the same surface for tests.
 - `github/github-http-client.ts` is the transport every one of those requests goes over: HTTPS from the main process, with the profile account's token as a bearer header (ADR 0046, issue #276). There is no second transport and no fallback; a failure is classified from the response status. `gh` keeps only `auth token`, `auth status`, `--version`, and the git credential helper.
-- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its remaining callers are `git` and `gh auth`.
+- `github/gh-request-runner.ts` is the layer every GitHub module sits on. `GhRequestRunner` sends each REST or GraphQL request over a `GitHubServedTransport` as the profile's own account and classifies what comes back into a typed `GitHubReadFailure` per named read operation. It holds the one piece of state that outlives a call: the last rate limit observed per host, so a later refusal on that host can name its resume time.
+- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its remaining callers are `git`, `gh auth`, the `gh --version` probe in `github-environment-probe.ts`, and the Insight runtime child, which `pi-insight-child-invoker.ts` spawns as this process's own executable running the staged runner.
 - `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every request runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory and are never logged or persisted.
 - `storage/json-file.ts` reads and writes one JSON value per file with atomic replacement and a sensitive-value guard.
 - `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, and others.
@@ -171,8 +187,9 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 - `storage/patchdesk-paths.ts` builds every app-owned path without doing I/O.
 - `process/executable-discovery.ts` finds executable files on PATH and macOS desktop paths as process I/O.
 - `process/login-shell-environment.ts` runs the maintainer's login shell once at startup and imports two things from it: PATH, and the Pi provider credential names (ADR "Import provider credentials and PATH from the login shell"). It never overwrites a variable this process already has, and a failure or timeout imports nothing. This is the only place the main process's own environment is written.
-- `pi/` holds the model catalogs: the generated catalog and the runtime catalog that the main process consults.
-- `codex/codex-app-server-client.ts` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials.
+- `process/login-shell-import.ts` holds that import as the launch's single awaited barrier. `startLoginShellEnvironmentImport` runs it exactly once, and `whenLoginShellEnvironmentImported` is what every reader — a child spawn, the Pi child invoker, the provider catalog, Codex discovery — waits on instead of starting a second import.
+- `pi/` holds the model catalogs — the generated catalog and the runtime catalog the main process consults — and `pi-provider-catalog.ts`, which reports each built-in provider's credential name and whether this launch has it. The catalog waits on the login-shell import above before it answers, because that import is where the credential names come from.
+- `codex/` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials. `codex-app-server-client.ts` is the app-server connection, `codex-brief-prompt.ts` composes the Brief turn, `codex-command-allowlist.ts` decides whether a command approval request names a read-only inspection inside the represented-review worktree, and `codex-activity.ts` maps the account's notifications to the bounded activity events the run poll projects (ADR 0043).
 
 **Architecture Invariant:** adapters are the only layer that performs I/O.
 Nothing else reads a file, spawns a process, or talks to GitHub.
@@ -217,7 +234,7 @@ It is analysis guidance, never permission: no shell commands, no GitHub writes, 
 
 The architecture decision records, one file per decision, numbered in the order they were made.
 They document why the system looks the way it does:
-the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, one-shot Insight children driving Pi directly, GitHub calls authenticated as the profile's account, and the narrow login-shell import that makes a Dock launch find the maintainer's keys and `codex`.
+the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, one-shot Insight children driving Pi directly, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys and `codex`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
 
 ### `tests/`
 
@@ -247,11 +264,12 @@ Startup fails closed when the local API cannot prove its own health.
 ### Serialization
 
 Long-running local apps break when two operations mutate the same state at the same time.
-Patchdesk serializes mutations at two levels:
+Patchdesk serializes mutations at four scopes:
 
 - `ReviewOperationCoordinator` queues every mutation or reconciliation for one Review. Command callers use a non-waiting acquire/release pair so a user action returns an immediate in-progress result instead of blocking behind another action.
 - `ReviewLifecycleGate` serializes durable lifecycle mutations per workspace profile.
 - `InboxRefreshCoordinator` coalesces concurrent pull-request scans for one profile.
+- `WatchedPullRequestService` runs every change to one profile's watched list — watch, unwatch, and the poll that saves the new snapshots — under a per-profile `KeyedMutex`, so a watch and a poll writing the same file never drop each other's change.
 
 **Architecture Invariant:** one owner mutates one Review at a time.
 There is no lock-free mutation of a Review anywhere.
@@ -267,6 +285,22 @@ A write requires `Fresh`: the represented snapshot must still match the current 
 
 **Architecture Invariant:** GitHub wins.
 Patchdesk never merges drafts and never reconciles a pending review while a pending-review operation is locked.
+
+### Notifications and watched pull requests
+
+Patchdesk posts a macOS notification for five events it already knows about: an Insight run settling, a write left outcome-unknown, a new session from preparation, a completed merge, and a change on a watched pull request (ADR 0044).
+Services see only the `DesktopNotifier` port in `src/services/desktop-notifier.ts`, whose `notify` is synchronous and never throws, so a notifier defect can never change the `Result` the write or run that raised it returns.
+The main-process implementation owns the toggles, Electron's `Notification`, and the click.
+An event about the Review the focused window is showing posts nothing, and a watched pull request open in the workbench stays silent whether the window is focused or not.
+
+Watched pull requests are the one thing Patchdesk polls GitHub for (ADR 0045, superseding part of ADR 0032, which had left the app with no timer at all).
+A profile watches at most 20 pull requests, and one tick is one aliased GraphQL query over all of them.
+The poll compares each answer with the stored snapshot, saves the new snapshots, and only then posts one notification per change, so a restart never repeats a notification.
+The polling is notification-only: it replaces no row, no Review session, no diff, and no other displayed state, which is why a timer is allowed here at all.
+The only thing the renderer sees from it is a dot on the Pull requests freshness badge, pushed over the watched-pull-request channel until the next refresh.
+
+**Architecture Invariant:** no timer moves state under the reader.
+A poll may raise a notification and light a badge; refreshing what is on screen stays an explicit maintainer action.
 
 ### Cancellation
 
@@ -307,16 +341,19 @@ Patchdesk is a desktop process; understanding what happens inside it matters for
 
 ### Testing
 
-The system has four test boundaries, mirroring the production layers.
+Two Vitest projects and one Playwright project run everything.
 
-The innermost boundary is `src/domain`.
-Tests exercise pure parsers and state transitions. They are fast and fully deterministic.
+`vitest.config.ts` includes every `tests/**/*.test.ts` and `.test.tsx` file, so the boundaries are directories inside one project rather than separately configured suites.
+`tests/domain/` exercises pure parsers and state transitions; it is fast and fully deterministic.
+`tests/services/` runs real services against temporary directories and `FakeGitHubAdapter`, covering preparation, refresh, coordination, and recovery without a network.
+`tests/adapters/` covers the I/O layer — the GitHub transport, request classification, and write shapes, the command runner, the Codex client, and the login-shell import — and `tests/storage/` covers one store per aggregate.
+`tests/main/` covers the privileged desktop boundary, where `desktop-bridge-allowlist.test.ts` and `local-api-auth.test.ts` are the two that pin the capability and allowlist rules.
+`tests/renderer/` uses jsdom and Testing Library, and `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
+`tests/scripts/` covers the packaging, release, and gate scripts, and `tests/workflows/` holds the Walkthrough generation flow from prompt to parsed output.
 
-The next boundary is `src/services`.
-Tests run real services against temporary directories and `FakeGitHubAdapter`. They cover preparation, refresh, coordination, and recovery without a network.
-
-The renderer boundary uses jsdom and Testing Library.
-`renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
+`runtime/insight` is the second project, configured inside its own package because it has its own dependencies and lockfile.
+`pnpm test:root` runs the root project, `pnpm test:insight` runs the runtime's, and `pnpm test:all` runs both, which is what `pnpm check` calls.
+Running only `pnpm test` proves nothing about the runtime.
 
 The outermost boundary is the built app.
 Playwright browser tests run against the built renderer bundle (`out/renderer`) served over loopback, with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite.
