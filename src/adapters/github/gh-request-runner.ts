@@ -83,11 +83,13 @@ export const commandTimeoutMs = 15_000;
 /**
  * The reads served over HTTPS rather than by a `gh api` child, named by the
  * label `normalizeCommandLabel` prints for them (ADR 0046, issue #276, steps
- * T1a and T1b). Every label here read clean against gh for a whole shadow
- * window before it was added.
+ * T1a, T1b, and T2). Every label here read clean against gh for a whole
+ * shadow window before it was added.
  *
  * This list is the cutover record: T2 extends it as its labels prove clean,
- * and T4 deletes it together with the last `gh api` argv.
+ * and T4 deletes it together with the last `gh api` argv. A GraphQL label is
+ * served only when the document is also a query, so naming one here never
+ * moves the mutations that share its endpoint.
  */
 export const httpServedReadLabels: ReadonlySet<string> = new Set([
   "api GET repos/:owner/:repo/commits/:sha/check-runs",
@@ -102,6 +104,9 @@ export const httpServedReadLabels: ReadonlySet<string> = new Set([
   "api GET repos/:owner/:repo/compare/:range",
   "api GET repos/:owner/:repo/pulls/:n/reviews",
   "api GET repos/:owner/:repo/pulls/:n/comments",
+  "api graphql MergePolicy",
+  "api graphql PullRequestThreads",
+  "api graphql MaintainerInboxSearch",
 ]);
 
 /**

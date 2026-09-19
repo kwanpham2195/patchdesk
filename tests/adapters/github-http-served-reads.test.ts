@@ -14,7 +14,13 @@ import {
   type GitHubServedTransport,
 } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { repositoryLabelsQuery } from "../../src/adapters/github/github-graphql-queries";
+import {
+  deleteThreadCommentMutation,
+  maintainerInboxSearchQuery,
+  mergePolicyQuery,
+  repositoryLabelsQuery,
+  threadQuery,
+} from "../../src/adapters/github/github-graphql-queries";
 import { fullJsonMediaType } from "../../src/adapters/github/github-pull-request-reviews";
 import { ghInvocationFor } from "../../src/adapters/github/github-request";
 import type {
@@ -27,6 +33,8 @@ import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
+  parseGitSha,
+  parseIsoTimestamp,
   parsePullRequestNumber,
 } from "../../src/domain/ids";
 import type { LogEntryInput } from "../../src/domain/log-entry";
@@ -153,6 +161,41 @@ const commits: GitHubRestRequest = {
   path: "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
 };
 
+/** The three GraphQL queries T2 cut over, as their call sites write them. */
+const mergePolicy: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: mergePolicyQuery,
+  variables: [
+    { kind: "typed", name: "owner", value: "centraldigital" },
+    { kind: "typed", name: "name", value: "patchdesk" },
+    { kind: "typed", name: "number", value: 42 },
+  ],
+};
+const threads: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: threadQuery,
+  variables: [
+    { kind: "typed", name: "owner", value: "centraldigital" },
+    { kind: "typed", name: "name", value: "patchdesk" },
+    { kind: "typed", name: "number", value: 42 },
+  ],
+};
+const inboxSearch: GitHubGraphQlRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document: maintainerInboxSearchQuery,
+  variables: [
+    {
+      kind: "typed",
+      name: "search",
+      value: "repo:centraldigital/patchdesk is:pr is:open",
+    },
+    { kind: "typed", name: "first", value: 25 },
+  ],
+};
+
 /** A GraphQL read no shadow window has compared either, so it stays on gh too. */
 const repositoryLabels: GitHubGraphQlRequest = {
   kind: "graphql",
@@ -219,11 +262,28 @@ describe("httpServedReadLabels", () => {
       expect(httpServedReadLabels.has(label)).toBe(true);
   });
 
+  it("names the three GraphQL labels a shadow window compared", () => {
+    const labels = [mergePolicy, threads, inboxSearch].map(labelFor);
+
+    expect(labels).toEqual([
+      "api graphql MergePolicy",
+      "api graphql PullRequestThreads",
+      "api graphql MaintainerInboxSearch",
+    ]);
+    for (const label of labels)
+      expect(httpServedReadLabels.has(label)).toBe(true);
+  });
+
   it("leaves the commits read, which no shadow window compared, off the list", () => {
     expect(labelFor(commits)).toBe(
       "api GET repos/:owner/:repo/pulls/:n/commits",
     );
     expect(httpServedReadLabels.has(labelFor(commits))).toBe(false);
+  });
+
+  it("leaves every other GraphQL query off the list", () => {
+    expect(labelFor(repositoryLabels)).toBe("api graphql RepositoryLabels");
+    expect(httpServedReadLabels.has(labelFor(repositoryLabels))).toBe(false);
   });
 });
 
@@ -248,6 +308,53 @@ describe("routing a read to the HTTP transport", () => {
     await expect(runner.ghJson(profile, commits)).resolves.toEqual(ok([[]]));
     expect(executor.labels).toEqual([
       "api GET repos/:owner/:repo/pulls/:n/commits",
+    ]);
+    expect(http.requests).toEqual([]);
+  });
+
+  it("serves an allowlisted GraphQL query over HTTP and spawns no gh child", async () => {
+    const { executor, http, runner } = harness({
+      answer: ok({ data: { repository: null } }),
+    });
+
+    await expect(runner.ghJson(profile, mergePolicy)).resolves.toEqual(
+      ok({ data: { repository: null } }),
+    );
+    expect(http.requests).toEqual([mergePolicy]);
+    expect(executor.labels).toEqual([]);
+  });
+
+  it("keeps a mutation on gh although its label is allowlisted", async () => {
+    const { executor, http, runner } = harness({ execution: exited("{}") });
+    // A mutation named after an allowlisted query normalizes to that same
+    // label, so only the document tells the two apart.
+    const request: GitHubGraphQlRequest = {
+      kind: "graphql",
+      host: "github.com",
+      document:
+        "mutation MergePolicy($pullRequestId: ID!) { mergePullRequest(input: { pullRequestId: $pullRequestId }) { clientMutationId } }",
+      variables: [{ kind: "typed", name: "pullRequestId", value: "PR_1" }],
+    };
+    expect(httpServedReadLabels.has(labelFor(request))).toBe(true);
+
+    await runner.ghJson(profile, request);
+
+    expect(executor.labels).toEqual(["api graphql MergePolicy"]);
+    expect(http.requests).toEqual([]);
+  });
+
+  it("keeps a real mutation on gh", async () => {
+    const { executor, http, runner } = harness({ execution: exited("{}") });
+
+    await runner.ghJson(profile, {
+      kind: "graphql",
+      host: "github.com",
+      document: deleteThreadCommentMutation,
+      variables: [{ kind: "typed", name: "commentId", value: "PRRC_1" }],
+    });
+
+    expect(executor.labels).toEqual([
+      "api graphql deletePullRequestReviewComment",
     ]);
     expect(http.requests).toEqual([]);
   });
@@ -394,5 +501,99 @@ describe("reads served over the real HTTP client", () => {
       adapter().resolveAuthenticatedAccount(profile),
     ).resolves.toEqual(ok({ host: "github.com", account: "pmquan2cfw" }));
     expect(server.requests()[0]?.url).toBe("/user");
+  });
+
+  /**
+   * gh's `-F` inferred each variable's type from its text and `-f` always sent
+   * a String. The client infers from the same text, so these three call sites
+   * have to reach GitHub with the types they reached it with through gh.
+   */
+  it("sends the merge policy variables with the types gh sent", async () => {
+    server.respondWith(json(200, { data: { repository: null } }));
+
+    await adapter().getMergePolicy({
+      profile,
+      pr,
+      expectedHeadSha: mustParse(parseGitSha("b".repeat(40))),
+    });
+
+    expect(server.requests()[0]?.url).toBe("/graphql");
+    expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
+      query: mergePolicyQuery,
+      variables: { owner: "centraldigital", name: "patchdesk", number: 42 },
+    });
+  });
+
+  it("sends the review thread variables with the types gh sent", async () => {
+    server.respondWith(json(200, { data: { repository: null } }));
+
+    await adapter().getPullRequestComments({ profile, pr });
+
+    expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
+      query: threadQuery,
+      variables: { owner: "centraldigital", name: "patchdesk", number: 42 },
+    });
+  });
+
+  it("sends the inbox search variables with the types gh sent", async () => {
+    server.respondWith(json(200, { data: { search: null } }));
+
+    await adapter().searchMaintainerPullRequests({
+      profile,
+      repo: pr,
+      searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+      state: "open",
+      pageSize: 25,
+      cursor: "Y3Vyc29yOnYyOpHOAAE",
+    });
+
+    expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
+      query: maintainerInboxSearchQuery,
+      variables: {
+        search: "repo:centraldigital/patchdesk is:pr is:open",
+        first: 25,
+        cursor: "Y3Vyc29yOnYyOpHOAAE",
+      },
+    });
+  });
+
+  it("still learns the rate limit the inbox search carries (ADR 0023)", async () => {
+    const resetAt = "2099-01-01T00:00:00Z";
+    server.respondWith(
+      json(200, {
+        data: {
+          rateLimit: { remaining: 0, resetAt },
+          search: {
+            issueCount: 0,
+            edges: [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      }),
+    );
+    const github = adapter();
+
+    await github.searchMaintainerPullRequests({
+      profile,
+      repo: pr,
+      searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+      state: "open",
+      pageSize: 25,
+    });
+    // A host whose whole budget is spent answers without asking GitHub again.
+    const watched = await github.readWatchedPullRequests({
+      profile,
+      refs: [pr],
+      now: mustParse(parseIsoTimestamp("2026-09-19T00:00:00.000Z")),
+    });
+
+    expect(watched).toEqual(
+      err({
+        _tag: "GitHubRateLimited",
+        operation: "get_watched_prs",
+        resumeAt: "2099-01-01T00:00:00.000Z",
+      }),
+    );
+    expect(server.requests()).toHaveLength(1);
   });
 });
