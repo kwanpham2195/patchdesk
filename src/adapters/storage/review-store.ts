@@ -7,6 +7,7 @@ import type {
 } from "../../domain/ids";
 import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
 import { KeyedMutex } from "../../domain/keyed-mutex";
+import { mapConcurrent } from "../../domain/map-concurrent";
 import { err, ok, type Result } from "../../domain/result";
 import { parseReview, type Review } from "../../domain/review";
 import {
@@ -142,9 +143,9 @@ export class ReviewStore {
 
   /**
    * Read every Review in one profile, newest updatedAt first. There is no
-   * index: this opens each review file under the profile in turn. A record
-   * that cannot be read is skipped and counted in `unreadable` so one corrupt
-   * file costs the caller that row rather than the whole listing.
+   * index: this opens every review file under the profile, eight at a time.
+   * A record that cannot be read is skipped and counted in `unreadable` so
+   * one corrupt file costs the caller that row rather than the whole listing.
    */
   async list(
     profileId: WorkspaceProfileId,
@@ -159,13 +160,20 @@ export class ReviewStore {
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
     }
 
+    const reviewIds = entries.flatMap((entry) => {
+      const reviewId = parseReviewId(entry);
+      return reviewId._tag === "ok" ? [reviewId.value] : [];
+    });
+    // Eight at a time rather than serially: insight-recovery.ts runs four
+    // listings at once, so this bound keeps the open descriptors across them
+    // small while the wall time stops being one round trip per review.
+    const loaded = await mapConcurrent(reviewIds, 8, (reviewId) =>
+      this.load(profileId, reviewId),
+    );
+
     const reviews: Review[] = [];
     let unreadable = 0;
-    for (const entry of entries) {
-      const reviewId = parseReviewId(entry);
-      if (reviewId._tag === "err") continue;
-      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- mapConcurrent would fan these reads out, as insight-recovery.ts does over profiles; serial is the choice here because that caller already runs four listings at once, so one open descriptor per listing keeps the total bounded
-      const review = await this.load(profileId, reviewId.value);
+    for (const review of loaded) {
       if (review._tag === "err") {
         // A vanished file is an ordinary race with deletion, not a lost record.
         if (review.error.reason !== "not_found") unreadable += 1;
