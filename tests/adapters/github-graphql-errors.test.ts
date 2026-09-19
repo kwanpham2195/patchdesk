@@ -1,38 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CommandRunner,
-  type CommandExecution,
-  type CommandExecutor,
   type CommandFailure,
-  type CommandRequest,
   type ForbiddenReason,
 } from "../../src/adapters/github/command-runner";
 import type { Result } from "../../src/domain/result";
 import { json, profile, useFixtureServer } from "./github-http-fixture-server";
 
 /**
- * What a GraphQL answer carrying `errors` means, pinned across both
- * transports before any GraphQL read leaves `gh api` (issue #276, step T2).
+ * What a GraphQL answer carrying `errors` means (issue #276).
  *
- * `gh api graphql` exits nonzero whenever the response holds a non-empty
- * `errors` array, even beside a partial `data`, so every caller in this app
- * has only ever seen such a response as a failure. The HTTP client answers
- * the same 200 body, so it has to reach the same `CommandFailure` tag: the
- * same classifier reads the body on both paths, and each case below asserts
- * the gh path's tag for the body it feeds the client.
+ * GitHub answers a GraphQL refusal with HTTP 200 and a non-empty `errors`
+ * array, beside a partial `data` or not, and every caller in this app has
+ * only ever seen that as a failure. The body is the only signal, so each case
+ * below pins the `CommandFailure` tag the client reaches from it.
  */
 
 const fixture = useFixtureServer();
-
-/** Answers one recorded gh execution, whatever it is asked to run. */
-class GhExecutor implements CommandExecutor {
-  constructor(private readonly execution: CommandExecution) {}
-
-  async execute(_input: CommandRequest): Promise<CommandExecution> {
-    return this.execution;
-  }
-}
 
 /** One entry of GitHub's `errors` array, in the fields this classification reads. */
 type GraphQlErrorEntry = {
@@ -58,14 +42,12 @@ type GraphQlResponseBody = {
 
 type GraphQlErrorCase = {
   readonly name: string;
-  /** The HTTP 200 body GitHub answered with, which is also gh's stdout. */
+  /** The HTTP 200 body GitHub answered with. */
   readonly body: GraphQlResponseBody;
-  /** What gh wrote to stderr for that body: its own prefix and GitHub's messages. */
-  readonly ghStderr: string;
   readonly expected: CommandFailure;
 };
 
-/** The parts of a failure both transports must agree on; `stderr` is the transport's own text. */
+/** The parts of a failure this pins; `stderr` is the transport's own text. */
 type FailureTag = {
   readonly _tag: CommandFailure["_tag"];
   readonly reason?: ForbiddenReason;
@@ -80,24 +62,6 @@ function tagOf(failure: CommandFailure): FailureTag {
 function failureOf(result: Result<unknown, CommandFailure>): CommandFailure {
   if (result._tag === "ok") throw new Error("Expected a failed result");
   return result.error;
-}
-
-/** The same body through `gh api graphql`, which exits 1 on any `errors` entry. */
-async function ghAnswer(
-  body: GraphQlResponseBody,
-  stderr: string,
-  exitCode = 1,
-): Promise<Result<unknown, CommandFailure>> {
-  const executor = new GhExecutor({
-    _tag: "Exited",
-    exitCode,
-    stdout: JSON.stringify(body),
-    stderr,
-  });
-  return new CommandRunner(executor).runJson({
-    argv: ["gh", "api", "graphql"],
-    timeoutMs: 1_000,
-  });
 }
 
 async function httpAnswer(
@@ -125,7 +89,6 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
         },
       ],
     },
-    ghStderr: "gh: Could not resolve to a node with the global id of 'x'",
     expected: { _tag: "CommandNotFound" },
   },
   {
@@ -142,8 +105,6 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
         },
       ],
     },
-    ghStderr:
-      "gh: Although you appear to have the correct authorization credentials, the `OmisePayments` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.",
     expected: { _tag: "CommandForbidden", reason: "ip_allow_list" },
   },
   {
@@ -158,7 +119,6 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
         },
       ],
     },
-    ghStderr: "gh: Resource protected by organization SAML enforcement.",
     expected: { _tag: "CommandForbidden", reason: "saml" },
   },
   {
@@ -171,7 +131,6 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
         },
       ],
     },
-    ghStderr: "gh: Resource not accessible by integration",
     expected: { _tag: "CommandForbidden", reason: "unknown" },
   },
   {
@@ -185,8 +144,6 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
         },
       ],
     },
-    ghStderr:
-      "gh: Your token has not been granted the required scopes to execute this query.",
     expected: { _tag: "CommandForbidden", reason: "insufficient_scopes" },
   },
   {
@@ -200,7 +157,6 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
         },
       ],
     },
-    ghStderr: "gh: API rate limit exceeded for user ID 12345.",
     expected: { _tag: "CommandRateLimited" },
   },
   {
@@ -214,7 +170,6 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
         },
       ],
     },
-    ghStderr: "gh: Field 'nope' doesn't exist on type 'Query'",
     expected: { _tag: "CommandFailed" },
   },
 ];
@@ -224,45 +179,27 @@ describe("a GraphQL answer carrying errors", () => {
     expect(tagOf(failureOf(await httpAnswer(body)))).toEqual(tagOf(expected));
   });
 
-  it.each(cases)("$name, and gh answered the same", async (testCase) => {
-    const answer = await ghAnswer(testCase.body, testCase.ghStderr);
-    expect(tagOf(failureOf(answer))).toEqual(tagOf(testCase.expected));
-  });
-
   it("never answers with the partial data beside the errors", async () => {
     const body = {
       data: { rateLimit: { remaining: 4999 }, repository: null },
       errors: [{ type: "FORBIDDEN", message: "Resource not accessible" }],
     };
 
-    const http = await httpAnswer(body);
-    const gh = await ghAnswer(body, "gh: Resource not accessible");
-
-    expect(http._tag).toBe("err");
-    expect(gh._tag).toBe("err");
+    expect((await httpAnswer(body))._tag).toBe("err");
   });
 
-  it("answers a null data with no errors as the value gh answered with", async () => {
+  it("answers a null data with no errors as the value it is", async () => {
     const body = { data: null };
 
-    // No `errors` entry, so gh exited zero and handed the body over verbatim.
-    await expect(ghAnswer(body, "", 0)).resolves.toEqual({
-      _tag: "ok",
-      value: body,
-    });
     await expect(httpAnswer(body)).resolves.toEqual({
       _tag: "ok",
       value: body,
     });
   });
 
-  it("answers an empty errors array as a success, as gh's nonzero exit needed a non-empty one", async () => {
+  it("answers an empty errors array as a success, since only a non-empty one is a refusal", async () => {
     const body = { data: { repository: { id: "R_1" } }, errors: [] };
 
-    await expect(ghAnswer(body, "", 0)).resolves.toEqual({
-      _tag: "ok",
-      value: body,
-    });
     await expect(httpAnswer(body)).resolves.toEqual({
       _tag: "ok",
       value: body,

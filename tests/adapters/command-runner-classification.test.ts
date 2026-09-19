@@ -13,16 +13,22 @@ import {
 
 /**
  * Fixture-driven classifier tests (plan 007). Each file under
- * tests/fixtures/gh-command-failures/ records one real or synthetic `gh`
- * failure shape — captured against `gh 2.96.0`, see each fixture's
+ * tests/fixtures/gh-command-failures/ records one real or synthetic child
+ * process failure shape — captured against `gh 2.96.0`, see each fixture's
  * `capturedWith`/`synthetic` fields — and the CommandFailure tag
  * `classifyExecution` must produce for it.
+ *
+ * The corpus covers what a surviving child can still fail with. Every GitHub
+ * API status and GraphQL error body moved to the HTTP transport's own tables
+ * with the `gh api` child (ADR 0046):
+ * `tests/adapters/github-http-client-failures.test.ts` for REST statuses and
+ * `tests/adapters/github-graphql-errors.test.ts` for GraphQL error bodies.
  *
  * To regenerate a fixture after a `gh` upgrade changes wording: re-run its
  * recorded `command` with the new `gh` version, diff the actual stdout/stderr
  * against the fixture body, and update both the fixture and
  * capturedWith/capturedAt in the same commit as any classifier change. Never
- * update a fixture without re-verifying the real `gh` output it represents.
+ * update a fixture without re-verifying the real output it represents.
  */
 
 const FIXTURES_DIR = join(
@@ -87,8 +93,8 @@ async function classify(fixture: Fixture): Promise<CommandFailure> {
 describe("CommandRunner classifyExecution — fixture corpus", () => {
   const names = fixtureNames();
 
-  it("covers at least one fixture per predicate/structured path (corpus sanity check)", () => {
-    expect(names.length).toBeGreaterThanOrEqual(11);
+  it("covers every stderr predicate and the unclassified fallback", () => {
+    expect(names.length).toBeGreaterThanOrEqual(3);
   });
 
   for (const name of names) {
@@ -103,62 +109,8 @@ describe("CommandRunner classifyExecution — fixture corpus", () => {
   }
 });
 
-describe("CommandRunner classifyExecution — named regressions (plan 007 Why This Matters)", () => {
-  it("classifies a 403 rate-limit response as CommandRateLimited, not CommandForbidden", async () => {
-    const failure = await classify(loadFixture("rate-limit-403.json"));
-    expect(failure).toEqual({ _tag: "CommandRateLimited" });
-  });
-
-  it("classifies an invalid/expired token (401 Bad credentials) as CommandAuthenticationRequired", async () => {
-    const failure = await classify(loadFixture("bad-credentials-401.json"));
-    expect(failure).toEqual({ _tag: "CommandAuthenticationRequired" });
-  });
-});
-
-describe("CommandRunner classifyExecution — forbidden reasons (plan 009)", () => {
-  it("classifies the live OmisePayments IP-allow-list failure as CommandForbidden/ip_allow_list", async () => {
-    const failure = await classify(
-      loadFixture("graphql-forbidden-ip-allow-list.json"),
-    );
-    expect(failure).toEqual({
-      _tag: "CommandForbidden",
-      reason: "ip_allow_list",
-    });
-  });
-
-  it("classifies a saml_failure:true GraphQL response as CommandForbidden/saml regardless of message wording", async () => {
-    const failure = await classify(loadFixture("graphql-forbidden-saml.json"));
-    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "saml" });
-  });
-
-  it("classifies INSUFFICIENT_SCOPES as CommandForbidden/insufficient_scopes", async () => {
-    const failure = await classify(
-      loadFixture("graphql-insufficient-scopes.json"),
-    );
-    expect(failure).toEqual({
-      _tag: "CommandForbidden",
-      reason: "insufficient_scopes",
-    });
-  });
-
-  it("classifies an unattributed forbidden as CommandForbidden/unknown, not a guess", async () => {
-    const failure = await classify(loadFixture("graphql-forbidden.json"));
-    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "unknown" });
-  });
-
-  it("classifies the REST IP-allow-list shape the same as the GraphQL one", async () => {
-    const failure = await classify(
-      loadFixture("rest-forbidden-ip-allow-list.json"),
-    );
-    expect(failure).toEqual({
-      _tag: "CommandForbidden",
-      reason: "ip_allow_list",
-    });
-  });
-});
-
 describe("CommandRunner — unclassified-failure telemetry hook", () => {
-  it("invokes onUnclassifiedFailure when a nonzero-exit failure matches neither a structured signal nor a regex predicate", async () => {
+  it("invokes onUnclassifiedFailure when a nonzero-exit failure matches no stderr predicate", async () => {
     const onUnclassifiedFailure = vi.fn();
     const executor = new FakeCommandExecutor({
       _tag: "Exited",
@@ -185,31 +137,13 @@ describe("CommandRunner — unclassified-failure telemetry hook", () => {
     );
   });
 
-  it("does not invoke onUnclassifiedFailure when a regex predicate matches", async () => {
+  it("does not invoke onUnclassifiedFailure when a stderr predicate matches", async () => {
     const onUnclassifiedFailure = vi.fn();
     const executor = new FakeCommandExecutor({
       _tag: "Exited",
       exitCode: 1,
       stdout: "",
       stderr: "gh: not logged in",
-    });
-
-    await new CommandRunner(executor, onUnclassifiedFailure).runText({
-      argv: ["gh"],
-      timeoutMs: 1_000,
-    });
-
-    expect(onUnclassifiedFailure).not.toHaveBeenCalled();
-  });
-
-  it("does not invoke onUnclassifiedFailure when a structured REST signal matches", async () => {
-    const onUnclassifiedFailure = vi.fn();
-    const fixture = loadFixture("not-found-404.json");
-    const executor = new FakeCommandExecutor({
-      _tag: "Exited",
-      exitCode: fixture.exitCode,
-      stdout: fixture.stdout,
-      stderr: fixture.stderr,
     });
 
     await new CommandRunner(executor, onUnclassifiedFailure).runText({
@@ -237,23 +171,5 @@ describe("CommandRunner — unclassified-failure telemetry hook", () => {
         stderr: "gh: something totally unrecognized happened",
       },
     });
-  });
-});
-
-describe("CommandRunner classifyExecution — structured signal precedence", () => {
-  it("prefers the REST structured signal over a graphql-shaped errors array in the same body", async () => {
-    // A REST 422 validation body legitimately has both a string `status`
-    // field and an `errors` array (see unsupported-422.json) — the same key
-    // GraphQL uses for its error list. The REST path must win because
-    // `status` is present, not get misrouted into the GraphQL branch.
-    const failure = await classify(loadFixture("unsupported-422.json"));
-    expect(failure).toEqual({ _tag: "CommandUnsupported" });
-  });
-
-  it("does not misclassify the non-gh pi-insight child's failure shape", async () => {
-    const failure = await classify(
-      loadFixture("runtime-unavailable-regex.json"),
-    );
-    expect(failure).toEqual({ _tag: "CommandRuntimeUnavailable" });
   });
 });

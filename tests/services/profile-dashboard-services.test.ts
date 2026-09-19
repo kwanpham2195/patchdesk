@@ -45,6 +45,25 @@ class FakeCommandExecutor implements CommandExecutor {
   }
 }
 
+/** What `gh auth status --json hosts` answers when `octocat` is the active github.com account. */
+const activeGitHubAccount: CommandExecution = {
+  _tag: "Exited",
+  exitCode: 0,
+  stdout: JSON.stringify({
+    hosts: {
+      "github.com": [
+        {
+          login: "octocat",
+          host: "github.com",
+          active: true,
+          state: "success",
+        },
+      ],
+    },
+  }),
+  stderr: "",
+};
+
 const expectedHomeWorkspaceRoot = (() => {
   const parsed = parseAbsolutePath(homedir());
   return parsed._tag === "ok" ? [parsed.value] : [];
@@ -189,12 +208,7 @@ describe("profile settings and dashboard services", () => {
 
   it("derives the first-run default profile from the machine's active gh account and home directory", async () => {
     const commands = new CommandRunner(
-      new FakeCommandExecutor({
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: "octocat\n",
-        stderr: "",
-      }),
+      new FakeCommandExecutor(activeGitHubAccount),
     );
     const detected = await detectDefaultWorkspaceProfile(commands);
     expect(detected).toMatchObject({
@@ -233,12 +247,7 @@ describe("profile settings and dashboard services", () => {
       const paths = PatchdeskPaths.forTest(root);
       const store = new ProfileStore(paths);
       const commands = new CommandRunner(
-        new FakeCommandExecutor({
-          _tag: "Exited",
-          exitCode: 0,
-          stdout: "octocat\n",
-          stderr: "",
-        }),
+        new FakeCommandExecutor(activeGitHubAccount),
       );
       const controller = new DashboardController(
         store,

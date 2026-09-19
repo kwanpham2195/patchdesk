@@ -77,12 +77,6 @@ export function restMethodFor(
   return request.method ?? (request.jsonBody === undefined ? "GET" : "POST");
 }
 
-/** GraphQL sends reads and writes to one endpoint; only the document says which. */
-export function isQueryDocument(document: string): boolean {
-  const body = document.replace(/^(?:\s|#[^\n]*)*/, "");
-  return body.startsWith("{") || /^query\b/.test(body);
-}
-
 export function ghInvocationFor(request: GitHubRequest): GhInvocation {
   if (request.kind === "graphql") return { argv: graphQlArgv(request) };
   return restInvocation(request);

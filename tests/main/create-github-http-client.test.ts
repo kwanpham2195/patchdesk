@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LogEntryInput } from "../../src/domain/log-entry";
-import { githubTransports } from "../../src/main/local-api-stores";
+import { createGitHubHttpClient } from "../../src/main/local-api-stores";
 import { profile } from "../adapters/github-http-fixture-server";
 import { StubCredentials } from "../adapters/stub-github-credentials";
 
@@ -22,14 +22,18 @@ function recordingLogs() {
   };
 }
 
-describe("githubTransports", () => {
+describe("createGitHubHttpClient", () => {
   it("serves a request through the injected fetch rather than the runtime's own", async () => {
     const urls: Array<string> = [];
     const logs = recordingLogs();
-    const client = githubTransports(new StubCredentials(), logs, (url) => {
-      urls.push(url);
-      return Promise.resolve(new Response("[]", { status: 200 }));
-    });
+    const client = createGitHubHttpClient(
+      new StubCredentials(),
+      logs,
+      (url) => {
+        urls.push(url);
+        return Promise.resolve(new Response("[]", { status: 200 }));
+      },
+    );
 
     await client.rest(profile, {
       kind: "rest",
@@ -44,7 +48,7 @@ describe("githubTransports", () => {
 
   it("logs one github-http entry per request, carrying no URL", async () => {
     const logs = recordingLogs();
-    const client = githubTransports(new StubCredentials(), logs, () =>
+    const client = createGitHubHttpClient(new StubCredentials(), logs, () =>
       Promise.resolve(new Response("{}", { status: 404 })),
     );
 

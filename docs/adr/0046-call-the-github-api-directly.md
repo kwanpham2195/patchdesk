@@ -178,8 +178,8 @@ read as a filename to take the value from, now reaches GitHub as the text.
 one endpoint and a mutation is labelled by its root field, so a mutation could
 carry an allowlisted label. While the allowlists existed, the routing served a
 GraphQL request only when `isQueryDocument` in `github-request.ts` also read
-the document as a query. T4 removed the decision; `isQueryDocument` no longer
-gates anything.
+the document as a query. T4 removed the decision and deleted the function with
+the allowlists.
 
 **A 200 carrying `errors` is a failure on both transports.** `gh api graphql`
 exited nonzero whenever the response held a non-empty `errors` array, partial
@@ -230,8 +230,43 @@ endings, non-ASCII text, and a missing trailing newline already survived
 unchanged.
 
 T2 extended the list; T3 added a second one for the writes, below; T4 deleted
-both together with the last `gh api` argv. The gh-specific failure
-classification named under Consequences is the remaining step.
+both together with the last `gh api` argv.
+
+**2026-09-19, T4 again: the gh-specific classification is gone.** With no
+child producing a GitHub error body, `command-runner.ts` stopped reading one.
+Deleted: `classifyStructuredFailure` and the stdout JSON sniffing it drove,
+`extractRestStatus` and its stdout and stderr halves, `restErrorBodySchema`,
+and the `not found`, `pending review`, `unsupported`, 5xx-phrase, rate-limit,
+and forbidden branches of `classifyByStderrPattern` with the predicates only
+they called. `classifyRestStatus` and `classifyGraphqlErrorBody` stay, because
+the HTTP client reads a status and a response body with them.
+
+What is left of the stderr classification is what a surviving child can still
+mean: `isAuthenticationFailure`, which is how `gh auth status` says no account
+is signed in, and `isRuntimeFailure`, which is how the pi-insight child says
+its runtime is missing. Everything else — an abort, a timeout, a missing
+executable, an oversized output — is decided by the execution's own outcome,
+not by prose.
+
+The `gh api` branches of `normalizeCommandLabel` outlived the child that
+needed them. `github-http-client.ts` names every request by the label the same
+call spawned under, through the argv `ghInvocationFor` still renders, so
+`scripts/gh-spawn-report.mjs` keeps comparing with the program's earlier
+measurements. Deriving the label from `GitHubRequest` directly would move
+those labels and break the golden ones in `tests/fixtures`, so the argv form
+stays as the label's source and nothing else.
+
+One `gh api` call had escaped the runner: first-run account detection ran
+`gh api --hostname <host> user --jq .login` before any workspace profile
+existed, so there was no credential to call the API with. It now reads the
+account list `gh auth status --json hosts` already reports and takes the entry
+this host is active on, which is the same login an unqualified call would have
+authenticated as — one fewer spawn and no network call at all.
+
+`gh` keeps exactly the four jobs listed under The decision:
+`gh auth token`, `gh auth status`, `gh --version`, and
+`gh auth git-credential`. `git`, `find`, and the pi-insight runner are the
+other children `CommandRunner` still spawns.
 
 ### The writes, and why their proof is different
 
@@ -377,7 +412,7 @@ the worst outcome is one extra comment the maintainer can read and delete.
 `POST repos/:owner/:repo/pulls/:n/reviews` from `startPendingReviewWithThread`
 landed, the resend answers 422 with GitHub's "pending review per pull request"
 message. `isPendingReviewFailure` matches that phrase and `classifyRestStatus`
-answers `CommandPendingReview` (`command-runner.ts:650-653` and `:837-841`),
+answers `CommandPendingReview` (`command-runner.ts`, its 422 branch),
 which `writeFailure` maps to the `pending_review` category
 (`github-write-failures.ts:36-42`). That category is not `unavailable`, so
 `executeWrite` in `pending-review-service.ts:575-598` takes the refusal branch:
@@ -534,14 +569,17 @@ successors anyway.
   pinned by unit tests only until one exists. That is weaker evidence than the
   rest of this change carries, and it is the one part of it that ships unproven
   against a real host.
-- **The fixture contract behind ADR 0024 splits.**
-  `tests/fixtures/gh-command-failures/` exists because gh's stderr prose is not
-  a stable contract. Fixtures that carry a structured body — a REST error JSON,
-  a GraphQL `errors[]` entry — carry over unchanged as HTTP responses, since
-  that is the same payload GitHub sent. Fixtures that capture gh's stderr prose
-  survive only for the commands that remain, `gh auth` and `git`. The
-  `ip_allow_list` attribution ADR 0024 pins to a phrase match keeps its fixture,
-  because the phrase is GitHub's, not gh's.
+- **The fixture contract behind ADR 0024 split, and did so at T4.**
+  `tests/fixtures/gh-command-failures/` existed because gh's stderr prose is
+  not a stable contract. Every fixture carrying a structured body — a REST
+  error JSON, a GraphQL `errors[]` entry — became a row in
+  `tests/adapters/github-http-client-failures.test.ts` or
+  `tests/adapters/github-graphql-errors.test.ts`, served by the loopback
+  server as the response GitHub sent. Three fixtures remain, for the three
+  shapes a surviving child still produces: no account signed in, a missing
+  pi-insight runtime, and a stderr that matches nothing. The `ip_allow_list`
+  attribution ADR 0024 pins to a phrase match is asserted in both of those
+  tables, because the phrase is GitHub's, not gh's.
 - **The token becomes an in-process request header.** It is still never logged
   and never persisted. Request log records carry method, normalized endpoint
   label, status, and duration — never headers, and never a URL with a query
@@ -575,11 +613,12 @@ successors anyway.
   The opportunistic `rateLimit { remaining resetAt }` field on the inbox query
   stays; the headers make the same knowledge available on every call rather
   than on one.
-- **The gh-specific failure classification becomes dead code and is deleted in
-  the same release.** With no `gh api` argv left, `extractRestStatusFromStderr`,
-  `classifyStructuredFailure`, the gh branches of `classifyByStderrPattern`, and
-  the `api` branches of `normalizeCommandLabel` have no input. The plan names
-  them in its own slice rather than leaving them to rot.
+- **The gh-specific failure classification was deleted in the same release.**
+  `extractRestStatusFromStderr`, `classifyStructuredFailure`, and the gh
+  branches of `classifyByStderrPattern` went with the last `gh api` argv; the
+  `api` branches of `normalizeCommandLabel` stayed, because the HTTP client
+  logs its requests under those labels. The Cutover record above says what
+  went and what each survivor is still for.
 - **ADR 0026 constrains the cutover.** `canonicalPatchHash` is computed from
   the bytes of GitHub's compare response. The same compare must be hashed
   through both transports and the hashes confirmed equal before the read path
