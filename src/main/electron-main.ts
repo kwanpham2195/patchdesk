@@ -49,15 +49,13 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "./local-api";
-import { githubTransports } from "./local-api-stores";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
-import { GitHubAdapter } from "../adapters/github/github-adapter";
-import { GitHubCliCredentials } from "../adapters/github/github-credentials";
+import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { GitHubFetch } from "../adapters/github/github-http-client";
 import { ReviewContextPackService } from "../services/review-context-pack-service";
 import { ReviewContextService } from "../services/review-context-service";
@@ -219,11 +217,13 @@ const desktopLifecycle = createDesktopLifecycle({
           architecture: process.arch,
           distribution: app.isPackaged ? "unsigned_internal" : "development",
         },
-        insights: await recoverInsights(
-          runtimeModelCatalog,
-          insightProviders,
-          reviewOperations,
-        ),
+        insights: (github) =>
+          recoverInsights(
+            runtimeModelCatalog,
+            insightProviders,
+            reviewOperations,
+            github,
+          ),
         insightProviders,
         githubFetch,
         lifecycleGate,
@@ -295,6 +295,7 @@ function createInsightCoordinator(
   modelCatalog: LocalPiRuntimeModelCatalog,
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
+  github: GitHubReader,
 ): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
   const runtime = resolveInsightRuntime(
@@ -366,14 +367,6 @@ function createInsightCoordinator(
       return providerInvokers[input.provider].invoke(input, options);
     },
   };
-  // Its own adapter, like the stores above: this function builds the
-  // coordinator before the local API container exists to share one.
-  const packCommands = new CommandRunner(
-    undefined,
-    logUnclassifiedCommandFailure,
-  );
-  const packCredentials = new GitHubCliCredentials(packCommands);
-  const packTransports = githubTransports(packCredentials, logs, githubFetch);
   return new InsightRunCoordinator(
     new ReviewStore(paths),
     new ReviewSessionStore(paths),
@@ -384,12 +377,7 @@ function createInsightCoordinator(
     operations,
     new ReviewContextPackService({
       profiles: new ProfileStore(paths),
-      github: new GitHubAdapter(
-        packCommands,
-        packCredentials,
-        packTransports.shadow,
-        packTransports.http,
-      ),
+      github,
       context: new ReviewContextService(),
       paths,
     }),
@@ -408,11 +396,13 @@ async function recoverInsights(
   modelCatalog: LocalPiRuntimeModelCatalog,
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
+  github: GitHubReader,
 ): Promise<InsightRunCoordinator> {
   const coordinator = createInsightCoordinator(
     modelCatalog,
     providerCatalog,
     operations,
+    github,
   );
   await coordinator.recoverAll();
   return coordinator;

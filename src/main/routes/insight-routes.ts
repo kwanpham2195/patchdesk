@@ -21,7 +21,7 @@ import {
 import type { InsightType } from "../../domain/insight-record";
 import { err } from "../../domain/result";
 import type { InsightRunCoordinator } from "../../services/insight-run-coordinator";
-import type { LocalApiConfiguration } from "../local-api-configuration";
+import type { InsightCoordinatorSeam } from "../local-api-configuration";
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
@@ -31,7 +31,7 @@ export function registerInsightRoutes(
   app: Hono,
   container: LocalApiContainer,
 ): void {
-  const { configuration } = container;
+  const { configuration, insights } = container;
   app.get("/v1/insight-providers", async (context) => {
     if (configuration.insightProviders === undefined)
       return context.json({ error: "provider_unavailable" }, 503);
@@ -46,33 +46,23 @@ export function registerInsightRoutes(
     );
   });
   app.post("/v1/reviews/insights/analysis/run", async (context) =>
-    insightRunResponse(
-      context,
-      configuration.insights,
-      "analysis",
-      await jsonBody(context),
-    ),
+    insightRunResponse(context, insights, "analysis", await jsonBody(context)),
   );
   app.post("/v1/reviews/insights/walkthrough/run", async (context) =>
     insightRunResponse(
       context,
-      configuration.insights,
+      insights,
       "walkthrough",
       await jsonBody(context),
     ),
   );
   app.post("/v1/reviews/insights/brief/run", async (context) =>
-    insightRunResponse(
-      context,
-      configuration.insights,
-      "brief",
-      await jsonBody(context),
-    ),
+    insightRunResponse(context, insights, "brief", await jsonBody(context)),
   );
   app.post("/v1/reviews/insights/analysis/cancel", async (context) =>
     insightCancelResponse(
       context,
-      configuration.insights,
+      insights,
       "analysis",
       await jsonBody(context),
     ),
@@ -80,25 +70,20 @@ export function registerInsightRoutes(
   app.post("/v1/reviews/insights/walkthrough/cancel", async (context) =>
     insightCancelResponse(
       context,
-      configuration.insights,
+      insights,
       "walkthrough",
       await jsonBody(context),
     ),
   );
   app.post("/v1/reviews/insights/brief/cancel", async (context) =>
-    insightCancelResponse(
-      context,
-      configuration.insights,
-      "brief",
-      await jsonBody(context),
-    ),
+    insightCancelResponse(context, insights, "brief", await jsonBody(context)),
   );
   app.post(
     "/v1/reviews/insights/analysis/findings/:findingId/dismiss",
     async (context) =>
       insightFindingResponse(
         context,
-        configuration.insights,
+        insights,
         "dismiss",
         context.req.param("findingId"),
         await jsonBody(context),
@@ -107,12 +92,12 @@ export function registerInsightRoutes(
   app.post("/v1/reviews/insights/walkthrough/progress", async (context) =>
     insightWalkthroughProgressResponse(
       context,
-      configuration.insights,
+      insights,
       await jsonBody(context),
     ),
   );
   app.get("/v1/reviews/insights/runs/:runId", async (context) => {
-    if (configuration.insights === undefined)
+    if (insights === undefined)
       return context.json({ error: "workflow_unavailable" }, 503);
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
     const reviewId = parseReviewId(context.req.query("reviewId"));
@@ -127,7 +112,7 @@ export function registerInsightRoutes(
       return context.json({ error: "invalid_input" }, 400);
     return insightResultResponse(
       context,
-      await configuration.insights.observe({
+      await insights.observe({
         profileId: profileId.value,
         reviewId: reviewId.value,
         type,
@@ -160,7 +145,7 @@ const insightFindingSchema = strictObject({
 
 async function insightRunResponse(
   context: Context,
-  coordinator: LocalApiConfiguration["insights"],
+  coordinator: InsightCoordinatorSeam | undefined,
   type: InsightType,
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
@@ -187,7 +172,7 @@ async function insightRunResponse(
 
 async function insightCancelResponse(
   context: Context,
-  coordinator: LocalApiConfiguration["insights"],
+  coordinator: InsightCoordinatorSeam | undefined,
   type: InsightType,
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
@@ -218,20 +203,10 @@ async function insightCancelResponse(
 function insightResultResponse(
   context: Context,
   result:
-    | Awaited<
-        ReturnType<NonNullable<LocalApiConfiguration["insights"]>["observe"]>
-      >
-    | Awaited<
-        ReturnType<NonNullable<LocalApiConfiguration["insights"]>["start"]>
-      >
-    | Awaited<
-        ReturnType<NonNullable<LocalApiConfiguration["insights"]>["cancel"]>
-      >
-    | Awaited<
-        ReturnType<
-          NonNullable<LocalApiConfiguration["insights"]>["dismissFinding"]
-        >
-      >
+    | Awaited<ReturnType<InsightCoordinatorSeam["observe"]>>
+    | Awaited<ReturnType<InsightCoordinatorSeam["start"]>>
+    | Awaited<ReturnType<InsightCoordinatorSeam["cancel"]>>
+    | Awaited<ReturnType<InsightCoordinatorSeam["dismissFinding"]>>
     | Awaited<ReturnType<InsightRunCoordinator["updateWalkthroughProgress"]>>,
   successStatus: 200 | 202 = 200,
 ): Response {
@@ -255,7 +230,7 @@ function insightResultResponse(
 
 async function insightWalkthroughProgressResponse(
   context: Context,
-  coordinator: LocalApiConfiguration["insights"],
+  coordinator: InsightCoordinatorSeam | undefined,
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
@@ -307,7 +282,7 @@ async function insightWalkthroughProgressResponse(
 
 async function insightFindingResponse(
   context: Context,
-  coordinator: LocalApiConfiguration["insights"],
+  coordinator: InsightCoordinatorSeam | undefined,
   action: "dismiss",
   findingIdInput: string,
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.

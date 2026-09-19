@@ -5,7 +5,10 @@ import {
   isGitHubMergeWriter,
   isGitHubPendingReviewGateway,
 } from "./github-capability-guards";
-import type { LocalApiConfiguration } from "./local-api-configuration";
+import type {
+  InsightCoordinatorSeam,
+  LocalApiConfiguration,
+} from "./local-api-configuration";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
@@ -58,6 +61,8 @@ export type LocalApiContainer = {
   readonly commands: LocalApiStores["commands"];
   readonly diagnostics: LocalApiStores["diagnostics"];
   readonly github: GitHubReader;
+  /** The Insight run lifecycle, built over `github`; absent leaves the Insight routes unavailable. */
+  readonly insights: InsightCoordinatorSeam | undefined;
   readonly sessions: LocalApiStores["sessions"];
   readonly storageManagement: LocalApiStores["storageManagement"];
   recordProfileReloadFailure(phase: string): Promise<void>;
@@ -119,6 +124,14 @@ export async function buildLocalApiContainer(
     watchedPullRequests,
     storageManagement,
   } = built.stores;
+  // Built here rather than by the caller so the Insight context pack reads
+  // GitHub through this container's adapter and credential cache (issue #311).
+  // Kept ahead of the recovery below, where the coordinator's own run recovery
+  // used to sit when the desktop entry point built it.
+  const insightCoordinator =
+    configuration.insights === undefined
+      ? undefined
+      : await configuration.insights(github);
   await ReviewPreparationJournal.recover(
     paths,
     new ReviewWorktreeService(
@@ -447,6 +460,7 @@ export async function buildLocalApiContainer(
       commands,
       diagnostics,
       github,
+      insights: insightCoordinator,
       sessions,
       storageManagement,
       recordProfileReloadFailure,

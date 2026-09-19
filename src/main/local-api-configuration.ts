@@ -31,6 +31,15 @@ import type { InsightProviderCatalog } from "../services/insight-provider-catalo
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import type { GitReadExecutor } from "../services/review-worktree-service";
 
+/** What the Insight routes are allowed to call on the run coordinator. */
+export type InsightCoordinatorSeam = Pick<
+  InsightRunCoordinator,
+  "start" | "cancel" | "observe" | "dismissFinding"
+> &
+  Partial<
+    Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "addFinding">
+  >;
+
 export const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
   developmentOrigin: optional(pipe(string(), minLength(1))),
@@ -106,14 +115,13 @@ export type LocalApiConfiguration = {
   readonly desktopNotifier?: DesktopNotifier;
   /** Test-only avatar download seam; production keeps the real network fetcher. */
   readonly fetchAvatar?: AvatarFetcher;
-  /** Main-process-owned durable Review Insight lifecycle seam. */
-  readonly insights?: Pick<
-    InsightRunCoordinator,
-    "start" | "cancel" | "observe" | "dismissFinding"
-  > &
-    Partial<
-      Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "addFinding">
-    >;
+  /**
+   * Builds the durable Review Insight lifecycle once the container's GitHub
+   * reader exists, so the Insight context pack reads comments and checks
+   * through the same adapter and credential cache as every other GitHub read
+   * (issue #311). Absent leaves the Insight routes answering 503.
+   */
+  readonly insights?: (github: GitHubReader) => Promise<InsightCoordinatorSeam>;
   /**
    * Enables the automatic retention sweep after startup and every 24 hours.
    * Main-process-only; local integration tests keep it off.
