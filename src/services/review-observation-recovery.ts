@@ -214,6 +214,7 @@ export class ReviewObservationRecovery {
       profileId: input.profileId,
       reviewId: input.reviewId,
       representedSnapshotHash: adoptedReview.representedRemote?.snapshotHash,
+      previousSnapshotHash: journal.value.previousSnapshotHash,
     });
     return removed._tag === "ok"
       ? ok({ _tag: "Reconciled", detectedAt: this.dependencies.now() })
@@ -231,6 +232,12 @@ export class ReviewObservationRecovery {
  * adopted Review no longer names. The prune follows the removal so a crash
  * between them is harmless: the journal is gone, the Review is adopted, and
  * the next adoption lists the directory and removes what this one left.
+ *
+ * The snapshot this adoption replaced stays one more generation. An unlocked
+ * reader such as `ReviewCommitService.diff` loads the Review record and its
+ * snapshot in two steps, so an adoption landing between them would otherwise
+ * delete the file that record names; surviving one generation means such a
+ * reader would have to span two adoptions to miss it.
  */
 export async function completeObservationJournal(
   dependencies: Pick<ReviewObservationDependencies, "journals" | "remote">,
@@ -238,6 +245,7 @@ export async function completeObservationJournal(
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly representedSnapshotHash: ContentHash | undefined;
+    readonly previousSnapshotHash: ContentHash | undefined;
   },
 ): Promise<Result<void, StorageFailure>> {
   const removed = await dependencies.journals.remove(
@@ -246,13 +254,17 @@ export async function completeObservationJournal(
   );
   if (removed._tag === "err" || input.representedSnapshotHash === undefined)
     return removed;
+  const keep =
+    input.previousSnapshotHash === undefined
+      ? [input.representedSnapshotHash]
+      : [input.representedSnapshotHash, input.previousSnapshotHash];
   // Best effort: the Review has already adopted the snapshot, so a failed
   // prune must never fail the adoption.
   await dependencies.remote
     .pruneExcept({
       profileId: input.profileId,
       reviewId: input.reviewId,
-      keep: [input.representedSnapshotHash],
+      keep,
     })
     .catch(() => undefined);
   return removed;

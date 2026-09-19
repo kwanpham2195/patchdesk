@@ -573,6 +573,7 @@ export class ReviewObservationService {
       reviewId: input.reviewId,
       representedSnapshotHash:
         adoptedReview.value.representedRemote?.snapshotHash,
+      previousSnapshotHash,
     });
     if (removed._tag === "err") {
       return this.markUnavailable(
