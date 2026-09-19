@@ -315,6 +315,10 @@ export class ReviewObservationService {
         : this.dependencies.github.getPullRequestPublishedFeedback({
             profile,
             pr: reviewRef(review),
+            // The base branch whose protection decides `canDismiss`, so the
+            // feedback read does not re-read the pull request this observation
+            // already holds.
+            baseBranch: terminalRead.value.baseBranch,
           }),
       this.dependencies.github.getMergePolicyEvidence === undefined
         ? Promise.resolve(undefined)

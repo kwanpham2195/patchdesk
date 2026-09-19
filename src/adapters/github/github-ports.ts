@@ -148,6 +148,8 @@ export interface GitHubReader {
   getPullRequestPublishedFeedback?(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    /** The branch whose protection decides `canDismiss`, when the caller already read it; otherwise the adapter reads the pull request for it. */
+    readonly baseBranch?: string;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>>;
   /** Bounded authenticated repository permission evidence used for record capabilities. */
   getRepositoryPermission?(input: {
