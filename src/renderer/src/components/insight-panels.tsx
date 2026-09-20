@@ -50,7 +50,7 @@ const INSIGHT_PURPOSES = {
     "Maps what changed structurally and where to start, so you can orient before reading the diff.",
 } as const satisfies Record<InsightRunDialogType, string>;
 const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
-const INSIGHT_EMPTY_CLASS = "mx-auto max-w-2xl py-10";
+const INSIGHT_EMPTY_CLASS = "mx-auto max-w-2xl justify-start py-10";
 
 export function InsightNavRail({
   workbench,
