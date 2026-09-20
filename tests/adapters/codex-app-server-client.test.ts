@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
@@ -238,7 +238,36 @@ describe("CodexAppServerClient", () => {
       result: { decision: "decline" },
     });
   });
-  it("denies a repository-controlled executable even when its basename is allowlisted", async () => {
+  it("denies an approval whose cwd is a symlink outside the represented worktree", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+    const outside = await mkdtemp(join(tmpdir(), "patchdesk-codex-outside-"));
+    roots.push(root, outside);
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+    await symlink(outside, join(root, "escape"));
+    let child: FakeCodexProcess | undefined;
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () => {
+        child = new FakeCodexProcess(join(root, "escape"));
+        return asChildProcess(child);
+      },
+    });
+    await expect(
+      client.run({
+        worktreePath: representedWorktree(root),
+        expectedHeadSha: "a".repeat(40),
+        model: "fixture-codex",
+        reasoning: "low",
+        prompt: "Return JSON.",
+      }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    expect(child?.received).toContainEqual({
+      id: "approval-fixture",
+      result: { decision: "decline" },
+    });
+  });
+
+  it("accepts a repository-controlled executable requested inside the worktree", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
     roots.push(root);
     await mkdir(join(root, "src"));
@@ -261,7 +290,7 @@ describe("CodexAppServerClient", () => {
     ).resolves.toMatchObject({ _tag: "ok" });
     expect(child?.received).toContainEqual({
       id: "approval-fixture",
-      result: { decision: "decline" },
+      result: { decision: "accept" },
     });
   });
 
@@ -490,7 +519,8 @@ describe("CodexAppServerClient approval requests", () => {
       readonly id: string;
       readonly method: string;
       readonly params: {
-        readonly command?: string;
+        readonly cwd?: string | undefined;
+        readonly command?: string | undefined;
         readonly kind?: string;
         readonly networkApprovalContext?: {
           readonly host: string;
@@ -543,12 +573,17 @@ describe("CodexAppServerClient approval requests", () => {
     ).toMatchObject({ sandbox: "read-only", approvalPolicy: "untrusted" });
   });
 
-  it("declines a stdin write and a network approval even for an allowlisted command", async () => {
+  it("declines stdin writes, file changes, and network approvals", async () => {
     const child = await runWithRequests([
       {
         id: "stdin",
         method: "item/commandExecution/requestApproval",
         params: { kind: "writeStdin" },
+      },
+      {
+        id: "file-change",
+        method: "item/fileChange/requestApproval",
+        params: {},
       },
       {
         id: "network",
@@ -563,25 +598,52 @@ describe("CodexAppServerClient approval requests", () => {
       result: { decision: "decline" },
     });
     expect(child.received).toContainEqual({
+      id: "file-change",
+      result: { decision: "decline" },
+    });
+    expect(child.received).toContainEqual({
       id: "network",
       result: { decision: "decline" },
     });
   });
 
-  // A plain `accept` never applies a proposed amendment upstream.
-  it("answers an allowlisted command that carries a proposed amendment with a plain accept", async () => {
+  it("declines malformed command approval requests", async () => {
     const child = await runWithRequests([
       {
-        id: "amendment",
+        id: "missing-command",
+        method: "item/commandExecution/requestApproval",
+        params: { command: undefined },
+      },
+      {
+        id: "missing-cwd",
+        method: "item/commandExecution/requestApproval",
+        params: { cwd: undefined },
+      },
+    ]);
+    expect(child.received).toContainEqual({
+      id: "missing-command",
+      result: { decision: "decline" },
+    });
+    expect(child.received).toContainEqual({
+      id: "missing-cwd",
+      result: { decision: "decline" },
+    });
+  });
+
+  // A plain `accept` never applies a proposed amendment upstream.
+  it("accepts any command requested from inside the represented worktree", async () => {
+    const child = await runWithRequests([
+      {
+        id: "arbitrary-command",
         method: "item/commandExecution/requestApproval",
         params: {
           kind: "command",
-          proposedExecpolicyAmendment: ["cat", "src/a.ts"],
+          command: "pnpm exec tsc --noEmit && printf done",
         },
       },
     ]);
     expect(child.received).toContainEqual({
-      id: "amendment",
+      id: "arbitrary-command",
       result: { decision: "accept" },
     });
   });
@@ -593,7 +655,7 @@ describe("CodexAppServerClient approval requests", () => {
         {
           id: "outside",
           method: "item/commandExecution/requestApproval",
-          params: { command: "cat /etc/passwd" },
+          params: { cwd: "/", command: "cat /etc/passwd" },
         },
       ],
       (event) => buffer.append(event),

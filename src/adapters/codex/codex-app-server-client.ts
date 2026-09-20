@@ -3,6 +3,8 @@ import {
   type ChildProcess,
   type SpawnOptions,
 } from "node:child_process";
+import { realpath } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import * as v from "valibot";
 
 import { err, ok, type Result } from "../../domain/result";
@@ -10,15 +12,12 @@ import type { InsightReasoning } from "../../domain/insight-provider";
 import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
 import type { InsightFailureCategory } from "../../domain/insight-record";
 import { isNotFound } from "../storage/json-file";
+import { isPathContained } from "../storage/path-containment";
 import { createCodexActivityEmitter } from "./codex-activity";
 import type {
   CodexActivityEmitter,
   InsightActivitySink,
 } from "./codex-activity";
-import {
-  isPathInsideWorktree,
-  isReadOnlyCommand,
-} from "./codex-command-allowlist";
 
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
@@ -205,6 +204,21 @@ const commandApprovalParamsSchema = v.looseObject({
   command: v.optional(v.string()),
 });
 type CommandApprovalParams = v.InferOutput<typeof commandApprovalParamsSchema>;
+
+/** Accepts command requests only when Codex will execute them inside the represented worktree. */
+async function isPathInsideWorktree(
+  worktreePath: string,
+  candidatePath: string,
+): Promise<boolean> {
+  if (isAbsolute(candidatePath) === false && candidatePath.includes(".."))
+    return false;
+  const [worktree, candidate] = await Promise.all([
+    realpath(worktreePath),
+    realpath(candidatePath),
+  ]).catch(() => ["", ""] as const);
+  if (worktree.length === 0 || candidate.length === 0) return false;
+  return isPathContained(worktree, candidate);
+}
 
 /** Creates the restricted environment inherited by the Codex child. */
 function allowlistedCodexEnvironment(
@@ -834,19 +848,13 @@ class RpcChild {
     }
     if (method === COMMAND_APPROVAL_METHOD) {
       const worktreePath = commandParams?.cwd;
-      const command = commandParams?.command;
       const allowed =
         (commandParams?.kind ?? "command") === "command" &&
         commandParams?.networkApprovalContext === undefined &&
         worktreePath !== undefined &&
-        command !== undefined &&
+        commandParams?.command !== undefined &&
         this.approvalWorktreePath !== undefined &&
-        (await isPathInsideWorktree(this.approvalWorktreePath, worktreePath)) &&
-        (await isReadOnlyCommand(
-          command,
-          this.approvalWorktreePath,
-          worktreePath,
-        ));
+        (await isPathInsideWorktree(this.approvalWorktreePath, worktreePath));
       this.activity?.approvalAnswered(allowed ? "accepted" : "declined");
       this.send({ id, result: { decision: allowed ? "accept" : "decline" } });
       return;
