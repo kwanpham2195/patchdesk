@@ -45,10 +45,10 @@ export type InvalidReviewWriteOperation = {
 /** A readonly collection whose type proves that it contains at least one value. */
 export type NonEmptyReadonlyArray<T> = readonly [T, ...T[]];
 
-/** Refine a readonly collection after rejecting the empty case. */
-export function parseNonEmptyReadonlyArray<T>(
-  input: ReadonlyArray<T>,
-): Result<NonEmptyReadonlyArray<T>, "empty"> {
+/** Refine a readonly string collection after rejecting the empty case. */
+export function parseNonEmptyStringArray(
+  input: ReadonlyArray<string>,
+): Result<NonEmptyReadonlyArray<string>, "empty"> {
   const [first, ...rest] = input;
   return first === undefined ? err("empty") : ok([first, ...rest]);
 }

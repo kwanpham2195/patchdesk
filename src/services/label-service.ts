@@ -10,7 +10,7 @@ import type {
   RepositoryLabelPermission,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { parseNonEmptyReadonlyArray } from "../domain/review-write-operation";
+import { parseNonEmptyStringArray } from "../domain/review-write-operation";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -221,7 +221,7 @@ export class LabelService {
 
     const labelIds = input.command.labels.map((label) => label.id);
     const labelNames = input.command.labels.map((label) => label.name);
-    const nonEmptyLabelNames = parseNonEmptyReadonlyArray(labelNames);
+    const nonEmptyLabelNames = parseNonEmptyStringArray(labelNames);
     if (nonEmptyLabelNames._tag === "err") return err("invalid_input");
 
     if (input.command._tag === "AddLabels") {

@@ -15,7 +15,7 @@ import type {
   SuggestedPullRequestReviewer,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { parseNonEmptyReadonlyArray } from "../domain/review-write-operation";
+import { parseNonEmptyStringArray } from "../domain/review-write-operation";
 import { definedProps } from "../domain/defined-props";
 import type { PullRequestRef } from "../domain/pull-request";
 import {
@@ -343,7 +343,7 @@ export class ReviewerService {
     const reviewerLogins = input.command.reviewers.map(
       (reviewer) => reviewer.login,
     );
-    const nonEmptyReviewerLogins = parseNonEmptyReadonlyArray(reviewerLogins);
+    const nonEmptyReviewerLogins = parseNonEmptyStringArray(reviewerLogins);
     if (nonEmptyReviewerLogins._tag === "err") return err("invalid_input");
 
     if (input.command._tag === "RequestReviewers") {

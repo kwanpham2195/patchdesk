@@ -100,13 +100,40 @@ describe("review write operation", () => {
     });
   });
 
-  it("types metadata write intents as non-empty", () => {
-    const invalidIntent: ReviewWriteIntent = {
-      _tag: "AddLabels",
-      // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
-      names: [],
-    };
-    expect(invalidIntent._tag).toBe("AddLabels");
+  it("types every metadata write intent as non-empty", () => {
+    const invalidIntents: ReadonlyArray<ReviewWriteIntent> = [
+      {
+        _tag: "AddLabels",
+        // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
+        names: [],
+      },
+      {
+        _tag: "RemoveLabels",
+        // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
+        names: [],
+      },
+      {
+        _tag: "AddAssignees",
+        // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
+        logins: [],
+      },
+      {
+        _tag: "RemoveAssignees",
+        // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
+        logins: [],
+      },
+      {
+        _tag: "RequestReviewers",
+        // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
+        logins: [],
+      },
+      {
+        _tag: "RemoveReviewers",
+        // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
+        logins: [],
+      },
+    ];
+    expect(invalidIntents).toHaveLength(6);
   });
   it("rejects unparsed persisted actor and thread identifiers", () => {
     expect(

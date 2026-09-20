@@ -14,7 +14,7 @@ import type {
   PullRequestAssigneePermission,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { parseNonEmptyReadonlyArray } from "../domain/review-write-operation";
+import { parseNonEmptyStringArray } from "../domain/review-write-operation";
 import { definedProps } from "../domain/defined-props";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
@@ -367,7 +367,7 @@ export class AssigneeService {
     }
     const assigneeIds = assignees.map((assignee) => assignee.id);
     const assigneeLogins = assignees.map((assignee) => assignee.login);
-    const nonEmptyAssigneeLogins = parseNonEmptyReadonlyArray(assigneeLogins);
+    const nonEmptyAssigneeLogins = parseNonEmptyStringArray(assigneeLogins);
     if (nonEmptyAssigneeLogins._tag === "err") return err("invalid_input");
 
     if (
