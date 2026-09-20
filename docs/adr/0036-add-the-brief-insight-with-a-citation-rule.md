@@ -106,15 +106,20 @@ produced by Patchdesk from the patch or from a command.
 Reach is the block that most obviously wants a search tool, and it does not get
 one.
 
-Neither provider can search the worktree today, and the check was run rather
-than assumed. A Pi/Flue child gets four bounded inspector tools, and its
-`search_files` is an in-memory substring scan over the **changed-file
-snapshots** only (`src/services/review-inspector.ts`,
+> **Superseded, 2026-09-20.** Commit `2e2fac4c` removed Patchdesk's command
+> allowlist. A Codex Brief can now run search commands when their requested
+> working directory resolves inside the represented worktree. The paragraph
+> below records the constraint at the time this ADR was accepted.
+
+Neither provider could search the worktree when this decision was made, and
+the check was run rather than assumed. A Pi/Flue child gets four bounded
+inspector tools, and its `search_files` is an in-memory substring scan over the
+**changed-file snapshots** only (`src/services/review-inspector.ts`,
 `model-review-runner.ts`) — it cannot see an unchanged caller, which is the
-entire question Reach asks. A Codex child gets no Patchdesk tools at all; it
-uses Codex's own read-only sandbox, whose escalation gate `isReadOnlyCommand`
-(`src/adapters/codex/codex-app-server-client.ts`) declines every `rg`, `grep`,
-and `git grep` shape, because a search pattern is not a path.
+entire question Reach asks. A Codex child got no Patchdesk tools at all; it used
+Codex's own read-only sandbox and Patchdesk's former `isReadOnlyCommand`
+escalation gate, which declined every `rg`, `grep`, and `git grep` shape because
+a search pattern was not a path.
 
 Giving the child a real search tool was rejected. ADR 0018 states that adding a
 new model-visible capability changes the isolation and authority boundary and
