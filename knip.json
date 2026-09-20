@@ -2,28 +2,17 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": [
-        "src/main/electron-main.ts",
-        "src/main/preload.ts",
-        "src/renderer/src/main.tsx",
-        "scripts/*.mjs",
-        "tests/**/*.{ts,tsx}"
-      ],
+      "entry": ["scripts/*.mjs", "tests/**/*.{ts,tsx}"],
       "project": [
         "src/**/*.{ts,tsx}",
         "src/**/*.css",
         "scripts/**/*.mjs",
         "tests/**/*.{ts,tsx}"
       ],
-      "ignore": ["**/*.generated.ts", "src/renderer/src/components/ui/**"]
+      "ignore": ["src/renderer/src/components/ui/**"]
     },
     "runtime/insight": {
-      "entry": [
-        "src/patchdesk-insight-runner.ts",
-        "src/package-smoke-runner.ts",
-        "scripts/*.mjs",
-        "tests/**/*.ts"
-      ],
+      "entry": ["scripts/*.mjs", "tests/**/*.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.ts"]
     }
   }
