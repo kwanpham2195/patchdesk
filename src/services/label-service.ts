@@ -10,6 +10,7 @@ import type {
   RepositoryLabelPermission,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import { parseNonEmptyReadonlyArray } from "../domain/review-write-operation";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -220,6 +221,8 @@ export class LabelService {
 
     const labelIds = input.command.labels.map((label) => label.id);
     const labelNames = input.command.labels.map((label) => label.name);
+    const nonEmptyLabelNames = parseNonEmptyReadonlyArray(labelNames);
+    if (nonEmptyLabelNames._tag === "err") return err("invalid_input");
 
     if (input.command._tag === "AddLabels") {
       if (this.github.addLabelsToLabelable === undefined)
@@ -228,7 +231,7 @@ export class LabelService {
       return ok({
         sessionId: current.value.session.id,
         pullRequest: pr,
-        intent: { _tag: "AddLabels" as const, names: labelNames },
+        intent: { _tag: "AddLabels" as const, names: nonEmptyLabelNames.value },
         write: async (): Promise<Result<LabelReceipt, LabelWriteFailure>> => {
           const written = await writer({
             profile: current.value.profile,
@@ -247,7 +250,10 @@ export class LabelService {
     return ok({
       sessionId: current.value.session.id,
       pullRequest: pr,
-      intent: { _tag: "RemoveLabels" as const, names: labelNames },
+      intent: {
+        _tag: "RemoveLabels" as const,
+        names: nonEmptyLabelNames.value,
+      },
       write: async (): Promise<Result<LabelReceipt, LabelWriteFailure>> => {
         const written = await writer({
           profile: current.value.profile,

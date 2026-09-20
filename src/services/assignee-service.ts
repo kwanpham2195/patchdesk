@@ -14,6 +14,7 @@ import type {
   PullRequestAssigneePermission,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import { parseNonEmptyReadonlyArray } from "../domain/review-write-operation";
 import { definedProps } from "../domain/defined-props";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
@@ -366,6 +367,8 @@ export class AssigneeService {
     }
     const assigneeIds = assignees.map((assignee) => assignee.id);
     const assigneeLogins = assignees.map((assignee) => assignee.login);
+    const nonEmptyAssigneeLogins = parseNonEmptyReadonlyArray(assigneeLogins);
+    if (nonEmptyAssigneeLogins._tag === "err") return err("invalid_input");
 
     if (
       input.command._tag === "AddAssignees" ||
@@ -386,7 +389,10 @@ export class AssigneeService {
       return ok({
         sessionId: current.value.session.id,
         pullRequest: pr,
-        intent: { _tag: "AddAssignees" as const, logins: assigneeLogins },
+        intent: {
+          _tag: "AddAssignees" as const,
+          logins: nonEmptyAssigneeLogins.value,
+        },
         write: async (): Promise<
           Result<AssigneeReceipt, AssigneeWriteFailure>
         > => {
@@ -407,7 +413,10 @@ export class AssigneeService {
     return ok({
       sessionId: current.value.session.id,
       pullRequest: pr,
-      intent: { _tag: "RemoveAssignees" as const, logins: assigneeLogins },
+      intent: {
+        _tag: "RemoveAssignees" as const,
+        logins: nonEmptyAssigneeLogins.value,
+      },
       write: async (): Promise<
         Result<AssigneeReceipt, AssigneeWriteFailure>
       > => {

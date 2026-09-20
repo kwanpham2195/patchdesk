@@ -7,6 +7,7 @@ import {
   markReviewWriteOutcomeUnknown,
   parseReviewWriteOperation,
   setReviewWriteResolution,
+  type ReviewWriteIntent,
 } from "../../src/domain/review-write-operation";
 import {
   reviewWriteIntents,
@@ -84,6 +85,28 @@ describe("review write operation", () => {
       _tag: "err",
       error: { _tag: "InvalidReviewWriteOperation" },
     });
+  });
+  it.each([
+    { _tag: "AddLabels", names: [] },
+    { _tag: "RemoveLabels", names: [] },
+    { _tag: "AddAssignees", logins: [] },
+    { _tag: "RemoveAssignees", logins: [] },
+    { _tag: "RequestReviewers", logins: [] },
+    { _tag: "RemoveReviewers", logins: [] },
+  ])("rejects an empty persisted $_tag intent", (intent) => {
+    expect(parseReviewWriteOperation({ ...stored, intent })).toEqual({
+      _tag: "err",
+      error: { _tag: "InvalidReviewWriteOperation" },
+    });
+  });
+
+  it("types metadata write intents as non-empty", () => {
+    const invalidIntent: ReviewWriteIntent = {
+      _tag: "AddLabels",
+      // @ts-expect-error An empty list must fail before ReviewWriteOperationStore.write.
+      names: [],
+    };
+    expect(invalidIntent._tag).toBe("AddLabels");
   });
   it("rejects unparsed persisted actor and thread identifiers", () => {
     expect(

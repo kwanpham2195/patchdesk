@@ -42,6 +42,17 @@ export type InvalidReviewWriteOperation = {
   readonly _tag: "InvalidReviewWriteOperation";
 };
 
+/** A readonly collection whose type proves that it contains at least one value. */
+export type NonEmptyReadonlyArray<T> = readonly [T, ...T[]];
+
+/** Refine a readonly collection after rejecting the empty case. */
+export function parseNonEmptyReadonlyArray<T>(
+  input: ReadonlyArray<T>,
+): Result<NonEmptyReadonlyArray<T>, "empty"> {
+  const [first, ...rest] = input;
+  return first === undefined ? err("empty") : ok([first, ...rest]);
+}
+
 /** Exact Review write intent persisted before Patchdesk crosses GitHub's write boundary. */
 export type ReviewWriteIntent =
   | {
@@ -97,23 +108,29 @@ export type ReviewWriteIntent =
       readonly publishedReviewId: GitHubReviewRestId;
       readonly message: string;
     }
-  | { readonly _tag: "AddLabels"; readonly names: ReadonlyArray<string> }
-  | { readonly _tag: "RemoveLabels"; readonly names: ReadonlyArray<string> }
+  | {
+      readonly _tag: "AddLabels";
+      readonly names: NonEmptyReadonlyArray<string>;
+    }
+  | {
+      readonly _tag: "RemoveLabels";
+      readonly names: NonEmptyReadonlyArray<string>;
+    }
   | {
       readonly _tag: "AddAssignees";
-      readonly logins: ReadonlyArray<string>;
+      readonly logins: NonEmptyReadonlyArray<string>;
     }
   | {
       readonly _tag: "RemoveAssignees";
-      readonly logins: ReadonlyArray<string>;
+      readonly logins: NonEmptyReadonlyArray<string>;
     }
   | {
       readonly _tag: "RequestReviewers";
-      readonly logins: ReadonlyArray<string>;
+      readonly logins: NonEmptyReadonlyArray<string>;
     }
   | {
       readonly _tag: "RemoveReviewers";
-      readonly logins: ReadonlyArray<string>;
+      readonly logins: NonEmptyReadonlyArray<string>;
     }
   | { readonly _tag: "SetDraftState"; readonly draft: boolean }
   | { readonly _tag: "SetBaseBranch"; readonly branch: string };
@@ -176,6 +193,19 @@ const expectedSchema = v.strictObject({
   headSha: v.string(),
   patchHash: v.string(),
 });
+const nonEmptyStringArraySchema = v.pipe(
+  v.tupleWithRest([v.string()], v.string()),
+  v.readonly(),
+);
+
+const nonEmptyLabelNameArraySchema = v.pipe(
+  v.tupleWithRest(
+    [v.pipe(v.string(), v.minLength(1))],
+    v.pipe(v.string(), v.minLength(1)),
+  ),
+  v.readonly(),
+);
+
 const intentSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("CreateComment"),
@@ -232,35 +262,27 @@ const intentSchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("AddLabels"),
-    names: v.pipe(
-      v.array(v.pipe(v.string(), v.minLength(1))),
-      v.minLength(1),
-      v.readonly(),
-    ),
+    names: nonEmptyLabelNameArraySchema,
   }),
   v.strictObject({
     _tag: v.literal("RemoveLabels"),
-    names: v.pipe(
-      v.array(v.pipe(v.string(), v.minLength(1))),
-      v.minLength(1),
-      v.readonly(),
-    ),
+    names: nonEmptyLabelNameArraySchema,
   }),
   v.strictObject({
     _tag: v.literal("AddAssignees"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
+    logins: nonEmptyStringArraySchema,
   }),
   v.strictObject({
     _tag: v.literal("RemoveAssignees"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
+    logins: nonEmptyStringArraySchema,
   }),
   v.strictObject({
     _tag: v.literal("RequestReviewers"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
+    logins: nonEmptyStringArraySchema,
   }),
   v.strictObject({
     _tag: v.literal("RemoveReviewers"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
+    logins: nonEmptyStringArraySchema,
   }),
   v.strictObject({ _tag: v.literal("SetDraftState"), draft: v.boolean() }),
   v.strictObject({

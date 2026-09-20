@@ -15,6 +15,7 @@ import type {
   SuggestedPullRequestReviewer,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import { parseNonEmptyReadonlyArray } from "../domain/review-write-operation";
 import { definedProps } from "../domain/defined-props";
 import type { PullRequestRef } from "../domain/pull-request";
 import {
@@ -342,6 +343,8 @@ export class ReviewerService {
     const reviewerLogins = input.command.reviewers.map(
       (reviewer) => reviewer.login,
     );
+    const nonEmptyReviewerLogins = parseNonEmptyReadonlyArray(reviewerLogins);
+    if (nonEmptyReviewerLogins._tag === "err") return err("invalid_input");
 
     if (input.command._tag === "RequestReviewers") {
       // Deliberately no reviewer cap: GitHub's published documentation does
@@ -353,7 +356,10 @@ export class ReviewerService {
       return ok({
         sessionId: current.value.session.id,
         pullRequest: pr,
-        intent: { _tag: "RequestReviewers" as const, logins: reviewerLogins },
+        intent: {
+          _tag: "RequestReviewers" as const,
+          logins: nonEmptyReviewerLogins.value,
+        },
         write: async (): Promise<
           Result<ReviewerReceipt, ReviewerWriteFailure>
         > => {
@@ -374,7 +380,10 @@ export class ReviewerService {
     return ok({
       sessionId: current.value.session.id,
       pullRequest: pr,
-      intent: { _tag: "RemoveReviewers" as const, logins: reviewerLogins },
+      intent: {
+        _tag: "RemoveReviewers" as const,
+        logins: nonEmptyReviewerLogins.value,
+      },
       write: async (): Promise<
         Result<ReviewerReceipt, ReviewerWriteFailure>
       > => {
