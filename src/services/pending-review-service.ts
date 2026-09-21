@@ -122,6 +122,19 @@ export type PendingReviewObservedAdoption = {
   readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
 };
 
+type PendingReviewOwnerProjection = {
+  readonly nodeId: string;
+  readonly headSha: string;
+  readonly comments: ReadonlyArray<{
+    readonly threadId: string;
+    readonly body: string;
+    readonly path: string;
+    readonly startLine: number;
+    readonly line: number;
+    readonly side: "new" | "old";
+  }>;
+};
+
 /** Read-only renderer projection; unavailable is never none. */
 export type PendingReviewProjection =
   | { readonly state: "none" }
@@ -132,22 +145,12 @@ export type PendingReviewProjection =
   | {
       readonly state: "pending";
       readonly count: number;
-      readonly review: {
-        readonly nodeId: string;
-        readonly headSha: string;
-        readonly comments: ReadonlyArray<{
-          readonly threadId: string;
-          readonly body: string;
-          readonly path: string;
-          readonly startLine: number;
-          readonly line: number;
-          readonly side: "new" | "old";
-        }>;
-      };
+      readonly review: PendingReviewOwnerProjection;
     }
   | {
       readonly state: "recovery_required";
       readonly action: "start" | "add_thread" | "submit" | "discard";
+      readonly review: PendingReviewOwnerProjection | null;
     };
 
 type Gateway = GitHubPendingReviewGateway &
@@ -422,12 +425,14 @@ export class PendingReviewService {
                 _tag: "AddThread",
                 requestId,
                 reviewId: input.pendingReviewNodeId,
+                body: input.body,
                 anchor: input.anchor,
               }
             : {
                 _tag: "AddThread",
                 requestId,
                 reviewId: input.pendingReviewNodeId,
+                body: input.body,
                 anchor: input.anchor,
                 finding: input.finding,
               };
@@ -799,24 +804,37 @@ export function projectPendingReview(
           : state.operation._tag === "Submit"
             ? ("submit" as const)
             : ("discard" as const);
-    return { state: "recovery_required", action };
+    return {
+      state: "recovery_required",
+      action,
+      review:
+        state.review === undefined
+          ? null
+          : projectPendingReviewOwner(state.review),
+    };
   }
   if (state._tag === "None") return { state: "none" };
   return {
     state: "pending",
     count: state.review.comments.length,
-    review: {
-      nodeId: state.review.nodeId,
-      headSha: state.review.headSha,
-      comments: state.review.comments.map((comment) => ({
-        threadId: comment.threadId,
-        body: comment.body,
-        path: comment.anchor.path,
-        startLine: comment.anchor.startLine,
-        line: comment.anchor.line,
-        side: comment.anchor.side,
-      })),
-    },
+    review: projectPendingReviewOwner(state.review),
+  };
+}
+
+function projectPendingReviewOwner(
+  review: ViewerPendingReview,
+): PendingReviewOwnerProjection {
+  return {
+    nodeId: review.nodeId,
+    headSha: review.headSha,
+    comments: review.comments.map((comment) => ({
+      threadId: comment.threadId,
+      body: comment.body,
+      path: comment.anchor.path,
+      startLine: comment.anchor.startLine,
+      line: comment.anchor.line,
+      side: comment.anchor.side,
+    })),
   };
 }
 

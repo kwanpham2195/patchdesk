@@ -35,6 +35,8 @@ const sessionId =
   "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
 // SAFETY: this literal is a well-formed ISO 8601 instant, matching parseIsoTimestamp's format.
 const now = "2026-08-09T11:35:00.000Z" as never;
+// SAFETY: this literal is a well-formed ISO 8601 instant after `now`.
+const later = "2026-08-09T11:36:00.000Z" as never;
 // SAFETY: these literals are well-formed ISO 8601 instants, matching parseIsoTimestamp's format.
 // Ordered before `now` so a rejected compare-and-swap can only be the
 // expectation mismatch, never the store's strictly-increasing updatedAt rule.
@@ -409,6 +411,117 @@ describe("PendingReviewService", () => {
     expect(value.github.startPendingReviewWithThread).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps an uncertain AddThread locked when only an unrelated newer comment exists", async () => {
+    const unrelated = {
+      ...pending(),
+      comments: pending().comments.map((comment) => ({
+        ...comment,
+        body: "another writer's comment",
+        createdAt: later,
+      })),
+      updatedAt: later,
+    };
+    const unavailableResult = err({ category: "unavailable" as const });
+    let finishGateway: ((result: typeof unavailableResult) => void) | undefined;
+    const gatewayResult = new Promise<typeof unavailableResult>((resolve) => {
+      finishGateway = resolve;
+    });
+    let observed = pending();
+    const value = fixture(
+      { _tag: "Pending", review: pending() },
+      {
+        addPendingReviewThread: vi.fn(async () => gatewayResult),
+        getViewerPendingReview: vi.fn(async () =>
+          ok({ _tag: "Pending", review: observed }),
+        ),
+      },
+    );
+
+    const write = value.service.addThread({
+      profileId,
+      reviewId,
+      expected,
+      pendingReviewNodeId: pending().nodeId,
+      anchor,
+      body: "comment",
+    });
+    await vi.waitFor(() => expect(value.saves).toHaveLength(1));
+    expect(value.saves[0]).toMatchObject({
+      pendingReview: {
+        _tag: "WriteInFlight",
+        operation: { _tag: "AddThread", body: "comment", anchor },
+      },
+    });
+    observed = unrelated;
+    if (finishGateway === undefined) throw new Error("fixture");
+    finishGateway(unavailableResult);
+    await expect(write).resolves.toEqual({
+      _tag: "err",
+      error: "outcome_unknown",
+    });
+    expect(value.saves[1]).toMatchObject({
+      pendingReview: { _tag: "OutcomeUnknown" },
+    });
+
+    await expect(
+      value.service.reconcile({ profileId, reviewId, recover: true }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { state: { _tag: "OutcomeUnknown" } },
+    });
+    expect(value.current().pendingReview).toMatchObject({
+      _tag: "OutcomeUnknown",
+    });
+    expect(value.saves).toHaveLength(3);
+    expect(value.saves[2]).toMatchObject({
+      pendingReview: {
+        _tag: "OutcomeUnknown",
+        review: { comments: [{ body: "another writer's comment" }] },
+      },
+    });
+    expect(value.github.addPendingReviewThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains unresolved Finding ownership when AddThread recovery finds the pending review", async () => {
+    const value = fixture(
+      {
+        _tag: "OutcomeUnknown",
+        review: pending(),
+        operation: {
+          _tag: "AddThread",
+          // SAFETY: this test value matches parsePendingReviewRequestId's accepted slug shape.
+          requestId: "pending-review-add-finding-1" as never,
+          reviewId: pending().nodeId,
+          body: "comment",
+          anchor,
+          finding,
+        },
+        startedAt: now,
+      },
+      {
+        getViewerPendingReview: vi.fn(async () =>
+          ok({ _tag: "Pending", review: pending() }),
+        ),
+      },
+    );
+
+    await expect(
+      value.service.reconcile({ profileId, reviewId, recover: true }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        state: {
+          _tag: "Pending",
+          unresolvedFinding: { findingId: finding.findingId },
+        },
+      },
+    });
+    expect(value.current().pendingReview).toMatchObject({
+      _tag: "Pending",
+      unresolvedFinding: { findingId: finding.findingId },
+    });
+  });
+
   it("surfaces a forbidden write as 'forbidden', not the generic 'rejected' category", async () => {
     const value = fixture(
       { _tag: "None" },
@@ -688,6 +801,28 @@ describe("PendingReviewService", () => {
         ),
       ).toMatchObject({ state: "recovery_required" });
     }
+    expect(
+      projectPendingReview(
+        {
+          _tag: "OutcomeUnknown",
+          review: pending(),
+          operation: {
+            _tag: "AddThread",
+            // SAFETY: this test value matches parsePendingReviewRequestId's accepted slug shape.
+            requestId: "pending-review-project-add-1" as never,
+            reviewId: pending().nodeId,
+            body: "comment",
+            anchor,
+          },
+          startedAt: now,
+        },
+        false,
+      ),
+    ).toMatchObject({
+      state: "recovery_required",
+      action: "add_thread",
+      review: { comments: [{ body: "body" }] },
+    });
   });
 });
 

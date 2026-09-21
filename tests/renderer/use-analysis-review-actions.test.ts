@@ -60,12 +60,14 @@ function renderActions(workbench: WorkbenchResponse) {
   const onWorkbenchReplace = vi.fn();
   const runDirectCommand: RunDirectCommand = async (operation) =>
     await operation();
-  const rendered = renderHook(() =>
-    useAnalysisReviewActions({
-      workbench,
-      onWorkbenchReplace,
-      runDirectCommand,
-    }),
+  const rendered = renderHook(
+    (props: { readonly workbench: WorkbenchResponse }) =>
+      useAnalysisReviewActions({
+        workbench: props.workbench,
+        onWorkbenchReplace,
+        runDirectCommand,
+      }),
+    { initialProps: { workbench } },
   );
   return { ...rendered, onWorkbenchReplace };
 }
@@ -548,7 +550,11 @@ describe("useAnalysisReviewActions", () => {
 
     expect(onWorkbenchReplace).toHaveBeenCalledWith({
       ...initial,
-      pendingReview: { state: "recovery_required", action: "start" },
+      pendingReview: {
+        state: "recovery_required",
+        action: "start",
+        review: null,
+      },
     });
     expect(
       onWorkbenchReplace.mock.calls.some(
@@ -559,6 +565,58 @@ describe("useAnalysisReviewActions", () => {
       ),
     ).toBe(false);
     expect(double.request).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a newer pending owner when a Finding command enters recovery", async () => {
+    let release!: (value: DesktopResponse) => void;
+    const double = installDesktopDouble({
+      [COMMAND]: () =>
+        new Promise<DesktopResponse>((resolve) => {
+          release = resolve;
+        }),
+    });
+    restore = double.restore;
+    const initial = withAnalysis("actionable");
+    const baseOwner = pending("pending");
+    if (baseOwner.state !== "pending") throw new Error("fixture");
+    const newerOwner = {
+      ...baseOwner,
+      review: {
+        ...baseOwner.review,
+        comments: [
+          ...baseOwner.review.comments,
+          {
+            ...baseOwner.review.comments[0],
+            threadId: "PRRT_newer",
+            body: "Newer confirmed comment",
+          },
+        ],
+      },
+    };
+    const { result, rerender, onWorkbenchReplace } = renderActions(initial);
+    const finding = analysisResult.findings[0];
+    if (finding === undefined) throw new Error("missing Finding fixture");
+
+    let submitted!: Promise<void>;
+    act(() => {
+      submitted = result.current.addFindingToPendingReview(finding);
+    });
+    rerender({
+      workbench: { ...initial, pendingReview: newerOwner as never },
+    });
+    await act(async () => {
+      release(success({ pendingReview: {} }));
+      await expect(submitted).rejects.toBeInstanceOf(PatchdeskApiError);
+    });
+
+    expect(onWorkbenchReplace).toHaveBeenLastCalledWith({
+      ...initial,
+      pendingReview: {
+        state: "recovery_required",
+        action: "start",
+        review: newerOwner.review,
+      },
+    });
   });
 
   it("keeps deterministic command failure retryable and leaves represented state intact", async () => {
@@ -598,7 +656,11 @@ describe("useAnalysisReviewActions", () => {
 
     expect(onWorkbenchReplace).toHaveBeenLastCalledWith({
       ...initial,
-      pendingReview: { state: "recovery_required", action: "start" },
+      pendingReview: {
+        state: "recovery_required",
+        action: "start",
+        review: null,
+      },
     });
   });
 
@@ -672,7 +734,11 @@ describe("useAnalysisReviewActions", () => {
 
     expect(onWorkbenchReplace).toHaveBeenLastCalledWith({
       ...initial,
-      pendingReview: { state: "recovery_required", action: "start" },
+      pendingReview: {
+        state: "recovery_required",
+        action: "start",
+        review: null,
+      },
     });
   });
 });

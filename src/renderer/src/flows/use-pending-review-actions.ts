@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useLatestCommitted } from "../hooks/use-latest-committed";
 import * as v from "valibot";
 
 import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
@@ -95,6 +96,15 @@ function threadIdsOf(
   });
 }
 
+function pendingReviewOwnerOf(
+  projection: PendingReviewProjection | undefined,
+): Extract<PendingReviewProjection, { state: "pending" }>["review"] | null {
+  return projection?.state === "pending" ||
+    projection?.state === "recovery_required"
+    ? projection.review
+    : null;
+}
+
 function recoveryActionOf(
   command: PendingReviewCommand,
 ): "start" | "add_thread" | "submit" | "discard" {
@@ -114,6 +124,7 @@ export function usePendingReviewActions({
   observeConfirmedReviewWrite,
 }: PendingReviewActionsInput): PendingReviewActionsResult {
   const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
+  const latestWorkbenchRef = useLatestCommitted(workbench);
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   const [finishDialogInitialSummary, setFinishDialogInitialSummary] = useState<
     string | undefined
@@ -201,6 +212,9 @@ export function usePendingReviewActions({
             pendingReview: {
               state: "recovery_required",
               action: recoveryAction,
+              review: pendingReviewOwnerOf(
+                latestWorkbenchRef.current.pendingReview,
+              ),
             },
           });
           throw untrustedWriteResponseError(
@@ -243,6 +257,9 @@ export function usePendingReviewActions({
               pendingReview: {
                 state: "recovery_required",
                 action: recoveryAction,
+                review: pendingReviewOwnerOf(
+                  latestWorkbenchRef.current.pendingReview,
+                ),
               },
             });
           }
@@ -255,6 +272,7 @@ export function usePendingReviewActions({
     [
       appendRecentWrites,
       applyPendingReviewProjection,
+      latestWorkbenchRef,
       onWorkbenchPatch,
       observeConfirmedReviewWrite,
       runDirectCommand,

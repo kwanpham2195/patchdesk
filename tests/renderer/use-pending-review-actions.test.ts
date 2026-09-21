@@ -312,7 +312,11 @@ describe("usePendingReviewActions recovery", () => {
     });
 
     expect(patch).toHaveBeenCalledWith({
-      pendingReview: { state: "recovery_required", action: "start" },
+      pendingReview: {
+        state: "recovery_required",
+        action: "start",
+        review: null,
+      },
     });
     expect(request).toHaveBeenCalledTimes(1);
   });
@@ -330,9 +334,67 @@ describe("usePendingReviewActions recovery", () => {
     });
 
     expect(patch).toHaveBeenCalledWith({
-      pendingReview: { state: "recovery_required", action: "submit" },
+      pendingReview: {
+        state: "recovery_required",
+        action: "submit",
+        review: expect.any(Object),
+      },
     });
     expect(panelOf(result).finishDialogError).toBeTruthy();
+  });
+
+  it("preserves a newer pending owner when an in-flight command enters recovery", async () => {
+    let release!: DeferredResolve;
+    installPendingDouble({
+      command: () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    });
+    const initial = projection({
+      pendingReview: pending("pending") as never,
+    });
+    const baseOwner = pending("pending");
+    if (baseOwner.state !== "pending") throw new Error("fixture");
+    const newerOwner = {
+      ...baseOwner,
+      review: {
+        ...baseOwner.review,
+        comments: [
+          ...baseOwner.review.comments,
+          {
+            ...baseOwner.review.comments[0],
+            threadId: "PRRT_newer",
+            body: "Newer confirmed comment",
+          },
+        ],
+      },
+    };
+    const { result, patch, rerender } = renderPendingReview(initial);
+
+    let submitted!: Promise<void>;
+    act(() => {
+      submitted = composerOf(result).onAddReviewComment(
+        baseOwner.review.nodeId,
+        anchor,
+        "Comment",
+      );
+    });
+    rerender({
+      workbench: projection({ pendingReview: newerOwner as never }),
+    });
+    await act(async () => {
+      release({ pendingReview: {} });
+      await expect(submitted).rejects.toBeInstanceOf(PatchdeskApiError);
+    });
+
+    expect(patch).toHaveBeenLastCalledWith({
+      pendingReview: {
+        state: "recovery_required",
+        action: "add_thread",
+        review: newerOwner.review,
+      },
+    });
   });
 
   it("reloads the Review once an explicit recovery clears the lock", async () => {
@@ -384,7 +446,11 @@ describe("usePendingReviewActions recovery", () => {
   it("keeps the lock and explains it when recovery still cannot identify the review", async () => {
     const request = installPendingDouble({
       recover: () => ({
-        pendingReview: { state: "recovery_required", action: "start" },
+        pendingReview: {
+          state: "recovery_required",
+          action: "start",
+          review: null,
+        },
       }),
     });
     const { result, replace } = renderPendingReview(

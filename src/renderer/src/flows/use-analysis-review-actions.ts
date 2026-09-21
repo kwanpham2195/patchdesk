@@ -290,11 +290,17 @@ export function useAnalysisReviewActions({
       };
       const requirePendingReviewRecovery = (): void => {
         const latest = latestWorkbenchRef.current;
+        const latestPending = latest.pendingReview;
         const recovery: WorkbenchResponse = {
           ...latest,
           pendingReview: {
             state: "recovery_required",
             action: command._tag === "Start" ? "start" : "add_thread",
+            review:
+              latestPending?.state === "pending" ||
+              latestPending?.state === "recovery_required"
+                ? latestPending.review
+                : null,
           },
         };
         latestWorkbenchRef.current = recovery;

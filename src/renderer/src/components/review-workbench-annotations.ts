@@ -75,32 +75,34 @@ export function buildConversationAnnotations(
 export function buildPendingReviewAnnotations(
   model: Pick<WorkbenchResponse, "pendingReview">,
 ): ReadonlyArray<ReviewInlineAnnotation> {
-  return model.pendingReview?.state !== "pending"
-    ? []
-    : (() => {
-        const pendingReview = model.pendingReview;
-        return pendingReview.review.comments.flatMap((comment) => {
-          const parsedThreadId = parseGitHubThreadId(comment.threadId);
-          if (parsedThreadId._tag === "err") return [];
-          return [
-            {
-              id: `pending-review:${comment.threadId}`,
-              path: comment.path,
-              start: comment.startLine,
-              end: comment.line,
-              side: comment.side,
-              severity: "conversation",
-              title: "Pending review",
-              explanation: "",
-              pendingReviewThread: {
-                threadId: parsedThreadId.value,
-                body: comment.body,
-                nodeId: pendingReview.review.nodeId,
-              },
-            },
-          ];
-        });
-      })();
+  const pendingReview = model.pendingReview;
+  const review =
+    pendingReview?.state === "pending" ||
+    pendingReview?.state === "recovery_required"
+      ? pendingReview.review
+      : null;
+  if (review === null) return [];
+  return review.comments.flatMap((comment) => {
+    const parsedThreadId = parseGitHubThreadId(comment.threadId);
+    if (parsedThreadId._tag === "err") return [];
+    return [
+      {
+        id: `pending-review:${comment.threadId}`,
+        path: comment.path,
+        start: comment.startLine,
+        end: comment.line,
+        side: comment.side,
+        severity: "conversation",
+        title: "Pending review",
+        explanation: "",
+        pendingReviewThread: {
+          threadId: parsedThreadId.value,
+          body: comment.body,
+          nodeId: review.nodeId,
+        },
+      },
+    ];
+  });
 }
 
 /** Every inline annotation the diff renders: findings, then conversation threads. */

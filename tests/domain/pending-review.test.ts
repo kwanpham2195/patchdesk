@@ -57,6 +57,7 @@ const addThreadOperation: PendingReviewOperation = {
   requestId: "pending-review-add-1" as never,
   // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   reviewId: "PRR_kwDORJzsQM7e6QwJ" as never,
+  body: "Comment body",
   anchor: {
     // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
     path: "docs/docs.go" as never,
@@ -163,6 +164,22 @@ describe("parsePendingReviewState", () => {
         _tag: "OutcomeUnknown",
         operation: submitOperation,
         startedAt: "not-a-timestamp",
+      })._tag,
+    ).toBe("err");
+    const { body: _body, ...addThreadWithoutBody } = addThreadOperation;
+    void _body;
+    expect(
+      parsePendingReviewState({
+        _tag: "OutcomeUnknown",
+        operation: addThreadWithoutBody,
+        startedAt: "2026-08-09T11:35:00.000Z",
+      })._tag,
+    ).toBe("err");
+    expect(
+      parsePendingReviewState({
+        _tag: "OutcomeUnknown",
+        operation: { ...addThreadOperation, body: 42 },
+        startedAt: "2026-08-09T11:35:00.000Z",
       })._tag,
     ).toBe("err");
   });
@@ -350,12 +367,20 @@ describe("unresolved Finding ownership", () => {
 });
 
 describe("reconcilePendingReviewState", () => {
-  const locked = (operation: PendingReviewOperation): PendingReviewState => ({
-    _tag: "OutcomeUnknown",
-    operation,
-    // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
-    startedAt: "2026-08-09T11:35:00.000Z" as never,
-  });
+  const locked = (
+    operation: PendingReviewOperation,
+    priorReview?: ViewerPendingReview,
+  ): PendingReviewState => {
+    const state = {
+      _tag: "OutcomeUnknown" as const,
+      operation,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
+      startedAt: "2026-08-09T11:35:00.000Z" as never,
+    };
+    return priorReview === undefined
+      ? state
+      : { ...state, review: priorReview };
+  };
 
   it("maps a proven Start result and leaves Unavailable locked", () => {
     expect(
@@ -447,11 +472,10 @@ describe("reconcilePendingReviewState", () => {
     });
   });
 
-  it("maps AddThread only when a newer comment proves the thread landed", () => {
+  it("maps AddThread only when exactly one comment matches its body and anchor", () => {
     const newerReview = {
       ...reviewRaw,
       comments: [
-        ...reviewRaw.comments,
         {
           reviewCommentId: "PRRC_kwDORJzsQM7fI2Xp",
           threadId: "PRRT_kwDORJzsQM0002",
@@ -469,18 +493,75 @@ describe("reconcilePendingReviewState", () => {
     };
     const parsed = parseViewerPendingReview(newerReview);
     if (parsed._tag !== "ok") throw new Error("fixture");
-    expect(
-      reconcilePendingReviewState(locked(addThreadOperation), {
+    const prior = parseViewerPendingReview({ ...reviewRaw, comments: [] });
+    if (prior._tag !== "ok") throw new Error("fixture");
+    const unrelated = reconcilePendingReviewState(
+      locked(addThreadOperation, prior.value),
+      {
         _tag: "Pending",
         review: parsed.value,
+      },
+    );
+    expect(unrelated).toMatchObject({ _tag: "OutcomeUnknown" });
+
+    expect(
+      reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
+        _tag: "Unavailable",
       }),
-    ).toMatchObject({ _tag: "Pending", review: { restId: "4891263665" } });
-    // No comment newer than the write start: the thread did not land.
-    const stale = reconcilePendingReviewState(locked(addThreadOperation), {
-      _tag: "Pending",
-      review: review(),
+    ).toMatchObject({ _tag: "OutcomeUnknown" });
+    expect(
+      reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
+        _tag: "None",
+      }),
+    ).toMatchObject({ _tag: "OutcomeUnknown" });
+
+    const exactNewer = parseViewerPendingReview({
+      ...reviewRaw,
+      comments: reviewRaw.comments.map((comment) => ({
+        ...comment,
+        createdAt: "2026-08-09T11:35:00.000Z",
+      })),
+      updatedAt: "2026-08-09T11:35:00.000Z",
     });
-    expect(stale).toMatchObject({ _tag: "OutcomeUnknown" });
+    if (exactNewer._tag !== "ok") throw new Error("fixture");
+    const matched = reconcilePendingReviewState(
+      locked(addThreadOperation, prior.value),
+      {
+        _tag: "Pending",
+        review: exactNewer.value,
+      },
+    );
+    expect(matched).toMatchObject({
+      _tag: "Pending",
+      review: { restId: "4891263665" },
+    });
+
+    expect(
+      reconcilePendingReviewState(locked(addThreadOperation, review()), {
+        _tag: "Pending",
+        review: review(),
+      }),
+    ).toMatchObject({ _tag: "OutcomeUnknown" });
+
+    const duplicate = parseViewerPendingReview({
+      ...reviewRaw,
+      comments: [
+        ...reviewRaw.comments,
+        {
+          ...reviewRaw.comments[0],
+          reviewCommentId: "PRRC_kwDORJzsQM7fI2Xq",
+          threadId: "PRRT_kwDORJzsQM0003",
+          createdAt: "2026-08-09T11:36:00.000Z",
+        },
+      ],
+    });
+    if (duplicate._tag !== "ok") throw new Error("fixture");
+    expect(
+      reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
+        _tag: "Pending",
+        review: duplicate.value,
+      }),
+    ).toMatchObject({ _tag: "OutcomeUnknown" });
   });
 
   it("never reconciles a confirmed state", () => {

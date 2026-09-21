@@ -746,6 +746,11 @@ const pendingReviewCommentSchema = v.strictObject({
   line: v.pipe(v.number(), v.integer(), v.minValue(1)),
   side: v.picklist(["new", "old"]),
 });
+const pendingReviewOwnerSchema = v.strictObject({
+  nodeId: v.pipe(v.string(), v.minLength(1)),
+  headSha: v.pipe(v.string(), v.minLength(7)),
+  comments: v.array(pendingReviewCommentSchema),
+});
 const pendingReviewProjectionSchema = v.variant("state", [
   v.strictObject({ state: v.literal("none") }),
   v.strictObject({
@@ -755,15 +760,12 @@ const pendingReviewProjectionSchema = v.variant("state", [
   v.strictObject({
     state: v.literal("pending"),
     count: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    review: v.strictObject({
-      nodeId: v.pipe(v.string(), v.minLength(1)),
-      headSha: v.pipe(v.string(), v.minLength(7)),
-      comments: v.array(pendingReviewCommentSchema),
-    }),
+    review: pendingReviewOwnerSchema,
   }),
   v.strictObject({
     state: v.literal("recovery_required"),
     action: v.picklist(["start", "add_thread", "submit", "discard"]),
+    review: v.nullable(pendingReviewOwnerSchema),
   }),
 ]);
 const directSummaryReviewProjectionSchema = v.variant("state", [

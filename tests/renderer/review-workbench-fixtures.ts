@@ -121,7 +121,8 @@ export function pending(
 ): NonNullable<WorkbenchResponse["pendingReview"]> {
   if (state === "none") return { state };
   if (state === "unavailable") return { state, action: "refresh" };
-  if (state === "recovery_required") return { state, action: "start" };
+  if (state === "recovery_required")
+    return { state, action: "start", review: null };
   return {
     state,
     count: 1,

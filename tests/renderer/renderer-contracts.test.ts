@@ -9,6 +9,7 @@ import {
   parseInboxResponse,
   parseInsightRunResponse,
   parseMergeReceipt,
+  parsePendingReviewProjection,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../../src/renderer/src/renderer-contracts";
@@ -47,6 +48,49 @@ const reviewProjection = {
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
 };
+
+describe("parsePendingReviewProjection", () => {
+  const recovery = {
+    state: "recovery_required",
+    action: "add_thread",
+    review: {
+      nodeId: "PRR_fixture",
+      headSha: "a".repeat(40),
+      comments: [
+        {
+          threadId: "PRRT_fixture",
+          body: "Observed comment",
+          path: "src/a.ts",
+          startLine: 1,
+          line: 1,
+          side: "new",
+        },
+      ],
+    },
+  };
+
+  it("accepts an observed owner while recovery remains required", () => {
+    expect(parsePendingReviewProjection(recovery)).toEqual(recovery);
+  });
+
+  it("rejects malformed or extended observed owners", () => {
+    expect(
+      parsePendingReviewProjection({
+        ...recovery,
+        review: { ...recovery.review, extra: true },
+      }),
+    ).toBeUndefined();
+    expect(
+      parsePendingReviewProjection({
+        ...recovery,
+        review: {
+          ...recovery.review,
+          comments: [{ ...recovery.review.comments[0], body: 42 }],
+        },
+      }),
+    ).toBeUndefined();
+  });
+});
 
 describe("parseInboxResponse", () => {
   const response = {

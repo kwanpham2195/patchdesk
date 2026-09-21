@@ -105,6 +105,7 @@ export type PendingReviewOperation =
       readonly _tag: "AddThread";
       readonly requestId: PendingReviewRequestId;
       readonly reviewId: GitHubReviewNodeId;
+      readonly body: string;
       readonly anchor: PendingReviewAnchor;
       readonly finding?: FindingReviewSource;
     }
@@ -330,7 +331,6 @@ export function reconcilePendingReviewState(
   }
   if (read._tag === "Unavailable") return state;
   const operation = state.operation;
-  const startedAt = state.startedAt;
   if (
     (operation._tag === "Start" || operation._tag === "AddThread") &&
     operation.finding !== undefined
@@ -383,16 +383,47 @@ export function reconcilePendingReviewState(
   }
   // AddThread
   if (read._tag === "Pending") {
-    // The thread created by this operation is a thread on the same review
-    // with a comment newer than the write start.
-    const landed = read.review.comments.some(
-      (comment) => comment.createdAt > startedAt,
+    if (read.review.nodeId !== operation.reviewId) return state;
+    const observedMatch = matchPendingReviewThread(
+      read.review,
+      operation.anchor,
+      operation.body,
     );
-    return landed ? pendingOwner(read.review, state.unresolvedFinding) : state;
+    if (state.review === undefined) return state;
+    const previousMatch = matchPendingReviewThread(
+      state.review,
+      operation.anchor,
+      operation.body,
+    );
+    const observedThreadIsNew =
+      observedMatch._tag === "Match" &&
+      !state.review.comments.some(
+        (comment) => comment.threadId === observedMatch.threadId,
+      );
+    return observedThreadIsNew && previousMatch._tag === "None"
+      ? pendingOwner(read.review, state.unresolvedFinding)
+      : retainPendingReviewLock(state, read.review);
   }
   // The review is gone (submitted or absent): without thread identity proof
   // the outcome stays locked.
   return state;
+}
+
+/** Keep uncertain write ownership while exposing the latest confirmed remote draft. */
+function retainPendingReviewLock(
+  state: Extract<
+    PendingReviewState,
+    { readonly _tag: "WriteInFlight" | "OutcomeUnknown" }
+  >,
+  review: ViewerPendingReview,
+): PendingReviewState {
+  return {
+    _tag: state._tag,
+    review,
+    ...definedProps({ unresolvedFinding: state.unresolvedFinding }),
+    operation: state.operation,
+    startedAt: state.startedAt,
+  };
 }
 
 function pendingOwner(
@@ -480,6 +511,7 @@ const operationSchema = v.variant("_tag", [
     _tag: v.literal("AddThread"),
     requestId: v.string(),
     reviewId: v.string(),
+    body: v.string(),
     anchor: anchorSchema,
     finding: v.optional(findingSourceSchema),
   }),
@@ -766,6 +798,7 @@ function parseOperation(
         _tag: "AddThread",
         requestId: requestId.value,
         reviewId: reviewId.value,
+        body: input.body,
         anchor,
         ...definedProps({ finding: finding.value }),
       });
