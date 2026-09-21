@@ -4,6 +4,7 @@ import { ChevronDownIcon } from "lucide-react";
 import { definedProps } from "../../../domain/defined-props";
 import { contextualMessage } from "../api-client";
 import { FINDING_ACTION_MESSAGES } from "../review-copy";
+import { useFindingErrors } from "../hooks/use-finding-errors";
 import {
   renderAnalysisFixPrompt,
   type AnalysisFixPromptContext,
@@ -54,7 +55,6 @@ import {
 
 type AnalysisFinding = AnalysisResult["findings"][number];
 type FindingActionState = "adding" | "dismissing";
-
 type SupportingDetail = {
   readonly key: string;
   readonly heading?: string;
@@ -106,9 +106,11 @@ export function AnalysisReader({
   const [findingActions, setFindingActions] = useState<
     ReadonlyMap<string, FindingActionState>
   >(new Map());
-  const [findingErrors, setFindingErrors] = useState<
-    ReadonlyMap<string, string>
-  >(new Map());
+  const {
+    errors: findingErrors,
+    clear: clearFindingError,
+    record: recordFindingError,
+  } = useFindingErrors(result, findingStatuses);
   const [verifiedSteps, setVerifiedSteps] = useState<ReadonlySet<number>>(
     new Set(),
   );
@@ -147,20 +149,15 @@ export function AnalysisReader({
       next.set(findingId, state);
       return next;
     });
-    setFindingErrors((current) => {
-      const next = new Map(current);
-      next.delete(findingId);
-      return next;
-    });
+    clearFindingError(findingId);
     try {
       await action();
       return true;
     } catch (cause) {
-      setFindingErrors((current) => {
-        const next = new Map(current);
-        next.set(findingId, contextualMessage(cause, FINDING_ACTION_MESSAGES));
-        return next;
-      });
+      recordFindingError(
+        findingId,
+        contextualMessage(cause, FINDING_ACTION_MESSAGES),
+      );
       return false;
     } finally {
       admittedFindingIds.current.delete(findingId);
