@@ -174,6 +174,10 @@ than being fixed by the transport: an all-digit assignee search still reaches
 `$search: String` as an Int (issue #279), and a leading `@`, which gh's `-F`
 read as a filename to take the value from, now reaches GitHub as the text.
 
+Patchdesk fixed issue #279 after this decision. Assignee and maintainer search
+variables now use `-f`, so all-digit text remains a GraphQL String. Numeric
+pagination variables continue to use `-F`.
+
 **A GraphQL label was not enough to be served.** Queries and mutations share
 one endpoint and a mutation is labelled by its root field, so a mutation could
 carry an allowlisted label. While the allowlists existed, the routing served a

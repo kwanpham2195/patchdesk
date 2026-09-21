@@ -141,34 +141,18 @@ describe("reads served over the real HTTP client", () => {
     });
   });
 
-  /**
-   * The assignee and branch pickers put the maintainer's typed text straight
-   * into a GraphQL variable, so how that text encodes is most of what these
-   * two reads can differ on. gh sent the assignee search through `-F`
-   * (`github-collaborators.ts`) and the branch search through `-f`
-   * (`github-pull-request-reader.ts`), which is why only the first infers a
-   * type from the text.
-   */
+  /** Both pickers preserve the maintainer's typed text as a GraphQL String. */
   const searchTexts = [
-    { name: "ordinary text", typed: "ann", inferred: "ann" },
-    {
-      name: "a quote and a backslash",
-      typed: 'o"neill\\src',
-      inferred: 'o"neill\\src',
-    },
-    { name: "non-ASCII text", typed: "café", inferred: "café" },
-    // Issue #279: `-F` inferred an all-digit field as an Int against
-    // `$search: String`, and the client infers from the same text, so the bug
-    // reaches GitHub identically rather than being fixed by the transport.
-    { name: "an all-digit string", typed: "2026", inferred: 2026 },
-    // gh's `-F` read a leading `@` as a filename to read the value from; the
-    // client has no filesystem step and sends the text as typed.
-    { name: "a leading @", typed: "@octocat", inferred: "@octocat" },
+    { name: "ordinary text", typed: "ann" },
+    { name: "a quote and a backslash", typed: 'o"neill\\src' },
+    { name: "non-ASCII text", typed: "café" },
+    { name: "an all-digit string", typed: "2026" },
+    { name: "a leading @", typed: "@octocat" },
   ] as const;
 
   it.each(searchTexts)(
-    "sends an assignee search of $name the way gh's -F typed it",
-    async ({ typed, inferred }) => {
+    "sends an assignee search of $name as a GraphQL String",
+    async ({ typed }) => {
       server.respondWith(json(200, { data: { repository: null } }));
 
       await adapter().listAssignableUsers({ profile, repo: pr, query: typed });
@@ -179,7 +163,7 @@ describe("reads served over the real HTTP client", () => {
         variables: {
           owner: "octo-org",
           name: "patchdesk",
-          search: inferred,
+          search: typed,
         },
       });
     },

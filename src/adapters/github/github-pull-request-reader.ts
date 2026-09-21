@@ -229,7 +229,7 @@ export class GitHubPullRequestReader {
       host,
       document: maintainerInboxSearchQuery,
       variables: [
-        { kind: "typed", name: "search", value: input.searchQuery },
+        { kind: "string", name: "search", value: input.searchQuery },
         { kind: "typed", name: "first", value: input.pageSize },
         ...(input.cursor === undefined
           ? []

@@ -1183,11 +1183,10 @@ describe("GitHubAdapter read boundary", () => {
     await testAdapter(withQuery).listAssignableUsers({
       profile,
       repo: pr,
-      query: "octo",
+      query: "2026",
     });
-    expect(
-      sent(withQuery, 0).argv.some((argument) => argument === "search=octo"),
-    ).toBe(true);
+    const searchIndex = sent(withQuery, 0).argv.indexOf("search=2026");
+    expect(sent(withQuery, 0).argv[searchIndex - 1]).toBe("-f");
 
     const withoutQuery = orderedTransport([JSON.stringify(page)]);
     await testAdapter(withoutQuery).listAssignableUsers({
@@ -1512,16 +1511,17 @@ describe("GitHubAdapter read boundary", () => {
       await adapter.searchMaintainerPullRequests({
         profile,
         repo: pr,
-        searchQuery: "repo:octo-org/patchdesk is:pr is:open",
+        searchQuery: "2026",
         state: "open",
         pageSize: 25,
       });
 
-      expect(transport.requests).toHaveLength(1);
-      expect(sent(transport, 0).argv).toContain(
-        "search=repo:octo-org/patchdesk is:pr is:open",
-      );
-      expect(sent(transport, 0).argv).toContain("first=25");
+      const argv = sent(transport, 0).argv;
+      const searchIndex = argv.indexOf("search=2026");
+      const firstIndex = argv.indexOf("first=25");
+      expect(searchIndex).toBeGreaterThan(0);
+      expect(argv[searchIndex - 1]).toBe("-f");
+      expect(argv[firstIndex - 1]).toBe("-F");
     });
 
     it("returns issueCount, GitHub's true repository-wide match count, from the response", async () => {

@@ -109,7 +109,7 @@ export class GitHubCollaborators {
         { kind: "typed", name: "owner", value: input.repo.owner },
         { kind: "typed", name: "name", value: input.repo.repo },
         ...(input.query !== undefined && input.query.length > 0
-          ? [{ kind: "typed" as const, name: "search", value: input.query }]
+          ? [{ kind: "string" as const, name: "search", value: input.query }]
           : []),
       ],
     });
