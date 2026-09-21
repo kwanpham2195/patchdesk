@@ -50,7 +50,7 @@ Every command passes through the shared detect-before-write gate. Patchdesk acce
 
 Start or Add success records only newly created thread IDs and renders the returned cumulative pending review. Submit success expects pending state `none`, closes the dialog, journals the published review evidence, and observes the Review so checks and merge readiness can reconcile. Discard success expects `none` and journals the formerly pending thread IDs so stale reads cannot resurrect them.
 
-A confirmed rejection leaves the dialog or composer retryable with bounded context. When Patchdesk cannot verify the pending review against the current diff, it sends nothing and says to refresh, then try again. In Finish review, a failed submit says "Patchdesk could not finish this review. Check GitHub again or refresh." and a failed discard says "Patchdesk could not discard this review. Check GitHub again or refresh.", unless the workbench supplies a more specific message; either failure offers Check GitHub again when recovery is available, and a failed discard disarms Discard review. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again can recover the pending projection and reload the canonical Review; a reload Patchdesk cannot read reports that it could not check GitHub and to try again. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
+A confirmed rejection leaves the dialog or composer retryable with bounded context. When Patchdesk cannot verify the pending review against the current diff, it sends nothing and says to refresh, then try again. In Finish review, a failed submit says "Patchdesk could not finish this review. Check GitHub again or refresh." and a failed discard says "Patchdesk could not discard this review. Check GitHub again or refresh.", unless the workbench supplies a more specific message; either failure offers Check GitHub again when recovery is available, and a failed discard disarms Discard review. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again unlocks an uncertain added comment only when exactly one comment created after the saved pre-write review matches its body and location. Other pending comments found by that check become visible, but the uncertain write stays locked so Patchdesk cannot submit it twice. A reload Patchdesk cannot read reports that it could not check GitHub and to try again. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
 
 ## Variants
 
@@ -80,7 +80,7 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 
 **Review revision and freshness.** Every command carries the exact session, head, and patch hash. Freshness is checked before GitHub receives it.
 
-**Local persistence and recovery.** Pending state is projected from durable Review/session data. Recent-write journals prevent delayed reads from losing confirmed created, submitted, or discarded thread effects.
+**Local persistence and recovery.** Pending state is projected from durable Review/session data. An uncertain added comment keeps its exact body, location, target review, and the pre-write pending review so reconciliation can distinguish the intended new thread from older or unrelated comments. Recent-write journals prevent delayed reads from losing confirmed created, submitted, or discarded thread effects.
 
 **GitHub permissions and write authority.** Start, Add, Submit, and Confirm discard are the explicit GitHub boundaries. Dialog edits alone are local.
 
@@ -107,6 +107,7 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 - Pending-review state can be unavailable, distinct from confirmed `none`.
 - Starting a review when GitHub says one is already pending is not treated as a refusal on its own. Patchdesk reads the viewer's pending review first: if it holds the comment this start meant to create, the start is confirmed and that review becomes the Review's pending review. If it holds different work, the composer names the unfinished review and the Review adopts it, so the next comment is added to it rather than starting a second review. If the read proves neither, the comment stays pending and the Review offers Check GitHub again.
 - Recovery may find the remote review but still be unable to match an exact Analysis Finding comment.
+- An unrelated comment that arrives while an Add review comment result is unknown remains visible after Check GitHub again, while the original action stays locked until its exact new thread can be identified.
 
 ## Open questions and verification
 
@@ -117,4 +118,4 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 - Confirm app close and quit behavior while a pending-review command is in flight.
 - Confirm how GitHub permission restrictions for Approve and Request changes are explained before or after submission.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `611d0bc8`, with live checks from the 2026-09-14 pass and an affected-screen render check on 2026-09-21.
