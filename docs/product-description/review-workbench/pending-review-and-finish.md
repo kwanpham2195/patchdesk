@@ -90,6 +90,8 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 
 **Feedback, errors, and diagnostics.** Comment count, pending ledger, busy labels, bounded errors, recovery banner, and manual-resolution guidance expose distinct states.
 
+When an Analysis Finding action fails, its error remains with that Finding. Retrying clears it immediately. Otherwise, a transition to pending review or published, a dismissal, or reconciliation from locked back to actionable clears only that Finding's obsolete error; failures on other Findings remain visible.
+
 **Preferences, keyboard commands, and desktop integration.** Finish review always defaults decision to Comment when remounted. Analysis can seed Summary for that opening only. No native menu command submits.
 
 **Supported input and accessibility limits.** Named dialog, ledger, summary, decision, and controls support mouse and keyboard. Patchdesk does not claim screen-reader, touch, or pen support.
@@ -118,4 +120,4 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 - Confirm app close and quit behavior while a pending-review command is in flight.
 - Confirm how GitHub permission restrictions for Approve and Request changes are explained before or after submission.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `611d0bc8`, with live checks from the 2026-09-14 pass and an affected-screen render check on 2026-09-21.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `c9bf65db`, with live checks from the 2026-09-14 pass and affected-screen render checks on 2026-09-21.
