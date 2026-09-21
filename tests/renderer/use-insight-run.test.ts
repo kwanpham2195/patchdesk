@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import type {
   InsightRunResponse,
@@ -8,6 +8,8 @@ import type {
 } from "../../src/renderer/src/renderer-contracts";
 
 import {
+  clearInsightPollTimer,
+  scheduleInsightPoll,
   useInsightRun,
   type InsightRunType,
 } from "../../src/renderer/src/hooks/use-insight-run";
@@ -168,6 +170,8 @@ const activeRun = (runId: string) => ({
 afterEach(() => {
   desktop?.restore();
   desktop = undefined;
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 /** Every type the run routes are keyed by; each gets its own start route. */
@@ -330,7 +334,24 @@ describe("useInsightRun", () => {
     expect(patches).toHaveLength(0);
   });
 
-  it("suppresses a late poll and terminal reload after unmount", async () => {
+  it("does not schedule or clear through a missing renderer timer owner", () => {
+    const poll = vi.fn();
+    const ownsRun = vi.fn(() => true);
+    expect(scheduleInsightPoll(ownsRun, () => undefined, poll)).toBeUndefined();
+    expect(ownsRun).toHaveBeenCalledTimes(1);
+    expect(poll).not.toHaveBeenCalled();
+    expect(() => clearInsightPollTimer(undefined, 42)).not.toThrow();
+  });
+
+  it("does not resolve the renderer timer owner for a disposed poll", () => {
+    const getTimerWindow = vi.fn(() => window);
+    expect(
+      scheduleInsightPoll(() => false, getTimerWindow, vi.fn()),
+    ).toBeUndefined();
+    expect(getTimerWindow).not.toHaveBeenCalled();
+  });
+
+  it("does not schedule after a deferred poll settles following unmount", async () => {
     const start = deferred<InsightRunFixture>();
     const poll = deferred<InsightRunFixture>();
     const calls = installBridge((input) => {
@@ -339,6 +360,7 @@ describe("useInsightRun", () => {
       throw new Error(input.path);
     });
     const patches: Array<unknown> = [];
+    vi.useFakeTimers();
     const { result, unmount } = renderHook(() =>
       useInsightRun({
         profileId: "profile",
@@ -353,6 +375,7 @@ describe("useInsightRun", () => {
       await start.promise;
     });
     expect(calls.filter(({ path }) => path.includes("/runs/"))).toHaveLength(1);
+    const scheduledBeforeUnmount = vi.getTimerCount();
     unmount();
     await act(async () => {
       poll.resolve({ ...started, status: "completed" });
@@ -362,6 +385,7 @@ describe("useInsightRun", () => {
       calls.filter(({ path }) => path === "/v1/reviews/load"),
     ).toHaveLength(0);
     expect(patches).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(scheduledBeforeUnmount);
   });
 
   it("does not let an old run overwrite a newer active run", async () => {

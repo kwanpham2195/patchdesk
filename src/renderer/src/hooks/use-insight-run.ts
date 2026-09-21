@@ -50,6 +50,27 @@ export type InsightPatchOptions = {
   readonly analysisReviewActions?: WorkbenchResponse["analysisReviewActions"];
 };
 
+type InsightTimerWindow = Pick<Window, "setTimeout" | "clearTimeout">;
+
+/** Schedules only while both the run and renderer timer owner still exist. */
+export function scheduleInsightPoll(
+  ownsRun: () => boolean,
+  getTimerWindow: () => InsightTimerWindow | undefined,
+  poll: () => void,
+): number | undefined {
+  if (!ownsRun()) return undefined;
+  return getTimerWindow()?.setTimeout(poll, 500);
+}
+
+/** Clears an owned timer without consulting a renderer global after teardown. */
+export function clearInsightPollTimer(
+  timerWindow: InsightTimerWindow | undefined,
+  timer: number | undefined,
+): void {
+  if (timerWindow !== undefined && timer !== undefined)
+    timerWindow.clearTimeout(timer);
+}
+
 /** Owns one generation-safe Insight start, poll, and cancellation lifecycle. */
 export function useInsightRun(input: {
   readonly profileId: string;
@@ -317,13 +338,13 @@ export function useInsightRun(input: {
           setStatus("error");
         })
         .finally(() => {
-          if (ownsRun()) timer = window.setTimeout(poll, 500);
+          timer = scheduleInsightPoll(ownsRun, () => globalThis.window, poll);
         });
     };
     poll();
     return () => {
       disposed = true;
-      if (timer !== undefined) window.clearTimeout(timer);
+      clearInsightPollTimer(globalThis.window, timer);
     };
   }, [
     onCompletedRef,
