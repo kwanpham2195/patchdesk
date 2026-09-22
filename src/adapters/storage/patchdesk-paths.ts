@@ -116,6 +116,16 @@ export class PatchdeskPaths {
     );
   }
 
+  refreshOperationFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "refresh-operation.json",
+    );
+  }
+
   reviewObservationJournalFile(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
