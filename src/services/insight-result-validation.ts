@@ -10,13 +10,22 @@ import {
   type NormalizedBrief,
 } from "../domain/brief";
 import { candidateReachSymbols } from "../domain/brief-reach";
+import {
+  isAcceptableSuggestionCode,
+  resolveSuggestionTarget,
+} from "../domain/finding-suggestion";
 import type { InsightRevision, InsightType } from "../domain/insight-record";
 import type { RawJsonValue } from "../domain/json";
 import {
   normalizeNarrativeWalkthrough,
   type NarrativeWalkthroughError,
 } from "../domain/narrative-walkthrough";
-import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
+import {
+  mapFindingLocation,
+  parseUnifiedPatch,
+  type FindingLocation,
+  type FindingLocationInput,
+} from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import {
   parseModelReviewResult,
@@ -86,9 +95,13 @@ export async function validateInsightResult(
                 ...withSide,
                 lineStart: location.startLine ?? location.line,
               };
-        return location.startLine === undefined
-          ? withStart
-          : { ...withStart, lineEnd: location.line };
+        const withRange =
+          location.startLine === undefined
+            ? withStart
+            : { ...withStart, lineEnd: location.line };
+        return hasVerifiedSuggestion(finding, location, patch)
+          ? withRange
+          : withoutSuggestedReplacement(withRange);
       }),
     });
     return mapped._tag === "ok" ? mapped : err("invalid_result");
@@ -131,6 +144,35 @@ export async function validateInsightResult(
     },
   );
   return normalized._tag === "ok" ? normalized : err(normalized.error.reason);
+}
+
+/**
+ * Whether the model's replacement code can stand for the Finding's cited lines
+ * in the represented patch. Patchdesk verifies the range against the patch it
+ * owns, so neither the model's own original code nor anything the renderer
+ * sends decides what a suggestion replaces.
+ */
+function hasVerifiedSuggestion(
+  finding: FindingLocationInput & {
+    readonly suggestedReplacement?: { readonly code: string };
+  },
+  location: FindingLocation,
+  patch: string,
+): boolean {
+  const replacement = finding.suggestedReplacement;
+  if (replacement === undefined) return false;
+  if (location.mappingStatus !== "mapped" || location.side !== "new")
+    return false;
+  if (!isAcceptableSuggestionCode(replacement.code)) return false;
+  return resolveSuggestionTarget(patch, finding) !== undefined;
+}
+
+/** Drops only the suggestion, so invalid replacement data never discards a valid Finding. */
+function withoutSuggestedReplacement<
+  T extends { readonly suggestedReplacement?: { readonly code: string } },
+>(finding: T): Omit<T, "suggestedReplacement"> {
+  const { suggestedReplacement: _dropped, ...rest } = finding;
+  return rest;
 }
 
 /**

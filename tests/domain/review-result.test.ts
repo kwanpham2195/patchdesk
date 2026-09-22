@@ -78,4 +78,49 @@ describe("model review result projection", () => {
       error: { _tag: "InvalidModelReviewResult" },
     });
   });
+  it("keeps a structured suggested replacement", () => {
+    const parsed = parseModelReviewResult(
+      validResult([
+        {
+          id: "replacement-finding",
+          severity: "P2",
+          title: "Guard runs too late",
+          file: "src/a.ts",
+          lineStart: 12,
+          diffSide: "new",
+          explanation: "The mutation runs before the guard.",
+          confidence: "high",
+          suggestedReplacement: { code: "if (stale) return stale;" },
+        },
+      ]),
+    );
+    expect(parsed._tag).toBe("ok");
+    if (parsed._tag === "err") return;
+    expect(parsed.value.findings[0]?.suggestedReplacement).toEqual({
+      code: "if (stale) return stale;",
+    });
+  });
+
+  it("no longer accepts the prose suggestedChange field", () => {
+    const result = validResult([]);
+    expect(
+      parseModelReviewResult({
+        ...result,
+        verdict: "comment",
+        findings: [
+          {
+            id: "prose-finding",
+            severity: "P2",
+            title: "Prose suggestion",
+            explanation: "The model sent the retired field.",
+            confidence: "low",
+            suggestedChange: "Flip the condition.",
+          },
+        ],
+      }),
+    ).toEqual({
+      _tag: "err",
+      error: { _tag: "InvalidModelReviewResult" },
+    });
+  });
 });

@@ -58,8 +58,11 @@ type ModelReviewFinding = {
   readonly category?: FindingCategory;
   readonly affectedScenario?: string;
   readonly whyItMatters?: string;
-  readonly suggestedChange?: string;
+  readonly suggestedReplacement?: FindingSuggestedReplacement;
 };
+
+/** Exact code that replaces the Finding's cited new-side line range. */
+type FindingSuggestedReplacement = { readonly code: string };
 
 export type ModelReviewResult = {
   readonly changeSummary: string;
@@ -116,8 +119,11 @@ const findingSchema = {
   whyItMatters: v.optional(
     v.pipe(v.string(), v.minLength(1), v.maxLength(900)),
   ),
-  suggestedChange: v.optional(
-    v.pipe(v.string(), v.minLength(1), v.maxLength(500)),
+  // Deliberately loose: the byte limit, the fence rule, and the patch-backed
+  // range check live in validation, where an unusable replacement drops the
+  // field instead of failing the whole Finding.
+  suggestedReplacement: v.optional(
+    v.strictObject({ code: v.pipe(v.string(), v.minLength(1)) }),
   ),
 } as const;
 
@@ -379,7 +385,7 @@ function projectFinding(
       category: finding.category,
       affectedScenario: finding.affectedScenario,
       whyItMatters: finding.whyItMatters,
-      suggestedChange: finding.suggestedChange,
+      suggestedReplacement: finding.suggestedReplacement,
     }),
   });
 }

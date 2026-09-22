@@ -15,7 +15,9 @@ const SEVERITY_RUBRIC = [
 ].join(" ");
 
 const FINDING_CONTENT = [
-  "Write each finding as symptom, mechanism, expected behavior: affectedScenario is what a user hits, explanation is why the code produces it, and suggestedChange is what the code should do instead.",
+  "Write each finding as symptom, mechanism, expected behavior: affectedScenario is what a user hits, and explanation is why the code produces it and what it should do instead.",
+  "suggestedReplacement.code is the exact code that replaces lines lineStart..lineEnd on the new side of the cited file, with no Markdown fences and no diff markers.",
+  "Give suggestedReplacement only when the finding cites a new-side range and the replacement is complete for exactly those lines; otherwise omit it.",
   "Give a finding you cannot ground in the patch, the context, or an inspector result no place in findings; record it as an unresolved item.",
 ].join(" ");
 

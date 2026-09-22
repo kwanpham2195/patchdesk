@@ -240,7 +240,7 @@ const ANALYSIS_RESULT_CONTRACT = [
   '   "confidence":"high"|"medium"|"low","file"?:string,"lineStart"?:number,"lineEnd"?:number,',
   '   "diffSide"?:"new"|"old","suggestedComment"?:string,',
   '   "category"?:"bug"|"security"|"test"|"performance"|"maintainability"|"docs",',
-  '   "affectedScenario"?:string,"whyItMatters"?:string,"suggestedChange"?:string}],',
+  '   "affectedScenario"?:string,"whyItMatters"?:string,"suggestedReplacement"?:{"code":string}}],',
   ' "validationPlan":[string],"assumptions":[string],',
   ' "coverage"?:"high"|"medium"|"low","overallConfidence"?:"high"|"medium"|"low",',
   ' "unresolvedItems"?:[string],',
