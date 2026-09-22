@@ -52,7 +52,7 @@ const result: ReviewResult = {
       category: "bug",
       whyItMatters: "Users lose data.",
       affectedScenario: "Submitting an empty form.",
-      suggestedChange: "Flip the condition.",
+      suggestedReplacement: { code: "if (input === undefined) return;" },
     },
   ],
   validationPlan: ["Run pnpm test", "Click submit"],
@@ -84,7 +84,11 @@ Adds parse_input and a *new* flag.
 
 The guard is inverted.
 
-Suggested change: Flip the condition.
+Suggested replacement for src/a.ts:12-20:
+
+\`\`\`
+if (input === undefined) return;
+\`\`\`
 
 ### 2. [P2] Second
 

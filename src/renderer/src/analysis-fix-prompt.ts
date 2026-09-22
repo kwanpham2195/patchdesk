@@ -99,8 +99,15 @@ function renderFinding(finding: ReviewFinding, position: number): string {
 
   blocks.push(finding.explanation.trim());
 
-  if (finding.suggestedChange !== undefined)
-    blocks.push(`Suggested change: ${finding.suggestedChange.trim()}`);
+  const replacement = finding.suggestedReplacement;
+  if (replacement !== undefined && finding.file !== undefined) {
+    const code = replacement.code.endsWith("\n")
+      ? replacement.code
+      : `${replacement.code}\n`;
+    blocks.push(
+      `Suggested replacement for ${finding.file}${renderLines(finding)}:\n\n\`\`\`\n${code}\`\`\``,
+    );
+  }
 
   return blocks.join("\n\n");
 }

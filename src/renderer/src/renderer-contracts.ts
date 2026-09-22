@@ -555,7 +555,9 @@ const reviewResultSchema = v.strictObject({
       ),
       affectedScenario: v.optional(v.pipe(v.string(), v.minLength(1))),
       whyItMatters: v.optional(v.pipe(v.string(), v.minLength(1))),
-      suggestedChange: v.optional(v.pipe(v.string(), v.minLength(1))),
+      suggestedReplacement: v.optional(
+        v.strictObject({ code: v.pipe(v.string(), v.minLength(1)) }),
+      ),
       mappingStatus: v.picklist(FINDING_MAPPING_STATUSES),
       disposition: v.optional(v.picklist(["open", "added", "dismissed"])),
     }),
