@@ -319,6 +319,8 @@ export class GitHubPendingReviews {
     return this.pendingReviewAfterWrite(input.profile, input.pr, {
       nodeId: input.reviewId,
       createdThreadId: thread.id,
+      anchor: input.anchor,
+      body: input.body,
     });
   }
 
@@ -389,16 +391,26 @@ export class GitHubPendingReviews {
         : parsedCreatedThread?._tag === "ok"
           ? parsedCreatedThread.value
           : undefined;
-    if (
-      createdThread !== undefined &&
-      read.value.review.comments.some(
+    // The read-back owns the comment the write produced: a thread whose body
+    // or anchor is not the one this write asked for is unreconciled remote
+    // state, never a confirmed write.
+    if (createdThread !== undefined) {
+      const confirmed = read.value.review.comments.filter(
         (comment) => comment.threadId === createdThread,
-      )
-    ) {
-      return ok({
-        review: read.value.review,
-        createdThreadId: createdThread,
-      });
+      );
+      const confirmsWrite =
+        expectedAnchor === undefined || expectedBody === undefined
+          ? confirmed.length > 0
+          : confirmed.some(
+              (comment) =>
+                comment.body === expectedBody &&
+                samePendingReviewAnchor(comment.anchor, expectedAnchor),
+            );
+      if (confirmsWrite)
+        return ok({
+          review: read.value.review,
+          createdThreadId: createdThread,
+        });
     }
     return err({
       _tag: "GitHubWriteFailure",

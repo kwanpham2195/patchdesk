@@ -10,9 +10,10 @@ import { tokenizeUnifiedPatch, type UnifiedPatchToken } from "./unified-patch";
 export const SUGGESTED_REPLACEMENT_MAX_BYTES = 4096;
 
 const CODE_FENCE = "```";
+const FENCE_LINE = /^ {0,3}`{3,}/;
 
 /** The new-side lines a verified suggestion replaces, read from the patch itself. */
-type SuggestionTarget = {
+export type SuggestionTarget = {
   readonly path: string;
   readonly startLine: number;
   readonly line: number;
@@ -115,6 +116,15 @@ export function buildSuggestionPreviewPatch(
 }
 
 /**
+ * Whether any line would close the enclosing GFM backtick fence: CommonMark
+ * lets a closing fence carry up to three leading spaces and any number of
+ * backticks from three up, so neither indentation nor a longer run is an escape.
+ */
+export function containsFenceLine(text: string): boolean {
+  return text.split("\n").some((line) => FENCE_LINE.test(line));
+}
+
+/**
  * Whether replacement code can be serialized into a GitHub `suggestion` block
  * at all. A line that opens a fence would close the block early, so fenced
  * code is refused rather than escaped.
@@ -123,7 +133,7 @@ export function isAcceptableSuggestionCode(code: string): boolean {
   if (code.length === 0) return false;
   if (new TextEncoder().encode(code).length > SUGGESTED_REPLACEMENT_MAX_BYTES)
     return false;
-  return !code.split("\n").some((line) => line.startsWith(CODE_FENCE));
+  return !containsFenceLine(code);
 }
 
 /**

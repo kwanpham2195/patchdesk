@@ -745,7 +745,7 @@ describe("useAnalysisReviewActions", () => {
 });
 
 describe("useAnalysisReviewActions with a verified suggestion", () => {
-  const written = {
+  const composed = {
     anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" as const },
     body: "Reject invalid values before this branch.\n\n```suggestion\nguarded\n```",
   };
@@ -756,7 +756,7 @@ describe("useAnalysisReviewActions with a verified suggestion", () => {
     return { ...finding, suggestedReplacement: { code: "guarded" } };
   }
 
-  function writtenProjection() {
+  function oldSideProjection() {
     return {
       state: "pending" as const,
       count: 1,
@@ -764,7 +764,32 @@ describe("useAnalysisReviewActions with a verified suggestion", () => {
         nodeId: "PRR_1",
         headSha: sha,
         comments: [
-          { threadId: "PRRT_written", ...written.anchor, body: written.body },
+          {
+            threadId: "PRRT_comment",
+            body: "Reject invalid values before this branch.",
+            path: "src/a.ts",
+            startLine: 1,
+            line: 1,
+            side: "old" as const,
+          },
+        ],
+      },
+    };
+  }
+
+  function composedProjection() {
+    return {
+      state: "pending" as const,
+      count: 1,
+      review: {
+        nodeId: "PRR_1",
+        headSha: sha,
+        comments: [
+          {
+            threadId: "PRRT_composed",
+            ...composed.anchor,
+            body: composed.body,
+          },
         ],
       },
     };
@@ -773,7 +798,7 @@ describe("useAnalysisReviewActions with a verified suggestion", () => {
   it("sends identity and the expected revision without composing any comment", async () => {
     const double = installDesktopDouble({
       [SUGGESTION]: () =>
-        success({ pendingReview: writtenProjection(), written }),
+        success({ pendingReview: composedProjection(), composed }),
     });
     restore = double.restore;
     const { result } = renderActions(withAnalysis("actionable"));
@@ -800,9 +825,9 @@ describe("useAnalysisReviewActions with a verified suggestion", () => {
   });
 
   it("confirms the Finding from the comment the main process wrote", async () => {
-    const projected = writtenProjection();
+    const projected = composedProjection();
     const double = installDesktopDouble({
-      [SUGGESTION]: () => success({ pendingReview: projected, written }),
+      [SUGGESTION]: () => success({ pendingReview: projected, composed }),
     });
     restore = double.restore;
     const initial = withAnalysis("actionable");
@@ -822,9 +847,9 @@ describe("useAnalysisReviewActions with a verified suggestion", () => {
     });
   });
 
-  it("treats a response that names no written comment as untrusted", async () => {
+  it("treats a response that names no composed comment as untrusted", async () => {
     const double = installDesktopDouble({
-      [SUGGESTION]: () => success({ pendingReview: writtenProjection() }),
+      [SUGGESTION]: () => success({ pendingReview: composedProjection() }),
     });
     restore = double.restore;
     const initial = withAnalysis("actionable");
@@ -848,5 +873,24 @@ describe("useAnalysisReviewActions with a verified suggestion", () => {
         review: null,
       },
     });
+  });
+
+  it("takes the comment route when the represented patch cannot anchor the replacement", async () => {
+    const double = installDesktopDouble({
+      [COMMAND]: () => success({ pendingReview: oldSideProjection() }),
+    });
+    restore = double.restore;
+    const { result } = renderActions(withAnalysis("actionable"));
+
+    await act(async () => {
+      await result.current.addFindingToPendingReview({
+        ...suggestionFinding(),
+        diffSide: "old",
+      });
+    });
+
+    expect(double.request.mock.calls.map(([input]) => callPath(input))).toEqual(
+      [COMMAND],
+    );
   });
 });

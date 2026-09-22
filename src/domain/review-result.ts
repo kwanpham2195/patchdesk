@@ -177,6 +177,9 @@ const reviewResultSchema = v.strictObject({
     v.strictObject({
       ...findingSchema,
       mappingStatus: v.picklist(FINDING_MAPPING_STATUSES),
+      // Results retained by v0.0.10 carry the retired prose field; accepting
+      // it here keeps those Analyses readable, and `projectFinding` drops it.
+      suggestedChange: v.optional(v.string()),
     }),
   ),
   validationPlan: v.pipe(

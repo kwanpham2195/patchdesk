@@ -211,9 +211,9 @@ async function findingSuggestionResponse(
 /**
  * The one envelope every pending-review write answers with. A failure carries
  * the stored projection when there is one so the caller can tell an untouched
- * pending review from an uncertain outcome; `written` names the exact comment
- * the main process composed, so a Finding caller confirms that text rather
- * than a body it assembled itself.
+ * pending review from an uncertain outcome; `composed` names the exact comment
+ * the main process built, so a Finding caller confirms that text rather than
+ * a body it assembled itself.
  */
 async function pendingReviewWriteResponse(
   context: Context,
@@ -223,14 +223,14 @@ async function pendingReviewWriteResponse(
   result: Result<PendingReviewCommandResult, PendingReviewServiceFailure>,
   command?: FindingSuggestionCommand,
 ): Promise<Response> {
-  const written =
+  const composed =
     command === undefined
       ? undefined
       : { anchor: command.anchor, body: command.body };
   if (result._tag === "ok") {
     return context.json({
       pendingReview: projectPendingReview(result.value.state, false),
-      ...definedProps({ written }),
+      ...definedProps({ composed }),
     });
   }
   const projection = await storedPendingReviewProjection(
@@ -241,7 +241,7 @@ async function pendingReviewWriteResponse(
   return context.json(
     {
       error: result.error,
-      ...definedProps({ pendingReview: projection, written }),
+      ...definedProps({ pendingReview: projection, composed }),
     },
     pendingReviewFailureStatus(result.error),
   );
