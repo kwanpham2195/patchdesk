@@ -72,7 +72,7 @@ Shape groups files by directory and collapses a directory after twelve files int
 
 Start here gives a lead sentence and an ordered list of files, each with an optional reason. Its button reads Open walkthrough when a current Walkthrough exists for this revision and Generate walkthrough otherwise.
 
-A failed run shows a warning that names the failure category, such as a timeout, a rate limit, or a result the app could not read, with a Try again button. When a retained Brief exists the warning says its evidence is still readable and the Brief stays below. A Brief retained for an earlier revision shows "Brief is outdated" with both revisions and Run for latest revision.
+A failed run shows one warning block that names the failure category, such as a timeout, a rate limit, or a result the app could not read. Most failures offer **Try again**. When the represented Review's local files are missing or no longer match its revision, the warning offers **Re-prepare Review** instead; this rebuilds the same Review through the durable refresh lifecycle, then opens the run dialog for explicit confirmation, and never runs automatically when the Review opens. When a retained Brief exists the warning says its evidence is still readable and the Brief stays below. A failed Codex run keeps its bounded command trace below the action; long commands stay on one truncated row with the duration visible and retain their full text on hover. A Brief retained for an earlier revision shows "Brief is outdated" with both revisions and Run for latest revision.
 
 ## Variants
 

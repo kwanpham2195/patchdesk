@@ -194,6 +194,7 @@ export function InsightsSlot({
   initialDetail,
   onWorkbenchReplace,
   onWorkbenchPatch,
+  onReprepare,
   onAddFinding,
   onFinishWithAnalysisSummary,
   scopeFilter,
@@ -202,6 +203,7 @@ export function InsightsSlot({
   readonly initialDetail?: "analysis" | "walkthrough";
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
+  readonly onReprepare: () => Promise<WorkbenchResponse>;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
   readonly scopeFilter?: InsightScopeFilter | undefined;
@@ -437,6 +439,7 @@ export function InsightsSlot({
                     projection={selectedProjection}
                     activity={selectedRunning?.activity}
                     onRetry={() => openRunDialog("retry")}
+                    onReprepare={onReprepare}
                     {...definedProps({ retainedDescription })}
                   />
                 ) : selectedIsOutdated ? (

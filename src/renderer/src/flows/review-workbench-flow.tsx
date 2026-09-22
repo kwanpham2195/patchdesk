@@ -57,6 +57,7 @@ export function ReviewWorkbenchFlow({
     runDetect,
     refresh,
     requestRefresh,
+    requestReprepare,
     replaceWorkbench,
     runDirectCommand,
     observeConfirmedReviewWrite,
@@ -181,6 +182,7 @@ export function ReviewWorkbenchFlow({
                 : { initialDetail: initialUiState.insightDetail })}
               onWorkbenchReplace={replaceWorkbench}
               onWorkbenchPatch={onWorkbenchPatch}
+              onReprepare={requestReprepare}
               {...(writeRecovery.githubWritesLocked
                 ? {}
                 : {

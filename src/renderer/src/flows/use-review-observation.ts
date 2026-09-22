@@ -50,6 +50,8 @@ export type ReviewObservationResult = {
   readonly refresh: () => Promise<void>;
   /** Adopts the pull request's current revision; rejects when the refresh fails. */
   readonly requestRefresh: () => Promise<WorkbenchResponse>;
+  /** Rebuilds the represented Review's local preparation without changing its revision. */
+  readonly requestReprepare: () => Promise<WorkbenchResponse>;
   readonly replaceWorkbench: (workbench: WorkbenchResponse) => void;
   readonly runDirectCommand: RunDirectCommand;
   readonly observeConfirmedReviewWrite: (
@@ -275,7 +277,10 @@ export function useReviewObservation({
   }, [runDetect, workbench.review.status]);
 
   const runRefreshOperation = useCallback(
-    async (operationId?: string): Promise<WorkbenchResponse> => {
+    async (
+      operationId?: string,
+      startPath = "/v1/reviews/refresh",
+    ): Promise<WorkbenchResponse> => {
       const wb = workbenchRef.current;
       generationRef.current += 1;
       const generation = generationRef.current;
@@ -286,7 +291,7 @@ export function useReviewObservation({
         if (activeOperationId === undefined) {
           saveRefreshOperationId(operationKey, REFRESH_BEGINNING);
           const begun = parseRefreshOperationStatus(
-            await requestJson("/v1/reviews/refresh", {
+            await requestJson(startPath, {
               method: "POST",
               body: {
                 profileId: wb.session.key.profileId,
@@ -371,6 +376,12 @@ export function useReviewObservation({
 
   const requestRefresh = useCallback(
     (): Promise<WorkbenchResponse> => runRefreshOperation(),
+    [runRefreshOperation],
+  );
+
+  const requestReprepare = useCallback(
+    (): Promise<WorkbenchResponse> =>
+      runRefreshOperation(undefined, "/v1/reviews/reprepare"),
     [runRefreshOperation],
   );
 
@@ -502,6 +513,7 @@ export function useReviewObservation({
     runDetect,
     refresh,
     requestRefresh,
+    requestReprepare,
     replaceWorkbench,
     runDirectCommand,
     observeConfirmedReviewWrite,

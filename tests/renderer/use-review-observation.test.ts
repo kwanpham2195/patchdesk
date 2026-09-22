@@ -23,6 +23,7 @@ import { projection } from "./review-workbench-fixtures";
 
 const DETECT = "/v1/reviews/detect-updates";
 const REFRESH = "/v1/reviews/refresh";
+const REPREPARE = "/v1/reviews/reprepare";
 const REFRESH_STATUS = "/v1/reviews/refresh/status";
 const REFRESH_ACKNOWLEDGE = "/v1/reviews/refresh/acknowledge";
 const LOAD = "/v1/reviews/load";
@@ -79,6 +80,7 @@ function installObservationDouble(answers: {
 }) {
   const detectBodies: unknown[] = [];
   const refreshBodies: unknown[] = [];
+  const reprepareBodies: unknown[] = [];
   const refreshStatusBodies: unknown[] = [];
   const double = installDesktopDouble({
     [DETECT]: async (input) => {
@@ -93,6 +95,17 @@ function installObservationDouble(answers: {
       refreshBodies.push(input.body);
       if (answers.refresh === undefined)
         throw new Error("this case scripted no refresh answer");
+      return success(
+        (await (answers.refresh.begin?.() ?? {
+          operationId: "refresh-42",
+          state: "requested",
+        })) as RawJsonValue,
+      );
+    },
+    [REPREPARE]: async (input) => {
+      reprepareBodies.push(input.body);
+      if (answers.refresh === undefined)
+        throw new Error("this case scripted no re-prepare answer");
       return success(
         (await (answers.refresh.begin?.() ?? {
           operationId: "refresh-42",
@@ -127,6 +140,7 @@ function installObservationDouble(answers: {
     detectBodies,
     detectCount: () => detectBodies.length,
     refreshCount: () => refreshBodies.length,
+    reprepareCount: () => reprepareBodies.length,
     refreshStatusBodies,
   };
 }
@@ -492,6 +506,27 @@ describe("useReviewObservation observation outcomes", () => {
       profileId: "profile",
       reviewId: "review-42",
     });
+  });
+
+  it("re-prepares through the durable operation without beginning a normal refresh", async () => {
+    vi.useFakeTimers();
+    const refreshed = projection({
+      session: { ...projection().session, id: "session-reprepared" },
+    });
+    const observed = installObservationDouble({
+      detect: () => ({ _tag: "Unchanged" }),
+      refresh: { load: () => refreshed },
+    });
+    const { result, replace } = renderObservation(projection());
+    await flush();
+
+    await act(async () => {
+      await result.current.requestReprepare();
+    });
+
+    expect(observed.reprepareCount()).toBe(1);
+    expect(observed.refreshCount()).toBe(0);
+    expect(replace).toHaveBeenCalledWith(refreshed);
   });
 
   it("keeps ownership while a refresh runs longer than the desktop request timeout", async () => {

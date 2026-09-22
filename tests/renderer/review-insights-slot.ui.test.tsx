@@ -80,6 +80,7 @@ function renderInsights(
       {...(initialDetail === undefined ? {} : { initialDetail })}
       onWorkbenchReplace={() => undefined}
       onWorkbenchPatch={() => undefined}
+      onReprepare={async () => workbench}
     />,
   );
 }
@@ -214,6 +215,7 @@ describe("InsightsSlot finding focus", () => {
           initialDetail="walkthrough"
           onWorkbenchReplace={() => undefined}
           onWorkbenchPatch={() => undefined}
+          onReprepare={async () => withAnalysis("actionable")}
         />
       </ReviewWorkbenchFindingNavigationContext.Provider>
     );

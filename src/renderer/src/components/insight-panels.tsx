@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { ChevronRight, History } from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
@@ -346,28 +348,44 @@ function InsightActivityTrace({
 export function InsightFailed({
   projection,
   onRetry,
+  onReprepare,
   retainedDescription,
   activity,
 }: {
   readonly projection: InsightProjection;
   readonly onRetry: () => void;
+  readonly onReprepare: () => Promise<WorkbenchResponse>;
   readonly retainedDescription?: string;
   /** The trace the run left, so a timed-out run still shows what it was doing. */
   readonly activity?: InsightRunActivity | undefined;
 }): React.JSX.Element {
   const failure = projection.replacementFailure;
+  const [repreparing, setRepreparing] = useState(false);
+  const [reprepareFailed, setReprepareFailed] = useState(false);
   const message =
     failure?.category === undefined
-      ? projection.retained === undefined
-        ? "This Insight run failed. No retained result is available."
-        : "This Insight run failed. The previous retained result remains available below."
+      ? "This Insight run failed."
       : failureMessage(failure.category);
+  const reviewWorktreeUnavailable =
+    failure?.category === "review_worktree_unavailable";
+  const runReprepare = async (): Promise<void> => {
+    setRepreparing(true);
+    setReprepareFailed(false);
+    try {
+      await onReprepare();
+      onRetry();
+    } catch {
+      setReprepareFailed(true);
+    } finally {
+      setRepreparing(false);
+    }
+  };
   return (
     <Alert
       variant="warning"
-      className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 px-3 py-4"
+      className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-4"
     >
-      <AlertDescription className="contents">
+      <AlertDescription className="basis-full space-y-1">
         <p>{message}</p>
         {projection.retained === undefined ? (
           <p>No retained result is available.</p>
@@ -377,12 +395,25 @@ export function InsightFailed({
             still readable: {retainedDescription ?? "retained document"}
           </p>
         )}
+        {reprepareFailed ? (
+          <p>The Review could not be re-prepared. Try again.</p>
+        ) : null}
       </AlertDescription>
-      <Button size="sm" onClick={onRetry}>
-        Try again
+      <Button
+        size="sm"
+        disabled={repreparing}
+        onClick={
+          reviewWorktreeUnavailable ? () => void runReprepare() : onRetry
+        }
+      >
+        {reviewWorktreeUnavailable
+          ? repreparing
+            ? "Re-preparing Review…"
+            : "Re-prepare Review"
+          : "Try again"}
       </Button>
       {activity === undefined ? null : (
-        <div className="basis-full">
+        <div className="min-w-0 basis-full">
           <InsightActivityTrace activity={activity} />
         </div>
       )}
@@ -398,6 +429,8 @@ function failureMessage(category: InsightFailureCategory | undefined): string {
       return "The provider rate limit was reached. Wait a moment, then run this Insight again.";
     case "runtime_unavailable":
       return "The Insight runtime is unavailable. Check the local runtime, then try again.";
+    case "review_worktree_unavailable":
+      return "This Review’s local files are unavailable. Re-prepare the Review, then run this Insight again.";
     case "timed_out":
       return "The Insight run timed out. Try again or choose a smaller scope.";
     case "execution_failed":
