@@ -170,6 +170,37 @@ describe("pending review writes over HTTP", () => {
     });
   });
 
+  it("appends a multi-line thread carrying its anchor range", async () => {
+    await adapter().addPendingReviewThread({
+      profile,
+      pr,
+      reviewId: reviewNodeId,
+      anchor: {
+        path: mustParse(parseRepoRelativePath("src/a.ts")),
+        startLine: 10,
+        line: 12,
+        side: "new",
+      },
+      body: "note",
+    });
+
+    // `startSide` is the same `DiffSide` enum as `side`, so it is baked in
+    // beside it while `startLine` rides along as a typed variable.
+    expect(server.requests()[0]?.body).toContain(
+      "startLine:$startLine,startSide:RIGHT",
+    );
+    expectSameMutationAsGh(server.requests()[0], {
+      query: addPendingReviewThreadMutation("RIGHT", 10),
+      variables: {
+        reviewId: reviewNodeId,
+        path: "src/a.ts",
+        line: 12,
+        startLine: 10,
+        body: "note",
+      },
+    });
+  });
+
   it("posts the submit event to the review's own events path", async () => {
     await adapter().submitPendingReview({
       profile,

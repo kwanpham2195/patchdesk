@@ -122,16 +122,25 @@ export const mergePolicyQuery =
 export const maxMergePolicyPages = 3;
 export const maxPullRequestCommits = 250;
 /**
- * Appends one inline thread to an existing pending review. `side` is baked
- * into the document rather than passed as a variable because it is a GraphQL
- * enum (`DiffSide`), and `gh api graphql -F side=RIGHT` sends enums as
- * strings, which the schema rejects. `pageInfo` belongs inside the `comments`
- * connection: `PullRequestReviewThread` has no `pageInfo` field of its own,
- * and GitHub fails the mutation at schema validation — before executing it —
- * when the selection asks for one, so the read-back never runs.
+ * Appends one inline thread to an existing pending review. `side` and
+ * `startSide` are baked into the document rather than passed as variables
+ * because both are the GraphQL enum `DiffSide`, and `gh api graphql -F
+ * side=RIGHT` sends enums as strings, which the schema rejects. A
+ * single-line anchor omits `startLine` and sends no range at all, matching
+ * the rule `pendingReviewComment` applies on the REST start path. `pageInfo`
+ * belongs inside the `comments` connection: `PullRequestReviewThread` has no
+ * `pageInfo` field of its own, and GitHub fails the mutation at schema
+ * validation — before executing it — when the selection asks for one, so the
+ * read-back never runs.
  */
-export function addPendingReviewThreadMutation(side: "LEFT" | "RIGHT"): string {
-  return `mutation($reviewId:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line,side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body} pageInfo{hasNextPage}}}}}`;
+export function addPendingReviewThreadMutation(
+  side: "LEFT" | "RIGHT",
+  startLine?: number,
+): string {
+  const rangeVariable = startLine === undefined ? "" : ",$startLine:Int!";
+  const range =
+    startLine === undefined ? "" : `,startLine:$startLine,startSide:${side}`;
+  return `mutation($reviewId:ID!,$path:String!,$line:Int!${rangeVariable},$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line${range},side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body} pageInfo{hasNextPage}}}}}`;
 }
 /**
  * A thread reply also submits its own COMMENTED review; `pullRequestReview

@@ -282,9 +282,14 @@ export class GitHubPendingReviews {
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
   }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
-    const appendQuery = addPendingReviewThreadMutation(
-      input.anchor.side === "new" ? "RIGHT" : "LEFT",
-    );
+    const side = input.anchor.side === "new" ? "RIGHT" : "LEFT";
+    // The range rides along only when the anchor spans more than one line,
+    // which is the rule `pendingReviewComment` applies on the REST start path.
+    const startLine =
+      input.anchor.startLine === input.anchor.line
+        ? undefined
+        : input.anchor.startLine;
+    const appendQuery = addPendingReviewThreadMutation(side, startLine);
     const appended = await this.ghJson(input.profile, {
       kind: "graphql",
       host: input.profile.githubHost,
@@ -293,6 +298,9 @@ export class GitHubPendingReviews {
         { kind: "typed", name: "reviewId", value: input.reviewId },
         { kind: "typed", name: "path", value: input.anchor.path },
         { kind: "typed", name: "line", value: input.anchor.line },
+        ...(startLine === undefined
+          ? []
+          : [{ kind: "typed" as const, name: "startLine", value: startLine }]),
         { kind: "string", name: "body", value: input.body },
       ],
     });
