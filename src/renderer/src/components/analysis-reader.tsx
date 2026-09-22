@@ -597,13 +597,6 @@ function AnalysisFindingRow({
               {location}
             </p>
           )}
-          {suggestionTarget === undefined ||
-          suggestionCode === undefined ? null : (
-            <FindingSuggestionPreview
-              target={suggestionTarget}
-              code={suggestionCode}
-            />
-          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Badge
@@ -693,6 +686,12 @@ function AnalysisFindingRow({
           ) : null}
         </div>
       </div>
+      {suggestionTarget === undefined || suggestionCode === undefined ? null : (
+        <FindingSuggestionPreview
+          target={suggestionTarget}
+          code={suggestionCode}
+        />
+      )}
       {reviewStatus === "locked" ? (
         <p className="mt-2 text-sm text-muted-foreground">
           Patchdesk cannot safely change this Finding because its exact GitHub
