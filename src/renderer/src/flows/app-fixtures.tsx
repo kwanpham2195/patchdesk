@@ -21,6 +21,7 @@ import {
   fixtureReviewerActionsUnknown,
   fixtureReviewerActionsWriteFailure,
 } from "./fixtures/rail-fixture-actions";
+import { AnalysisFixture } from "./fixtures/analysis-fixture";
 import { WalkthroughFixture } from "./fixtures/walkthrough-fixture";
 import {
   activeFollowFixtureData,
@@ -80,6 +81,7 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
         finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }}
       />
     ),
+    "#analysis-fixture": () => <AnalysisFixture />,
     "#walkthrough-fixture": (onNavigationStateChange) => (
       <WalkthroughFixture onNavigationStateChange={onNavigationStateChange} />
     ),

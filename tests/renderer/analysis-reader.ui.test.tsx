@@ -51,6 +51,20 @@ const twoFindingResult: Parameters<typeof AnalysisReader>[0]["result"] = {
   ],
 };
 
+const suggestionFinding = {
+  ...findingFixture,
+  id: "finding-suggestion",
+  title: "Replace the accepted value",
+  lineStart: 3,
+  lineEnd: 3,
+  suggestedReplacement: { code: "rejectInvalidValue();" },
+};
+
+const suggestionResult: Parameters<typeof AnalysisReader>[0]["result"] = {
+  ...result,
+  findings: [findingFixture, suggestionFinding],
+};
+
 function deferred() {
   let resolve = (): void => undefined;
   let reject = (): void => undefined;
@@ -388,6 +402,45 @@ describe("AnalysisReader", () => {
     expect(
       await within(firstRow).findByRole("button", { name: "Add to review" }),
     ).toBeTruthy();
+  });
+
+  it("previews a verified replacement and names its own add action", async () => {
+    const user = userEvent.setup();
+    const onAddFinding = vi.fn(async () => undefined);
+    render(
+      <AnalysisReader
+        result={suggestionResult}
+        evidencePatch={patch}
+        findingStatuses={{
+          "finding-1": "actionable",
+          "finding-suggestion": "actionable",
+        }}
+        onAddFinding={onAddFinding}
+      />,
+    );
+
+    const [ordinaryRow, suggestionRow] = screen.getAllByRole("listitem");
+    if (ordinaryRow === undefined || suggestionRow === undefined)
+      throw new Error("missing Finding rows");
+    expect(
+      within(ordinaryRow).getByRole("button", { name: "Add to review" }),
+    ).toBeTruthy();
+    expect(
+      within(ordinaryRow).queryByRole("region", { name: /Suggested change/ }),
+    ).toBeNull();
+
+    const preview = within(suggestionRow).getByRole("region", {
+      name: /Suggested change/,
+    });
+    expect(preview.textContent).toContain("acceptInvalidValue();");
+    expect(preview.textContent).toContain("rejectInvalidValue();");
+
+    await user.click(
+      within(suggestionRow).getByRole("button", {
+        name: "Add suggestion to review",
+      }),
+    );
+    expect(onAddFinding).toHaveBeenCalledWith(suggestionFinding);
   });
 
   it("admits Dismiss synchronously once and preserves its reason on row-local failure", async () => {

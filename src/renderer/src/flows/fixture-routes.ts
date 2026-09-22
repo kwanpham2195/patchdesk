@@ -31,6 +31,7 @@ const fixtureHashes = new Set([
   "#blocked-merge-fixture",
   "#acknowledgement-merge-fixture",
   "#overview-detail-fixture",
+  "#analysis-fixture",
 ]);
 
 export function isFixtureHash(hash: string): boolean {
