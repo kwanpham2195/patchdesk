@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added **Add suggestion to review** for an Analysis finding that carries exact replacement code for the lines it cites. The finding first shows a read-only **Suggested change** preview of those lines against the replacement, drawn as a diff like its evidence, and one press adds a GitHub review comment holding the finding's comment and a single `suggestion` block, through the same pending review, receipts, locks, and **Check GitHub again** recovery as any other finding. Patchdesk keeps a replacement only when it checks out against the diff the Review represents — mapped, on the new side, inside one hunk, unfenced, and at most 4096 bytes — and a replacement that fails that check falls away while the finding keeps its ordinary **Add to review**. Patchdesk never edits the code, never touches your checkout or the pull request branch, and sends nothing until you press. After you submit the review, GitHub offers the author **Commit suggestion** or **Add suggestion to batch**. #316
+
 ## 0.0.10 - 2026-09-22
 
 - Preserved inline pending-review drafts after GitHub safely rejects them. The failed card now shows the complete message and offers **Edit draft**, which restores the body and valid anchor into the canonical composer; if Refresh invalidated the anchor, Patchdesk keeps the text until another diff line is selected. Outcome-unknown writes remain locked for reconciliation and cannot be retried from the card. #339
