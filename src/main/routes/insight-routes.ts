@@ -20,7 +20,10 @@ import {
 } from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
 import { err } from "../../domain/result";
-import type { InsightRunCoordinator } from "../../services/insight-run-coordinator";
+import type {
+  InsightCoordinatorFailure,
+  InsightRunCoordinator,
+} from "../../services/insight-run-coordinator";
 import type { InsightCoordinatorSeam } from "../local-api-configuration";
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
@@ -211,21 +214,29 @@ function insightResultResponse(
   successStatus: 200 | 202 = 200,
 ): Response {
   if (result._tag === "ok") return context.json(result.value, successStatus);
-  const status =
-    result.error === "invalid_request" || result.error === "model_unavailable"
-      ? 400
-      : result.error === "ownership_mismatch"
-        ? 403
-        : result.error === "not_found"
-          ? 404
-          : result.error === "terminal_review" ||
-              result.error === "already_running" ||
-              result.error === "not_active" ||
-              result.error === "stale_request" ||
-              result.error === "not_available"
-            ? 409
-            : 503;
-  return context.json({ error: result.error }, status);
+  return context.json(
+    { error: result.error },
+    insightFailureStatus(result.error),
+  );
+}
+
+/** The one status every Insight coordinator failure answers with, wherever it surfaces. */
+export function insightFailureStatus(
+  failure: InsightCoordinatorFailure,
+): 400 | 403 | 404 | 409 | 503 {
+  if (failure === "invalid_request" || failure === "model_unavailable")
+    return 400;
+  if (failure === "ownership_mismatch") return 403;
+  if (failure === "not_found") return 404;
+  if (
+    failure === "terminal_review" ||
+    failure === "already_running" ||
+    failure === "not_active" ||
+    failure === "stale_request" ||
+    failure === "not_available"
+  )
+    return 409;
+  return 503;
 }
 
 async function insightWalkthroughProgressResponse(

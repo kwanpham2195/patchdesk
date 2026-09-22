@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import * as v from "valibot";
 
+import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { parseRepoRelativePath } from "../../../domain/ids";
 import {
@@ -16,6 +17,9 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import type { RunDirectCommand } from "./use-review-observation";
+
+const PENDING_REVIEW_COMMAND_PATH = "/v1/reviews/pending-review/command";
+const FINDING_SUGGESTION_PATH = "/v1/reviews/pending-review/finding-suggestion";
 
 export type AnalysisFinding = NonNullable<
   WorkbenchResponse["insights"]["analysis"]["retained"]
@@ -35,6 +39,9 @@ export type AnalysisReviewActionsResult = {
 
 const pendingReviewCommandResponseSchema = v.strictObject({
   pendingReview: v.unknown(),
+  // Present only on the Finding-suggestion route, which names the exact
+  // comment the main process composed and sent.
+  written: v.optional(v.unknown()),
 });
 
 type FindingReviewCommand = {
@@ -56,6 +63,32 @@ type FindingLocation = {
   lineEnd?: number;
   diffSide?: "new" | "old";
 };
+
+/**
+ * The exact comment the main process composed and sent for a Finding
+ * suggestion. The renderer confirms this text against the returned pending
+ * review rather than composing any suggestion Markdown itself (issue #316).
+ */
+const findingSuggestionWriteSchema = v.strictObject({
+  anchor: v.strictObject({
+    path: v.pipe(v.string(), v.minLength(1)),
+    startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    side: v.picklist(["new", "old"]),
+  }),
+  body: v.pipe(v.string(), v.minLength(1)),
+});
+
+function parseFindingSuggestionWrite(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the command response's JSON boundary parser; there is no earlier boundary to run it at.
+  value: unknown,
+): v.InferOutput<typeof findingSuggestionWriteSchema> | undefined {
+  const parsed = v.safeParse(findingSuggestionWriteSchema, value);
+  if (!parsed.success) return undefined;
+  return parseRepoRelativePath(parsed.output.anchor.path)._tag === "ok"
+    ? parsed.output
+    : undefined;
+}
 
 type PendingProjection = Extract<
   PendingReviewProjection,
@@ -241,35 +274,80 @@ export function useAnalysisReviewActions({
         side: mapped.side,
       };
       const pending = currentWorkbench.pendingReview;
-      const command =
+      const tag =
         pending?.state === "none"
-          ? {
-              _tag: "Start" as const,
-              expected,
-              anchor,
-              body: finding.suggestedComment ?? finding.explanation,
-              finding: {
-                analysisRunId: runId,
-                findingId: finding.id,
-                ...expected,
-              },
-            }
+          ? ("Start" as const)
           : pending?.state === "pending"
-            ? {
-                _tag: "AddThread" as const,
-                expected,
-                pendingReviewNodeId: pending.review.nodeId,
-                anchor,
-                body: finding.suggestedComment ?? finding.explanation,
+            ? ("AddThread" as const)
+            : undefined;
+      if (tag === undefined)
+        throw new ReviewPreconditionError("stale_finding_evidence");
+      const pendingReviewNodeId =
+        pending?.state === "pending" ? pending.review.nodeId : undefined;
+      const commentCommand: FindingReviewCommand = {
+        _tag: tag,
+        ...definedProps({ pendingReviewNodeId }),
+        expected,
+        anchor,
+        body: finding.suggestedComment ?? finding.explanation,
+      };
+      // A verified replacement is published by the main process, which owns
+      // the anchor and the suggestion body; this request carries identity and
+      // the expected revision only (issue #316).
+      const isSuggestion = finding.suggestedReplacement !== undefined;
+      const request = isSuggestion
+        ? {
+            path: FINDING_SUGGESTION_PATH,
+            body: {
+              profileId: currentWorkbench.session.key.profileId,
+              reviewId: currentWorkbench.review.id,
+              runId,
+              findingId: finding.id,
+              expected,
+              ...definedProps({ pendingReviewNodeId }),
+            },
+          }
+        : {
+            path: PENDING_REVIEW_COMMAND_PATH,
+            body: {
+              profileId: currentWorkbench.session.key.profileId,
+              reviewId: currentWorkbench.review.id,
+              command: {
+                ...commentCommand,
                 finding: {
                   analysisRunId: runId,
                   findingId: finding.id,
                   ...expected,
                 },
-              }
-            : undefined;
-      if (command === undefined)
-        throw new ReviewPreconditionError("stale_finding_evidence");
+              },
+            },
+          };
+      /**
+       * The comment this write is confirmed against. An ordinary Finding knows
+       * it before the request; a suggestion learns it from the response, the
+       * only place the published body exists.
+       */
+      const confirmedCommand = (
+        // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this helper parses the command response through its owned schema before reading anything.
+        value: unknown,
+      ): FindingReviewCommand | undefined => {
+        if (!isSuggestion) return commentCommand;
+        const envelope = v.safeParse(
+          v.looseObject({ written: v.unknown() }),
+          value,
+        );
+        if (!envelope.success) return undefined;
+        const written = parseFindingSuggestionWrite(envelope.output.written);
+        return written === undefined
+          ? undefined
+          : {
+              _tag: tag,
+              ...definedProps({ pendingReviewNodeId }),
+              expected,
+              anchor: written.anchor,
+              body: written.body,
+            };
+      };
 
       const retainUnconfirmedFinding = (): void => {
         const latest = latestWorkbenchRef.current;
@@ -295,7 +373,7 @@ export function useAnalysisReviewActions({
           ...latest,
           pendingReview: {
             state: "recovery_required",
-            action: command._tag === "Start" ? "start" : "add_thread",
+            action: tag === "Start" ? "start" : "add_thread",
             review:
               latestPending?.state === "pending" ||
               latestPending?.state === "recovery_required"
@@ -313,6 +391,8 @@ export function useAnalysisReviewActions({
         value: unknown,
         allowFailureEnvelope = false,
       ): boolean => {
+        const command = confirmedCommand(value);
+        if (command === undefined) return false;
         const projection = parseConfirmedFindingProjection(
           value,
           command,
@@ -354,14 +434,7 @@ export function useAnalysisReviewActions({
 
       try {
         const value = await runDirectCommand(() =>
-          requestJson("/v1/reviews/pending-review/command", {
-            method: "POST",
-            body: {
-              profileId: currentWorkbench.session.key.profileId,
-              reviewId: currentWorkbench.review.id,
-              command,
-            },
-          }),
+          requestJson(request.path, { method: "POST", body: request.body }),
         );
         if (!sameWorkbenchScope(latestWorkbenchRef.current, currentWorkbench))
           return;
@@ -377,16 +450,7 @@ export function useAnalysisReviewActions({
         if (!sameWorkbenchScope(latestWorkbenchRef.current, currentWorkbench))
           return;
         if (!isOutcomeUnknownRetry(cause)) throw cause;
-        const projection = parseConfirmedFindingProjection(
-          cause.responseBody,
-          command,
-          true,
-        );
-        if (
-          projection !== undefined &&
-          applyConfirmedProjection(cause.responseBody, true)
-        )
-          return;
+        if (applyConfirmedProjection(cause.responseBody, true)) return;
         if (
           isStalePendingResponse(
             cause.responseBody,

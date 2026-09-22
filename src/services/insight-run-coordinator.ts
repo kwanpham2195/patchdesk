@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { definedProps } from "../domain/defined-props";
 
 import type { GitSha } from "../domain/ids";
@@ -9,6 +11,8 @@ import {
   parseContentHash,
   parseInsightRunId,
   parseIsoTimestamp,
+  parseRepoRelativePath,
+  type ContentHash,
   type FindingId,
   type InsightRunId,
   type IsoTimestamp,
@@ -31,7 +35,16 @@ import type {
   InsightProvider,
   InsightReasoning,
 } from "../domain/insight-provider";
-import { parseReviewResult } from "../domain/review-result";
+import { parseReviewResult, type ReviewResult } from "../domain/review-result";
+import {
+  renderSuggestionCommentBody,
+  resolveSuggestionTarget,
+} from "../domain/finding-suggestion";
+import type {
+  FindingReviewSource,
+  PendingReviewAnchor,
+} from "../domain/pending-review";
+import type { ReviewSession } from "../domain/review-session";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
@@ -135,6 +148,24 @@ export type InsightCoordinatorFailure =
 export type Active = {
   readonly runId: InsightRunId;
   readonly controller: AbortController;
+};
+
+/**
+ * The one pending-review write a verified Finding suggestion authorizes. The
+ * anchor and the body are rebuilt here from the represented patch and the
+ * retained Analysis, so no caller decides what reaches GitHub (issue #316).
+ */
+export type FindingSuggestionCommand = {
+  readonly anchor: PendingReviewAnchor;
+  readonly body: string;
+  readonly finding: FindingReviewSource;
+};
+
+/** One retained Analysis Finding, with the revision every Finding command is checked against. */
+type CurrentAnalysisFinding = {
+  readonly session: ReviewSession;
+  readonly patchHash: ContentHash;
+  readonly finding: ReviewResult["findings"][number];
 };
 
 export class InsightRunCoordinator {
@@ -409,6 +440,57 @@ export class InsightRunCoordinator {
       InsightCoordinatorFailure
     >
   > {
+    const current = await this.currentAnalysisFinding(input);
+    if (current._tag === "err") return current;
+    const timestamp = parseIsoTimestamp(this.now());
+    if (timestamp._tag === "err") return err("storage_unavailable");
+    const changed = await this.insights.mutate({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      type: "analysis",
+      now: timestamp.value,
+      operation: (record) => {
+        const stored = record.retained;
+        if (
+          record.activeRun !== undefined ||
+          stored === undefined ||
+          stored.runId !== input.runId
+        )
+          return err("not_available" as const);
+        const parsed = parseReviewResult(stored.value);
+        if (
+          parsed._tag === "err" ||
+          !parsed.value.findings.some(
+            (finding) => finding.id === input.findingId,
+          )
+        )
+          return err("not_available" as const);
+        return dismissInsightFinding(
+          record,
+          input.findingId,
+          input.reason,
+          timestamp.value,
+        );
+      },
+    });
+    if (changed._tag === "err") {
+      if (changed.error === "invalid_reason") return err("invalid_request");
+      if (changed.error === "not_available") return err("not_available");
+      return err("storage_unavailable");
+    }
+    return ok({ findingId: input.findingId, status: "dismissed" });
+  }
+
+  /**
+   * The retained Analysis Finding one Finding-scoped command is about, refused
+   * unless the Review still represents the revision that Analysis ran against.
+   */
+  private async currentAnalysisFinding(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly runId: InsightRunId;
+    readonly findingId: FindingId;
+  }): Promise<Result<CurrentAnalysisFinding, InsightCoordinatorFailure>> {
     const ownership = await this.ensureOwned(input.profileId, input.reviewId);
     if (ownership._tag === "err") return ownership;
     const review = await this.reviews.load(input.profileId, input.reviewId);
@@ -451,49 +533,71 @@ export class InsightRunCoordinator {
       })
     )
       return err("stale_request");
-    if (
-      !retainedRecord.value.findings.some(
-        (finding) => finding.id === input.findingId,
-      )
-    )
-      return err("not_found");
-    const timestamp = parseIsoTimestamp(this.now());
-    if (timestamp._tag === "err") return err("storage_unavailable");
-    const changed = await this.insights.mutate({
-      profileId: input.profileId,
-      reviewId: input.reviewId,
-      type: "analysis",
-      now: timestamp.value,
-      operation: (record) => {
-        const stored = record.retained;
-        if (
-          record.activeRun !== undefined ||
-          stored === undefined ||
-          stored.runId !== input.runId
-        )
-          return err("not_available" as const);
-        const parsed = parseReviewResult(stored.value);
-        if (
-          parsed._tag === "err" ||
-          !parsed.value.findings.some(
-            (finding) => finding.id === input.findingId,
-          )
-        )
-          return err("not_available" as const);
-        return dismissInsightFinding(
-          record,
-          input.findingId,
-          input.reason,
-          timestamp.value,
-        );
+    const finding = retainedRecord.value.findings.find(
+      (candidate) => candidate.id === input.findingId,
+    );
+    if (finding === undefined) return err("not_found");
+    return ok({
+      session: session.value,
+      patchHash: currentHash.value,
+      finding,
+    });
+  }
+
+  /**
+   * Rebuilds the GitHub anchor and comment body for one Finding's verified
+   * replacement. The caller supplies identity only; the range comes from the
+   * represented patch on disk, so a renderer cannot choose what is replaced.
+   */
+  async resolveFindingSuggestion(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly runId: InsightRunId;
+    readonly findingId: FindingId;
+  }): Promise<Result<FindingSuggestionCommand, InsightCoordinatorFailure>> {
+    return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
+      this.resolveFindingSuggestionUnlocked(input),
+    );
+  }
+
+  private async resolveFindingSuggestionUnlocked(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly runId: InsightRunId;
+    readonly findingId: FindingId;
+  }): Promise<Result<FindingSuggestionCommand, InsightCoordinatorFailure>> {
+    const current = await this.currentAnalysisFinding(input);
+    if (current._tag === "err") return current;
+    const { finding, session } = current.value;
+    const code = finding.suggestedReplacement?.code;
+    // A Finding without a verified replacement keeps the ordinary comment
+    // action; there is no suggestion command to answer with.
+    if (code === undefined) return err("not_found");
+    const patch = await readPatchText(session.patchPath);
+    if (patch === undefined) return err("storage_unavailable");
+    const target = resolveSuggestionTarget(patch, finding);
+    if (target === undefined) return err("stale_request");
+    const path = parseRepoRelativePath(target.path);
+    if (path._tag === "err") return err("stale_request");
+    return ok({
+      anchor: {
+        path: path.value,
+        startLine: target.startLine,
+        line: target.line,
+        side: "new",
+      },
+      body: renderSuggestionCommentBody(
+        finding.suggestedComment ?? finding.explanation,
+        code,
+      ),
+      finding: {
+        analysisRunId: input.runId,
+        findingId: input.findingId,
+        sessionId: session.id,
+        headSha: session.key.headSha,
+        patchHash: current.value.patchHash,
       },
     });
-    if (changed._tag === "err") {
-      if (changed.error === "invalid_reason") return err("invalid_request");
-      if (changed.error === "not_available") return err("not_available");
-      return err("storage_unavailable");
-    }
-    return ok({ findingId: input.findingId, status: "dismissed" });
   }
 
   async updateWalkthroughProgress(input: {
@@ -653,6 +757,15 @@ export class InsightRunCoordinator {
     return owner.value !== undefined && owner.value !== profileId
       ? err("ownership_mismatch")
       : err("not_found");
+  }
+}
+
+/** The represented patch, or undefined when it can no longer be read. */
+async function readPatchText(patchPath: string): Promise<string | undefined> {
+  try {
+    return await readFile(patchPath, "utf8");
+  } catch {
+    return undefined;
   }
 }
 

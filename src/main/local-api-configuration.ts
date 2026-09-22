@@ -34,7 +34,7 @@ import type { GitReadExecutor } from "../services/review-worktree-service";
 /** What the Insight routes are allowed to call on the run coordinator. */
 export type InsightCoordinatorSeam = Pick<
   InsightRunCoordinator,
-  "start" | "cancel" | "observe" | "dismissFinding"
+  "start" | "cancel" | "observe" | "dismissFinding" | "resolveFindingSuggestion"
 > &
   Partial<
     Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "addFinding">

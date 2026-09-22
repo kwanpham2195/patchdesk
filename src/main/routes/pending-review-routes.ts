@@ -1,24 +1,32 @@
 import type { Context, Hono } from "hono";
 import { safeParse } from "valibot";
 
+import { definedProps } from "../../domain/defined-props";
 import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
 import type { ReviewSessionId, WorkspaceProfileId } from "../../domain/ids";
 import type { RawJsonValue } from "../../domain/json";
+import type { Result } from "../../domain/result";
 import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
 import {
   projectPendingReview,
+  type PendingReviewCommandResult,
   type PendingReviewProjection,
   type PendingReviewService,
+  type PendingReviewServiceFailure,
 } from "../../services/pending-review-service";
 import {
   projectDirectSummaryReview,
   type DirectSummaryReviewService,
 } from "../../services/direct-summary-review-service";
+import type { FindingSuggestionCommand } from "../../services/insight-run-coordinator";
+import type { InsightCoordinatorSeam } from "../local-api-configuration";
 import type { LocalApiContainer } from "../local-api-container";
 import {
   parseDirectSummaryCommand,
+  parseFindingSuggestionCommand,
   parsePendingReviewCommand,
 } from "./pending-review-command";
+import { insightFailureStatus } from "./insight-routes";
 import { jsonBody } from "./json-body";
 import { reviewRecoverySchema } from "./review-recovery-schema";
 
@@ -27,10 +35,20 @@ export function registerPendingReviewRoutes(
   app: Hono,
   container: LocalApiContainer,
 ): void {
-  const { directSummaryReviews, pendingReviews, sessions } = container;
+  const { directSummaryReviews, insights, pendingReviews, sessions } =
+    container;
   app.post("/v1/reviews/pending-review/command", async (context) =>
     pendingReviewCommandResponse(
       context,
+      pendingReviews,
+      sessions,
+      await jsonBody(context),
+    ),
+  );
+  app.post("/v1/reviews/pending-review/finding-suggestion", async (context) =>
+    findingSuggestionResponse(
+      context,
+      insights,
       pendingReviews,
       sessions,
       await jsonBody(context),
@@ -126,20 +144,105 @@ async function pendingReviewCommandResponse(
               expected: parsed.command.expected,
               confirmation: parsed.command.confirmation,
             });
+  return pendingReviewWriteResponse(
+    context,
+    sessions,
+    parsed.profileId,
+    parsed.command.expected.sessionId,
+    result,
+  );
+}
+
+/**
+ * Publishes a Finding's verified replacement as one GitHub suggestion. The
+ * request carries identity and the expected revision only: the anchor and the
+ * comment body are rebuilt here, then written through the same pending-review
+ * service as every other Review write (issue #316).
+ */
+async function findingSuggestionResponse(
+  context: Context,
+  insights: InsightCoordinatorSeam | undefined,
+  service: PendingReviewService | undefined,
+  sessions: ReviewSessionStore,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
+  body: unknown,
+): Promise<Response> {
+  if (insights === undefined || service === undefined)
+    return context.json({ error: "review_write_unavailable" }, 503);
+  const parsed = parseFindingSuggestionCommand(body);
+  if (parsed === undefined)
+    return context.json({ error: "invalid_input" }, 400);
+  const resolved = await insights.resolveFindingSuggestion({
+    profileId: parsed.profileId,
+    reviewId: parsed.reviewId,
+    runId: parsed.runId,
+    findingId: parsed.findingId,
+  });
+  if (resolved._tag === "err")
+    return context.json(
+      { error: resolved.error },
+      insightFailureStatus(resolved.error),
+    );
+  const write = {
+    profileId: parsed.profileId,
+    reviewId: parsed.reviewId,
+    expected: parsed.expected,
+    anchor: resolved.value.anchor,
+    body: resolved.value.body,
+    finding: resolved.value.finding,
+  };
+  const result =
+    parsed.pendingReviewNodeId === undefined
+      ? await service.start(write)
+      : await service.addThread({
+          ...write,
+          pendingReviewNodeId: parsed.pendingReviewNodeId,
+        });
+  return pendingReviewWriteResponse(
+    context,
+    sessions,
+    parsed.profileId,
+    parsed.expected.sessionId,
+    result,
+    resolved.value,
+  );
+}
+
+/**
+ * The one envelope every pending-review write answers with. A failure carries
+ * the stored projection when there is one so the caller can tell an untouched
+ * pending review from an uncertain outcome; `written` names the exact comment
+ * the main process composed, so a Finding caller confirms that text rather
+ * than a body it assembled itself.
+ */
+async function pendingReviewWriteResponse(
+  context: Context,
+  sessions: ReviewSessionStore,
+  profileId: WorkspaceProfileId,
+  sessionId: ReviewSessionId,
+  result: Result<PendingReviewCommandResult, PendingReviewServiceFailure>,
+  command?: FindingSuggestionCommand,
+): Promise<Response> {
+  const written =
+    command === undefined
+      ? undefined
+      : { anchor: command.anchor, body: command.body };
   if (result._tag === "ok") {
     return context.json({
       pendingReview: projectPendingReview(result.value.state, false),
+      ...definedProps({ written }),
     });
   }
   const projection = await storedPendingReviewProjection(
     sessions,
-    parsed.profileId,
-    parsed.command.expected.sessionId,
+    profileId,
+    sessionId,
   );
   return context.json(
-    projection === undefined
-      ? { error: result.error }
-      : { error: result.error, pendingReview: projection },
+    {
+      error: result.error,
+      ...definedProps({ pendingReview: projection, written }),
+    },
     pendingReviewFailureStatus(result.error),
   );
 }
