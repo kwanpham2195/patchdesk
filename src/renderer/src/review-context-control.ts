@@ -53,7 +53,7 @@ function unavailableContextDescription(
 ): string {
   switch (reason) {
     case "github_read":
-      return "Patchdesk could not read the required file contents from the saved review revisions";
+      return "Patchdesk could not load unchanged context from the saved review revisions";
     case "binary":
       return "Unchanged context is unavailable for binary files";
     case "too_large":

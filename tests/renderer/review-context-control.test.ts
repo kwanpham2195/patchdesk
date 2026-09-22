@@ -54,7 +54,7 @@ describe("reviewContextControl", () => {
       disabled: true,
       label: "Context unavailable",
       description:
-        "Patchdesk could not read the required file contents from the saved review revisions",
+        "Patchdesk could not load unchanged context from the saved review revisions",
     });
   });
 });
