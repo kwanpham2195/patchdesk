@@ -11,9 +11,27 @@ import { Spinner } from "@/components/ui/spinner";
 
 /** The sentence a refused Watch or Unwatch shows beside its toggle. */
 function watchToggleFailureCopy(failure: WatchToggleFailure): string {
-  return failure.kind === "limit"
-    ? `Patchdesk watches at most ${failure.limit} pull requests per workspace. Unwatch one first.`
-    : "Could not change whether this pull request is watched.";
+  switch (failure.kind) {
+    case "limit":
+      return `Patchdesk watches at most ${failure.limit} pull requests per workspace. Unwatch one first.`;
+    case "terminal":
+      return `${failure.state === "merged" ? "Merged" : "Closed"} pull requests cannot be watched.`;
+    case "failed":
+      return "Could not change whether this pull request is watched.";
+  }
+}
+
+/** Inline explanation for a refused Watch or Unwatch action. */
+export function WatchToggleFailureMessage({
+  failure,
+}: {
+  readonly failure: WatchToggleFailure;
+}): React.JSX.Element {
+  return (
+    <span className="text-xs text-destructive">
+      {watchToggleFailureCopy(failure)}
+    </span>
+  );
 }
 
 /**

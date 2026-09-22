@@ -17,6 +17,11 @@ the Review header, or the ⌘K palette. A watched pull request is polled while
 the app runs, and each change posts one desktop notification through ADR
 0044's notifier. Nothing else refreshes.
 
+Only an open pull request can be newly watched. The service reads the baseline
+before saving the watch and refuses a merged or closed baseline. A terminal
+pull request already in storage keeps the existing poll behavior, which sends
+its final notification and removes the watch.
+
 **What is compared.** Each watched pull request stores a snapshot: `updatedAt`,
 head sha, review decision, CI rollup, and open, merged, or closed. It is read
 from GitHub when the watch is made and replaced after each poll. A poll

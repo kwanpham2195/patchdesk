@@ -67,7 +67,9 @@ describe("useWatchedPullRequests", () => {
     const { result } = renderHook(() => useWatchedPullRequests(), { wrapper });
     await waitFor(() => expect(result.current).toBeDefined());
 
-    await act(() => result.current?.toggle(ref) ?? Promise.resolve());
+    await act(async () => {
+      await result.current?.toggle(ref);
+    });
 
     expect(
       double.request.mock.calls.flatMap(([input]) =>
@@ -86,7 +88,9 @@ describe("useWatchedPullRequests", () => {
     const { result } = renderHook(() => useWatchedPullRequests(), { wrapper });
     await waitFor(() => expect(result.current).toBeDefined());
 
-    await act(() => result.current?.toggle(ref) ?? Promise.resolve());
+    await act(async () => {
+      await result.current?.toggle(ref);
+    });
 
     expect(result.current?.failureFor(ref)).toEqual({
       kind: "limit",
@@ -95,6 +99,29 @@ describe("useWatchedPullRequests", () => {
     expect(result.current?.isWatched(ref)).toBe(false);
   });
 
+  it.each(["merged", "closed"] as const)(
+    "reports the typed refusal for a %s pull request",
+    async (state) => {
+      installWatchRoutes({ pullRequests: [] }, () =>
+        failure({ error: { _tag: "WatchedPullRequestTerminal", state } }, 409),
+      );
+      const { result } = renderHook(() => useWatchedPullRequests(), {
+        wrapper,
+      });
+      await waitFor(() => expect(result.current).toBeDefined());
+
+      await act(async () => {
+        await result.current?.toggle(ref);
+      });
+
+      expect(result.current?.failureFor(ref)).toEqual({
+        kind: "terminal",
+        state,
+      });
+      expect(result.current?.isWatched(ref)).toBe(false);
+    },
+  );
+
   it("unwatches a watched pull request", async () => {
     const double = installWatchRoutes({ pullRequests: [ref] }, () =>
       success({ pullRequests: [] }),
@@ -102,7 +129,9 @@ describe("useWatchedPullRequests", () => {
     const { result } = renderHook(() => useWatchedPullRequests(), { wrapper });
     await waitFor(() => expect(result.current?.isWatched(ref)).toBe(true));
 
-    await act(() => result.current?.toggle(ref) ?? Promise.resolve());
+    await act(async () => {
+      await result.current?.toggle(ref);
+    });
 
     expect(
       double.request.mock.calls.some(
@@ -192,6 +221,33 @@ describe("watched pull request unwatched by a poll", () => {
   });
 });
 
+describe("Watch refusal copy", () => {
+  it("names a terminal pull request without changing the watched list", async () => {
+    installWatchRoutes({ pullRequests: [] }, () =>
+      failure(
+        {
+          error: {
+            _tag: "WatchedPullRequestTerminal",
+            state: "merged",
+          },
+        },
+        409,
+      ),
+    );
+    render(
+      <WatchedPullRequestsProvider profileId="acme">
+        <WatchPullRequestButton pullRequest={ref} />
+      </WatchedPullRequestsProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Watch" }));
+
+    expect(
+      await screen.findByText("Merged pull requests cannot be watched."),
+    ).toBeTruthy();
+  });
+});
+
 describe("Watch toggle surfaces", () => {
   it("watches from the Pull requests inspector and marks the row", async () => {
     installWatchRoutes({ pullRequests: [] }, () =>
@@ -219,6 +275,28 @@ describe("Watch toggle surfaces", () => {
       (await screen.findAllByRole("button", { name: "Unwatch" })).length,
     ).toBeGreaterThan(0);
     expect(screen.getByRole("option", { name: /Watched/ })).toBeTruthy();
+  });
+
+  it("hides Watch in the Pull requests inspector for a merged pull request", async () => {
+    installWatchRoutes({ pullRequests: [] }, () =>
+      success({ pullRequests: [ref] }),
+    );
+    render(
+      <WatchedPullRequestsProvider profileId="acme">
+        <MaintainerInbox
+          profileId="watch-terminal-inspector"
+          profileLabel="P"
+          rows={[{ ...row, remoteState: "merged" }]}
+          freshness="fresh"
+          refreshStatus="Current"
+          onOpenReview={vi.fn()}
+          onOpenReviewId={vi.fn()}
+        />
+      </WatchedPullRequestsProvider>,
+    );
+
+    await screen.findByRole("option", { name: /PR/ });
+    expect(screen.queryByRole("button", { name: "Watch" })).toBeNull();
   });
 
   it("offers Watch in the Review header for an open pull request", async () => {

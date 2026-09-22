@@ -56,7 +56,10 @@ const pullRequest = (number: number) => ({
   number,
 });
 
-async function routeFixture(watchedCount: number) {
+async function routeFixture(
+  watchedCount: number,
+  remoteState: "open" | "merged" | "closed" = "open",
+) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-watched-route-"));
   roots.push(root);
   const store = new WatchedPullRequestStore(PatchdeskPaths.forTest(root));
@@ -77,7 +80,7 @@ async function routeFixture(watchedCount: number) {
       parseWatchedPullRequests([
         {
           ref: pullRequest(99),
-          snapshot,
+          snapshot: { ...snapshot, state: remoteState },
           watchedAt: "2026-09-16T09:00:00.000Z",
         },
       ]),
@@ -96,6 +99,7 @@ async function routeFixture(watchedCount: number) {
   registerWatchedPullRequestRoutes(app, { watchedPullRequests } as never);
   return {
     github,
+    store,
     post: (body: RawJsonValue) =>
       app.request("/v1/watched-pull-requests", {
         method: "POST",
@@ -132,6 +136,26 @@ describe("POST /v1/watched-pull-requests", () => {
     });
     expect(fixture.github.calls.readWatchedPullRequests).toEqual([]);
   });
+
+  it.each(["merged", "closed"] as const)(
+    "refuses a %s pull request without saving it",
+    async (state) => {
+      const fixture = await routeFixture(0, state);
+      const response = await fixture.post({
+        profileId: "acme",
+        pullRequest: pullRequest(99),
+      });
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: { _tag: "WatchedPullRequestTerminal", state },
+      });
+      await expect(fixture.store.load(profileId)).resolves.toEqual({
+        _tag: "ok",
+        value: [],
+      });
+    },
+  );
 
   it("rejects a body with an unknown field", async () => {
     const fixture = await routeFixture(0);

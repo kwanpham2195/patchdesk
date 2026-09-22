@@ -25,7 +25,11 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
-import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
+import {
+  useWatchedPullRequests,
+  type WatchToggleFailure,
+} from "@/hooks/use-watched-pull-requests";
+import { WatchToggleFailureMessage } from "./watch-pull-request-button";
 
 const icons = {
   dashboard: GitPullRequest,
@@ -199,10 +203,12 @@ export function AppCommandDialog({
               <WatchCommand
                 pullRequest={parsedPullRequest.value}
                 watched={watch.isWatched(parsedPullRequest.value)}
+                failure={watch.failureFor(parsedPullRequest.value)}
                 query={query}
                 onSelect={() => {
-                  close();
-                  void watch.toggle(parsedPullRequest.value);
+                  void watch.toggle(parsedPullRequest.value).then((applied) => {
+                    if (applied) close();
+                  });
                 }}
               />
             ) : null}
@@ -213,15 +219,17 @@ export function AppCommandDialog({
   );
 }
 
-/** Watch or Unwatch the pull request the query names; a refusal shows where the toggle is next seen. */
+/** Watch or Unwatch the pull request the query names; a refusal stays visible in the palette. */
 function WatchCommand({
   pullRequest,
   watched,
+  failure,
   query,
   onSelect,
 }: {
   readonly pullRequest: PullRequestRef;
   readonly watched: boolean;
+  readonly failure: WatchToggleFailure | undefined;
   readonly query: string;
   readonly onSelect: () => void;
 }): React.JSX.Element {
@@ -230,7 +238,12 @@ function WatchCommand({
   return (
     <CommandItem value={`${query} ${label}`} onSelect={onSelect}>
       <Icon />
-      {label}
+      <span className="flex flex-col">
+        <span>{label}</span>
+        {failure === undefined ? null : (
+          <WatchToggleFailureMessage failure={failure} />
+        )}
+      </span>
     </CommandItem>
   );
 }

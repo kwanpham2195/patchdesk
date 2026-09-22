@@ -32,6 +32,10 @@ export type WatchedPullRequestFailure =
   | WatchLimitReached
   | { readonly _tag: "WatchedPullRequestNotFound" }
   | {
+      readonly _tag: "WatchedPullRequestTerminal";
+      readonly state: "merged" | "closed";
+    }
+  | {
       readonly _tag: "WatchedPullRequestReadFailed";
       readonly reason: GitHubReadFailure["_tag"];
     }
@@ -112,6 +116,8 @@ export class WatchedPullRequestService {
     const snapshot = read.value[0]?.snapshot;
     if (snapshot === undefined)
       return err({ _tag: "WatchedPullRequestNotFound" });
+    if (snapshot.state !== "open")
+      return err({ _tag: "WatchedPullRequestTerminal", state: snapshot.state });
     return this.locks.run(profileId, async () => {
       const current = await this.dependencies.store.load(profileId);
       if (current._tag === "err") return current;

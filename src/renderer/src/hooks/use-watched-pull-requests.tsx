@@ -23,6 +23,7 @@ export type WatchedPullRequestRef = {
 /** Why the last Watch or Unwatch of one pull request did not apply. */
 export type WatchToggleFailure =
   | { readonly kind: "limit"; readonly limit: number }
+  | { readonly kind: "terminal"; readonly state: "merged" | "closed" }
   | { readonly kind: "failed" };
 
 type WatchedPullRequestsValue = {
@@ -31,7 +32,7 @@ type WatchedPullRequestsValue = {
   readonly failureFor: (
     ref: WatchedPullRequestRef,
   ) => WatchToggleFailure | undefined;
-  readonly toggle: (ref: WatchedPullRequestRef) => Promise<void>;
+  readonly toggle: (ref: WatchedPullRequestRef) => Promise<boolean>;
   /** When this window last heard that a poll found a change for the profile; the freshness badge compares it with its refresh. */
   readonly changedAt: string | undefined;
 };
@@ -52,6 +53,12 @@ const limitFailureSchema = v.strictObject({
   error: v.strictObject({
     _tag: v.literal("WatchLimitReached"),
     limit: v.number(),
+  }),
+});
+const terminalFailureSchema = v.strictObject({
+  error: v.strictObject({
+    _tag: v.literal("WatchedPullRequestTerminal"),
+    state: v.picklist(["merged", "closed"]),
   }),
 });
 
@@ -82,8 +89,10 @@ function toggleFailure(
 ): WatchToggleFailure {
   if (!(cause instanceof PatchdeskApiError)) return { kind: "failed" };
   const limit = v.safeParse(limitFailureSchema, cause.responseBody);
-  return limit.success
-    ? { kind: "limit", limit: limit.output.error.limit }
+  if (limit.success) return { kind: "limit", limit: limit.output.error.limit };
+  const terminal = v.safeParse(terminalFailureSchema, cause.responseBody);
+  return terminal.success
+    ? { kind: "terminal", state: terminal.output.error.state }
     : { kind: "failed" };
 }
 
@@ -149,14 +158,15 @@ export function WatchedPullRequestsProvider({
   }, [load, profileId]);
 
   const toggle = useCallback(
-    async (ref: WatchedPullRequestRef): Promise<void> => {
-      if (watched === undefined) return;
+    async (ref: WatchedPullRequestRef): Promise<boolean> => {
+      if (watched === undefined) return false;
       const key = refKey(ref);
       const owner = generation.current;
       setPending((current) => new Set(current).add(key));
       const withoutFailure = new Map(failures);
       withoutFailure.delete(key);
       setFailureState({ profileId, value: withoutFailure });
+      let applied = false;
       try {
         const list = readList(
           await requestJson("/v1/watched-pull-requests", {
@@ -166,6 +176,7 @@ export function WatchedPullRequestsProvider({
         );
         if (generation.current === owner)
           setLoaded({ profileId, value: new Set(list.map(refKey)) });
+        applied = true;
       } catch (cause: unknown) {
         if (generation.current === owner)
           setFailureState({
@@ -179,6 +190,7 @@ export function WatchedPullRequestsProvider({
           return next;
         });
       }
+      return applied;
     },
     [failures, profileId, watched],
   );

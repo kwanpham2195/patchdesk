@@ -96,6 +96,8 @@ function listResponse(
     case "WatchLimitReached":
       // The renderer words the refusal from the tag and limit.
       return context.json({ error: failure }, 400);
+    case "WatchedPullRequestTerminal":
+      return context.json({ error: failure }, 409);
     case "WatchedPullRequestNotFound":
       return context.json({ error: "not_found" }, 404);
     case "WatchedPullRequestReadFailed":

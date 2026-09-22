@@ -124,12 +124,14 @@ export function ReviewDetailsInspector({
           </CardContent>
         </Card>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <WatchPullRequestButton
-          pullRequest={row.identity}
-          className="h-8 w-full text-xs"
-        />
-      </div>
+      {row.remoteState === "open" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <WatchPullRequestButton
+            pullRequest={row.identity}
+            className="h-8 w-full text-xs"
+          />
+        </div>
+      ) : null}
       {/* The inspector's one read-only Review entry point; every row state
           opens the same way, so the button says Open rather than naming a
           per-state action. */}
