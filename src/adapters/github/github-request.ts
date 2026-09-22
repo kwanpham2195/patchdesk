@@ -30,6 +30,8 @@ export type GitHubGraphQlRequest = {
   readonly document: string;
   /** Sent in this order, because gh passes repeated variables through as given. */
   readonly variables: ReadonlyArray<GitHubGraphQlVariable>;
+  /** Return a response containing both data and errors so the caller can settle independent aliases. */
+  readonly acceptPathAwarePartialData?: boolean;
 };
 
 /**

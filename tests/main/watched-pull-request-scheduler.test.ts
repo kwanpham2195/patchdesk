@@ -3,7 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/fake-github-adapter";
+import {
+  FakeGitHubAdapter,
+  type FakeGitHubAdapterValues,
+} from "../../src/adapters/github/fake-github-adapter";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { WatchedPullRequestStore } from "../../src/adapters/storage/watched-pull-request-store";
 import { parseIsoTimestamp } from "../../src/domain/ids";
@@ -50,11 +53,17 @@ const profile = mustParse(
 
 function watched(
   snapshot: Partial<Record<keyof WatchedSnapshot, string>> = {},
+  number = 7,
 ): WatchedPullRequest {
   const [entry] = mustParse(
     parseWatchedPullRequests([
       {
-        ref: { host: "github.com", owner: "acme", repo: "widgets", number: 7 },
+        ref: {
+          host: "github.com",
+          owner: "acme",
+          repo: "widgets",
+          number,
+        },
         snapshot: {
           updatedAt: "2026-09-16T10:00:00.000Z",
           headSha: "a".repeat(40),
@@ -77,7 +86,7 @@ async function harness() {
   roots.push(root);
   const store = new WatchedPullRequestStore(PatchdeskPaths.forTest(root));
   await store.save(profile.id, [watched()]);
-  let remote: ReadonlyArray<WatchedPullRequest> = [watched()];
+  let remote: FakeGitHubAdapterValues["watchedPullRequests"] = [watched()];
   const github = new FakeGitHubAdapter({
     get watchedPullRequests() {
       return remote;
@@ -125,7 +134,7 @@ async function harness() {
     coordinator,
     start,
     ticks,
-    setRemote: (next: ReadonlyArray<WatchedPullRequest>) => {
+    setRemote: (next: FakeGitHubAdapterValues["watchedPullRequests"]) => {
       remote = next;
     },
     turnNotificationsOff: () => {
@@ -192,6 +201,46 @@ describe("watched pull request scheduler", () => {
     ]);
     expect(fixture.notified[0]).toMatchObject({ change: "commented" });
     expect(fixture.changedProfiles).toEqual([profile.id]);
+  });
+
+  it("settles readable aliases while retaining and diagnosing an inaccessible watch", async () => {
+    const fixture = await harness();
+    const first = watched({}, 7);
+    const second = watched({}, 8);
+    const inaccessible = watched({}, 9);
+    await fixture.store.save(profile.id, [first, second, inaccessible]);
+    fixture.setRemote([
+      watched({ updatedAt: "2026-09-17T09:00:00.000Z" }, 7),
+      watched({ updatedAt: "2026-09-17T09:30:00.000Z" }, 8),
+      { ref: inaccessible.ref, outcome: "inaccessible" },
+    ]);
+
+    const scheduler = fixture.start();
+    await fixture.ticks(1);
+    await scheduler.stop();
+
+    expect(fixture.github.calls.readWatchedPullRequests).toHaveLength(1);
+    expect(fixture.notified).toHaveLength(2);
+    expect(fixture.logs).toMatchObject([
+      {
+        message: "polled",
+        meta: { notified: 2, inaccessible: 1 },
+      },
+    ]);
+    await expect(fixture.store.load(profile.id)).resolves.toMatchObject({
+      _tag: "ok",
+      value: [
+        {
+          ref: first.ref,
+          snapshot: { updatedAt: "2026-09-17T09:00:00.000Z" },
+        },
+        {
+          ref: second.ref,
+          snapshot: { updatedAt: "2026-09-17T09:30:00.000Z" },
+        },
+        inaccessible,
+      ],
+    });
   });
 
   it("unwatches a pull request after its merged notification", async () => {

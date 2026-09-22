@@ -90,6 +90,7 @@ async function pollProfile(
       log(input, "polled", {
         profileId: profile.id,
         notified: outcome.notified,
+        inaccessible: outcome.inaccessible,
       });
     else if (outcome._tag === "failed")
       log(input, "skipped", { profileId: profile.id, reason: outcome.reason });

@@ -255,6 +255,58 @@ describe("GitHubHttpClient REST requests", () => {
   });
 });
 
+describe("GitHubHttpClient partial GraphQL responses", () => {
+  const request = {
+    kind: "graphql" as const,
+    host: "github.com",
+    document: "query WatchedPullRequests { viewer { login } }",
+    variables: [],
+  };
+
+  it("returns data beside path-aware errors only for an opted-in caller", async () => {
+    const body = {
+      data: { viewer: null },
+      errors: [{ type: "NOT_FOUND", path: ["viewer"], message: "missing" }],
+    };
+    fixture.respondWith(json(200, body));
+
+    await expect(
+      fixture
+        .client()
+        .graphql(profile, { ...request, acceptPathAwarePartialData: true }),
+    ).resolves.toEqual({ _tag: "ok", value: body });
+  });
+
+  it("keeps the same partial response a failure for an ordinary caller", async () => {
+    fixture.respondWith(
+      json(200, {
+        data: { viewer: null },
+        errors: [{ type: "NOT_FOUND", path: ["viewer"], message: "missing" }],
+      }),
+    );
+
+    expect(errorOf(await fixture.client().graphql(profile, request))).toEqual({
+      _tag: "CommandNotFound",
+    });
+  });
+
+  it("keeps a full GraphQL error a failure for an opted-in caller", async () => {
+    fixture.respondWith(
+      json(200, {
+        errors: [{ type: "FORBIDDEN", message: "Resource not accessible" }],
+      }),
+    );
+
+    expect(
+      errorOf(
+        await fixture
+          .client()
+          .graphql(profile, { ...request, acceptPathAwarePartialData: true }),
+      ),
+    ).toEqual({ _tag: "CommandForbidden", reason: "unknown" });
+  });
+});
+
 describe("GitHubHttpClient response size", () => {
   it("stops reading a body larger than the buffer cap", async () => {
     fixture.respondWith((_request, response) => {

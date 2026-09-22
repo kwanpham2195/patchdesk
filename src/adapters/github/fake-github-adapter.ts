@@ -206,11 +206,13 @@ export class FakeGitHubAdapter
     const current = this.values.watchedPullRequests;
     if (current === undefined) return missing("get_watched_prs");
     return ok(
-      input.refs.map((ref) => ({
-        ref,
-        snapshot: current.find((entry) => samePullRequest(entry.ref, ref))
-          ?.snapshot,
-      })),
+      input.refs.map((ref): WatchedPullRequestRead => {
+        const found = current.find((entry) => samePullRequest(entry.ref, ref));
+        if (found === undefined) return { ref, outcome: "absent" };
+        return "outcome" in found
+          ? { ref, outcome: "inaccessible" }
+          : { ref, outcome: "readable", snapshot: found.snapshot };
+      }),
     );
   }
 
@@ -785,10 +787,10 @@ export type FakeGitHubAdapterValues = {
   readonly pullRequestReviewers: PullRequestReviewerListing;
   readonly pullRequest: PullRequestSummary;
   /** What GitHub reports for each watched pull request; a ref not listed no longer resolves. A getter lets a test move it between polls. */
-  readonly watchedPullRequests: ReadonlyArray<{
-    readonly ref: PullRequestRef;
-    readonly snapshot: WatchedSnapshot;
-  }>;
+  readonly watchedPullRequests: ReadonlyArray<
+    | { readonly ref: PullRequestRef; readonly snapshot: WatchedSnapshot }
+    | { readonly ref: PullRequestRef; readonly outcome: "inaccessible" }
+  >;
   readonly mergePolicy: MergePolicySnapshot;
   readonly mergePolicyEvidence: GitHubMergePolicyEvidence;
   readonly mergeOutcome: MergeOutcome;

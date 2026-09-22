@@ -211,11 +211,15 @@ export interface GitHubReader {
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
 }
 
-/** One watched pull request as GitHub reports it now; `undefined` when GitHub no longer resolves it. */
-export type WatchedPullRequestRead = {
-  readonly ref: PullRequestRef;
-  readonly snapshot: WatchedSnapshot | undefined;
-};
+/** One watched alias settled independently from the other aliases in the same GraphQL response. */
+export type WatchedPullRequestRead =
+  | {
+      readonly ref: PullRequestRef;
+      readonly outcome: "readable";
+      readonly snapshot: WatchedSnapshot;
+    }
+  | { readonly ref: PullRequestRef; readonly outcome: "absent" }
+  | { readonly ref: PullRequestRef; readonly outcome: "inaccessible" };
 
 /** One bounded page of branch names; compare `totalCount` against `branches.length` to detect truncation. */
 export type RepositoryBranchListing = {

@@ -111,6 +111,20 @@ type ResponseBodyMode = "json" | "text";
 const graphQlErrorsSchema = v.looseObject({
   errors: v.optional(v.array(v.unknown())),
 });
+const pathAwareGraphQlPartialDataSchema = v.looseObject({
+  data: v.looseObject({}),
+  errors: v.pipe(
+    v.array(
+      v.looseObject({
+        path: v.pipe(
+          v.array(v.union([v.string(), v.number()])),
+          v.minLength(1),
+        ),
+      }),
+    ),
+    v.minLength(1),
+  ),
+});
 
 /**
  * Calls the GitHub API over HTTPS as the account a workspace profile names,
@@ -305,6 +319,11 @@ export class GitHubHttpClient {
     // on the body rather than on the status.
     const errors = v.safeParse(graphQlErrorsSchema, parsed.value);
     if (errors.success && (errors.output.errors?.length ?? 0) > 0) {
+      if (
+        request.acceptPathAwarePartialData === true &&
+        v.safeParse(pathAwareGraphQlPartialDataSchema, parsed.value).success
+      )
+        return ok(parsed.value);
       return err(
         classifyGraphqlErrorBody(body.value) ?? {
           _tag: "CommandFailed",

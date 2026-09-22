@@ -55,6 +55,10 @@ import type {
   WatchedPullRequestRead,
 } from "./github-adapter";
 
+const watchedPullRequestErrorSchema = v.looseObject({
+  path: v.optional(v.array(v.union([v.string(), v.number()]))),
+});
+
 const watchedPullRequestNodeSchema = v.looseObject({
   state: v.picklist(["OPEN", "MERGED", "CLOSED"]),
   updatedAt: v.string(),
@@ -326,6 +330,7 @@ export class GitHubPullRequestReader {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
       host,
+      acceptPathAwarePartialData: true,
       document: watchedPullRequestsQuery(input.refs.length),
       // A string variable keeps a numeric-looking owner or name a GraphQL String.
       variables: input.refs.flatMap((ref, index) => [
@@ -346,13 +351,30 @@ export class GitHubPullRequestReader {
             }),
           ),
         }),
+        errors: v.optional(v.array(watchedPullRequestErrorSchema)),
       }),
       response.value,
     );
     if (!parsed.success) return invalid("get_watched_prs");
     this.recordRateLimit(host, parsed.output.data.rateLimit);
+    const errors = parsed.output.errors ?? [];
+    const errorAliases = errors.flatMap((error) => {
+      const alias = v.safeParse(v.string(), error.path?.[0]);
+      if (!alias.success) return [];
+      const match = /^pr(\d+)$/.exec(alias.output);
+      return match !== null && Number(match[1]) < input.refs.length
+        ? [alias.output]
+        : [];
+    });
+    if (errorAliases.length !== errors.length)
+      return invalid("get_watched_prs");
+    const inaccessibleAliases = new Set(errorAliases);
     const reads: WatchedPullRequestRead[] = [];
     for (const [index, ref] of input.refs.entries()) {
+      if (inaccessibleAliases.has(`pr${index}`)) {
+        reads.push({ ref, outcome: "inaccessible" });
+        continue;
+      }
       const aliased = v.safeParse(
         v.looseObject({
           pullRequest: v.nullable(watchedPullRequestNodeSchema),
@@ -362,12 +384,12 @@ export class GitHubPullRequestReader {
       if (!aliased.success) return invalid("get_watched_prs");
       const node = aliased.output.pullRequest;
       if (node === null) {
-        reads.push({ ref, snapshot: undefined });
+        reads.push({ ref, outcome: "absent" });
         continue;
       }
       const snapshot = parseWatchedSnapshot(node);
       if (snapshot === undefined) return invalid("get_watched_prs");
-      reads.push({ ref, snapshot });
+      reads.push({ ref, outcome: "readable", snapshot });
     }
     return ok(reads);
   }

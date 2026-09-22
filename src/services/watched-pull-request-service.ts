@@ -44,7 +44,11 @@ export type WatchedPullRequestFailure =
 /** What one poll of a profile did, for the scheduler's log line. */
 export type WatchedPullRequestPoll =
   | { readonly _tag: "idle" }
-  | { readonly _tag: "polled"; readonly notified: number }
+  | {
+      readonly _tag: "polled";
+      readonly notified: number;
+      readonly inaccessible: number;
+    }
   | {
       readonly _tag: "failed";
       readonly reason: GitHubReadFailure["_tag"] | StorageFailure["reason"];
@@ -113,9 +117,15 @@ export class WatchedPullRequestService {
         _tag: "WatchedPullRequestReadFailed",
         reason: read.error._tag,
       });
-    const snapshot = read.value[0]?.snapshot;
-    if (snapshot === undefined)
+    const baseline = read.value[0];
+    if (baseline === undefined || baseline.outcome === "absent")
       return err({ _tag: "WatchedPullRequestNotFound" });
+    if (baseline.outcome === "inaccessible")
+      return err({
+        _tag: "WatchedPullRequestReadFailed",
+        reason: "GitHubReadFailed",
+      });
+    const snapshot = baseline.snapshot;
     if (snapshot.state !== "open")
       return err({ _tag: "WatchedPullRequestTerminal", state: snapshot.state });
     return this.locks.run(profileId, async () => {
@@ -158,15 +168,23 @@ export class WatchedPullRequestService {
         return { _tag: "failed", reason: current.error.reason };
       const next: WatchedPullRequest[] = [];
       const events: DesktopNotificationEvent[] = [];
+      let inaccessible = 0;
       for (const watched of current.value) {
-        const snapshot = read.value.find((entry) =>
+        const outcome = read.value.find((entry) =>
           sameWatchedPullRequest(entry.ref, watched.ref),
-        )?.snapshot;
-        // A pull request watched after the read, or one GitHub no longer resolves, keeps its baseline.
-        if (snapshot === undefined) {
+        );
+        // A pull request watched after the read, one GitHub no longer resolves,
+        // or one inaccessible alias keeps its baseline.
+        if (outcome === undefined || outcome.outcome === "absent") {
           next.push(watched);
           continue;
         }
+        if (outcome.outcome === "inaccessible") {
+          inaccessible += 1;
+          next.push(watched);
+          continue;
+        }
+        const snapshot = outcome.snapshot;
         const changes = diffWatchedSnapshot(watched.snapshot, snapshot);
         const reviewId = createReviewId({
           profileId: profile.id,
@@ -190,7 +208,7 @@ export class WatchedPullRequestService {
       for (const event of events)
         postDesktopNotification(this.dependencies.notifier, event);
       if (events.length > 0) this.dependencies.onChange?.(profile.id);
-      return { _tag: "polled", notified: events.length };
+      return { _tag: "polled", notified: events.length, inaccessible };
     });
   }
 

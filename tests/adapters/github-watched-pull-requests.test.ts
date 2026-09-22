@@ -89,6 +89,7 @@ describe("GitHub watched pull request reader", () => {
       value: [
         {
           ref: ref(7),
+          outcome: "readable",
           snapshot: {
             updatedAt: "2026-09-17T09:00:00.000Z",
             headSha: "a".repeat(40),
@@ -97,7 +98,7 @@ describe("GitHub watched pull request reader", () => {
             state: "merged",
           },
         },
-        { ref: ref(8), snapshot: undefined },
+        { ref: ref(8), outcome: "absent" },
       ],
     });
     expect(transport.requests).toHaveLength(1);
@@ -113,6 +114,54 @@ describe("GitHub watched pull request reader", () => {
       name: "number1",
       value: 8,
     });
+  });
+
+  it("settles readable, absent, and inaccessible aliases independently", async () => {
+    const transport = orderedTransport([
+      jsonAnswer({
+        data: {
+          rateLimit: { remaining: 3999, resetAt: "2026-09-17T11:00:00Z" },
+          pr0: {
+            pullRequest: {
+              state: "OPEN",
+              updatedAt: "2026-09-17T09:00:00Z",
+              headRefOid: "b".repeat(40),
+              reviewDecision: null,
+              commits: { nodes: [] },
+            },
+          },
+          pr1: { pullRequest: null },
+          pr2: null,
+        },
+        errors: [
+          {
+            type: "NOT_FOUND",
+            path: ["pr2", "pullRequest"],
+            message: "Could not resolve to a Repository",
+          },
+        ],
+      }),
+    ]);
+
+    await expect(
+      new GitHubAdapter(
+        noChildProcesses(),
+        new StubCredentials(),
+        transport,
+      ).readWatchedPullRequests({
+        profile,
+        refs: [ref(7), ref(8), ref(9)],
+        now,
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: [
+        { ref: ref(7), outcome: "readable" },
+        { ref: ref(8), outcome: "absent" },
+        { ref: ref(9), outcome: "inaccessible" },
+      ],
+    });
+    expect(transport.requests).toHaveLength(1);
   });
 
   it("answers rate limited without a call while the host's spent limit has not reset", async () => {

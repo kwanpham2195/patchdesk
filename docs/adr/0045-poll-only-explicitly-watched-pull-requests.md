@@ -43,6 +43,13 @@ aliased GraphQL query over all of them: twenty aliases cost one rate-limit
 point and twenty nodes (checked live on 2026-09-17). A 21st watch is refused
 with `WatchLimitReached` before GitHub is asked.
 
+GitHub may answer that call with readable data beside path-aware errors for
+individual aliases. Patchdesk settles each alias independently: readable
+snapshots advance and notify, a resolved absence keeps its baseline, and an
+inaccessible alias keeps its baseline while the poll records only the count.
+The transport exposes partial data only for this opted-in read; every other
+GraphQL caller retains the whole-response failure contract.
+
 **When it runs.** Once at start, then every 1, 3, 5, or 10 minutes from
 Settings → General → Notifications, default 3. The interval is read at start,
 so a change applies at the next launch. A tick is skipped while notifications
@@ -72,9 +79,9 @@ Patchdesk to do it for that one.
 
 - A watched pull request stays watched when its repository leaves the
   workspace watchlist: the poll reads by pull request reference.
-- A watched pull request GitHub can no longer resolve, such as one in a
-  repository the account lost access to, fails the whole aliased query for
-  that profile until it is unwatched.
+- A watched pull request GitHub cannot read keeps its last baseline while
+  readable watches in the same aliased query continue to advance. Debug logs
+  include the inaccessible count without repository or pull request details.
 - Profiles are read when the local API starts, so a profile created during a
   session is polled from the next launch.
 - The `watched-pull-requests` debug log writes `polled` with the notification
