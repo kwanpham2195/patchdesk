@@ -53,6 +53,32 @@ describe("InsightStore schema", () => {
     });
   });
 
+  it("accepts both existing runtime failures and the new worktree category", () => {
+    const runtimeRecord = {
+      ...currentRecord,
+      replacementFailure: {
+        ...currentRecord.replacementFailure,
+        category: "runtime_unavailable" as const,
+      },
+    };
+    const worktreeRecord = {
+      ...currentRecord,
+      replacementFailure: {
+        ...currentRecord.replacementFailure,
+        category: "review_worktree_unavailable" as const,
+      },
+    };
+
+    expect(parseInsightRecord(runtimeRecord)).toEqual({
+      _tag: "ok",
+      value: runtimeRecord,
+    });
+    expect(parseInsightRecord(worktreeRecord)).toEqual({
+      _tag: "ok",
+      value: worktreeRecord,
+    });
+  });
+
   it("round-trips a Brief record", () => {
     const briefRecord = {
       schemaVersion: 2 as const,

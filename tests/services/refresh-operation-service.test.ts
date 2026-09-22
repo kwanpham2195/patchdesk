@@ -122,12 +122,16 @@ async function harness() {
     },
   };
   const launches: Array<() => Promise<void>> = [];
+  const preparationInputs: Array<{ readonly reprepare?: boolean }> = [];
   let prepareResult: Result<
     PreparedReviewRefresh,
     { readonly reason: "github_read" }
   > = ok(prepared);
   const refresh = {
-    prepareUnlocked: async () => prepareResult,
+    prepareUnlocked: async (input: { readonly reprepare?: boolean }) => {
+      preparationInputs.push(input);
+      return prepareResult;
+    },
     reconcilePendingReviewUnlocked: async () => undefined,
     savePreparedReviewUnlocked: async (value: PreparedReviewRefresh) => {
       const saved = await reviews.save(
@@ -155,6 +159,7 @@ async function harness() {
     service,
     operations,
     launches,
+    preparationInputs,
     saves,
     currentReview: () => currentReview,
     failPreparation: () => {
@@ -167,6 +172,20 @@ async function harness() {
 }
 
 describe("RefreshOperationService", () => {
+  it("forwards explicit re-preparation through the durable refresh worker", async () => {
+    const fixture = await harness();
+    await fixture.service.begin({
+      profileId,
+      reviewId: review.id,
+      reprepare: true,
+    });
+    await fixture.launches[0]?.();
+
+    expect(fixture.preparationInputs).toEqual([
+      expect.objectContaining({ reprepare: true }),
+    ]);
+  });
+
   it("returns Requested before the worker persists Prepared, CAS, and Completed", async () => {
     const fixture = await harness();
 

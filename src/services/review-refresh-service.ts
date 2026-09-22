@@ -1,3 +1,5 @@
+import { definedProps } from "../domain/defined-props";
+
 import type {
   GitHubReadFailure,
   GitHubReader,
@@ -162,6 +164,7 @@ export class ReviewRefreshService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly expectedTerminalState?: "merged";
+    readonly reprepare?: boolean;
   }): Promise<Result<PreparedReviewRefresh, ReviewRefreshFailure>> {
     const loaded = await this.loadReview(input.profileId, input.reviewId);
     if (loaded._tag === "err") return loaded;
@@ -347,14 +350,22 @@ export class ReviewRefreshService {
     }
     let sessionId = review.currentSessionId;
     let selectedSession = currentSession.value;
-    if (!sameReviewRevision(currentSession.value.key, currentRevision)) {
+    if (
+      input.reprepare === true ||
+      !sameReviewRevision(currentSession.value.key, currentRevision)
+    ) {
       const prepared = await this.dependencies.preparation.prepare(
         input.expectedTerminalState === undefined
-          ? { profileId: input.profileId, pullRequest }
+          ? {
+              profileId: input.profileId,
+              pullRequest,
+              ...definedProps({ replaceExistingSession: input.reprepare }),
+            }
           : {
               profileId: input.profileId,
               pullRequest,
               expectedPullRequestState: "non_open",
+              ...definedProps({ replaceExistingSession: input.reprepare }),
             },
       );
       if (prepared._tag === "err")

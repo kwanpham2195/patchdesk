@@ -67,6 +67,7 @@ const failureFields = {
       "authentication_required",
       "rate_limited",
       "runtime_unavailable",
+      "review_worktree_unavailable",
       "timed_out",
       "execution_failed",
       "invalid_result",

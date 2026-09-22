@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import {
   createFetchedDiffRefs,
   type GitHubReader,
@@ -51,6 +53,8 @@ export type PrepareReviewSessionInput = {
   readonly pullRequest: PullRequestRef;
   /** Terminal-only opening rechecks that every revision read remains non-open. */
   readonly expectedPullRequestState?: "non_open";
+  /** Rebuild this revision's local worktree and patch instead of resuming it. */
+  readonly replaceExistingSession?: boolean;
 };
 
 export type PreparedReviewSession = {
@@ -161,9 +165,16 @@ export class ReviewSessionPreparation {
       input.profileId,
       sessionId,
     );
-    if (stored._tag === "ok")
+    if (stored._tag === "ok" && input.replaceExistingSession !== true)
       return ok({ session: stored.value, disposition: "resumed" });
-    if (stored.error.reason !== "not_found") {
+    const previousPatch =
+      stored._tag === "ok" && input.replaceExistingSession === true
+        ? await readFile(
+            this.dependencies.paths.patchFile(input.profileId, sessionId),
+            "utf8",
+          ).catch(() => undefined)
+        : undefined;
+    if (stored._tag === "err" && stored.error.reason !== "not_found") {
       if (stored.error.reason !== "invalid_stored_value")
         return err({ _tag: "SessionStorageUnavailable" });
       const quarantined = await this.dependencies.artifacts.quarantine(
@@ -179,12 +190,11 @@ export class ReviewSessionPreparation {
       sessionId,
     );
     if (started._tag === "ok")
-      return await this.commit(
+      return await this.restorePatchOnReplacementFailure(
+        await this.commit(input, profile, revision, sessionId, started.value),
         input,
-        profile,
-        revision,
         sessionId,
-        started.value,
+        previousPatch,
       );
     if (started.error.reason !== "journal_exists")
       return err({ _tag: "SessionStorageUnavailable" });
@@ -214,13 +224,33 @@ export class ReviewSessionPreparation {
     );
     if (retried._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
-    return await this.commit(
+    return await this.restorePatchOnReplacementFailure(
+      await this.commit(input, profile, revision, sessionId, retried.value),
       input,
-      profile,
-      revision,
       sessionId,
-      retried.value,
+      previousPatch,
     );
+  }
+
+  private async restorePatchOnReplacementFailure(
+    result: Result<PreparedReviewSession, PrepareReviewSessionFailure>,
+    input: PrepareReviewSessionInput,
+    sessionId: ReviewSessionId,
+    previousPatch: string | undefined,
+  ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
+    if (
+      result._tag === "ok" ||
+      input.replaceExistingSession !== true ||
+      previousPatch === undefined
+    )
+      return result;
+    const restored = await writeAtomicFile(
+      this.dependencies.paths.patchFile(input.profileId, sessionId),
+      previousPatch,
+    );
+    return restored._tag === "ok"
+      ? result
+      : err({ _tag: "PreparationCleanupUnavailable" });
   }
 
   private async commit(
@@ -269,6 +299,7 @@ export class ReviewSessionPreparation {
       baseSha: revision.baseSha,
       sha: revision.headSha,
       sessionId,
+      ...definedProps({ replaceExisting: input.replaceExistingSession }),
       ...definedProps({ localPath: matchingRepo?.localPath }),
     };
     const prepared =

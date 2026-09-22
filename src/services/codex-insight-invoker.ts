@@ -66,10 +66,10 @@ export class CodexInsightInvoker implements InsightInvoker {
       ownedPath === undefined ||
       candidatePath !== ownedPath
     )
-      return err({ reason: "runtime_unavailable" as const });
+      return err({ reason: "review_worktree_unavailable" as const });
     const head = await this.readHead(candidatePath);
     if (head === undefined || head !== input.expectedHeadSha)
-      return err({ reason: "runtime_unavailable" as const });
+      return err({ reason: "review_worktree_unavailable" as const });
     const ownedArtifacts = [
       [
         input.contextPath,
@@ -95,7 +95,7 @@ export class CodexInsightInvoker implements InsightInvoker {
       }),
     );
     if (resolvedArtifacts.some((path) => path === undefined))
-      return err({ reason: "runtime_unavailable" as const });
+      return err({ reason: "review_worktree_unavailable" as const });
     const policy =
       "Read only the represented review revision. Patchdesk validates the result and owns all publication decisions.";
     // SAFETY: candidatePath is realpath-checked against this session's app-owned worktree and its immutable expected head above.
@@ -104,7 +104,7 @@ export class CodexInsightInvoker implements InsightInvoker {
       const contextPath = resolvedArtifacts[0];
       const patchPath = resolvedArtifacts[2];
       if (contextPath === undefined || patchPath === undefined)
-        return err({ reason: "runtime_unavailable" as const });
+        return err({ reason: "review_worktree_unavailable" as const });
       const walkthroughPrompt = await prepareWalkthroughPrompt({
         contextPath,
         patchPath,
@@ -141,7 +141,7 @@ export class CodexInsightInvoker implements InsightInvoker {
     if (input.type === "brief") {
       const briefPatchPath = resolvedArtifacts[2];
       if (briefPatchPath === undefined)
-        return err({ reason: "runtime_unavailable" as const });
+        return err({ reason: "review_worktree_unavailable" as const });
       const briefPrompt = await prepareBriefPrompt({
         patchPath: briefPatchPath,
       });
@@ -177,7 +177,7 @@ export class CodexInsightInvoker implements InsightInvoker {
       reviewInputPath === undefined ||
       patchPath === undefined
     )
-      return err({ reason: "runtime_unavailable" as const });
+      return err({ reason: "review_worktree_unavailable" as const });
     const [context, reviewInput, fullPatch] = await Promise.all([
       readFile(contextPath, "utf8").catch(() => undefined),
       readFile(reviewInputPath, "utf8").catch(() => undefined),
@@ -188,7 +188,7 @@ export class CodexInsightInvoker implements InsightInvoker {
       reviewInput === undefined ||
       fullPatch === undefined
     )
-      return err({ reason: "runtime_unavailable" as const });
+      return err({ reason: "review_worktree_unavailable" as const });
     const analysisPrompt = composeReviewPrompt({
       reviewInput,
       context,
@@ -234,7 +234,7 @@ function promptPreparationFailure(
     case "artifact_unreadable":
     case "patch_unreadable":
       return {
-        reason: "runtime_unavailable",
+        reason: "review_worktree_unavailable",
         phase: "prompt_artifact_unreadable",
       } as const;
     case "patch_not_indexable":

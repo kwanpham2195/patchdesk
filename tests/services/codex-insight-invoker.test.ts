@@ -140,7 +140,7 @@ describe("CodexInsightInvoker", () => {
       ),
     ).resolves.toEqual({
       _tag: "err",
-      error: { reason: "runtime_unavailable" },
+      error: { reason: "review_worktree_unavailable" },
     });
     // SAFETY: same as above.
     await expect(
@@ -150,7 +150,7 @@ describe("CodexInsightInvoker", () => {
       ),
     ).resolves.toEqual({
       _tag: "err",
-      error: { reason: "runtime_unavailable" },
+      error: { reason: "review_worktree_unavailable" },
     });
     // SAFETY: same as above.
     await expect(
@@ -160,7 +160,7 @@ describe("CodexInsightInvoker", () => {
       ),
     ).resolves.toEqual({
       _tag: "err",
-      error: { reason: "runtime_unavailable" },
+      error: { reason: "review_worktree_unavailable" },
     });
     // SAFETY: same as above.
     await expect(
@@ -170,6 +170,33 @@ describe("CodexInsightInvoker", () => {
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
     expect(value.calls).toHaveLength(0);
+  });
+
+  it("separates a missing or mismatched represented worktree from runtime availability", async () => {
+    const missing = await fixture();
+    await rm(missing.worktree, { recursive: true, force: true });
+    await expect(
+      missing.invoker.invoke(missing.input, {
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "review_worktree_unavailable" },
+    });
+
+    const mismatched = await fixture();
+    await expect(
+      mismatched.invoker.invoke(
+        {
+          ...(mismatched.input as object),
+          expectedHeadSha: "b".repeat(40),
+        } as never,
+        { signal: new AbortController().signal },
+      ),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "review_worktree_unavailable" },
+    });
   });
 
   it("builds a walkthrough prompt with the HUNK ALIAS MANIFEST and patch, and returns the run result unchanged", async () => {

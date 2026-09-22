@@ -1,3 +1,5 @@
+import { definedProps } from "../domain/defined-props";
+
 import type { GitSha } from "../domain/ids";
 
 import type { InsightActivitySink } from "../adapters/codex/codex-activity";
@@ -105,6 +107,7 @@ export type InsightRunResponse = {
     | "failed"
     | "invalid_result"
     | "superseded";
+  readonly failureCategory?: InsightFailureCategory;
   /** Present while this process holds the run's activity trace; a Pi run has none. */
   readonly activity?: InsightActivitySnapshot | undefined;
 };
@@ -617,6 +620,9 @@ export class InsightRunCoordinator {
             ? "cancelled"
             : "failed",
         failureReason: record.value.replacementFailure.reason,
+        ...definedProps({
+          failureCategory: record.value.replacementFailure.category,
+        }),
       });
     return err("not_active");
   }

@@ -890,6 +890,18 @@ const insightRunResponseSchema = v.strictObject({
   failureReason: v.optional(
     v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
   ),
+  failureCategory: v.optional(
+    v.picklist([
+      "authentication_required",
+      "rate_limited",
+      "runtime_unavailable",
+      "review_worktree_unavailable",
+      "timed_out",
+      "execution_failed",
+      "invalid_result",
+      "unexpected_failure",
+    ]),
+  ),
   activity: v.optional(insightRunActivitySchema),
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;

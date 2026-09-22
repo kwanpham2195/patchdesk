@@ -608,7 +608,11 @@ describe("InsightRunCoordinator current lifecycle", () => {
     if (started._tag === "err") throw new Error("expected run");
     expect(
       await settled(value.coordinator, value.review.id, started.value.runId),
-    ).toMatchObject({ status: "failed", failureReason: "invalid_result" });
+    ).toMatchObject({
+      status: "failed",
+      failureReason: "invalid_result",
+      failureCategory: "invalid_result",
+    });
     expect(
       await value.insights.load(profileId, value.review.id, "analysis"),
     ).toMatchObject({

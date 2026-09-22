@@ -254,6 +254,7 @@ function mapCodexFailure(
       return "cancelled";
     case "execution_failed":
     case "runtime_unavailable":
+    case "review_worktree_unavailable":
     case "unexpected_failure":
       return "runtime_unavailable";
     default:

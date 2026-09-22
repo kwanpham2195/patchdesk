@@ -70,6 +70,7 @@ export class RefreshOperationService {
   async begin(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
+    readonly reprepare?: boolean;
   }): Promise<Result<RefreshOperationStatus, RefreshOperationFailure>> {
     const accepted = await this.dependencies.coordinator.withReviewLock(
       input.profileId,
@@ -117,7 +118,7 @@ export class RefreshOperationService {
       this.dependencies.coordinator.withReviewLock(
         input.profileId,
         input.reviewId,
-        () => this.executeUnlocked(operation),
+        () => this.executeUnlocked(operation, input.reprepare === true),
       );
     const launch = this.dependencies.launch ?? ((work) => void work());
     launch(async () => {
@@ -219,10 +220,14 @@ export class RefreshOperationService {
     return ok(undefined);
   }
 
-  private async executeUnlocked(operation: RefreshOperation): Promise<void> {
+  private async executeUnlocked(
+    operation: RefreshOperation,
+    reprepare: boolean,
+  ): Promise<void> {
     const prepared = await this.dependencies.refresh.prepareUnlocked({
       profileId: operation.profileId,
       reviewId: operation.reviewId,
+      reprepare,
     });
     if (prepared._tag === "err") {
       await this.saveTerminal(operation, failureState(prepared.error));

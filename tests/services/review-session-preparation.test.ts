@@ -549,6 +549,36 @@ describe("ReviewSessionPreparation", () => {
     expect(fixture.reader.counts.diffs).toBe(1);
   });
 
+  it("explicitly re-prepares a missing represented worktree for the same revision", async () => {
+    const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
+    roots.push(localRepo);
+    const fixture = await setup({ localPath: localRepo });
+    const first = await fixture.preparation.prepare({ profileId, pullRequest });
+    expect(first._tag).toBe("ok");
+    if (first._tag === "err") return;
+    await rm(first.value.session.worktree.path, {
+      recursive: true,
+      force: true,
+    });
+
+    const repaired = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+      replaceExistingSession: true,
+    });
+
+    expect(repaired).toMatchObject({
+      _tag: "ok",
+      value: { disposition: "prepared" },
+    });
+    if (repaired._tag === "err") return;
+    expect(repaired.value.session.id).toBe(first.value.session.id);
+    await expect(
+      access(repaired.value.session.worktree.path),
+    ).resolves.toBeUndefined();
+    expect(fixture.reader.counts.diffs).toBe(4);
+  });
+
   it("posts preparation finished once for a prepared session and not for a resumed one", async () => {
     const fixture = await setup();
 

@@ -80,6 +80,8 @@ type WorktreeInput = {
   readonly baseSha: GitSha;
   readonly sha: GitSha;
   readonly sessionId: ReviewSessionId;
+  /** Recreate a verified app-owned worktree even when its marker still matches. */
+  readonly replaceExisting?: boolean;
   readonly localPath?: string;
 };
 
@@ -159,11 +161,22 @@ export class ReviewWorktreeService {
       });
     }
     const path = this.paths.worktreeDirectory(input.profileId, input.sessionId);
-    const existing = await this.matchesMetadata(
+    let existing = await this.matchesMetadata(
       path,
       input.profileId,
       input.sessionId,
     );
+    if (existing && input.replaceExisting === true) {
+      const removed = await this.cleanup({
+        profileId: input.profileId,
+        sessionId: input.sessionId,
+        targetPath: path,
+        localPath: input.localPath,
+      });
+      if (removed._tag === "err")
+        return err({ _tag: "WorktreeStorageUnavailable" });
+      existing = false;
+    }
     if (!existing) {
       try {
         await mkdir(dirname(path), { recursive: true });
