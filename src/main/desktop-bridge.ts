@@ -106,6 +106,8 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/diff-file",
   "POST /v1/reviews/markdown-image",
   "POST /v1/reviews/refresh",
+  "POST /v1/reviews/refresh/status",
+  "POST /v1/reviews/refresh/acknowledge",
   "POST /v1/reviews/commit-diff",
   "POST /v1/reviews/merge",
   "POST /v1/reviews/merge/recover",

@@ -228,8 +228,15 @@ export function ReviewWorkbenchFlow({
       )}
       {refreshError ? (
         <InlineError className="border-t px-4 py-2">
-          GitHub state could not be refreshed. The represented Review remains
-          readable.
+          {refreshError === "interrupted"
+            ? "The refresh was interrupted before Patchdesk could adopt it. The represented Review remains readable; retry when ready."
+            : refreshError === "github_auth"
+              ? "GitHub authentication expired during refresh. Sign in again, then retry. The represented Review remains readable."
+              : refreshError === "head_changed"
+                ? "The pull request changed while Patchdesk prepared the refresh. Retry to read the latest revision."
+                : refreshError === "terminal"
+                  ? "The pull request closed or merged during refresh. Reload it from the repository list."
+                  : "GitHub state could not be refreshed. The represented Review remains readable; retry when ready."}
         </InlineError>
       ) : null}
     </>

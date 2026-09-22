@@ -22,6 +22,8 @@ const WORKBENCH_PATHS = [
   "/v1/insight-providers/codex/models",
   "/v1/reviews/load",
   "/v1/reviews/refresh",
+  "/v1/reviews/refresh/status",
+  "/v1/reviews/refresh/acknowledge",
   "/v1/reviews/detect-updates",
   "/v1/reviews/diff-file",
   "/v1/reviews/commit-diff",

@@ -11,6 +11,7 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
+import { useDurableRefreshResume } from "../hooks/use-durable-refresh-resume";
 import { reconciledProjection } from "./review-observation-projection";
 
 export type ReviewWorkbenchPatch = Omit<
@@ -36,7 +37,15 @@ export type ReviewObservationInput = {
 
 export type ReviewObservationResult = {
   readonly refreshing: boolean;
-  readonly refreshError: boolean;
+  readonly refreshError:
+    | "github_read"
+    | "github_auth"
+    | "not_found"
+    | "storage"
+    | "head_changed"
+    | "terminal"
+    | "interrupted"
+    | undefined;
   readonly runDetect: () => Promise<void>;
   readonly refresh: () => Promise<void>;
   /** Adopts the pull request's current revision; rejects when the refresh fails. */
@@ -51,6 +60,7 @@ export type ReviewObservationResult = {
 
 const DETECT_INTERVAL_MS = 90_000;
 const FOCUS_DETECT_DEBOUNCE_MS = 1_500;
+const REFRESH_BEGINNING = "beginning";
 
 /** Owns detector scheduling, refresh replacement, and the recent-write journal. */
 export function useReviewObservation({
@@ -58,8 +68,14 @@ export function useReviewObservation({
   onWorkbenchReplace,
   onWorkbenchPatch,
 }: ReviewObservationInput): ReviewObservationResult {
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshError, setRefreshError] = useState(false);
+  const [refreshActivity, setRefreshActivity] = useState(() =>
+    loadRefreshOperationId(refreshOperationKey(workbench)) === undefined
+      ? 0
+      : 1,
+  );
+  const refreshing = refreshActivity > 0;
+  const [refreshError, setRefreshError] =
+    useState<ReviewObservationResult["refreshError"]>(undefined);
   const [recentWrites, setRecentWrites] = useState<
     ReadonlyArray<RecentReviewWrite>
   >([]);
@@ -81,6 +97,8 @@ export function useReviewObservation({
   const [initialSnapshotKey] = useState(() => snapshotKey(workbench));
   const snapshotKeyRef = useRef(initialSnapshotKey);
   const generationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const mountEpochRef = useRef(0);
   const detectInFlightRef = useRef(false);
   const detectCompletionRef = useRef<Promise<void> | undefined>(undefined);
   const commandInFlightCountRef = useRef(0);
@@ -102,11 +120,14 @@ export function useReviewObservation({
   );
 
   useEffect(() => {
+    mountEpochRef.current += 1;
+    mountedRef.current = true;
+    const mountEpoch = mountEpochRef.current;
     return () => {
+      if (mountEpochRef.current === mountEpoch) mountedRef.current = false;
       generationRef.current += 1;
     };
   }, []);
-
   useEffect(() => {
     const key = snapshotKey(workbench);
     if (key !== snapshotKeyRef.current) {
@@ -253,40 +274,157 @@ export function useReviewObservation({
     };
   }, [runDetect, workbench.review.status]);
 
-  const requestRefresh = useCallback(async (): Promise<WorkbenchResponse> => {
-    const wb = workbenchRef.current;
-    generationRef.current += 1;
-    refreshInFlightCountRef.current += 1;
-    try {
-      const value = await requestJson("/v1/reviews/refresh", {
-        method: "POST",
-        body: {
-          profileId: wb.session.key.profileId,
-          reviewId: wb.review.id,
-        },
-      });
-      const parsed = parseWorkbenchResponse(value);
-      if (parsed === undefined)
-        throw new Error("Invalid Review refresh response");
-      setDetectedStaleFreshness(undefined);
-      replaceWorkbench(parsed);
-      return parsed;
-    } finally {
-      refreshInFlightCountRef.current -= 1;
-    }
-  }, [replaceWorkbench, workbenchRef]);
+  const runRefreshOperation = useCallback(
+    async (operationId?: string): Promise<WorkbenchResponse> => {
+      const wb = workbenchRef.current;
+      generationRef.current += 1;
+      const generation = generationRef.current;
+      refreshInFlightCountRef.current += 1;
+      try {
+        const operationKey = refreshOperationKey(wb);
+        let activeOperationId = operationId;
+        if (activeOperationId === undefined) {
+          saveRefreshOperationId(operationKey, REFRESH_BEGINNING);
+          const begun = parseRefreshOperationStatus(
+            await requestJson("/v1/reviews/refresh", {
+              method: "POST",
+              body: {
+                profileId: wb.session.key.profileId,
+                reviewId: wb.review.id,
+              },
+            }),
+          );
+          if (begun === undefined) throw new RefreshOperationError("storage");
+          activeOperationId = begun.operationId;
+          saveRefreshOperationId(operationKey, activeOperationId);
+        }
+        let status: RefreshOperationStatus | undefined;
+        while (
+          generationRef.current === generation &&
+          snapshotKey(workbenchRef.current) === snapshotKey(wb)
+        ) {
+          status = parseRefreshOperationStatus(
+            await requestJson("/v1/reviews/refresh/status", {
+              method: "POST",
+              body: {
+                profileId: wb.session.key.profileId,
+                reviewId: wb.review.id,
+                operationId: activeOperationId,
+              },
+            }),
+          );
+          if (status === undefined) throw new RefreshOperationError("storage");
+          if (
+            generationRef.current !== generation ||
+            snapshotKey(workbenchRef.current) !== snapshotKey(wb)
+          )
+            throw new RefreshOperationError("interrupted");
+          if (status.state !== "requested" && status.state !== "prepared")
+            break;
+          await refreshPollDelay();
+        }
+        if (generationRef.current !== generation)
+          throw new RefreshOperationError("interrupted");
+        if (status === undefined) throw new RefreshOperationError("storage");
+        if (status.state === "failed" || status.state === "interrupted") {
+          clearRefreshOperationId(operationKey);
+          try {
+            await acknowledgeRefreshOperation(wb, activeOperationId);
+          } catch {
+            // Terminal state is already known; acknowledgment is cleanup and cannot change it.
+          }
+          throw new RefreshOperationError(
+            status.state === "interrupted"
+              ? "interrupted"
+              : (status.reason ?? "storage"),
+          );
+        }
+        if (status.state !== "completed")
+          throw new RefreshOperationError("interrupted");
+        const value = await requestJson("/v1/reviews/load", {
+          method: "POST",
+          body: {
+            profileId: wb.session.key.profileId,
+            reviewId: wb.review.id,
+          },
+        });
+        const parsed = parseWorkbenchResponse(value);
+        if (parsed === undefined)
+          throw new Error("Invalid Review refresh response");
+        clearRefreshOperationId(operationKey);
+        if (generationRef.current === generation) {
+          setDetectedStaleFreshness(undefined);
+          replaceWorkbench(parsed);
+        }
+        try {
+          await acknowledgeRefreshOperation(wb, activeOperationId);
+        } catch {
+          // The exact saved Review is already loaded; acknowledgment is best-effort cleanup.
+        }
+        return parsed;
+      } finally {
+        refreshInFlightCountRef.current -= 1;
+      }
+    },
+    [replaceWorkbench, workbenchRef],
+  );
+
+  const requestRefresh = useCallback(
+    (): Promise<WorkbenchResponse> => runRefreshOperation(),
+    [runRefreshOperation],
+  );
+
+  const currentRefreshOperationKey = refreshOperationKey(workbench);
+  const resumeRefreshOperation = useCallback(
+    async (operationKey: string, mountEpoch: number): Promise<void> => {
+      let operationId = loadRefreshOperationId(operationKey);
+      if (operationId === undefined) return;
+      await waitForRefreshSlot(
+        () => mountEpochRef.current === mountEpoch,
+        () => refreshInFlightCountRef.current > 0,
+      );
+      if (mountEpochRef.current !== mountEpoch) return;
+      operationId = loadRefreshOperationId(operationKey);
+      if (operationId === undefined) return;
+      setRefreshError(undefined);
+      setRefreshActivity((current) => Math.max(1, current));
+      try {
+        await runRefreshOperation(
+          operationId === REFRESH_BEGINNING ? undefined : operationId,
+        );
+      } catch (cause: unknown) {
+        if (mountEpochRef.current === mountEpoch)
+          setRefreshError(refreshFailureReason(cause));
+      } finally {
+        if (mountEpochRef.current === mountEpoch)
+          setRefreshActivity((current) => Math.max(0, current - 1));
+      }
+    },
+    [runRefreshOperation],
+  );
+  useDurableRefreshResume(
+    currentRefreshOperationKey,
+    mountEpochRef,
+    resumeRefreshOperation,
+  );
 
   const refresh = useCallback(async (): Promise<void> => {
     const wb = workbenchRef.current;
-    if (wb.review.status !== "open" || refreshingRef.current) return;
-    setRefreshing(true);
-    setRefreshError(false);
+    if (
+      wb.review.status !== "open" ||
+      refreshingRef.current ||
+      refreshInFlightCountRef.current > 0
+    )
+      return;
+    setRefreshActivity((current) => current + 1);
+    setRefreshError(undefined);
     try {
       await requestRefresh();
-    } catch {
-      setRefreshError(true);
+    } catch (cause: unknown) {
+      if (mountedRef.current) setRefreshError(refreshFailureReason(cause));
     } finally {
-      setRefreshing(false);
+      if (mountedRef.current)
+        setRefreshActivity((current) => Math.max(0, current - 1));
     }
   }, [refreshingRef, requestRefresh, workbenchRef]);
 
@@ -410,4 +548,123 @@ function isReviewObservation(
 
 function snapshotKey(workbench: WorkbenchResponse): string {
   return `${workbench.review.id}:${workbench.session.id}:${workbench.revision.reviewedHeadSha}:${workbench.revision.refreshedAt}`;
+}
+
+type RefreshFailureReason = NonNullable<
+  ReviewObservationResult["refreshError"]
+>;
+
+type RefreshOperationStatus = {
+  readonly operationId: string;
+  readonly state:
+    | "requested"
+    | "prepared"
+    | "completed"
+    | "interrupted"
+    | "failed";
+  readonly reason?: Exclude<RefreshFailureReason, "interrupted">;
+};
+
+class RefreshOperationError extends Error {
+  constructor(readonly reason: RefreshFailureReason) {
+    super(reason);
+  }
+}
+
+const refreshOperationStatusSchema = v.strictObject({
+  operationId: v.pipe(v.string(), v.minLength(1)),
+  state: v.picklist([
+    "requested",
+    "prepared",
+    "completed",
+    "interrupted",
+    "failed",
+  ]),
+  reason: v.optional(
+    v.picklist([
+      "github_read",
+      "github_auth",
+      "not_found",
+      "storage",
+      "head_changed",
+      "terminal",
+    ]),
+  ),
+});
+
+function parseRefreshOperationStatus(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the renderer's local-API response parser boundary.
+  value: unknown,
+): RefreshOperationStatus | undefined {
+  const parsed = v.safeParse(refreshOperationStatusSchema, value);
+  if (!parsed.success) return undefined;
+  return parsed.output.reason === undefined
+    ? {
+        operationId: parsed.output.operationId,
+        state: parsed.output.state,
+      }
+    : {
+        operationId: parsed.output.operationId,
+        state: parsed.output.state,
+        reason: parsed.output.reason,
+      };
+}
+
+function refreshOperationKey(workbench: WorkbenchResponse): string {
+  return `patchdesk:refresh:${workbench.session.key.profileId}:${workbench.review.id}`;
+}
+
+function loadRefreshOperationId(key: string): string | undefined {
+  try {
+    return window.localStorage.getItem(key) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveRefreshOperationId(key: string, operationId: string): void {
+  try {
+    window.localStorage.setItem(key, operationId);
+  } catch {
+    // The in-memory owner keeps polling when persistent browser storage is unavailable.
+  }
+}
+
+function clearRefreshOperationId(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // A stale key is harmless: the next load receives operation_expired.
+  }
+}
+
+function refreshPollDelay(): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, 500));
+}
+
+async function waitForRefreshSlot(
+  ownsMount: () => boolean,
+  isBusy: () => boolean,
+): Promise<void> {
+  if (!ownsMount() || !isBusy()) return;
+  await refreshPollDelay();
+  return waitForRefreshSlot(ownsMount, isBusy);
+}
+
+async function acknowledgeRefreshOperation(
+  workbench: WorkbenchResponse,
+  operationId: string,
+): Promise<void> {
+  await requestJson("/v1/reviews/refresh/acknowledge", {
+    method: "POST",
+    body: {
+      profileId: workbench.session.key.profileId,
+      reviewId: workbench.review.id,
+      operationId,
+    },
+  });
+}
+
+function refreshFailureReason(cause: unknown): RefreshFailureReason {
+  return cause instanceof RefreshOperationError ? cause.reason : "storage";
 }

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as v from "valibot";
 
 import { FakeGitHubAdapter } from "../src/adapters/github/github-adapter";
 import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
@@ -241,7 +242,41 @@ describe("local API avatar fetcher configuration seam", () => {
         reviewId: seeded.reviewId,
       }),
     });
-    expect(refreshed.status).toBeLessThan(400);
+    expect(refreshed.status).toBe(202);
+    const begun = v.parse(
+      v.strictObject({
+        operationId: v.pipe(v.string(), v.minLength(1)),
+        state: v.string(),
+      }),
+      await refreshed.json(),
+    );
+    let completed = false;
+    for (let attempt = 0; attempt < 50 && !completed; attempt += 1) {
+      const status = await fetch(
+        new URL("v1/reviews/refresh/status", server.url),
+        {
+          method: "POST",
+          headers: {
+            Origin: origin,
+            "X-Patchdesk-Capability": capability,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            profileId: "acme",
+            reviewId: seeded.reviewId,
+            operationId: begun.operationId,
+          }),
+        },
+      );
+      const body = v.safeParse(
+        v.strictObject({ operationId: v.string(), state: v.string() }),
+        await status.json(),
+      );
+      completed = body.success && body.output.state === "completed";
+      if (!completed)
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 10));
+    }
+    expect(completed).toBe(true);
 
     expect(stubFetchAvatar).toHaveBeenCalledWith(AVATAR_URL);
     expect(fetchAvatarCalls).toEqual([AVATAR_URL]);

@@ -29,6 +29,7 @@ import {
   type PullRequestSummary,
 } from "../domain/github-context";
 import type {
+  ContentHash,
   IsoTimestamp,
   ReviewId,
   ReviewSessionId,
@@ -36,6 +37,7 @@ import type {
 } from "../domain/ids";
 import {
   sameReviewRevision,
+  type ReviewSession,
   type ReviewRevision,
 } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -114,6 +116,20 @@ export type ReviewRefreshDependencies = {
   }) => Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>>;
 };
 
+export type PreparedReviewCommitFailure = {
+  readonly reason: "storage" | "conflict";
+};
+
+export type PreparedReviewRefresh = {
+  readonly expectedUpdatedAt: IsoTimestamp;
+  readonly nextReview: Review;
+  readonly sessionId: ReviewSessionId;
+  readonly snapshotHash: ContentHash;
+  readonly snapshot: ReviewRemoteSnapshot;
+  readonly selectedSession: ReviewSession;
+  readonly refreshedAt: IsoTimestamp;
+};
+
 /** Applies an explicit, durable refresh of a Review from GitHub. */
 export class ReviewRefreshService {
   constructor(private readonly dependencies: ReviewRefreshDependencies) {}
@@ -135,6 +151,18 @@ export class ReviewRefreshService {
     readonly reviewId: ReviewId;
     readonly expectedTerminalState?: "merged";
   }): Promise<Result<unknown, ReviewRefreshFailure>> {
+    const prepared = await this.prepareUnlocked(input);
+    return prepared._tag === "err"
+      ? prepared
+      : this.commitPreparedUnlocked(prepared.value);
+  }
+
+  /** Persists refresh artifacts and computes the exact next Review without changing ReviewStore. The caller must hold the Review coordinator lock. */
+  async prepareUnlocked(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly expectedTerminalState?: "merged";
+  }): Promise<Result<PreparedReviewRefresh, ReviewRefreshFailure>> {
     const loaded = await this.loadReview(input.profileId, input.reviewId);
     if (loaded._tag === "err") return loaded;
     const { review, profile } = loaded.value;
@@ -379,23 +407,37 @@ export class ReviewRefreshService {
               terminalState.value,
               representedRemote.refreshedAt,
             );
-    const savedReview = await this.dependencies.reviews.save(
-      authoritative,
-      review.updatedAt,
-    );
-    if (savedReview._tag === "err") return err({ reason: "storage" });
-    // Best effort: an explicit refresh always fully re-baselines
-    // representedRemote, so the own-write journal has nothing left to
-    // protect. A clear failure must not fail the refresh itself.
-    await this.dependencies.recentWrites.clear(input.profileId, input.reviewId);
+    return ok({
+      expectedUpdatedAt: review.updatedAt,
+      nextReview: authoritative,
+      sessionId,
+      snapshotHash: savedCandidate.value.snapshotHash,
+      snapshot: candidate,
+      selectedSession,
+      refreshedAt: representedRemote.refreshedAt,
+    });
+  }
+
+  /** CAS-saves a previously prepared exact Review and projects it. The caller must hold the Review coordinator lock. */
+  async commitPreparedUnlocked(
+    prepared: PreparedReviewRefresh,
+  ): Promise<Result<unknown, ReviewRefreshFailure>> {
+    const committed = await this.savePreparedReviewUnlocked(prepared);
+    if (committed._tag === "err") return err({ reason: "storage" });
+    const profileId = prepared.nextReview.identity.profileId;
+    const reviewId = prepared.nextReview.id;
     if (this.dependencies.project === undefined)
-      return ok({ review: authoritative, sessionId, snapshot: candidate });
+      return ok({
+        review: prepared.nextReview,
+        sessionId: prepared.sessionId,
+        snapshot: prepared.snapshot,
+      });
     // Explicit refresh reconciles the viewer's pending review; a failed read
     // is unavailable in the projection, never a claim that none exists.
     const reconciled =
       await this.dependencies.pendingReview.reconcileWithinReviewLock({
-        profileId: input.profileId,
-        reviewId: input.reviewId,
+        profileId,
+        reviewId,
       });
     // SAFETY: `{ _tag: "None" }` is a literal, complete member of the
     // PendingReviewState union (no other fields required).
@@ -404,18 +446,50 @@ export class ReviewRefreshService {
       state:
         reconciled._tag === "ok"
           ? reconciled.value.state
-          : (selectedSession.pendingReview ?? noPendingReview),
+          : (prepared.selectedSession.pendingReview ?? noPendingReview),
       unavailable: reconciled._tag !== "ok" || reconciled.value.unavailable,
     };
     const projected = await this.dependencies.project({
-      profileId: input.profileId,
-      sessionId,
-      snapshot: candidate,
-      freshness: authoritative.freshness,
-      refreshedAt: representedRemote.refreshedAt,
+      profileId,
+      sessionId: prepared.sessionId,
+      snapshot: prepared.snapshot,
+      freshness: prepared.nextReview.freshness,
+      refreshedAt: prepared.refreshedAt,
       pendingReview,
     });
     return projected._tag === "ok" ? projected : err({ reason: "storage" });
+  }
+
+  /** Reconciles pending-review state after artifact preparation and before a durable Prepared operation is recorded. */
+  async reconcilePendingReviewUnlocked(
+    prepared: PreparedReviewRefresh,
+  ): Promise<void> {
+    await this.dependencies.pendingReview.reconcileWithinReviewLock({
+      profileId: prepared.nextReview.identity.profileId,
+      reviewId: prepared.nextReview.id,
+    });
+  }
+
+  /** CAS-saves a prepared Review without projecting it, for durable operation execution and recovery. */
+  async savePreparedReviewUnlocked(
+    prepared: PreparedReviewRefresh,
+  ): Promise<Result<void, PreparedReviewCommitFailure>> {
+    const savedReview = await this.dependencies.reviews.save(
+      prepared.nextReview,
+      prepared.expectedUpdatedAt,
+    );
+    if (savedReview._tag === "err")
+      return err({
+        reason:
+          savedReview.error._tag === "ReviewConflict" ? "conflict" : "storage",
+      });
+    const profileId = prepared.nextReview.identity.profileId;
+    const reviewId = prepared.nextReview.id;
+    // Best effort: an explicit refresh always fully re-baselines
+    // representedRemote, so the own-write journal has nothing left to
+    // protect. A clear failure must not fail the refresh itself.
+    await this.dependencies.recentWrites.clear(profileId, reviewId);
+    return ok(undefined);
   }
 
   /** The published feedback read, handed the branch protection this cycle already started. */

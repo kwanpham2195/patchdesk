@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
@@ -22,6 +23,9 @@ import { projection } from "./review-workbench-fixtures";
 
 const DETECT = "/v1/reviews/detect-updates";
 const REFRESH = "/v1/reviews/refresh";
+const REFRESH_STATUS = "/v1/reviews/refresh/status";
+const REFRESH_ACKNOWLEDGE = "/v1/reviews/refresh/acknowledge";
+const LOAD = "/v1/reviews/load";
 const FOCUS_DEBOUNCE_MS = 1_500;
 const DETECT_INTERVAL_MS = 90_000;
 
@@ -45,9 +49,12 @@ function deferred<T>(): Deferred<T> {
 // oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above
 type DetectAnswer = (call: number) => Promise<unknown> | unknown;
 
-/** Answers the one refresh call a case scripts. See `DetectAnswer`. */
-// oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above
-type RefreshAnswer = () => Promise<unknown> | unknown;
+type RefreshAnswers = {
+  readonly begin?: () => Promise<RawJsonValue> | RawJsonValue;
+  readonly status?: () => Promise<RawJsonValue> | RawJsonValue;
+  readonly load?: () => Promise<WorkbenchResponse> | WorkbenchResponse;
+  readonly acknowledge?: () => Promise<RawJsonValue> | RawJsonValue;
+};
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -58,6 +65,7 @@ afterEach(() => {
   restore?.();
   restore = undefined;
   vi.useRealTimers();
+  window.localStorage.clear();
 });
 
 /**
@@ -67,9 +75,11 @@ afterEach(() => {
  */
 function installObservationDouble(answers: {
   readonly detect: DetectAnswer;
-  readonly refresh?: RefreshAnswer;
+  readonly refresh?: RefreshAnswers;
 }) {
   const detectBodies: unknown[] = [];
+  const refreshBodies: unknown[] = [];
+  const refreshStatusBodies: unknown[] = [];
   const double = installDesktopDouble({
     [DETECT]: async (input) => {
       detectBodies.push(input.body);
@@ -79,15 +89,46 @@ function installObservationDouble(answers: {
         (await answers.detect(detectBodies.length)) as RawJsonValue,
       );
     },
-    [REFRESH]: async () => {
+    [REFRESH]: async (input) => {
+      refreshBodies.push(input.body);
       if (answers.refresh === undefined)
         throw new Error("this case scripted no refresh answer");
-      // SAFETY: as above — fixture data shaped per case.
-      return success((await answers.refresh()) as RawJsonValue);
+      return success(
+        (await (answers.refresh.begin?.() ?? {
+          operationId: "refresh-42",
+          state: "requested",
+        })) as RawJsonValue,
+      );
+    },
+    [REFRESH_STATUS]: async (input) => {
+      refreshStatusBodies.push(input.body);
+      if (answers.refresh === undefined)
+        throw new Error("this case scripted no refresh status answer");
+      return success(
+        (await (answers.refresh.status?.() ?? {
+          operationId: "refresh-42",
+          state: "completed",
+        })) as RawJsonValue,
+      );
+    },
+    [LOAD]: async () => {
+      if (answers.refresh?.load === undefined)
+        throw new Error("this case scripted no load answer");
+      return success((await answers.refresh.load()) as RawJsonValue);
+    },
+    [REFRESH_ACKNOWLEDGE]: async () => {
+      if (answers.refresh === undefined)
+        throw new Error("this case scripted no acknowledgment");
+      return success(await (answers.refresh.acknowledge?.() ?? null));
     },
   });
   restore = double.restore;
-  return { detectBodies, detectCount: () => detectBodies.length };
+  return {
+    detectBodies,
+    detectCount: () => detectBodies.length,
+    refreshCount: () => refreshBodies.length,
+    refreshStatusBodies,
+  };
 }
 
 function renderObservation(workbench: WorkbenchResponse) {
@@ -429,7 +470,7 @@ describe("useReviewObservation observation outcomes", () => {
     });
     const observed = installObservationDouble({
       detect: () => ({ _tag: "Unchanged" }),
-      refresh: () => refreshed,
+      refresh: { load: () => refreshed },
     });
     const { result, replace } = renderObservation(projection());
     await flush();
@@ -444,7 +485,7 @@ describe("useReviewObservation observation outcomes", () => {
       await result.current.refresh();
     });
     expect(replace).toHaveBeenCalledWith(refreshed);
-    expect(result.current.refreshError).toBe(false);
+    expect(result.current.refreshError).toBeUndefined();
 
     await flush(DETECT_INTERVAL_MS);
     expect(observed.detectBodies.at(-1)).toEqual({
@@ -453,11 +494,143 @@ describe("useReviewObservation observation outcomes", () => {
     });
   });
 
+  it("keeps ownership while a refresh runs longer than the desktop request timeout", async () => {
+    vi.useFakeTimers();
+    let completed = false;
+    const refreshed = projection({
+      session: { ...projection().session, id: "session-long" },
+    });
+    const observed = installObservationDouble({
+      detect: () => ({ _tag: "Unchanged" }),
+      refresh: {
+        status: () => ({
+          operationId: "refresh-42",
+          state: completed ? "completed" : "requested",
+        }),
+        load: () => refreshed,
+      },
+    });
+    const { result, replace } = renderObservation(projection());
+    await flush();
+
+    let refreshPromise!: Promise<void>;
+    act(() => {
+      refreshPromise = result.current.refresh();
+    });
+    await flush(31_000);
+
+    expect(result.current.refreshing).toBe(true);
+    expect(observed.refreshCount()).toBe(1);
+    expect(observed.refreshStatusBodies.length).toBeGreaterThan(60);
+    expect(replace).not.toHaveBeenCalled();
+
+    completed = true;
+    await flush(500);
+    await act(async () => refreshPromise);
+    expect(result.current.refreshing).toBe(false);
+    expect(replace).toHaveBeenCalledWith(refreshed);
+  });
+
+  it("resumes the same operation after renderer reload without beginning another", async () => {
+    vi.useFakeTimers();
+    let completed = false;
+    const refreshed = projection({
+      session: { ...projection().session, id: "session-resumed" },
+    });
+    const observed = installObservationDouble({
+      detect: () => ({ _tag: "Unchanged" }),
+      refresh: {
+        status: () => ({
+          operationId: "refresh-42",
+          state: completed ? "completed" : "prepared",
+        }),
+        load: () => refreshed,
+      },
+    });
+    const first = renderObservation(projection());
+    await flush();
+    act(() => {
+      void first.result.current.refresh();
+    });
+    await flush();
+    expect(first.result.current.refreshing).toBe(true);
+    first.unmount();
+
+    const second = renderObservation(projection());
+    await flush(500);
+    expect(second.result.current.refreshing).toBe(true);
+    expect(observed.refreshCount()).toBe(1);
+    expect(observed.refreshStatusBodies.at(-1)).toEqual({
+      profileId: "profile",
+      reviewId: "review-42",
+      operationId: "refresh-42",
+    });
+
+    completed = true;
+    await flush(500);
+    expect(second.replace).toHaveBeenCalledWith(refreshed);
+    expect(second.result.current.refreshing).toBe(false);
+  });
+
+  it("keeps the completed projection when acknowledgment cleanup fails", async () => {
+    vi.useFakeTimers();
+    const refreshed = projection({
+      session: { ...projection().session, id: "session-completed" },
+    });
+    installObservationDouble({
+      detect: () => ({ _tag: "Unchanged" }),
+      refresh: {
+        load: () => refreshed,
+        acknowledge: () => Promise.reject(new Error("storage unavailable")),
+      },
+    });
+    const { result, replace } = renderObservation(projection());
+    await flush();
+
+    await act(async () => result.current.refresh());
+
+    expect(replace).toHaveBeenCalledWith(refreshed);
+    expect(result.current.refreshError).toBeUndefined();
+  });
+
+  it("resets mounted ownership during the Strict Mode setup-cleanup-setup cycle", async () => {
+    vi.useFakeTimers();
+    const current = projection();
+    const refreshed = projection({
+      session: { ...current.session, id: "session-strict" },
+    });
+    window.localStorage.setItem(
+      "patchdesk:refresh:profile:review-42",
+      "refresh-42",
+    );
+    installObservationDouble({
+      detect: () => ({ _tag: "Unchanged" }),
+      refresh: { load: () => refreshed },
+    });
+    const replace = vi.fn();
+    const patch = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useReviewObservation({
+          workbench: current,
+          onWorkbenchReplace: replace,
+          onWorkbenchPatch: patch,
+        }),
+      { wrapper: StrictMode },
+    );
+    await flush(500);
+
+    expect(replace).toHaveBeenCalledWith(refreshed);
+    expect(result.current.refreshing).toBe(false);
+    expect(result.current.refreshError).toBeUndefined();
+  });
+
   it("reports a refresh failure without replacing the projection", async () => {
     vi.useFakeTimers();
     installObservationDouble({
       detect: () => ({ _tag: "Unchanged" }),
-      refresh: () => ({ nothing: "parseable" }),
+      refresh: { begin: () => ({ nothing: "parseable" }) },
     });
     const { result, replace } = renderObservation(projection());
     await flush();
@@ -465,7 +638,7 @@ describe("useReviewObservation observation outcomes", () => {
     await act(async () => {
       await result.current.refresh();
     });
-    expect(result.current.refreshError).toBe(true);
+    expect(result.current.refreshError).toBe("storage");
     expect(result.current.refreshing).toBe(false);
     expect(replace).not.toHaveBeenCalled();
   });

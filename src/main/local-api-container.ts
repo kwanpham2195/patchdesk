@@ -12,6 +12,7 @@ import type {
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import { systemNow } from "../adapters/process/system-clock";
 import type {
@@ -36,6 +37,7 @@ import { ReviewOperationCoordinator } from "../services/review-operation-coordin
 import { AvatarSyncService } from "../services/avatar-sync-service";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
+import { RefreshOperationService } from "../services/refresh-operation-service";
 import { ReviewObservationService } from "../services/review-observation-service";
 import { ReviewWriteRecoveryService } from "../services/review-write-recovery-service";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
@@ -86,6 +88,7 @@ export type LocalApiContainer = {
   readonly sidebarListing: SidebarListingService;
   readonly watchedPullRequests: WatchedPullRequestService;
   readonly reviewOperations: ReviewOperationCoordinator;
+  readonly refreshOperations: RefreshOperationService;
 };
 
 /** Either the built container, or the startup refusal that stopped it. */
@@ -339,6 +342,13 @@ export async function buildLocalApiContainer(
       );
     },
   });
+  const refreshOperations = new RefreshOperationService({
+    operations: new RefreshOperationStore(paths),
+    reviews,
+    refresh: reviewRefresh,
+    coordinator: reviewOperations,
+    now: systemNow,
+  });
   const reviewObservation = new ReviewObservationService({
     profiles,
     reviews,
@@ -370,6 +380,8 @@ export async function buildLocalApiContainer(
 
   {
     for (const profile of configuredProfiles.value) {
+      const refreshed = await refreshOperations.reconcileProfile(profile.id);
+      if (refreshed._tag === "err") return { _tag: "recovery-failed" };
       const journals = await observationJournals.listReviewIds(profile.id);
       if (journals._tag === "err") return { _tag: "recovery-failed" };
       for (const reviewId of journals.value) {
@@ -491,6 +503,7 @@ export async function buildLocalApiContainer(
         onChange: configuration.watchedPullRequestChanged,
       }),
       reviewOperations,
+      refreshOperations,
     },
   };
 }

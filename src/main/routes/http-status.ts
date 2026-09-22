@@ -82,6 +82,8 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["merge_outcome_unknown", 409],
   ["not_fresh", 409],
   ["revision_conflict", 409],
+  ["operation_active", 409],
+  ["operation_expired", 404],
   ["stale_head", 409],
   ["terminal", 409],
   ["github_read", 503],

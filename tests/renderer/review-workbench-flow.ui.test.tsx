@@ -212,8 +212,14 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       input.path === "/v1/reviews/detect-updates"
         ? { updatesAvailable: false }
         : input.path === "/v1/reviews/refresh"
-          ? refreshed
-          : Promise.reject(new Error(input.path)),
+          ? { operationId: "refresh-42", state: "requested" }
+          : input.path === "/v1/reviews/refresh/status"
+            ? { operationId: "refresh-42", state: "completed" }
+            : input.path === "/v1/reviews/load"
+              ? refreshed
+              : input.path === "/v1/reviews/refresh/acknowledge"
+                ? null
+                : Promise.reject(new Error(input.path)),
     );
     const { replace } = mount(projection());
     await userEvent

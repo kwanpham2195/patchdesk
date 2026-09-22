@@ -38,8 +38,13 @@ export function registerReviewLifecycleRoutes(
   app: Hono,
   container: LocalApiContainer,
 ): void {
-  const { mergeWrites, recovery, reviewDiffSources, reviewWorkbench } =
-    container;
+  const {
+    mergeWrites,
+    recovery,
+    refreshOperations,
+    reviewDiffSources,
+    reviewWorkbench,
+  } = container;
   app.post("/v1/reviews/open", async (context) => {
     const parsed = safeParse(reviewOpenSchema, await jsonBody(context));
     return parsed.success
@@ -133,9 +138,50 @@ export function registerReviewLifecycleRoutes(
   });
   app.post("/v1/reviews/refresh", async (context) => {
     const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));
-    return parsed.success
-      ? response(context, await reviewWorkbench.refresh(parsed.output))
-      : context.json({ error: "invalid_input" }, 400);
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const begun = await refreshOperations.begin({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+    });
+    return begun._tag === "ok"
+      ? context.json(begun.value, 202)
+      : response(context, begun);
+  });
+  app.post("/v1/reviews/refresh/status", async (context) => {
+    const parsed = safeParse(refreshOperationSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await refreshOperations.poll({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        operationId: parsed.output.operationId,
+      }),
+    );
+  });
+  app.post("/v1/reviews/refresh/acknowledge", async (context) => {
+    const parsed = safeParse(refreshOperationSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await refreshOperations.acknowledge({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        operationId: parsed.output.operationId,
+      }),
+    );
   });
   app.post("/v1/reviews/commit-diff", async (context) => {
     const parsed = safeParse(reviewCommitDiffSchema, await jsonBody(context));
@@ -186,6 +232,11 @@ export function registerReviewLifecycleRoutes(
   });
 }
 
+const refreshOperationSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  operationId: pipe(string(), minLength(1)),
+});
 const reviewOpenSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   host: pipe(string(), minLength(1)),

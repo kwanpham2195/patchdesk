@@ -1,10 +1,12 @@
 import * as v from "valibot";
 
 import {
+  parseContentHash,
   parseIsoTimestamp,
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type ContentHash,
   type IsoTimestamp,
   type ReviewId,
   type ReviewSessionId,
@@ -15,6 +17,8 @@ import { parseReview, type Review } from "./review";
 
 type RefreshOperationFailure =
   | "github_read"
+  | "github_auth"
+  | "not_found"
   | "storage"
   | "head_changed"
   | "terminal";
@@ -25,7 +29,7 @@ type RefreshOperationState =
       readonly _tag: "Prepared";
       readonly nextReview: Review;
       readonly sessionId: ReviewSessionId;
-      readonly snapshotHash: string;
+      readonly snapshotHash: ContentHash;
     }
   | { readonly _tag: "Completed" }
   | { readonly _tag: "Interrupted" }
@@ -47,6 +51,8 @@ export type InvalidRefreshOperation = {
 
 const refreshFailureSchema = v.picklist([
   "github_read",
+  "github_auth",
+  "not_found",
   "storage",
   "head_changed",
   "terminal",
@@ -108,12 +114,18 @@ function parseState(
   if (state._tag !== "Prepared") return ok(state);
   const nextReview = parseReview(state.nextReview);
   const sessionId = parseReviewSessionId(state.sessionId);
-  if (nextReview._tag === "err" || sessionId._tag === "err") return invalid();
+  const snapshotHash = parseContentHash(state.snapshotHash);
+  if (
+    nextReview._tag === "err" ||
+    sessionId._tag === "err" ||
+    snapshotHash._tag === "err"
+  )
+    return invalid();
   return ok({
     _tag: "Prepared",
     nextReview: nextReview.value,
     sessionId: sessionId.value,
-    snapshotHash: state.snapshotHash,
+    snapshotHash: snapshotHash.value,
   });
 }
 
