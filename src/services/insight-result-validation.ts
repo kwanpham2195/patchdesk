@@ -11,6 +11,7 @@ import {
 } from "../domain/brief";
 import { candidateReachSymbols } from "../domain/brief-reach";
 import {
+  containsFenceLine,
   isAcceptableSuggestionCode,
   resolveSuggestionTarget,
 } from "../domain/finding-suggestion";
@@ -154,6 +155,8 @@ export async function validateInsightResult(
  */
 function hasVerifiedSuggestion(
   finding: FindingLocationInput & {
+    readonly explanation: string;
+    readonly suggestedComment?: string;
     readonly suggestedReplacement?: { readonly code: string };
   },
   location: FindingLocation,
@@ -164,6 +167,10 @@ function hasVerifiedSuggestion(
   if (location.mappingStatus !== "mapped" || location.side !== "new")
     return false;
   if (!isAcceptableSuggestionCode(replacement.code)) return false;
+  // The prose sits above the suggestion block in the same comment, so a fence
+  // in it closes that block just as one inside the code would.
+  if (containsFenceLine(finding.suggestedComment ?? finding.explanation))
+    return false;
   return resolveSuggestionTarget(patch, finding) !== undefined;
 }
 

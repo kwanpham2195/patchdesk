@@ -3061,11 +3061,11 @@ describe("GitHubAdapter pending-review gateway", () => {
             thread: {
               id: threadId,
               path: "src/review.ts",
-              line: 9,
-              startLine: 9,
+              line: 7,
+              startLine: 7,
               diffSide: "RIGHT",
               comments: {
-                nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }],
+                nodes: [{ id: commentId, body: "Comment body" }],
               },
             },
           },
@@ -3081,11 +3081,11 @@ describe("GitHubAdapter pending-review gateway", () => {
       reviewId: mustParse(parseGitHubReviewNodeId(reviewNodeId)),
       anchor: {
         path: mustParse(parseRepoRelativePath("src/review.ts")),
-        startLine: 9,
-        line: 9,
+        startLine: 7,
+        line: 7,
         side: "new",
       },
-      body: "More",
+      body: "Comment body",
     });
     expect(result._tag).toBe("ok");
     const request = sent(transport, 0).argv.join(" ");
@@ -3105,11 +3105,11 @@ describe("GitHubAdapter pending-review gateway", () => {
             thread: {
               id: threadId,
               path: "src/review.ts",
-              line: 9,
-              startLine: 9,
+              line: 7,
+              startLine: 7,
               diffSide: "RIGHT",
               comments: {
-                nodes: [{ id: "PRRC_kwDORJzsQM7fI2Xp", body: "More" }],
+                nodes: [{ id: commentId, body: "Comment body" }],
                 pageInfo: { hasNextPage: false },
               },
             },
@@ -3126,11 +3126,11 @@ describe("GitHubAdapter pending-review gateway", () => {
       reviewId: mustParse(parseGitHubReviewNodeId(reviewNodeId)),
       anchor: {
         path: mustParse(parseRepoRelativePath("src/review.ts")),
-        startLine: 9,
-        line: 9,
+        startLine: 7,
+        line: 7,
         side: "new",
       },
-      body: "More",
+      body: "Comment body",
     });
     expect(result._tag).toBe("ok");
     const request = sent(transport, 0).argv.join(" ");

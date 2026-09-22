@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type * as v from "valibot";
 
 import type { modelReviewResultSchema } from "../../src/domain/review-result";
-import { parseModelReviewResult } from "../../src/domain/review-result";
+import {
+  parseModelReviewResult,
+  parseReviewResult,
+} from "../../src/domain/review-result";
 
 type ModelFindingInput = v.InferOutput<
   typeof modelReviewResultSchema
@@ -122,5 +125,33 @@ describe("model review result projection", () => {
       _tag: "err",
       error: { _tag: "InvalidModelReviewResult" },
     });
+  });
+});
+
+describe("stored review result projection", () => {
+  it("reads a v0.0.10 result carrying the retired suggestedChange and drops the field", () => {
+    const parsed = parseReviewResult({
+      ...validResult([]),
+      findings: [
+        {
+          id: "stored-finding",
+          severity: "P2",
+          title: "Guard runs too late",
+          file: "src/a.ts",
+          lineStart: 12,
+          diffSide: "new",
+          explanation: "The mutation runs before the guard.",
+          confidence: "high",
+          mappingStatus: "mapped",
+          suggestedChange: "Flip the condition.",
+        },
+      ],
+    });
+    expect(parsed._tag).toBe("ok");
+    if (parsed._tag === "err") return;
+    const finding = parsed.value.findings[0];
+    if (finding === undefined) throw new Error("expected one stored finding");
+    expect(finding.title).toBe("Guard runs too late");
+    expect("suggestedChange" in finding).toBe(false);
   });
 });

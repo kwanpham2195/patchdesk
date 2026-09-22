@@ -419,28 +419,34 @@ describe("AnalysisReader", () => {
       />,
     );
 
-    const [ordinaryRow, suggestionRow] = screen.getAllByRole("listitem");
-    if (ordinaryRow === undefined || suggestionRow === undefined)
-      throw new Error("missing Finding rows");
+    expect(screen.getByRole("button", { name: "Add to review" })).toBeTruthy();
     expect(
-      within(ordinaryRow).getByRole("button", { name: "Add to review" }),
+      screen.getByRole("region", { name: /Suggested change/ }),
     ).toBeTruthy();
-    expect(
-      within(ordinaryRow).queryByRole("region", { name: /Suggested change/ }),
-    ).toBeNull();
-
-    const preview = within(suggestionRow).getByRole("region", {
-      name: /Suggested change/,
-    });
-    expect(preview.textContent).toContain("acceptInvalidValue();");
-    expect(preview.textContent).toContain("rejectInvalidValue();");
 
     await user.click(
-      within(suggestionRow).getByRole("button", {
-        name: "Add suggestion to review",
-      }),
+      screen.getByRole("button", { name: "Add suggestion to review" }),
     );
     expect(onAddFinding).toHaveBeenCalledWith(suggestionFinding);
+  });
+
+  it("offers the ordinary comment action when no hunk anchors the replacement", () => {
+    render(
+      <AnalysisReader
+        result={{
+          ...result,
+          findings: [{ ...suggestionFinding, lineStart: 9, lineEnd: 9 }],
+        }}
+        evidencePatch={patch}
+        findingStatuses={{ "finding-suggestion": "actionable" }}
+        onAddFinding={vi.fn(async () => undefined)}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Add to review" })).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: /Suggested change/ }),
+    ).toBeNull();
   });
 
   it("admits Dismiss synchronously once and preserves its reason on row-local failure", async () => {

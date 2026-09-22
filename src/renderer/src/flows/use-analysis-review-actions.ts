@@ -3,6 +3,7 @@ import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
 import { parseRepoRelativePath } from "../../../domain/ids";
 import {
   ReviewPreconditionError,
@@ -41,7 +42,7 @@ const pendingReviewCommandResponseSchema = v.strictObject({
   pendingReview: v.unknown(),
   // Present only on the Finding-suggestion route, which names the exact
   // comment the main process composed and sent.
-  written: v.optional(v.unknown()),
+  composed: v.optional(v.unknown()),
 });
 
 type FindingReviewCommand = {
@@ -69,7 +70,7 @@ type FindingLocation = {
  * suggestion. The renderer confirms this text against the returned pending
  * review rather than composing any suggestion Markdown itself (issue #316).
  */
-const findingSuggestionWriteSchema = v.strictObject({
+const composedFindingSuggestionSchema = v.strictObject({
   anchor: v.strictObject({
     path: v.pipe(v.string(), v.minLength(1)),
     startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -79,11 +80,11 @@ const findingSuggestionWriteSchema = v.strictObject({
   body: v.pipe(v.string(), v.minLength(1)),
 });
 
-function parseFindingSuggestionWrite(
+function parseComposedFindingSuggestion(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the command response's JSON boundary parser; there is no earlier boundary to run it at.
   value: unknown,
-): v.InferOutput<typeof findingSuggestionWriteSchema> | undefined {
-  const parsed = v.safeParse(findingSuggestionWriteSchema, value);
+): v.InferOutput<typeof composedFindingSuggestionSchema> | undefined {
+  const parsed = v.safeParse(composedFindingSuggestionSchema, value);
   if (!parsed.success) return undefined;
   return parseRepoRelativePath(parsed.output.anchor.path)._tag === "ok"
     ? parsed.output
@@ -293,8 +294,13 @@ export function useAnalysisReviewActions({
       };
       // A verified replacement is published by the main process, which owns
       // the anchor and the suggestion body; this request carries identity and
-      // the expected revision only (issue #316).
-      const isSuggestion = finding.suggestedReplacement !== undefined;
+      // the expected revision only (issue #316). The same resolution the
+      // reader's label uses decides the route, so a replacement the
+      // represented patch cannot anchor takes the ordinary comment path.
+      const isSuggestion =
+        finding.suggestedReplacement !== undefined &&
+        resolveSuggestionTarget(currentWorkbench.fullPatch, findingLocation) !==
+          undefined;
       const request = isSuggestion
         ? {
             path: FINDING_SUGGESTION_PATH,
@@ -333,19 +339,21 @@ export function useAnalysisReviewActions({
       ): FindingReviewCommand | undefined => {
         if (!isSuggestion) return commentCommand;
         const envelope = v.safeParse(
-          v.looseObject({ written: v.unknown() }),
+          v.looseObject({ composed: v.unknown() }),
           value,
         );
         if (!envelope.success) return undefined;
-        const written = parseFindingSuggestionWrite(envelope.output.written);
-        return written === undefined
+        const composed = parseComposedFindingSuggestion(
+          envelope.output.composed,
+        );
+        return composed === undefined
           ? undefined
           : {
               _tag: tag,
               ...definedProps({ pendingReviewNodeId }),
               expected,
-              anchor: written.anchor,
-              body: written.body,
+              anchor: composed.anchor,
+              body: composed.body,
             };
       };
 

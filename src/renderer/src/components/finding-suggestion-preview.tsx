@@ -5,12 +5,10 @@ import {
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
-import { definedProps } from "../../../domain/defined-props";
 import {
   buildSuggestionPreviewPatch,
-  resolveSuggestionTarget,
+  type SuggestionTarget,
 } from "../../../domain/finding-suggestion";
-import type { AnalysisResult } from "../analysis-headline";
 import { ReviewDiffView } from "./review-diff-view";
 
 const suggestionPreviewPreferences: ReviewViewPreferences = {
@@ -20,48 +18,21 @@ const suggestionPreviewPreferences: ReviewViewPreferences = {
 
 /**
  * Read-only preview of the exact replacement a Finding carries, rendered as a
- * diff against the represented patch's own lines. It mounts no editor and
- * exposes no GitHub capability: the maintainer reads it, then authorizes the
- * write from the Finding's action row. It owns its own precondition and
- * renders nothing for a Finding without a replacement, without a represented
- * patch, or whose cited range no single hunk holds.
+ * diff against the represented patch's own lines. The caller resolves the
+ * target, so the preview and the Finding's add action share one gate.
  */
 export function FindingSuggestionPreview({
-  patch,
-  finding,
+  target,
+  code,
 }: {
-  readonly patch: string | undefined;
-  readonly finding: AnalysisResult["findings"][number];
-}): React.JSX.Element | null {
-  const code = finding.suggestedReplacement?.code;
-  const target = useMemo(
-    () =>
-      patch === undefined
-        ? undefined
-        : resolveSuggestionTarget(
-            patch,
-            definedProps({
-              file: finding.file,
-              lineStart: finding.lineStart,
-              lineEnd: finding.lineEnd,
-              diffSide: finding.diffSide,
-            }),
-          ),
-    [finding.diffSide, finding.file, finding.lineEnd, finding.lineStart, patch],
-  );
+  readonly target: SuggestionTarget;
+  readonly code: string;
+}): React.JSX.Element {
   const preview = useMemo(
-    () =>
-      target === undefined || code === undefined
-        ? undefined
-        : buildSuggestionPreviewPatch(target, code),
+    () => buildSuggestionPreviewPatch(target, code),
     [code, target],
   );
-  const parsed = useMemo(
-    () => (preview === undefined ? undefined : parseReviewDiff(preview)),
-    [preview],
-  );
-  if (target === undefined || preview === undefined || parsed === undefined)
-    return null;
+  const parsed = useMemo(() => parseReviewDiff(preview), [preview]);
   const range = `${target.path}:${target.startLine}${
     target.line === target.startLine ? "" : `–${target.line}`
   }`;

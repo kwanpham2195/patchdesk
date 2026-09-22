@@ -201,6 +201,13 @@ describe("isAcceptableSuggestionCode", () => {
     expect(isAcceptableSuggestionCode("```ts\nconst a = 1;")).toBe(false);
   });
 
+  it("rejects an indented fence and a fence longer than three backticks", () => {
+    expect(isAcceptableSuggestionCode("const a = 1;\n   ```\n")).toBe(false);
+    expect(isAcceptableSuggestionCode("const a = 1;\n````\n")).toBe(false);
+    // Four leading spaces make the line indented code, not a fence.
+    expect(isAcceptableSuggestionCode("const a = 1;\n    ```\n")).toBe(true);
+  });
+
   it("accepts ordinary code", () =>
     expect(isAcceptableSuggestionCode("const a = 1;")).toBe(true));
 });

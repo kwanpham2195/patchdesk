@@ -21,7 +21,7 @@ An empty replacement is refused. It would read as a deletion suggestion, and Git
 
 The suggestion write reuses the pending-review operation contract unchanged: durable intent before the network call, exact read-back confirmation, the Finding review receipt, the outcome-unknown lock, and Check GitHub again. It starts the viewer's pending review or appends to the existing one, as an ordinary Finding command does, and carries the Finding's full start and end line on both paths.
 
-The response names the exact comment the main process wrote. The renderer confirms the returned pending review against that text and anchor rather than against a body it assembled, so a suggestion it never composed can still be proved to have landed.
+The response names the exact comment the main process composed. The renderer confirms the returned pending review against that text and anchor rather than against a body it assembled, so a suggestion it never composed can still be proved to have landed.
 
 ## Out of scope
 

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
@@ -10,6 +10,7 @@ import {
   type AnalysisFixPromptContext,
 } from "../analysis-fix-prompt";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
 import {
   analysisVerdictLabel,
   checkStatusLabel,
@@ -420,20 +421,19 @@ function CopyFixPromptButton({
   );
 }
 
-/**
- * The maintainer's one explicit authorization for this Finding's GitHub
- * write. The label names which write it is: a Finding carrying a verified
- * replacement publishes a suggestion block, every other Finding a comment.
- */
+/** The maintainer's one explicit authorization for this Finding's GitHub write. */
 function AddFindingButton({
   finding,
   adding,
   disabled,
+  suggests,
   onAddFinding,
 }: {
   readonly finding: AnalysisFinding;
   readonly adding: boolean;
   readonly disabled: boolean;
+  /** Whether this write publishes a suggestion block rather than a comment. */
+  readonly suggests: boolean;
   readonly onAddFinding: (finding: AnalysisFinding) => Promise<void>;
 }): React.JSX.Element {
   return (
@@ -448,10 +448,10 @@ function AddFindingButton({
           <Spinner data-icon="inline-start" />
           Adding…
         </>
-      ) : finding.suggestedReplacement === undefined ? (
-        "Add to review"
-      ) : (
+      ) : suggests ? (
         "Add suggestion to review"
+      ) : (
+        "Add to review"
       )}
     </Button>
   );
@@ -483,6 +483,31 @@ function AnalysisFindingRow({
 }): React.JSX.Element {
   const [reason, setReason] = useState("");
   const [dismissOpen, setDismissOpen] = useState(false);
+  const suggestionCode = finding.suggestedReplacement?.code;
+  // One resolution feeds both the preview and the add action's label, so the
+  // row never offers a suggestion the represented patch cannot anchor.
+  const suggestionTarget = useMemo(
+    () =>
+      evidencePatch === undefined || suggestionCode === undefined
+        ? undefined
+        : resolveSuggestionTarget(
+            evidencePatch,
+            definedProps({
+              file: finding.file,
+              lineStart: finding.lineStart,
+              lineEnd: finding.lineEnd,
+              diffSide: finding.diffSide,
+            }),
+          ),
+    [
+      evidencePatch,
+      finding.diffSide,
+      finding.file,
+      finding.lineEnd,
+      finding.lineStart,
+      suggestionCode,
+    ],
+  );
   const disposition = finding.disposition ?? "open";
   const actionPending = actionState !== undefined;
   const reviewStatus =
@@ -572,7 +597,13 @@ function AnalysisFindingRow({
               {location}
             </p>
           )}
-          <FindingSuggestionPreview patch={evidencePatch} finding={finding} />
+          {suggestionTarget === undefined ||
+          suggestionCode === undefined ? null : (
+            <FindingSuggestionPreview
+              target={suggestionTarget}
+              code={suggestionCode}
+            />
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Badge
@@ -602,6 +633,7 @@ function AnalysisFindingRow({
               finding={finding}
               adding={actionState === "adding"}
               disabled={actionPending}
+              suggests={suggestionTarget !== undefined}
               onAddFinding={onAddFinding}
             />
           ) : null}

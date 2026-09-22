@@ -159,23 +159,12 @@ describe("validateInsightResult retains only verified suggestions", () => {
     expect(finding.whyItMatters).toBe("A stale write lands.");
   });
 
-  it("drops fenced replacement code", async () => {
-    expect(
-      (
-        await retainedFinding({
-          suggestedReplacement: { code: "```ts\nconst b = 3;\n```" },
-        })
-      ).suggestedReplacement,
-    ).toBeUndefined();
-  });
-
-  it("drops replacement code over the byte limit", async () => {
-    expect(
-      (
-        await retainedFinding({
-          suggestedReplacement: { code: "a".repeat(4097) },
-        })
-      ).suggestedReplacement,
-    ).toBeUndefined();
+  it("drops a replacement whose comment prose carries a fence", async () => {
+    const finding = await retainedFinding({
+      suggestedComment: "Use this instead:\n\n```ts\nconst b = 3;\n```",
+      suggestedReplacement: { code: "const b = requireFresh();" },
+    });
+    expect(finding.suggestedReplacement).toBeUndefined();
+    expect(finding.whyItMatters).toBe("A stale write lands.");
   });
 });

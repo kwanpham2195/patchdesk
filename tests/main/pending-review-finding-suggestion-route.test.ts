@@ -109,7 +109,7 @@ describe("POST /v1/reviews/pending-review/finding-suggestion", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       pendingReview: { state: "none" },
-      written: { anchor: resolved.anchor, body: resolved.body },
+      composed: { anchor: resolved.anchor, body: resolved.body },
     });
     expect(fixture.writes).toMatchObject([
       {
@@ -123,7 +123,7 @@ describe("POST /v1/reviews/pending-review/finding-suggestion", () => {
     ]);
   });
 
-  it("appends to the named pending review and keeps the written comment on failure", async () => {
+  it("appends to the named pending review and keeps the composed comment on failure", async () => {
     const fixture = routeFixture({
       suggestion: ok(resolved),
       write: err("outcome_unknown"),
@@ -135,7 +135,7 @@ describe("POST /v1/reviews/pending-review/finding-suggestion", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
       error: "outcome_unknown",
-      written: { anchor: resolved.anchor, body: resolved.body },
+      composed: { anchor: resolved.anchor, body: resolved.body },
     });
     expect(fixture.writes).toMatchObject([
       { kind: "addThread", command: { pendingReviewNodeId: "PRR_1" } },
