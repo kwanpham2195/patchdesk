@@ -62,7 +62,7 @@ type ModelReviewFinding = {
 };
 
 /** Exact code that replaces the Finding's cited new-side line range. */
-type FindingSuggestedReplacement = { readonly code: string };
+export type FindingSuggestedReplacement = { readonly code: string };
 
 export type ModelReviewResult = {
   readonly changeSummary: string;

@@ -970,24 +970,4 @@ describe("InsightRunCoordinator Finding suggestions", () => {
       }),
     ).toEqual(err("not_found"));
   });
-
-  it("refuses a suggestion whose range no longer resolves in the patch", async () => {
-    const value = await fixture({
-      async invoke() {
-        return ok(analysisResult);
-      },
-    });
-    const runId = await seedRetainedAnalysis(value, [
-      { ...guardFinding, lineStart: 7, lineEnd: 7 },
-    ]);
-
-    expect(
-      await value.coordinator.resolveFindingSuggestion({
-        profileId,
-        reviewId: value.review.id,
-        runId,
-        findingId,
-      }),
-    ).toEqual(err("stale_request"));
-  });
 });

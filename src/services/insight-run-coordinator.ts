@@ -161,6 +161,14 @@ export type FindingSuggestionCommand = {
   readonly finding: FindingReviewSource;
 };
 
+/** Names one retained Analysis Finding for a Finding-scoped command. */
+type AnalysisFindingRef = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly runId: InsightRunId;
+  readonly findingId: FindingId;
+};
+
 /** One retained Analysis Finding, with the revision every Finding command is checked against. */
 type CurrentAnalysisFinding = {
   readonly session: ReviewSession;
@@ -411,13 +419,9 @@ export class InsightRunCoordinator {
     return ok({ runId: input.runId, type: input.type, status: "cancelling" });
   }
 
-  async dismissFinding(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly findingId: FindingId;
-    readonly reason: string;
-  }): Promise<
+  async dismissFinding(
+    input: AnalysisFindingRef & { readonly reason: string },
+  ): Promise<
     Result<
       { readonly findingId: FindingId; readonly status: "dismissed" },
       InsightCoordinatorFailure
@@ -428,13 +432,9 @@ export class InsightRunCoordinator {
     );
   }
 
-  private async dismissFindingUnlocked(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly findingId: FindingId;
-    readonly reason: string;
-  }): Promise<
+  private async dismissFindingUnlocked(
+    input: AnalysisFindingRef & { readonly reason: string },
+  ): Promise<
     Result<
       { readonly findingId: FindingId; readonly status: "dismissed" },
       InsightCoordinatorFailure
@@ -485,12 +485,9 @@ export class InsightRunCoordinator {
    * The retained Analysis Finding one Finding-scoped command is about, refused
    * unless the Review still represents the revision that Analysis ran against.
    */
-  private async currentAnalysisFinding(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly findingId: FindingId;
-  }): Promise<Result<CurrentAnalysisFinding, InsightCoordinatorFailure>> {
+  private async currentAnalysisFinding(
+    input: AnalysisFindingRef,
+  ): Promise<Result<CurrentAnalysisFinding, InsightCoordinatorFailure>> {
     const ownership = await this.ensureOwned(input.profileId, input.reviewId);
     if (ownership._tag === "err") return ownership;
     const review = await this.reviews.load(input.profileId, input.reviewId);
@@ -549,23 +546,17 @@ export class InsightRunCoordinator {
    * replacement. The caller supplies identity only; the range comes from the
    * represented patch on disk, so a renderer cannot choose what is replaced.
    */
-  async resolveFindingSuggestion(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly findingId: FindingId;
-  }): Promise<Result<FindingSuggestionCommand, InsightCoordinatorFailure>> {
+  async resolveFindingSuggestion(
+    input: AnalysisFindingRef,
+  ): Promise<Result<FindingSuggestionCommand, InsightCoordinatorFailure>> {
     return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
       this.resolveFindingSuggestionUnlocked(input),
     );
   }
 
-  private async resolveFindingSuggestionUnlocked(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly findingId: FindingId;
-  }): Promise<Result<FindingSuggestionCommand, InsightCoordinatorFailure>> {
+  private async resolveFindingSuggestionUnlocked(
+    input: AnalysisFindingRef,
+  ): Promise<Result<FindingSuggestionCommand, InsightCoordinatorFailure>> {
     const current = await this.currentAnalysisFinding(input);
     if (current._tag === "err") return current;
     const { finding, session } = current.value;

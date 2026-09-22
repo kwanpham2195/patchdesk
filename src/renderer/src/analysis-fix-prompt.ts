@@ -1,3 +1,4 @@
+import { withTrailingNewline } from "../../domain/finding-suggestion";
 import type { AnalysisResult } from "./analysis-headline";
 
 export type AnalysisFixPromptContext = {
@@ -101,9 +102,7 @@ function renderFinding(finding: ReviewFinding, position: number): string {
 
   const replacement = finding.suggestedReplacement;
   if (replacement !== undefined && finding.file !== undefined) {
-    const code = replacement.code.endsWith("\n")
-      ? replacement.code
-      : `${replacement.code}\n`;
+    const code = withTrailingNewline(replacement.code);
     blocks.push(
       `Suggested replacement for ${finding.file}${renderLines(finding)}:\n\n\`\`\`\n${code}\`\`\``,
     );

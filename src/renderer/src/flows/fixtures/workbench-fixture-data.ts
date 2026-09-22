@@ -250,11 +250,8 @@ export const activeFollowFixtureData = {
   fullPatch: activeFollowFixturePatch,
   conversationThreads: activeFollowFixtureConversationThreads,
 };
-// The three Finding shapes the Analysis reader has to tell apart: a mapped
-// multi-line Finding carrying a verified replacement, a mapped Finding with
-// none, and one with no diff coordinate at all. Lines 3-5 of src/a.ts are a
-// contiguous new-side run of `fixturePatch`, so the replacement resolves to a
-// single hunk and the preview renders.
+// Lines 3-5 of src/a.ts are a contiguous new-side run of `fixturePatch`, so
+// the replacement resolves to a single hunk and the preview renders.
 export const analysisFixtureData = {
   ...workbenchFixtureData,
   result: {

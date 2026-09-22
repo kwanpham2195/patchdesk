@@ -31,6 +31,7 @@ import { err, ok, type Result } from "../domain/result";
 import {
   parseModelReviewResult,
   parseReviewResult,
+  type FindingSuggestedReplacement,
 } from "../domain/review-result";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightInvocationInput } from "./insight-run-coordinator";
@@ -157,7 +158,7 @@ function hasVerifiedSuggestion(
   finding: FindingLocationInput & {
     readonly explanation: string;
     readonly suggestedComment?: string;
-    readonly suggestedReplacement?: { readonly code: string };
+    readonly suggestedReplacement?: FindingSuggestedReplacement;
   },
   location: FindingLocation,
   patch: string,
@@ -176,7 +177,7 @@ function hasVerifiedSuggestion(
 
 /** Drops only the suggestion, so invalid replacement data never discards a valid Finding. */
 function withoutSuggestedReplacement<
-  T extends { readonly suggestedReplacement?: { readonly code: string } },
+  T extends { readonly suggestedReplacement?: FindingSuggestedReplacement },
 >(finding: T): Omit<T, "suggestedReplacement"> {
   const { suggestedReplacement: _dropped, ...rest } = finding;
   return rest;

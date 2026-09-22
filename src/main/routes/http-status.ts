@@ -1,5 +1,7 @@
 import type { Context } from "hono";
 
+import type { InsightCoordinatorFailure } from "../../services/insight-run-coordinator";
+
 /**
  * The eight write-failure reasons every review write route shares.
  * `LabelWriteFailure`, `AssigneeWriteFailure`, `ReviewerWriteFailure` and
@@ -55,6 +57,37 @@ export function mapReviewWriteFailureStatus<Extra extends string = never>(
 ): ReviewWriteFailureStatus {
   const statuses = { ...sharedReviewWriteFailureStatus, ...overrides };
   return statuses[reason];
+}
+
+type InsightFailureStatus = 400 | 403 | 404 | 409 | 503;
+
+type InsightFailureStatuses = {
+  readonly [Reason in InsightCoordinatorFailure]: InsightFailureStatus;
+};
+
+/**
+ * The status every Insight coordinator failure answers with, wherever it
+ * surfaces. Total over the union, so a new reason fails the build here rather
+ * than falling through to one this table never chose.
+ */
+const insightFailureStatuses: InsightFailureStatuses = {
+  invalid_request: 400,
+  model_unavailable: 400,
+  ownership_mismatch: 403,
+  not_found: 404,
+  terminal_review: 409,
+  already_running: 409,
+  not_active: 409,
+  stale_request: 409,
+  not_available: 409,
+  catalog_unavailable: 503,
+  storage_unavailable: 503,
+};
+
+export function insightFailureStatus(
+  failure: InsightCoordinatorFailure,
+): InsightFailureStatus {
+  return insightFailureStatuses[failure];
 }
 
 /** The statuses `response` answers a failed result with. */
