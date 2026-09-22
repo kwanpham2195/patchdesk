@@ -123,8 +123,12 @@ The exact containing diff hunk from the represented pull request patch for a Map
 _Avoid_: Code snippet, generated hunk, mini diff
 
 **Finding review command**:
-An explicit maintainer action that uses a current Mapped Finding's suggested text, or its explanation when no suggested text is available, to start or append to the viewer's GitHub pending review. It is one GitHub write after the action is clicked; it has no Analysis-side editor, local queue, or automatic execution when Analysis completes. A confirmed GitHub failure leaves the Finding actionable; an uncertain outcome locks further Finding commands until explicit GitHub reconciliation.
+An explicit maintainer action that uses a current Mapped Finding's suggested text, or its explanation when no suggested text is available, to start or append to the viewer's GitHub pending review. It is one GitHub write after the action is clicked; it has no Analysis-side editor, local queue, or automatic execution when Analysis completes. A Finding carrying a Finding suggestion publishes that same comment followed by one GitHub suggestion block. A confirmed GitHub failure leaves the Finding actionable; an uncertain outcome locks further Finding commands until explicit GitHub reconciliation.
 _Avoid_: Auto review, model comment, Finding draft
+
+**Finding suggestion**:
+A verified exact replacement for the new-side lines a Mapped Finding cites, published as a GitHub suggested change by one Finding review command. Patchdesk verifies it against the represented patch and never edits it; an unverifiable replacement is dropped while its Finding remains actionable through the ordinary Finding review command.
+_Avoid_: Auto-fix, Patch proposal, Code suggestion draft
 
 **Pending-review Finding**:
 A current Mapped Finding identified by a pending Finding review receipt for the viewer's confirmed GitHub pending review. It prevents a duplicate command for that pending review, without becoming an editable Analysis disposition or local comment copy.

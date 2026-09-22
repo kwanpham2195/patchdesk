@@ -45,6 +45,7 @@ Priorities: **P1** is an established fact, a claim many documents depend on, or 
 - **write:** a disposable GitHub repository and pull request with known permissions; never use a production target.
 - **destructive:** a disposable profile/data root and a recorded backup; do not rely on Clear cache or Clear local review data to preserve recoverability.
 - **macOS window:** the actual app window, including native close/quit behavior; an occluded or background window cannot prove visible focus or timing.
+- **external:** the claim is settled outside Patchdesk, such as on GitHub's own pages; record what the external product showed and never treat a Patchdesk projection as that evidence.
 
 ## Driving the product from a console or script
 
