@@ -121,6 +121,36 @@ describe("InsightProviderCatalog", () => {
     ).resolves.toEqual({ _tag: "err", error: "model_unavailable" });
   });
 
+  it("preserves cancellation separately from runtime failures", async () => {
+    const catalogueFor = (reason: "cancelled" | "runtime_unavailable") =>
+      new InsightProviderCatalog(
+        pi,
+        () => ({
+          async listModels() {
+            return err({ reason, phase: "model_list" as const });
+          },
+        }),
+        async () => "/usr/local/bin/codex",
+      );
+
+    await expect(catalogueFor("cancelled").activateCodex()).resolves.toEqual({
+      _tag: "err",
+      error: {
+        _tag: "InsightProviderCatalogUnavailable",
+        reason: "cancelled",
+      },
+    });
+    await expect(
+      catalogueFor("runtime_unavailable").activateCodex(),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: {
+        _tag: "InsightProviderCatalogUnavailable",
+        reason: "runtime_unavailable",
+      },
+    });
+  });
+
   it("lists no models for either provider when neither source can list", async () => {
     const catalog = new InsightProviderCatalog(
       unconfiguredPi,

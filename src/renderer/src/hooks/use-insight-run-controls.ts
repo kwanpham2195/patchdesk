@@ -116,6 +116,7 @@ export function useInsightRunControls({
     setConfiguration,
     changeProvider,
     activateCodex,
+    cancelCodexActivation,
   } = useInsightConfiguration({
     profileId,
     initialDetail,
@@ -200,7 +201,10 @@ export function useInsightRunControls({
       runDialogAction: action,
     });
   };
-  const closeRunDialog = (): void => setConfiguration({ runDialogType: null });
+  const closeRunDialog = (): void => {
+    cancelCodexActivation();
+    setConfiguration({ runDialogType: null });
+  };
   const confirmRun = (): void => {
     const dialogType = configuration.runDialogType;
     if (model === null || dialogType === null) return;

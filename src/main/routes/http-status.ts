@@ -86,6 +86,9 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["operation_expired", 404],
   ["stale_head", 409],
   ["terminal", 409],
+  // A caller abandoned a provider activation. The request-owning renderer
+  // consumes this exact reason without presenting it as a runtime failure.
+  ["cancelled", 400],
   ["github_read", 503],
   ["merge_rate_limited", 503],
   ["rate_limited", 503],

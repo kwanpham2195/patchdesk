@@ -44,6 +44,7 @@ export type InsightProviderCatalogSnapshot = {
 export type InsightProviderCatalogFailure = {
   readonly _tag: "InsightProviderCatalogUnavailable";
   readonly reason:
+    | "cancelled"
     | "runtime_unavailable"
     | "authentication_required"
     | "rate_limited"
@@ -249,8 +250,8 @@ function mapCodexFailure(
       return "timed_out";
     case "invalid_result":
       return "invalid_result";
-    // The catalog vocabulary has no cancelled state, so a cancelled model-list fetch reads as an unavailable runtime (#256).
     case "cancelled":
+      return "cancelled";
     case "execution_failed":
     case "runtime_unavailable":
     case "unexpected_failure":

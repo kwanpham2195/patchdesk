@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Fixed Refresh GitHub state losing ownership when GitHub preparation exceeded the desktop request timeout. Refresh now persists its operation and prepared Review before adoption, keeps visible progress while it runs, resumes the same operation after a renderer reload, and reports an interrupted or failed operation without replacing the readable Review. #264
+- Fixed closing the Insight run dialog while Codex models were loading reporting the Codex runtime as unavailable. A cancelled load is now discarded by the dialog that owned it, and reopening can load models again while genuine runtime failures remain visible. #256
 
 - Fixed an Insight status poll scheduling another browser timer after its Review or renderer had already been disposed. Late poll responses now stop before touching the renderer timer, preventing intermittent `window is not defined` failures in the full test gate. #252
 - Fixed numeric-looking assignee and maintainer search text being inferred as GraphQL numbers. Free-text searches such as `2026` now remain strings while numeric pagination variables retain their existing types. #279

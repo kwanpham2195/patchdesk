@@ -32,12 +32,19 @@ export class PatchdeskApiError extends Error {
     readonly retryable: boolean,
     readonly correlationId: string,
     message: string,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- carries the raw, already-failed response body for diagnostics/logging only; call sites never read structured fields off it.
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- carries the raw failed response for diagnostics and typed predicates owned by this API boundary.
     readonly responseBody?: unknown,
   ) {
     super(message);
     this.name = "PatchdeskApiError";
   }
+}
+
+/** Whether an API failure carries one exact server error code. */
+export function isApiErrorCode(cause: unknown, code: string): boolean {
+  return (
+    cause instanceof PatchdeskApiError && errorCode(cause.responseBody) === code
+  );
 }
 
 /** A condition the maintainer can change before retrying; `contextualMessage` words it by `reason`. */

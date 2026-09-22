@@ -4,7 +4,7 @@ import type {
   InsightProvider,
   InsightReasoning,
 } from "../../../domain/insight-provider";
-import { requestJson } from "../api-client";
+import { isApiErrorCode, requestJson } from "../api-client";
 import {
   INSIGHT_PREFERENCE_TYPES,
   loadInsightRunPreference,
@@ -78,6 +78,7 @@ type InsightConfigurationController = {
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
   readonly changeProvider: (provider: InsightProvider) => void;
   readonly activateCodex: () => void;
+  readonly cancelCodexActivation: () => void;
 };
 export function useInsightConfiguration(input: {
   readonly profileId: string;
@@ -93,6 +94,15 @@ export function useInsightConfiguration(input: {
   const setConfiguration = (patch: Partial<InsightRunConfiguration>): void =>
     updateConfiguration({ type: "updated", patch });
   const preferencesRef = useRef<InsightRunPreferences>({});
+  const codexActivationGenerationRef = useRef(0);
+
+  const cancelCodexActivation = (): void => {
+    codexActivationGenerationRef.current += 1;
+    setConfiguration({
+      codexActivationPending: false,
+      codexActivationError: false,
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -186,6 +196,8 @@ export function useInsightConfiguration(input: {
     });
   };
   const activateCodex = (): void => {
+    const generation = codexActivationGenerationRef.current + 1;
+    codexActivationGenerationRef.current = generation;
     setConfiguration({
       codexActivationPending: true,
       codexActivationError: false,
@@ -195,6 +207,7 @@ export function useInsightConfiguration(input: {
       body: {},
     })
       .then((value) => {
+        if (codexActivationGenerationRef.current !== generation) return;
         const parsed = parseInsightProviderCatalog(value);
         if (parsed === undefined) throw new Error("Invalid Codex catalog");
         const nextCatalog =
@@ -230,8 +243,15 @@ export function useInsightConfiguration(input: {
               : (first?.defaultReasoning ?? first?.reasoning[0] ?? "medium"),
         });
       })
-      .catch(() => setConfiguration({ codexActivationError: true }))
-      .finally(() => setConfiguration({ codexActivationPending: false }));
+      .catch((cause: unknown) => {
+        if (codexActivationGenerationRef.current !== generation) return;
+        if (isApiErrorCode(cause, "cancelled")) return;
+        setConfiguration({ codexActivationError: true });
+      })
+      .finally(() => {
+        if (codexActivationGenerationRef.current !== generation) return;
+        setConfiguration({ codexActivationPending: false });
+      });
   };
   return {
     configuration,
@@ -239,5 +259,6 @@ export function useInsightConfiguration(input: {
     setConfiguration,
     changeProvider,
     activateCodex,
+    cancelCodexActivation,
   };
 }
