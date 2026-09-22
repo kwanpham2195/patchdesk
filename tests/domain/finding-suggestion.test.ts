@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSuggestionPreviewPatch,
   isAcceptableSuggestionCode,
   renderSuggestionCommentBody,
   resolveSuggestionTarget,
@@ -80,6 +81,97 @@ describe("resolveSuggestionTarget", () => {
     expect(
       resolveSuggestionTarget(patch, { file: "src/a.ts", lineStart: 9 }),
     ).toBeUndefined();
+  });
+});
+
+describe("buildSuggestionPreviewPatch", () => {
+  it("replaces one line with one line", () => {
+    expect(
+      buildSuggestionPreviewPatch(
+        {
+          path: "src/a.ts",
+          startLine: 2,
+          originalLines: ["const b = 3;"],
+        },
+        "const b = requireFresh();",
+      ),
+    ).toBe(
+      [
+        "diff --git a/src/a.ts b/src/a.ts",
+        "--- a/src/a.ts",
+        "+++ b/src/a.ts",
+        "@@ -2,1 +2,1 @@",
+        "-const b = 3;",
+        "+const b = requireFresh();",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps a multi-line replacement in one hunk", () => {
+    expect(
+      buildSuggestionPreviewPatch(
+        {
+          path: "src/a.ts",
+          startLine: 2,
+          originalLines: ["const b = 3;", "const c = 4;"],
+        },
+        "const b = 5;\nconst c = 6;",
+      ),
+    ).toBe(
+      [
+        "diff --git a/src/a.ts b/src/a.ts",
+        "--- a/src/a.ts",
+        "+++ b/src/a.ts",
+        "@@ -2,2 +2,2 @@",
+        "-const b = 3;",
+        "-const c = 4;",
+        "+const b = 5;",
+        "+const c = 6;",
+      ].join("\n"),
+    );
+  });
+
+  it("counts a replacement longer than the original", () => {
+    expect(
+      buildSuggestionPreviewPatch(
+        { path: "src/a.ts", startLine: 7, originalLines: ["run();"] },
+        "guard();\nrun();\n",
+      ),
+    ).toBe(
+      [
+        "diff --git a/src/a.ts b/src/a.ts",
+        "--- a/src/a.ts",
+        "+++ b/src/a.ts",
+        "@@ -7,1 +7,2 @@",
+        "-run();",
+        "+guard();",
+        "+run();",
+      ].join("\n"),
+    );
+  });
+
+  it("counts a replacement shorter than the original", () => {
+    expect(
+      buildSuggestionPreviewPatch(
+        {
+          path: "src/a.ts",
+          startLine: 7,
+          originalLines: ["if (ready) {", "  run();", "}"],
+        },
+        "run();",
+      ),
+    ).toBe(
+      [
+        "diff --git a/src/a.ts b/src/a.ts",
+        "--- a/src/a.ts",
+        "+++ b/src/a.ts",
+        "@@ -7,3 +7,1 @@",
+        "-if (ready) {",
+        "-  run();",
+        "-}",
+        "+run();",
+      ].join("\n"),
+    );
   });
 });
 

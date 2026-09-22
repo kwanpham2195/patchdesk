@@ -19,6 +19,7 @@ import {
   type CheckStatus,
 } from "../analysis-headline";
 import { FindingEvidenceHunk } from "./finding-evidence-hunk";
+import { FindingSuggestionPreview } from "./finding-suggestion-preview";
 import {
   analysisFindingRowId,
   ReviewWorkbenchFindingNavigationContext,
@@ -419,6 +420,43 @@ function CopyFixPromptButton({
   );
 }
 
+/**
+ * The maintainer's one explicit authorization for this Finding's GitHub
+ * write. The label names which write it is: a Finding carrying a verified
+ * replacement publishes a suggestion block, every other Finding a comment.
+ */
+function AddFindingButton({
+  finding,
+  adding,
+  disabled,
+  onAddFinding,
+}: {
+  readonly finding: AnalysisFinding;
+  readonly adding: boolean;
+  readonly disabled: boolean;
+  readonly onAddFinding: (finding: AnalysisFinding) => Promise<void>;
+}): React.JSX.Element {
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      disabled={disabled}
+      onClick={() => onAddFinding(finding)}
+    >
+      {adding ? (
+        <>
+          <Spinner data-icon="inline-start" />
+          Adding…
+        </>
+      ) : finding.suggestedReplacement === undefined ? (
+        "Add to review"
+      ) : (
+        "Add suggestion to review"
+      )}
+    </Button>
+  );
+}
+
 function AnalysisFindingRow({
   finding,
   status,
@@ -534,6 +572,7 @@ function AnalysisFindingRow({
               {location}
             </p>
           )}
+          <FindingSuggestionPreview patch={evidencePatch} finding={finding} />
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Badge
@@ -559,21 +598,12 @@ function AnalysisFindingRow({
           reviewStatus === "actionable" &&
           finding.mappingStatus === "mapped" &&
           onAddFinding !== undefined ? (
-            <Button
-              size="xs"
-              variant="outline"
+            <AddFindingButton
+              finding={finding}
+              adding={actionState === "adding"}
               disabled={actionPending}
-              onClick={() => onAddFinding(finding)}
-            >
-              {actionState === "adding" ? (
-                <>
-                  <Spinner data-icon="inline-start" />
-                  Adding…
-                </>
-              ) : (
-                "Add to review"
-              )}
-            </Button>
+              onAddFinding={onAddFinding}
+            />
           ) : null}
           {disposition === "open" && onDismissFinding !== undefined ? (
             <Popover

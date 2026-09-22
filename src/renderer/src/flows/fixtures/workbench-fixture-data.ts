@@ -250,6 +250,52 @@ export const activeFollowFixtureData = {
   fullPatch: activeFollowFixturePatch,
   conversationThreads: activeFollowFixtureConversationThreads,
 };
+// The three Finding shapes the Analysis reader has to tell apart: a mapped
+// multi-line Finding carrying a verified replacement, a mapped Finding with
+// none, and one with no diff coordinate at all. Lines 3-5 of src/a.ts are a
+// contiguous new-side run of `fixturePatch`, so the replacement resolves to a
+// single hunk and the preview renders.
+export const analysisFixtureData = {
+  ...workbenchFixtureData,
+  result: {
+    ...workbenchFixtureData.result,
+    findings: [
+      {
+        id: "suggested",
+        severity: "P1",
+        title: "Read the current head before the write",
+        file: "src/a.ts",
+        lineStart: 3,
+        lineEnd: 5,
+        diffSide: "new",
+        explanation:
+          "The write path uses the reviewed head SHA without rechecking it.",
+        suggestedComment: "Recheck the current head before this write.",
+        confidence: "high",
+        mappingStatus: "mapped",
+        suggestedReplacement: {
+          code: 'const current = await requireCurrentHead();\nif (current._tag === "err") return current;',
+        },
+      },
+      // Raised to P1 so all three rows stay out of the lower-severity
+      // disclosure and one screenshot covers every case.
+      ...workbenchFixtureData.result.findings.map((finding) => ({
+        ...finding,
+        severity: "P1",
+      })),
+    ],
+  },
+};
+
+/** Both mapped Findings are actionable, so the fixture shows both add labels. */
+export const analysisFixtureReviewActions = {
+  findings: {
+    suggested: { state: "actionable" as const },
+    mapped: { state: "actionable" as const },
+  },
+  canFinishWithAnalysisSummary: false,
+};
+
 const longFixturePath =
   "src/features/review-workbench/components/extremely-long-directory-name-without-shortcuts/authoritative-review-write-coordination-and-recovery-surface.ts";
 const longFixtureTitle =

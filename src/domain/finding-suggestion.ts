@@ -89,6 +89,32 @@ function hunkNewSideLines(
 }
 
 /**
+ * A one-hunk unified patch that shows the replacement as a diff: the target's
+ * own lines removed, the replacement code added. It exists for the read-only
+ * Analysis preview, so it carries no `index` line and is never sent anywhere;
+ * GitHub receives the fenced block from `renderSuggestionCommentBody`.
+ */
+export function buildSuggestionPreviewPatch(
+  target: {
+    readonly path: string;
+    readonly startLine: number;
+    readonly originalLines: ReadonlyArray<string>;
+  },
+  code: string,
+): string {
+  const replacementLines = code.split("\n");
+  if (code.endsWith("\n")) replacementLines.pop();
+  return [
+    `diff --git a/${target.path} b/${target.path}`,
+    `--- a/${target.path}`,
+    `+++ b/${target.path}`,
+    `@@ -${target.startLine},${target.originalLines.length} +${target.startLine},${replacementLines.length} @@`,
+    ...target.originalLines.map((line) => `-${line}`),
+    ...replacementLines.map((line) => `+${line}`),
+  ].join("\n");
+}
+
+/**
  * Whether replacement code can be serialized into a GitHub `suggestion` block
  * at all. A line that opens a fence would close the block early, so fenced
  * code is refused rather than escaped.
