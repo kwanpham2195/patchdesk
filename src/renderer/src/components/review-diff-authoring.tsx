@@ -75,6 +75,7 @@ export function PendingReviewWriteCard({
   body,
   message,
   onDismiss,
+  onEdit,
   bodyContext,
 }: NonNullable<ReviewInlineAnnotation["pendingReviewWrite"]> & {
   /** What this card's Markdown resolves its images and links against. */
@@ -100,15 +101,23 @@ export function PendingReviewWriteCard({
       </div>
       {status === "failed" ? (
         <div className="mt-2">
-          <InlineError>{message}</InlineError>
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-2"
-            onClick={() => onDismiss(localId)}
-          >
-            Dismiss
-          </Button>
+          <InlineError className="break-words whitespace-normal">
+            {message}
+          </InlineError>
+          <div className="mt-2 flex gap-2">
+            {onEdit === undefined ? null : (
+              <Button size="sm" onClick={() => onEdit(localId)}>
+                Edit draft
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onDismiss(localId)}
+            >
+              Dismiss
+            </Button>
+          </div>
         </div>
       ) : null}
     </article>
@@ -253,6 +262,7 @@ export function InlineCommentComposer({
   startLine,
   line,
   side,
+  initialBody = "",
   onCancel,
   onSave,
   pendingReview,
@@ -261,12 +271,13 @@ export function InlineCommentComposer({
   readonly startLine: number;
   readonly line: number;
   readonly side: "new" | "old";
+  readonly initialBody?: string;
   readonly onCancel: () => void;
   readonly onSave: (body: string) => Promise<void>;
   readonly pendingReview?: PendingReviewComposerActions;
 }): React.JSX.Element {
   type ComposerAction = "comment" | "start" | "add" | "comment-now";
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(initialBody);
   const [pendingAction, setPendingAction] = useState<ComposerAction>();
   const pendingActionRef = useRef<ComposerAction | undefined>(undefined);
   const [error, setError] = useState<string>();

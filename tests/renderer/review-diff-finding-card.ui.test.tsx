@@ -228,3 +228,49 @@ describe("inline card body context", () => {
     },
   );
 });
+
+describe("failed pending-review write card", () => {
+  it("wraps the complete failure and offers Edit draft for a safe rejection", async () => {
+    const onEdit = vi.fn();
+    const message =
+      "The submission was refused because the pending review changed while this draft was being added. Refresh to see the current state before submitting again.";
+    renderAnnotationCard(
+      {
+        pendingReviewWrite: {
+          localId: "failed-write",
+          status: "failed",
+          action: "add",
+          body: "Preserved draft body",
+          message,
+          onDismiss: vi.fn(),
+          onEdit,
+        },
+      },
+      {},
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe(message);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Edit draft" }));
+    expect(onEdit).toHaveBeenCalledWith("failed-write");
+  });
+
+  it("does not offer Edit draft when recovery is locked", () => {
+    renderAnnotationCard(
+      {
+        pendingReviewWrite: {
+          localId: "unknown-write",
+          status: "failed",
+          action: "add",
+          body: "Uncertain draft body",
+          message: "Check GitHub again before continuing.",
+          onDismiss: vi.fn(),
+        },
+      },
+      {},
+    );
+
+    expect(screen.queryByRole("button", { name: "Edit draft" })).toBeNull();
+  });
+});

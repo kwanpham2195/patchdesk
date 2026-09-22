@@ -2,6 +2,8 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+
 import type { ConversationThreadCardData } from "../../src/renderer/src/components/conversation-thread-card";
 import type {
   LocalCommentAuthoring,
@@ -82,6 +84,49 @@ function renderOverlays(
       }),
     { initialProps: { annotations: initialAnnotations } },
   );
+}
+
+function renderPendingOverlays(
+  onStartReview: (body: string) => Promise<void>,
+  canAuthor: (line: number) => boolean = () => true,
+) {
+  return renderHook(() =>
+    useReviewConversationOverlays({
+      patch: PATCH,
+      annotations: [],
+      viewer: { current: null },
+      localCommentAuthoring: {
+        enabled: true,
+        canAuthor: (location) => canAuthor(location.line),
+        onSave: async () => undefined,
+      },
+      pendingReviewComposer: {
+        state: { state: "none" },
+        busy: false,
+        onStartReview: async (_anchor, body) => onStartReview(body),
+        onAddReviewComment: async () => undefined,
+      },
+      conversationActions: undefined,
+    }),
+  );
+}
+
+async function rejectPendingDraft(
+  rendered: ReturnType<typeof renderPendingOverlays>,
+  body: string,
+): Promise<void> {
+  act(() =>
+    rendered.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+  );
+  const pendingReview =
+    rendered.result.current.localComposerAnnotation?.localComposer
+      ?.pendingReview;
+  if (pendingReview === undefined) throw new Error("expected composer");
+  await act(async () => {
+    await pendingReview
+      .onStartReview({ path: PATH, startLine: 2, line: 2, side: "new" }, body)
+      .catch(() => undefined);
+  });
 }
 
 async function publishOverlay(
@@ -165,5 +210,89 @@ describe("useReviewConversationOverlays", () => {
     rendered.rerender({ annotations: [projectedThread("published body")] });
 
     expect(rendered.result.current.displayedAnnotations).toHaveLength(0);
+  });
+});
+
+describe("pending-review draft recovery", () => {
+  it("restores a safely rejected draft into the canonical composer", async () => {
+    const rendered = renderPendingOverlays(async () => {
+      throw new PatchdeskApiError(
+        "github_rejected",
+        422,
+        false,
+        "rejected-write",
+        "The pending review changed before this comment could be added.",
+      );
+    });
+    await rejectPendingDraft(rendered, "Draft to restore");
+
+    const failed = rendered.result.current.displayedAnnotations.find(
+      (annotation) => annotation.pendingReviewWrite?.status === "failed",
+    )?.pendingReviewWrite;
+    if (failed?.onEdit === undefined) throw new Error("expected Edit draft");
+    act(() => failed.onEdit?.(failed.localId));
+
+    expect(
+      rendered.result.current.localComposerAnnotation?.localComposer
+        ?.initialBody,
+    ).toBe("Draft to restore");
+    expect(
+      rendered.result.current.displayedAnnotations.some(
+        (annotation) => annotation.pendingReviewWrite !== undefined,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps outcome-unknown writes locked without Edit draft", async () => {
+    const rendered = renderPendingOverlays(async () => {
+      throw new PatchdeskApiError(
+        "timeout",
+        504,
+        true,
+        "unknown-write",
+        "The write may have completed.",
+      );
+    });
+    await rejectPendingDraft(rendered, "Unknown draft");
+
+    expect(rendered.result.current.displayedAnnotations).toHaveLength(0);
+    expect(rendered.result.current.localComposerAnnotation).toBeUndefined();
+  });
+
+  it("preserves a draft until a valid replacement anchor is selected", async () => {
+    let validAnchor = true;
+    const rendered = renderPendingOverlays(
+      async () => {
+        throw new PatchdeskApiError(
+          "revision_conflict",
+          409,
+          false,
+          "stale-anchor",
+          "The anchor is stale.",
+        );
+      },
+      () => validAnchor,
+    );
+    await rejectPendingDraft(rendered, "Draft needing a new line");
+    validAnchor = false;
+    const failed = rendered.result.current.displayedAnnotations.find(
+      (annotation) => annotation.pendingReviewWrite?.status === "failed",
+    )?.pendingReviewWrite;
+    if (failed?.onEdit === undefined) throw new Error("expected Edit draft");
+    act(() => failed.onEdit?.(failed.localId));
+    expect(rendered.result.current.localComposerAnnotation).toBeUndefined();
+    expect(rendered.result.current.draftRecoveryMessage).toBe(
+      "Select a new diff line to restore the saved draft.",
+    );
+
+    validAnchor = true;
+    act(() =>
+      rendered.result.current.beginAccessibleAuthoring(PATH, 3, "additions"),
+    );
+    expect(
+      rendered.result.current.localComposerAnnotation?.localComposer
+        ?.initialBody,
+    ).toBe("Draft needing a new line");
+    expect(rendered.result.current.draftRecoveryMessage).toBeUndefined();
   });
 });

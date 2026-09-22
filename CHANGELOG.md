@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserved inline pending-review drafts after GitHub safely rejects them. The failed card now shows the complete message and offers **Edit draft**, which restores the body and valid anchor into the canonical composer; if Refresh invalidated the anchor, Patchdesk keeps the text until another diff line is selected. Outcome-unknown writes remain locked for reconciliation and cannot be retried from the card. #339
+
 - Fixed Insight runs reporting a missing or mismatched Review worktree as a provider-runtime failure. The failed Insight now explains that the Review's local files are unavailable and offers **Re-prepare Review**, which rebuilds the same represented revision through the durable refresh lifecycle before another run. Failed command traces also keep long commands on one truncated row while preserving their duration and full text on hover. #245 #261
 
 - Fixed Refresh GitHub state losing ownership when GitHub preparation exceeded the desktop request timeout. Refresh now persists its operation and prepared Review before adoption, keeps visible progress while it runs, resumes the same operation after a renderer reload, and reports an interrupted or failed operation without replacing the readable Review. #264

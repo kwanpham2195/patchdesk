@@ -147,6 +147,7 @@ type LocalComposerConfig = {
   readonly line: number;
   readonly side: "new" | "old";
   readonly onCancel: () => void;
+  readonly initialBody?: string;
   readonly onSave: (body: string) => Promise<void>;
   readonly pendingReview?: PendingReviewComposerActions;
 };
@@ -157,6 +158,7 @@ type PendingReviewWriteConfig = {
   readonly body: string;
   readonly message?: string;
   readonly onDismiss: (localId: string) => void;
+  readonly onEdit?: (localId: string) => void;
 };
 export type LocalCommentLocation = {
   readonly path: string;

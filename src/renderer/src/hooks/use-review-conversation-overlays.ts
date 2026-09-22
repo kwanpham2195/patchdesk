@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import type { CodeViewLineSelection } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import { PatchdeskApiError } from "../api-client";
+import { isOutcomeUnknownRetry } from "../api-client";
 import { definedProps } from "../../../domain/defined-props";
 import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
 import {
@@ -85,6 +85,7 @@ type PendingReviewWriteOverlay =
 export type ReviewConversationOverlays = {
   readonly displayedAnnotations: ReadonlyArray<ReviewInlineAnnotation>;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
+  readonly draftRecoveryMessage: string | undefined;
   readonly beginAccessibleAuthoring: (
     path: string,
     line: number,
@@ -115,6 +116,12 @@ export function useReviewConversationOverlays({
 }): ReviewConversationOverlays {
   const [authoringSelection, setAuthoringSelection] =
     useState<CodeViewLineSelection | null>(null);
+  const [authoringInitialBody, setAuthoringInitialBody] = useState<
+    string | undefined
+  >();
+  const [orphanedDraftBody, setOrphanedDraftBody] = useState<
+    string | undefined
+  >();
   const [createdThreads, setCreatedThreads] = useState<
     ReadonlyArray<CreatedThreadOverlay>
   >([]);
@@ -206,6 +213,7 @@ export function useReviewConversationOverlays({
 
   const clearAuthoring = useCallback((): void => {
     setAuthoringSelection(null);
+    setAuthoringInitialBody(undefined);
     viewer.current?.clearSelectedLines();
   }, [viewer]);
 
@@ -220,12 +228,14 @@ export function useReviewConversationOverlays({
       };
       if (localCommentAuthoring.canAuthor?.(location) === false) return;
       localCommentAuthoring.onSelectionChange?.(location);
+      setAuthoringInitialBody(orphanedDraftBody);
+      setOrphanedDraftBody(undefined);
       setAuthoringSelection({
         id: path,
         range: { start: line, end: line, side },
       });
     },
-    [localCommentAuthoring],
+    [localCommentAuthoring, orphanedDraftBody],
   );
 
   const saveAuthoring = useCallback(
@@ -365,10 +375,7 @@ export function useReviewConversationOverlays({
           current.filter((entry) => entry.localId !== localId),
         );
       } catch (cause) {
-        if (
-          cause instanceof PatchdeskApiError &&
-          cause.kind === "outcome_unknown"
-        ) {
+        if (isOutcomeUnknownRetry(cause)) {
           setPendingWriteOverlays((current) =>
             current.filter((entry) => entry.localId !== localId),
           );
@@ -426,6 +433,7 @@ export function useReviewConversationOverlays({
         startLine: authoringSelection.range.start,
         line: authoringSelection.range.end,
         side: authoringSelection.range.side === "additions" ? "new" : "old",
+        ...definedProps({ initialBody: authoringInitialBody }),
         onCancel: clearAuthoring,
         onSave: saveAuthoring,
         ...definedProps({ pendingReview: wrappedPendingReview }),
@@ -433,12 +441,53 @@ export function useReviewConversationOverlays({
     };
   }, [
     authoringSelection,
+    authoringInitialBody,
     clearAuthoring,
     localCommentAuthoring?.enabled,
     pendingReviewComposer,
     saveAuthoring,
     submitPendingWrite,
   ]);
+
+  const editPendingWrite = useCallback(
+    (localId: string): void => {
+      const candidate = pendingWriteOverlays.find(
+        (overlay) => overlay.localId === localId,
+      );
+      if (candidate?._tag !== "failed") return;
+      const location: LocalCommentLocation = {
+        path: candidate.path,
+        startLine: candidate.start,
+        line: candidate.end,
+        side: candidate.side,
+      };
+      setPendingWriteOverlays((current) =>
+        current.filter((overlay) => overlay.localId !== localId),
+      );
+      if (
+        localCommentAuthoring?.enabled === true &&
+        localCommentAuthoring.canAuthor?.(location) !== false
+      ) {
+        localCommentAuthoring.onSelectionChange?.(location);
+        setAuthoringInitialBody(candidate.body);
+        setOrphanedDraftBody(undefined);
+        setAuthoringSelection({
+          id: candidate.path,
+          range: {
+            start: candidate.start,
+            end: candidate.end,
+            side: candidate.side === "new" ? "additions" : "deletions",
+          },
+        });
+        return;
+      }
+      setOrphanedDraftBody(candidate.body);
+      setAuthoringSelection(null);
+      setAuthoringInitialBody(undefined);
+      viewer.current?.clearSelectedLines();
+    },
+    [localCommentAuthoring, pendingWriteOverlays, viewer],
+  );
 
   const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
     () => [
@@ -509,6 +558,7 @@ export function useReviewConversationOverlays({
             setPendingWriteOverlays((current) =>
               current.filter((candidate) => candidate.localId !== localId),
             ),
+          onEdit: editPendingWrite,
           ...definedProps({
             message: entry._tag === "failed" ? entry.message : undefined,
           }),
@@ -526,7 +576,12 @@ export function useReviewConversationOverlays({
         };
       }),
     ],
-    [conversationActions, createdThreads, pendingWriteOverlays],
+    [
+      conversationActions,
+      createdThreads,
+      editPendingWrite,
+      pendingWriteOverlays,
+    ],
   );
 
   const renderedAnnotations = useMemo(
@@ -694,14 +749,20 @@ export function useReviewConversationOverlays({
       };
       if (localCommentAuthoring.canAuthor?.(location) === false) return;
       localCommentAuthoring.onSelectionChange?.(location);
+      setAuthoringInitialBody(orphanedDraftBody);
+      setOrphanedDraftBody(undefined);
       setAuthoringSelection(selection);
     },
-    [localCommentAuthoring],
+    [localCommentAuthoring, orphanedDraftBody],
   );
 
   return {
     displayedAnnotations,
     localComposerAnnotation,
+    draftRecoveryMessage:
+      orphanedDraftBody === undefined
+        ? undefined
+        : "Select a new diff line to restore the saved draft.",
     beginAccessibleAuthoring,
     beginAuthoring,
     decorateConversationThread,
