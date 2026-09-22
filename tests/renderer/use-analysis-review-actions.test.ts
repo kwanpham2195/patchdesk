@@ -27,6 +27,7 @@ import {
 } from "./review-workbench-fixtures";
 
 const COMMAND = "/v1/reviews/pending-review/command";
+const SUGGESTION = "/v1/reviews/pending-review/finding-suggestion";
 let restore: (() => void) | undefined;
 
 afterEach(() => {
@@ -725,6 +726,113 @@ describe("useAnalysisReviewActions", () => {
 
     await act(async () => {
       const request = result.current.addFindingToPendingReview(finding);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-finding-projection",
+      });
+    });
+
+    expect(onWorkbenchReplace).toHaveBeenLastCalledWith({
+      ...initial,
+      pendingReview: {
+        state: "recovery_required",
+        action: "start",
+        review: null,
+      },
+    });
+  });
+});
+
+describe("useAnalysisReviewActions with a verified suggestion", () => {
+  const written = {
+    anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" as const },
+    body: "Reject invalid values before this branch.\n\n```suggestion\nguarded\n```",
+  };
+
+  function suggestionFinding() {
+    const finding = analysisResult.findings[0];
+    if (finding === undefined) throw new Error("missing Finding fixture");
+    return { ...finding, suggestedReplacement: { code: "guarded" } };
+  }
+
+  function writtenProjection() {
+    return {
+      state: "pending" as const,
+      count: 1,
+      review: {
+        nodeId: "PRR_1",
+        headSha: sha,
+        comments: [
+          { threadId: "PRRT_written", ...written.anchor, body: written.body },
+        ],
+      },
+    };
+  }
+
+  it("sends identity and the expected revision without composing any comment", async () => {
+    const double = installDesktopDouble({
+      [SUGGESTION]: () =>
+        success({ pendingReview: writtenProjection(), written }),
+    });
+    restore = double.restore;
+    const { result } = renderActions(withAnalysis("actionable"));
+
+    await act(async () => {
+      await result.current.addFindingToPendingReview(suggestionFinding());
+    });
+
+    expect(double.request.mock.calls.map(([input]) => callPath(input))).toEqual(
+      [SUGGESTION],
+    );
+    expect(double.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: SUGGESTION,
+        body: {
+          profileId: "profile",
+          reviewId: "review-42",
+          runId: "insight-analysis-1-fixture",
+          findingId: "finding-1",
+          expected: { sessionId: "session-a", headSha: sha, patchHash },
+        },
+      }),
+    );
+  });
+
+  it("confirms the Finding from the comment the main process wrote", async () => {
+    const projected = writtenProjection();
+    const double = installDesktopDouble({
+      [SUGGESTION]: () => success({ pendingReview: projected, written }),
+    });
+    restore = double.restore;
+    const initial = withAnalysis("actionable");
+    const { result, onWorkbenchReplace } = renderActions(initial);
+
+    await act(async () => {
+      await result.current.addFindingToPendingReview(suggestionFinding());
+    });
+
+    expect(onWorkbenchReplace).toHaveBeenCalledWith({
+      ...initial,
+      pendingReview: projected,
+      analysisReviewActions: {
+        findings: { "finding-1": { state: "pending_review" } },
+        canFinishWithAnalysisSummary: true,
+      },
+    });
+  });
+
+  it("treats a response that names no written comment as untrusted", async () => {
+    const double = installDesktopDouble({
+      [SUGGESTION]: () => success({ pendingReview: writtenProjection() }),
+    });
+    restore = double.restore;
+    const initial = withAnalysis("actionable");
+    const { result, onWorkbenchReplace } = renderActions(initial);
+
+    await act(async () => {
+      const request =
+        result.current.addFindingToPendingReview(suggestionFinding());
       await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
       await expect(request).rejects.toMatchObject({
         kind: "outcome_unknown",

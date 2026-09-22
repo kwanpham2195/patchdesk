@@ -22,12 +22,16 @@ import {
 } from "../../domain/pending-review";
 import {
   parseContentHash,
+  parseFindingId,
   parseGitSha,
   parseGitHubReviewNodeId,
+  parseInsightRunId,
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type FindingId,
   type GitHubReviewNodeId,
+  type InsightRunId,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
@@ -132,6 +136,64 @@ const pendingReviewCommandSchema = object({
     }),
   ]),
 });
+
+/**
+ * A Finding suggestion request carries identity and the revision the caller
+ * believes it is acting on. It carries no anchor and no body: the main process
+ * rebuilds both from the retained Analysis and the represented patch.
+ */
+const findingSuggestionCommandSchema = object({
+  profileId: string(),
+  reviewId: string(),
+  runId: string(),
+  findingId: string(),
+  expected: reviewWriteExpectationSchema,
+  pendingReviewNodeId: optional(string()),
+});
+
+type FindingSuggestionCommandRequest = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly runId: InsightRunId;
+  readonly findingId: FindingId;
+  readonly expected: ReviewWriteExpectation;
+  /** Absent starts the viewer's pending review; present appends to that review. */
+  readonly pendingReviewNodeId?: GitHubReviewNodeId;
+};
+
+export function parseFindingSuggestionCommand(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema parsing on the raw body immediately.
+  body: unknown,
+): FindingSuggestionCommandRequest | undefined {
+  const parsed = safeParse(findingSuggestionCommandSchema, body);
+  if (!parsed.success) return undefined;
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const runId = parseInsightRunId(parsed.output.runId);
+  const findingId = parseFindingId(parsed.output.findingId);
+  const expected = parseReviewWriteExpectation(parsed.output.expected);
+  const nodeId =
+    parsed.output.pendingReviewNodeId === undefined
+      ? undefined
+      : parseGitHubReviewNodeId(parsed.output.pendingReviewNodeId);
+  if (
+    profileId._tag === "err" ||
+    reviewId._tag === "err" ||
+    runId._tag === "err" ||
+    findingId._tag === "err" ||
+    expected === undefined ||
+    nodeId?._tag === "err"
+  )
+    return undefined;
+  return {
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    runId: runId.value,
+    findingId: findingId.value,
+    expected,
+    ...definedProps({ pendingReviewNodeId: nodeId?.value }),
+  };
+}
 
 export function parseDirectSummaryCommand(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema parsing on the raw body immediately.

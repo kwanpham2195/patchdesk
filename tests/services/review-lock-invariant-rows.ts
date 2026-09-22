@@ -255,6 +255,18 @@ export const lockRows: ReadonlyArray<LockRow> = [
     ),
   },
   {
+    name: "InsightRunCoordinator.resolveFindingSuggestion",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.resolveFindingSuggestion({
+        profileId,
+        reviewId,
+        runId: insightRunId,
+        findingId,
+      }),
+    ),
+  },
+  {
     name: "InsightRunCoordinator.updateWalkthroughProgress",
     kind: "queues",
     build: insightBuild((insights) =>

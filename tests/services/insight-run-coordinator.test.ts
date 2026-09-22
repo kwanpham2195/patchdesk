@@ -2,7 +2,21 @@ import { writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { renderSuggestionCommentBody } from "../../src/domain/finding-suggestion";
+import {
+  parseContentHash,
+  parseFindingId,
+  parseInsightRunId,
+  parseRepoRelativePath,
+  type InsightRunId,
+} from "../../src/domain/ids";
+import {
+  beginInsightRun,
+  completeInsightRun,
+} from "../../src/domain/insight-record";
 import { err, ok, type Result } from "../../src/domain/result";
+import type { ReviewResult } from "../../src/domain/review-result";
+import { contentHash } from "../../src/services/review-artifact-hash";
 import type { BriefReachRequest } from "../../src/services/brief-reach-service";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import {
@@ -17,6 +31,7 @@ import {
   contextPackFixture,
   fixture,
   headSha,
+  must,
   now,
   profileId,
   settled,
@@ -796,5 +811,183 @@ describe("InsightRunCoordinator desktop notifications", () => {
     );
 
     expect(events).toEqual([]);
+  });
+});
+
+describe("InsightRunCoordinator Finding suggestions", () => {
+  const findingId = must(parseFindingId("finding-1"));
+  const guardFinding = {
+    id: findingId,
+    severity: "P1",
+    title: "Guard the added branch",
+    file: must(parseRepoRelativePath("a.ts")),
+    lineStart: 1,
+    lineEnd: 1,
+    diffSide: "new",
+    explanation: "The added line accepts an invalid value.",
+    suggestedComment: "Reject invalid values here.",
+    confidence: "high",
+    mappingStatus: "mapped",
+    suggestedReplacement: { code: "guarded" },
+  } as const;
+
+  /**
+   * Retains one Analysis result against the session's current revision, so a
+   * test can name the exact Finding the suggestion command has to resolve
+   * without running a provider.
+   */
+  async function seedRetainedAnalysis(
+    value: Awaited<ReturnType<typeof fixture>>,
+    findings: ReviewResult["findings"],
+  ): Promise<InsightRunId> {
+    const patchHash = must(
+      parseContentHash(await contentHash(value.session.patchPath)),
+    );
+    const runId = must(
+      parseInsightRunId(`insight-analysis-1-aaaaaaaaaaaa-${value.review.id}`),
+    );
+    const revision = { sessionId: value.session.id, headSha, patchHash };
+    const begun = await value.insights.mutate({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      now,
+      operation: (record) =>
+        beginInsightRun(record, {
+          id: runId,
+          revision,
+          provider: "pi",
+          model: "model",
+          reasoning: "medium",
+          startedAt: now,
+        }),
+    });
+    if (begun._tag === "err") throw new Error("could not seed an Analysis run");
+    const retained = await value.insights.mutate({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      now,
+      operation: (record) =>
+        completeInsightRun(
+          record,
+          runId,
+          {
+            runId,
+            revision,
+            generatedAt: now,
+            provenance: {
+              provider: "pi",
+              model: "model",
+              reasoning: "medium",
+            },
+            value: { ...analysisResult, verdict: "comment", findings },
+          },
+          now,
+        ),
+    });
+    if (retained._tag === "err")
+      throw new Error("could not retain the Analysis result");
+    return runId;
+  }
+
+  it("rebuilds the anchor and the suggestion body from the represented patch", async () => {
+    const value = await fixture({
+      async invoke() {
+        return ok(analysisResult);
+      },
+    });
+    const runId = await seedRetainedAnalysis(value, [guardFinding]);
+    const patchHash = must(
+      parseContentHash(await contentHash(value.session.patchPath)),
+    );
+
+    const resolved = await value.coordinator.resolveFindingSuggestion({
+      profileId,
+      reviewId: value.review.id,
+      runId,
+      findingId,
+    });
+
+    expect(resolved).toEqual(
+      ok({
+        anchor: { path: "a.ts", startLine: 1, line: 1, side: "new" },
+        body: renderSuggestionCommentBody(
+          "Reject invalid values here.",
+          "guarded",
+        ),
+        finding: {
+          analysisRunId: runId,
+          findingId: "finding-1",
+          sessionId: value.session.id,
+          headSha,
+          patchHash,
+        },
+      }),
+    );
+  });
+
+  it("refuses a suggestion after the represented patch moved", async () => {
+    const value = await fixture({
+      async invoke() {
+        return ok(analysisResult);
+      },
+    });
+    const runId = await seedRetainedAnalysis(value, [guardFinding]);
+    await writeFile(
+      value.session.patchPath,
+      "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -0,0 +1 @@\n+other\n",
+      "utf8",
+    );
+
+    expect(
+      await value.coordinator.resolveFindingSuggestion({
+        profileId,
+        reviewId: value.review.id,
+        runId,
+        findingId,
+      }),
+    ).toEqual(err("stale_request"));
+  });
+
+  it("answers not found for a Finding that retained no replacement", async () => {
+    const value = await fixture({
+      async invoke() {
+        return ok(analysisResult);
+      },
+    });
+    const { suggestedReplacement: _dropped, ...withoutReplacement } =
+      guardFinding;
+    void _dropped;
+    const runId = await seedRetainedAnalysis(value, [withoutReplacement]);
+
+    expect(
+      await value.coordinator.resolveFindingSuggestion({
+        profileId,
+        reviewId: value.review.id,
+        runId,
+        findingId,
+      }),
+    ).toEqual(err("not_found"));
+  });
+
+  it("refuses a suggestion whose range no longer resolves in the patch", async () => {
+    const value = await fixture({
+      async invoke() {
+        return ok(analysisResult);
+      },
+    });
+    const runId = await seedRetainedAnalysis(value, [
+      { ...guardFinding, lineStart: 7, lineEnd: 7 },
+    ]);
+
+    expect(
+      await value.coordinator.resolveFindingSuggestion({
+        profileId,
+        reviewId: value.review.id,
+        runId,
+        findingId,
+      }),
+    ).toEqual(err("stale_request"));
   });
 });
