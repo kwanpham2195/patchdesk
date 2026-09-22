@@ -16,11 +16,7 @@ const suggestionPreviewPreferences: ReviewViewPreferences = {
   fileMode: "all",
 };
 
-/**
- * Read-only preview of the exact replacement a Finding carries, rendered as a
- * diff against the represented patch's own lines. The caller resolves the
- * target, so the preview and the Finding's add action share one gate.
- */
+/** The caller resolves the target, so this preview and the Finding's add action share one gate. */
 export function FindingSuggestionPreview({
   target,
   code,

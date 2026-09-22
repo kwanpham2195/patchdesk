@@ -89,6 +89,11 @@ function hunkNewSideLines(
   return lines;
 }
 
+/** Every suggestion serializer needs the code to end its last line, so the newline is added once here. */
+export function withTrailingNewline(code: string): string {
+  return code.endsWith("\n") ? code : `${code}\n`;
+}
+
 /**
  * A one-hunk unified patch that shows the replacement as a diff: the target's
  * own lines removed, the replacement code added. It exists for the read-only
@@ -103,8 +108,8 @@ export function buildSuggestionPreviewPatch(
   },
   code: string,
 ): string {
-  const replacementLines = code.split("\n");
-  if (code.endsWith("\n")) replacementLines.pop();
+  const replacementLines = withTrailingNewline(code).split("\n");
+  replacementLines.pop();
   return [
     `diff --git a/${target.path} b/${target.path}`,
     `--- a/${target.path}`,
@@ -139,13 +144,11 @@ export function isAcceptableSuggestionCode(code: string): boolean {
 /**
  * The one GitHub comment body a verified suggestion is published as: the
  * reviewer's comment, then a single fenced `suggestion` block holding the
- * exact replacement. Every caller serializes the fence here, so no other code
- * decides what a suggestion block looks like.
+ * exact replacement.
  */
 export function renderSuggestionCommentBody(
   comment: string,
   code: string,
 ): string {
-  const body = code.endsWith("\n") ? code : `${code}\n`;
-  return `${comment.trim()}\n\n${CODE_FENCE}suggestion\n${body}${CODE_FENCE}`;
+  return `${comment.trim()}\n\n${CODE_FENCE}suggestion\n${withTrailingNewline(code)}${CODE_FENCE}`;
 }

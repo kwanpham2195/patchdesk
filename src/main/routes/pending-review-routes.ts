@@ -26,7 +26,7 @@ import {
   parseFindingSuggestionCommand,
   parsePendingReviewCommand,
 } from "./pending-review-command";
-import { insightFailureStatus } from "./insight-routes";
+import { insightFailureStatus } from "./http-status";
 import { jsonBody } from "./json-body";
 import { reviewRecoverySchema } from "./review-recovery-schema";
 
@@ -210,10 +210,9 @@ async function findingSuggestionResponse(
 
 /**
  * The one envelope every pending-review write answers with. A failure carries
- * the stored projection when there is one so the caller can tell an untouched
- * pending review from an uncertain outcome; `composed` names the exact comment
- * the main process built, so a Finding caller confirms that text rather than
- * a body it assembled itself.
+ * the stored projection so the caller can tell an untouched pending review
+ * from an uncertain outcome, and `composed` names the comment the main process
+ * built so a Finding caller confirms that text rather than one it assembled.
  */
 async function pendingReviewWriteResponse(
   context: Context,

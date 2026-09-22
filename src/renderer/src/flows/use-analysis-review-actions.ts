@@ -110,22 +110,38 @@ function hasTargetComment(
   );
 }
 
-function parseConfirmedFindingProjection(
+/**
+ * The command response's one envelope parse. An outcome-unknown failure body
+ * carries the same two fields inside a larger envelope, so it is read loosely
+ * rather than parsed a second time per field.
+ */
+type CommandEnvelope = {
+  readonly pendingReview: unknown;
+  readonly composed?: unknown;
+};
+
+function parseCommandEnvelope(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the command response's JSON boundary parser; there is no earlier boundary to run it at.
   value: unknown,
-  command: FindingReviewCommand,
-  allowFailureEnvelope = false,
-): PendingProjection | undefined {
+  allowFailureEnvelope: boolean,
+): CommandEnvelope | undefined {
   const envelope = v.safeParse(
     allowFailureEnvelope
-      ? v.looseObject({ pendingReview: v.unknown() })
+      ? v.looseObject({
+          pendingReview: v.unknown(),
+          composed: v.optional(v.unknown()),
+        })
       : pendingReviewCommandResponseSchema,
     value,
   );
-  if (!envelope.success) return undefined;
-  const projection = parsePendingReviewProjection(
-    envelope.output.pendingReview,
-  );
+  return envelope.success ? envelope.output : undefined;
+}
+
+function confirmedFindingProjection(
+  envelope: CommandEnvelope,
+  command: FindingReviewCommand,
+): PendingProjection | undefined {
+  const projection = parsePendingReviewProjection(envelope.pendingReview);
   if (
     projection?.state !== "pending" ||
     projection.count !== projection.review.comments.length ||
@@ -285,13 +301,6 @@ export function useAnalysisReviewActions({
         throw new ReviewPreconditionError("stale_finding_evidence");
       const pendingReviewNodeId =
         pending?.state === "pending" ? pending.review.nodeId : undefined;
-      const commentCommand: FindingReviewCommand = {
-        _tag: tag,
-        ...definedProps({ pendingReviewNodeId }),
-        expected,
-        anchor,
-        body: finding.suggestedComment ?? finding.explanation,
-      };
       // A verified replacement is published by the main process, which owns
       // the anchor and the suggestion body; this request carries identity and
       // the expected revision only (issue #316). The same resolution the
@@ -301,51 +310,53 @@ export function useAnalysisReviewActions({
         finding.suggestedReplacement !== undefined &&
         resolveSuggestionTarget(currentWorkbench.fullPatch, findingLocation) !==
           undefined;
-      const request = isSuggestion
-        ? {
-            path: FINDING_SUGGESTION_PATH,
-            body: {
-              profileId: currentWorkbench.session.key.profileId,
-              reviewId: currentWorkbench.review.id,
-              runId,
-              findingId: finding.id,
-              expected,
-              ...definedProps({ pendingReviewNodeId }),
-            },
-          }
+      const commentCommand: FindingReviewCommand | undefined = isSuggestion
+        ? undefined
         : {
-            path: PENDING_REVIEW_COMMAND_PATH,
-            body: {
-              profileId: currentWorkbench.session.key.profileId,
-              reviewId: currentWorkbench.review.id,
-              command: {
-                ...commentCommand,
-                finding: {
-                  analysisRunId: runId,
-                  findingId: finding.id,
-                  ...expected,
+            _tag: tag,
+            ...definedProps({ pendingReviewNodeId }),
+            expected,
+            anchor,
+            body: finding.suggestedComment ?? finding.explanation,
+          };
+      const request =
+        commentCommand === undefined
+          ? {
+              path: FINDING_SUGGESTION_PATH,
+              body: {
+                profileId: currentWorkbench.session.key.profileId,
+                reviewId: currentWorkbench.review.id,
+                runId,
+                findingId: finding.id,
+                expected,
+                ...definedProps({ pendingReviewNodeId }),
+              },
+            }
+          : {
+              path: PENDING_REVIEW_COMMAND_PATH,
+              body: {
+                profileId: currentWorkbench.session.key.profileId,
+                reviewId: currentWorkbench.review.id,
+                command: {
+                  ...commentCommand,
+                  finding: {
+                    analysisRunId: runId,
+                    findingId: finding.id,
+                    ...expected,
+                  },
                 },
               },
-            },
-          };
+            };
       /**
        * The comment this write is confirmed against. An ordinary Finding knows
        * it before the request; a suggestion learns it from the response, the
        * only place the published body exists.
        */
       const confirmedCommand = (
-        // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this helper parses the command response through its owned schema before reading anything.
-        value: unknown,
+        envelope: CommandEnvelope,
       ): FindingReviewCommand | undefined => {
-        if (!isSuggestion) return commentCommand;
-        const envelope = v.safeParse(
-          v.looseObject({ composed: v.unknown() }),
-          value,
-        );
-        if (!envelope.success) return undefined;
-        const composed = parseComposedFindingSuggestion(
-          envelope.output.composed,
-        );
+        if (commentCommand !== undefined) return commentCommand;
+        const composed = parseComposedFindingSuggestion(envelope.composed);
         return composed === undefined
           ? undefined
           : {
@@ -399,13 +410,11 @@ export function useAnalysisReviewActions({
         value: unknown,
         allowFailureEnvelope = false,
       ): boolean => {
-        const command = confirmedCommand(value);
+        const envelope = parseCommandEnvelope(value, allowFailureEnvelope);
+        if (envelope === undefined) return false;
+        const command = confirmedCommand(envelope);
         if (command === undefined) return false;
-        const projection = parseConfirmedFindingProjection(
-          value,
-          command,
-          allowFailureEnvelope,
-        );
+        const projection = confirmedFindingProjection(envelope, command);
         if (projection === undefined) return false;
         const latest = latestWorkbenchRef.current;
         if (!sameWorkbenchScope(latest, currentWorkbench)) return false;
