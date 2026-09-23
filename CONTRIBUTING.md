@@ -317,6 +317,10 @@ ref checks a stale range: `git fetch` first.
 
 Beyond `pnpm check`:
 
+- `pnpm test:coverage` runs the root suite under V8 coverage over `src/`
+  (fixture routes excluded) and prints a summary; the HTML report lands in
+  `coverage/`, which is ignored. There is no coverage threshold; the number is
+  for orientation, not a gate.
 - `pnpm knip` prints the unused files, exports, and dependencies behind the
   Knip ratchet's number. `pnpm check` runs the ratchet; run `pnpm knip` when
   you need to see which entries make it up.
