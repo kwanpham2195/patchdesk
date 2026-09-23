@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCodexBriefPrompt,
-  MAX_BRIEF_PROMPT_BYTES,
-} from "../../src/adapters/codex/codex-brief-prompt";
+import { buildCodexBriefPrompt } from "../../src/adapters/codex/codex-brief-prompt";
 
 describe("buildCodexBriefPrompt", () => {
   const briefPrompt = [
@@ -46,7 +43,7 @@ describe("buildCodexBriefPrompt", () => {
   });
 
   it("rejects an over-size composed prompt", () => {
-    const oversized = "x".repeat(MAX_BRIEF_PROMPT_BYTES);
+    const oversized = "x".repeat(3 * 1024 * 1024);
     expect(
       buildCodexBriefPrompt({
         briefPrompt: oversized,
