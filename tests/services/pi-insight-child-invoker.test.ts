@@ -173,8 +173,8 @@ describe("PiInsightChildInvoker", () => {
     expect(executor.requests[0]?.timeoutMs).toBe(10 * 60_000);
   });
 
-  it("fails closed for invalid child protocol, crash, overflow-sized input, and cancellation", async () => {
-    const invalid = new PiInsightChildInvoker(
+  it("rejects a successful child response with no result envelope", async () => {
+    const invoker = new PiInsightChildInvoker(
       new CommandRunner(
         new RecordingExecutor({
           _tag: "Exited",
@@ -186,7 +186,7 @@ describe("PiInsightChildInvoker", () => {
       "/workspace",
     );
     await expect(
-      invalid.invokeWalkthrough(
+      invoker.invokeWalkthrough(
         {
           profileId: "profile",
           sessionId,
@@ -198,7 +198,10 @@ describe("PiInsightChildInvoker", () => {
         60_000,
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "invalid_result" } });
-    const crash = new PiInsightChildInvoker(
+  });
+
+  it("classifies a crashed child as an execution failure", async () => {
+    const invoker = new PiInsightChildInvoker(
       new CommandRunner(
         new RecordingExecutor({
           _tag: "Exited",
@@ -210,7 +213,7 @@ describe("PiInsightChildInvoker", () => {
       "/workspace",
     );
     await expect(
-      crash.invokeWalkthrough(
+      invoker.invokeWalkthrough(
         {
           profileId: "profile",
           sessionId,
@@ -222,10 +225,50 @@ describe("PiInsightChildInvoker", () => {
         60_000,
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
+  });
+
+  it("rejects oversized child input without starting the runner", async () => {
+    const executor = new RecordingExecutor({
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, value: walkthrough }),
+      stderr: "",
+    });
+    const invoker = new PiInsightChildInvoker(
+      new CommandRunner(executor),
+      "/workspace",
+    );
+    await expect(
+      invoker.invokeWalkthrough(
+        {
+          profileId: "profile",
+          sessionId,
+          contextPath: `/app/${"x".repeat(2 * 1024 * 1024)}`,
+          patchPath: "/app/patch",
+          model: "deepseek/deepseek-v4-flash",
+          reasoning: "low",
+        },
+        60_000,
+      ),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
+    expect(executor.requests).toEqual([]);
+  });
+
+  it("returns cancelled when the run is already aborted", async () => {
+    const executor = new RecordingExecutor({
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, value: walkthrough }),
+      stderr: "",
+    });
+    const invoker = new PiInsightChildInvoker(
+      new CommandRunner(executor),
+      "/workspace",
+    );
     const controller = new AbortController();
     controller.abort();
     await expect(
-      crash.invokeWalkthrough(
+      invoker.invokeWalkthrough(
         {
           profileId: "profile",
           sessionId,
@@ -238,6 +281,7 @@ describe("PiInsightChildInvoker", () => {
         { signal: controller.signal },
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "cancelled" } });
+    expect(executor.requests).toEqual([]);
   });
 });
 
@@ -263,19 +307,23 @@ describe("PiInsightChildInvoker provider seam", () => {
     };
   }
 
-  it("rejects the two reasoning efforts this runtime cannot run, before spawning a child", async () => {
-    const { executor, invoker } = seam(
-      JSON.stringify({ ok: true, value: analysisResult }),
-    );
-    const options = { signal: new AbortController().signal };
-    await expect(
-      invoker.invoke(invocation({ reasoning: "minimal" }), options),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
-    await expect(
-      invoker.invoke(invocation({ reasoning: "xhigh" }), options),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
-    expect(executor.requests).toEqual([]);
-  });
+  it.each(["minimal", "xhigh"] as const)(
+    "rejects %s reasoning before spawning a child",
+    async (reasoning) => {
+      const { executor, invoker } = seam(
+        JSON.stringify({ ok: true, value: analysisResult }),
+      );
+      await expect(
+        invoker.invoke(invocation({ reasoning }), {
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toEqual({
+        _tag: "err",
+        error: { reason: "execution_failed" },
+      });
+      expect(executor.requests).toEqual([]);
+    },
+  );
 
   it("rejects an analysis without the prepared review input", async () => {
     const { executor, invoker } = seam(
