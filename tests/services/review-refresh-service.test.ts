@@ -325,42 +325,50 @@ describe("ReviewRefreshService", () => {
     });
   });
 
-  it("requires merged evidence before terminal-only refresh persists a Review", async () => {
-    const closed = { ...snapshot.pullRequest, isOpen: false };
-    const outcomes = [
-      {
-        name: "open",
-        pullRequest: snapshot.pullRequest,
-        mergeOutcome: ok({ state: "open" as const }),
-      },
-      {
-        name: "closed unmerged",
-        pullRequest: closed,
-        mergeOutcome: ok({ state: "closed_unmerged" as const }),
-      },
-      { name: "missing outcome", pullRequest: closed, mergeOutcome: undefined },
-    ];
+  it("rejects terminal-only refresh while GitHub still reports an open PR", async () => {
+    const { service, calls } = createReviewRefreshFixture({
+      mergeOutcomeResult: ok({ state: "open" }),
+    });
 
-    for (const outcome of outcomes) {
-      const fixture =
-        outcome.mergeOutcome === undefined
-          ? createReviewRefreshFixture({
-              currentPullRequest: outcome.pullRequest,
-            })
-          : createReviewRefreshFixture({
-              currentPullRequest: outcome.pullRequest,
-              mergeOutcomeResult: outcome.mergeOutcome,
-            });
-      await expect(
-        fixture.service.refresh({
-          profileId,
-          reviewId: review.id,
-          expectedTerminalState: "merged",
-        }),
-        outcome.name,
-      ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
-      expect(fixture.calls.savedReviews, outcome.name).toEqual([]);
-    }
+    await expect(
+      service.refresh({
+        profileId,
+        reviewId: review.id,
+        expectedTerminalState: "merged",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
+    expect(calls.savedReviews).toEqual([]);
+  });
+
+  it("rejects terminal-only refresh when GitHub reports a closed unmerged PR", async () => {
+    const { service, calls } = createReviewRefreshFixture({
+      currentPullRequest: { ...snapshot.pullRequest, isOpen: false },
+      mergeOutcomeResult: ok({ state: "closed_unmerged" }),
+    });
+
+    await expect(
+      service.refresh({
+        profileId,
+        reviewId: review.id,
+        expectedTerminalState: "merged",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
+    expect(calls.savedReviews).toEqual([]);
+  });
+
+  it("rejects terminal-only refresh when the merge outcome reader is unavailable", async () => {
+    const { service, calls } = createReviewRefreshFixture({
+      currentPullRequest: { ...snapshot.pullRequest, isOpen: false },
+    });
+
+    await expect(
+      service.refresh({
+        profileId,
+        reviewId: review.id,
+        expectedTerminalState: "merged",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
+    expect(calls.savedReviews).toEqual([]);
   });
 
   it("rejects a reopen race during terminal-only refresh before persisting a Review", async () => {
