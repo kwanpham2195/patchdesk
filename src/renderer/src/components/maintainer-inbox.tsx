@@ -230,8 +230,9 @@ export function MaintainerInbox({
     onOpenReviewId,
   });
 
+  // Header, filters, and column labels stay put; only the rows and footer scroll.
   const main = (
-    <div className="min-w-0">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <InboxHeader
         profileLabel={profileLabel}
         {...(repos === undefined ? {} : { repos })}
@@ -274,28 +275,34 @@ export function MaintainerInbox({
         inspectorOpen={inspectorOpen}
         onToggleInspector={toggleInspector}
       />
-      <InboxRowsPanel
-        listRef={listRef}
-        rows={effectiveRows}
-        selected={selected}
-        state={state}
-        listPending={listPending}
-        {...(matchCount === undefined ? {} : { matchCount })}
-        hasLabelFilter={selectedLabels.length > 0}
-        onKeyDown={onListKeyDown}
-        onSelectRow={selectRow}
-        onActionRow={triggerAction}
-        openingOperations={openingOperations}
-      />
-      <InboxFooter
-        pageSize={pageSize}
-        hasPreviousPage={hasPreviousPage}
-        hasNextPage={hasNextPage}
-        refreshStatus={refreshStatus}
-        onPageSizeChange={onPageSizeChange}
-        onPreviousPage={onPreviousPage}
-        onNextPage={onNextPage}
-      />
+      <InboxColumnHeader />
+      <ScrollArea
+        className="min-h-0 flex-1 overflow-x-hidden"
+        viewportClassName="overscroll-contain"
+      >
+        <InboxRowsPanel
+          listRef={listRef}
+          rows={effectiveRows}
+          selected={selected}
+          state={state}
+          listPending={listPending}
+          {...(matchCount === undefined ? {} : { matchCount })}
+          hasLabelFilter={selectedLabels.length > 0}
+          onKeyDown={onListKeyDown}
+          onSelectRow={selectRow}
+          onActionRow={triggerAction}
+          openingOperations={openingOperations}
+        />
+        <InboxFooter
+          pageSize={pageSize}
+          hasPreviousPage={hasPreviousPage}
+          hasNextPage={hasNextPage}
+          refreshStatus={refreshStatus}
+          onPageSizeChange={onPageSizeChange}
+          onPreviousPage={onPreviousPage}
+          onNextPage={onNextPage}
+        />
+      </ScrollArea>
     </div>
   );
 
@@ -306,13 +313,11 @@ export function MaintainerInbox({
   return (
     <div
       className={cn(
-        "min-h-[calc(100vh-3rem)] min-w-0 bg-background min-[1280px]:grid min-[1280px]:h-full min-[1280px]:min-h-0 min-[1280px]:overflow-hidden",
+        "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background min-[1280px]:grid min-[1280px]:grid-rows-[minmax(0,1fr)]",
         desktopGridColumns,
       )}
     >
-      <ScrollArea className="min-w-0 overflow-x-hidden min-[1280px]:h-full">
-        {main}
-      </ScrollArea>
+      {main}
       <ReviewDetailsPanel
         inspectorOpen={inspectorOpen}
         narrow={narrow}
@@ -337,7 +342,7 @@ function StaleInboxBanner({
   readonly refreshedAt: string;
 }): React.JSX.Element {
   return (
-    <Alert variant="warning" className="mx-3 mt-2">
+    <Alert variant="warning" className="mx-3 mt-2 shrink-0">
       <AlertTitle>Priority order may be unreliable</AlertTitle>
       <AlertDescription>
         Snapshot from {formatInboxAge(Date.now() - Date.parse(refreshedAt))}.
@@ -377,7 +382,7 @@ function InboxHeader({
       ? undefined
       : `${selectedRepository.owner}/${selectedRepository.repo}`;
   return (
-    <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
+    <header className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
       <div className="min-w-0">
         <p className="text-[11px] leading-4 text-muted-foreground">
           {profileLabel}
@@ -473,6 +478,23 @@ function emptyRowsMessage(
   return `No ${state === "open" ? "open" : "merged"} pull requests.`;
 }
 
+/** Column labels for the desktop grid; kept outside the rows' scroller so they stay visible. */
+function InboxColumnHeader(): React.JSX.Element {
+  return (
+    <div
+      aria-hidden="true"
+      className="hidden shrink-0 grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
+    >
+      <span>Pull request</span>
+      <span>Labels</span>
+      <span>Author</span>
+      <span>Changes</span>
+      <span>CI</span>
+      <span className="text-right">Updated</span>
+    </div>
+  );
+}
+
 function InboxRowsPanel({
   listRef,
   rows,
@@ -502,63 +524,50 @@ function InboxRowsPanel({
   >;
 }): React.JSX.Element {
   return (
-    <>
-      <div
-        aria-hidden="true"
-        className="hidden grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
-      >
-        <span>Pull request</span>
-        <span>Labels</span>
-        <span>Author</span>
-        <span>Changes</span>
-        <span>CI</span>
-        <span className="text-right">Updated</span>
-      </div>
-      <div
-        ref={listRef}
-        role="listbox"
-        aria-label="Pull requests"
-        aria-busy={listPending}
-        onKeyDown={onKeyDown}
-        className="divide-y outline-none"
-      >
-        {listPending
-          ? pendingRowPlaceholders.map((placeholder) => (
-              <div
-                key={placeholder}
-                aria-hidden="true"
-                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]"
-              >
-                <Skeleton className="h-4 w-[min(30rem,80%)]" />
-                <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
-                <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
-                <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
-                <Skeleton className="hidden size-3.5 rounded-full min-[1280px]:block" />
-                <Skeleton className="h-3 w-6 justify-self-end" />
-              </div>
-            ))
-          : rows.map((row) => {
-              const key = inboxIdentityKey(row);
-              const active =
-                selected !== undefined && key === inboxIdentityKey(selected);
-              return (
-                <InboxRowItem
-                  key={key}
-                  row={row}
-                  selected={active}
-                  onSelect={() => onSelectRow(row)}
-                  onAction={() => onActionRow(row)}
-                  openingState={openingOperations.get(key)}
-                />
-              );
-            })}
-        {!listPending && rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            {emptyRowsMessage(state, matchCount, hasLabelFilter)}
-          </div>
-        ) : null}
-      </div>
-    </>
+    <div
+      ref={listRef}
+      role="listbox"
+      aria-label="Pull requests"
+      aria-busy={listPending}
+      onKeyDown={onKeyDown}
+      className="divide-y outline-none"
+    >
+      {listPending
+        ? pendingRowPlaceholders.map((placeholder) => (
+            <div
+              key={placeholder}
+              aria-hidden="true"
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]"
+            >
+              <Skeleton className="h-4 w-[min(30rem,80%)]" />
+              <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
+              <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
+              <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
+              <Skeleton className="hidden size-3.5 rounded-full min-[1280px]:block" />
+              <Skeleton className="h-3 w-6 justify-self-end" />
+            </div>
+          ))
+        : rows.map((row) => {
+            const key = inboxIdentityKey(row);
+            const active =
+              selected !== undefined && key === inboxIdentityKey(selected);
+            return (
+              <InboxRowItem
+                key={key}
+                row={row}
+                selected={active}
+                onSelect={() => onSelectRow(row)}
+                onAction={() => onActionRow(row)}
+                openingState={openingOperations.get(key)}
+              />
+            );
+          })}
+      {!listPending && rows.length === 0 ? (
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          {emptyRowsMessage(state, matchCount, hasLabelFilter)}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -102,7 +102,7 @@ export function InboxFiltersBar({
 }): React.JSX.Element {
   return (
     <section
-      className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
+      className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5"
       aria-label="Pull requests filters"
     >
       <Select
