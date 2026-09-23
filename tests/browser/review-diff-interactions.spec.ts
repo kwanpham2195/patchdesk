@@ -1,10 +1,32 @@
-import { expect, test } from "playwright/test";
+import { expect, test, type Page } from "playwright/test";
 import {
   closeServer,
   openDiff,
   serveRenderer,
   serverOrigin,
 } from "./renderer-server";
+
+async function scrollUntilActivePath(page: Page, path: string): Promise<void> {
+  const viewport = page.locator(".review-diff-viewport");
+  const box = await viewport.boundingBox();
+  if (box === null) throw new Error("Review diff viewport was not visible");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.mouse.wheel(0, 10_000);
+  }
+
+  const tree = page.locator("file-tree-container");
+  // The diff scroll hook commits active-path updates in an animation frame.
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await page.mouse.wheel(0, 1_000);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    if ((await tree.getAttribute("data-active-path")) === path) return;
+  }
+  throw new Error(`Scrolling did not activate ${path}`);
+}
 
 test("native diff scrolling passively follows the active file without changing finding state", async ({
   page,
@@ -21,24 +43,7 @@ test("native diff scrolling passively follows the active file without changing f
       () => document.activeElement?.localName,
     );
 
-    const viewport = page.locator(".review-diff-viewport");
-    const box = await viewport.boundingBox();
-    if (box === null) throw new Error("Review diff viewport was not visible");
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await page.mouse.wheel(0, 10_000);
-    }
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      await page.mouse.wheel(0, 1_000);
-      await page.waitForTimeout(100);
-      if (
-        (await page
-          .locator("file-tree-container")
-          .getAttribute("data-active-path")) === "src/c.ts"
-      ) {
-        break;
-      }
-    }
+    await scrollUntilActivePath(page, "src/c.ts");
     await expect(
       page.locator('file-tree-container[data-active-path="src/c.ts"]'),
     ).toBeVisible();
@@ -87,33 +92,7 @@ test("the file tree does not remount when the active file changes via passive sc
     if (containerBefore === null)
       throw new Error("Expected the file tree container to exist");
 
-    const viewport = page.locator(".review-diff-viewport");
-    const box = await viewport.boundingBox();
-    if (box === null) throw new Error("Review diff viewport was not visible");
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    // A single big wheel jump can land before the active-file effect has
-    // caught up. Under whole-suite load, the margin that used to cover that
-    // gap -- the loaded-file-count waits and materializeAndScrollTo's
-    // append-and-retry chain, both removed by 26391b4 now that CodeView gets
-    // every file at mount -- is gone, leaving a single two-frame attempt
-    // against Playwright's default 5s expect timeout with no polling. Nudge
-    // the same way the still-passing sibling test above ("native diff
-    // scrolling passively follows...") does: repeat the wheel and re-check,
-    // instead of betting everything on one big scroll landing in time.
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await page.mouse.wheel(0, 10_000);
-    }
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      await page.mouse.wheel(0, 1_000);
-      await page.waitForTimeout(100);
-      if (
-        (await page
-          .locator("file-tree-container")
-          .getAttribute("data-active-path")) === "src/c.ts"
-      ) {
-        break;
-      }
-    }
+    await scrollUntilActivePath(page, "src/c.ts");
     await expect(
       page.locator('file-tree-container[data-active-path="src/c.ts"]'),
     ).toBeVisible();
@@ -172,31 +151,7 @@ test("the active-file highlight replaces stale click selection instead of leavin
     // never updates its own click-selection state on its own, so without
     // this fix's stale-selection neutralization, b would still carry
     // `data-item-selected="true"` and keep looking highlighted alongside c.
-    const viewport = page.locator(".review-diff-viewport");
-    const box = await viewport.boundingBox();
-    if (box === null) throw new Error("Review diff viewport was not visible");
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    // Same settle-polling as "the file tree does not remount..." above: a
-    // single big wheel jump can land before the active-file effect has
-    // caught up, and under whole-suite load there is no longer any timing
-    // margin borrowed from the removed loaded-file-count waits and
-    // materializeAndScrollTo retry chain to cover that gap. Nudge like the
-    // still-passing "native diff scrolling passively follows..." sibling
-    // test does.
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await page.mouse.wheel(0, 10_000);
-    }
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      await page.mouse.wheel(0, 1_000);
-      await page.waitForTimeout(100);
-      if (
-        (await page
-          .locator("file-tree-container")
-          .getAttribute("data-active-path")) === "src/c.ts"
-      ) {
-        break;
-      }
-    }
+    await scrollUntilActivePath(page, "src/c.ts");
     await expect(
       page.locator('file-tree-container[data-active-path="src/c.ts"]'),
     ).toBeVisible();
