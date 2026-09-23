@@ -7,7 +7,6 @@ import type { ForbiddenReason } from "../../src/domain/github-forbidden-reason";
 import { AssigneePicker } from "../../src/renderer/src/components/assignee-picker";
 import { LabelPicker } from "../../src/renderer/src/components/label-picker";
 import { ReviewerPicker } from "../../src/renderer/src/components/reviewer-picker";
-import { forbiddenCopy } from "../../src/renderer/src/github-read-failure-copy";
 import type {
   AssignableUserListResponse,
   RepositoryLabelListResponse,
@@ -284,13 +283,14 @@ describe.each(pickers)(
       mount({ read: "github_forbidden", reason: "saml" }, write);
       await openPicker(user, trigger);
       const withReason = (await screen.findByRole("alert")).textContent;
-      expect(withReason).toBe(forbiddenCopy("saml"));
+      expect(withReason).toMatch(/SAML/);
       cleanup();
 
       mount({ read: "github_forbidden" }, write);
       await openPicker(user, trigger);
       const withoutReason = (await screen.findByRole("alert")).textContent;
-      expect(withoutReason).toBe(forbiddenCopy(undefined));
+      expect(withoutReason).toMatch(/why/);
+      expect(withoutReason).not.toMatch(/SAML/);
       expect(withReason).not.toBe(withoutReason);
     });
 
