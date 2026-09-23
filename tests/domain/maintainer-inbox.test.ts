@@ -316,10 +316,8 @@ describe("inbox search query budget", () => {
   });
 
   it("reports the excess as the difference from the cap", () => {
-    expect(inboxSearchQueryExcess([repository], fiveLongLabels)).toBe(
-      composeInboxSearchQuery([repository], fiveLongLabels).length -
-        INBOX_SEARCH_QUERY_MAX_LENGTH,
-    );
+    expect(INBOX_SEARCH_QUERY_MAX_LENGTH).toBe(256);
+    expect(inboxSearchQueryExcess([repository], fiveLongLabels)).toBe(68);
   });
 
   it("measures the longest repository, because each is read on its own query", () => {
