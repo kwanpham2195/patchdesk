@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   mergeLoginShellEnvironment,
@@ -211,15 +211,21 @@ describe("readLoginShellEnvironment", () => {
   });
 
   it("imports nothing and kills the shell when it does not answer in time", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const processes: Array<FakeLoginShellProcess> = [];
-    const environment = await readLoginShellEnvironment({
-      shellPath: "/bin/zsh",
-      timeoutMs: 20,
-      spawnProcess: fakeLoginShell({ hang: true }, [], processes),
-    });
+    try {
+      const environment = readLoginShellEnvironment({
+        shellPath: "/bin/zsh",
+        timeoutMs: 20,
+        spawnProcess: fakeLoginShell({ hang: true }, [], processes),
+      });
+      await vi.advanceTimersByTimeAsync(20);
 
-    expect(environment).toEqual({});
-    expect(processes.map((child) => child.killed)).toEqual([true]);
+      await expect(environment).resolves.toEqual({});
+      expect(processes.map((child) => child.killed)).toEqual([true]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("imports nothing when the login shell exits nonzero", async () => {
