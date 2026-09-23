@@ -128,11 +128,9 @@ describe("CodexInsightInvoker", () => {
       expect(invocation).not.toHaveProperty(removed);
   });
 
-  it("fails closed for foreign app-owned paths and provider mismatch", async () => {
+  it("rejects a worktree outside the app-owned Review path", async () => {
     const value = await fixture();
-    // SAFETY: value.input is already the plain fixture object built above (never a real
-    // InsightInvocationInput instance), so widening it to `object` here only unlocks the spread;
-    // the rebuilt literal is read the same way described for the `input` cast above.
+    // SAFETY: the fixture input is a plain object; this changes only its worktree path.
     await expect(
       value.invoker.invoke(
         { ...(value.input as object), worktreePath: "/tmp/not-owned" } as never,
@@ -142,7 +140,12 @@ describe("CodexInsightInvoker", () => {
       _tag: "err",
       error: { reason: "review_worktree_unavailable" },
     });
-    // SAFETY: same as above.
+    expect(value.calls).toHaveLength(0);
+  });
+
+  it("rejects a context path that does not match the prepared context", async () => {
+    const value = await fixture();
+    // SAFETY: the fixture input is a plain object; this changes only its context path.
     await expect(
       value.invoker.invoke(
         { ...(value.input as object), contextPath: value.patch } as never,
@@ -152,7 +155,12 @@ describe("CodexInsightInvoker", () => {
       _tag: "err",
       error: { reason: "review_worktree_unavailable" },
     });
-    // SAFETY: same as above.
+    expect(value.calls).toHaveLength(0);
+  });
+
+  it("rejects a patch path that does not match the prepared patch", async () => {
+    const value = await fixture();
+    // SAFETY: the fixture input is a plain object; this changes only its patch path.
     await expect(
       value.invoker.invoke(
         { ...(value.input as object), patchPath: value.context } as never,
@@ -162,7 +170,12 @@ describe("CodexInsightInvoker", () => {
       _tag: "err",
       error: { reason: "review_worktree_unavailable" },
     });
-    // SAFETY: same as above.
+    expect(value.calls).toHaveLength(0);
+  });
+
+  it("rejects a provider mismatch before invoking Codex", async () => {
+    const value = await fixture();
+    // SAFETY: the fixture input is a plain object; this changes only its provider.
     await expect(
       value.invoker.invoke(
         { ...(value.input as object), provider: "pi" } as never,
@@ -172,23 +185,25 @@ describe("CodexInsightInvoker", () => {
     expect(value.calls).toHaveLength(0);
   });
 
-  it("separates a missing or mismatched represented worktree from runtime availability", async () => {
-    const missing = await fixture();
-    await rm(missing.worktree, { recursive: true, force: true });
+  it("rejects a missing represented worktree", async () => {
+    const value = await fixture();
+    await rm(value.worktree, { recursive: true, force: true });
     await expect(
-      missing.invoker.invoke(missing.input, {
+      value.invoker.invoke(value.input, {
         signal: new AbortController().signal,
       }),
     ).resolves.toEqual({
       _tag: "err",
       error: { reason: "review_worktree_unavailable" },
     });
+  });
 
-    const mismatched = await fixture();
+  it("rejects a represented worktree with a mismatched head", async () => {
+    const value = await fixture();
     await expect(
-      mismatched.invoker.invoke(
+      value.invoker.invoke(
         {
-          ...(mismatched.input as object),
+          ...(value.input as object),
           expectedHeadSha: "b".repeat(40),
         } as never,
         { signal: new AbortController().signal },
