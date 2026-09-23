@@ -143,8 +143,6 @@ test("typing `.` in the comment composer inserts the character instead of naviga
     // Pierre's CodeView finishes wiring its own hover tracking a moment
     // after mount; hovering a line before that is ready leaves the gutter
     // button's box at zero size with nothing to recompute it.
-    await page.waitForTimeout(500);
-
     // Open the real inline composer via the gutter's "Add comment" control,
     // the same one a maintainer uses: hover a rendered diff line (Pierre's
     // CodeView positions the gutter button from its own hover tracking, so
@@ -152,11 +150,7 @@ test("typing `.` in the comment composer inserts the character instead of naviga
     // real), then force the click -- Patchdesk's own sticky per-file header
     // sits at the same coordinates in this custom element's hit-test order
     // even once the button has a real, visible box.
-    const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
-    const addComment = page
-      .locator('button[aria-label^="Add comment on"]')
-      .first();
-    await line.hover();
+    const addComment = await hoverReadyGutterControl(page);
     await addComment.click({ force: true });
 
     const composer = page.getByRole("textbox", { name: "Inline comment" });
@@ -259,13 +253,7 @@ test("typing `[` in the comment composer inserts the character instead of naviga
     // Pierre's CodeView finishes wiring its own hover tracking a moment
     // after mount; hovering a line before that is ready leaves the gutter
     // button's box at zero size with nothing to recompute it.
-    await page.waitForTimeout(500);
-
-    const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
-    const addComment = page
-      .locator('button[aria-label^="Add comment on"]')
-      .first();
-    await line.hover();
+    const addComment = await hoverReadyGutterControl(page);
     await addComment.click({ force: true });
 
     const composer = page.getByRole("textbox", { name: "Inline comment" });
@@ -356,13 +344,7 @@ test("typing `{` in the comment composer inserts the character instead of naviga
     // Pierre's CodeView finishes wiring its own hover tracking a moment
     // after mount; hovering a line before that is ready leaves the gutter
     // button's box at zero size with nothing to recompute it.
-    await page.waitForTimeout(500);
-
-    const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
-    const addComment = page
-      .locator('button[aria-label^="Add comment on"]')
-      .first();
-    await line.hover();
+    const addComment = await hoverReadyGutterControl(page);
     await addComment.click({ force: true });
 
     const composer = page.getByRole("textbox", { name: "Inline comment" });
@@ -421,4 +403,19 @@ async function headerOverlapsViewport(
     headerBox.y + headerBox.height > viewportBox.y &&
     headerBox.y < viewportBox.y + viewportBox.height
   );
+}
+
+async function hoverReadyGutterControl(page: Page): Promise<Locator> {
+  const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
+  const addComment = page
+    .locator('button[aria-label^="Add comment on"]')
+    .first();
+  // Playwright visibility requires a non-empty bounding box.
+  await expect
+    .poll(async () => {
+      await line.hover();
+      return addComment.isVisible();
+    })
+    .toBe(true);
+  return addComment;
 }
