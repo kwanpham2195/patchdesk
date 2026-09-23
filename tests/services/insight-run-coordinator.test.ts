@@ -2,7 +2,6 @@ import { writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { renderSuggestionCommentBody } from "../../src/domain/finding-suggestion";
 import {
   parseContentHash,
   parseFindingId,
@@ -910,10 +909,7 @@ describe("InsightRunCoordinator Finding suggestions", () => {
     expect(resolved).toEqual(
       ok({
         anchor: { path: "a.ts", startLine: 1, line: 1, side: "new" },
-        body: renderSuggestionCommentBody(
-          "Reject invalid values here.",
-          "guarded",
-        ),
+        body: "Reject invalid values here.\n\n```suggestion\nguarded\n```",
         finding: {
           analysisRunId: runId,
           findingId: "finding-1",
