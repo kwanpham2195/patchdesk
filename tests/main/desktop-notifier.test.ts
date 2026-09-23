@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createDesktopNotifier,
@@ -36,8 +36,12 @@ const defaults: NotificationSettings = {
   intervalMinutes: 3,
 };
 
-/** Lets the notifier's settings read settle. */
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** Wait for the notification decision rather than a timer turn. */
+async function waitForNotificationDecision(
+  logs: LogEntryInput[],
+): Promise<void> {
+  await vi.waitFor(() => expect(logs).toHaveLength(1));
+}
 
 /** A stand-in for Electron's `Notification` that records what was shown. */
 function fakeNotifications() {
@@ -94,7 +98,7 @@ describe("createDesktopNotifier", () => {
     const { notifier, notifications, logs } = harness();
 
     notifier.notify(analysisFinished);
-    await flush();
+    await waitForNotificationDecision(logs);
 
     expect(notifications.shown).toMatchObject([
       { title: "Analysis finished", body: "octo-org/patchdesk#42" },
@@ -114,7 +118,7 @@ describe("createDesktopNotifier", () => {
     const { notifier, notifications, logs, clicks } = harness();
 
     notifier.notify(analysisFinished);
-    await flush();
+    await waitForNotificationDecision(logs);
     notifications.shown[0]?.click();
 
     expect(clicks).toEqual([
@@ -124,7 +128,7 @@ describe("createDesktopNotifier", () => {
   });
 
   it("names a watched pull request's change and routes its click to the pull request", async () => {
-    const { notifier, notifications, clicks } = harness();
+    const { notifier, notifications, clicks, logs } = harness();
 
     notifier.notify({
       _tag: "WatchedPullRequestChanged",
@@ -132,7 +136,7 @@ describe("createDesktopNotifier", () => {
       pullRequest,
       change: "pushed",
     });
-    await flush();
+    await waitForNotificationDecision(logs);
     notifications.shown[0]?.click();
 
     expect(notifications.shown).toMatchObject([
@@ -167,7 +171,7 @@ describe("createDesktopNotifier", () => {
       const { notifier, notifications, logs } = harness(options);
 
       notifier.notify(analysisFinished);
-      await flush();
+      await waitForNotificationDecision(logs);
 
       expect(notifications.shown).toEqual([]);
       expect(logs).toMatchObject([
@@ -190,7 +194,7 @@ describe("createDesktopNotifier", () => {
     expect(() =>
       notifier.notify({ _tag: "WriteNeedsRecovery", reviewId, pullRequest }),
     ).not.toThrow();
-    await flush();
+    await waitForNotificationDecision(logs);
     expect(logs).toMatchObject([
       {
         level: "warn",
