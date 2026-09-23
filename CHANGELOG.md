@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Trimmed the app's own prose. Descriptions that only restated their heading are gone from **Pull requests**, **Settings**, the first-run checklist, the Review header, **PR overview**, the review dialogs, and the Insight panels; status and failure messages now state the cause and at most one action; the Insight run dialog keeps only the selected model's list price; and the sign-in, unconfirmed-write, rate-limit, and blocked-write messages for comments, reviews, labels, reviewers, assignees, drafts, base branch changes, merges, and Findings each share one wording.
+
 - Added **Add suggestion to review** for an Analysis finding that carries exact replacement code for the lines it cites. The finding first shows a read-only **Suggested change** preview of those lines against the replacement, drawn as a diff like its evidence, and one press adds a GitHub review comment holding the finding's comment and a single `suggestion` block, through the same pending review, receipts, locks, and **Check GitHub again** recovery as any other finding. Patchdesk keeps a replacement only when it checks out against the diff the Review represents — mapped, on the new side, inside one hunk, unfenced, and at most 4096 bytes — and a replacement that fails that check falls away while the finding keeps its ordinary **Add to review**. Patchdesk never edits the code, never touches your checkout or the pull request branch, and sends nothing until you press. After you submit the review, GitHub offers the author **Apply suggestion** or **Add suggestion to batch**. #316
 
 ## 0.0.10 - 2026-09-22

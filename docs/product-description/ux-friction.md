@@ -200,7 +200,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low. Raised from source; not reachable live.
 - **Disposition:** named follow-up.
 - **Issue:** [#201](https://github.com/kwanpham2195/patchdesk/issues/201)
-- **Status:** fixed by `6a0cbeb7`: an outdated Walkthrough now says to regenerate it rather than to refresh. Read from source at `737c515c`, not observed live.
+- **Status:** fixed by `6a0cbeb7`: an outdated Walkthrough now says to regenerate it rather than to refresh. Read from source at `737c515c`, not observed live. The two sentences were later shortened to "Older revision; regenerate to see replies." and "Discussion unavailable; refresh to check."
 - **Page:** [Walkthrough](review-workbench/walkthrough.md#arrive).
 
 ### UX-13: The open Review's Visited row does nothing on Enter

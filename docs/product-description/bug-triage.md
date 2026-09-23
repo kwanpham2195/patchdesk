@@ -170,7 +170,7 @@ B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issu
 - **Severity:** `medium`. An unexplained disabled primary action on every terminal Review.
 - **Decision needed:** `fix`, fix now per the independent review. Add a terminal branch to the empty-state copy; the page Variants rows already state the rule.
 - **Raised by:** [Brief](review-workbench/brief.md#open-questions-and-verification), [Analysis](review-workbench/analysis.md#open-questions-and-verification), [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification).
-- **Status:** confirmed 2026-09-14 on `5fe7df3b` on merged #96 and #91 against open #113 by the Insights live pass, and by the review from source. Fixed by `e161a483`: a merged or closed Review now shows "This Review is merged or closed. Generating an Insight needs an open Review; retained Insights stay readable." above the reader, and that reason replaces provider errors. The post-fix state is read from source, not observed live. [B-19](#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review) is unchanged: Try again and Run for latest revision are still ungated.
+- **Status:** confirmed 2026-09-14 on `5fe7df3b` on merged #96 and #91 against open #113 by the Insights live pass, and by the review from source. Fixed by `e161a483`: a merged or closed Review now shows "This Review is merged or closed; Insights cannot be generated." above the reader, and that reason replaces provider errors. The post-fix state is read from source, not observed live. [B-19](#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review) is unchanged: Try again and Run for latest revision are still ungated.
 - **Issue:** [#187](https://github.com/kwanpham2195/patchdesk/issues/187), closed
 
 ### B-12: The Checks control opens PR overview on Merge readiness
@@ -296,12 +296,12 @@ B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issu
 - **Where the user meets it:** Four places, each a copy or formatting slip.
 - **What happens / what was expected:**
   - Fixed by `686f8d25`: the running Insight state read "Started 2026-09-14T08:32:10.123Z. Partial results are not shown." with a raw machine timestamp, while every other retained time in Insights was relative. It now draws a relative time and drops the partial-results sentence. Cause was `src/renderer/src/components/insight-panels.tsx:277`.
-  - A ready Walkthrough says "Each section maps to one part of the patch. Use Back to files when you're done." The Walkthrough has no Back to files control. Cause: `src/renderer/src/review-copy.ts:37-41`, shown at `src/renderer/src/components/narrative-walkthrough.tsx:622`.
+  - Fixed by `85623f8a`: a ready Walkthrough said "Each section maps to one part of the patch. Use Back to files when you're done." while the Walkthrough has no Back to files control. The sentence and the copy map behind it are gone.
   - Review activity title-cases hyphenated phase names but shows underscore names raw, such as `Retention_sweep`. Cause: `activityLabel` at `src/renderer/src/flows/settings-flow.tsx:860-865` splits on `-` only.
-  - The no-eligible-model guidance says to set credentials "in the Electron process, then reload", naming an internal process, while a key added to the login shell after launch needs a relaunch. Cause: `src/renderer/src/components/review-insights-slot.tsx:113` and `src/renderer/src/flows/settings-flow.tsx:750-755`.
+  - The no-model guidance no longer names the Electron process; it now says "Add a provider API key, then reload." It still says reload, while a key added to the login shell after launch needs a relaunch. Cause: `src/renderer/src/components/review-insights-slot.tsx` and `src/renderer/src/flows/settings-flow.tsx`.
 - **Reproduce:** Start an Insight run and read the running state; open a retained Walkthrough; open Settings → Data & recovery and Load activity after a retention sweep; open Insights or Settings → Review with no eligible model.
 - **Severity:** `low`. Cosmetic or misleading copy with no state at risk.
-- **Decision needed:** `fix`, for the three that remain. Remove the Back to files sentence, split phase names on `_` as well, and reword the guidance to say relaunch Patchdesk.
+- **Decision needed:** `fix`, for the two that remain. Split phase names on `_` as well, and reword the no-model guidance to say relaunch Patchdesk.
 - **Raised by:** [Brief](review-workbench/brief.md#open-questions-and-verification), [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification), [Logs and diagnostics](settings/logs-and-diagnostics.md#open-questions-and-verification), [Review defaults](settings/review-defaults.md#open-questions-and-verification).
 - **Status:** 2026-09-14 on `5fe7df3b`: `Retention_sweep` was seen raw in Review activity by the settings live pass; the other three were read from source.
 - **Issue:** —

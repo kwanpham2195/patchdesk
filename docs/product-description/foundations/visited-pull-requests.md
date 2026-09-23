@@ -41,7 +41,7 @@ A pull request the maintainer watches carries an eye mark on that same line, tit
 
 A Review stored before Patchdesk recorded opens has no title and no open time. Its row uses the reference as its label and shows no age, and it is ordered by the time its record was last updated until the next time it is opened.
 
-The column has three settled states besides its rows. With no Review in the workspace it says `You have not opened a pull request yet.` and `Open one from Pull requests and it appears here.` When the local read fails it says `Patchdesk could not read the pull requests you have opened.` and offers no Retry. Until the first read answers, the list is blank, with no loading indicator.
+The column has three settled states besides its rows. With no Review in the workspace it says `Opened pull requests appear here.` When the local read fails it says `Could not load recent pull requests.` and offers no Retry. Until the first read answers, the list is blank, with no loading indicator.
 
 While a workspace switch is in flight, and on a fresh install before the first account save creates a workspace, the header strip has no label and the list is blank.
 

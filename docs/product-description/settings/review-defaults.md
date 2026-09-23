@@ -26,9 +26,9 @@ stateDiagram-v2
 
 The Review section labels the controls Default model and Default reasoning. It loads the provider catalog and lists only API-key models in the Settings model selector. The saved Analysis preference is profile-scoped and defaults to the API key provider with the ordinary fallback model and Medium reasoning until the catalog supplies a usable choice.
 
-The section separately checks whether the Codex CLI account provider is available and reports it under the description `Profile-scoped defaults for the next Analysis run. They never start work.` The line reads `Codex CLI account: checking availability`, then `available` or `unavailable; expose codex on the app launch PATH and log in externally`.
+The section separately checks whether the Codex CLI account provider is available and reports it under the description `Defaults for the next Analysis run.` The line reads `Codex CLI account: checking availability`, then `available` or `unavailable; expose codex on the app launch PATH and log in externally`.
 
-If no API-key model and no Codex CLI account is available, or the catalog fails, the section shows `No eligible model configured` and says to configure an API key or ambient provider credentials in the Electron process, then reload the screen; the saved preference is kept. If only the Codex CLI account is available, it shows `No API-key model configured` and says to start an Insight and select Codex CLI account to load its models.
+If no API-key model and no Codex CLI account is available, or the catalog fails, the section shows `No model configured` and says to add a provider API key, then reload; the saved preference is kept. If only the Codex CLI account is available, it shows `No API-key model configured` and says to select Codex CLI account when starting an Insight.
 
 What the section can list depends on the environment Patchdesk started with. At startup, before anything reads a provider key or looks for `codex`, Patchdesk runs the maintainer's login shell once and imports provider API keys and `PATH` from it. A key exported only in `~/.zshrc`, or a `codex` installed through Homebrew, is therefore found when Patchdesk is opened from the Dock or Finder, the same as when it is started from a terminal.
 

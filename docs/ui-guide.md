@@ -56,6 +56,16 @@ It transitions those properties over 150ms, which is the one duration for state 
 Do not add an animation library; Base UI's `data-starting-style` and `data-ending-style` cover open and close.
 The reduced-motion rule at the end of `styles.css` collapses every transition and animation to an instant when the OS asks for less motion, so nothing you add needs its own reduced-motion branch.
 
+## Copy
+
+The reader knows GitHub and has used an AI tool, so never explain either.
+A description under a title has to add a fact the title does not carry; when it cannot, the title stands on its own and there is no description.
+Nothing narrates what the app is doing to itself, reassures the reader, or repeats a fix instruction beside the control that already performs it.
+
+- Keep internal vocabulary out of user copy: Electron process, projection, bounded, represented, alias manifest.
+- Status and error copy is one sentence: the cause, and at most one action.
+- A situation several screens share gets one wording. Write-failure sentences come from `forbiddenWriteCopy`, `unconfirmedWriteCopy`, and `rateLimitedWriteCopy` in `src/renderer/src/review-copy.ts`, and sign-in and read-failure sentences from `src/renderer/src/github-read-failure-copy.ts`. Call those rather than retyping the sentence.
+
 ## Pointers
 
 - Layers of code and who owns what: `docs/architecture.md`.

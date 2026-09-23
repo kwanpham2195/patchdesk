@@ -38,7 +38,7 @@ Patchdesk does not read `.gitattributes`. A file the repository marks as generat
 
 The bar keeps a visible sliver for any bucket that changed at least one line, so a one-line config change beside a large lockfile does not disappear.
 
-Below the Scope card sit three cards in reading order: Brief, then Walkthrough, then Analysis. Each card shows its name, one headline line, and a status badge. Brief's headline is its Start here lead, or the title of its first Flow view. Walkthrough's headline is its chapter and section count. Analysis's headline is its verdict, how many findings still need attention, and the current CI state. A card with nothing retained says "Not generated for this revision". A card with a retained result also says how long ago it was retained.
+Below the Scope card sit three cards in reading order: Brief, then Walkthrough, then Analysis. Each card shows its name, one headline line, and a status badge. Brief's headline is its Start here lead, or the title of its first Flow view. Walkthrough's headline is its chapter and section count. Analysis's headline is its verdict, how many findings still need attention, and the current CI state. A card with nothing retained leaves its headline blank, so only its status badge names the state. A card with a retained result also says how long ago it was retained.
 
 The status badge reads Not generated, Running, Current, Outdated, or Failed. Running carries a spinner. Current is the only state whose document can navigate the live code, and it is the only one drawn as a success.
 
@@ -119,7 +119,7 @@ The filter is a way of reading this diff now, not a place to return to. It is se
 - Choosing an already active bucket clears the filter rather than reapplying it.
 - Choosing a bucket while a file outside it is selected moves the selection to the bucket's first file.
 - Moving to Commits, or choosing a commit there, clears an active Scope filter.
-- A card with no retained result says "Not generated for this revision" and shows no retained time.
+- A card with no retained result shows a blank headline and no retained time; its status badge carries the state.
 - A Brief with no Start here lead falls back to the title of its first Flow view for its headline.
 - An Analysis card counts only the findings still needing attention, using the same rule as merge readiness, so the card and the readiness card never disagree.
 

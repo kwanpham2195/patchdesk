@@ -10,7 +10,7 @@ The maintainer chooses a file in Browse, reads its hunks, moves through files or
 
 When the current Analysis cites a file, Browse and that file's header show how many Findings point at it. A Finding card in the diff offers Open in Analysis, and a Finding in Analysis offers the way back to its lines in the diff.
 
-When an open pull request conflicts with its base branch, a Merge conflicts notice sits above the diff. It reads: "Merge conflicts are what block this merge, not the checks. The head branch `<head>` no longer merges cleanly into the base branch `<base>`. Resolve the conflicts in your own local checkout, then push the head branch. The diff below still shows the changes this pull request makes." The diff itself reads as it always does.
+When an open pull request conflicts with its base branch, a Merge conflicts notice sits above the diff. It is headed Merge conflicts and reads: "`<head>` no longer merges cleanly into `<base>`. Resolve locally and push." When either branch name is missing, it drops the branch clause and reads "Resolve the conflicts locally and push." The diff itself reads as it always does.
 
 ## The task, event by event
 

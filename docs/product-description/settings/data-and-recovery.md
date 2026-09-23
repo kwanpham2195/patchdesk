@@ -25,9 +25,9 @@ stateDiagram-v2
 
 ### Arrive
 
-The active workspace profile is the target. With no active profile, both cleanup buttons and Load activity are disabled, and the section shows `No active workspace` with `Choose a workspace before clearing its local data.`
+The active workspace profile is the target. With no active profile, both cleanup buttons and Load activity are disabled, and the section shows `No active workspace`.
 
-The Local review data card states the boundary once: `Stored reviews stay readable` over `Clear cache keeps review history. Clear local review data removes completed and failed local reviews; an active review and diagnostic reports stay.` Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. The Review activity card below it is described in [Logs and diagnostics](logs-and-diagnostics.md).
+The Local review data card carries the two actions with no preamble; each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. The Review activity card below it is described in [Logs and diagnostics](logs-and-diagnostics.md).
 
 The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: a terminal Review older than 14 days is removed with its record and session, orphaned sessions older than 14 days and quarantine entries older than 30 days are removed, as [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) describes.
 

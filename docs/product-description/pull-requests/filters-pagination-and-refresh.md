@@ -125,7 +125,7 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 - Labels are fetched lazily from the whole repository, not inferred from the loaded page.
 - Up to five labels are accepted, each no longer than 50 characters; labels containing quotes or control characters are rejected. The label menu disables every unticked label once five are ticked, or sooner when a label would push the search past 256 characters.
 - The `This filter is full` line sits above the label list, outside its scroll container, so it stays in view however far the list is scrolled.
-- The label menu reads up to 100 repository labels. When the repository has more, it says `Showing 100 of <total> labels. Some repository labels aren't shown.`
+- The label menu reads up to 100 repository labels. When the repository has more, it says `Showing 100 of <total> labels.`
 - Author and Base branch at their own maximum lengths fit together inside the search limit; `Too long alongside the other filters` needs labels or a long repository name in the same search.
 - Either preset composes with state and labels and carries across repository changes. Only one can be active: the field holding it takes one value, so no combination sends both qualifiers.
 - A saved Awaiting review from you toggle from before this pair existed is not migrated: the stored preference reads back with no preset, and the maintainer picks one again.

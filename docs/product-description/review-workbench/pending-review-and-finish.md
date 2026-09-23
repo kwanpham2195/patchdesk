@@ -26,9 +26,9 @@ stateDiagram-v2
 
 ### Arrive
 
-With no pending review, the header offers Start a review and inline composers offer Start a review or Comment now. With a pending review, the header shows Finish review · N, and inline composers offer Add review comment. If pending-review state is unavailable, Patchdesk shows a recovery banner instead of pretending there is none, and inline composers disable their text field and say "Pending review state is unavailable. Check GitHub again or refresh before commenting."
+With no pending review, the header offers Start a review and inline composers offer Start a review or Comment now. With a pending review, the header shows Finish review · N, and inline composers offer Add review comment. If pending-review state is unavailable, Patchdesk shows a recovery banner instead of pretending there is none, and inline composers disable their text field and say "Pending review unavailable. Check GitHub or refresh."
 
-Finish review says "Submit your pending review comments to GitHub. The summary below is sent only when you submit." It lists the pending ledger with path, line or range, side, and comment body, and repeats the count as an "N pending" badge beside Decision. The Summary is modal-local and sent only with Submit review. Decision labels are human-readable while the request uses GitHub's `COMMENT`, `APPROVE`, or `REQUEST_CHANGES` values.
+Finish review says "The summary is sent with the review." It lists the pending ledger with path, line or range, side, and comment body. The Summary is modal-local and sent only with Submit review. Decision labels are human-readable while the request uses GitHub's `COMMENT`, `APPROVE`, or `REQUEST_CHANGES` values.
 
 ### Leave unchanged
 

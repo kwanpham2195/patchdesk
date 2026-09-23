@@ -120,7 +120,7 @@ After a switch failure, the prior profile remains active. After a rejected field
 - Two workspaces created with the same name get distinct identifiers: the derived slug, then `-2`, `-3`, and so on.
 - Updating a watched repository's local path does not change its GitHub identity.
 - Profile field updates preserve the watchlist; watchlist updates preserve other profile fields.
-- A repository checkbox used before a workspace has loaded reports `Patchdesk has not finished loading this workspace.` and sends nothing.
+- A repository checkbox used before a workspace has loaded reports `Workspace still loading.` and sends nothing.
 - The first save on a fresh install, before any workspace is stored, creates the workspace with the label Default when no name was given.
 
 ## Open questions and verification

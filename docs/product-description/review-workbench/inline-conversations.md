@@ -43,7 +43,7 @@ When no pending review exists, the maintainer can Comment now or Start a review.
 
 The keyboard shortcut does not choose Comment now. It runs Add review comment when a pending review exists, Start a review when none exists, and Comment when pending-review actions are not available.
 
-If the pending review's state is unavailable or needs recovery, the text field is disabled, the shortcut does nothing, and the composer says "Pending review state is unavailable. Check GitHub again or refresh before commenting."
+If the pending review's state is unavailable or needs recovery, the text field is disabled, the shortcut does nothing, and the composer says "Pending review unavailable. Check GitHub or refresh."
 
 ### While the action runs
 
@@ -63,9 +63,9 @@ A composer that fails keeps its text and shows a message for the cause:
 - GitHub already holds an unfinished review: "GitHub already holds an unfinished review on this pull request. Refresh, then add this comment to that review."
 - The write was refused without GitHub being the one to refuse it — the Review's own write gate, a missing confirmation, or a pending review that changed: "This comment was refused. Refresh to see the current state, then try again."
 - The location no longer fits the diff: "This comment cannot be published against the current diff."
-- GitHub could not confirm the write: "GitHub could not confirm this write. Check GitHub again before trying again."
+- GitHub could not confirm the write: "GitHub did not confirm the write. Check GitHub before retrying."
 - The pending review changed or is locked: "The pending review changed. Refresh to see its current state."
-- Access is forbidden: "GitHub blocked this comment: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization."
+- Access is forbidden: "GitHub blocked this comment: the repository restricts access. Check its access settings."
 - Any other failure: "Patchdesk could not publish this comment (`<kind>`). Try refreshing."
 
 A pending-review command settles only from its returned pending-review projection. Newly created thread IDs enter the recent-write journal. A forbidden Resolve or Unresolve keeps the thread visible and says "GitHub denied this thread update. Use an authorized account with repository write access."; Patchdesk does not assume permission through a preflight check. Other thread-state errors say "Patchdesk could not update this thread." A failed reply, edit, or delete shows one fixed sentence each: "Patchdesk could not publish this reply.", "Patchdesk could not edit this comment.", or "Patchdesk could not delete this comment." Malformed success or unknown outcome locks pending-review mutation until explicit recovery reloads the Review or reports that manual resolution is required.

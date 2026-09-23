@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The screen reaches this path when the workspace loaded successfully and watches no repository. The heading is `Set up your workspace`, above the line `Confirm the GitHub account, choose the folders that hold your checkouts, then tick the repositories to review.` The filter toolbar, the table, the pager, and the details panel are not rendered; setup replaces the screen rather than sitting above it. The titlebar and the [Visited pull requests column](../foundations/visited-pull-requests.md) stay beside it, as they do on every screen. On a fresh install the column is a blank frame until the account save creates the workspace; after that it reads the new workspace's Reviews and shows its empty line when there are none. When the first inbox load never succeeded at all, the same setup appears under the screen's own `First run` header, with Refresh available.
+The screen reaches this path when the workspace loaded successfully and watches no repository. The heading is `Set up your workspace`, and the numbered cards below it carry the rest. The filter toolbar, the table, the pager, and the details panel are not rendered; setup replaces the screen rather than sitting above it. The titlebar and the [Visited pull requests column](../foundations/visited-pull-requests.md) stay beside it, as they do on every screen. On a fresh install the column is a blank frame until the account save creates the workspace; after that it reads the new workspace's Reviews and shows its empty line when there are none. When the first inbox load never succeeded at all, the same setup appears under the screen's own `First run` header, with Refresh available.
 
 One environment read serves the whole screen. `1. Reviewing as` renders what the GitHub CLI reports. Below it, and only when that read says Git is missing, one line says `Git is not installed. Install Git for this platform, then re-check.` Nothing else about local tools is shown, and Patchdesk installs and logs in to nothing.
 
@@ -48,7 +48,7 @@ A save that fails leaves the previous saved value in place and reports the reaso
 
 ### Settle
 
-A saved account makes `2. Folders and repositories` appear. A saved folder settles into a repository count such as `2 repositories found · 1 watched`, the line `No git repositories with GitHub remotes found in this folder.`, or the `Repository scan failed` alert. A folder with nothing in it can be replaced by choosing another one.
+A saved account makes `2. Folders and repositories` appear. A saved folder settles into a repository count such as `2 repositories found · 1 watched`, the line `No repositories found in this folder.`, or the `Repository scan failed` alert. A folder with nothing in it can be replaced by choosing another one.
 
 Ticking the first repository saves the watchlist and reloads the workspace. That reloaded workspace watches a repository, which is the exact condition that ends this state, so the Pull requests listing replaces setup. Review-opening progress and errors stay scoped to their workspace, so a late result from another one cannot show a stale `Could not open review` alert over setup.
 
