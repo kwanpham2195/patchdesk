@@ -74,6 +74,13 @@ For runtime work, make sure the dev log tails are live in herdr:
 
 Test observable behaviour at the lowest layer that can prove the contract.
 
+- Coverage floors for new or materially changed code (lines / branches):
+  - `src/domain/`: 80% / 65%; `src/services/`: 70% / 55%; `src/adapters/`: 70% / 55%.
+  - `src/main/`: 60% / 45%; `src/renderer/src/`: 60% / 40%; `runtime/insight/`: 70% / 55%. Browser tests have no percentage floor.
+- Spend no more than 10 percentage points above a layer's floor on coverage work. Coverage may exceed that range; do not delete useful tests to reduce it. Remove tests only when existing test-deletion review rules establish redundancy.
+- Keep explicit tests for critical write, authorization, recovery, and concurrency contracts regardless of percentages. Exercise private helpers through their owning behavior; do not add tests solely to raise coverage.
+- Coverage is not measured by `pnpm check`. Before adding an enforcing gate, measure a baseline and apply it only to new or changed code so legacy coverage does not block unrelated work.
+
 - Write one scenario per test, with as many assertions as needed to prove its
   relevant outcomes. A rejected submission can assert the error, preserved
   draft, and absence of a network write together. Separate scenarios with
