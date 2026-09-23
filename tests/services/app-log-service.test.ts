@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,7 +15,8 @@ const rotatedSeqSchema = v.looseObject({ seq: v.number() });
 const roots: Array<string> = [];
 
 afterEach(async () => {
-  roots.splice(0).forEach(() => undefined);
+  for (const root of roots.splice(0))
+    await rm(root, { recursive: true, force: true });
 });
 
 async function makePaths(): Promise<PatchdeskPaths> {
@@ -63,6 +64,7 @@ describe("AppLogService", () => {
     service.write(entry({ message: "entry-4" }));
     const resumed = service.tail(first.entries[first.entries.length - 1]?.seq);
     expect(resumed.entries.map((item) => item.message)).toEqual(["entry-4"]);
+    await service.flush();
   });
 
   it("returns the last delivered sequence as the exclusive-resume cursor", async () => {
@@ -74,6 +76,7 @@ describe("AppLogService", () => {
     // Entries 0..2 were delivered; the next poll must resume after 2, not
     // after the next value to allocate (3), or entry 3 would be skipped.
     expect(tailed.nextAfter).toBe(2);
+    await service.flush();
   });
 
   it("preserves the supplied cursor when a poll returns no entries", async () => {
@@ -83,6 +86,7 @@ describe("AppLogService", () => {
     const tailed = service.tail(0);
     expect(tailed.entries).toEqual([]);
     expect(tailed.nextAfter).toBe(0);
+    await service.flush();
   });
 
   it("persists every entry to the JSONL file and rotates on size", async () => {
