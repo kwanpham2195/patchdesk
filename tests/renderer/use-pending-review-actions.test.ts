@@ -219,7 +219,7 @@ describe("usePendingReviewActions commands", () => {
     ]);
   });
 
-  it("journals the discarded threads and observes a confirmed submit", async () => {
+  it("journals discarded threads without observing a review submission", async () => {
     installPendingDouble({
       command: () => ({ pendingReview: { state: "none" } }),
     });
@@ -235,11 +235,22 @@ describe("usePendingReviewActions commands", () => {
       { _tag: "DiscardedThread", threadId: "PRRT_1" },
     ]);
     expect(observeConfirmedReviewWrite).not.toHaveBeenCalled();
+  });
+
+  it("observes a confirmed submission without journaling discarded threads", async () => {
+    installPendingDouble({
+      command: () => ({ pendingReview: { state: "none" } }),
+    });
+    const { result, appendRecentWrites, observeConfirmedReviewWrite } =
+      renderPendingReview(
+        projection({ pendingReview: pending("pending") as never }),
+      );
 
     await act(async () => {
       await panelOf(result).onSubmit("APPROVE", "Looks good");
     });
     expect(observeConfirmedReviewWrite).toHaveBeenCalledTimes(1);
+    expect(appendRecentWrites).not.toHaveBeenCalled();
   });
 
   it("refuses a command without a verifiable diff and sends nothing", async () => {
