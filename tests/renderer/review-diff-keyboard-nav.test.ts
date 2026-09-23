@@ -519,17 +519,18 @@ describe("focusCommentThreadCard", () => {
 
   it("polls across animation frames until the card mounts, then focuses it", async () => {
     const container = document.createElement("div");
+    const card = document.createElement("article");
+    card.tabIndex = -1;
+    card.dataset.reviewCommentThread = "conversation:late";
     document.body.append(container);
-    // The card doesn't exist yet -- simulates CodeView mounting the
-    // annotation portal a few frames after the scroll that materializes it.
-    window.setTimeout(() => {
-      const card = document.createElement("article");
-      card.tabIndex = -1;
-      card.dataset.reviewCommentThread = "conversation:late";
-      container.append(card);
-    }, 30);
+
     try {
       focusCommentThreadCard("conversation:late", () => false);
+      // Mount after two checks so the test exercises recursive frame polling.
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => container.append(card));
+      });
+
       await expect
         .poll(() =>
           document.activeElement?.getAttribute("data-review-comment-thread"),
