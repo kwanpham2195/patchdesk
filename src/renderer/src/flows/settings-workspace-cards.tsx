@@ -57,10 +57,7 @@ export function ReviewingAsCard({
       <Card>
         <CardHeader>
           <CardTitle id="workspace-reviewing-as-title">{title}</CardTitle>
-          <CardDescription>
-            The GitHub account Patchdesk uses to find and review pull requests,
-            resolved from the GitHub CLI.
-          </CardDescription>
+          <CardDescription>Resolved from the GitHub CLI.</CardDescription>
         </CardHeader>
         <CardContent>
           <ReviewingAsPanel
@@ -148,10 +145,7 @@ export function RepositoriesCard({
       <Card>
         <CardHeader>
           <CardTitle id="workspace-repositories-title">{title}</CardTitle>
-          <CardDescription>
-            Folders Patchdesk scans for git checkouts with GitHub remotes. Tick
-            the repositories to review.
-          </CardDescription>
+          <CardDescription>Folders to scan for repositories.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           <WatchlistToggleStatus feedback={watchlistToggle.feedback} />

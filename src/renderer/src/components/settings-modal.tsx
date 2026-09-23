@@ -97,7 +97,7 @@ export function SettingsModal({
             <SettingsIcon /> Settings
           </DialogTitle>
           <DialogDescription id="settings-description">
-            Set Patchdesk appearance and diff themes.
+            Preferences for this Mac and the active workspace.
           </DialogDescription>
           {flowProps.preferenceError === undefined ? null : (
             <Alert variant="destructive" className="mt-3">

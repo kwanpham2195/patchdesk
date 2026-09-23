@@ -340,11 +340,9 @@ function StaleInboxBanner({
     <Alert variant="warning" className="mx-3 mt-2">
       <AlertTitle>Priority order may be unreliable</AlertTitle>
       <AlertDescription>
-        This queue reflects a snapshot from{" "}
-        {formatInboxAge(Date.now() - Date.parse(refreshedAt))}. GitHub sign-in
-        could not be verified since then, so ordering, checks, and review state
-        below are not current. See the GitHub authentication notice above to
-        reconnect.
+        Snapshot from {formatInboxAge(Date.now() - Date.parse(refreshedAt))}.
+        Sign-in could not be verified since, so order, checks, and review state
+        may be stale.
       </AlertDescription>
     </Alert>
   );
@@ -387,9 +385,6 @@ function InboxHeader({
         <h1 className="mt-0.5 text-[17px] leading-5 font-semibold tracking-tight">
           Pull requests
         </h1>
-        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-          One repository at a time, filtered and ordered by GitHub.
-        </p>
       </div>
       <div className="flex items-center gap-2">
         {repos === undefined || repos.length === 0 ? null : (
@@ -473,9 +468,9 @@ function emptyRowsMessage(
   if (matchCount === undefined)
     return `No ${state === "open" ? "open" : "merged"} pull requests on this page.`;
   if (matchCount > 0)
-    return `No ${state === "open" ? "open" : "merged"} pull requests on this page — GitHub reports ${matchCount} in total.`;
+    return `No ${state === "open" ? "open" : "merged"} pull requests on this page (${matchCount} total).`;
   if (hasLabelFilter) return "No pull requests match the selected labels.";
-  return `This repository has no ${state === "open" ? "open" : "merged"} pull requests right now.`;
+  return `No ${state === "open" ? "open" : "merged"} pull requests.`;
 }
 
 function InboxRowsPanel({

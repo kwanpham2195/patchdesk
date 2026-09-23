@@ -179,9 +179,7 @@ export function LogsPanel(): React.JSX.Element {
       <CardHeader>
         <CardTitle>Logs</CardTitle>
         <CardDescription>
-          Live tail of local activity across the main process and renderer.
-          Credentials are masked; entries also append to the patchdesk.jsonl log
-          file in the app data directory.
+          Live app activity. Credentials are masked.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

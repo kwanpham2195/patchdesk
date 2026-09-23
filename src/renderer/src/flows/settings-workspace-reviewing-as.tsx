@@ -218,7 +218,7 @@ export function ReviewingAsPanel({
           <AlertTitle>GitHub authentication required</AlertTitle>
           <AlertDescription>
             {view.env.gh !== "ready" ? (
-              "GitHub CLI (gh) is not installed. Install the GitHub CLI, then re-check."
+              "Install the GitHub CLI (gh), then re-check."
             ) : (
               <>
                 Not authenticated. Run <code>gh auth login</code>, then
@@ -231,7 +231,7 @@ export function ReviewingAsPanel({
         <div className="flex flex-col gap-3">
           <p className="text-sm">
             Reviewing as <strong>{view.account.login}</strong> on{" "}
-            <em>{view.account.host}</em>, from the GitHub CLI.
+            <em>{view.account.host}</em>.
           </p>
           {/* Adopting this account saves the workspace like any other choice,
               so the statement carries the same status the Select does. A
@@ -259,11 +259,9 @@ export function ReviewingAsPanel({
         <Alert variant="destructive">
           <AlertTitle>Configured account not authenticated</AlertTitle>
           <AlertDescription>
-            This workspace is set to review as{" "}
-            <strong>{account.ghAccount}</strong> on{" "}
-            <em>{account.githubHost}</em>, but the GitHub CLI does not report
-            that account as authenticated. Choose one of the authenticated
-            accounts above, or authenticate that account and re-check.
+            Not signed in as <strong>{account.ghAccount}</strong> on{" "}
+            <em>{account.githubHost}</em>. Choose a signed-in account, or sign
+            in and re-check.
           </AlertDescription>
         </Alert>
       ) : null}

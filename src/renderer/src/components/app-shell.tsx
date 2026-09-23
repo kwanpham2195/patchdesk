@@ -298,7 +298,7 @@ export function AppShell({
             </TooltipTrigger>
             <TooltipContent>
               {navigationBlocked
-                ? "Finish or close the current dialog before navigating"
+                ? "A dialog is open."
                 : "Open quick navigation"}
             </TooltipContent>
           </Tooltip>

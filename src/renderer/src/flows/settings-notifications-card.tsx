@@ -41,7 +41,7 @@ export function NotificationsCard(): React.JSX.Element {
       <CardHeader>
         <CardTitle>Notifications</CardTitle>
         <CardDescription>
-          Notify when Patchdesk is in the background or showing another Review.
+          When Patchdesk is in the background or on another Review.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -55,8 +55,7 @@ export function NotificationsCard(): React.JSX.Element {
                 Notifications
               </FieldLabel>
               <FieldDescription>
-                Insight runs that finish or fail, and GitHub writes that need a
-                check.
+                Insight completion and pending GitHub writes.
               </FieldDescription>
             </FieldContent>
             <Switch
@@ -77,10 +76,6 @@ export function NotificationsCard(): React.JSX.Element {
               <FieldLabel htmlFor="notifications-preparation-merge">
                 Review ready and merge completed
               </FieldLabel>
-              <FieldDescription>
-                Also notify when a Review finishes preparing or a merge
-                completes.
-              </FieldDescription>
             </FieldContent>
             <Switch
               id="notifications-preparation-merge"
@@ -100,10 +95,7 @@ export function NotificationsCard(): React.JSX.Element {
               <FieldLabel htmlFor="notifications-watch-interval">
                 Check watched pull requests
               </FieldLabel>
-              <FieldDescription>
-                How often Patchdesk asks GitHub about the pull requests you
-                watch. A change applies the next time Patchdesk starts.
-              </FieldDescription>
+              <FieldDescription>Applies after restart.</FieldDescription>
             </FieldContent>
             <Select
               value={String(settings?.intervalMinutes ?? 3)}

@@ -132,10 +132,7 @@ function LabelFilterList({
           "GitHub authentication is required before Patchdesk can list this repository's labels.",
         ] as const)
       : readState._tag === "github_read"
-        ? ([
-            "destructive",
-            "Patchdesk could not load this repository's labels. Reopen this menu to retry.",
-          ] as const)
+        ? (["destructive", "Could not load labels. Reopen to retry."] as const)
         : readState._tag === "github_rate_limited"
           ? (["warning", rateLimitedCopy(readState.resumeAt)] as const)
           : readState._tag === "github_forbidden"
@@ -209,7 +206,6 @@ function LabelFilterList({
         {readState.totalCount > readState.labels.length ? (
           <p className="mt-1 text-xs text-muted-foreground">
             Showing {readState.labels.length} of {readState.totalCount} labels.
-            Some repository labels aren&apos;t shown.
           </p>
         ) : null}
       </div>

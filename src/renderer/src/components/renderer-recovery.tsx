@@ -25,9 +25,8 @@ export function RendererRecovery({
         <CardContent className="flex flex-col gap-4">
           <Alert variant="warning">
             <AlertDescription>
-              Your persisted review state was not changed. Reload Patchdesk to
-              reopen the last saved destination; no GitHub write will be
-              retried.
+              Nothing was lost. Reload to reopen where you were; no GitHub write
+              is retried.
             </AlertDescription>
           </Alert>
           <Button className="w-fit" onClick={onReload}>

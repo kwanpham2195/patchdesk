@@ -3,7 +3,7 @@ import {
   type WorkspaceRootDiscovery,
 } from "../workspace-root-discovery-contract";
 import { useApiProbe, type ApiProbeState } from "../hooks/use-api-probe";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
+import { Alert, AlertTitle } from "../components/ui/alert";
 import type { Profile } from "../renderer-models";
 import type { WatchlistEntry } from "./settings-workspace-repositories";
 
@@ -103,16 +103,13 @@ export function WorkspaceRootDiscoveryStatus({
     return (
       <Alert variant="destructive">
         <AlertTitle>Repository scan failed</AlertTitle>
-        <AlertDescription>
-          Could not scan this folder for repositories.
-        </AlertDescription>
       </Alert>
     );
   }
   if (status.total === 0) {
     return (
       <p className="text-xs text-muted-foreground" role="status">
-        No git repositories with GitHub remotes found in this folder.
+        No repositories found in this folder.
       </p>
     );
   }

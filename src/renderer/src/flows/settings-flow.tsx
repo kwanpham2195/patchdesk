@@ -271,26 +271,11 @@ function DataSection({
       <Card data-testid="local-review-data-card">
         <CardHeader>
           <CardTitle>Local review data</CardTitle>
-          <CardDescription>
-            Two workspace actions, ordered by severity. Confirmations state what
-            stays and what goes.
-          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <Alert>
-            <AlertTitle>Stored reviews stay readable</AlertTitle>
-            <AlertDescription>
-              Clear cache keeps review history. Clear local review data removes
-              completed and failed local reviews; an active review and
-              diagnostic reports stay.
-            </AlertDescription>
-          </Alert>
           {cleanupAvailable ? null : (
             <Alert>
               <AlertTitle>No active workspace</AlertTitle>
-              <AlertDescription>
-                Choose a workspace before clearing its local data.
-              </AlertDescription>
             </Alert>
           )}
           <div className="flex flex-col gap-2">
@@ -334,8 +319,8 @@ function DataSection({
         <CardHeader>
           <CardTitle>Review activity</CardTitle>
           <CardDescription>
-            Redacted local milestones for review and walkthrough runs. Patchdesk
-            never shows prompts, tokens, paths, or provider output.
+            Local activity for review and walkthrough runs. Prompts and provider
+            output are never shown.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -421,9 +406,6 @@ function GeneralSection({
       <Card>
         <CardHeader>
           <CardTitle>Appearance</CardTitle>
-          <CardDescription>
-            Follow the system setting, or keep Patchdesk in light or dark mode.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <FieldGroup>
@@ -469,9 +451,6 @@ function GeneralSection({
       <Card>
         <CardHeader>
           <CardTitle>Diff theme</CardTitle>
-          <CardDescription>
-            Choose the Pierre theme used for light and dark appearance.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <FieldSet>
@@ -666,10 +645,7 @@ function ReviewPreferences({
     <Card data-testid="settings-section-review">
       <CardHeader>
         <CardTitle>Review preferences</CardTitle>
-        <CardDescription>
-          Profile-scoped defaults for the next Analysis run. They never start
-          work.
-        </CardDescription>
+        <CardDescription>Defaults for the next Analysis run.</CardDescription>
         <p
           className="text-sm text-muted-foreground"
           data-testid="codex-provider-status"
@@ -749,19 +725,16 @@ function ReviewPreferences({
         {catalogUnavailable ||
         (models.length === 0 && codexAvailable !== true) ? (
           <Alert>
-            <AlertTitle>No eligible model configured</AlertTitle>
+            <AlertTitle>No model configured</AlertTitle>
             <AlertDescription>
-              Configure an API key or ambient provider credentials in the
-              Electron process, then reload this screen. Your saved preference
-              is kept.
+              Add a provider API key, then reload.
             </AlertDescription>
           </Alert>
         ) : models.length === 0 ? (
           <Alert>
             <AlertTitle>No API-key model configured</AlertTitle>
             <AlertDescription>
-              Codex CLI account is available. Start an Insight and select Codex
-              CLI account to load its models.
+              Select Codex CLI account when starting an Insight.
             </AlertDescription>
           </Alert>
         ) : null}

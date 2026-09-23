@@ -107,7 +107,7 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
           diffThemeGeneration.current === diffThemeOwner
         )
           setLoadError(
-            "Could not load saved preferences. Appearance and diff theme are using defaults; retry to reload the saved settings, or change a preference to overwrite the stored file.",
+            "Could not load preferences; using defaults. Retry, or change a setting to save over them.",
           );
         return;
       }
@@ -201,8 +201,7 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
         appearanceRetry.current = retry;
         setAppearanceFailure({
           order,
-          message:
-            "Could not save appearance. The visible change is active; retry to persist it.",
+          message: "Could not save appearance. Retry to keep it.",
         });
       }
     },
@@ -239,8 +238,7 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
         diffThemeRetry.current = retry;
         setDiffThemeFailure({
           order,
-          message:
-            "Could not save diff theme. The visible change is active; retry to persist it.",
+          message: "Could not save diff theme. Retry to keep it.",
         });
       }
     },

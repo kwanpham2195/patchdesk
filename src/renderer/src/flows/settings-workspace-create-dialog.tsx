@@ -101,8 +101,7 @@ export function CreateWorkspaceDialog({
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
-            A workspace is one GitHub account and the folders Patchdesk scans
-            for it.
+            One GitHub account and the folders scanned for it.
           </DialogDescription>
         </DialogHeader>
         {error === undefined ? null : (

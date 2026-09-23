@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 function watchToggleFailureCopy(failure: WatchToggleFailure): string {
   switch (failure.kind) {
     case "limit":
-      return `Patchdesk watches at most ${failure.limit} pull requests per workspace. Unwatch one first.`;
+      return `Watch limit reached: ${failure.limit} per workspace.`;
     case "terminal":
       return `${failure.state === "merged" ? "Merged" : "Closed"} pull requests cannot be watched.`;
     case "failed":

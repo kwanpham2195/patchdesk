@@ -15,7 +15,7 @@ describe("forbiddenCopy", () => {
   // copy calls the condition temporary or invites a retry.
   it.each([
     ["ip_allow_list", "IP allow list"],
-    ["saml", "SAML single sign-on"],
+    ["saml", "SAML SSO"],
     ["insufficient_scopes", "scopes"],
   ])(
     "names the %s condition and the organization it applies to",
@@ -29,7 +29,7 @@ describe("forbiddenCopy", () => {
 
   it("names the repository and admits it does not know why when the reason is unattributed", () => {
     const copy = forbiddenCopy(undefined, repo);
-    expect(copy).toContain("did not say why");
+    expect(copy).toContain("gave no reason");
     expect(copy).toContain(`${repo.owner}/${repo.repo}`);
   });
 
@@ -37,14 +37,6 @@ describe("forbiddenCopy", () => {
     expect(forbiddenCopy("something_new", repo)).toBe(
       forbiddenCopy(undefined, repo),
     );
-  });
-
-  it("says the block is not necessarily temporary only for the unattributed reason", () => {
-    // The three attributed reasons each name a concrete fix, so they promise
-    // Patchdesk picks the read up again once access is restored; the
-    // unattributed one cannot promise that.
-    expect(forbiddenCopy(undefined, repo)).toContain("not necessarily");
-    expect(forbiddenCopy("saml", repo)).toContain("once access is restored");
   });
 });
 

@@ -101,7 +101,7 @@ export function WorkspaceProfileSection({
           label="Rule paths"
           itemLabel="Rule path"
           field="rulePaths"
-          description="Files given to every review as repository rules, for example an AGENTS.md or CONTRIBUTING.md. Absolute paths."
+          description="Files given to every review as rules. Absolute paths."
           entries={editor.rows.rulePaths}
           placeholder="/absolute/path/to/AGENTS.md"
           status={editor.status.rulePaths}
@@ -111,11 +111,7 @@ export function WorkspaceProfileSection({
           onRemove={editor.removeListEntry}
         />
       </DisclosureCard>
-      <DisclosureCard
-        title="Workspace"
-        description="This workspace's name, and switching between workspaces."
-        openWhen={workspaceSwitchVisible}
-      >
+      <DisclosureCard title="Workspace" openWhen={workspaceSwitchVisible}>
         <FieldGroup className="gap-4">
           <WorkspaceNameField
             value={editor.scalars.label}

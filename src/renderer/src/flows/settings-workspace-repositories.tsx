@@ -140,10 +140,7 @@ export function useWatchlistToggle(
     if (profileId === undefined) {
       // No loaded workspace means no workspace to name in the request.
       setErrorsByKey((current) =>
-        new Map(current).set(
-          key,
-          "Patchdesk has not finished loading this workspace.",
-        ),
+        new Map(current).set(key, "Workspace still loading."),
       );
       return;
     }

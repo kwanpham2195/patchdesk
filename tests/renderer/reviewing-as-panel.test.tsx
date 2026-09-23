@@ -206,9 +206,9 @@ describe("Reviewing as panel", () => {
       '[data-slot="alert-description"]',
     );
     expect(description).not.toBeNull();
-    expect(description?.textContent).toContain("review as bob");
+    expect(description?.textContent).toContain("Not signed in as bob");
     expect(description?.textContent).toContain("github.com");
-    expect(description?.textContent).toContain("does not report that account");
+    expect(description?.textContent).toContain("Choose a signed-in account");
   });
 
   it("warns when the configured account diverges from every authenticated account", async () => {
@@ -232,9 +232,9 @@ describe("Reviewing as panel", () => {
       '[data-slot="alert-description"]',
     );
     expect(description).not.toBeNull();
-    expect(description?.textContent).toContain("review as carol");
+    expect(description?.textContent).toContain("Not signed in as carol");
     expect(description?.textContent).toContain("github.com");
-    expect(description?.textContent).toContain("does not report that account");
+    expect(description?.textContent).toContain("Choose a signed-in account");
 
     expect(
       screen.getByRole("combobox", { name: "Reviewing as account" })

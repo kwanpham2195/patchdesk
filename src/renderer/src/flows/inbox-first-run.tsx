@@ -54,10 +54,6 @@ export function WorkspaceFirstRun({
         <h2 className="text-lg font-semibold tracking-tight">
           Set up your workspace
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Confirm the GitHub account, choose the folders that hold your
-          checkouts, then tick the repositories to review.
-        </p>
       </div>
       <ReviewingAsCard editor={editor} probe={probe} title="1. Reviewing as" />
       {gitMissing ? (

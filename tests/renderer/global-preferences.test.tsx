@@ -197,9 +197,7 @@ describe("file-backed renderer preferences", () => {
     await screen.findByRole("dialog", { name: "Settings" });
 
     expect(
-      await screen.findByText(
-        /Could not load saved preferences\. Appearance and diff theme are using defaults/,
-      ),
+      await screen.findByText(/Could not load preferences; using defaults/),
     ).toBeTruthy();
     // The visible appearance stays the one the window was painted for rather
     // than blocking the app or showing an error screen.

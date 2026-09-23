@@ -70,9 +70,7 @@ describe("workspace root discovery", () => {
     renderSettings();
 
     expect(
-      await screen.findByText(
-        "No git repositories with GitHub remotes found in this folder.",
-      ),
+      await screen.findByText("No repositories found in this folder."),
     ).toBeTruthy();
   });
 
@@ -81,9 +79,7 @@ describe("workspace root discovery", () => {
 
     renderSettings();
 
-    expect(
-      await screen.findByText("Could not scan this folder for repositories."),
-    ).toBeTruthy();
+    expect(await screen.findByText("Repository scan failed")).toBeTruthy();
   });
 
   it("says nothing about a folder row the saved profile does not carry", async () => {

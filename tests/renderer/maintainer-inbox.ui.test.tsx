@@ -821,9 +821,7 @@ describe("MaintainerInbox", () => {
 
     await user.click(screen.getByRole("button", { name: "Filter by label" }));
     expect(
-      await screen.findByText(
-        "Patchdesk could not load this repository's labels. Reopen this menu to retry.",
-      ),
+      await screen.findByText("Could not load labels. Reopen to retry."),
     ).toBeTruthy();
     expect(screen.getByRole("alert").getAttribute("data-slot")).toBe("alert");
     expect(screen.queryByRole("checkbox")).toBeNull();

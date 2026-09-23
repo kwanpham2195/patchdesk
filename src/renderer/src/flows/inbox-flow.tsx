@@ -548,10 +548,6 @@ function BootstrapOutcome({
           <h1 className="text-2xl font-semibold tracking-tight">
             Pull requests
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Review requests, review freshness, checks, and current Review state
-            across the active watchlist.
-          </p>
         </div>
         <Button
           variant="outline"
@@ -642,7 +638,7 @@ function Outcome({
                       // state and label filter right now — see ADR 0031.
                       "This repository has no pull requests matching the current filter."
                     : outcome === "github_auth"
-                      ? "GitHub authentication is required before Patchdesk can refresh pull requests. Run gh auth login for the exact GitHub account entered in Settings -> Workspace. Local review records remain available."
+                      ? "GitHub sign-in required. Run gh auth login for the account in Settings → Workspace."
                       : outcome === "github_read"
                         ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
                         : outcome === "github_forbidden"
@@ -696,13 +692,13 @@ export function forbiddenCopy(
 ): string {
   switch (reason) {
     case "ip_allow_list":
-      return `GitHub blocked this read: the ${repo.owner} organization has an IP allow list enabled and this network is not on it. Get this machine's IP allow-listed for ${repo.owner}, or connect from a network that already is. Patchdesk will pick it up automatically once access is restored.`;
+      return `${repo.owner} has an IP allow list and this network is not on it. Allow-list this machine or switch networks.`;
     case "saml":
-      return `GitHub blocked this read: ${repo.owner} requires SAML single sign-on authorization for this account's token. Sign in to ${repo.owner} on github.com and authorize this token for SSO. Patchdesk will pick it up automatically once access is restored.`;
+      return `${repo.owner} requires SAML SSO for this token. Authorize it on github.com.`;
     case "insufficient_scopes":
-      return `GitHub blocked this read: this account's token does not have the scopes ${repo.owner} requires. Update the token's scopes on GitHub and reconnect. Patchdesk will pick it up automatically once access is restored.`;
+      return `This token lacks the scopes ${repo.owner} requires. Update its scopes and reconnect.`;
     default:
-      return `GitHub blocked this read for ${repo.owner}/${repo.repo} and did not say why. This is not necessarily temporary — check the repository's or organization's access settings on GitHub.`;
+      return `GitHub blocked this read for ${repo.owner}/${repo.repo} and gave no reason. Check its access settings.`;
   }
 }
 

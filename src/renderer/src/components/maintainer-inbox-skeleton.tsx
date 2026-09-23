@@ -34,9 +34,6 @@ export function MaintainerInboxSkeleton(): React.JSX.Element {
             <h1 className="mt-0.5 text-[17px] leading-5 font-semibold tracking-tight">
               Pull requests
             </h1>
-            <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-              One repository at a time, filtered and ordered by GitHub.
-            </p>
           </div>
           <Skeleton className="h-8 w-28" />
         </header>
