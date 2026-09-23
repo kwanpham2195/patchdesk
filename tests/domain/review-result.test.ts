@@ -126,6 +126,21 @@ describe("model review result projection", () => {
       error: { _tag: "InvalidModelReviewResult" },
     });
   });
+
+  it("rejects a summary past the model prose cap the retained schema still reads", () => {
+    const empty = { ...validResult([]), verdict: "approve" };
+    expect(
+      parseModelReviewResult({ ...empty, summary: "a".repeat(400) })._tag,
+    ).toBe("ok");
+    expect(
+      parseModelReviewResult({ ...empty, summary: "a".repeat(401) }),
+    ).toEqual({ _tag: "err", error: { _tag: "InvalidModelReviewResult" } });
+
+    const stored = parseReviewResult({ ...empty, summary: "a".repeat(401) });
+    expect(stored._tag).toBe("ok");
+    if (stored._tag === "err") return;
+    expect(stored.value.summary).toBe("a".repeat(401));
+  });
 });
 
 describe("stored review result projection", () => {

@@ -127,6 +127,16 @@ const findingSchema = {
   ),
 } as const;
 
+/**
+ * Model output alone caps prose: the reader gets a scannable Finding, while the
+ * retained schema stays uncapped so Analyses stored before the caps still read.
+ */
+const modelFindingSchema = {
+  ...findingSchema,
+  title: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
+  explanation: v.pipe(v.string(), v.minLength(1), v.maxLength(800)),
+} as const;
+
 const calloutSchema = v.strictObject({
   category: v.picklist([
     "migration",
@@ -145,10 +155,13 @@ const calloutSchema = v.strictObject({
 
 /** Schema for model output, deliberately excluding Patchdesk-controlled mapping status. */
 export const modelReviewResultSchema = v.strictObject({
-  changeSummary: v.pipe(v.string(), v.minLength(1)),
+  changeSummary: v.pipe(v.string(), v.minLength(1), v.maxLength(600)),
   verdict: v.picklist(["approve", "comment", "request_changes"]),
-  summary: v.pipe(v.string(), v.minLength(1)),
-  findings: v.pipe(v.array(v.strictObject(findingSchema)), v.maxLength(50)),
+  summary: v.pipe(v.string(), v.minLength(1), v.maxLength(400)),
+  findings: v.pipe(
+    v.array(v.strictObject(modelFindingSchema)),
+    v.maxLength(50),
+  ),
   validationPlan: v.pipe(
     v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
     v.maxLength(20),

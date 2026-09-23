@@ -13,6 +13,7 @@ const SIMPLIFIED_TECHNICAL_ENGLISH = [
   "Prefer common words. Define an uncommon technical term when the reader needs it.",
   "Keep exact code identifiers, paths, commands, and API names. Do not replace them with approximate terms.",
   "Do not use idioms, promotional language, ornamental prose, or rhetorical questions.",
+  "The reader knows GitHub, pull requests, diffs, tests, and AI tooling. Never explain what those are. Never add a purpose clause that tells the reader why they would want a fact, such as 'so you can' or 'to help you'.",
 ].join(" ");
 
 const ANALYSIS_REVIEWER_FRAMING = [
@@ -31,7 +32,7 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
     return [
       SIMPLIFIED_TECHNICAL_ENGLISH,
       ANALYSIS_REVIEWER_FRAMING,
-      "Keep the change summary short and reviewer-focused.",
+      "changeSummary states what the patch does in one to three sentences. summary states only why the verdict is what it is, in one or two sentences, and never repeats changeSummary.",
       "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea. Use a bullet outline when the reader must scan several facts, steps, effects, conditions, or findings. Do not put several independent ideas in one large paragraph.",
       "Return the intended Markdown structure directly. The renderer preserves it and does not rewrite paragraphs into outlines.",
       "Keep facts, assumptions, and unresolved questions separate.",

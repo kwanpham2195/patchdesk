@@ -240,7 +240,7 @@ const ANALYSIS_RESULT_CONTRACT = [
   '   "confidence":"high"|"medium"|"low","file"?:string,"lineStart"?:number,"lineEnd"?:number,',
   '   "diffSide"?:"new"|"old","suggestedComment"?:string,',
   '   "category"?:"bug"|"security"|"test"|"performance"|"maintainability"|"docs",',
-  '   "affectedScenario"?:string,"whyItMatters"?:string,"suggestedReplacement"?:{"code":string}}],',
+  '   "suggestedReplacement"?:{"code":string}}],',
   ' "validationPlan":[string],"assumptions":[string],',
   ' "coverage"?:"high"|"medium"|"low","overallConfidence"?:"high"|"medium"|"low",',
   ' "unresolvedItems"?:[string],',
@@ -267,7 +267,7 @@ export function buildCodexAnalysisPrompt(input: {
     "Give each finding an id that matches ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ and is unique among the findings.",
     "Give each finding's file a repo-relative path taken from the patch. Never use an absolute path or a path that contains '..'.",
     "Use at most 50 findings. Use at most 20 validationPlan entries and at most 20 assumptions, each within 500 characters. Use at most 10 unresolvedItems, each within 280 characters. Use at most 12 callouts; each callouts entry is an object, never a string, with title within 120 characters and detail within 500 characters.",
-    "Give changeSummary, summary, and every finding's title and explanation a non-empty value.",
+    "Give changeSummary, summary, and every finding's title and explanation a non-empty value. Keep changeSummary within 600 characters, summary within 400 characters, each finding's title within 120 characters, and each finding's explanation within 800 characters.",
     input.analysisPrompt,
     `Patchdesk policy:\n${input.policy}`,
   ].join("\n\n");

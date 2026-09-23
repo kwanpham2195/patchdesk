@@ -92,10 +92,6 @@ function renderFinding(finding: ReviewFinding, position: number): string {
   if (finding.category !== undefined)
     facts.push(`- Category: ${finding.category}`);
   facts.push(`- Confidence: ${finding.confidence}`);
-  if (finding.whyItMatters !== undefined)
-    facts.push(`- Why it matters: ${finding.whyItMatters.trim()}`);
-  if (finding.affectedScenario !== undefined)
-    facts.push(`- Affected scenario: ${finding.affectedScenario.trim()}`);
   if (facts.length > 0) blocks.push(facts.join("\n"));
 
   blocks.push(finding.explanation.trim());

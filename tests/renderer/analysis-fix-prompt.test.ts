@@ -50,6 +50,7 @@ const result: ReviewResult = {
       lineStart: 12,
       lineEnd: 20,
       category: "bug",
+      // Retained from an older Analysis; no renderer reads these, this prompt included.
       whyItMatters: "Users lose data.",
       affectedScenario: "Submitting an empty form.",
       suggestedReplacement: { code: "if (input === undefined) return;" },
@@ -79,8 +80,6 @@ Adds parse_input and a *new* flag.
 - File: \`src/a.ts:12-20\`
 - Category: bug
 - Confidence: high
-- Why it matters: Users lose data.
-- Affected scenario: Submitting an empty form.
 
 The guard is inverted.
 
@@ -164,8 +163,6 @@ Rename to_snake_case here.
     );
     expect(prompt).not.toContain("- File:");
     expect(prompt).not.toContain("- Category:");
-    expect(prompt).not.toContain("- Why it matters:");
-    expect(prompt).not.toContain("- Affected scenario:");
     expect(prompt).not.toContain("Suggested change:");
     expect(prompt).not.toContain("## Verify");
   });
