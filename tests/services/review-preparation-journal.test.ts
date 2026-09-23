@@ -923,6 +923,7 @@ describe("ReviewPreparationJournal", () => {
     // this would hang forever on the non-reentrant gate; the timeout race
     // makes that failure fast and unambiguous instead of hanging the suite.
     const deadlineMs = 2000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const withTimeout = Promise.race([
       gate.withProfileLock(subject.profileId, () =>
         ReviewPreparationJournal.recoverSession(
@@ -934,8 +935,8 @@ describe("ReviewPreparationJournal", () => {
           unconsultedSessions(),
         ),
       ),
-      new Promise<never>((_resolve, reject) =>
-        setTimeout(
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
           () =>
             reject(
               new Error(
@@ -944,11 +945,15 @@ describe("ReviewPreparationJournal", () => {
               ),
             ),
           deadlineMs,
-        ),
-      ),
+        );
+      }),
     ]);
 
-    await expect(withTimeout).resolves.toBe(true);
+    try {
+      await expect(withTimeout).resolves.toBe(true);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
     await expect(access(subject.journalFile)).rejects.toThrow();
     // Exactly the one call this test itself made — recoverSession's internal
     // path to recoverJournalFile always passes `lifecycleGate: undefined`,
