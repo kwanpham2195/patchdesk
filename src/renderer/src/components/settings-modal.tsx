@@ -121,7 +121,6 @@ export function SettingsModal({
             if (
               value === "general" ||
               value === "workspace" ||
-              value === "review" ||
               value === "data" ||
               value === "logs"
             ) {
@@ -139,7 +138,6 @@ export function SettingsModal({
           >
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="workspace">Workspace</TabsTrigger>
-            <TabsTrigger value="review">Review</TabsTrigger>
             <TabsTrigger value="data">Data &amp; recovery</TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>

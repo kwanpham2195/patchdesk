@@ -51,25 +51,25 @@ If loading global settings fails, Patchdesk uses the current defaults, shows a p
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | Global appearance and Diff theme are shared across workspace profiles and GitHub accounts. | A profile switch does not change the pending global preference save. |
-| Pull request and Review state | A diff reads the selected light or dark theme for its current appearance; Review state does not change the setting. | A theme change repaints the mounted diff without changing represented revision or Review freshness. |
-| GitHub permissions and merge readiness | No GitHub permission or merge readiness is needed. | The save is local; GitHub access and write authority are unaffected. |
-| Network, local tool, and Insight provider availability | Selectors work without GitHub, local checkout tools, or an Insight provider. | A local settings failure leaves the visible choice active and offers Retry. |
-| Input path: mouse, keyboard, or desktop menu | Mouse and keyboard can reach both selectors through Settings. | The same immediate-apply and save behavior applies to either input path; desktop menus do not add another theme control. |
+| Variant                                                | Before the action runs                                                                                              | While the action runs                                                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Workspace profile and GitHub account                   | Global appearance and Diff theme are shared across workspace profiles and GitHub accounts.                          | A profile switch does not change the pending global preference save.                                                     |
+| Pull request and Review state                          | A diff reads the selected light or dark theme for its current appearance; Review state does not change the setting. | A theme change repaints the mounted diff without changing represented revision or Review freshness.                      |
+| GitHub permissions and merge readiness                 | No GitHub permission or merge readiness is needed.                                                                  | The save is local; GitHub access and write authority are unaffected.                                                     |
+| Network, local tool, and Insight provider availability | Selectors work without GitHub, local checkout tools, or an Insight provider.                                        | A local settings failure leaves the visible choice active and offers Retry.                                              |
+| Input path: mouse, keyboard, or desktop menu           | Mouse and keyboard can reach both selectors through Settings.                                                       | The same immediate-apply and save behavior applies to either input path; desktop menus do not add another theme control. |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Closing Settings or leaving a selector unchanged keeps the current values. | There is no Stop control for a preference save; the value remains visible until settlement. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Navigation leaves unchanged values alone. | Navigation does not cancel the save; a late old save cannot replace newer intent. |
-| Start another action or request a refresh | Choosing another value starts a newer preference intent. | Appearance and Diff theme settle independently; a newer choice owns its own field. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | No external provider is needed to choose a value. | A local settings failure shows Retry; no GitHub or Insight retry is implied. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | An unchanged selector has no pending work. | A value is applied in the current window; the next load uses the last successfully saved value. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Theme selection is independent of a Pull request or represented revision. | Remote target changes do not alter the pending preference save. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus loss without a selection has no effect. | Focus loss does not cancel the save or revert the visible theme. |
+| Event                                                                                                 | Before the action runs                                                     | While the action runs                                                                           |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Closing Settings or leaving a selector unchanged keeps the current values. | There is no Stop control for a preference save; the value remains visible until settlement.     |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Navigation leaves unchanged values alone.                                  | Navigation does not cancel the save; a late old save cannot replace newer intent.               |
+| Start another action or request a refresh                                                             | Choosing another value starts a newer preference intent.                   | Appearance and Diff theme settle independently; a newer choice owns its own field.              |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | No external provider is needed to choose a value.                          | A local settings failure shows Retry; no GitHub or Insight retry is implied.                    |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | An unchanged selector has no pending work.                                 | A value is applied in the current window; the next load uses the last successfully saved value. |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Theme selection is independent of a Pull request or represented revision.  | Remote target changes do not alter the pending preference save.                                 |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus loss without a selection has no effect.                              | Focus loss does not cancel the save or revert the visible theme.                                |
 
 ## Interactions with other systems
 
@@ -102,7 +102,7 @@ If loading global settings fails, Patchdesk uses the current defaults, shows a p
 - A mounted diff receives a theme event without requiring a Review remount.
 - The native window background changes with Appearance even when the save of that choice fails.
 - Launch uses the appearance stored in global settings; a missing or unreadable file launches with System.
-- Settings does not show the provider, model, or reasoning controls; those belong to Review preferences and Insight run dialogs.
+- Settings does not show the provider, model, or reasoning controls; those belong to the Insight run dialogs.
 
 ## Open questions and verification
 

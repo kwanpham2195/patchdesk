@@ -94,7 +94,6 @@ function restoredSettingsSection(): SettingsSection | undefined {
   if (restored === undefined) return undefined;
   return restored.section === "general" ||
     restored.section === "workspace" ||
-    restored.section === "review" ||
     restored.section === "data" ||
     restored.section === "logs"
     ? restored.section

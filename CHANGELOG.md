@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed the **Review** tab from Settings. It set only an API-key model and reasoning level for Analysis, could not show or pick the Codex CLI account, and a change there switched a Codex Analysis default back to API key. Brief, Analysis, and Walkthrough each remember the provider, model, and reasoning last confirmed in their run dialog, and the pull-request list's **Request** buttons use that choice.
+
 - Shortened generated Analysis text by limiting summaries and finding prose. The change summary now describes the patch, the verdict summary explains the decision, and findings put the symptom and cause in one explanation. Older saved Analyses remain readable. #344
 
 - Trimmed the app's own prose. Descriptions that only restated their heading are gone from **Pull requests**, **Settings**, the first-run checklist, the Review header, **PR overview**, the review dialogs, and the Insight panels; status and failure messages now state the cause and at most one action; the Insight run dialog keeps only the selected model's list price; and the sign-in, unconfirmed-write, rate-limit, and blocked-write messages for comments, reviews, labels, reviewers, assignees, drafts, base branch changes, merges, and Findings each share one wording.

@@ -157,7 +157,6 @@ review-workbench/
 settings/
   workspace-profile-editor.md         pilot: the Workspace settings cards, per-control saving, and switching
   appearance-and-diff-theme.md         app appearance and embedded diff themes
-  review-defaults.md                   default Insight model and reasoning preferences
   data-and-recovery.md                 cache and local-review-data cleanup
   logs-and-diagnostics.md              app logs, redacted activity, and support evidence
 
@@ -201,7 +200,6 @@ Status is one of `not started`, `drafted`, or `verified`. A document is `verifie
 | review-workbench/merge.md                       | drafted |
 | settings/workspace-profile-editor.md            | drafted |
 | settings/appearance-and-diff-theme.md           | drafted |
-| settings/review-defaults.md                     | drafted |
 | settings/data-and-recovery.md                   | drafted |
 | settings/logs-and-diagnostics.md                | drafted |
 | cross-cutting/write-safety-and-freshness.md     | drafted |

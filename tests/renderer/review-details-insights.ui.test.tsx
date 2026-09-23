@@ -81,7 +81,7 @@ describe("ReviewDetailsInspector Insights", () => {
     expect(onRequest).toHaveBeenCalledWith(row, "walkthrough");
   });
 
-  it("disables a kind with no saved preference and points at Settings", () => {
+  it("disables a kind with no saved preference", () => {
     renderInbox({
       requests: new Map(),
       availability: { brief: true, analysis: false, walkthrough: false },
@@ -94,7 +94,6 @@ describe("ReviewDetailsInspector Insights", () => {
     ).toBe(false);
     const analysis = screen.getByRole("button", { name: "Request Analysis" });
     expect(analysis.hasAttribute("disabled")).toBe(true);
-    expect(analysis.getAttribute("title")).toContain("Settings > Review");
   });
 
   it("shows the pending state for the kind in flight and leaves the others live", () => {

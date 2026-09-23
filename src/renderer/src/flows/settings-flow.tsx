@@ -1,19 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import * as v from "valibot";
 import { requestJson } from "../api-client";
-import { parseInsightProviderCatalog } from "../insight-catalog-contracts";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
   type DiffThemePreferences,
 } from "../diff-theme-preferences";
 import type { AppearancePreference } from "../appearance-preferences";
-import {
-  loadInsightRunPreference,
-  saveInsightRunPreference,
-  type InsightRunPreference,
-} from "../insight-run-preferences";
-import type { InsightReasoning } from "../../../domain/insight-provider";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { cleanupCopy } from "../review-copy";
 import { LogsPanel } from "../components/logs-panel";
@@ -42,7 +35,6 @@ import {
   FieldSet,
 } from "../components/ui/field";
 import { NotificationsCard } from "./settings-notifications-card";
-import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
   SelectContent,
@@ -58,12 +50,7 @@ import type {
 } from "../hooks/use-profile-switch";
 import { WorkspaceProfileSection } from "./settings-workspace-section";
 
-export type SettingsSection =
-  | "general"
-  | "workspace"
-  | "review"
-  | "data"
-  | "logs";
+export type SettingsSection = "general" | "workspace" | "data" | "logs";
 
 // Not `strictObject`: the redacted local-activity feed may gain fields over
 // time, and this panel only ever reads this fixed set.
@@ -153,9 +140,6 @@ export function SettingsFlow({
       />
     );
   }
-
-  if (section === "review")
-    return <ReviewPreferences profileId={dashboard?.profile.id} />;
 
   if (section === "logs") return <LogsPanel />;
 
@@ -546,233 +530,6 @@ function GeneralSection({
       <NotificationsCard />
     </div>
   );
-}
-
-function ReviewPreferences({
-  profileId,
-}: {
-  readonly profileId: string | undefined;
-}): React.JSX.Element {
-  const [preference, setPreference] = useState(() => preferenceFor(profileId));
-  const [models, setModels] = useState<
-    ReadonlyArray<{ readonly id: string; readonly label: string }>
-  >([]);
-  const [catalogUnavailable, setCatalogUnavailable] = useState(false);
-  const [codexAvailable, setCodexAvailable] = useState<boolean | undefined>();
-  useEffect(() => {
-    let active = true;
-    void requestJson("/v1/insight-providers")
-      .then((value) => {
-        const catalog = parseInsightProviderCatalog(value);
-        if (!active) return;
-        setCodexAvailable(
-          catalog?.providers.find(
-            (provider) => provider.id === "codex-cli-account",
-          )?.available ?? false,
-        );
-      })
-      .catch(() => {
-        if (active) setCodexAvailable(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [profileId]);
-  useEffect(() => {
-    const saved = preferenceFor(profileId);
-    setPreference(saved);
-    let active = true;
-    void requestJson("/v1/insight-providers")
-      .then((value) => {
-        const catalog = parseInsightProviderCatalog(value);
-        if (!active || catalog === undefined) {
-          if (active) {
-            setModels([]);
-            setCatalogUnavailable(true);
-          }
-          return;
-        }
-        const piModels = catalog.models.flatMap((candidate) =>
-          candidate.provider === "pi"
-            ? [{ id: candidate.id, label: candidate.label }]
-            : [],
-        );
-        const model = selectedModel(piModels, piModels[0]?.id, saved.model);
-        setModels(piModels);
-        const next = {
-          provider: "pi" as const,
-          model: model ?? saved.model,
-          reasoning: saved.reasoning,
-        };
-        setPreference(next);
-        setCatalogUnavailable(false);
-        // A stored non-"pi" preference means the last Analysis run used
-        // Codex; Settings is Pi-only, so it must not silently overwrite that
-        // provider choice just by loading this screen. Only self-heal a
-        // stale model id when the shared preference is already Pi-scoped
-        // (or unset).
-        const storedProvider =
-          profileId === undefined
-            ? undefined
-            : loadInsightRunPreference(profileId, "analysis")?.provider;
-        if (
-          profileId !== undefined &&
-          model !== undefined &&
-          saved.model !== model &&
-          (storedProvider === undefined || storedProvider === "pi")
-        )
-          saveInsightRunPreference(profileId, "analysis", next);
-      })
-      .catch(() => {
-        if (!active) return;
-        setModels([]);
-        setCatalogUnavailable(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, [profileId]);
-  const update = (next: {
-    readonly model: string;
-    readonly reasoning: InsightReasoning;
-  }): void => {
-    const withProvider = { provider: "pi" as const, ...next };
-    setPreference(withProvider);
-    if (profileId !== undefined)
-      saveInsightRunPreference(profileId, "analysis", withProvider);
-  };
-  return (
-    <Card data-testid="settings-section-review">
-      <CardHeader>
-        <CardTitle>Review preferences</CardTitle>
-        <CardDescription>Defaults for the next Analysis run.</CardDescription>
-        <p
-          className="text-sm text-muted-foreground"
-          data-testid="codex-provider-status"
-        >
-          Codex CLI account:{" "}
-          {codexAvailable === undefined
-            ? "checking availability"
-            : codexAvailable
-              ? "available"
-              : "unavailable; expose codex on the app launch PATH and log in externally"}
-        </p>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <FieldSet>
-          <FieldGroup>
-            <Field data-disabled={catalogUnavailable || undefined}>
-              <FieldLabel htmlFor="default-model">Default model</FieldLabel>
-              <ModelCombobox
-                id="default-model"
-                ariaLabel="Default model"
-                options={models}
-                value={preference.model}
-                disabled={catalogUnavailable}
-                placeholder="No enabled model available"
-                onValueChange={(value) => {
-                  if (
-                    value !== null &&
-                    models.some((model) => model.id === value)
-                  )
-                    update({ ...preference, model: value });
-                }}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="default-reasoning">
-                Default reasoning
-              </FieldLabel>
-              <Select
-                value={preference.reasoning}
-                items={[
-                  { label: "Minimal", value: "minimal" },
-                  { label: "Low", value: "low" },
-                  { label: "Medium", value: "medium" },
-                  { label: "High", value: "high" },
-                  { label: "Extra high", value: "xhigh" },
-                ]}
-                onValueChange={(value) => {
-                  if (
-                    value === "minimal" ||
-                    value === "low" ||
-                    value === "medium" ||
-                    value === "high" ||
-                    value === "xhigh"
-                  )
-                    update({ ...preference, reasoning: value });
-                }}
-              >
-                <SelectTrigger
-                  id="default-reasoning"
-                  aria-label="Default reasoning"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="minimal">Minimal</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="xhigh">Extra high</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-          </FieldGroup>
-        </FieldSet>
-        {catalogUnavailable ||
-        (models.length === 0 && codexAvailable !== true) ? (
-          <Alert>
-            <AlertTitle>No model configured</AlertTitle>
-            <AlertDescription>
-              Add a provider API key, then reload.
-            </AlertDescription>
-          </Alert>
-        ) : models.length === 0 ? (
-          <Alert>
-            <AlertTitle>No API-key model configured</AlertTitle>
-            <AlertDescription>
-              Select Codex CLI account when starting an Insight.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * Settings is Pi-only: it never shows or writes a Codex preference. When the
- * shared Analysis default was last set by a Codex run, this falls back to
- * the ordinary Pi default rather than displaying a value Settings cannot
- * represent — see the storedProvider guard above, which keeps that fallback
- * from being persisted just because this screen loaded.
- */
-function preferenceFor(profileId: string | undefined): InsightRunPreference {
-  const fallback: InsightRunPreference = {
-    provider: "pi",
-    model: "pi-design",
-    reasoning: "medium",
-  };
-  if (profileId === undefined) return fallback;
-  const stored = loadInsightRunPreference(profileId, "analysis");
-  return stored?.provider === "pi" ? stored : fallback;
-}
-
-function selectedModel(
-  models: ReadonlyArray<{ readonly id: string; readonly label: string }>,
-  defaultModel: string | undefined,
-  savedModel: string,
-): string | undefined {
-  if (models.some((model) => model.id === savedModel)) return savedModel;
-  if (
-    defaultModel !== undefined &&
-    models.some((model) => model.id === defaultModel)
-  )
-    return defaultModel;
-  return models[0]?.id;
 }
 
 function CleanupConfirmation({

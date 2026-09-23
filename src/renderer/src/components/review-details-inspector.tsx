@@ -279,7 +279,7 @@ function InsightsFact({
                       title={
                         available
                           ? undefined
-                          : "Save a model and reasoning level in Settings > Review first."
+                          : "Run it once from the Review to save a model and reasoning level."
                       }
                       onClick={() => insightRequests.onRequest(row, kind)}
                     >
