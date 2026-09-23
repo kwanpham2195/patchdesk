@@ -124,7 +124,7 @@ Main process and GitHub:
 - GraphQL rate-limit exhaustion arrives as HTTP 200 with `errors[].type === "RATE_LIMITED"`; classify it there, not from the status code. Free-text GraphQL variables go as `kind: "string"`, or an all-digit search is sent as an Int.
 - A write is `rejected` only on a refusal GitHub actually returned. Network errors, timeouts, 5xx, and unparseable success bodies are outcome-unknown: keep the operation locked for reconciliation (ADR 0035), and match recovery evidence by body and anchor, never "any comment created after".
 - A confirmed write stays confirmed when a later bookkeeping step (journal append, cache write) fails; log and continue, never re-lock or re-offer it.
-- Path containment uses the shared boundary-aware check, never `startsWith` on the string; five modules once each wrote their own and two disagreed on whether the root counts.
+- Path containment uses `isPathContained` in `src/adapters/storage/path-containment.ts`, never `startsWith` on the string; five modules once each wrote their own and two disagreed on whether the root counts.
 
 Tests and gates:
 
