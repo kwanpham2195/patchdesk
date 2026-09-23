@@ -103,6 +103,46 @@ Test at the lowest layer that can observe the behaviour.
   lower layer or in another file. Duplicates are deleted, not kept "for
   safety".
 
+## Implementation notes
+
+Lessons from past sessions and commits that code cannot enforce. Each one cost a wasted pass at least once.
+
+Dev app and live checks:
+
+- A running Patchdesk holds `app.requestSingleInstanceLock()`; a second instance opens CDP and quits with no error. When 9233 "never comes up", look for the older process first.
+- App data is `~/.local/share/patchdesk` for every instance; a separate `--user-data-dir` does not give a separate workspace or review store.
+- After a renderer `.ts` -> `.tsx` rename, restart `pnpm dev`. Vite's transform cache keeps the old import path in every importer, the lazy route fails on MIME, and `agent-browser reload` does not clear it.
+- `agent-browser` must use the default session: named sessions call `Target.createTarget`, which Electron's CDP does not implement. Base UI `Select` opens with focus then Enter, not a click. Fixture hashes route only on a full load, so `agent-browser reload` after changing the hash.
+- Inline finding cards on the Diff tab are slotted into `<diffs-container>` only while their row is in the render window; scroll `.review-diff-viewport`, not the card.
+- Behaviour that needs a second GitHub actor (someone else's last comment, a push while away) cannot be self-verified live. Say so and name the state a reviewer should check.
+
+Main process and GitHub:
+
+- Anything in the main process that reads `process.env` (PATH, provider keys) must await the login-shell import (ADR 0038); a default-parameter read of `process.env.PATH` raced ahead of it once already.
+- IPC channel names live in one shared module both `preload.ts` and the main side import (`src/main/*-channel.ts`); main and preload are separate entry points, so a mismatched literal breaks the feature with every test green.
+- `http.Server#close()` waits for keep-alive sockets forever; `local-api.ts` calls `closeAllConnections()`. A Playwright teardown that "times out at 30 s with no failing assertion" is this, not a slow test.
+- GraphQL rate-limit exhaustion arrives as HTTP 200 with `errors[].type === "RATE_LIMITED"`; classify it there, not from the status code. Free-text GraphQL variables go as `kind: "string"`, or an all-digit search is sent as an Int.
+- A write is `rejected` only on a refusal GitHub actually returned. Network errors, timeouts, 5xx, and unparseable success bodies are outcome-unknown: keep the operation locked for reconciliation (ADR 0035), and match recovery evidence by body and anchor, never "any comment created after".
+- A confirmed write stays confirmed when a later bookkeeping step (journal append, cache write) fails; log and continue, never re-lock or re-offer it.
+- Path containment uses the shared boundary-aware check, never `startsWith` on the string; five modules once each wrote their own and two disagreed on whether the root counts.
+
+Tests and gates:
+
+- No file may grow past 1,000 lines and no new file past 500 (`scripts/file-growth-lib.mjs`, pre-commit). Check the size before adding to a large file and split first; this blocked 17 sessions.
+- Run one `pnpm check` at a time. Two at once reproduce the concurrent-load flakes (#108, #145). When a timing test fails and passes on retry, check `ps -Ao pid,pcpu,etime,comm | awk '$2>50'` for a hung `trash` before reading the test.
+- Knip does not read CSS: a dependency it flags may be live via `styles.css`. Deleting the last consumer of an export fails `knip:ratchet` at 0, so delete the dead export in the same commit.
+- `vi.spyOn` on a real module is banned (`tools/oxlint/patchdesk/no-method-spying`); record calls on the injected fake. Read `tools/oxlint/anti-slop/rules/` before naming a parameter type or writing a test double.
+- Relative-time assertions against fixture timestamps drift with the calendar; pin the clock with `vi.setSystemTime`, never widen the regex.
+- Global keydown handlers check the focused editable element and bail on a held modifier (B-08, B-23). A control disabled by a state rule renders the reason beside it (B-10, B-11, B-19).
+
+Process:
+
+- Static copy, alert, and message changes go straight to main. Behaviour changes get their own PR with before/after screenshots in the body (`before-and-after` skill). Prompt and schema changes are reviewed in chat first.
+- Throwaway PRs are always fine for live checks, including writes. Real PRs still need a per-write ask.
+- `Closes #n` auto-closes only the first number after it; repeat the keyword per issue, and close finished issues before starting the next.
+- Once an action is approved, do not re-ask for its sub-steps. Ask again only for a new destructive or outward action.
+- One review pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
+
 ## Git
 
 Multiple AI sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
@@ -141,7 +181,7 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 - `shadcn`: adding, debugging, or composing shadcn/ui components.
 - `agent-browser`: live browser or Electron verification over CDP.
 - `herdr`: dev servers, log tails, watchers, and named panes.
-- `issue`: every bug, request, decision, or idea worth tracking goes through GitHub or workspace issue intake and handoff. Use `~/.agents/skills/issue/SKILL.md`; its permission and destination rules decide whether anything is published.
+- `issue`: every bug, request, decision, or idea worth tracking goes to GitHub Issues (the tracker for this repo) through issue intake and handoff. Use `~/.agents/skills/issue/SKILL.md`; its permission and destination rules decide whether anything is published.
 - `pr`: pull request inspection, updates, CI, and landing. Use `~/.agents/skills/pr/SKILL.md`.
 - `product-description`: a user-visible behaviour change updates its page under `docs/product-description/`; a new page, checklist, or triage entry follows the skill's "Resuming and extending an existing repo" steps. Read that folder's README.md and goal.md before writing.
 - `librarian`: caching or consulting an upstream repository or dependency source.
