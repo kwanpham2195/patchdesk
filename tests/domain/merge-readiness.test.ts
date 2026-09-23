@@ -37,7 +37,7 @@ const neutral = {
 };
 
 describe("merge readiness", () => {
-  it("reports all hard blockers and requires acknowledgement for request-changes and P0/P1 warnings", () => {
+  it("reports all hard blockers alongside request-changes and P0/P1 warnings", () => {
     expect(
       evaluateMergeReadiness({
         isCurrentHead: false,
@@ -74,6 +74,9 @@ describe("merge readiness", () => {
         { code: "findings_need_acknowledgement", findingIds },
       ],
     });
+  });
+
+  it("requires acknowledgement when only request-changes and P0/P1 warnings remain", () => {
     expect(
       evaluateMergeReadiness({
         isCurrentHead: true,

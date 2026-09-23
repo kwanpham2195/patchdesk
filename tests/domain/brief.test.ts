@@ -23,7 +23,6 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { insightOutputGuidance } from "../../src/domain/insight-output-guidance";
-import { filterNarrativePatchToHunks } from "../../src/domain/narrative-walkthrough";
 import type { Result } from "../../src/domain/result";
 import { parseStoredBrief } from "../../src/domain/stored-brief";
 
@@ -419,7 +418,17 @@ describe("normalizeBrief flow", () => {
       "guard the restart",
     );
     expect(normalized.value.citedHunks?.h2).toBe(
-      filterNarrativePatchToHunks(PATCH, ["h2"]),
+      [
+        "diff --git a/src/recovery.ts b/src/recovery.ts",
+        "index 1111111..2222222 100644",
+        "--- a/src/recovery.ts",
+        "+++ b/src/recovery.ts",
+        "@@ -20,2 +21,3 @@",
+        " const middle = true;",
+        "+const second = true;",
+        " ",
+        "",
+      ].join("\n"),
     );
   });
 
@@ -694,7 +703,17 @@ describe("normalizeBrief cited hunks", () => {
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.citedHunks?.h1).toBe(
-      filterNarrativePatchToHunks(PATCH, ["h1"]),
+      [
+        "diff --git a/src/recovery.ts b/src/recovery.ts",
+        "index 1111111..2222222 100644",
+        "--- a/src/recovery.ts",
+        "+++ b/src/recovery.ts",
+        "@@ -1,2 +1,3 @@",
+        " const before = true;",
+        "+const first = true;",
+        " ",
+        "",
+      ].join("\n"),
     );
     expect(normalized.value.citedHunks?.h1).toContain("@@ -1,2 +1,3 @@");
   });

@@ -174,7 +174,7 @@ describe("narrative walkthrough domain", () => {
     expect(result.value.support.hunkIds).toEqual(["h1"]);
   });
 
-  it("fails closed for stale snapshot identity and empty primary output", () => {
+  it("rejects a stale snapshot identity", () => {
     expect(
       normalizeNarrativeWalkthrough(
         {
@@ -188,7 +188,9 @@ describe("narrative walkthrough domain", () => {
         SNAPSHOT,
       ),
     ).toMatchObject({ _tag: "err", error: { reason: "stale_snapshot" } });
+  });
 
+  it("rejects an empty primary walkthrough", () => {
     expect(
       normalizeNarrativeWalkthrough(
         {
@@ -315,7 +317,7 @@ describe("narrative walkthrough domain", () => {
     },
   );
 
-  it("rejects malformed snapshot identity and accepts both supported snapshot-id forms", () => {
+  it("rejects malformed snapshot identity", () => {
     expect(
       normalizeNarrativeWalkthrough(
         { ...RAW, snapshot: { ...SNAPSHOT, headSha: "bad" } },
@@ -323,6 +325,9 @@ describe("narrative walkthrough domain", () => {
         SNAPSHOT,
       ),
     ).toMatchObject({ _tag: "err", error: { reason: "malformed_snapshot" } });
+  });
+
+  it("rejects a stale snapshot ID", () => {
     expect(
       normalizeNarrativeWalkthrough(
         { ...RAW, snapshotId: "wrong" },
@@ -330,6 +335,9 @@ describe("narrative walkthrough domain", () => {
         SNAPSHOT,
       ),
     ).toMatchObject({ _tag: "err", error: { reason: "stale_snapshot" } });
+  });
+
+  it("accepts the session ID as a snapshot ID", () => {
     expect(
       normalizeNarrativeWalkthrough(
         { ...RAW, snapshotId: SNAPSHOT.sessionId },
@@ -337,6 +345,9 @@ describe("narrative walkthrough domain", () => {
         SNAPSHOT,
       )._tag,
     ).toBe("ok");
+  });
+
+  it("accepts the composite snapshot ID", () => {
     expect(
       normalizeNarrativeWalkthrough(
         {

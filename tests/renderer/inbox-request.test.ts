@@ -175,30 +175,27 @@ describe("nextInboxRequest", () => {
     expect(cleared).not.toHaveProperty("baseBranch");
   });
 
-  it("drops the page cursor for every change that is not itself a page move", () => {
+  // Cursors belong to a specific GitHub search, so any filter or repository
+  // change invalidates the current page and the backward-page history.
+  it.each([
+    ["repository", { repository: repoB }],
+    ["state", { state: "merged" }],
+    ["page size", { pageSize: 10 }],
+    ["label filter", { selectedLabels: ["bug"] }],
+    ["preset", { preset: "awaiting_my_review" }],
+    ["review state", { reviewState: "approved" }],
+    ["check status", { checkStatus: "failure" }],
+    ["author", { author: "octocat" }],
+    ["base branch", { baseBranch: "main" }],
+  ] as const)("drops the page cursor when the %s changes", (_field, change) => {
     const onPageTwo = request({
       repository: repoA,
       pageToken: "page-1",
       previousPageTokens: [undefined],
     });
-    // A cursor minted under a different repository, state, page size, or
-    // label filter belongs to a different GitHub search and is rejected as
-    // `invalid_page`, so carrying it forward could only fail the read.
-    for (const change of [
-      { repository: repoB },
-      { state: "merged" as const },
-      { pageSize: 10 as const },
-      { selectedLabels: ["bug"] },
-      { preset: "awaiting_my_review" as const },
-      { reviewState: "approved" as const },
-      { checkStatus: "failure" as const },
-      { author: "octocat" },
-      { baseBranch: "main" },
-    ]) {
-      const next = nextInboxRequest(onPageTwo, change);
-      expect(next.pageToken).toBeUndefined();
-      expect(next.previousPageTokens).toEqual([]);
-    }
+    const next = nextInboxRequest(onPageTwo, change);
+    expect(next.pageToken).toBeUndefined();
+    expect(next.previousPageTokens).toEqual([]);
   });
 
   it("keeps the cursor the two paging callers name themselves", () => {
@@ -231,25 +228,22 @@ describe("sameInboxRows", () => {
     ).toBe(true);
   });
 
-  it("is false for each field that changes the answer, including the ones the response never echoes", () => {
+  it.each([
+    ["repository", { repository: repoB }],
+    ["state", { state: "merged" }],
+    ["page size", { pageSize: 10 }],
+    ["preset", { preset: "awaiting_my_review" }],
+    ["review state", { reviewState: "approved" }],
+    ["check status", { checkStatus: "failure" }],
+    ["author", { author: "octocat" }],
+    ["base branch", { baseBranch: "main" }],
+    ["page token", { pageToken: "page-1" }],
+    ["additional label", { selectedLabels: ["bug", "chore"] }],
+    ["replacement label", { selectedLabels: ["chore"] }],
+    ["cleared label list", { selectedLabels: [] }],
+  ] as const)("returns false when the %s changes", (_field, change) => {
     const base = request({ repository: repoA, selectedLabels: ["bug"] });
-    const changes: ReadonlyArray<Partial<InboxRequestState>> = [
-      { repository: repoB },
-      { state: "merged" },
-      { pageSize: 10 },
-      { preset: "awaiting_my_review" },
-      { reviewState: "approved" },
-      { checkStatus: "failure" },
-      { author: "octocat" },
-      { baseBranch: "main" },
-      { pageToken: "page-1" },
-      { selectedLabels: ["bug", "chore"] },
-      { selectedLabels: ["chore"] },
-      { selectedLabels: [] },
-    ];
-    for (const change of changes) {
-      expect(sameInboxRows(base, { ...base, ...change })).toBe(false);
-    }
+    expect(sameInboxRows(base, { ...base, ...change })).toBe(false);
   });
 });
 

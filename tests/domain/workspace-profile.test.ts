@@ -18,6 +18,7 @@ const profile = {
 
 describe("GitHub login bounds", () => {
   it("accepts GitHub's 39-character login maximum and rejects 40 characters", () => {
+    expect(GITHUB_LOGIN_MAX_LENGTH).toBe(39);
     const maximum = "a".repeat(GITHUB_LOGIN_MAX_LENGTH);
     expect(parseGitHubLogin(maximum)).toEqual({
       _tag: "ok",

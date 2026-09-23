@@ -92,17 +92,19 @@ describe("useApiProbe", () => {
     );
   });
 
-  it("fails the same way for a rejected body and a transport failure", async () => {
+  it("enters the error state when the response body is rejected", async () => {
     installBridge(() => success({ unexpected: true }));
-    const rejected = renderHook(() => useApiProbe(probe, parseProbe));
-    await waitFor(() => expect(rejected.result.current.kind).toBe("error"));
-
-    installBridge(() => failure({ error: "unavailable" }));
-    const failed = renderHook(() => useApiProbe(probe, parseProbe));
-    await waitFor(() => expect(failed.result.current.kind).toBe("error"));
+    const { result } = renderHook(() => useApiProbe(probe, parseProbe));
+    await waitFor(() => expect(result.current.kind).toBe("error"));
   });
 
-  it("sends the method the probe asks for, and a GET by default", async () => {
+  it("enters the error state when the request fails", async () => {
+    installBridge(() => failure({ error: "unavailable" }));
+    const { result } = renderHook(() => useApiProbe(probe, parseProbe));
+    await waitFor(() => expect(result.current.kind).toBe("error"));
+  });
+
+  it("sends the requested POST method", async () => {
     const probeBridge = installBridge(() => success({ ok: true }));
     const { result } = renderHook(() =>
       useApiProbe(
@@ -115,10 +117,12 @@ describe("useApiProbe", () => {
       path: "/v1/probe",
       method: "POST",
     });
+  });
 
+  it("uses GET when no method is requested", async () => {
     const getProbe = installBridge(() => success({ ok: true }));
-    const plain = renderHook(() => useApiProbe(probe, parseProbe));
-    await waitFor(() => expect(plain.result.current.kind).toBe("loaded"));
+    const { result } = renderHook(() => useApiProbe(probe, parseProbe));
+    await waitFor(() => expect(result.current.kind).toBe("loaded"));
     expect(getProbe.request).toHaveBeenCalledWith({ path: "/v1/probe" });
   });
 

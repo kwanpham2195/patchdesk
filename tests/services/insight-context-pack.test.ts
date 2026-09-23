@@ -162,7 +162,29 @@ describe("Insight run context pack", () => {
   });
 
   it("builds once when two runs start together", async () => {
-    const value = await fixture(completes);
+    const value = await fixture({
+      async invoke(input) {
+        return ok(
+          input.type === "brief"
+            ? {
+                flow: [
+                  {
+                    kind: "call_tree",
+                    title: "Recovery",
+                    nodes: [
+                      {
+                        label: "guard the restart",
+                        change: "added",
+                        citations: ["h1"],
+                      },
+                    ],
+                  },
+                ],
+              }
+            : analysisResult,
+        );
+      },
+    });
 
     const [first, second] = await Promise.all([
       value.coordinator.start({
@@ -184,26 +206,27 @@ describe("Insight run context pack", () => {
       throw new Error("expected two queued runs");
 
     expect(value.contextPack.commentReads).toBe(1);
-    await settled(value.coordinator, value.review.id, first.value.runId);
-    await settled(
-      value.coordinator,
-      value.review.id,
-      second.value.runId,
-      "brief",
-    );
+    expect(
+      await settled(value.coordinator, value.review.id, first.value.runId),
+    ).toMatchObject({ status: "completed" });
+    expect(
+      await settled(
+        value.coordinator,
+        value.review.id,
+        second.value.runId,
+        "brief",
+      ),
+    ).toMatchObject({ status: "completed" });
   });
 
   it("refuses the run when the pack cannot be built", async () => {
-    const value = await fixture(
-      completes,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+    const value = await fixture(completes, {
       // No `comments` fixture value, so the comments read fails the way an
       // unreachable GitHub does.
-      new FakeGitHubAdapter({ checks: { overall: "unknown", checks: [] } }),
-    );
+      github: new FakeGitHubAdapter({
+        checks: { overall: "unknown", checks: [] },
+      }),
+    });
 
     expect(
       await value.coordinator.start({

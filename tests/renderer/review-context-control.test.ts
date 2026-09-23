@@ -18,7 +18,7 @@ describe("reviewContextControl", () => {
     });
   });
 
-  it("explains loading and unavailable source states instead of exposing a no-op", () => {
+  it("explains why context is disabled while source contents load", () => {
     expect(
       reviewContextControl({
         hasSourceSession: true,
@@ -27,6 +27,9 @@ describe("reviewContextControl", () => {
         expanded: false,
       }),
     ).toMatchObject({ disabled: true, label: "Loading context" });
+  });
+
+  it("explains when no source session is available instead of exposing a no-op", () => {
     expect(
       reviewContextControl({
         hasSourceSession: false,

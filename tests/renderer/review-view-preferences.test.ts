@@ -67,13 +67,28 @@ describe("review view preferences", () => {
     });
   });
 
-  it("falls back a non-boolean stored value to on without dropping siblings", () => {
-    store({ diffStyle: "split", lineNumbers: "no", backgrounds: 0 });
+  it.each([
+    [
+      "line numbers",
+      { lineNumbers: "no", backgrounds: false },
+      "lineNumbers",
+      "backgrounds",
+    ],
+    [
+      "backgrounds",
+      { lineNumbers: false, backgrounds: 0 },
+      "backgrounds",
+      "lineNumbers",
+    ],
+  ] as const)(
+    "falls back an invalid %s value while preserving its valid sibling",
+    (_field, preferences, invalidField, validField) => {
+      store({ diffStyle: "split", ...preferences });
 
-    expect(loadReviewViewPreferences("profile-1")).toMatchObject({
-      diffStyle: "split",
-      lineNumbers: true,
-      backgrounds: true,
-    });
-  });
+      const loaded = loadReviewViewPreferences("profile-1");
+      expect(loaded[invalidField]).toBe(true);
+      expect(loaded[validField]).toBe(false);
+      expect(loaded.diffStyle).toBe("split");
+    },
+  );
 });

@@ -1,7 +1,10 @@
+import { spawn } from "node:child_process";
+
 import { describe, expect, it } from "vitest";
 
 import {
   CommandRunner,
+  NodeCommandExecutor,
   runWithRequestAbortSignal,
 } from "../../src/adapters/github/command-runner";
 
@@ -28,21 +31,35 @@ describe("CommandRunner owned-process termination", () => {
   }, 6_000);
 
   it("terminates a running process through the ambient request abort signal, well before its timeout", async () => {
-    const startedAt = Date.now();
     const controller = new AbortController();
+    let markSpawned!: () => void;
+    const spawned = new Promise<void>((resolve) => {
+      markSpawned = resolve;
+    });
+    const observeSpawn = (...args: Parameters<typeof spawn>) => {
+      const child = spawn(...args);
+      child.once("spawn", markSpawned);
+      return child;
+    };
+    const executor = new NodeCommandExecutor(
+      async (executable) => executable,
+      // SAFETY: the executor calls only spawn's three-argument form. This
+      // wrapper forwards those arguments to the real Node implementation.
+      observeSpawn as typeof spawn,
+    );
     // No caller passes `signal` on the CommandRequest itself here — this
     // proves a route's abort reaches the child process via
     // `runWithRequestAbortSignal` alone, the mechanism `local-api.ts` uses
     // instead of threading `signal` through every GitHubReader call site.
     const pending = runWithRequestAbortSignal(controller.signal, () =>
-      new CommandRunner().runText({
+      new CommandRunner(executor).runText({
         argv: [process.execPath, "-e", "setInterval(() => undefined, 1_000);"],
         timeoutMs: 30_000,
         inheritEnvironment: false,
         environment: {},
       }),
     );
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await spawned;
 
     controller.abort();
 
@@ -50,6 +67,5 @@ describe("CommandRunner owned-process termination", () => {
       _tag: "err",
       error: { _tag: "CommandAborted" },
     });
-    expect(Date.now() - startedAt).toBeLessThan(5_000);
   }, 6_000);
 });

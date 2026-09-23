@@ -72,36 +72,75 @@ For runtime work, make sure the dev log tails are live in herdr:
 
 ## Testing
 
-Test at the lowest layer that can observe the behaviour.
+Test observable behaviour at the lowest layer that can prove the contract.
 
-- Domain and services: every behaviour has a test, written before the fix.
-  A bug fix lands with the regression test that failed on `main`.
+- Coverage floors for new or materially changed code (lines / branches):
+  - `src/domain/`: 80% / 65%; `src/services/`: 70% / 55%; `src/adapters/`: 70% / 55%.
+  - `src/main/`: 60% / 45%; `src/renderer/src/`: 60% / 40%; `runtime/insight/`: 70% / 55%. Browser tests have no percentage floor.
+- Spend no more than 10 percentage points above a layer's floor on coverage work. Coverage may exceed that range; do not delete useful tests to reduce it. Remove tests only when existing test-deletion review rules establish redundancy.
+- Keep explicit tests for critical write, authorization, recovery, and concurrency contracts regardless of percentages. Exercise private helpers through their owning behavior; do not add tests solely to raise coverage.
+- Coverage is not measured by `pnpm check`. Before adding an enforcing gate, measure a baseline and apply it only to new or changed code so legacy coverage does not block unrelated work.
+
+- Write one scenario per test, with as many assertions as needed to prove its
+  relevant outcomes. A rejected submission can assert the error, preserved
+  draft, and absence of a network write together. Separate scenarios with
+  different preconditions or actions; do not split one scenario per assertion.
+- Derive expected results from the behaviour contract. No tautological tests:
+  do not copy the production algorithm or use the function under test or its
+  internal helpers to calculate expectations. Assert a production decision,
+  transformation, state change, or boundary interaction. Checking a mock's
+  returned value is valid only when forwarding it is the public contract and
+  the test exercises production wiring that would fail if broken.
+- Tests must survive internal refactoring that preserves the contract. Do not
+  assert private methods, internal state shape, helper call counts, or incidental
+  call order. Assert interactions and ordering when the contract requires them,
+  such as persisting intent before a network write.
+- Identify the plausible bug each test catches. A bug fix lands with a
+  regression test that failed on `main` for the intended reason. A test that
+  still passes when the protected behaviour is removed provides no protection.
+- Control nondeterminism with fixed clocks, seeded data, and controllable
+  promises where needed. Wait for observable conditions; avoid arbitrary sleeps.
+- Assert fields relevant to the contract. Avoid whole-object snapshots or
+  equality checks that couple the test to unrelated fields.
 - Hooks: a hook that owns timing, generations, optimistic state, or a request
   payload gets a `renderHook` test with a fake bridge. Do not test hook logic
   by mounting the component that uses it.
-- Components: one smoke test per screen (renders a fixture; primary actions
-  call their props) plus keyboard and focus tests that need a DOM. No
-  assertions on copy sentences, class names, badge tone, or element order. If
-  a component computes something worth asserting, export the function and
-  test the function.
+- Components: test meaningful rendering, action wiring, and keyboard and focus
+  behaviour that needs a DOM. No assertions on copy sentences, class names,
+  badge tone, or element order.
+  Test component logic through observable behaviour. Extract domain logic when
+  it has a separate responsibility; do not export internals solely for tests.
 - Query by role or label (`getByRole`, `getByLabelText`), never by class name
   or by a sentence of copy.
 - Playwright (`tests/browser/`): end-to-end journeys and things only a real
   browser shows (Pierre CodeView scrolling, virtualisation, computed CSS,
-  performance budget). Never a behaviour an RTL or hook test already proves.
+  performance budget). Keep detailed behaviour assertions at their lowest
+  useful layer; a small end-to-end journey may exercise the same behaviour to
+  prove the layers work together.
 - Test doubles: use the shared helpers (`tests/renderer/fake-desktop-response.ts`
   for `window.patchdesk`, `FakeGitHubAdapter` for the GitHub gateway). Do not
   hand-roll a new `Object.defineProperty(window, "patchdesk", ...)` or an
   inline gateway fake.
-- Invariants that span flows (every GitHub write persists intent before the
-  network call; every Review entry point takes the coordinator lock; every
-  preparation step is recoverable after a crash) are table-driven tests over
-  all flows, not one test per service.
+- Cover every applicable flow for shared invariants, such as persisting intent
+  before a GitHub write, acquiring the Review lock, and recovering preparation
+  after a crash.
+- Before adding a test, find the existing owner of the behaviour and extend it
+  where appropriate. Each test must protect a distinct contract or failure mode;
+  another layer needs a contract the existing owner cannot observe. Do not add
+  tests solely for new functions or branches, or retain proven duplicates.
+- Before merging or deleting tests, name the retained test and compare observable
+  preconditions, outcomes, and relevant success, error, retry, ordering, crash,
+  and concurrency behaviour. Shared line coverage is not equivalent coverage.
+- Reuse fixture factories and shared fakes with fresh state per test. Keep
+  behaviour-relevant inputs and overrides visible in the test. Avoid setup
+  helpers with many flags or hidden scenario-specific behaviour.
+- Use parameterized cases when the same behavioural rule and test structure
+  apply to different inputs. Give each case a useful failure name. Keep
+  different workflows separate even when they share setup; do not combine
+  independent scenarios in one test or loop to reduce the test count.
+- Recovery, concurrency, security, storage, protocol, and cross-flow invariant tests require fault evidence before non-obvious consolidation or deletion.
 - No assistive-technology tests: no axe scans, no screen-reader narration
   checks, no forced-colors or reduced-motion checks (ADR 0034).
-- Before adding a test, check whether one already asserts the behaviour at a
-  lower layer or in another file. Duplicates are deleted, not kept "for
-  safety".
 
 ## Implementation notes
 

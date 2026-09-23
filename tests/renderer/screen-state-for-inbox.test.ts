@@ -54,18 +54,19 @@ function dashboardWith(repoStates: ReadonlyArray<string>): Dashboard {
 }
 
 describe("screenStateForInbox", () => {
-  it("returns error for each GitHub repo outcome, even with rows already loaded", () => {
-    for (const outcome of [
-      "github_auth",
-      "github_read",
-      "github_rate_limited",
-      "github_forbidden",
-    ]) {
+  it.each([
+    "github_auth",
+    "github_read",
+    "github_rate_limited",
+    "github_forbidden",
+  ] as const)(
+    "returns error for %s even with rows already loaded",
+    (outcome) => {
       expect(
         screenStateForInbox(inboxWith("open", 1), dashboardWith([outcome])),
       ).toBe("error");
-    }
-  });
+    },
+  );
 
   it("returns no_open_prs for the open filter with the no_open_prs outcome and zero rows", () => {
     expect(
@@ -88,13 +89,13 @@ describe("screenStateForInbox", () => {
     ).toBe("success");
   });
 
-  it("returns empty when there are no rows and no error or no_open_prs outcome", () => {
+  it.each([
+    ["a ready repo", ["ready"]],
+    ["no repos", []],
+  ] as const)("returns empty with no rows and %s", (_dashboard, repoStates) => {
     expect(
-      screenStateForInbox(inboxWith("open", 0), dashboardWith(["ready"])),
+      screenStateForInbox(inboxWith("open", 0), dashboardWith(repoStates)),
     ).toBe("empty");
-    expect(screenStateForInbox(inboxWith("open", 0), dashboardWith([]))).toBe(
-      "empty",
-    );
   });
 
   it("returns success when rows are loaded and no error outcome is present", () => {

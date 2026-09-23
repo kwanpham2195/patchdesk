@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
 import { writeAtomicJson } from "../../src/adapters/storage/json-file";
@@ -32,12 +32,16 @@ const identity = {
   prNumber: must(parsePullRequestNumber(42)),
 };
 const reviewId = createReviewId(identity);
-// Within the store's 24h age-ceiling of "now" so pruning-on-load never
-// discards these fixtures regardless of when the suite runs.
-const writtenAt = must(parseIsoTimestamp(new Date().toISOString()));
+const writtenAt = must(parseIsoTimestamp("2025-01-15T12:00:00.000Z"));
+const fixedNow = new Date("2025-01-15T12:05:00.000Z");
 const roots: string[] = [];
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(fixedNow);
+});
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );

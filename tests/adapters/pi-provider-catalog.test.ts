@@ -30,53 +30,66 @@ describe("LocalPiProviderCatalog", () => {
     }
   });
 
-  it("requires both AWS credentials and identifies ambient Bedrock safely", async () => {
-    const missing = await catalog({ AWS_ACCESS_KEY_ID: "only-one" }).get();
+  it("does not report Bedrock configured with only an access key", async () => {
+    const result = await catalog({ AWS_ACCESS_KEY_ID: "only-one" }).get();
     expect(
-      missing._tag === "ok" &&
-        missing.value.providers.find((entry) => entry.id === "amazon-bedrock")
+      result._tag === "ok" &&
+        result.value.providers.find((entry) => entry.id === "amazon-bedrock")
           ?.configured,
     ).toBe(false);
-    const configured = await catalog({
+  });
+
+  it("reports ambient Bedrock configured when both AWS keys are present", async () => {
+    const result = await catalog({
       AWS_ACCESS_KEY_ID: "key",
       AWS_SECRET_ACCESS_KEY: "secret",
     }).get();
     expect(
-      configured._tag === "ok" &&
-        configured.value.providers.find(
-          (entry) => entry.id === "amazon-bedrock",
-        ),
+      result._tag === "ok" &&
+        result.value.providers.find((entry) => entry.id === "amazon-bedrock"),
     ).toMatchObject({ configured: true, source: "AWS credentials" });
   });
 
   it.each([
-    ["missing project", { GOOGLE_CLOUD_LOCATION: "asia-southeast1" }, []],
-    ["missing location", { GOOGLE_CLOUD_PROJECT: "project" }, []],
-    [
-      "missing credentials file",
-      {
+    {
+      label: "project is missing",
+      values: { GOOGLE_CLOUD_LOCATION: "asia-southeast1" },
+      files: ["/home/test/.config/gcloud/application_default_credentials.json"],
+      configured: false,
+    },
+    {
+      label: "location is missing",
+      values: { GOOGLE_CLOUD_PROJECT: "project" },
+      files: ["/home/test/.config/gcloud/application_default_credentials.json"],
+      configured: false,
+    },
+    {
+      label: "credentials file is missing",
+      values: {
         GOOGLE_CLOUD_PROJECT: "project",
         GOOGLE_CLOUD_LOCATION: "asia-southeast1",
       },
-      [],
-    ],
-    [
-      "complete ADC",
-      {
+      files: [],
+      configured: false,
+    },
+    {
+      label: "project, location, and credentials file are present",
+      values: {
         GOOGLE_CLOUD_PROJECT: "project",
         GOOGLE_CLOUD_LOCATION: "asia-southeast1",
       },
-      ["/home/test/.config/gcloud/application_default_credentials.json"],
-    ],
+      files: ["/home/test/.config/gcloud/application_default_credentials.json"],
+      configured: true,
+    },
   ])(
-    "checks every Vertex ADC requirement: %s",
-    async (_name, values, files) => {
+    "checks Vertex ADC requirements when $label",
+    async ({ values, files, configured }) => {
       const result = await catalog(values, files).get();
       expect(
         result._tag === "ok" &&
           result.value.providers.find((entry) => entry.id === "google-vertex")
             ?.configured,
-      ).toBe(files.length > 0);
+      ).toBe(configured);
     },
   );
 

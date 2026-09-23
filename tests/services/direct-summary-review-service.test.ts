@@ -123,6 +123,9 @@ function fixture(
     recentWrites,
     saves,
     current: () => stored,
+    updateCurrent: (update: (current: ReviewSession) => ReviewSession) => {
+      stored = update(stored);
+    },
   };
 }
 const submit = (service: DirectSummaryReviewService) =>
@@ -274,18 +277,22 @@ describe("DirectSummaryReviewService", () => {
 
   it("preserves a concurrent session field when persisting direct-summary state", async () => {
     const value = fixture();
-    let first = true;
     const original = value.github.createDirectSummaryReview;
     value.github.createDirectSummaryReview = vi.fn(async (...args: never[]) => {
       void args;
-      if (first) {
-        first = false;
-      }
+      value.updateCurrent((current) => ({
+        ...current,
+        pr: { ...current.pr, isDraft: true },
+      }));
       return await original();
     });
-    await expect(submit(value.service)).resolves.toMatchObject({ _tag: "ok" });
+    await expect(submit(value.service)).resolves.toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Confirmed", receipt: { reviewId: "9001" } },
+    });
     expect(value.current()).toMatchObject({
       directSummaryReview: { _tag: "Confirmed" },
+      pr: { isDraft: true },
     });
   });
 });

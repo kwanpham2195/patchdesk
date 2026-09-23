@@ -163,14 +163,38 @@ describe("LocalPiRuntimeModelCatalog", () => {
     expect(JSON.stringify(result)).not.toContain("secret");
   });
 
-  it("rejects malformed and OAuth identifiers", () => {
-    expect(canonicalModelId("openai/gpt-5")).toBe("openai/gpt-5");
-    expect(canonicalModelId("OPENAI/gpt-5")).toBe("openai/gpt-5");
-    expect(canonicalModelId("openrouter/anthropic/claude-sonnet-4")).toBe(
-      "openrouter/anthropic/claude-sonnet-4",
-    );
-    expect(canonicalModelId("openai-codex/gpt-5")).toBeUndefined();
-    expect(canonicalModelId("custom/provider/model")).toBeUndefined();
-    expect(canonicalModelId("openai/")).toBeUndefined();
+  it.each([
+    {
+      label: "an ordinary model ID",
+      input: "openai/gpt-5",
+      expected: "openai/gpt-5",
+    },
+    {
+      label: "a mixed-case provider",
+      input: "OPENAI/gpt-5",
+      expected: "openai/gpt-5",
+    },
+    {
+      label: "a nested OpenRouter model ID",
+      input: "openrouter/anthropic/claude-sonnet-4",
+      expected: "openrouter/anthropic/claude-sonnet-4",
+    },
+    {
+      label: "an OAuth-only provider",
+      input: "openai-codex/gpt-5",
+      expected: undefined,
+    },
+    {
+      label: "a custom provider",
+      input: "custom/provider/model",
+      expected: undefined,
+    },
+    {
+      label: "a missing model name",
+      input: "openai/",
+      expected: undefined,
+    },
+  ])("handles $label", ({ input, expected }) => {
+    expect(canonicalModelId(input)).toBe(expected);
   });
 });

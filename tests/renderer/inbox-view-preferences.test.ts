@@ -70,15 +70,9 @@ describe("inbox view preferences", () => {
     expect(window.localStorage.getItem(KEY)).not.toContain("pageToken");
   });
 
-  it("defaults to a page size of 25 without a stored value", () => {
-    expect(loadInboxViewPreferences("profile-1").pageSize).toBe(25);
-  });
-
-  it("round-trips every listed page size", () => {
-    for (const pageSize of [10, 25, 50] as const) {
-      saveInboxViewPreferences("profile-1", { pageSize });
-      expect(loadInboxViewPreferences("profile-1").pageSize).toBe(pageSize);
-    }
+  it.each([10, 25, 50] as const)("round-trips page size %s", (pageSize) => {
+    saveInboxViewPreferences("profile-1", { pageSize });
+    expect(loadInboxViewPreferences("profile-1").pageSize).toBe(pageSize);
   });
 
   it("resets an unlisted or malformed page size to the default while keeping sound fields", () => {
@@ -121,15 +115,20 @@ describe("inbox view preferences", () => {
     ]);
   });
 
-  it("round-trips the chosen preset, clears it, and falls back when a stored blob has none", () => {
+  it("round-trips the chosen preset", () => {
     saveInboxViewPreferences("profile-1", { preset: "my_pull_requests" });
     expect(loadInboxViewPreferences("profile-1")).toMatchObject({
       preset: "my_pull_requests",
     });
+  });
 
+  it("clears the chosen preset when explicitly set to undefined", () => {
+    saveInboxViewPreferences("profile-1", { preset: "my_pull_requests" });
     saveInboxViewPreferences("profile-1", { preset: undefined });
     expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty("preset");
+  });
 
+  it("defaults the preset when a stored v6 blob has no preset field", () => {
     // A v6 blob written before the presets became a union carries no
     // `preset` key at all; the field falls back rather than failing the read.
     store({ state: "merged" });
@@ -150,22 +149,35 @@ describe("inbox view preferences", () => {
     });
   });
 
-  it("resets invalid review state and check status independently", () => {
-    store({
-      state: "merged",
-      reviewState: "review_pending",
-      checkStatus: "skipped",
-    });
-    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
-      state: "merged",
-    });
-    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
+  it.each([
+    [
+      "review state",
+      {
+        state: "merged",
+        reviewState: "review_pending",
+        checkStatus: "failure",
+      },
       "reviewState",
-    );
-    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
       "checkStatus",
-    );
-  });
+      "failure",
+    ],
+    [
+      "check status",
+      { state: "merged", reviewState: "approved", checkStatus: "skipped" },
+      "checkStatus",
+      "reviewState",
+      "approved",
+    ],
+  ] as const)(
+    "resets an invalid %s while keeping its valid sibling",
+    (_field, preferences, invalidField, validField, validValue) => {
+      store(preferences);
+      const loaded = loadInboxViewPreferences("profile-1");
+      expect(loaded.state).toBe("merged");
+      expect(loaded).not.toHaveProperty(invalidField);
+      expect(loaded).toHaveProperty(validField, validValue);
+    },
+  );
 
   it("round-trips the author and base branch filters", () => {
     saveInboxViewPreferences("profile-1", {
@@ -181,17 +193,31 @@ describe("inbox view preferences", () => {
   // A stored value the route would refuse falls back to absent rather than
   // being trimmed into a different filter, and each field resolves on its own
   // without taking its sibling or a sound field down with it.
-  it("resets an over-long author and a spaced base branch independently", () => {
-    store({
-      state: "merged",
-      author: "a".repeat(60),
-      baseBranch: "release 1.0",
-    });
-    const loaded = loadInboxViewPreferences("profile-1");
-    expect(loaded.state).toBe("merged");
-    expect(loaded).not.toHaveProperty("author");
-    expect(loaded).not.toHaveProperty("baseBranch");
-  });
+  it.each([
+    [
+      "over-long author",
+      { state: "merged", author: "a".repeat(60), baseBranch: "main" },
+      "author",
+      "baseBranch",
+      "main",
+    ],
+    [
+      "spaced base branch",
+      { state: "merged", author: "octocat", baseBranch: "release 1.0" },
+      "baseBranch",
+      "author",
+      "octocat",
+    ],
+  ] as const)(
+    "resets an invalid %s while keeping its valid sibling",
+    (_field, preferences, invalidField, validField, validValue) => {
+      store(preferences);
+      const loaded = loadInboxViewPreferences("profile-1");
+      expect(loaded.state).toBe("merged");
+      expect(loaded).not.toHaveProperty(invalidField);
+      expect(loaded).toHaveProperty(validField, validValue);
+    },
+  );
 
   it("resets an author that is only whitespace while keeping the base branch", () => {
     store({ author: "   ", baseBranch: " main " });

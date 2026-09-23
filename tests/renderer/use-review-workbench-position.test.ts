@@ -24,13 +24,18 @@ describe("useReviewWorkbenchPosition", () => {
     expect(openAt().result.current.activeTab).toBe("conversation");
   });
 
-  it("reopens a Review on the tab it was left on", () => {
-    for (const activeTab of ["conversation", "diff", "insights"] as const) {
+  it.each([
+    { activeTab: "conversation" },
+    { activeTab: "diff" },
+    { activeTab: "insights" },
+  ] as const)(
+    "reopens a Review on the saved $activeTab tab",
+    ({ activeTab }) => {
       expect(
         openAt({ activeTab, section: "files" }).result.current.activeTab,
       ).toBe(activeTab);
-    }
-  });
+    },
+  );
 
   it("opens on Insights when only an insights section was saved", () => {
     expect(openAt({ section: "insights" }).result.current.activeTab).toBe(

@@ -327,12 +327,11 @@ describe("GitHubHttpClient response size", () => {
 
 describe("GitHubHttpClient cancellation", () => {
   it("reports a caller's abort during the call as aborted", async () => {
-    fixture.respondWith((_request, response) => {
-      setTimeout(() => {
-        response.writeHead(200, { "Content-Type": "application/json" });
-        response.end("{}");
-      }, 500);
+    let markRequestReceived: () => void = () => undefined;
+    const requestReceived = new Promise<void>((resolve) => {
+      markRequestReceived = resolve;
     });
+    fixture.respondWith(() => markRequestReceived());
     const controller = new AbortController();
     const pending = fixture
       .client()
@@ -341,7 +340,7 @@ describe("GitHubHttpClient cancellation", () => {
         { kind: "rest", host: "github.com", path: "user" },
         controller.signal,
       );
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await requestReceived;
     controller.abort();
 
     expect(errorOf(await pending)).toEqual({ _tag: "CommandAborted" });

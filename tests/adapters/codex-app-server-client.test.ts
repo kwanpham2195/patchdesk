@@ -27,25 +27,39 @@ import type { RepresentedReviewWorktree } from "../../src/domain/represented-rev
 import { InsightActivityBuffer } from "../../src/services/insight-activity-buffer";
 import { composeReviewPrompt } from "../../src/services/review-rubric";
 
+type FakeCodexProcessOptions = {
+  readonly approvalCwd: string;
+  readonly approvalCommand?: string;
+  readonly completesTurn?: boolean;
+  readonly deltas?: ReadonlyArray<string>;
+  readonly finalText?: string | undefined;
+  readonly malformedItems?: boolean | undefined;
+  readonly notifications?: ReadonlyArray<CodexRpcMessage>;
+};
+
 class FakeCodexProcess extends EventEmitter {
   readonly stdin = new PassThrough();
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
   readonly received: Array<CodexRpcMessage> = [];
   killed = false;
+  private readonly approvalCwd: string;
+  private readonly approvalCommand: string;
+  private readonly completesTurn: boolean;
+  private readonly deltas: ReadonlyArray<string>;
+  private readonly finalText: string | undefined;
+  private readonly malformedItems: boolean;
+  private readonly notifications: ReadonlyArray<CodexRpcMessage>;
 
-  constructor(
-    private readonly approvalCwd: string,
-    private readonly approvalCommand = "cat src/a.ts",
-    private readonly completesTurn = true,
-    private readonly deltas: ReadonlyArray<string> = [
-      JSON.stringify({ title: "Fixture" }),
-    ],
-    private readonly finalText?: string,
-    private readonly malformedItems = false,
-    private readonly notifications: ReadonlyArray<CodexRpcMessage> = [],
-  ) {
+  constructor(options: FakeCodexProcessOptions) {
     super();
+    this.approvalCwd = options.approvalCwd;
+    this.approvalCommand = options.approvalCommand ?? "cat src/a.ts";
+    this.completesTurn = options.completesTurn ?? true;
+    this.deltas = options.deltas ?? [JSON.stringify({ title: "Fixture" })];
+    this.finalText = options.finalText;
+    this.malformedItems = options.malformedItems ?? false;
+    this.notifications = options.notifications ?? [];
     this.stdin.on("data", (chunk: Buffer) => {
       for (const line of chunk.toString("utf8").split("\n")) {
         if (line.length === 0) continue;
@@ -183,7 +197,7 @@ describe("CodexAppServerClient", () => {
         void file;
         void args;
         void options;
-        const child = new FakeCodexProcess(root);
+        const child = new FakeCodexProcess({ approvalCwd: root });
         children.push(child);
         return asChildProcess(child);
       },
@@ -220,7 +234,7 @@ describe("CodexAppServerClient", () => {
         void file;
         void args;
         void options;
-        child = new FakeCodexProcess(tmpdir());
+        child = new FakeCodexProcess({ approvalCwd: tmpdir() });
         return asChildProcess(child);
       },
     });
@@ -248,7 +262,7 @@ describe("CodexAppServerClient", () => {
     let child: FakeCodexProcess | undefined;
     const client = new CodexAppServerClient("codex", {
       processFactory: () => {
-        child = new FakeCodexProcess(join(root, "escape"));
+        child = new FakeCodexProcess({ approvalCwd: join(root, "escape") });
         return asChildProcess(child);
       },
     });
@@ -275,7 +289,10 @@ describe("CodexAppServerClient", () => {
     let child: FakeCodexProcess | undefined;
     const client = new CodexAppServerClient("codex", {
       processFactory: () => {
-        child = new FakeCodexProcess(root, "./cat src/a.ts");
+        child = new FakeCodexProcess({
+          approvalCwd: root,
+          approvalCommand: "./cat src/a.ts",
+        });
         return asChildProcess(child);
       },
     });
@@ -303,7 +320,10 @@ describe("CodexAppServerClient", () => {
     const client = new CodexAppServerClient("codex", {
       runTimeoutMs: 5,
       processFactory: () => {
-        child = new FakeCodexProcess(root, "cat src/a.ts", false);
+        child = new FakeCodexProcess({
+          approvalCwd: root,
+          completesTurn: false,
+        });
         return asChildProcess(child);
       },
     });
@@ -403,15 +423,11 @@ describe("CodexAppServerClient", () => {
     const client = new CodexAppServerClient("codex", {
       processFactory: () =>
         asChildProcess(
-          new FakeCodexProcess(
-            tmpdir(),
-            "pwd",
-            true,
-            [JSON.stringify({ title: "Fixture" })],
-            undefined,
-            false,
+          new FakeCodexProcess({
+            approvalCwd: tmpdir(),
+            approvalCommand: "pwd",
             notifications,
-          ),
+          }),
         ),
     });
 
@@ -460,7 +476,12 @@ describe("CodexAppServerClient", () => {
     roots.push(root);
     const client = new CodexAppServerClient("codex", {
       processFactory: () =>
-        asChildProcess(new FakeCodexProcess(tmpdir(), "pwd")),
+        asChildProcess(
+          new FakeCodexProcess({
+            approvalCwd: tmpdir(),
+            approvalCommand: "pwd",
+          }),
+        ),
     });
 
     await expect(
@@ -535,18 +556,13 @@ describe("CodexAppServerClient approval requests", () => {
     roots.push(root);
     await mkdir(join(root, "src"));
     await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
-    const child = new FakeCodexProcess(
-      root,
-      "cat src/a.ts",
-      true,
-      [JSON.stringify({ title: "Fixture" })],
-      undefined,
-      false,
-      requests.map((request) => ({
+    const child = new FakeCodexProcess({
+      approvalCwd: root,
+      notifications: requests.map((request) => ({
         ...request,
         params: { cwd: root, command: "cat src/a.ts", ...request.params },
       })),
-    );
+    });
     const client = new CodexAppServerClient("codex", {
       processFactory: () => asChildProcess(child),
     });
@@ -825,11 +841,11 @@ describe("buildCodexWalkthroughPrompt", () => {
 });
 
 describe("turn/completed answer selection", () => {
-  async function runWith(
-    deltas: ReadonlyArray<string>,
-    finalText?: string,
-    malformedItems = false,
-  ): Promise<Result<unknown, CodexAppServerFailure>> {
+  async function runWith(input: {
+    readonly deltas: ReadonlyArray<string>;
+    readonly finalText?: string | undefined;
+    readonly malformedItems?: boolean | undefined;
+  }): Promise<Result<unknown, CodexAppServerFailure>> {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
     roots.push(root);
     await mkdir(join(root, "src"));
@@ -837,14 +853,12 @@ describe("turn/completed answer selection", () => {
     const client = new CodexAppServerClient("codex", {
       processFactory: () =>
         asChildProcess(
-          new FakeCodexProcess(
-            root,
-            "cat src/a.ts",
-            true,
-            deltas,
-            finalText,
-            malformedItems,
-          ),
+          new FakeCodexProcess({
+            approvalCwd: root,
+            deltas: input.deltas,
+            finalText: input.finalText,
+            malformedItems: input.malformedItems,
+          }),
         ),
     });
     return client.run({
@@ -860,7 +874,10 @@ describe("turn/completed answer selection", () => {
     // The protocol does not guarantee deltas; a turn that completed with a
     // final message must not fail because the stream was partial.
     await expect(
-      runWith(['{"citationVersion"'], '{"citationVersion":2,"title":"t"}'),
+      runWith({
+        deltas: ['{"citationVersion"'],
+        finalText: '{"citationVersion":2,"title":"t"}',
+      }),
     ).resolves.toEqual({
       _tag: "ok",
       value: { citationVersion: 2, title: "t" },
@@ -868,7 +885,7 @@ describe("turn/completed answer selection", () => {
   });
 
   it("falls back to the streamed deltas when the turn carries no message", async () => {
-    await expect(runWith(['{"ok"', ":true}"])).resolves.toEqual({
+    await expect(runWith({ deltas: ['{"ok"', ":true}"] })).resolves.toEqual({
       _tag: "ok",
       value: { ok: true },
     });
@@ -878,7 +895,7 @@ describe("turn/completed answer selection", () => {
     // A malformed `items` field must not sink an otherwise-completed turn;
     // the delta text is still a valid recovery source.
     await expect(
-      runWith(['{"ok"', ":true}"], undefined, true),
+      runWith({ deltas: ['{"ok"', ":true}"], malformedItems: true }),
     ).resolves.toEqual({
       _tag: "ok",
       value: { ok: true },
@@ -886,7 +903,7 @@ describe("turn/completed answer selection", () => {
   });
 
   it("reports an invalid result when neither source parses", async () => {
-    await expect(runWith(["not json"])).resolves.toEqual({
+    await expect(runWith({ deltas: ["not json"] })).resolves.toEqual({
       _tag: "err",
       error: { reason: "invalid_result", phase: "turn" },
     });

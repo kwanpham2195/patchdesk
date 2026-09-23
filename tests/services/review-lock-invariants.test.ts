@@ -58,9 +58,9 @@ import { confirmedWriteJournal } from "./write-invariant-harness";
  * - `InsightRunExecutor.persistTerminal`
  *   (`src/services/insight-run-executor.ts`) is private and reached only from
  *   the `execute` that `start` fires and forgets, so a row's promise settles
- *   before that lock is taken and the row would prove nothing. It needs a
- *   bespoke test that parks the invoker stub, re-holds the lock, then asserts
- *   `insights.mutate` waits.
+ *   before that lock is taken and the row would prove nothing.
+ *   `tests/services/insight-run-lock.test.ts` parks the invoker, holds the Review
+ *   lock again, and proves the terminal failure stays unpersisted until release.
  * - `ReviewRecoveryService.reconcile` takes no `reviewId` at all; its first
  *   touch is `profiles.list` (`src/services/review-recovery-service.ts`) and the
  *   sweep legitimately touches other Reviews and profiles while one Review's

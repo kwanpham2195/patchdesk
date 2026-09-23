@@ -171,13 +171,14 @@ describe("VisitedPullRequests", () => {
     expect(within(column).getByText("recent").textContent).toBe("recent");
   });
 
-  it("renders the derived label and reference on the row", async () => {
+  it("renders the stored title and numeric reference on the row", async () => {
     renderColumn({ rows: [titled] });
 
     const row = await screen.findByRole("button", { name: /#125/ });
-    const labels = visitedRowLabels(titled, "number");
-    expect(row.textContent).toContain(labels.title);
-    expect(row.textContent).toContain(labels.reference);
+    expect(row.textContent).toContain(
+      "Prototype: three sidebar variants for #119",
+    );
+    expect(row.textContent).toContain("#125 · ");
   });
 
   it("leaves owner/repo off the rows when they all name one repository", async () => {

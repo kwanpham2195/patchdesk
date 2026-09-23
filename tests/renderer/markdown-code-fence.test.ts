@@ -7,55 +7,66 @@ import {
 } from "../../src/renderer/src/markdown-code-fence";
 
 describe("fenced code language", () => {
-  it("takes the first word of the info string, lower-cased", () => {
-    expect(fencedCodeLanguage("ts")).toBe("ts");
-    expect(fencedCodeLanguage("TypeScript")).toBe("typescript");
-    expect(fencedCodeLanguage("JSONL")).toBe("jsonl");
-    expect(fencedCodeLanguage("ts copy showLineNumbers")).toBe("ts");
-    expect(fencedCodeLanguage("  diff  ")).toBe("diff");
+  it.each([
+    { label: "a short language name", info: "ts", expected: "ts" },
+    { label: "mixed case", info: "TypeScript", expected: "typescript" },
+    { label: "an uppercase language name", info: "JSONL", expected: "jsonl" },
+    {
+      label: "options after the language",
+      info: "ts copy showLineNumbers",
+      expected: "ts",
+    },
+    { label: "surrounding whitespace", info: "  diff  ", expected: "diff" },
+  ])("normalizes $label", ({ info, expected }) => {
+    expect(fencedCodeLanguage(info)).toBe(expected);
   });
 
-  it("has no language for a bare fence", () => {
-    expect(fencedCodeLanguage(undefined)).toBeUndefined();
-    expect(fencedCodeLanguage("")).toBeUndefined();
-    expect(fencedCodeLanguage("   ")).toBeUndefined();
+  it.each([
+    { label: "undefined", info: undefined },
+    { label: "empty", info: "" },
+    { label: "whitespace only", info: "   " },
+  ])("has no language for $label info", ({ info }) => {
+    expect(fencedCodeLanguage(info)).toBeUndefined();
   });
 });
 
 describe("diff fence line classification", () => {
-  it("reads a header marker before the single-character change markers", () => {
-    expect(classifyDiffLine("+++ b/src/app.ts")).toBe("meta");
-    expect(classifyDiffLine("--- a/src/app.ts")).toBe("meta");
-    expect(classifyDiffLine("@@ -1,4 +1,6 @@")).toBe("meta");
-    expect(classifyDiffLine("diff --git a/src/app.ts b/src/app.ts")).toBe(
-      "meta",
-    );
-    expect(classifyDiffLine("index e69de29..8b13789 100644")).toBe("meta");
+  it.each([
+    { label: "added file header", line: "+++ b/src/app.ts" },
+    { label: "removed file header", line: "--- a/src/app.ts" },
+    { label: "hunk header", line: "@@ -1,4 +1,6 @@" },
+    {
+      label: "diff header",
+      line: "diff --git a/src/app.ts b/src/app.ts",
+    },
+    { label: "index header", line: "index e69de29..8b13789 100644" },
+  ])("classifies $label as metadata", ({ line }) => {
+    expect(classifyDiffLine(line)).toBe("meta");
   });
 
-  it("classifies a bare marker with no content after it", () => {
-    expect(classifyDiffLine("+")).toBe("added");
-    expect(classifyDiffLine("-")).toBe("removed");
+  it.each([
+    { label: "addition", line: "+", expected: "added" },
+    { label: "removal", line: "-", expected: "removed" },
+  ])("classifies a bare $label marker", ({ line, expected }) => {
+    expect(classifyDiffLine(line)).toBe(expected);
   });
 
-  it("leaves an empty line and indented content as context", () => {
-    expect(classifyDiffLine("")).toBe("context");
-    expect(classifyDiffLine("   required:")).toBe("context");
-    // A leading space is a diff's own context marker, so the "+" that follows
-    // it belongs to the line's content and must not tint the line green.
-    expect(classifyDiffLine(" +optional")).toBe("context");
-    expect(classifyDiffLine(" -optional")).toBe("context");
+  it.each([
+    { label: "an empty line", line: "" },
+    { label: "indented content", line: "   required:" },
+    { label: "a context line beginning with plus", line: " +optional" },
+    { label: "a context line beginning with minus", line: " -optional" },
+  ])("leaves $label as context", ({ line }) => {
+    expect(classifyDiffLine(line)).toBe("context");
   });
 
-  it("treats content that is not a diff at all as context", () => {
-    for (const line of [
-      "function add(a, b) {",
-      "  return a + b;",
-      "}",
-      "SELECT * FROM users WHERE id = 1;",
-    ]) {
-      expect(classifyDiffLine(line)).toBe("context");
-    }
+  it.each([
+    "function add(a, b) {",
+    "  return a + b;",
+    "}",
+    "SELECT * FROM users WHERE id = 1;",
+  ])("treats non-diff content %j as context", (line) => {
+    expect(classifyDiffLine(line)).toBe("context");
   });
 
   it("classifies a real header-less fence from a comment body", () => {

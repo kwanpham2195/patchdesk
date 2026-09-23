@@ -47,21 +47,28 @@ describe("adjacentFilePath", () => {
     expect(adjacentFilePath(["a", "b", "c"], "a", "previous")).toBeUndefined();
   });
 
-  it("treats an unresolved current file as just before the first file", () => {
-    expect(adjacentFilePath(["a", "b", "c"], undefined, "next")).toBe("a");
-    expect(
-      adjacentFilePath(["a", "b", "c"], undefined, "previous"),
-    ).toBeUndefined();
-  });
+  it.each([
+    ["next", "a"],
+    ["previous", undefined],
+  ] as const)(
+    "treats an unresolved current file as before the first on %s",
+    (direction, expected) => {
+      expect(adjacentFilePath(["a", "b", "c"], undefined, direction)).toBe(
+        expected,
+      );
+    },
+  );
 
   it("treats a current file missing from order the same as unresolved", () => {
     expect(adjacentFilePath(["a", "b", "c"], "not-in-order", "next")).toBe("a");
   });
 
-  it("returns undefined for an empty order", () => {
-    expect(adjacentFilePath([], "a", "next")).toBeUndefined();
-    expect(adjacentFilePath([], undefined, "next")).toBeUndefined();
-  });
+  it.each(["a", undefined] as const)(
+    "returns undefined for an empty order from current %s",
+    (current) => {
+      expect(adjacentFilePath([], current, "next")).toBeUndefined();
+    },
+  );
 });
 
 describe("adjacentHunkAnchor", () => {
@@ -101,10 +108,15 @@ describe("adjacentHunkAnchor", () => {
     expect(adjacentHunkAnchor(order, first, "previous")).toBeUndefined();
   });
 
-  it("treats an unresolved current hunk as just before the first hunk", () => {
-    expect(adjacentHunkAnchor(order, undefined, "next")).toEqual(first);
-    expect(adjacentHunkAnchor(order, undefined, "previous")).toBeUndefined();
-  });
+  it.each([
+    ["next", first],
+    ["previous", undefined],
+  ] as const)(
+    "treats an unresolved current hunk as before the first on %s",
+    (direction, expected) => {
+      expect(adjacentHunkAnchor(order, undefined, direction)).toEqual(expected);
+    },
+  );
 
   it("treats a current hunk missing from order the same as unresolved", () => {
     const notInOrder: HunkAnchor = {
@@ -141,10 +153,15 @@ describe("adjacentHunkAnchor", () => {
     );
   });
 
-  it("returns undefined for an empty order", () => {
-    expect(adjacentHunkAnchor([], first, "next")).toBeUndefined();
-    expect(adjacentHunkAnchor([], undefined, "next")).toBeUndefined();
-  });
+  it.each([
+    ["a current hunk", first],
+    ["no current hunk", undefined],
+  ] as const)(
+    "returns undefined for an empty order from %s",
+    (_description, current) => {
+      expect(adjacentHunkAnchor([], current, "next")).toBeUndefined();
+    },
+  );
 });
 
 describe("adjacentCommentAnchor", () => {
@@ -196,10 +213,17 @@ describe("adjacentCommentAnchor", () => {
     expect(adjacentCommentAnchor(order, first, "previous")).toBeUndefined();
   });
 
-  it("treats an unresolved current comment as just before the first comment", () => {
-    expect(adjacentCommentAnchor(order, undefined, "next")).toEqual(first);
-    expect(adjacentCommentAnchor(order, undefined, "previous")).toBeUndefined();
-  });
+  it.each([
+    ["next", first],
+    ["previous", undefined],
+  ] as const)(
+    "treats an unresolved current comment as before the first on %s",
+    (direction, expected) => {
+      expect(adjacentCommentAnchor(order, undefined, direction)).toEqual(
+        expected,
+      );
+    },
+  );
 
   it("treats a current comment missing from order the same as unresolved -- e.g. it was just resolved or filtered out", () => {
     const notInOrder: CommentAnchor = {
@@ -230,10 +254,15 @@ describe("adjacentCommentAnchor", () => {
     );
   });
 
-  it("returns undefined for an empty order", () => {
-    expect(adjacentCommentAnchor([], first, "next")).toBeUndefined();
-    expect(adjacentCommentAnchor([], undefined, "next")).toBeUndefined();
-  });
+  it.each([
+    ["a current comment", first],
+    ["no current comment", undefined],
+  ] as const)(
+    "returns undefined for an empty order from %s",
+    (_description, current) => {
+      expect(adjacentCommentAnchor([], current, "next")).toBeUndefined();
+    },
+  );
 });
 
 describe("commentNavAnnouncement", () => {
@@ -257,14 +286,15 @@ describe("commentNavAnnouncement", () => {
     );
   });
 
-  it("includes a 1-of-N position counter when a press lands on a comment", () => {
-    expect(commentNavAnnouncement(order, first, "next")).toBe(
-      "Comment 1 of 2 unresolved.",
-    );
-    expect(commentNavAnnouncement(order, second, "next")).toBe(
-      "Comment 2 of 2 unresolved.",
-    );
-  });
+  it.each([
+    ["first comment", first, "Comment 1 of 2 unresolved."],
+    ["second comment", second, "Comment 2 of 2 unresolved."],
+  ] as const)(
+    "includes a 1-of-N position counter when a press lands on the %s",
+    (_position, target, expected) => {
+      expect(commentNavAnnouncement(order, target, "next")).toBe(expected);
+    },
+  );
 
   it("announces a forward boundary with the total, singular count", () => {
     expect(commentNavAnnouncement([first], undefined, "next")).toBe(
@@ -450,9 +480,11 @@ describe("buildCommentOrder", () => {
     expect(buildCommentOrder(items)).toEqual([]);
   });
 
-  it("returns an empty order for items with no annotations", () => {
-    expect(buildCommentOrder([{ id: "a.ts" }])).toEqual([]);
-    expect(buildCommentOrder([])).toEqual([]);
+  it.each([
+    ["a file without annotations", [{ id: "a.ts" }]],
+    ["no files", []],
+  ] as const)("returns an empty order for %s", (_case, items) => {
+    expect(buildCommentOrder(items)).toEqual([]);
   });
 });
 
@@ -519,17 +551,18 @@ describe("focusCommentThreadCard", () => {
 
   it("polls across animation frames until the card mounts, then focuses it", async () => {
     const container = document.createElement("div");
+    const card = document.createElement("article");
+    card.tabIndex = -1;
+    card.dataset.reviewCommentThread = "conversation:late";
     document.body.append(container);
-    // The card doesn't exist yet -- simulates CodeView mounting the
-    // annotation portal a few frames after the scroll that materializes it.
-    window.setTimeout(() => {
-      const card = document.createElement("article");
-      card.tabIndex = -1;
-      card.dataset.reviewCommentThread = "conversation:late";
-      container.append(card);
-    }, 30);
+
     try {
       focusCommentThreadCard("conversation:late", () => false);
+      // Mount after two checks so the test exercises recursive frame polling.
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => container.append(card));
+      });
+
       await expect
         .poll(() =>
           document.activeElement?.getAttribute("data-review-comment-thread"),
@@ -554,21 +587,25 @@ describe("shouldIgnoreReviewNavKey", () => {
 
   // jsdom does not implement `HTMLElement.isContentEditable` (it stays
   // `undefined` even after setting the `contenteditable` attribute), so the
-  // contenteditable branch of `isTypingTarget` can't be exercised here. Real
-  // Chromium (tests/browser/review-diff-keyboard-nav.spec.ts) verifies the
-  // adjacent `<textarea>` branch of the same guard end to end instead.
+  // contenteditable branch of `isTypingTarget` can't be exercised here. The
+  // browser suite verifies it with a real Chromium contenteditable target.
 
-  it("ignores the key when any modifier is held", () => {
-    expect(shouldIgnoreReviewNavKey(keyEvent({ metaKey: true }))).toBe(true);
-    expect(shouldIgnoreReviewNavKey(keyEvent({ ctrlKey: true }))).toBe(true);
-    expect(shouldIgnoreReviewNavKey(keyEvent({ altKey: true }))).toBe(true);
-  });
+  it.each([
+    ["Meta", { metaKey: true }],
+    ["Control", { ctrlKey: true }],
+    ["Alt", { altKey: true }],
+  ] as const)(
+    "ignores the key when the %s modifier is held",
+    (_modifier, event) => {
+      expect(shouldIgnoreReviewNavKey(keyEvent(event))).toBe(true);
+    },
+  );
 
-  it("ignores the key during IME composition", () => {
-    expect(shouldIgnoreReviewNavKey(keyEvent({ isComposing: true }))).toBe(
-      true,
-    );
-    expect(shouldIgnoreReviewNavKey(keyEvent({ keyCode: 229 }))).toBe(true);
+  it.each([
+    ["composition flag", { isComposing: true }],
+    ["IME sentinel", { keyCode: 229 }],
+  ] as const)("ignores the key for the %s", (_signal, event) => {
+    expect(shouldIgnoreReviewNavKey(keyEvent(event))).toBe(true);
   });
 
   it("ignores the key when focus sits inside an open dialog", () => {

@@ -96,11 +96,17 @@ describe("MaintainerInboxService last-looked head", () => {
     });
   });
 
-  it("leaves the row unmarked when the Review was never left or cannot be read", async () => {
-    for (const review of [ok({}), err({ reason: "invalid_stored_value" })]) {
-      const row = await rowFor(review);
-      expect(row?.headMovedSinceLastLooked).toBe(false);
-      expect(row?.latestReview).not.toHaveProperty("lastLookedHeadSha");
-    }
+  it("leaves the row unmarked when the Review was never left", async () => {
+    const row = await rowFor(ok({}));
+
+    expect(row?.headMovedSinceLastLooked).toBe(false);
+    expect(row?.latestReview).not.toHaveProperty("lastLookedHeadSha");
+  });
+
+  it("leaves the row unmarked when the Review cannot be read", async () => {
+    const row = await rowFor(err({ reason: "invalid_stored_value" }));
+
+    expect(row?.headMovedSinceLastLooked).toBe(false);
+    expect(row?.latestReview).not.toHaveProperty("lastLookedHeadSha");
   });
 });
