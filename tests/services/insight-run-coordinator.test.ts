@@ -122,7 +122,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
           return ok(analysisResult);
         },
       },
-      operations,
+      { operations },
     );
     let release!: () => void;
     const held = operations.withReviewLock(
@@ -279,27 +279,29 @@ describe("InsightRunCoordinator current lifecycle", () => {
           });
         },
       },
-      new ReviewOperationCoordinator(),
-      async (request) => {
-        requests.push(request);
-        return {
-          _tag: "ok",
-          value: {
-            symbols: [
-              {
-                name: "guard",
-                outsideCallerFiles: 1,
-                outsidePaths: ["src/main/local-api.ts"],
-                insidePR: false,
-              },
-            ],
-            surfaces: [{ surface: "Public API" }],
-            untested: [],
-            removedStillReferenced: [],
-            method: "text_match",
-            hop: 1,
-          },
-        };
+      {
+        operations: new ReviewOperationCoordinator(),
+        reach: async (request) => {
+          requests.push(request);
+          return {
+            _tag: "ok",
+            value: {
+              symbols: [
+                {
+                  name: "guard",
+                  outsideCallerFiles: 1,
+                  outsidePaths: ["src/main/local-api.ts"],
+                  insidePR: false,
+                },
+              ],
+              surfaces: [{ surface: "Public API" }],
+              untested: [],
+              removedStillReferenced: [],
+              method: "text_match",
+              hop: 1,
+            },
+          };
+        },
       },
     );
     const started = await value.coordinator.start({
@@ -424,9 +426,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
           return ok(analysisResult);
         },
       },
-      undefined,
-      undefined,
-      codexCatalog,
+      { providerCatalog: codexCatalog },
     );
     const started = await value.coordinator.start({
       profileId,
@@ -482,9 +482,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
           return ok(analysisResult);
         },
       },
-      undefined,
-      undefined,
-      codexCatalog,
+      { providerCatalog: codexCatalog },
     );
     const startInput = {
       profileId,
@@ -688,8 +686,8 @@ describe("InsightRunCoordinator desktop notifications", () => {
     during?: (value: Awaited<ReturnType<typeof fixture>>) => Promise<void>,
   ): Promise<ReadonlyArray<DesktopNotificationEvent>> {
     const events: DesktopNotificationEvent[] = [];
-    const value = await fixture(invoker, undefined, undefined, undefined, {
-      notify: (event) => events.push(event),
+    const value = await fixture(invoker, {
+      notifier: { notify: (event) => events.push(event) },
     });
     const started = await value.coordinator.start({
       profileId,

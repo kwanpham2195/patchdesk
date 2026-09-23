@@ -194,16 +194,13 @@ describe("Insight run context pack", () => {
   });
 
   it("refuses the run when the pack cannot be built", async () => {
-    const value = await fixture(
-      completes,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+    const value = await fixture(completes, {
       // No `comments` fixture value, so the comments read fails the way an
       // unreachable GitHub does.
-      new FakeGitHubAdapter({ checks: { overall: "unknown", checks: [] } }),
-    );
+      github: new FakeGitHubAdapter({
+        checks: { overall: "unknown", checks: [] },
+      }),
+    });
 
     expect(
       await value.coordinator.start({

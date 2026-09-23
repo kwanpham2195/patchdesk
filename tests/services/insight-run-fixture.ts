@@ -106,16 +106,26 @@ export function contextPackFixture(
   };
 }
 
-export async function fixture(
-  invoker: InsightInvoker,
-  operations = new ReviewOperationCoordinator(),
-  reach?: BriefReachComputer,
-  providerCatalog?: InsightProviderCatalog,
-  notifier?: DesktopNotifier,
+type FixtureOptions = {
+  operations?: ReviewOperationCoordinator;
+  reach?: BriefReachComputer;
+  providerCatalog?: InsightProviderCatalog;
+  notifier?: DesktopNotifier;
   github?: Pick<
     FakeGitHubAdapter,
     "getPullRequestComments" | "getPullRequestChecks"
-  >,
+  >;
+};
+
+export async function fixture(
+  invoker: InsightInvoker,
+  {
+    operations = new ReviewOperationCoordinator(),
+    reach,
+    providerCatalog,
+    notifier,
+    github,
+  }: FixtureOptions = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-current-"));
   roots.push(root);
