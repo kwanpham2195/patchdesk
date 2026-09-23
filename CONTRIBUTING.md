@@ -74,10 +74,12 @@ Domain and services get a test per behaviour, written before the fix. A hook
 that owns timing, generations, optimistic state, or a request payload gets a
 `renderHook` test with a fake bridge, never a mounted component. Components get
 one smoke test per screen plus the keyboard and focus tests that need a DOM,
-queried by role or label — if a component computes something worth asserting,
-export the function and test the function. `tests/browser/` is for end-to-end
-journeys and for what only a real browser shows, never for a behaviour an RTL
-or hook test already proves. There is no assistive-technology lane (ADR 0034):
+queried by role or label. Test component logic through observable behaviour;
+extract domain logic when it has a separate responsibility, without exporting
+internals solely for tests. `tests/browser/` is for end-to-end journeys and
+for what only a real browser shows. Keep detailed behaviour assertions at their
+lowest useful layer; a small end-to-end journey may exercise the same behaviour
+to prove the layers work together. There is no assistive-technology lane (ADR 0034):
 no axe scans, no screen-reader narration checks, no forced-colors or
 reduced-motion checks. Use the shared doubles rather than hand-rolling one.
 

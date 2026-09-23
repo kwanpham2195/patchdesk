@@ -72,7 +72,21 @@ For runtime work, make sure the dev log tails are live in herdr:
 
 ## Testing
 
-Test at the lowest layer that can observe the behaviour.
+Test observable behaviour at the lowest layer that can prove the contract.
+
+- Write one scenario per test, with as many assertions as needed to prove its
+  relevant outcomes. A rejected submission can assert the error, preserved
+  draft, and absence of a network write together. Separate scenarios with
+  different preconditions or actions; do not split one scenario per assertion.
+- Derive expected results from the behaviour contract. No tautological tests:
+  do not copy the production algorithm or use the function under test or its
+  internal helpers to calculate expectations. Assert a production decision,
+  transformation, state change, or boundary interaction; configuring a mock
+  to return a value and checking only that value does not prove behaviour.
+- Tests must survive internal refactoring that preserves the contract. Do not
+  assert private methods, internal state shape, helper call counts, or incidental
+  call order. Assert interactions and ordering when the contract requires them,
+  such as persisting intent before a network write.
 
 - Domain and services: every behaviour has a test, written before the fix.
   A bug fix lands with the regression test that failed on `main`.
@@ -81,14 +95,16 @@ Test at the lowest layer that can observe the behaviour.
   by mounting the component that uses it.
 - Components: one smoke test per screen (renders a fixture; primary actions
   call their props) plus keyboard and focus tests that need a DOM. No
-  assertions on copy sentences, class names, badge tone, or element order. If
-  a component computes something worth asserting, export the function and
-  test the function.
+  assertions on copy sentences, class names, badge tone, or element order.
+  Test component logic through observable behaviour. Extract domain logic when
+  it has a separate responsibility; do not export internals solely for tests.
 - Query by role or label (`getByRole`, `getByLabelText`), never by class name
   or by a sentence of copy.
 - Playwright (`tests/browser/`): end-to-end journeys and things only a real
   browser shows (Pierre CodeView scrolling, virtualisation, computed CSS,
-  performance budget). Never a behaviour an RTL or hook test already proves.
+  performance budget). Keep detailed behaviour assertions at their lowest
+  useful layer; a small end-to-end journey may exercise the same behaviour to
+  prove the layers work together.
 - Test doubles: use the shared helpers (`tests/renderer/fake-desktop-response.ts`
   for `window.patchdesk`, `FakeGitHubAdapter` for the GitHub gateway). Do not
   hand-roll a new `Object.defineProperty(window, "patchdesk", ...)` or an
@@ -100,7 +116,13 @@ Test at the lowest layer that can observe the behaviour.
 - Every test must protect a distinct behavior, boundary, failure mode, or wiring contract. Do not add a test only because a new branch or function exists.
 - Give each behavior one canonical test owner at the lowest observable layer. Higher-layer tests keep only wiring, browser-only behavior, keyboard, focus, or another contract the owner cannot observe.
 - Before merging or deleting tests, name the retained test and compare preconditions, branches, assertions, and relevant success, error, retry, ordering, crash, and concurrency behavior. Shared line coverage is not equivalent coverage.
-- Use tables and shared fixtures to remove repeated setup while preserving separate cases and useful failure names. Do not put independent scenarios in one test or loop to reduce the reported test count.
+- Reuse fixture factories and shared fakes with fresh state per test. Keep
+  behaviour-relevant inputs and overrides visible in the test. Avoid setup
+  helpers with many flags or hidden scenario-specific behaviour.
+- Use parameterized cases when the same behavioural rule and test structure
+  apply to different inputs. Give each case a useful failure name. Keep
+  different workflows separate even when they share setup; do not combine
+  independent scenarios in one test or loop to reduce the test count.
 - A parser or schema happy-path test must assert meaningful validation or transformation. Do not echo ordinary valid input when boundary and negative cases already protect the contract.
 - Recovery, concurrency, security, storage, protocol, and cross-flow invariant tests require fault evidence before non-obvious consolidation or deletion.
 - No assistive-technology tests: no axe scans, no screen-reader narration
