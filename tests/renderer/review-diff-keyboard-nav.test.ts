@@ -555,9 +555,8 @@ describe("shouldIgnoreReviewNavKey", () => {
 
   // jsdom does not implement `HTMLElement.isContentEditable` (it stays
   // `undefined` even after setting the `contenteditable` attribute), so the
-  // contenteditable branch of `isTypingTarget` can't be exercised here. Real
-  // Chromium (tests/browser/review-diff-keyboard-nav.spec.ts) verifies the
-  // adjacent `<textarea>` branch of the same guard end to end instead.
+  // contenteditable branch of `isTypingTarget` can't be exercised here. The
+  // browser suite verifies it with a real Chromium contenteditable target.
 
   it("ignores the key when any modifier is held", () => {
     expect(shouldIgnoreReviewNavKey(keyEvent({ metaKey: true }))).toBe(true);

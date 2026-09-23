@@ -179,6 +179,50 @@ test("typing `.` in the comment composer inserts the character instead of naviga
   }
 });
 
+test("typing `.` in a contenteditable editor inserts the character instead of navigating", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    await expect(diffViewport).toBeVisible();
+
+    await page.evaluate(() => {
+      const editor = document.createElement("div");
+      editor.contentEditable = "true";
+      editor.setAttribute("role", "textbox");
+      editor.setAttribute("aria-label", "Contenteditable editor");
+      editor.tabIndex = 0;
+      document.body.append(editor);
+      editor.focus();
+    });
+
+    const editor = page.getByRole("textbox", {
+      name: "Contenteditable editor",
+    });
+    await expect(editor).toBeFocused();
+    const before = await diffViewport.evaluate(
+      (viewport) => viewport.scrollTop,
+    );
+
+    await page.keyboard.press(".");
+
+    await expect(editor).toHaveText(".");
+    expect(await diffViewport.evaluate((viewport) => viewport.scrollTop)).toBe(
+      before,
+    );
+    await expect(
+      page.locator(
+        '[data-review-diff-navigation-status][data-navigation-kind="file"]',
+      ),
+    ).toHaveCount(0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, including across a file boundary", async ({
   page,
 }) => {
