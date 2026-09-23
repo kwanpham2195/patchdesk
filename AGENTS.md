@@ -97,6 +97,12 @@ Test at the lowest layer that can observe the behaviour.
   network call; every Review entry point takes the coordinator lock; every
   preparation step is recoverable after a crash) are table-driven tests over
   all flows, not one test per service.
+- Every test must protect a distinct behavior, boundary, failure mode, or wiring contract. Do not add a test only because a new branch or function exists.
+- Give each behavior one canonical test owner at the lowest observable layer. Higher-layer tests keep only wiring, browser-only behavior, keyboard, focus, or another contract the owner cannot observe.
+- Before merging or deleting tests, name the retained test and compare preconditions, branches, assertions, and relevant success, error, retry, ordering, crash, and concurrency behavior. Shared line coverage is not equivalent coverage.
+- Use tables and shared fixtures to remove repeated setup while preserving separate cases and useful failure names. Do not put independent scenarios in one test or loop to reduce the reported test count.
+- A parser or schema happy-path test must assert meaningful validation or transformation. Do not echo ordinary valid input when boundary and negative cases already protect the contract.
+- Recovery, concurrency, security, storage, protocol, and cross-flow invariant tests require fault evidence before non-obvious consolidation or deletion.
 - No assistive-technology tests: no axe scans, no screen-reader narration
   checks, no forced-colors or reduced-motion checks (ADR 0034).
 - Before adding a test, check whether one already asserts the behaviour at a
