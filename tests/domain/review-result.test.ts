@@ -127,20 +127,50 @@ describe("model review result projection", () => {
     });
   });
 
-  it("rejects a summary past the model prose cap the retained schema still reads", () => {
-    const empty = { ...validResult([]), verdict: "approve" };
-    expect(
-      parseModelReviewResult({ ...empty, summary: "a".repeat(400) })._tag,
-    ).toBe("ok");
-    expect(
-      parseModelReviewResult({ ...empty, summary: "a".repeat(401) }),
-    ).toEqual({ _tag: "err", error: { _tag: "InvalidModelReviewResult" } });
+  it.each([
+    ["changeSummary", 600],
+    ["summary", 400],
+    ["title", 120],
+    ["explanation", 800],
+  ] as const)(
+    "caps model %s at %i characters but reads older results",
+    (field, limit) => {
+      const finding = {
+        id: "long-prose",
+        severity: "P2",
+        title: "A finding",
+        explanation: "A defect in the patch.",
+        confidence: "high",
+      };
+      const result = {
+        ...validResult([]),
+        ...(field === "title" || field === "explanation"
+          ? { findings: [{ ...finding, [field]: "a".repeat(limit) }] }
+          : { findings: [finding], [field]: "a".repeat(limit) }),
+      };
+      expect(parseModelReviewResult(result)._tag).toBe("ok");
 
-    const stored = parseReviewResult({ ...empty, summary: "a".repeat(401) });
-    expect(stored._tag).toBe("ok");
-    if (stored._tag === "err") return;
-    expect(stored.value.summary).toBe("a".repeat(401));
-  });
+      const overLimit = {
+        ...result,
+        ...(field === "title" || field === "explanation"
+          ? { findings: [{ ...finding, [field]: "a".repeat(limit + 1) }] }
+          : { [field]: "a".repeat(limit + 1) }),
+      };
+      expect(parseModelReviewResult(overLimit)).toEqual({
+        _tag: "err",
+        error: { _tag: "InvalidModelReviewResult" },
+      });
+      expect(
+        parseReviewResult({
+          ...overLimit,
+          findings: overLimit.findings.map((item) => ({
+            ...item,
+            mappingStatus: "mapped",
+          })),
+        })._tag,
+      ).toBe("ok");
+    },
+  );
 });
 
 describe("stored review result projection", () => {
