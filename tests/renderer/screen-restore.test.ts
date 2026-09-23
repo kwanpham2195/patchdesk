@@ -55,55 +55,35 @@ describe("workbench UI position persistence", () => {
     expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
   });
 
-  it("ignores corrupt or unknown values", () => {
-    window.localStorage.setItem(workbenchUiKey(reviewIdA), "not-json");
+  it.each([
+    ["invalid JSON", "not-json"],
+    ["unknown tab", '{"activeTab":"pants"}'],
+    ["invalid section", '{"section":"findings"}'],
+    ["wrong-typed path", '{"selectedPath":42}'],
+  ])("ignores %s", (_case, raw) => {
+    window.localStorage.setItem(workbenchUiKey(reviewIdA), raw);
     expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
-    window.localStorage.setItem(
-      workbenchUiKey(reviewIdA),
-      JSON.stringify({ activeTab: "pants" }),
-    );
-    expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
+  });
+
+  it("keeps a valid section when other position fields are absent", () => {
     window.localStorage.setItem(
       workbenchUiKey(reviewIdA),
       JSON.stringify({ section: "commits" }),
     );
     expect(loadWorkbenchUiState(reviewIdA)).toEqual({ section: "commits" });
-    window.localStorage.setItem(
-      workbenchUiKey(reviewIdA),
-      JSON.stringify({ section: "findings" }),
-    );
-    expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
-    window.localStorage.setItem(
-      workbenchUiKey(reviewIdA),
-      JSON.stringify({ selectedPath: 42 }),
-    );
-    expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
   });
 
   // Degradation pins (written before the valibot conversion, run against the
   // unconverted code first): a malformed persisted value must degrade to
   // `undefined`/a partial object exactly as it does today, never throw, and
   // never silently drop a field that today survives.
-  it("degrades a non-object persisted value to undefined", () => {
-    window.localStorage.setItem(workbenchUiKey(reviewIdA), JSON.stringify(42));
-    expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
-
-    window.localStorage.setItem(
-      workbenchUiKey(reviewIdA),
-      JSON.stringify("diff"),
-    );
-    expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
-
-    window.localStorage.setItem(
-      workbenchUiKey(reviewIdA),
-      JSON.stringify(null),
-    );
-    expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
-
-    window.localStorage.setItem(
-      workbenchUiKey(reviewIdA),
-      JSON.stringify(["diff", "files"]),
-    );
+  it.each([
+    ["number", JSON.stringify(42)],
+    ["string", JSON.stringify("diff")],
+    ["null", JSON.stringify(null)],
+    ["array", JSON.stringify(["diff", "files"])],
+  ])("returns undefined for a persisted %s", (_type, raw) => {
+    window.localStorage.setItem(workbenchUiKey(reviewIdA), raw);
     expect(loadWorkbenchUiState(reviewIdA)).toBeUndefined();
   });
 
@@ -134,7 +114,7 @@ describe("workbench UI position persistence", () => {
     });
   });
 
-  it("clamps an over-long selectedPath the same way on load as on save", () => {
+  it("clamps an over-long selectedPath while loading persisted data", () => {
     const longPath = "a".repeat(2_500);
     window.localStorage.setItem(
       workbenchUiKey(reviewIdA),
@@ -143,6 +123,14 @@ describe("workbench UI position persistence", () => {
     expect(loadWorkbenchUiState(reviewIdA)).toEqual({
       selectedPath: "a".repeat(2_000),
     });
+  });
+
+  it("clamps an over-long selectedPath before saving it", () => {
+    saveWorkbenchUiState(reviewIdA, { selectedPath: "a".repeat(2_500) });
+
+    expect(window.localStorage.getItem(workbenchUiKey(reviewIdA))).toBe(
+      JSON.stringify({ selectedPath: "a".repeat(2_000) }),
+    );
   });
 
   it("drops a zero-length selectedPath", () => {
@@ -163,52 +151,47 @@ describe("settings overlay restore", () => {
     expect(loadSettingsRestore()).toBeUndefined();
   });
 
-  it("ignores corrupt values", () => {
-    window.sessionStorage.setItem("patchdesk.settings.v1", "garbage");
-    expect(loadSettingsRestore()).toBeUndefined();
-    window.sessionStorage.setItem(
-      "patchdesk.settings.v1",
-      JSON.stringify({ section: "" }),
-    );
+  it.each([
+    ["invalid JSON", "garbage"],
+    ["empty section", JSON.stringify({ section: "" })],
+  ])("ignores %s", (_case, raw) => {
+    window.sessionStorage.setItem("patchdesk.settings.v1", raw);
     expect(loadSettingsRestore()).toBeUndefined();
   });
 
   // Degradation pins (written before the valibot conversion, run against the
   // unconverted code first).
-  it("degrades a non-object persisted value to undefined", () => {
-    window.sessionStorage.setItem("patchdesk.settings.v1", JSON.stringify(42));
-    expect(loadSettingsRestore()).toBeUndefined();
-
-    window.sessionStorage.setItem(
-      "patchdesk.settings.v1",
-      JSON.stringify(null),
-    );
-    expect(loadSettingsRestore()).toBeUndefined();
-
-    window.sessionStorage.setItem(
-      "patchdesk.settings.v1",
-      JSON.stringify(["logs"]),
-    );
+  it.each([
+    ["number", JSON.stringify(42)],
+    ["null", JSON.stringify(null)],
+    ["array", JSON.stringify(["logs"])],
+  ])("returns undefined for a persisted %s", (_type, raw) => {
+    window.sessionStorage.setItem("patchdesk.settings.v1", raw);
     expect(loadSettingsRestore()).toBeUndefined();
   });
 
-  it("returns undefined when the section field is missing or wrong-typed", () => {
-    window.sessionStorage.setItem("patchdesk.settings.v1", JSON.stringify({}));
-    expect(loadSettingsRestore()).toBeUndefined();
-
-    window.sessionStorage.setItem(
-      "patchdesk.settings.v1",
-      JSON.stringify({ section: 42 }),
-    );
+  it.each([
+    ["missing", JSON.stringify({})],
+    ["wrong-typed", JSON.stringify({ section: 42 })],
+  ])("returns undefined when the section field is %s", (_case, raw) => {
+    window.sessionStorage.setItem("patchdesk.settings.v1", raw);
     expect(loadSettingsRestore()).toBeUndefined();
   });
 
-  it("clamps an over-long section the same way on load as on save", () => {
+  it("clamps an over-long section while loading persisted data", () => {
     const longSection = "s".repeat(60);
     window.sessionStorage.setItem(
       "patchdesk.settings.v1",
       JSON.stringify({ section: longSection }),
     );
     expect(loadSettingsRestore()).toEqual({ section: "s".repeat(48) });
+  });
+
+  it("clamps an over-long section before saving it", () => {
+    saveSettingsRestore("s".repeat(60));
+
+    expect(window.sessionStorage.getItem("patchdesk.settings.v1")).toBe(
+      JSON.stringify({ section: "s".repeat(48) }),
+    );
   });
 });
