@@ -22,7 +22,7 @@ describe("diff theme preferences", () => {
     expect(DIFF_DARK_THEMES.map((theme) => theme.id)).toContain("pierre-dark");
   });
 
-  it("accepts every bundled light and dark theme independently", () => {
+  it("accepts a bundled light and dark theme together", () => {
     expect(DIFF_LIGHT_THEMES.map((theme) => theme.id)).toContain("one-light");
     expect(DIFF_DARK_THEMES.map((theme) => theme.id)).toContain("tokyo-night");
     expect(
@@ -46,18 +46,21 @@ describe("diff theme preferences", () => {
   // unconverted code first): a malformed persisted value must degrade to the
   // same defaults after conversion as it does today, never throw, and never
   // silently drop a field that today survives.
-  it("degrades a non-object persisted value to the full default pair", () => {
-    const DEFAULT = { light: "pierre-light", dark: "pierre-dark" };
-    expect(parseDiffThemePreferences(null)).toEqual(DEFAULT);
-    expect(parseDiffThemePreferences(undefined)).toEqual(DEFAULT);
-    expect(parseDiffThemePreferences("pierre-light")).toEqual(DEFAULT);
-    expect(parseDiffThemePreferences(42)).toEqual(DEFAULT);
-    expect(parseDiffThemePreferences(true)).toEqual(DEFAULT);
-    expect(parseDiffThemePreferences([])).toEqual(DEFAULT);
-    expect(parseDiffThemePreferences(["pierre-light", "pierre-dark"])).toEqual(
-      DEFAULT,
-    );
-  });
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+    ["string", "pierre-light"],
+    ["number", 42],
+    ["boolean", true],
+    ["empty array", []],
+    ["array of theme names", ["pierre-light", "pierre-dark"]],
+  ] as const)(
+    "degrades a non-object value (%s) to the full default pair",
+    (_name, value) => {
+      const DEFAULT = { light: "pierre-light", dark: "pierre-dark" };
+      expect(parseDiffThemePreferences(value)).toEqual(DEFAULT);
+    },
+  );
 
   it("defaults to the full pair when both fields are missing", () => {
     expect(parseDiffThemePreferences({})).toEqual({
@@ -66,56 +69,62 @@ describe("diff theme preferences", () => {
     });
   });
 
-  it("defaults only the missing or wrong-typed field, keeping the sound one", () => {
-    expect(parseDiffThemePreferences({ light: "one-light" })).toEqual({
-      light: "one-light",
-      dark: "pierre-dark",
-    });
-    expect(parseDiffThemePreferences({ dark: "tokyo-night" })).toEqual({
-      light: "pierre-light",
-      dark: "tokyo-night",
-    });
-    expect(
-      parseDiffThemePreferences({ light: 42, dark: "tokyo-night" }),
-    ).toEqual({ light: "pierre-light", dark: "tokyo-night" });
-    expect(
-      parseDiffThemePreferences({ light: "one-light", dark: true }),
-    ).toEqual({ light: "one-light", dark: "pierre-dark" });
-  });
+  it.each([
+    [
+      "missing dark field",
+      { light: "one-light" },
+      { light: "one-light", dark: "pierre-dark" },
+    ],
+    [
+      "missing light field",
+      { dark: "tokyo-night" },
+      { light: "pierre-light", dark: "tokyo-night" },
+    ],
+    [
+      "wrong-typed light field",
+      { light: 42, dark: "tokyo-night" },
+      { light: "pierre-light", dark: "tokyo-night" },
+    ],
+    [
+      "wrong-typed dark field",
+      { light: "one-light", dark: true },
+      { light: "one-light", dark: "pierre-dark" },
+    ],
+  ] as const)(
+    "defaults only the %s while keeping the sound field",
+    (_case, input, expected) => {
+      expect(parseDiffThemePreferences(input)).toEqual(expected);
+    },
+  );
 
   it("defaults to the full pair with no v1 or v2 value stored at all", () => {
     expect(loadDiffThemePreferences()).toEqual({
       light: "pierre-light",
       dark: "pierre-dark",
     });
+    expect(window.localStorage.getItem("patchdesk.diff-theme.v1")).toBeNull();
+    expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
   });
 
-  it("degrades a malformed v1 payload to the v2 default rather than throwing", () => {
+  it.each([
+    ["number", "42"],
+    ["array", "[]"],
+    ["unknown family string", '"not-a-known-family"'],
+    ["missing family", "{}"],
+    ["wrong-typed family", '{"family":42}'],
+    ["unknown family", '{"family":"not-a-known-family"}'],
+  ] as const)(
+    "degrades malformed v1 %s to the default rather than throwing",
+    (_case, payload) => {
+      const DEFAULT = { light: "pierre-light", dark: "pierre-dark" };
+      window.localStorage.setItem("patchdesk.diff-theme.v1", payload);
+      expect(loadDiffThemePreferences()).toEqual(DEFAULT);
+    },
+  );
+
+  it("degrades invalid v1 JSON to the default rather than throwing", () => {
     const DEFAULT = { light: "pierre-light", dark: "pierre-dark" };
-    const v1Key = "patchdesk.diff-theme.v1";
-
-    window.localStorage.setItem(v1Key, JSON.stringify(42));
-    expect(loadDiffThemePreferences()).toEqual(DEFAULT);
-
-    window.localStorage.setItem(v1Key, JSON.stringify([]));
-    expect(loadDiffThemePreferences()).toEqual(DEFAULT);
-
-    window.localStorage.setItem(v1Key, JSON.stringify("not-a-known-family"));
-    expect(loadDiffThemePreferences()).toEqual(DEFAULT);
-
-    window.localStorage.setItem(v1Key, JSON.stringify({}));
-    expect(loadDiffThemePreferences()).toEqual(DEFAULT);
-
-    window.localStorage.setItem(v1Key, JSON.stringify({ family: 42 }));
-    expect(loadDiffThemePreferences()).toEqual(DEFAULT);
-
-    window.localStorage.setItem(
-      v1Key,
-      JSON.stringify({ family: "not-a-known-family" }),
-    );
-    expect(loadDiffThemePreferences()).toEqual(DEFAULT);
-
-    window.localStorage.setItem(v1Key, "not-json");
+    window.localStorage.setItem("patchdesk.diff-theme.v1", "not-json");
     expect(loadDiffThemePreferences()).toEqual(DEFAULT);
   });
 
@@ -161,33 +170,19 @@ describe("diff theme preferences", () => {
     });
   });
 
-  it("keeps explicit Pierre theme choices", () => {
+  it.each([
+    ["Pierre defaults", { light: "pierre-light", dark: "pierre-dark" }],
+    [
+      "Pierre light and Tokyo Night",
+      { light: "pierre-light", dark: "tokyo-night" },
+    ],
+    ["One Light and Pierre dark", { light: "one-light", dark: "pierre-dark" }],
+  ] as const)("keeps explicit %s choices", (_case, preferences) => {
     window.localStorage.setItem(
       "patchdesk.diff-theme.v2",
-      JSON.stringify({ light: "pierre-light", dark: "pierre-dark" }),
+      JSON.stringify(preferences),
     );
-    expect(loadDiffThemePreferences()).toEqual({
-      light: "pierre-light",
-      dark: "pierre-dark",
-    });
-
-    window.localStorage.setItem(
-      "patchdesk.diff-theme.v2",
-      JSON.stringify({ light: "pierre-light", dark: "tokyo-night" }),
-    );
-    expect(loadDiffThemePreferences()).toEqual({
-      light: "pierre-light",
-      dark: "tokyo-night",
-    });
-
-    window.localStorage.setItem(
-      "patchdesk.diff-theme.v2",
-      JSON.stringify({ light: "one-light", dark: "pierre-dark" }),
-    );
-    expect(loadDiffThemePreferences()).toEqual({
-      light: "one-light",
-      dark: "pierre-dark",
-    });
+    expect(loadDiffThemePreferences()).toEqual(preferences);
   });
 
   it("reads a valid v1 family without mutating the stored value", () => {
@@ -202,13 +197,6 @@ describe("diff theme preferences", () => {
     expect(window.localStorage.getItem("patchdesk.diff-theme.v1")).toBe(
       JSON.stringify("github"),
     );
-    expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
-
-    window.localStorage.clear();
-    expect(loadDiffThemePreferences()).toEqual({
-      light: "pierre-light",
-      dark: "pierre-dark",
-    });
     expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
   });
 
