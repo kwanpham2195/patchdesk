@@ -260,22 +260,31 @@ describe("deriveReviewVerdicts", () => {
     ]);
   });
 
-  it("is a pure function: identical inputs produce an identical result", () => {
-    const listing = {
-      requested: [requested("frank")],
-      latestReviews: [
+  it("derives the same verdicts from repeated calls without mutating inputs", () => {
+    const listing = Object.freeze({
+      requested: Object.freeze([requested("frank")]),
+      latestReviews: Object.freeze([
         review({
           login: "grace",
           state: "DISMISSED",
           submittedAt: "2026-01-01T00:00:00.000Z",
           commitOid: "a".repeat(40),
         }),
-      ],
-      reviews: [],
-    };
-    expect(deriveReviewVerdicts(listing, headSha)).toEqual(
-      deriveReviewVerdicts(listing, headSha),
-    );
+      ]),
+      reviews: Object.freeze([]),
+    });
+    const expected = [
+      {
+        login: "grace",
+        verdict: "dismissed",
+        outdated: false,
+        submittedAt: "2026-01-01T00:00:00.000Z",
+      },
+      { login: "frank", outdated: false },
+    ];
+
+    expect(deriveReviewVerdicts(listing, headSha)).toEqual(expected);
+    expect(deriveReviewVerdicts(listing, headSha)).toEqual(expected);
   });
 
   it("treats the represented revision's own head as the freshness line, independent of a different stale commit", () => {
