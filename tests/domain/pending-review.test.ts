@@ -472,50 +472,69 @@ describe("reconcilePendingReviewState", () => {
     });
   });
 
-  it("maps AddThread only when exactly one comment matches its body and anchor", () => {
-    const newerReview = {
-      ...reviewRaw,
-      comments: [
-        {
-          reviewCommentId: "PRRC_kwDORJzsQM7fI2Xp",
-          threadId: "PRRT_kwDORJzsQM0002",
-          body: "Newer",
-          anchor: {
-            path: "docs/docs.go",
-            startLine: 2912,
-            line: 2912,
-            side: "new",
-          },
-          createdAt: "2026-08-09T11:36:00.000Z",
+  it.each([
+    ["body", { body: "Newer" }],
+    [
+      "anchor",
+      {
+        anchor: {
+          path: "docs/docs.go",
+          startLine: 2912,
+          line: 2912,
+          side: "new",
         },
-      ],
-      updatedAt: "2026-08-09T11:36:00.000Z",
-    };
-    const parsed = parseViewerPendingReview(newerReview);
-    if (parsed._tag !== "ok") throw new Error("fixture");
+      },
+    ],
+  ] as const)(
+    "keeps AddThread locked when the observed comment has another %s",
+    (_field, override) => {
+      const observed = parseViewerPendingReview({
+        ...reviewRaw,
+        comments: [
+          {
+            ...reviewRaw.comments[0],
+            reviewCommentId: "PRRC_kwDORJzsQM7fI2Xp",
+            threadId: "PRRT_kwDORJzsQM0002",
+            ...override,
+            createdAt: "2026-08-09T11:36:00.000Z",
+          },
+        ],
+        updatedAt: "2026-08-09T11:36:00.000Z",
+      });
+      const prior = parseViewerPendingReview({ ...reviewRaw, comments: [] });
+      if (observed._tag !== "ok" || prior._tag !== "ok")
+        throw new Error("fixture");
+      expect(
+        reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
+          _tag: "Pending",
+          review: observed.value,
+        }),
+      ).toMatchObject({ _tag: "OutcomeUnknown" });
+    },
+  );
+
+  it("keeps AddThread locked when the remote review cannot be read", () => {
     const prior = parseViewerPendingReview({ ...reviewRaw, comments: [] });
     if (prior._tag !== "ok") throw new Error("fixture");
-    const unrelated = reconcilePendingReviewState(
-      locked(addThreadOperation, prior.value),
-      {
-        _tag: "Pending",
-        review: parsed.value,
-      },
-    );
-    expect(unrelated).toMatchObject({ _tag: "OutcomeUnknown" });
-
     expect(
       reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
         _tag: "Unavailable",
       }),
     ).toMatchObject({ _tag: "OutcomeUnknown" });
+  });
+
+  it("keeps AddThread locked when the remote review is absent", () => {
+    const prior = parseViewerPendingReview({ ...reviewRaw, comments: [] });
+    if (prior._tag !== "ok") throw new Error("fixture");
     expect(
       reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
         _tag: "None",
       }),
     ).toMatchObject({ _tag: "OutcomeUnknown" });
+  });
 
-    const exactNewer = parseViewerPendingReview({
+  it("reconciles AddThread when one new comment has the exact body and anchor", () => {
+    const observed = parseViewerPendingReview({
       ...reviewRaw,
       comments: reviewRaw.comments.map((comment) => ({
         ...comment,
@@ -523,27 +542,28 @@ describe("reconcilePendingReviewState", () => {
       })),
       updatedAt: "2026-08-09T11:35:00.000Z",
     });
-    if (exactNewer._tag !== "ok") throw new Error("fixture");
-    const matched = reconcilePendingReviewState(
-      locked(addThreadOperation, prior.value),
-      {
+    const prior = parseViewerPendingReview({ ...reviewRaw, comments: [] });
+    if (observed._tag !== "ok" || prior._tag !== "ok")
+      throw new Error("fixture");
+    expect(
+      reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
         _tag: "Pending",
-        review: exactNewer.value,
-      },
-    );
-    expect(matched).toMatchObject({
-      _tag: "Pending",
-      review: { restId: "4891263665" },
-    });
+        review: observed.value,
+      }),
+    ).toMatchObject({ _tag: "Pending", review: { restId: "4891263665" } });
+  });
 
+  it("keeps AddThread locked when the matching comment existed before the write", () => {
     expect(
       reconcilePendingReviewState(locked(addThreadOperation, review()), {
         _tag: "Pending",
         review: review(),
       }),
     ).toMatchObject({ _tag: "OutcomeUnknown" });
+  });
 
-    const duplicate = parseViewerPendingReview({
+  it("keeps AddThread locked when two new comments match the body and anchor", () => {
+    const observed = parseViewerPendingReview({
       ...reviewRaw,
       comments: [
         ...reviewRaw.comments,
@@ -555,11 +575,13 @@ describe("reconcilePendingReviewState", () => {
         },
       ],
     });
-    if (duplicate._tag !== "ok") throw new Error("fixture");
+    const prior = parseViewerPendingReview({ ...reviewRaw, comments: [] });
+    if (observed._tag !== "ok" || prior._tag !== "ok")
+      throw new Error("fixture");
     expect(
       reconcilePendingReviewState(locked(addThreadOperation, prior.value), {
         _tag: "Pending",
-        review: duplicate.value,
+        review: observed.value,
       }),
     ).toMatchObject({ _tag: "OutcomeUnknown" });
   });
