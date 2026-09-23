@@ -1,6 +1,11 @@
 import type { LocalApiDesktopRequest } from "../../main/ipc-contract";
 import type { RawJsonValue } from "../../domain/json";
 import { appLog } from "./lib/logger";
+import {
+  forbiddenWriteCopy,
+  rateLimitedWriteCopy,
+  unconfirmedWriteCopy,
+} from "./review-copy";
 
 export type ApiFailureKind =
   | "invalid_input"
@@ -76,7 +81,7 @@ export function untrustedWriteResponseError(
     200,
     false,
     correlationId,
-    "GitHub could not confirm this write. Check GitHub again before trying again.",
+    unconfirmedWriteCopy("write"),
   );
 }
 
@@ -308,7 +313,7 @@ function safeMessage(kind: ApiFailureKind): string {
     case "auth":
       return "GitHub authentication is required for this action.";
     case "forbidden":
-      return "GitHub blocked this action: the repository or organization restricts access here (an IP allow list, SSO requirement, or token scope). Retrying will not help — check GitHub's access settings for this organization.";
+      return forbiddenWriteCopy("action");
     case "not_found":
       return "The requested item no longer exists.";
     case "unavailable":
@@ -328,7 +333,7 @@ function safeMessage(kind: ApiFailureKind): string {
     case "ambiguous_write":
       return "Patchdesk could not confirm whether GitHub completed the write.";
     case "outcome_unknown":
-      return "GitHub could not confirm the pending review write. Check GitHub again before continuing.";
+      return unconfirmedWriteCopy("pending review write");
     case "no_pending_review":
       return "The pending review no longer exists. Refresh to see the current state.";
     case "pending_review_locked":
@@ -340,7 +345,7 @@ function safeMessage(kind: ApiFailureKind): string {
     case "self_approval_not_allowed":
       return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
     case "rate_limited":
-      return "GitHub rate-limited this request. Wait a moment, then try again.";
+      return rateLimitedWriteCopy("request");
     case "assignee_cap_exceeded":
       return "GitHub limits a pull request to ten assignees.";
     case "internal":

@@ -616,7 +616,7 @@ describe("review diff hydration", () => {
       );
 
       expect((await screen.findByRole("alert")).textContent).toContain(
-        "Syntax highlighting is unavailable.",
+        "Syntax highlighting unavailable",
       );
       expect(
         screen.getByRole("region", { name: "Plain text diff" }),

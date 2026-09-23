@@ -200,8 +200,8 @@ export function ReviewWorkbenchFlow({
           <AlertTitle>GitHub writes are paused</AlertTitle>
           <AlertDescription>
             {writeRecovery.recovery.resolution === "manual_resolution_required"
-              ? "Patchdesk found more than one possible GitHub result. Review the pull request on GitHub before continuing."
-              : "A GitHub write may have completed. Check GitHub again before making another change."}
+              ? "GitHub gave an ambiguous result. Check the pull request on GitHub before continuing."
+              : "A GitHub write may have completed. Check GitHub before another change."}
             {writeRecovery.recoveryError === undefined ? null : (
               <p data-review-write-recovery-error>
                 {writeRecovery.recoveryError === "invalid_response"
@@ -231,14 +231,14 @@ export function ReviewWorkbenchFlow({
       {refreshError ? (
         <InlineError className="border-t px-4 py-2">
           {refreshError === "interrupted"
-            ? "The refresh was interrupted before Patchdesk could adopt it. The represented Review remains readable; retry when ready."
+            ? "The refresh was interrupted. Retry when ready."
             : refreshError === "github_auth"
-              ? "GitHub authentication expired during refresh. Sign in again, then retry. The represented Review remains readable."
+              ? "GitHub sign-in expired during refresh. Sign in again, then retry."
               : refreshError === "head_changed"
-                ? "The pull request changed while Patchdesk prepared the refresh. Retry to read the latest revision."
+                ? "The pull request changed during refresh. Retry to read the latest revision."
                 : refreshError === "terminal"
                   ? "The pull request closed or merged during refresh. Reload it from the repository list."
-                  : "GitHub state could not be refreshed. The represented Review remains readable; retry when ready."}
+                  : "GitHub state could not be refreshed. Retry when ready."}
         </InlineError>
       ) : null}
     </>

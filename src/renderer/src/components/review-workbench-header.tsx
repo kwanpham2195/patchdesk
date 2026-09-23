@@ -58,11 +58,7 @@ export function ReviewWorkbenchHeader({
       className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1
-          className="min-w-0 text-lg font-semibold"
-          aria-label={title}
-          title={title}
-        >
+        <h1 className="min-w-0 text-lg font-semibold" title={title}>
           #{model.session.key.prNumber} {title}
         </h1>
         <div
@@ -143,8 +139,8 @@ export function ReviewWorkbenchHeader({
           className="border-t border-status-success/30 bg-status-success/10 px-1 py-2 text-sm text-status-success"
         >
           {model.review.status === "merged"
-            ? "Pull request merged on GitHub. This Review remains readable."
-            : "Pull request closed on GitHub. This Review remains readable."}
+            ? "Merged on GitHub."
+            : "Closed on GitHub."}
         </p>
       ) : (
         <PendingReviewNotice pendingReview={actions.pendingReview} />
@@ -263,15 +259,11 @@ function PendingReviewNotice({
     >
       {recovery ? (
         <>
-          A pending review write needs reconciliation (started{" "}
-          {projection.action}). GitHub was not changed without your
-          confirmation.
+          A pending review write needs confirmation (started {projection.action}
+          ).
         </>
       ) : (
-        <>
-          The pending review state is unavailable right now. New review comments
-          are paused.
-        </>
+        <>Pending review state unavailable; new comments are paused.</>
       )}{" "}
       <button
         type="button"

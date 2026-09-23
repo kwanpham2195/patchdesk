@@ -120,6 +120,22 @@ export function projectRepositoryLabelReadState(
   });
 }
 
+/**
+ * The sign-in prompt every GitHub-owned list surface shows for `github_auth`.
+ * `noun` is the plural the surface lists ("reviewers", "labels", "branches"),
+ * so all of them ask for the same thing in the same words.
+ */
+export function signInCopy(noun: string): string {
+  return `Sign in to GitHub to load ${noun}.`;
+}
+
+/**
+ * What a write surface says when `permission` came back `"unknown"`: the read
+ * found no evidence either way, so the write is offered but not promised.
+ */
+export const WRITE_PERMISSION_UNCONFIRMED =
+  "Write access unconfirmed; GitHub may refuse the change.";
+
 export function rateLimitedCopy(resumeAt: string | undefined): string {
   const resumeAtMs = resumeAt === undefined ? Number.NaN : Date.parse(resumeAt);
   if (Number.isNaN(resumeAtMs))

@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 import { Settings2 } from "lucide-react";
 
-import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
+import {
+  forbiddenCopy,
+  rateLimitedCopy,
+  signInCopy,
+  WRITE_PERMISSION_UNCONFIRMED,
+} from "../github-read-failure-copy";
 import type { GithubListReadState } from "../github-read-failure-copy";
 import {
   useGithubItemPicker,
@@ -165,8 +170,7 @@ export function AssigneePicker({
             data-slot="picker-permission-caveat"
             className="text-xs text-muted-foreground"
           >
-            Patchdesk could not confirm you can manage assignees here — a change
-            may be refused.
+            {WRITE_PERMISSION_UNCONFIRMED}
           </p>
         ) : null}
         {picker.writeError === undefined ? null : (
@@ -214,10 +218,7 @@ function AssigneePickerList({
     );
   if (readState._tag === "github_auth")
     return (
-      <InlineError className="text-xs">
-        GitHub authentication is required before Patchdesk can list this
-        repository&apos;s assignable people.
-      </InlineError>
+      <InlineError className="text-xs">{signInCopy("assignees")}</InlineError>
     );
   if (readState._tag === "github_read")
     return (

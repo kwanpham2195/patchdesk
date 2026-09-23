@@ -190,7 +190,7 @@ describe("FinishReviewDialog", () => {
         onOpenChange={vi.fn()}
         projection={projection}
         actions={{ busy: false, onSubmit, onDiscard: vi.fn() }}
-        error="GitHub could not confirm the submission. Check GitHub again before trying again."
+        error="GitHub did not confirm the submission. Check GitHub before retrying."
       />,
     );
     fireEvent.change(

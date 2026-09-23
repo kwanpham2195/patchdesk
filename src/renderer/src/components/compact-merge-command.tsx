@@ -5,6 +5,7 @@ import type { MergeDisplayReason } from "../../../domain/github-context";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import { PatchdeskApiError } from "../api-client";
+import { unconfirmedWriteCopy } from "../review-copy";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
@@ -99,8 +100,7 @@ export function CompactMergeCommand(props: {
           ? { state: "retryable_error", message: cause.message }
           : {
               state: "recovery_required",
-              message:
-                "GitHub did not confirm the merge. Check GitHub status before another merge; Patchdesk will not retry it.",
+              message: unconfirmedWriteCopy("merge"),
             },
       );
     } finally {
@@ -129,8 +129,7 @@ export function CompactMergeCommand(props: {
       if (outcome.state === "recovery_required") {
         setOutcome({
           state: "recovery_required",
-          message:
-            "GitHub still cannot confirm the merge. Check GitHub status again later; Patchdesk will not retry the merge.",
+          message: unconfirmedWriteCopy("merge"),
         });
       }
     } finally {
@@ -152,10 +151,7 @@ export function CompactMergeCommand(props: {
           <Alert>
             <AlertTitle>Merge confirmed; refresh required</AlertTitle>
             <AlertDescription>
-              <p>
-                GitHub confirmed the merge, but Patchdesk could not refresh the
-                Review projection.
-              </p>
+              <p>Merge succeeded, but this view could not refresh.</p>
               {props.onRecoverMerge === undefined ? null : (
                 <Button
                   className="mt-2"

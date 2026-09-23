@@ -1,4 +1,5 @@
 import { PatchdeskApiError } from "../api-client";
+import { forbiddenWriteCopy, unconfirmedWriteCopy } from "../review-copy";
 
 /** Bounded copy for a failed inline write; shared by the composer and pending-write cards. */
 export function composerErrorMessage(cause: unknown): string {
@@ -11,15 +12,13 @@ export function composerErrorMessage(cause: unknown): string {
       return "GitHub already holds an unfinished review on this pull request. Refresh, then add this comment to that review.";
     if (cause.kind === "revision_conflict")
       return "This comment cannot be published against the current diff.";
-    if (cause.kind === "outcome_unknown")
-      return "GitHub could not confirm this write. Check GitHub again before trying again.";
+    if (cause.kind === "outcome_unknown") return unconfirmedWriteCopy("write");
     if (
       cause.kind === "no_pending_review" ||
       cause.kind === "pending_review_locked"
     )
       return "The pending review changed. Refresh to see its current state.";
-    if (cause.kind === "forbidden")
-      return "GitHub blocked this comment: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
+    if (cause.kind === "forbidden") return forbiddenWriteCopy("comment");
     return `Patchdesk could not publish this comment (${cause.kind}). Try refreshing.`;
   }
   return cause instanceof Error

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -119,15 +118,11 @@ function FinishReviewDialogContent({
         if (!locked) onOpenChange(next);
       }}
     >
-      <DialogContent
-        className="max-h-[min(85vh,48rem)] overflow-y-auto sm:max-w-xl"
-        aria-label="Finish review"
-      >
+      <DialogContent className="max-h-[min(85vh,48rem)] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Finish review</DialogTitle>
           <DialogDescription>
-            Submit your pending review comments to GitHub. The summary below is
-            sent only when you submit.
+            The summary is sent with the review.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
@@ -217,9 +212,6 @@ function FinishReviewDialogContent({
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Badge variant="outline" data-finish-review-count>
-              {projection.count} pending
-            </Badge>
           </div>
           {submitError === undefined ? null : (
             <div className="flex flex-col gap-2">

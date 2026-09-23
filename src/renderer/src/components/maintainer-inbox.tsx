@@ -341,8 +341,8 @@ function StaleInboxBanner({
       <AlertTitle>Priority order may be unreliable</AlertTitle>
       <AlertDescription>
         Snapshot from {formatInboxAge(Date.now() - Date.parse(refreshedAt))}.
-        Sign-in could not be verified since, so order, checks, and review state
-        may be stale.
+        Sign-in unverified since then; order, checks, and review state may be
+        stale.
       </AlertDescription>
     </Alert>
   );

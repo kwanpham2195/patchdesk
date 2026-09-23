@@ -96,7 +96,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       screen.getByRole("region", { name: "Review workbench" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Canonical workbench" }),
+      screen.getByRole("heading", { name: "#42 Canonical workbench" }),
     ).toBeTruthy();
     const conversation = screen.getByRole("tab", { name: "Conversation" });
     const diff = screen.getByRole("tab", { name: "Diff" });
@@ -190,7 +190,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     });
     mount(labeled);
     expect(
-      screen.getByRole("heading", { name: "Canonical workbench" }),
+      screen.getByRole("heading", { name: "#42 Canonical workbench" }),
     ).toBeTruthy();
     // The rail only renders inside the Conversation tab's content (it is
     // never rendered on Diff, the tab this flow defaults to).
@@ -906,7 +906,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     // the header renders the lock and its one recovery control.
     expect(
       document.querySelector("[data-review-pending-recovery]")?.textContent,
-    ).toMatch(/pending review state is unavailable/i);
+    ).toMatch(/pending review state unavailable/i);
     expect(
       screen.getByRole("button", { name: "Check GitHub again" }),
     ).toBeTruthy();
@@ -927,14 +927,10 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(
       screen.queryByRole("button", { name: "Refresh GitHub state" }),
     ).toBeNull();
-    expect(
-      screen.getByText(
-        "Pull request merged on GitHub. This Review remains readable.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Merged on GitHub.")).toBeTruthy();
     expect(screen.getByText("Merge · Merged")).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Canonical workbench" }),
+      screen.getByRole("heading", { name: "#42 Canonical workbench" }),
     ).toBeTruthy();
   });
 

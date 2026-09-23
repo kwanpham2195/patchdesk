@@ -263,7 +263,7 @@ export function DiffWorkbench({
                     <SheetHeader>
                       <SheetTitle>Changed files</SheetTitle>
                       <SheetDescription>
-                        Choose a file to inspect its change.
+                        Files in this revision.
                       </SheetDescription>
                     </SheetHeader>
                     <div className="min-h-0 overflow-auto p-4">

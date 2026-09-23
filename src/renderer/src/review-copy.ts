@@ -26,28 +26,23 @@ type WalkthroughCopy = {
 const WALKTHROUGH_COPY = {
   idle: {
     headline: "Generate Walkthrough",
-    reassurance:
-      "Patchdesk reads the stored patch, never writes to GitHub, and never restarts the run.",
+    reassurance: "Reads the saved patch only; no GitHub writes.",
   },
   generating: {
     headline: "Generating walkthrough…",
-    reassurance:
-      "Patchdesk is reading the stored patch. This view will keep its place.",
+    reassurance: "This view keeps its place while generating.",
   },
   ready: {
     headline: "Walkthrough ready",
-    reassurance:
-      "Each section maps to one part of the patch. Use Back to files when you're done.",
+    reassurance: "Use Back to files when finished.",
   },
   failed: {
     headline: "Walkthrough didn't finish",
-    reassurance:
-      "The patch is still readable in Files mode. Try again or stay with the Review.",
+    reassurance: "Files mode still works. Try again, or stay with the Review.",
   },
   stale: {
     headline: "Walkthrough is no longer current",
-    reassurance:
-      "The stored patch changed. Generate a new walkthrough for the current snapshot.",
+    reassurance: "The patch changed. Generate a new walkthrough.",
   },
 } satisfies Record<WalkthroughLifecycleKey, WalkthroughCopy>;
 
@@ -83,6 +78,27 @@ export function cleanupCopy(key: CleanupActionKey): CleanupCopy {
   return CLEANUP_COPY[key];
 }
 
+/**
+ * The three sentences every review-write failure table repeats, each written
+ * once here and shaped by the noun the surface uses for its own write.
+ * `noun` names what GitHub was asked to do ("reply", "merge", "base branch
+ * change"), so one template serves every table without any of them wording
+ * the same situation differently.
+ */
+export function forbiddenWriteCopy(noun: string): string {
+  return `GitHub blocked this ${noun}: the repository restricts access. Check its access settings.`;
+}
+
+/** The same, for a write GitHub accepted but never confirmed. */
+export function unconfirmedWriteCopy(noun: string): string {
+  return `GitHub did not confirm the ${noun}. Check GitHub before retrying.`;
+}
+
+/** The same, for a write GitHub refused against its rate limit. */
+export function rateLimitedWriteCopy(noun: string): string {
+  return `GitHub rate-limited this ${noun}. Wait, then retry.`;
+}
+
 // The review-write failure copy. Each table names only the failure kinds its
 // screen words better than the API does; `contextualMessage` falls back to
 // the API's own bounded copy for every other kind, and to `fallback` for a
@@ -95,8 +111,7 @@ export function cleanupCopy(key: CleanupActionKey): CleanupCopy {
  * next step are the same on both: the write may or may not have landed, so
  * check GitHub rather than submitting again.
  */
-const UNCONFIRMED_SUBMISSION =
-  "GitHub could not confirm the submission. Check GitHub again before trying again.";
+const UNCONFIRMED_SUBMISSION = unconfirmedWriteCopy("submission");
 
 /**
  * What both write surfaces say when GitHub already holds an unfinished
@@ -140,8 +155,7 @@ export const FINISH_REVIEW_MESSAGES: ContextualMessages = {
     "The submission was refused. Refresh to see this review's current state, then finish it again.",
   no_pending_review: PENDING_REVIEW_CHANGED,
   pending_review_locked: PENDING_REVIEW_CHANGED,
-  forbidden:
-    "GitHub blocked this submission: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  forbidden: forbiddenWriteCopy("submission"),
 };
 
 /**
@@ -187,15 +201,13 @@ export const DIRECT_SUMMARY_MESSAGES: ContextualMessages = {
     "The pull request changed. Refresh before submitting a review summary.",
   github_rejected:
     "The review summary was refused. Refresh to see this review's current state, then submit it again.",
-  forbidden:
-    "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  forbidden: forbiddenWriteCopy("review summary"),
 };
 
 // Conversation and Finding write failures. The unconfirmed-write sentences
 // never say "try again": GitHub may already have applied the write.
 
-const UNCONFIRMED_COMMENT_EDIT =
-  "GitHub could not confirm the edit. Check GitHub again before editing again.";
+const UNCONFIRMED_COMMENT_EDIT = unconfirmedWriteCopy("edit");
 
 /** Saving an edit to a published comment from its row controls. */
 export const COMMENT_EDIT_MESSAGES: ContextualMessages = {
@@ -203,14 +215,11 @@ export const COMMENT_EDIT_MESSAGES: ContextualMessages = {
   outcome_unknown: UNCONFIRMED_COMMENT_EDIT,
   ambiguous_write: UNCONFIRMED_COMMENT_EDIT,
   timeout: UNCONFIRMED_COMMENT_EDIT,
-  rate_limited:
-    "GitHub rate-limited this edit. Wait a moment, then save again.",
-  forbidden:
-    "GitHub blocked this edit: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  rate_limited: rateLimitedWriteCopy("edit"),
+  forbidden: forbiddenWriteCopy("edit"),
 };
 
-const UNCONFIRMED_COMMENT_DELETE =
-  "GitHub could not confirm the deletion. Check GitHub again before deleting again.";
+const UNCONFIRMED_COMMENT_DELETE = unconfirmedWriteCopy("deletion");
 
 /** Deleting a published comment from its row controls. */
 export const COMMENT_DELETE_MESSAGES: ContextualMessages = {
@@ -218,14 +227,11 @@ export const COMMENT_DELETE_MESSAGES: ContextualMessages = {
   outcome_unknown: UNCONFIRMED_COMMENT_DELETE,
   ambiguous_write: UNCONFIRMED_COMMENT_DELETE,
   timeout: UNCONFIRMED_COMMENT_DELETE,
-  rate_limited:
-    "GitHub rate-limited this deletion. Wait a moment, then delete again.",
-  forbidden:
-    "GitHub blocked this deletion: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  rate_limited: rateLimitedWriteCopy("deletion"),
+  forbidden: forbiddenWriteCopy("deletion"),
 };
 
-const UNCONFIRMED_THREAD_REPLY =
-  "GitHub could not confirm the reply. Check GitHub again before replying again.";
+const UNCONFIRMED_THREAD_REPLY = unconfirmedWriteCopy("reply");
 
 /** Publishing a reply from a conversation thread card. */
 export const THREAD_REPLY_MESSAGES: ContextualMessages = {
@@ -233,14 +239,11 @@ export const THREAD_REPLY_MESSAGES: ContextualMessages = {
   outcome_unknown: UNCONFIRMED_THREAD_REPLY,
   ambiguous_write: UNCONFIRMED_THREAD_REPLY,
   timeout: UNCONFIRMED_THREAD_REPLY,
-  rate_limited:
-    "GitHub rate-limited this reply. Wait a moment, then reply again.",
-  forbidden:
-    "GitHub blocked this reply: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  rate_limited: rateLimitedWriteCopy("reply"),
+  forbidden: forbiddenWriteCopy("reply"),
 };
 
-const UNCONFIRMED_DRAFT_STATE =
-  "GitHub could not confirm the draft change. Check GitHub again before changing it again.";
+const UNCONFIRMED_DRAFT_STATE = unconfirmedWriteCopy("draft change");
 
 /** The author's draft toggle in the PR overview sheet. */
 export const DRAFT_STATE_MESSAGES: ContextualMessages = {
@@ -250,14 +253,11 @@ export const DRAFT_STATE_MESSAGES: ContextualMessages = {
   timeout: UNCONFIRMED_DRAFT_STATE,
   github_rejected:
     "The draft change was refused. Refresh to see this pull request's current state, then try again.",
-  rate_limited:
-    "GitHub rate-limited this draft change. Wait a moment, then try again.",
-  forbidden:
-    "GitHub blocked this draft change: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  rate_limited: rateLimitedWriteCopy("draft change"),
+  forbidden: forbiddenWriteCopy("draft change"),
 };
 
-const UNCONFIRMED_BASE_BRANCH =
-  "GitHub could not confirm the base branch change. Check GitHub again before changing it again.";
+const UNCONFIRMED_BASE_BRANCH = unconfirmedWriteCopy("base branch change");
 
 /** The base-branch change in the PR overview sheet. */
 export const BASE_BRANCH_MESSAGES: ContextualMessages = {
@@ -269,14 +269,11 @@ export const BASE_BRANCH_MESSAGES: ContextualMessages = {
     "This pull request already targets that branch, or the branch name is not valid.",
   github_rejected:
     "The base branch change was refused: this account may lack write access to this repository.",
-  rate_limited:
-    "GitHub rate-limited this base branch change. Wait a moment, then try again.",
-  forbidden:
-    "GitHub blocked this base branch change: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  rate_limited: rateLimitedWriteCopy("base branch change"),
+  forbidden: forbiddenWriteCopy("base branch change"),
 };
 
-const UNCONFIRMED_REVIEW_REQUEST =
-  "GitHub could not confirm the review request. Check GitHub again before requesting it again.";
+const UNCONFIRMED_REVIEW_REQUEST = unconfirmedWriteCopy("review request");
 
 /** Re-requesting a review from the metadata rail's Reviewers section. */
 export const RE_REQUEST_REVIEW_MESSAGES: ContextualMessages = {
@@ -286,14 +283,11 @@ export const RE_REQUEST_REVIEW_MESSAGES: ContextualMessages = {
   timeout: UNCONFIRMED_REVIEW_REQUEST,
   github_rejected:
     "The review request was refused. Refresh to see the current reviewers, then try again.",
-  rate_limited:
-    "GitHub rate-limited this review request. Wait a moment, then try again.",
-  forbidden:
-    "GitHub blocked this review request: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  rate_limited: rateLimitedWriteCopy("review request"),
+  forbidden: forbiddenWriteCopy("review request"),
 };
 
-const UNCONFIRMED_FINDING_ACTION =
-  "GitHub could not confirm the Finding action. Check GitHub again before repeating it.";
+const UNCONFIRMED_FINDING_ACTION = unconfirmedWriteCopy("Finding action");
 
 /** Adding a Finding to the review, or dismissing it, from the Analysis reader. */
 export const FINDING_ACTION_MESSAGES: ContextualMessages = {
@@ -301,8 +295,6 @@ export const FINDING_ACTION_MESSAGES: ContextualMessages = {
   outcome_unknown: UNCONFIRMED_FINDING_ACTION,
   ambiguous_write: UNCONFIRMED_FINDING_ACTION,
   timeout: UNCONFIRMED_FINDING_ACTION,
-  rate_limited:
-    "GitHub rate-limited this Finding action. Wait a moment, then try again.",
-  forbidden:
-    "GitHub blocked this Finding action: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+  rate_limited: rateLimitedWriteCopy("Finding action"),
+  forbidden: forbiddenWriteCopy("Finding action"),
 };

@@ -861,9 +861,9 @@ function NonVirtualizedReviewDiff({
     return (
       <>
         <Alert variant="destructive" className="m-3">
-          <AlertTitle>Syntax highlighting is unavailable.</AlertTitle>
+          <AlertTitle>Syntax highlighting unavailable</AlertTitle>
           <AlertDescription>
-            Restart Patchdesk and try again. The code is shown as plain text.
+            Showing plain text. Restart Patchdesk to retry.
           </AlertDescription>
         </Alert>
         <AccessiblePatch

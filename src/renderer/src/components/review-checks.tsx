@@ -183,8 +183,8 @@ export function ReviewChecks({
     <>
       <p className="pb-2 text-xs text-muted-foreground">
         {freshness === "fresh"
-          ? "Read-only checks from the reviewed head."
-          : "Checks may be incomplete until GitHub state is refreshed."}
+          ? "From the reviewed head."
+          : "May be incomplete until refreshed."}
       </p>
       {grouped.length === 0 ? (
         <p className="pb-3 text-sm text-muted-foreground">

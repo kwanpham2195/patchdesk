@@ -66,8 +66,8 @@ describe("renderer API boundary", () => {
     expect(thrown.status).toBe(403);
     // Honest, reason-classified copy — never GitHub's raw message text, and
     // never a retry-implying claim for a condition retrying cannot fix.
-    expect(thrown.message).toContain("Retrying will not help");
-    expect(thrown.message).not.toMatch(/try again|retry the/i);
+    expect(thrown.message).toContain("the repository restricts access");
+    expect(thrown.message).not.toMatch(/try again|retry/i);
   });
 
   it("classifies a missing record as its own 'not_found' kind, not the service-outage bucket a 503 fills", async () => {

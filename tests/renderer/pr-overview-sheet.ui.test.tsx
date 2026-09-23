@@ -211,9 +211,7 @@ describe("pr overview sheet merge readiness", () => {
       }),
     );
     expect(
-      screen.getByText(
-        "GitHub requires an approval. Patchdesk cannot see whether one exists; check on GitHub.",
-      ),
+      screen.getByText("Requires an approval; check on GitHub."),
     ).toBeTruthy();
     expect(screen.getByText("Required checks have not passed.")).toBeTruthy();
     expect(document.querySelectorAll("[data-reason-availability]").length).toBe(
@@ -335,7 +333,7 @@ describe("pr overview sheet merge readiness", () => {
     );
     const card = document.querySelector('[data-reason-availability="partial"]');
     expect(card?.textContent).toContain(
-      "GitHub requires an approval. Patchdesk cannot see whether one exists; check on GitHub.",
+      "Requires an approval; check on GitHub.",
     );
     expect(card?.textContent).not.toContain("could not confirm");
     expect(screen.getByRole("button", { name: "Open on GitHub" })).toBeTruthy();

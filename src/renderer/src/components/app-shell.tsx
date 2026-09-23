@@ -298,7 +298,7 @@ export function AppShell({
             </TooltipTrigger>
             <TooltipContent>
               {navigationBlocked
-                ? "A dialog is open."
+                ? "An unsaved draft or a pending GitHub write blocks navigation."
                 : "Open quick navigation"}
             </TooltipContent>
           </Tooltip>

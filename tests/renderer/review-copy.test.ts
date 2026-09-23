@@ -43,7 +43,7 @@ describe("review write failure copy", () => {
       contextualMessage(apiError(kind), FINISH_REVIEW_MESSAGES);
 
     expect(message("outcome_unknown")).toBe(
-      "GitHub could not confirm the submission. Check GitHub again before trying again.",
+      "GitHub did not confirm the submission. Check GitHub before retrying.",
     );
     expect(message("ambiguous_write")).toBe(message("outcome_unknown"));
     expect(message("timeout")).toBe(message("outcome_unknown"));
@@ -67,7 +67,7 @@ describe("review write failure copy", () => {
     );
     expect(message("pending_review_locked")).toBe(message("no_pending_review"));
     expect(message("forbidden")).toBe(
-      "GitHub blocked this submission: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+      "GitHub blocked this submission: the repository restricts access. Check its access settings.",
     );
   });
 
@@ -76,7 +76,7 @@ describe("review write failure copy", () => {
       contextualMessage(apiError(kind), DIRECT_SUMMARY_MESSAGES);
 
     expect(message("outcome_unknown")).toBe(
-      "GitHub could not confirm the submission. Check GitHub again before trying again.",
+      "GitHub did not confirm the submission. Check GitHub before retrying.",
     );
     expect(message("invalid_input")).toBe(
       "The request contains invalid information. Check GitHub again or refresh.",
@@ -94,7 +94,7 @@ describe("review write failure copy", () => {
       "The review summary was refused. Refresh to see this review's current state, then submit it again.",
     );
     expect(message("forbidden")).toBe(
-      "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+      "GitHub blocked this review summary: the repository restricts access. Check its access settings.",
     );
   });
 
@@ -176,7 +176,7 @@ describe("review write failure copy", () => {
     );
     expect(
       contextualMessage(apiError("rate_limited"), FINISH_REVIEW_MESSAGES),
-    ).toBe("GitHub rate-limited this request. Wait a moment, then try again.");
+    ).toBe("GitHub rate-limited this request. Wait, then retry.");
   });
 
   it("falls back to the surface's own line when the cause is not an API failure", () => {

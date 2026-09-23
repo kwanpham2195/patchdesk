@@ -134,16 +134,12 @@ function SummaryReviewDialogContent({
         if (!locked) onOpenChange(next);
       }}
     >
-      <DialogContent
-        className="w-[calc(100vw-2rem)] max-w-xl min-w-0"
-        aria-label="Write review summary"
-      >
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-xl min-w-0">
         {recovery === undefined ? (
           <DialogHeader>
             <DialogTitle>Write review summary</DialogTitle>
             <DialogDescription>
-              This publishes an immediate GitHub review. It does not create a
-              pending review.
+              Publishes immediately; no pending review.
             </DialogDescription>
           </DialogHeader>
         ) : null}
@@ -175,12 +171,8 @@ function SummaryReviewDialogContent({
             <AlertTitle>Review submission needs confirmation</AlertTitle>
             <AlertDescription className="text-status-warning">
               {recovery === "manual_resolution_required"
-                ? "Patchdesk found ambiguous review evidence. Submit is paused until you resolve the outcome on GitHub."
-                : "Patchdesk did not receive confirmation from GitHub. Your review may already have been published. To avoid posting a duplicate review, submission is paused until GitHub is checked."}
-            </AlertDescription>
-            <AlertDescription className="text-status-warning">
-              Checking either confirms the review, restores a safe submit state,
-              or identifies manual resolution.
+                ? "GitHub gave ambiguous review evidence. Resolve the outcome on GitHub before submitting again."
+                : "GitHub did not confirm the review; it may already be published. Check GitHub before submitting again."}
             </AlertDescription>
             {localError === undefined ? null : (
               <Alert variant="destructive">
@@ -228,7 +220,7 @@ function SummaryReviewDialogContent({
                 disabled={locked}
                 onChange={(change) => setBody(change.target.value)}
                 aria-label="Review summary"
-                placeholder="Write the review summary that GitHub will publish"
+                placeholder="Review summary"
               />
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -281,8 +273,7 @@ function SummaryReviewDialogContent({
               </Select>
               {approvalCapability !== "blocked_author" ? null : (
                 <p className="text-sm text-muted-foreground">
-                  You can’t approve your own pull request. Choose Comment or ask
-                  another reviewer to approve it.
+                  You can’t approve your own pull request.
                 </p>
               )}
             </div>

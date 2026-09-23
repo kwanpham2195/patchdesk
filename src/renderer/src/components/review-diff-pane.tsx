@@ -29,14 +29,10 @@ export function ReviewDiffPane({
         <Alert variant="warning" className="m-2 shrink-0">
           <AlertTitle>Merge conflicts</AlertTitle>
           <AlertDescription>
-            Merge conflicts are what block this merge, not the checks.{" "}
-            {/* The branch clause is dropped rather than named "unknown", which would read as a branch name. */}
+            {/* Named branches are dropped rather than called "unknown", which would read as a branch name. */}
             {baseBranch === undefined || headBranch === undefined
-              ? ""
-              : `The head branch ${headBranch} no longer merges cleanly into the base branch ${baseBranch}. `}
-            Resolve the conflicts in your own local checkout, then push the head
-            branch. The diff below still shows the changes this pull request
-            makes.
+              ? "Resolve the conflicts locally and push."
+              : `${headBranch} no longer merges cleanly into ${baseBranch}. Resolve locally and push.`}
           </AlertDescription>
         </Alert>
       ) : null}

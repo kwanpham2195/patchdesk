@@ -54,14 +54,7 @@ describe("ReviewWorkbenchFlow merge-conflict notice", () => {
     await openDiffTab(["conflicting"]);
 
     expect(screen.getByText("Merge conflicts")).toBeTruthy();
-    expect(
-      screen.getByText(
-        /Merge conflicts are what block this merge, not the checks\./,
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/Resolve the conflicts in your own local checkout/),
-    ).toBeTruthy();
+    expect(screen.getByText(/no longer merges cleanly into/)).toBeTruthy();
     expect(screen.getByRole("region", { name: "Review diff" })).toBeTruthy();
   });
 
@@ -70,7 +63,7 @@ describe("ReviewWorkbenchFlow merge-conflict notice", () => {
 
     expect(
       screen.getByText(
-        /head branch feature no longer merges cleanly into the base branch main\./,
+        /feature no longer merges cleanly into main\. Resolve locally and push\./,
       ),
     ).toBeTruthy();
   });
@@ -81,7 +74,7 @@ describe("ReviewWorkbenchFlow merge-conflict notice", () => {
     expect(screen.getByText("Merge conflicts")).toBeTruthy();
     expect(screen.queryByText(/no longer merges cleanly/)).toBeNull();
     expect(
-      screen.getByText(/Resolve the conflicts in your own local checkout/),
+      screen.getByText("Resolve the conflicts locally and push."),
     ).toBeTruthy();
   });
 

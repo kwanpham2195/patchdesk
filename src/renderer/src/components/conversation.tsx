@@ -234,8 +234,7 @@ export function Conversation({
 
           {conversation.complete === false && (
             <p className="mt-4 text-xs text-muted-foreground">
-              Some conversation was not loaded. Refresh GitHub state to load
-              more.
+              Some conversation did not load. Refresh to see more.
             </p>
           )}
         </div>

@@ -5,6 +5,8 @@ import type { RepositoryLabel } from "../../../domain/github-context";
 import {
   forbiddenCopy,
   rateLimitedCopy,
+  signInCopy,
+  WRITE_PERMISSION_UNCONFIRMED,
   type RepositoryLabelReadState,
 } from "../github-read-failure-copy";
 import {
@@ -155,8 +157,7 @@ export function LabelPicker({
             data-slot="picker-permission-caveat"
             className="text-xs text-muted-foreground"
           >
-            Patchdesk could not confirm you can manage labels here — a change
-            may be refused.
+            {WRITE_PERMISSION_UNCONFIRMED}
           </p>
         ) : null}
         {picker.writeError === undefined ? null : (
@@ -192,10 +193,7 @@ function LabelPickerList({
     );
   if (readState._tag === "github_auth")
     return (
-      <InlineError className="text-xs">
-        GitHub authentication is required before Patchdesk can list this
-        repository&apos;s labels.
-      </InlineError>
+      <InlineError className="text-xs">{signInCopy("labels")}</InlineError>
     );
   if (readState._tag === "github_read")
     return (

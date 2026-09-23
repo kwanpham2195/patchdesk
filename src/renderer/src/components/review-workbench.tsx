@@ -82,6 +82,10 @@ import type {
   WorkbenchPosition,
 } from "../lib/screen-restore";
 
+/** What the Diff tab shows in place of a diff, from both the tab itself and
+ * the commit-slice pane below it. */
+const NO_PATCH_AVAILABLE = "No patch is available for this Review.";
+
 /** The subset of `Conversation`'s props built conditionally, so the
  * `conversationActions` prop is only added (never spread from a conditional
  * empty object) when at least one direct-conversation action is wired. */
@@ -635,7 +639,7 @@ export function ReviewWorkbench({
           <div className="min-h-0 flex-1 overflow-hidden">
             {model.fullPatch === undefined ? (
               <div className="p-6 text-sm text-muted-foreground">
-                No patch is available for this Review session.
+                {NO_PATCH_AVAILABLE}
               </div>
             ) : (
               <div
@@ -711,7 +715,7 @@ export function ReviewWorkbench({
                     </p>
                   ) : displayedPatch === undefined ? (
                     <p className="p-6 text-sm text-muted-foreground">
-                      No patch is available for this Review session.
+                      {NO_PATCH_AVAILABLE}
                     </p>
                   ) : (
                     <>

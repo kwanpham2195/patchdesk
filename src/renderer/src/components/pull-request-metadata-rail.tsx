@@ -8,7 +8,12 @@ import type {
 import { definedProps } from "../../../domain/defined-props";
 import type { ReviewVerdictState } from "../../../domain/review-verdicts";
 import { PatchdeskApiError, contextualMessage } from "../api-client";
-import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
+import {
+  forbiddenCopy,
+  rateLimitedCopy,
+  signInCopy,
+  WRITE_PERMISSION_UNCONFIRMED,
+} from "../github-read-failure-copy";
 import { RE_REQUEST_REVIEW_MESSAGES } from "../review-copy";
 import { freshnessCopy, type RevisionFreshness } from "../rail-freshness";
 import type {
@@ -32,35 +37,26 @@ import { Spinner } from "./ui/spinner";
 import type { ForbiddenReason } from "../../../domain/github-forbidden-reason";
 
 /**
- * One topic section inside `PullRequestMetadataRail`. Exported so a later
- * slice only needs to add another `<RailSection>` rather than rebuild the
- * header row, freshness line, and settings-control slot.
+ * One topic section inside `PullRequestMetadataRail`: its heading row and
+ * settings-control slot. Every section reads the same revision, so the
+ * freshness line belongs to the rail rather than repeating under each
+ * heading.
  */
 function RailSection({
   title,
-  freshness,
   settings,
   children,
 }: {
   readonly title: string;
-  readonly freshness: RevisionFreshness;
   readonly settings?: React.ReactNode;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section
-      aria-label={title}
-      className="border-b py-3 first:pt-0 last:border-b-0"
-    >
+    <section aria-label={title} className="border-b py-3 last:border-b-0">
       <div className="mb-1.5 flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            {title}
-          </h2>
-          <p className="text-[10px] text-muted-foreground">
-            {freshnessCopy(freshness)}
-          </p>
-        </div>
+        <h2 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          {title}
+        </h2>
         {settings}
       </div>
       {children}
@@ -283,10 +279,7 @@ function ReviewersSectionBody({
     );
   if (readState._tag === "github_auth")
     return (
-      <InlineError className="text-xs">
-        GitHub authentication is required before Patchdesk can show this pull
-        request&apos;s reviewers.
-      </InlineError>
+      <InlineError className="text-xs">{signInCopy("reviewers")}</InlineError>
     );
   if (readState._tag === "github_read")
     return (
@@ -312,7 +305,7 @@ function ReviewersSectionBody({
       <p className="text-xs text-muted-foreground">
         {readState._tag === "stored"
           ? "No reviewer is requested."
-          : "No review has been requested, and none has been submitted."}
+          : "No reviews requested or submitted."}
       </p>
     );
   return (
@@ -355,14 +348,12 @@ function ReviewersSectionBody({
 function ReviewersSection({
   requestedReviewers,
   pendingReview,
-  freshness,
   refreshedAt,
   terminal,
   actions,
 }: {
   readonly requestedReviewers: ReadonlyArray<string>;
   readonly pendingReview?: PendingReviewProjection;
-  readonly freshness: RevisionFreshness;
   readonly refreshedAt: string;
   readonly terminal: boolean;
   readonly actions?: ReviewerPickerActions;
@@ -423,7 +414,6 @@ function ReviewersSection({
   return (
     <RailSection
       title="Reviewers"
-      freshness={freshness}
       {...definedProps({
         settings: terminal ? undefined : (
           <ReviewerPicker
@@ -464,13 +454,11 @@ function ReviewersSection({
  */
 function AssigneesSection({
   assignees,
-  freshness,
   refreshedAt,
   terminal,
   actions,
 }: {
   readonly assignees: ReadonlyArray<string>;
-  readonly freshness: RevisionFreshness;
   readonly refreshedAt: string;
   readonly terminal: boolean;
   readonly actions?: AssigneesSectionActions;
@@ -574,7 +562,6 @@ function AssigneesSection({
   return (
     <RailSection
       title="Assignees"
-      freshness={freshness}
       {...definedProps({
         settings: terminal ? undefined : (
           <AssigneePicker
@@ -601,8 +588,7 @@ function AssigneesSection({
               </Button>
               {permission === "unknown" ? (
                 <p className="text-xs text-muted-foreground">
-                  Patchdesk could not confirm you can manage assignees here — a
-                  change may be refused.
+                  {WRITE_PERMISSION_UNCONFIRMED}
                 </p>
               ) : null}
               {selfAssignError === undefined ? null : (
@@ -673,23 +659,23 @@ export function PullRequestMetadataRail({
       aria-label="Pull request metadata"
       className="w-full rounded-lg border bg-card p-3 min-[1100px]:sticky min-[1100px]:top-0 min-[1100px]:w-[272px] min-[1100px]:shrink-0"
     >
+      <p className="pb-2 text-[10px] text-muted-foreground">
+        {freshnessCopy(freshness)}
+      </p>
       <ReviewersSection
         requestedReviewers={requestedReviewers}
-        freshness={freshness}
         refreshedAt={refreshedAt}
         terminal={terminal}
         {...definedProps({ pendingReview, actions: reviewerActions })}
       />
       <AssigneesSection
         assignees={assignees}
-        freshness={freshness}
         refreshedAt={refreshedAt}
         terminal={terminal}
         {...definedProps({ actions: assigneeActions })}
       />
       <RailSection
         title="Labels"
-        freshness={freshness}
         {...definedProps({
           settings: terminal ? undefined : (
             <LabelPicker

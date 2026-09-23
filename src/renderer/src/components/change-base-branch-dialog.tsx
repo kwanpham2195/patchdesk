@@ -5,7 +5,12 @@ import { Check, GitBranch } from "lucide-react";
 import { contextualMessage } from "../api-client";
 import type { BaseBranchListResponse } from "../base-branch-contracts";
 import type { BaseBranchChangeOutcome } from "../flows/use-review-metadata-actions";
-import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
+import {
+  forbiddenCopy,
+  rateLimitedCopy,
+  signInCopy,
+  WRITE_PERMISSION_UNCONFIRMED,
+} from "../github-read-failure-copy";
 import {
   useBaseBranchCandidates,
   type BaseBranchReadState,
@@ -162,10 +167,8 @@ export function ChangeBaseBranchDialog({
         <DialogHeader>
           <DialogTitle>Change base branch</DialogTitle>
           <DialogDescription>
-            Pick another branch of {repository}. A new base can change this pull
-            request&apos;s commits, files, checks, and merge conflicts.
-            Confirming updates GitHub, then refreshes this Review against the
-            new base.
+            A new base can change this pull request&apos;s commits, files,
+            checks, and merge conflicts.
           </DialogDescription>
         </DialogHeader>
         {unrefreshedBranch === undefined ? (
@@ -183,16 +186,14 @@ export function ChangeBaseBranchDialog({
             {denied ? (
               <Alert variant="destructive">
                 <AlertDescription>
-                  This account cannot change the base branch: it lacks write
-                  access to {repository}.
+                  No write access to {repository}.
                 </AlertDescription>
               </Alert>
             ) : null}
             {ready?.permission === "unknown" ? (
               <Alert variant="warning">
                 <AlertDescription>
-                  Patchdesk could not confirm this account can change the base
-                  branch. GitHub may refuse the change.
+                  {WRITE_PERMISSION_UNCONFIRMED}
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -239,10 +240,8 @@ export function ChangeBaseBranchDialog({
                 Change the base to {selected}?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                GitHub will retarget this pull request from{" "}
-                {current ?? "its current base"} to {selected}. Patchdesk then
-                refreshes this Review; existing Insights stay and are marked
-                outdated.
+                Retargets {current ?? "its current base"} &rarr; {selected}.
+                Existing Insights are marked outdated.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -356,10 +355,7 @@ function ReadNotice({
       ) : null;
     case "github_auth":
       return (
-        <InlineError className="text-xs">
-          GitHub authentication is required before Patchdesk can list this
-          repository&apos;s branches.
-        </InlineError>
+        <InlineError className="text-xs">{signInCopy("branches")}</InlineError>
       );
     case "github_read":
       return (

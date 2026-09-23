@@ -404,8 +404,7 @@ export function InlineCommentComposer({
           </Button>
         ) : writeDisabled ? (
           <p className="text-sm text-status-warning">
-            Pending review state is unavailable. Check GitHub again or refresh
-            before commenting.
+            Pending review unavailable. Check GitHub or refresh.
           </p>
         ) : pendingState === "pending" ? (
           <Button

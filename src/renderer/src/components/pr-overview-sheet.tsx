@@ -308,7 +308,7 @@ export function CanonicalReviewOverviewSheet({
         {terminal ? (
           <SheetFooter className="border-t px-5 py-4">
             <p className="text-sm text-muted-foreground">
-              This Review is {overview.terminalState} and remains readable.
+              This Review is {overview.terminalState}.
             </p>
           </SheetFooter>
         ) : null}
@@ -508,7 +508,7 @@ function MergeReadinessDetail({
         const unconfirmedApproval =
           !isConfirmed && reason.code === "review_required";
         const message = unconfirmedApproval
-          ? "GitHub requires an approval. Patchdesk cannot see whether one exists; check on GitHub."
+          ? "Requires an approval; check on GitHub."
           : reason.message;
         const caption = isConfirmed
           ? reasonSourceLabel(reason.source)
@@ -609,7 +609,7 @@ function MergeReadinessDetail({
           )}
         >
           <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          No merge blockers or warnings. This Review is ready to merge.
+          No blockers or warnings.
         </p>
       ) : null}
     </div>
