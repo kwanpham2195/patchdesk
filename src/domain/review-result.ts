@@ -127,10 +127,7 @@ const findingSchema = {
   ),
 } as const;
 
-/**
- * Model output alone caps prose: the reader gets a scannable Finding, while the
- * retained schema stays uncapped so Analyses stored before the caps still read.
- */
+/** Only model output caps prose; older retained Analyses remain readable. */
 const modelFindingSchema = {
   ...findingSchema,
   title: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),

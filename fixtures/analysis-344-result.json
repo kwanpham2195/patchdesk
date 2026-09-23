@@ -1,0 +1,53 @@
+{
+  "changeSummary": "The patch changes the inbox layout so headers and filters stay fixed while rows and pagination scroll. It updates repository instructions, extends ScrollArea, and adds three intentionally incorrect helper functions.",
+  "verdict": "request_changes",
+  "summary": "The new script fails the required TypeScript gate and `clampPercent` returns invalid negative values.",
+  "findings": [
+    {
+      "id": "average-of-out-of-range",
+      "severity": "P1",
+      "title": "averageOf reads beyond the array",
+      "file": "scripts/throwaway-344.ts",
+      "lineStart": 10,
+      "lineEnd": 10,
+      "diffSide": "new",
+      "explanation": "`averageOf` reads `values[values.length]` because the loop uses `<=`. This adds `undefined` to `total`, so non-empty inputs return `NaN`. The repository rule requires `pnpm check` to run `pnpm typecheck:scripts`, and `noUncheckedIndexedAccess` also rejects this access. The loop must visit only array values.",
+      "suggestedComment": "Use a loop that visits only existing values. The current bound returns `NaN` and fails the required scripts typecheck.",
+      "confidence": "high",
+      "category": "bug",
+      "suggestedReplacement": {
+        "code": "  for (const value of values) total += value;"
+      },
+      "mappingStatus": "mapped"
+    },
+    {
+      "id": "clamp-percent-lower-bound",
+      "severity": "P2",
+      "title": "clampPercent allows negative percentages",
+      "file": "scripts/throwaway-344.ts",
+      "lineStart": 3,
+      "lineEnd": 5,
+      "diffSide": "new",
+      "explanation": "`clampPercent(-1)` returns `-1` because the function checks only the upper bound. The function name and the `100` upper bound define a percent clamp, so the result must stay between `0` and `100`. Add the missing lower bound.",
+      "suggestedComment": "Clamp both bounds. Negative input currently produces an invalid percentage.",
+      "confidence": "high",
+      "category": "bug",
+      "suggestedReplacement": {
+        "code": "export function clampPercent(value: number): number {\n  return Math.min(100, Math.max(0, value));\n}"
+      },
+      "mappingStatus": "mapped"
+    }
+  ],
+  "validationPlan": [
+    "Run `pnpm typecheck:scripts` with the pinned dependencies installed.",
+    "Run the focused renderer test and a CDP screenshot at desktop and narrow widths. Verify that only rows and the footer scroll."
+  ],
+  "assumptions": [],
+  "coverage": "high",
+  "overallConfidence": "high",
+  "unresolvedItems": [
+    "The review input includes no pull request description, so the author's stated goal and undocumented changes could not be checked.",
+    "The null and invalid-header contract for `parseRetryAfter` is not stated. `Number(null)` returns `0`, and nonnumeric input returns `NaN`.",
+    "Local `pnpm typecheck:scripts` could not run because `node_modules` is absent."
+  ]
+}
