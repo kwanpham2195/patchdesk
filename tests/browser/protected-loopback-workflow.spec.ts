@@ -60,6 +60,23 @@ test("renderer uses the protected loopback API for profile and watchlist control
   if (started._tag !== "started") throw new Error("local API did not start");
   api = started.server;
 
+  await page.route("**/v1/environment*", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { "Access-Control-Allow-Origin": origin },
+      json: {
+        git: "ready",
+        gh: "ready",
+        githubAuth: "authentication_required",
+        githubAccounts: [],
+      },
+    });
+  });
+
   await installTestDesktopBridge(page, {
     kind: "localApi",
     baseUrl: api.url.toString(),
@@ -88,14 +105,8 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(
     createDialog.getByText("Checking GitHub authentication…"),
   ).toBeHidden();
-  // `GET /v1/environment` runs the real `gh` on the machine running this
-  // suite, so whether the dialog offers an account Select or the manual
-  // fields is not fixed here; fill the manual pair only when it is showing.
-  const manualAccount = createDialog.getByLabel("GitHub account");
-  if (await manualAccount.isVisible()) {
-    await manualAccount.fill("enterprise-user");
-    await createDialog.getByLabel("GitHub host").fill("github.example.test");
-  }
+  await createDialog.getByLabel("GitHub account").fill("enterprise-user");
+  await createDialog.getByLabel("GitHub host").fill("github.example.test");
   await createDialog.getByRole("button", { name: "Create workspace" }).click();
   await expect(createDialog).toBeHidden();
   await expect(
