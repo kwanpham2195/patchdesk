@@ -1,24 +1,80 @@
 import { describe, expect, it } from "vitest";
 
+import type { CommandFailure } from "../../src/adapters/github/command-runner";
 import { writeFailure } from "../../src/adapters/github/github-write-failures";
 import type { ForbiddenReason } from "../../src/domain/github-forbidden-reason";
 
-/**
- * A forbidden write must carry its specific ForbiddenReason and land in a
- * dedicated "forbidden" category — never collapse into the generic
- * "unavailable" category a transient network blip also produces (the
- * write-side counterpart to plan 009's read-side fix; see
- * docs/adr/0024-explain-forbidden-github-reads.md).
- */
-describe("writeFailure — CommandForbidden", () => {
-  const reasons: ReadonlyArray<ForbiddenReason> = [
-    "ip_allow_list",
-    "saml",
-    "insufficient_scopes",
-    "unknown",
-  ];
+const forbiddenReasons: ReadonlyArray<ForbiddenReason> = [
+  "ip_allow_list",
+  "saml",
+  "insufficient_scopes",
+  "unknown",
+];
 
-  it.each(reasons)(
+const otherFailures = [
+  {
+    label: "authentication",
+    failure: { _tag: "CommandAuthenticationRequired" },
+    category: "auth",
+  },
+  {
+    label: "an unfinished review",
+    failure: { _tag: "CommandPendingReview" },
+    category: "pending_review",
+  },
+  {
+    label: "rate limiting",
+    failure: { _tag: "CommandRateLimited" },
+    category: "rate_limited",
+  },
+  {
+    label: "a missing endpoint",
+    failure: { _tag: "CommandNotFound" },
+    category: "unavailable",
+  },
+  {
+    label: "an unsupported endpoint",
+    failure: { _tag: "CommandUnsupported" },
+    category: "unavailable",
+  },
+  {
+    label: "an unavailable command runtime",
+    failure: { _tag: "CommandRuntimeUnavailable" },
+    category: "unavailable",
+  },
+  {
+    label: "an unavailable request",
+    failure: { _tag: "CommandUnavailable" },
+    category: "unavailable",
+  },
+  {
+    label: "a timed-out request",
+    failure: { _tag: "CommandTimedOut" },
+    category: "unavailable",
+  },
+  {
+    label: "an invalid response body",
+    failure: { _tag: "CommandInvalidJson" },
+    category: "unavailable",
+  },
+  {
+    label: "an unclassified command failure",
+    failure: { _tag: "CommandFailed" },
+    category: "unavailable",
+  },
+  {
+    label: "an aborted request",
+    failure: { _tag: "CommandAborted" },
+    category: "unavailable",
+  },
+] as const satisfies ReadonlyArray<{
+  readonly label: string;
+  readonly failure: CommandFailure;
+  readonly category: string;
+}>;
+
+describe("writeFailure — CommandForbidden", () => {
+  it.each(forbiddenReasons)(
     "classifies a forbidden write with reason %s as category 'forbidden', not 'unavailable'",
     (reason) => {
       const failure = writeFailure({ _tag: "CommandForbidden", reason });
@@ -31,38 +87,27 @@ describe("writeFailure — CommandForbidden", () => {
 
   it("gives each forbidden reason its own message, not one generic sentence reused for all four", () => {
     const messages = new Set(
-      reasons.map(
+      forbiddenReasons.map(
         (reason) => writeFailure({ _tag: "CommandForbidden", reason }).message,
       ),
     );
-    expect(messages.size).toBe(reasons.length);
+    expect(messages.size).toBe(forbiddenReasons.length);
   });
+});
 
-  it("never repeats GitHub's raw stdout/stderr text in the message", () => {
-    const failure = writeFailure({
-      _tag: "CommandForbidden",
-      reason: "ip_allow_list",
-    });
-    // The message is authored copy, not a passthrough of GitHub's own wording.
-    expect(failure.message).not.toMatch(/authorization credentials/i);
-  });
+describe("writeFailure for other command failures", () => {
+  it.each(otherFailures)(
+    "maps $label to the expected write category",
+    ({ failure, category }) => {
+      expect(writeFailure(failure).category).toBe(category);
+    },
+  );
 
-  it("still classifies every other CommandFailure tag in its own category", () => {
-    expect(
-      writeFailure({ _tag: "CommandAuthenticationRequired" }).category,
-    ).toBe("auth");
-    expect(writeFailure({ _tag: "CommandRateLimited" }).category).toBe(
-      "rate_limited",
-    );
-    expect(writeFailure({ _tag: "CommandPendingReview" }).category).toBe(
-      "pending_review",
-    );
-    // A tag that carries no refusal status keeps the intent (issue #288).
-    expect(writeFailure({ _tag: "CommandFailed" }).category).toBe(
-      "unavailable",
-    );
-    expect(writeFailure({ _tag: "CommandTimedOut" }).category).toBe(
-      "unavailable",
-    );
+  it("does not expose raw stderr from an unclassified command failure", () => {
+    const rawStderr = "The request failed: authorization credentials expired.";
+    const failure = writeFailure({ _tag: "CommandFailed", stderr: rawStderr });
+
+    expect(failure.category).toBe("unavailable");
+    expect(failure.message).not.toContain(rawStderr);
   });
 });
