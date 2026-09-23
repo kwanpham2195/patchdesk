@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
+import {
+  CommandRunner,
+  NodeCommandExecutor,
+} from "../../src/adapters/github/command-runner";
 import { discoverExecutable } from "../../src/adapters/process/executable-discovery";
 import { startLoginShellEnvironmentImport } from "../../src/adapters/process/login-shell-import";
 
@@ -47,8 +50,14 @@ describe("readers asked for while the login shell is still running", () => {
       process.env.PATH = `${importedPathEntry}:${originalPath ?? ""}`;
     });
 
+    let executorDiscoveryReached = false;
     let spawnSettled = false;
-    const spawned = new CommandRunner()
+    const spawned = new CommandRunner(
+      new NodeCommandExecutor(async (executable) => {
+        executorDiscoveryReached = true;
+        return executable;
+      }),
+    )
       .runText({
         argv: [
           process.execPath,
@@ -66,8 +75,9 @@ describe("readers asked for while the login shell is still running", () => {
       discoverySettled = true;
       return path;
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await Promise.resolve();
 
+    expect(executorDiscoveryReached).toBe(false);
     expect(spawnSettled).toBe(false);
     expect(discoverySettled).toBe(false);
 
