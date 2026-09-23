@@ -35,7 +35,7 @@ For runtime work, make sure the dev log tails are live in herdr:
 
 - Log tail tab: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk/logs/patchdesk.jsonl`).
 - Dev tab: the `pnpm dev` console (renderer/api log lines and HMR output).
-- If either pane is gone or idle, start or restart only a process you own. Ask before restarting the maintainer's app or a shared 9233 session.
+- If either pane is gone or idle, restart it without asking: the maintainer has authorized restarting the dev app and log tail in their herdr panes (`wF:p3Q` for the app, run `REMOTE_DEBUGGING_PORT=9233 pnpm dev`; SIGINT the process group first if it is still running, since ctrl+c to the pane does not stop it). Say in the report that you restarted it. Never kill a process outside those panes.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
 - `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits.
@@ -52,7 +52,7 @@ For runtime work, make sure the dev log tails are live in herdr:
 - Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write. A renderer change is finished only when you have looked at a screenshot of the affected screen taken after the change loaded; an API response, a log line, or a passing test is not live verification, so say which you have.
 - `location.reload()` is swallowed by this app: a `window` global survives the call. Reload with `agent-browser reload` (CDP `Page.reload`).
 - After a change that adds or removes a Tailwind utility class, reload rather than waiting on HMR. Vite's regenerated CSS can fail to reach the running renderer, leaving the stale rule in `document.styleSheets` indefinitely.
-- CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, never kills a process it did not start, and asks before restarting 9233. `pnpm cdp:ready` checks the port: run it before claiming runtime evidence, reporting live verification, or delegating a live-verification slice.
+- CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, and never kills a process outside the dev panes. Restarting 9233 itself is pre-authorized; report it. `pnpm cdp:ready` checks the port: run it before claiming runtime evidence, reporting live verification, or delegating a live-verification slice.
 - Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
 - Before delegating or resuming a child, read `~/.agents/skills/delegated-execution/references/model-policy.md`. It owns role, model, effort, concurrency, and unavailable-model rules; the active harness owns launch and failure protocol.
