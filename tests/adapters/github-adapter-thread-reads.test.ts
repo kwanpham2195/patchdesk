@@ -120,7 +120,7 @@ describe("GitHubAdapter review-thread reads", () => {
     });
   });
 
-  it("loads a second reply page and preserves earlier replies when that page fails", async () => {
+  it("loads a second reply page and preserves earlier replies", async () => {
     const outer = JSON.parse(await payload("get-comments.json"));
     outer.data.repository.pullRequest.reviewThreads.nodes[0].comments.pageInfo =
       { hasNextPage: true, endCursor: "replies-page-2" };
@@ -144,11 +144,13 @@ describe("GitHubAdapter review-thread reads", () => {
         },
       },
     };
-    const complete = testAdapter(
-      orderedTransport([JSON.stringify(outer), JSON.stringify(replies)]),
-    );
+    const transport = orderedTransport([
+      JSON.stringify(outer),
+      JSON.stringify(replies),
+    ]);
+    const adapter = testAdapter(transport);
     await expect(
-      complete.getPullRequestComments({ profile, pr }),
+      adapter.getPullRequestComments({ profile, pr }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
@@ -161,12 +163,20 @@ describe("GitHubAdapter review-thread reads", () => {
         ],
       },
     });
+    expect(sent(transport, 1).argv).toContain("cursor=replies-page-2");
+  });
 
-    const partial = testAdapter(
-      orderedTransport([JSON.stringify(outer), { _tag: "CommandFailed" }]),
-    );
+  it("marks a failed reply page incomplete and preserves earlier replies", async () => {
+    const outer = JSON.parse(await payload("get-comments.json"));
+    outer.data.repository.pullRequest.reviewThreads.nodes[0].comments.pageInfo =
+      { hasNextPage: true, endCursor: "replies-page-2" };
+    const transport = orderedTransport([
+      JSON.stringify(outer),
+      { _tag: "CommandFailed" },
+    ]);
+    const adapter = testAdapter(transport);
     await expect(
-      partial.getPullRequestComments({ profile, pr }),
+      adapter.getPullRequestComments({ profile, pr }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {

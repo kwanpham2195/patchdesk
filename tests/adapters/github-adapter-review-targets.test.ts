@@ -92,11 +92,10 @@ describe("GitHubAdapter review target and merge writes", () => {
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
   });
 
-  it("treats a missing, typeless, or comment-less thread node as not found", async () => {
-    const missing = orderedTransport([
-      JSON.stringify({ data: { node: null } }),
-    ]);
-    const adapter = testAdapter(missing);
+  it("treats a missing thread node as not found", async () => {
+    const adapter = testAdapter(
+      orderedTransport([JSON.stringify({ data: { node: null } })]),
+    );
     await expect(
       adapter.getReviewThreadTarget({
         profile,
@@ -104,15 +103,38 @@ describe("GitHubAdapter review target and merge writes", () => {
         threadId: mustParse(parseGitHubThreadId("PRRT_gone")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
-    const wrongType = orderedTransport([
-      JSON.stringify({ data: { node: { id: "PRRT_thread" } } }),
-    ]);
-    const adapter2 = testAdapter(wrongType);
+  });
+
+  it("treats a thread node with no comments connection as not found", async () => {
+    const adapter = testAdapter(
+      orderedTransport([
+        JSON.stringify({ data: { node: { id: "PRRT_thread" } } }),
+      ]),
+    );
     await expect(
-      adapter2.getReviewThreadTarget({
+      adapter.getReviewThreadTarget({
         profile,
         pr,
         threadId: mustParse(parseGitHubThreadId("PRRT_thread")),
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: { found: false } });
+  });
+
+  it("treats a thread with no comment nodes as not found", async () => {
+    const adapter = testAdapter(
+      orderedTransport([
+        JSON.stringify({
+          data: {
+            node: { id: "PRRT_empty", comments: { nodes: [] } },
+          },
+        }),
+      ]),
+    );
+    await expect(
+      adapter.getReviewThreadTarget({
+        profile,
+        pr,
+        threadId: mustParse(parseGitHubThreadId("PRRT_empty")),
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
   });
@@ -152,8 +174,8 @@ describe("GitHubAdapter review target and merge writes", () => {
     expect(request).not.toContain("body");
   });
 
-  it("treats a foreign or non-authored comment as the completed target result", async () => {
-    const foreign = orderedTransport([
+  it("treats a comment on another pull request as not found", async () => {
+    const transport = orderedTransport([
       JSON.stringify({
         data: {
           node: {
@@ -170,7 +192,7 @@ describe("GitHubAdapter review target and merge writes", () => {
         },
       }),
     ]);
-    const adapter = testAdapter(foreign);
+    const adapter = testAdapter(transport);
     await expect(
       adapter.getReviewCommentTarget({
         profile,
@@ -178,7 +200,10 @@ describe("GitHubAdapter review target and merge writes", () => {
         commentId: "PRRC_foreign",
       }),
     ).resolves.toEqual({ _tag: "ok", value: { found: false } });
-    const notAuthor = orderedTransport([
+  });
+
+  it("reports a comment on this pull request that the viewer did not author", async () => {
+    const transport = orderedTransport([
       JSON.stringify({
         data: {
           node: {
@@ -195,9 +220,9 @@ describe("GitHubAdapter review target and merge writes", () => {
         },
       }),
     ]);
-    const adapter2 = testAdapter(notAuthor);
+    const adapter = testAdapter(transport);
     await expect(
-      adapter2.getReviewCommentTarget({ profile, pr, commentId: "PRRC_other" }),
+      adapter.getReviewCommentTarget({ profile, pr, commentId: "PRRC_other" }),
     ).resolves.toEqual({
       _tag: "ok",
       value: { found: true, viewerDidAuthor: false },

@@ -111,32 +111,36 @@ describe("GitHubAdapter direct summary writes", () => {
 });
 
 describe("GitHubAdapter merge outcome", () => {
-  it("reads merged, open, and closed-unmerged outcomes without a write command", async () => {
-    const adapter = testAdapter(
-      orderedTransport([
-        JSON.stringify({
-          state: "closed",
-          merged_at: "2026-08-01T00:00:00Z",
-          merge_commit_sha: headSha,
-        }),
-        JSON.stringify({ state: "open" }),
-        JSON.stringify({ state: "closed", merged_at: null }),
-      ]),
-    );
+  it.each([
+    {
+      description: "merged",
+      response: JSON.stringify({
+        state: "closed",
+        merged_at: "2026-08-01T00:00:00Z",
+        merge_commit_sha: headSha,
+      }),
+      outcome: {
+        state: "merged" as const,
+        mergeCommitSha: headSha,
+        mergedAt: "2026-08-01T00:00:00.000Z",
+      },
+    },
+    {
+      description: "open",
+      response: JSON.stringify({ state: "open" }),
+      outcome: { state: "open" as const },
+    },
+    {
+      description: "closed but unmerged",
+      response: JSON.stringify({ state: "closed", merged_at: null }),
+      outcome: { state: "closed_unmerged" as const },
+    },
+  ])("reads the $description outcome", async ({ response, outcome }) => {
+    const adapter = testAdapter(orderedTransport([response]));
 
-    await expect(
-      adapter.getMergeOutcome({ profile, pr }),
-    ).resolves.toMatchObject({
-      _tag: "ok",
-      value: { state: "merged", mergeCommitSha: headSha },
-    });
     await expect(adapter.getMergeOutcome({ profile, pr })).resolves.toEqual({
       _tag: "ok",
-      value: { state: "open" },
-    });
-    await expect(adapter.getMergeOutcome({ profile, pr })).resolves.toEqual({
-      _tag: "ok",
-      value: { state: "closed_unmerged" },
+      value: outcome,
     });
   });
 });

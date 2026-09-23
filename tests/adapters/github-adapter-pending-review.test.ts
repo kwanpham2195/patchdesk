@@ -15,107 +15,19 @@ import {
   sent,
 } from "./github-adapter-test-support";
 
+import {
+  account,
+  commentId,
+  reviewId,
+  reviewListUrl,
+  reviewNodeId,
+  reviewsPayload,
+  threadId,
+  threadNode,
+  threadsPayload,
+} from "./github-adapter-pending-review-test-support";
+
 describe("GitHubAdapter pending-review gateway", () => {
-  const account = "octo-dev";
-  const reviewId = 9001;
-  const reviewNodeId = "PRR_kwDORJzsQM7e6QwJ";
-  const threadId = "PRRT_kwDORJzsQM0001";
-  const commentId = "PRRC_kwDORJzsQM7fI2Rd";
-  const reviewListUrl = `repos/octo-org/patchdesk/pulls/42/reviews?per_page=100&page=1`;
-
-  function reviewsPayload(): string {
-    return JSON.stringify([
-      {
-        id: reviewId,
-        node_id: reviewNodeId,
-        user: { login: account },
-        body: "Summary body",
-        state: "PENDING",
-        commit_id: headSha,
-      },
-    ]);
-  }
-
-  /** One GraphQL review-thread node as GitHub reports it. */
-  type ThreadNodeFixture = {
-    readonly id: string;
-    readonly isOutdated: boolean;
-    readonly path: string;
-    readonly line: number;
-    readonly startLine: number;
-    readonly diffSide: string;
-    readonly startDiffSide?: string | undefined;
-    readonly comments: {
-      readonly nodes: ReadonlyArray<{
-        readonly id: string;
-        readonly body: string;
-        readonly createdAt: string;
-        readonly author: { readonly login: string };
-        readonly pullRequestReview: {
-          readonly id: string;
-          readonly state: string;
-        };
-      }>;
-      readonly pageInfo: {
-        readonly hasNextPage: boolean;
-        readonly endCursor: string | null;
-      };
-    };
-  };
-
-  function threadNode(
-    overrides: Partial<ThreadNodeFixture> = {},
-  ): ThreadNodeFixture {
-    return {
-      id: threadId,
-      isOutdated: false,
-      path: "src/review.ts",
-      line: 7,
-      startLine: 7,
-      diffSide: "RIGHT",
-      startDiffSide: "RIGHT",
-      comments: {
-        nodes: [
-          {
-            id: commentId,
-            body: "Comment body",
-            createdAt: "2026-08-09T11:34:50Z",
-            author: { login: account },
-            pullRequestReview: { id: reviewNodeId, state: "PENDING" },
-          },
-        ],
-        pageInfo: { hasNextPage: false, endCursor: null },
-      },
-      ...overrides,
-    };
-  }
-
-  function threadsPayload(
-    options: {
-      readonly node?: ThreadNodeFixture;
-      readonly pageInfo?: {
-        readonly hasNextPage: boolean;
-        readonly endCursor: string | null;
-      };
-    } = {},
-  ): string {
-    return JSON.stringify({
-      data: {
-        repository: {
-          pullRequest: {
-            reviewThreads: {
-              nodes: [options.node ?? threadNode()],
-              pageInfo: options.pageInfo ?? {
-                hasNextPage: false,
-                endCursor: null,
-              },
-            },
-          },
-        },
-      },
-    });
-  }
-
   it("returns None only for a complete result with no viewer pending review", async () => {
     const transport = orderedTransport([
       JSON.stringify([
@@ -194,7 +106,7 @@ describe("GitHubAdapter pending-review gateway", () => {
     });
   });
 
-  it("treats foreign-author and non-pending threads as non-actionable", async () => {
+  it("treats a foreign-author thread as non-actionable", async () => {
     const threads = threadsPayload({
       node: threadNode({
         startDiffSide: undefined,
@@ -224,43 +136,79 @@ describe("GitHubAdapter pending-review gateway", () => {
     ).resolves.toMatchObject({ _tag: "err" });
   });
 
-  it("fails closed on pagination, incomplete threads, and malformed data", async () => {
+  it("treats a thread from a non-pending review as non-actionable", async () => {
+    const transport = orderedTransport([
+      reviewsPayload(),
+      threadsPayload({
+        node: threadNode({
+          comments: {
+            nodes: [
+              {
+                id: commentId,
+                body: "Comment body",
+                createdAt: "2026-08-09T11:34:50Z",
+                author: { login: account },
+                pullRequestReview: { id: reviewNodeId, state: "COMMENTED" },
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        }),
+      }),
+    ]);
+    const adapter = testAdapter(transport);
+    await expect(
+      adapter.getViewerPendingReview({
+        profile,
+        pr,
+        account: mustParse(parseGitHubLogin(account)),
+      }),
+    ).resolves.toMatchObject({ _tag: "err" });
+  });
+
+  it("fails closed when the review list reaches the full-page boundary", async () => {
     const fullReviews = Array.from({ length: 100 }, (_, index) => ({
       id: index + 1,
       state: "COMMENTED",
       user: { login: "other" },
       submitted_at: "2026-08-08T00:00:00Z",
     }));
-    const paginated = testAdapter(
+    const adapter = testAdapter(
       orderedTransport([JSON.stringify(fullReviews)]),
     );
     await expect(
-      paginated.getViewerPendingReview({
+      adapter.getViewerPendingReview({
         profile,
         pr,
         account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toMatchObject({ _tag: "err" });
+  });
 
-    const threads = threadsPayload({
-      pageInfo: { hasNextPage: true, endCursor: "cursor" },
-    });
-    const incompleteThreads = testAdapter(
-      orderedTransport([reviewsPayload(), threads]),
+  it("fails closed when review-thread pagination is incomplete", async () => {
+    const adapter = testAdapter(
+      orderedTransport([
+        reviewsPayload(),
+        threadsPayload({
+          pageInfo: { hasNextPage: true, endCursor: "cursor" },
+        }),
+      ]),
     );
     await expect(
-      incompleteThreads.getViewerPendingReview({
+      adapter.getViewerPendingReview({
         profile,
         pr,
         account: mustParse(parseGitHubLogin(account)),
       }),
     ).resolves.toMatchObject({ _tag: "err" });
+  });
 
-    const malformed = testAdapter(
+  it("fails closed when the review-list response is malformed JSON", async () => {
+    const adapter = testAdapter(
       orderedTransport(["{not-json", threadsPayload()]),
     );
     await expect(
-      malformed.getViewerPendingReview({
+      adapter.getViewerPendingReview({
         profile,
         pr,
         account: mustParse(parseGitHubLogin(account)),
