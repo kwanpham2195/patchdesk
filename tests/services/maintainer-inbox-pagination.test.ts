@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { GitHubReader } from "../../src/adapters/github/github-adapter";
 import { MaintainerInboxService } from "../../src/services/maintainer-inbox-service";
 import { ok } from "../../src/domain/result";
 
@@ -10,184 +11,135 @@ const repository = {
   repo: "patchdesk",
 } as never;
 
+const profile = { id: "acme", ghAccount: "fixture" } as never;
+
+function serviceWithSearch(
+  searchMaintainerPullRequests: GitHubReader["searchMaintainerPullRequests"],
+): MaintainerInboxService {
+  return new MaintainerInboxService(
+    {
+      resolveAuthenticatedAccount: async () =>
+        ok({ host: "github.com", account: "fixture" }),
+      searchMaintainerPullRequests,
+    } as never,
+    { listSessions: async () => ok([]) } as never,
+    {
+      read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+      save: async () => ok(undefined),
+    } as never,
+    { now: () => "2026-08-01T00:00:00.000Z" as never },
+  );
+}
+
 describe("MaintainerInboxService page token validation", () => {
   it("advances an empty non-final repository page with its GraphQL continuation", async () => {
-    const service = new MaintainerInboxService(
-      // SAFETY: this GitHub fixture implements only the reader members used by list().
-      {
-        resolveAuthenticatedAccount: async () =>
-          ok({ host: "github.com", account: "fixture" }),
-        searchMaintainerPullRequests: async () =>
-          ok({
-            entries: [],
-            hasNextPage: true,
-            endCursor: "cursor-after-empty-page",
-            issueCount: 0,
-          }),
-      } as never,
-      // SAFETY: list() requires only the session-list seam from this fixture.
-      { listSessions: async () => ok([]) } as never,
-      // SAFETY: this cache fixture implements only the read/write seam used by list().
-      {
-        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
-        save: async () => ok(undefined),
-      } as never,
-      // SAFETY: this test clock returns a valid fixed ISO timestamp.
-      { now: () => "2026-08-01T00:00:00.000Z" as never },
-    );
+    const cursors: Array<string | undefined> = [];
+    const service = serviceWithSearch(async ({ cursor }) => {
+      cursors.push(cursor);
+      return ok(
+        cursors.length === 1
+          ? {
+              entries: [],
+              hasNextPage: true,
+              endCursor: "cursor-after-empty-page",
+              issueCount: 0,
+            }
+          : { entries: [], hasNextPage: false, issueCount: 0 },
+      );
+    });
 
-    // SAFETY: the minimal profile contains every field read by list().
-    const result = await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
-      repository,
-    );
+    const firstPage = await service.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 25,
+    });
+    if (firstPage._tag !== "ok" || firstPage.value.nextPageToken === undefined)
+      throw new Error("expected an opaque continuation token");
 
-    expect(result._tag).toBe("ok");
-    if (result._tag === "err") return;
-    expect(result.value.nextPageToken).toBeDefined();
-    const token = JSON.parse(
-      Buffer.from(result.value.nextPageToken ?? "", "base64url").toString(
-        "utf8",
-      ),
-    );
-    expect(token.repository).toEqual({
+    const secondPage = await service.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 25,
+      pageToken: firstPage.value.nextPageToken,
+    });
+    expect(secondPage._tag).toBe("ok");
+    expect(cursors).toEqual([undefined, "cursor-after-empty-page"]);
+  });
+
+  it("rejects a malformed token before repository search", async () => {
+    let searches = 0;
+    const service = serviceWithSearch(async () => {
+      searches += 1;
+      throw new Error("GitHub must not receive a malformed inbox token");
+    });
+
+    await expect(
+      service.list(profile, repository, {
+        filter: { state: "open" },
+        pageSize: 25,
+        pageToken: "not-a-page-token",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+    expect(searches).toBe(0);
+  });
+
+  it("rejects a service-issued token when the requested page size changes", async () => {
+    let searches = 0;
+    const service = serviceWithSearch(async () => {
+      searches += 1;
+      return ok({
+        entries: [],
+        hasNextPage: true,
+        endCursor: "next-page",
+        issueCount: 0,
+      });
+    });
+    const firstPage = await service.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 10,
+    });
+    if (firstPage._tag !== "ok" || firstPage.value.nextPageToken === undefined)
+      throw new Error("expected an opaque continuation token");
+
+    await expect(
+      service.list(profile, repository, {
+        filter: { state: "open" },
+        pageSize: 25,
+        pageToken: firstPage.value.nextPageToken,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+    expect(searches).toBe(1);
+  });
+
+  it("rejects a token from another repository before a second repository search", async () => {
+    const searchedRepositories: Array<string> = [];
+    const service = serviceWithSearch(async ({ repo }) => {
+      searchedRepositories.push(repo.repo);
+      return ok({
+        entries: [],
+        hasNextPage: true,
+        endCursor: "next-page",
+        issueCount: 0,
+      });
+    });
+    const otherRepository = {
       host: "github.com",
       owner: "octo-org",
-      repo: "patchdesk",
+      repo: "some-other-repo",
+    } as never;
+    const firstPage = await service.list(profile, otherRepository, {
+      filter: { state: "open" },
+      pageSize: 25,
     });
-    expect(token.cursor).toBe("cursor-after-empty-page");
-  });
-
-  it("rejects malformed tokens before reading GitHub", async () => {
-    const searchMaintainerPullRequests = async (): Promise<never> => {
-      throw new Error("GitHub must not receive malformed inbox tokens");
-    };
-    // SAFETY: test fixture narrows partial collaborators to the exact
-    // dependency surface exercised before malformed-token rejection.
-    const service = new MaintainerInboxService(
-      {
-        resolveAuthenticatedAccount: async () =>
-          ok({ host: "github.com", account: "fixture" }),
-        searchMaintainerPullRequests,
-      } as never,
-      { listSessions: async () => ok([]) } as never,
-      {
-        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
-        save: async () => ok(undefined),
-      } as never,
-      { now: () => "2026-08-01T00:00:00.000Z" as never },
-    );
-
-    await expect(
-      service.list(
-        // SAFETY: the malformed-token path only reads the profile id and
-        // account supplied by this focused fixture.
-        { id: "acme", ghAccount: "fixture" } as never,
-        repository,
-        {
-          filter: { state: "open" },
-          pageSize: 25,
-          pageToken: "not-a-page-token",
-        },
-      ),
-    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
-  });
-
-  it("rejects a page token whose recorded size does not match the requested size", async () => {
-    const searchMaintainerPullRequests = async (): Promise<never> => {
-      throw new Error("GitHub must not receive a size-mismatched inbox token");
-    };
-    // SAFETY: test fixture narrows partial collaborators to the exact
-    // dependency surface exercised before malformed-token rejection.
-    const service = new MaintainerInboxService(
-      {
-        resolveAuthenticatedAccount: async () =>
-          ok({ host: "github.com", account: "fixture" }),
-        searchMaintainerPullRequests,
-      } as never,
-      { listSessions: async () => ok([]) } as never,
-      {
-        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
-        save: async () => ok(undefined),
-      } as never,
-      { now: () => "2026-08-01T00:00:00.000Z" as never },
-    );
-
-    // SAFETY: the malformed-token path only reads the profile id and account
-    // supplied by this focused fixture.
-    const profile = { id: "acme", ghAccount: "fixture" } as never;
-
-    // Mint a token by hand that records a size of 10, then request it back
-    // at size 25 — the mismatch must be rejected before any GitHub read.
-    const tokenForSizeTen = Buffer.from(
-      JSON.stringify({
-        state: "open",
-        page: 2,
-        size: 10,
-        repository: {
-          host: "github.com",
-          owner: "octo-org",
-          repo: "patchdesk",
-        },
-      }),
-    ).toString("base64url");
+    if (firstPage._tag !== "ok" || firstPage.value.nextPageToken === undefined)
+      throw new Error("expected an opaque continuation token");
 
     await expect(
       service.list(profile, repository, {
         filter: { state: "open" },
         pageSize: 25,
-        pageToken: tokenForSizeTen,
+        pageToken: firstPage.value.nextPageToken,
       }),
     ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
-  });
-
-  it("rejects a page token minted for a different repository before any GitHub call", async () => {
-    const searchMaintainerPullRequests = async (): Promise<never> => {
-      throw new Error(
-        "GitHub must not receive a token minted for a different repository",
-      );
-    };
-    // SAFETY: test fixture narrows partial collaborators to the exact
-    // dependency surface exercised before wrong-repository token rejection.
-    const service = new MaintainerInboxService(
-      {
-        resolveAuthenticatedAccount: async () =>
-          ok({ host: "github.com", account: "fixture" }),
-        searchMaintainerPullRequests,
-      } as never,
-      { listSessions: async () => ok([]) } as never,
-      {
-        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
-        save: async () => ok(undefined),
-      } as never,
-      { now: () => "2026-08-01T00:00:00.000Z" as never },
-    );
-
-    // SAFETY: the wrong-repository-token path only reads the profile id and
-    // account supplied by this focused fixture.
-    const profile = { id: "acme", ghAccount: "fixture" } as never;
-
-    // Mint a token for a different repository than the one being requested.
-    const tokenForAnotherRepository = Buffer.from(
-      JSON.stringify({
-        state: "open",
-        page: 2,
-        size: 25,
-        repository: {
-          host: "github.com",
-          owner: "octo-org",
-          repo: "some-other-repo",
-        },
-      }),
-    ).toString("base64url");
-
-    await expect(
-      service.list(profile, repository, {
-        filter: { state: "open" },
-        pageSize: 25,
-        pageToken: tokenForAnotherRepository,
-      }),
-    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+    expect(searchedRepositories).toEqual(["some-other-repo"]);
   });
 });
 
@@ -219,39 +171,19 @@ describe("MaintainerInboxService page size", () => {
         },
       };
     }
-    // SAFETY: test fixture narrows a partial mock (only the members
-    // MaintainerInboxService actually calls) to its stricter collaborator
-    // and profile types.
-    const service = new MaintainerInboxService(
-      {
-        resolveAuthenticatedAccount: async () =>
-          ok({ host: "github.com", account: "fixture" }),
-        searchMaintainerPullRequests: async () =>
-          ok({
-            // 12 fixture rows from the one Selected repository — more than
-            // the requested page size, proving the service still bounds the
-            // page rather than trusting the reader to honor pageSize.
-            entries: Array.from({ length: 12 }, (_, index) =>
-              summaryAt(
-                index + 1,
-                `2026-08-${String(12 - index).padStart(2, "0")}T00:00:00.000Z`,
-              ),
-            ),
-            hasNextPage: false,
-            issueCount: 12,
-          }),
-      } as never,
-      { listSessions: async () => ok([]) } as never,
-      {
-        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
-        save: async () => ok(undefined),
-      } as never,
-      { now: () => "2026-08-01T00:00:00.000Z" as never },
-    );
-
-    // SAFETY: this minimal profile supplies exactly the fields list() reads;
-    // the one Selected repository returns 12 fixture rows above.
-    const profile = { id: "acme", ghAccount: "fixture" } as never;
+    const service = serviceWithSearch(async () => {
+      // SAFETY: this test reader fixture uses plain identifiers in adapter results.
+      return ok({
+        entries: Array.from({ length: 12 }, (_, index) =>
+          summaryAt(
+            index + 1,
+            `2026-08-${String(12 - index).padStart(2, "0")}T00:00:00.000Z`,
+          ),
+        ),
+        hasNextPage: false,
+        issueCount: 12,
+      }) as never;
+    });
 
     const result = await service.list(profile, repository, {
       filter: { state: "open" },
@@ -264,11 +196,6 @@ describe("MaintainerInboxService page size", () => {
     // size of 10 rather than the reader's own count.
     expect(result.value.rows).toHaveLength(10);
     expect(result.value.nextPageToken).toBeDefined();
-    const token = JSON.parse(
-      Buffer.from(result.value.nextPageToken ?? "", "base64url").toString(
-        "utf8",
-      ),
-    );
-    expect(token.size).toBe(10);
+    expect(result.value.pageSize).toBe(10);
   });
 });
