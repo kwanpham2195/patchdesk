@@ -138,7 +138,21 @@ describe("reassembling inline raw HTML", () => {
   });
 
   it("is idempotent, so a caller may group an already-grouped list", () => {
-    const once = groupMarkdownHtml(lex("before <b>bold</b> after"));
-    expect(groupMarkdownHtml(once)).toEqual(once);
+    const source = "before <b>bold</b> after";
+    const once = groupMarkdownHtml(lex(source));
+    expect(once.map((node) => node.type)).toEqual([
+      "text",
+      "htmlElement",
+      "text",
+    ]);
+    expect(once.map(textOf).join("")).toBe(source);
+
+    const twice = groupMarkdownHtml(once);
+    expect(twice.map((node) => node.type)).toEqual([
+      "text",
+      "htmlElement",
+      "text",
+    ]);
+    expect(twice.map(textOf).join("")).toBe(source);
   });
 });
