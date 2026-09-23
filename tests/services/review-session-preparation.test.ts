@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   GitHubReader,
@@ -129,6 +129,9 @@ function github(
   };
   return {
     counts: {
+      get pullRequests() {
+        return getPullRequest;
+      },
       get diffs() {
         return diffs;
       },
@@ -178,7 +181,7 @@ function github(
     | "getPullRequestChecks"
     | "getPullRequestDiff"
   > & {
-    readonly counts: { readonly diffs: number };
+    readonly counts: { readonly pullRequests: number; readonly diffs: number };
     readonly diffCalls: ReadonlyArray<DiffInput>;
     readonly commentReads: number;
     readonly checkReads: number;
@@ -601,15 +604,25 @@ describe("ReviewSessionPreparation", () => {
   });
 
   it("serializes concurrent preparation for one deterministic session", async () => {
-    let release: (() => void) | undefined;
+    let release!: () => void;
     const wait = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const fixture = await setup({ onDiff: async () => await wait });
+    let enteredDiff!: () => void;
+    const diffStarted = new Promise<void>((resolve) => {
+      enteredDiff = resolve;
+    });
+    const fixture = await setup({
+      onDiff: async () => {
+        enteredDiff();
+        await wait;
+      },
+    });
     const first = fixture.preparation.prepare({ profileId, pullRequest });
+    await diffStarted;
     const second = fixture.preparation.prepare({ profileId, pullRequest });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    release?.();
+    await vi.waitFor(() => expect(fixture.reader.counts.pullRequests).toBe(2));
+    release();
     const results = await Promise.all([first, second]);
 
     expect(results.map((result) => result._tag)).toEqual(["ok", "ok"]);
