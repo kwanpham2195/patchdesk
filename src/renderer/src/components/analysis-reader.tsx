@@ -261,13 +261,11 @@ export function AnalysisReader({
                 ? "No findings need attention"
                 : "Needs attention"}
           </CardTitle>
-          <CardDescription>
-            {hasNoGeneratedFindings
-              ? "Analysis generated no findings for this Review."
-              : unhandledFindings.length === 0
-                ? "All findings are already handled."
-                : "Resolve or add each item before you finish the review."}
-          </CardDescription>
+          {hasNoGeneratedFindings || unhandledFindings.length === 0 ? null : (
+            <CardDescription>
+              Resolve or add each item before you finish the review.
+            </CardDescription>
+          )}
           <CardAction>
             <CopyFixPromptButton
               disabled={
@@ -284,7 +282,7 @@ export function AnalysisReader({
         {hasNoGeneratedFindings ? (
           <CardContent>
             <p role="status" aria-label="No findings">
-              There is nothing to add to review or dismiss.
+              Nothing to add or dismiss.
             </p>
           </CardContent>
         ) : (
@@ -322,9 +320,6 @@ export function AnalysisReader({
       <Card size="sm">
         <CardHeader>
           <CardTitle>What changed</CardTitle>
-          <CardDescription>
-            The implementation in this retained Review snapshot.
-          </CardDescription>
         </CardHeader>
         <CardContent className="max-w-4xl">
           <GeneratedMarkdown markdown={result.changeSummary} />
@@ -404,7 +399,7 @@ function CopyFixPromptButton({
       size="sm"
       variant="outline"
       disabled={disabled}
-      title="Copy the findings as a prompt for a local coding agent"
+      title="For Codex or Claude Code"
       onClick={() => {
         navigator.clipboard
           .writeText(buildPrompt())
@@ -694,8 +689,7 @@ function AnalysisFindingRow({
       )}
       {reviewStatus === "locked" ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          Patchdesk cannot safely change this Finding because its exact GitHub
-          comment is not confirmed.
+          Locked: GitHub comment unconfirmed.
         </p>
       ) : null}
       {actionError === undefined ? null : (

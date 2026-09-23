@@ -31,7 +31,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { walkthroughCopy } from "@/review-copy";
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import { cn } from "@/lib/utils";
 
@@ -480,8 +479,8 @@ export function NarrativeWalkthrough({
             {discussionUnavailable === undefined ? null : (
               <p role="status" className="text-sm text-muted-foreground">
                 {discussionUnavailable === "stale"
-                  ? "This Walkthrough is for an older revision. Regenerate it to see inline discussion."
-                  : "Inline discussion is unavailable or incomplete. Refresh GitHub state to check for replies."}
+                  ? "Older revision; regenerate to see replies."
+                  : "Discussion unavailable; refresh to check."}
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
@@ -520,23 +519,17 @@ export function NarrativeWalkthrough({
             </div>
             {walkthrough.citationStatus === "verified" ? null : (
               <Alert>
-                <AlertTitle>Diff citations need regeneration.</AlertTitle>
+                <AlertTitle>Diff links need regeneration</AlertTitle>
                 <AlertDescription>
-                  This retained Walkthrough predates verified hunk aliases, so
-                  Patchdesk keeps its prose but withholds ungrounded diff links.
-                  Run it again to rebuild evidence from the alias manifest.
+                  Rerun this Walkthrough to restore them.
                 </AlertDescription>
               </Alert>
             )}
             {activeSection.hunks.length === 0 ? (
               <Alert>
-                <AlertTitle>
-                  This section has no verified supporting hunks.
-                </AlertTitle>
+                <AlertTitle>No verified hunks for this section</AlertTitle>
                 <AlertDescription>
-                  Its prose is retained, while Patchdesk routes source hunks to
-                  Support until a regenerated Walkthrough verifies the
-                  citations.
+                  Its hunks are listed under Support until you regenerate.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -599,29 +592,16 @@ export function NarrativeWalkthrough({
                   </Button>
                 </>
               )}
-              <span
-                role="status"
-                className="text-xs text-muted-foreground"
-                aria-label="Section position"
-              >
-                {sectionPosition} of {sections.length}
-              </span>
+              {focused ? (
+                <span
+                  role="status"
+                  className="text-xs text-muted-foreground"
+                  aria-label="Section position"
+                >
+                  {sectionPosition} of {sections.length}
+                </span>
+              ) : null}
             </div>
-            <Separator />
-            <p
-              className="text-xs text-muted-foreground"
-              aria-label="Support coverage"
-            >
-              Support stays compact so it does not interrupt the Walkthrough.
-              Browse its bounded list in the chapter rail, then return to Files
-              for full diff navigation.
-            </p>
-            <p
-              className="text-xs text-muted-foreground"
-              aria-label="Walkthrough copy"
-            >
-              {walkthroughCopy("ready").reassurance}
-            </p>
           </article>
         </ScrollArea>
       </div>

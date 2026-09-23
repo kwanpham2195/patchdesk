@@ -48,7 +48,7 @@ export function FindingEvidenceHunk({
           : `–${evidence.selectedRange.end}`}
       </p>
       <div
-        aria-label="Resizable code evidence"
+        aria-label="Code evidence"
         className="max-h-[75vh] resize-y overflow-auto"
       >
         <ReviewDiffView

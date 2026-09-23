@@ -29,12 +29,9 @@ export function ReachBlock({
   const rows = useMemo(() => briefReachRows(reach), [reach]);
   return (
     <section aria-label="Reach" className="flex min-w-0 flex-col gap-2">
-      <h3 className="flex items-baseline gap-2 text-sm font-medium">
-        Reach
-        <span className="text-xs font-normal text-muted-foreground">
-          what depends on the changed code, one hop, by text match
-        </span>
-      </h3>
+      {/* The method line at the foot of this block already states the hop
+          count and that the counts came from a text search. */}
+      <h3 className="text-sm font-medium">Reach</h3>
       <ReachListRow row={rows.contracts} />
       <ReachRow label="Surfaces crossed" hint="each flag cites its path">
         <div className="flex flex-wrap gap-1.5">

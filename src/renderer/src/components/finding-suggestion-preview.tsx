@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 
 import {
   DEFAULT_REVIEW_VIEW_PREFERENCES,
@@ -24,6 +24,7 @@ export function FindingSuggestionPreview({
   readonly target: SuggestionTarget;
   readonly code: string;
 }): React.JSX.Element {
+  const headingId = useId();
   const preview = useMemo(
     () => buildSuggestionPreviewPatch(target, code),
     [code, target],
@@ -34,17 +35,17 @@ export function FindingSuggestionPreview({
   }`;
   return (
     <section
-      aria-label={`Suggested change ${range}`}
+      aria-labelledby={headingId}
       className="mt-3 overflow-hidden rounded-md border"
     >
-      <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <p
+        id={headingId}
+        className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+      >
         Suggested change
         <span className="ml-2 font-mono">{range}</span>
       </p>
-      <div
-        aria-label="Resizable suggested change"
-        className="max-h-[75vh] resize-y overflow-auto"
-      >
+      <div className="max-h-[75vh] resize-y overflow-auto">
         <ReviewDiffView
           patch={preview}
           parsedFiles={parsed.files}

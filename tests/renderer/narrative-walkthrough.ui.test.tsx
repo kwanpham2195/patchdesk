@@ -384,7 +384,7 @@ describe("narrative walkthrough takeover", () => {
     expect(screen.getByText("Support")).toBeTruthy();
   });
 
-  it("keeps Support compact and withholds legacy unverified citations", () => {
+  it("withholds legacy unverified citations", () => {
     const walkthrough = {
       ...buildWalkthrough(),
       citationStatus: "unverified" as const,
@@ -397,8 +397,7 @@ describe("narrative walkthrough takeover", () => {
         actions={buildActions()}
       />,
     );
-    expect(screen.getByText("Diff citations need regeneration.")).toBeTruthy();
-    expect(screen.getByText(/Support stays compact/)).toBeTruthy();
+    expect(screen.getByText("Diff links need regeneration")).toBeTruthy();
     expect(screen.queryByText("@@ -1 +1 @@")).toBeNull();
   });
 
@@ -434,9 +433,6 @@ describe("narrative walkthrough takeover", () => {
       screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
     ).toContain("0 of 0");
     expect(
-      screen.getByRole("status", { name: "Section position" }).textContent,
-    ).toContain("0 of 0");
-    expect(
       screen.queryByRole("button", { name: "Previous section" }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Next section" })).toBeNull();
@@ -463,9 +459,6 @@ describe("narrative walkthrough takeover", () => {
       screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
     ).toContain("0 of 1");
     expect(
-      screen.getByRole("status", { name: "Section position" }).textContent,
-    ).toContain("1 of 1");
-    expect(
       screen.queryByRole("button", { name: "Previous section" }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Next section" })).toBeNull();
@@ -485,34 +478,22 @@ describe("narrative walkthrough takeover", () => {
     expect(
       screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
     ).toContain("1/2");
-    expect(
-      screen.getByRole("status", { name: "Section position" }).textContent,
-    ).toContain("1 of 2");
     const next = screen.getByRole("button", { name: "Next section" });
     fireEvent.click(next);
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
     expect(
       screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
     ).toContain("2/2");
-    expect(
-      screen.getByRole("status", { name: "Section position" }).textContent,
-    ).toContain("2 of 2");
     fireEvent.click(screen.getByRole("button", { name: "Previous section" }));
     expect(
       screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
     ).toContain("1/2");
-    expect(
-      screen.getByRole("status", { name: "Section position" }).textContent,
-    ).toContain("1 of 2");
     fireEvent.click(
       screen.getByRole("button", { name: "How reads stay read-only" }),
     );
     expect(
       screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
     ).toContain("2/2");
-    expect(
-      screen.getByRole("status", { name: "Section position" }).textContent,
-    ).toContain("2 of 2");
     expect(document.activeElement).toBe(
       screen.getByRole("heading", { name: "How reads stay read-only" }),
     );

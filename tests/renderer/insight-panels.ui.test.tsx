@@ -79,13 +79,9 @@ it("offers Review re-preparation for a missing worktree without duplicating the 
   );
 
   expect(
-    screen.getByText(
-      "This Review’s local files are unavailable. Re-prepare the Review, then run this Insight again.",
-    ),
+    screen.getByText("This Review’s local files are unavailable."),
   ).not.toBeNull();
-  expect(screen.getAllByText("No retained result is available.")).toHaveLength(
-    1,
-  );
+  expect(screen.getAllByText("No retained result.")).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Re-prepare Review" }));
   await waitFor(() => expect(onReprepare).toHaveBeenCalledOnce());
   expect(onRetry).toHaveBeenCalledOnce();

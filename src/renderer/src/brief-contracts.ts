@@ -268,7 +268,7 @@ export function briefReachRows(reach: BriefReach): BriefReachRows {
     untested: {
       label: "Untested reach",
       hint: "changed code with no test in this PR",
-      empty: "Every changed file is named by a test this pull request changes.",
+      empty: "Every changed file has a test in this PR.",
       items: reach.untested.map((item) => ({
         name: item.path,
         count: "changed, no test in this PR names it",
@@ -291,10 +291,10 @@ export function briefReachRows(reach: BriefReach): BriefReachRows {
 
 /** Why the Reach block is missing, in the one line the reader shows in its place. */
 export const BRIEF_REACH_UNAVAILABLE_LABELS = {
-  worktree_unavailable: "the represented worktree could not be read",
-  head_mismatch: "the worktree no longer stands at this revision",
-  search_failed: "the search over the worktree failed",
-  timed_out: "the search over the worktree ran out of time",
+  worktree_unavailable: "worktree unreadable",
+  head_mismatch: "worktree revision changed",
+  search_failed: "search failed",
+  timed_out: "search timed out",
 } as const satisfies Record<NonNullable<Brief["reachUnavailable"]>, string>;
 
 /** A Brief the projection did not carry reads as one that was never generated. */

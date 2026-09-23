@@ -40,9 +40,9 @@ function insightRequestFailureMessage(
   if (requestFailure === "start")
     return `${insightName} could not start. Check the run options and try again.`;
   if (requestFailure === "cancel")
-    return `${insightName} cancellation failed. The current run is still active; try cancelling again.`;
+    return `${insightName} cancel failed; still running. Try again.`;
   if (requestFailure === "status")
-    return `${insightName} status could not be refreshed. The current run is still active; Patchdesk will check again.`;
+    return `${insightName} status refresh failed; still running.`;
   return undefined;
 }
 function InsightDocumentIdentity({
@@ -90,7 +90,7 @@ function InsightDocumentIdentity({
   );
 }
 export const TERMINAL_REVIEW_INSIGHT_REASON =
-  "This Review is merged or closed. Generating an Insight needs an open Review; retained Insights stay readable.";
+  "This Review is merged or closed; Insights cannot be generated.";
 
 function hasAvailableInsightProvider(
   configuration: InsightRunConfiguration,
@@ -144,8 +144,8 @@ function InsightAvailabilityErrors({
       {unavailable ? (
         <InlineError className="py-2">
           {catalogError || !hasAvailableProvider
-            ? "No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload."
-            : "No API-key model is configured. Open a run and select Codex CLI account to load its models."}
+            ? "No model configured. Add a provider API key, then reload."
+            : "No API-key model configured. Open a run and pick Codex CLI account."}
         </InlineError>
       ) : null}
       {requestFailureMessage === undefined ? null : (
@@ -421,7 +421,7 @@ export function InsightsSlot({
                 requestFailureMessage={selectedRequestFailureMessage}
               />
               {selectedProjection?.artifactStatus === "mismatch" ? (
-                <InsightArtifactMismatch type={selectedInsight} />
+                <InsightArtifactMismatch />
               ) : null}
               <div
                 data-review-insight-content

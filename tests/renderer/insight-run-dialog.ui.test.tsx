@@ -173,10 +173,5 @@ describe("InsightRunDialog Codex model loading", () => {
       screen.getByRole("button", { name: "Load Codex models" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Refresh models" })).toBeNull();
-    expect(
-      screen.getByText(
-        "Codex models are loaded only after this explicit action.",
-      ),
-    ).toBeTruthy();
   });
 });

@@ -1,55 +1,13 @@
 import type { ContextualMessages } from "./api-client";
 
 /**
- * Shared renderer copy map for recovery, cleanup, and walkthrough surfaces.
+ * Shared renderer copy map for recovery and cleanup surfaces.
  *
- * The Design app and the production renderer both render from these keys.
  * Persisted action labels and internal state names never reach the UI; this
  * module maps stable action and notice keys to friendly copy that satisfies
  * the plan's "no storage, quarantine, session, attempt, worktree, runtime, or
  * raw error terms" rule.
  */
-
-export type WalkthroughLifecycleKey =
-  | "idle"
-  | "generating"
-  | "ready"
-  | "failed"
-  | "stale";
-
-/** The two strings every walkthrough lifecycle state shows. */
-type WalkthroughCopy = {
-  readonly headline: string;
-  readonly reassurance: string;
-};
-
-const WALKTHROUGH_COPY = {
-  idle: {
-    headline: "Generate Walkthrough",
-    reassurance: "Reads the saved patch only; no GitHub writes.",
-  },
-  generating: {
-    headline: "Generating walkthrough…",
-    reassurance: "This view keeps its place while generating.",
-  },
-  ready: {
-    headline: "Walkthrough ready",
-    reassurance: "Use Back to files when finished.",
-  },
-  failed: {
-    headline: "Walkthrough didn't finish",
-    reassurance: "Files mode still works. Try again, or stay with the Review.",
-  },
-  stale: {
-    headline: "Walkthrough is no longer current",
-    reassurance: "The patch changed. Generate a new walkthrough.",
-  },
-} satisfies Record<WalkthroughLifecycleKey, WalkthroughCopy>;
-
-/** Return the friendly walkthrough copy for a stable lifecycle key. */
-export function walkthroughCopy(key: WalkthroughLifecycleKey): WalkthroughCopy {
-  return WALKTHROUGH_COPY[key];
-}
 
 export type CleanupActionKey = "clear_cache" | "clear_local_review_data";
 

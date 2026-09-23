@@ -31,6 +31,9 @@ export const INSIGHT_NOUNS = {
   walkthrough: "Walkthrough",
   brief: "Brief",
 } as const satisfies Record<InsightRunDialogType, string>;
+/** Shown wherever loading the Codex model list failed. */
+const CODEX_MODELS_UNAVAILABLE =
+  "Codex models unavailable. Check the Codex CLI login.";
 export type InsightModelOption = {
   readonly id: string;
   readonly label: string;
@@ -104,10 +107,7 @@ export function InsightRunDialog({
       >
         <DialogHeader>
           <DialogTitle>{actionLabel}</DialogTitle>
-          <DialogDescription>
-            Choose the provider, model, and reasoning effort before starting
-            this bounded {noun} run.
-          </DialogDescription>
+          <DialogDescription>{noun} for this revision.</DialogDescription>
         </DialogHeader>
         {errorMessage === undefined ? null : (
           <Alert variant="destructive">
@@ -151,7 +151,6 @@ export function InsightRunDialog({
           </label>
           {provider === "codex-cli-account" && models.length === 0 ? (
             <div className="grid gap-2 rounded-lg border border-dashed p-3 text-sm">
-              <p>Codex models are loaded only after this explicit action.</p>
               <Button
                 variant="outline"
                 disabled={codexActivationPending || pending}
@@ -163,9 +162,8 @@ export function InsightRunDialog({
               </Button>
               {codexActivationError ? (
                 <Alert variant="destructive">
-                  <AlertTitle>Codex models are unavailable.</AlertTitle>
                   <AlertDescription>
-                    Check external login and the app launch PATH.
+                    {CODEX_MODELS_UNAVAILABLE}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -186,9 +184,8 @@ export function InsightRunDialog({
               </Button>
               {codexActivationError ? (
                 <Alert variant="destructive">
-                  <AlertTitle>Codex models are unavailable.</AlertTitle>
                   <AlertDescription>
-                    Check external login and the app launch PATH.
+                    {CODEX_MODELS_UNAVAILABLE}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -245,19 +242,11 @@ export function InsightRunDialog({
               </SelectContent>
             </Select>
           </label>
-          <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-            Confirmation: {provider === "pi" ? "API key" : "Codex CLI account"}{" "}
-            using {selectedModel?.label ?? model ?? "no model"} with {reasoning}{" "}
-            reasoning will receive the prepared pull-request artifacts
-            {provider === "codex-cli-account"
-              ? " and may inspect the immutable represented-review worktree with read-only tools"
-              : ""}
-            . Patchdesk retains all validation, Finding, publication, and merge
-            authority.
-            {selectedModel?.cost === undefined
-              ? null
-              : ` List price $${selectedModel.cost.input.toFixed(2)} input / $${selectedModel.cost.output.toFixed(2)} output per million tokens; your account's billing may differ.`}
-          </p>
+          {selectedModel?.cost === undefined ? null : (
+            <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {`List price $${selectedModel.cost.input.toFixed(2)} input / $${selectedModel.cost.output.toFixed(2)} output per million tokens; billing may differ.`}
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button

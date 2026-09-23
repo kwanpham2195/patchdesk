@@ -477,9 +477,7 @@ describe("InsightsSlot run requests", () => {
         screen
           .getAllByRole("alert")
           .some((alert) =>
-            alert.textContent?.includes(
-              "Analysis status could not be refreshed",
-            ),
+            alert.textContent?.includes("Analysis status refresh failed"),
           ),
       ).toBe(true),
     );
@@ -487,7 +485,7 @@ describe("InsightsSlot run requests", () => {
       screen
         .getAllByRole("alert")
         .find((alert) =>
-          alert.textContent?.includes("Analysis status could not be refreshed"),
+          alert.textContent?.includes("Analysis status refresh failed"),
         )
         ?.getAttribute("data-slot"),
     ).toBe("inline-error");
@@ -540,7 +538,7 @@ describe("InsightsSlot run requests", () => {
       ).toBeTruthy(),
     );
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Analysis cancellation failed");
+    expect(alert.textContent).toContain("Analysis cancel failed");
     expect(alert.getAttribute("data-slot")).toBe("inline-error");
     expect(screen.getByText("Analysis is running")).toBeTruthy();
   });

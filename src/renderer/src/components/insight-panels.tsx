@@ -44,12 +44,9 @@ const GENERATE_LABELS = {
 } as const satisfies Record<InsightRunDialogType, string>;
 /** What each Insight gives the reviewer, shown before one has been generated. */
 const INSIGHT_PURPOSES = {
-  analysis:
-    "Weighs the change and reports findings with evidence so you can decide whether it should merge.",
-  walkthrough:
-    "Explains how the changed code behaves now, chapter by chapter, so you can read it in order.",
-  brief:
-    "Maps what changed structurally and where to start, so you can orient before reading the diff.",
+  analysis: "Findings and a merge verdict.",
+  walkthrough: "Chapter-by-chapter read of the change.",
+  brief: "Structure and where to start.",
 } as const satisfies Record<InsightRunDialogType, string>;
 const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
 const INSIGHT_EMPTY_CLASS = "mx-auto max-w-2xl justify-start py-10";
@@ -237,13 +234,9 @@ function InsightOverviewCard({
           className="ml-auto size-4 text-muted-foreground ui-state-transition group-hover/card:text-foreground"
         />
       </span>
-      {headline === undefined ? (
-        <span className="line-clamp-2 min-h-10 text-sm text-muted-foreground">
-          Not generated for this revision
-        </span>
-      ) : (
-        <span className="line-clamp-2 min-h-10 text-sm">{headline}</span>
-      )}
+      {/* The status badge below already names an absent document, so an
+          empty headline keeps the card's height and says nothing twice. */}
+      <span className="line-clamp-2 min-h-10 text-sm">{headline ?? ""}</span>
       <span className="mt-auto flex items-center gap-1.5 text-xs text-muted-foreground">
         <InsightStatusBadge status={projection.status} />
         {projection.retained === undefined ? null : (
@@ -280,7 +273,7 @@ export function InsightRunning({
         <EmptyDescription>
           {projection?.activeRun === undefined ||
           activity?.phase === "preparing" ? (
-            "Preparing a bounded run…"
+            "Preparing…"
           ) : (
             <RelativeTime
               iso={projection.activeRun.startedAt}
@@ -388,16 +381,14 @@ export function InsightFailed({
       <AlertDescription className="basis-full space-y-1">
         <p>{message}</p>
         {projection.retained === undefined ? (
-          <p>No retained result is available.</p>
+          <p>No retained result.</p>
         ) : (
           <p>
-            Retained evidence from {projection.retained.headSha.slice(0, 8)} is
-            still readable: {retainedDescription ?? "retained document"}
+            Retained from {projection.retained.headSha.slice(0, 8)}:{" "}
+            {retainedDescription ?? "retained document"}
           </p>
         )}
-        {reprepareFailed ? (
-          <p>The Review could not be re-prepared. Try again.</p>
-        ) : null}
+        {reprepareFailed ? <p>The Review could not be re-prepared.</p> : null}
       </AlertDescription>
       <Button
         size="sm"
@@ -424,21 +415,21 @@ export function InsightFailed({
 function failureMessage(category: InsightFailureCategory | undefined): string {
   switch (category) {
     case "authentication_required":
-      return "Authentication is required. Sign in to the provider, then run this Insight again.";
+      return "The provider needs authentication.";
     case "rate_limited":
-      return "The provider rate limit was reached. Wait a moment, then run this Insight again.";
+      return "Provider rate limit reached.";
     case "runtime_unavailable":
-      return "The Insight runtime is unavailable. Check the local runtime, then try again.";
+      return "The Insight runtime is unavailable.";
     case "review_worktree_unavailable":
-      return "This Review’s local files are unavailable. Re-prepare the Review, then run this Insight again.";
+      return "This Review’s local files are unavailable.";
     case "timed_out":
-      return "The Insight run timed out. Try again or choose a smaller scope.";
+      return "The Insight run timed out.";
     case "execution_failed":
-      return "The provider refused or failed this run. Check the provider account and the run options, then try again.";
+      return "The provider refused or failed this run.";
     case "invalid_result":
-      return "The provider answered with a result this app could not read. Try again.";
+      return "The provider answered with a result this app could not read.";
     case "unexpected_failure":
-      return "The Insight failed unexpectedly. Try again.";
+      return "The Insight failed unexpectedly.";
     default:
       return "This Insight run failed.";
   }
@@ -463,10 +454,8 @@ export function InsightOutdated({
         </EmptyMedia>
         <EmptyTitle>{INSIGHT_NOUNS[type]} is outdated</EmptyTitle>
         <EmptyDescription>
-          Retained revision {retainedRevision?.slice(0, 8) ?? "unknown"} differs
-          from current revision {currentRevision.slice(0, 8)}. This evidence
-          remains readable, but it cannot navigate current code or change the
-          Review draft.
+          Retained at {retainedRevision?.slice(0, 8) ?? "unknown"}; current is{" "}
+          {currentRevision.slice(0, 8)}. Rerun to navigate current code.
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
@@ -478,17 +467,11 @@ export function InsightOutdated({
   );
 }
 
-export function InsightArtifactMismatch({
-  type,
-}: {
-  readonly type: InsightSelection;
-}): React.JSX.Element {
+export function InsightArtifactMismatch(): React.JSX.Element {
   return (
     <Alert variant="warning" className="px-3 py-2">
       <AlertDescription>
-        Stored {type === "overview" ? "Insight" : type} source bytes do not
-        match the retained revision. Source scope and hunk navigation are
-        unavailable; the bounded document remains readable.
+        Source no longer matches this revision; hunk navigation is unavailable.
       </AlertDescription>
     </Alert>
   );
