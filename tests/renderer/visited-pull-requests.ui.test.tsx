@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +33,7 @@ let desktop: DesktopDouble | undefined;
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   desktop?.restore();
   desktop = undefined;
   window.localStorage.clear();
@@ -444,7 +452,86 @@ describe("VisitedPullRequests", () => {
     });
     expect(headings(column)).toEqual(["Today", "Earlier"]);
   });
+
+  it.each([
+    { trigger: "hover" as const },
+    { trigger: "keyboard focus" as const },
+  ])(
+    "scrolls a clipped title after the delay under $trigger and stops when it ends",
+    async ({ trigger }) => {
+      vi.useFakeTimers();
+      renderColumn({ rows: [titled] });
+      const row = await findRow(/#125/);
+      const title = measuredTitle(row, { scrollWidth: 384, clientWidth: 230 });
+
+      // user-event's pointer sequence stalls under fake timers, so the events are dispatched directly.
+      act(() => {
+        if (trigger === "hover") fireEvent.pointerOver(row);
+        else row.focus();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(title.dataset.marquee).toBe("idle");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(title.dataset.marquee).toBe("running");
+      expect(title.style.getPropertyValue("--marquee-distance")).toBe("154px");
+      // The full title stays the row's native tooltip.
+      expect(row.title).toBe("Prototype: three sidebar variants for #119");
+
+      act(() => {
+        if (trigger === "hover") fireEvent.pointerOut(row);
+        else row.blur();
+      });
+      expect(title.dataset.marquee).toBe("idle");
+    },
+  );
+
+  it.each([
+    { reason: "the title fits", scrollWidth: 230, reducedMotion: false },
+    { reason: "motion is reduced", scrollWidth: 384, reducedMotion: true },
+  ])(
+    "keeps the title still on hover when $reason",
+    async ({ scrollWidth, reducedMotion }) => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
+      }));
+      vi.useFakeTimers();
+      renderColumn({ rows: [titled] });
+      const row = await findRow(/#125/);
+      const title = measuredTitle(row, { scrollWidth, clientWidth: 230 });
+
+      act(() => {
+        fireEvent.pointerOver(row);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(title.dataset.marquee).toBe("idle");
+    },
+  );
 });
+
+async function findRow(name: RegExp): Promise<HTMLElement> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  return screen.getByRole("button", { name });
+}
+
+/** The row's title with the widths jsdom cannot lay out, so it reads as clipped or fitting. */
+function measuredTitle(
+  row: HTMLElement,
+  widths: { readonly scrollWidth: number; readonly clientWidth: number },
+): HTMLElement {
+  const title = row.querySelector<HTMLElement>("[data-marquee]");
+  if (title === null) throw new Error("The row has no title.");
+  Object.defineProperty(title, "scrollWidth", { value: widths.scrollWidth });
+  Object.defineProperty(title, "clientWidth", { value: widths.clientWidth });
+  return title;
+}
 
 /** The date headers standing in the column, top to bottom. */
 function headings(column: HTMLElement): ReadonlyArray<string> {

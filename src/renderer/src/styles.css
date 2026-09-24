@@ -461,6 +461,29 @@ html[data-appearance] body {
   transition: transform 150ms var(--ease-in-out);
 }
 
+/* A clipped Visited row title scrolls to its end and back, holding at each
+   end; the row sets the distance and duration only when motion is allowed. */
+@keyframes visited-title-marquee {
+  0%,
+  5% {
+    transform: translateX(0);
+  }
+  85%,
+  100% {
+    transform: translateX(calc(-1 * var(--marquee-distance)));
+  }
+}
+
+[data-marquee="running"] {
+  text-overflow: clip;
+}
+
+[data-marquee="running"] > span {
+  display: inline-block;
+  animation: visited-title-marquee var(--marquee-duration) linear infinite
+    alternate;
+}
+
 /* Readers who ask the OS for less motion get every transition and animation collapsed to an instant. */
 @media (prefers-reduced-motion: reduce) {
   *,

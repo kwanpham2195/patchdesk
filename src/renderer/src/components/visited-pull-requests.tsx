@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -223,12 +223,21 @@ function VisitedRow({
   readonly onFocus: () => void;
 }): React.JSX.Element {
   const { title, reference } = visitedRowLabels(row, scope);
+  const marquee = useTitleMarquee();
   return (
     <button
       type="button"
       id={`visited-row-${row.reviewId}`}
       tabIndex={tabStop ? 0 : -1}
-      onFocus={onFocus}
+      onFocus={(event) => {
+        onFocus();
+        // A click also focuses the row, and that focus must not keep the title moving once the pointer leaves.
+        if (event.currentTarget.matches(":focus-visible"))
+          marquee.engage("focus");
+      }}
+      onBlur={() => marquee.release("focus")}
+      onPointerEnter={() => marquee.engage("hover")}
+      onPointerLeave={() => marquee.release("hover")}
       aria-current={selected ? "page" : undefined}
       aria-disabled={selected ? true : undefined}
       title={title}
@@ -246,12 +255,15 @@ function VisitedRow({
       ) : null}
       <span className="flex min-w-0 flex-1 flex-col">
         <span
+          ref={marquee.titleRef}
+          data-marquee={marquee.style === undefined ? "idle" : "running"}
+          style={marquee.style}
           className={cn(
             "min-w-0 truncate text-[13px] leading-snug",
             selected ? "font-semibold" : "font-medium",
           )}
         >
-          {title}
+          <span>{title}</span>
         </span>
         <span className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted-foreground">
           {/* The age is computed once per render; nothing ticks it. "opened"
@@ -291,6 +303,67 @@ function VisitedRow({
       </span>
     </button>
   );
+}
+
+const MARQUEE_DELAY_MS = 500;
+const MARQUEE_PX_PER_SECOND = 30;
+// Share of each pass spent moving; the rest holds at the two ends so both can be read.
+const MARQUEE_TRAVEL_SHARE = 0.8;
+
+type MarqueeTrigger = "hover" | "focus";
+
+type TitleMarquee = {
+  readonly titleRef: React.RefObject<HTMLSpanElement | null>;
+  /** The scroll distance and pass length, set only while the title scrolls. */
+  readonly style: React.CSSProperties | undefined;
+  readonly engage: (trigger: MarqueeTrigger) => void;
+  readonly release: (trigger: MarqueeTrigger) => void;
+};
+
+/**
+ * Scrolls a clipped title to its end and back while the row is hovered or
+ * focused, after a short delay. A title that fits, or a reader who asked for
+ * less motion, keeps the static ellipsis.
+ */
+function useTitleMarquee(): TitleMarquee {
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const triggers = useRef(new Set<MarqueeTrigger>());
+  const timer = useRef<number | undefined>(undefined);
+  const [style, setStyle] = useState<React.CSSProperties | undefined>();
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const engage = (trigger: MarqueeTrigger): void => {
+    const wasIdle = triggers.current.size === 0;
+    triggers.current.add(trigger);
+    const title = titleRef.current;
+    if (!wasIdle || title === null || prefersReducedMotion()) return;
+    const distance = title.scrollWidth - title.clientWidth;
+    if (distance <= 0) return;
+    const seconds = distance / MARQUEE_PX_PER_SECOND / MARQUEE_TRAVEL_SHARE;
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      // SAFETY: both keys are custom properties the marquee rule in styles.css reads; CSSProperties does not declare them.
+      setStyle({
+        "--marquee-distance": `${distance}px`,
+        "--marquee-duration": `${seconds.toFixed(2)}s`,
+      } as React.CSSProperties);
+    }, MARQUEE_DELAY_MS);
+  };
+
+  const release = (trigger: MarqueeTrigger): void => {
+    triggers.current.delete(trigger);
+    if (triggers.current.size > 0) return;
+    window.clearTimeout(timer.current);
+    setStyle(undefined);
+  };
+
+  return { titleRef, style, engage, release };
+}
+
+function prefersReducedMotion(): boolean {
+  if (window.matchMedia === undefined) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**
