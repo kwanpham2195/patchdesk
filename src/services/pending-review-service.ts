@@ -668,7 +668,8 @@ export class PendingReviewService {
           ? written.value.review
           : written.value;
     const confirmed = confirmPendingReviewWrite(begun.value, writtenReview);
-    if (confirmed._tag === "err") return err("outcome_unknown");
+    if (confirmed._tag === "err")
+      return err(await this.lockOutcomeUnknown(reviewId, session, begun.value));
     const receipts = nextFindingReceipts(
       session.findingReviewReceipts,
       begun.value,

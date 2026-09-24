@@ -215,8 +215,12 @@ export class MergeWriteController {
           unknown.value,
           mergeReason(merged.error._tag),
         );
-        if (rejected._tag === "ok")
-          await this.operations.reject(rejected.value);
+        // An unrecorded rejection leaves this operation outcome-unknown on disk, still locking the Review.
+        if (
+          rejected._tag === "err" ||
+          (await this.operations.reject(rejected.value))._tag === "err"
+        )
+          this.notifyNeedsRecovery(requested.value);
         return err({ reason: mergeReason(merged.error._tag) });
       }
       const confirmed = confirmMergeOperation(
