@@ -30,8 +30,8 @@ The timeline below it lists entries in time order. A plain issue comment — one
 
 Markdown in the description, comments, review summaries, and threads is rendered through Patchdesk's safe shared renderer:
 
-- **Images** render as images. Patchdesk loads each one only when it scrolls near the view. A grey placeholder holds its place while it loads: small for an image written with Markdown syntax, block-sized for an image written as an HTML `<img>` tag. An image Patchdesk refuses or cannot download stays as the text `[Image: alt]`, never a broken-image icon. Off-site images such as status badges load through GitHub's own image proxy.
-- **Zoom.** An image written as an HTML `<img>` tag opens a full-size view when clicked, and Escape closes it. An image written with Markdown syntax, such as `![screenshot](url)`, has no zoom, even when it stands alone on its own line. An image inside a link never zooms, because the click belongs to the link.
+- **Images** render as images. Patchdesk loads each one only when it scrolls near the view. A grey placeholder holds its place while it loads: small for a Markdown-syntax image in a line of text, block-sized for one alone in its paragraph or table cell and for an image written as an HTML `<img>` tag. An image Patchdesk refuses or cannot download stays as the text `[Image: alt]`, never a broken-image icon. Off-site images such as status badges load through GitHub's own image proxy.
+- **Zoom.** An image written as an HTML `<img>` tag, or a Markdown-syntax image such as `![screenshot](url)` that is the only content of its paragraph or table cell, opens a full-size view when clicked, and Escape closes it. A link whose only content is such an image, written as `[![screenshot](url)](link)` or `<a href="link"><img …></a>`, zooms the same way, and the full-size view has an **Open link** button that opens the link's address. An image in a line of text, in a row of badges, or in a link that also holds words has no zoom; a click on a linked one opens the link.
 - **Links** to `https` addresses open in the default browser. A relative link resolves against the pull request's GitHub page. A link with another scheme, a port, or credentials renders as plain text.
 - **Mermaid diagrams** render as diagrams with their source in a collapsed Mermaid source section, and open a full-size view when clicked.
 
@@ -118,7 +118,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - A stale or terminal Review hides direct conversation writers without hiding its represented content.
 - A pull request whose only discussion is one plain issue comment shows that comment in the timeline.
 - An HTML `<img>` with no `src` renders as `[Image: alt]` without a request.
-- Two screenshots that look the same can behave differently on click: the one written as an HTML tag zooms, the one written in Markdown syntax does not.
+- A lone status badge inside a link, on its own line, zooms like a screenshot; its link is under **Open link** in the full-size view.
 - Re-request is hidden for a reviewer the candidate read did not return, because the request GitHub accepts names a person by identifier rather than by login.
 - A base-branch change to the branch the pull request already targets is refused before any GitHub write. The dialog lists at most 100 branches and says how many exist when there are more; searching narrows the list.
 - A draft change the pull request has already made is refused rather than sent, because neither GitHub draft mutation is idempotent and its refusal cannot be told apart from a permission denial.
@@ -126,7 +126,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 ## Open questions and verification
 
 - Confirmed live on 2026-09-14: on a pull request built to test images, a Markdown-syntax image and an HTML `<img>` both render as screenshots, and a Markdown link and a bare URL both render as links. Only the HTML image opens the full-size view, which Escape closes.
-- Suspected defect: a Markdown-syntax screenshot on its own line has no zoom while an HTML screenshot does. The Markdown renderer marks every Markdown image as sitting in a line of text, which removes zoom. See [B-18](../bug-triage.md#b-18-a-markdown-syntax-image-never-opens-the-full-size-view).
+- [B-18](../bug-triage.md#b-18-a-markdown-syntax-image-never-opens-the-full-size-view) is fixed: confirmed live on 2026-09-24 on #423, where the Markdown-syntax screenshots in its before/after table open the full-size view. **Open link** on a linked image is covered by component tests, not observed live.
 - [B-10](../bug-triage.md#b-10-the-reviewers-control-never-loads-on-a-merged-or-closed-review), confirmed live on 2026-09-14, is fixed: a merged or closed Review now lists its stored requested reviewers read-only instead of holding "Loading reviewers…" forever. The read-only rows are not yet live-verified.
 - Not checked live: a pull request whose only discussion is a plain issue comment, off-site badge images, the metadata picker popovers, and every failure sentence, which each need a fixture or a rejected GitHub write.
 - Confirm focus return after closing metadata pickers, failed editors, delete confirmation, review dismissal, and the full-size image view.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Markdown-syntax screenshots, such as the ones in a before/after table, never opening the full-size view. An image that is the only content of its paragraph or table cell now zooms on click, and so does a link whose only content is one image, Markdown or HTML; the full-size view then has an **Open link** button for the link. Images in a line of text or a row of badges still behave as before. #348
+
 - The Pull requests inspector shows a **Merge** fact beside **Checks**, worded like PR overview Merge readiness: **Ready to merge**, **Blocked · Conflicts +1**, **Draft**, **Unknown** before GitHub reports mergeability, or **Merged**. It applies the Review's readiness rule to the listing's merge state, so a branch GitHub's rules block reads **Blocked** in both places, and a pull request is no longer counted Ready to merge while its Review says Blocked. #348
 
 - More status badges show an icon beside their word. Conversation review verdicts use the same icons as the Reviewers rail, the Analysis verdict badge uses the approved, changes-requested, or commented icon, Threads rows mark Open, Resolved, Outdated, and Pending with their own icon, **Needs your reply** carries a reply arrow, and in Pull requests rows **Merged** has a merge icon and **Brief** the green check Insight status uses. #348

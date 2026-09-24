@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { Minus, Plus, Maximize2, X } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -24,10 +25,12 @@ type PanStart = {
 export function MarkdownLightbox({
   open,
   onClose,
+  actions,
   children,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
+  readonly actions?: React.ReactNode;
   readonly children?: React.ReactNode;
 }): React.JSX.Element {
   return (
@@ -35,6 +38,7 @@ export function MarkdownLightbox({
       key={open ? "open" : "closed"}
       open={open}
       onClose={onClose}
+      actions={actions}
     >
       {children}
     </MarkdownLightboxContent>
@@ -44,10 +48,12 @@ export function MarkdownLightbox({
 function MarkdownLightboxContent({
   open,
   onClose,
+  actions,
   children,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
+  readonly actions?: React.ReactNode;
   readonly children?: React.ReactNode;
 }): React.JSX.Element | null {
   const [scale, setScale] = useState(1);
@@ -128,7 +134,8 @@ function MarkdownLightboxContent({
 
   if (!open) return null;
 
-  return (
+  // A zoomable image can sit in a paragraph, and a `<dialog>` is not phrasing content.
+  return createPortal(
     <dialog
       ref={dialogRef}
       aria-label="Image viewer"
@@ -146,6 +153,7 @@ function MarkdownLightboxContent({
         onClick={onClose}
       />
       <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
+        {actions}
         <Button
           size="icon-sm"
           variant="ghost"
@@ -210,6 +218,7 @@ function MarkdownLightboxContent({
           {children}
         </div>
       </div>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }

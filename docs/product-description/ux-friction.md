@@ -45,7 +45,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - [B-12](bug-triage.md#b-12-the-checks-control-opens-pr-overview-on-merge-readiness): the Checks control opening PR overview on Merge readiness. Fixed.
 - [B-13](bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing): Context and Preview unavailable with no worktree rebuild. Named follow-up.
 - [B-14](bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change): heading focus cancelled by a re-render, with its missing test. Named follow-up.
-- [B-18](bug-triage.md#b-18-a-markdown-syntax-image-never-opens-the-full-size-view): Markdown-syntax screenshots that never zoom. Awaiting a decision.
+- [B-18](bug-triage.md#b-18-a-markdown-syntax-image-never-opens-the-full-size-view): Markdown-syntax screenshots that never zoom. Fixed.
 
 ## Medium
 

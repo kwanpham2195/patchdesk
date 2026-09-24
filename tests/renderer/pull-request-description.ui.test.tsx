@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -271,6 +277,120 @@ describe("PullRequestDescription", () => {
     await screen.findByRole("img", { name: "Quality Gate" });
     // The `<span>` between anchor and image proves the signal survives nesting.
     expect(container.querySelector("button button")).toBeNull();
+  });
+
+  it("zooms a Markdown screenshot that fills its table cell", async () => {
+    const user = userEvent.setup();
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () =>
+        success({ dataUri: "data:image/png;base64,AAAA" }),
+    });
+    renderWithImageCache(
+      <PullRequestDescriptionPreview
+        markdown={
+          "| Before | After |\n|:---:|:---:|\n| ![Before](/octo-org/patchdesk/raw/main/before.png) | ![After](/octo-org/patchdesk/raw/main/after.png) |"
+        }
+        pullRequest={pullRequest}
+        profileId="octo-org"
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Before" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Image viewer" });
+    expect(within(dialog).getByRole("img", { name: "Before" })).toBeTruthy();
+    expect(
+      within(dialog).queryByRole("button", { name: "Open link" }),
+    ).toBeNull();
+  });
+
+  it.each([
+    [
+      "Markdown",
+      "[![Screenshot](/octo-org/patchdesk/raw/main/shot.png)](https://example.com/full.png)",
+    ],
+    [
+      "raw HTML",
+      '<a href="https://example.com/full.png"><img src="/octo-org/patchdesk/raw/main/shot.png" alt="Screenshot"></a>',
+    ],
+    [
+      "block raw HTML",
+      '<p align="center">\n<a href="https://example.com/full.png"><img src="/octo-org/patchdesk/raw/main/shot.png" alt="Screenshot"></a>\n</p>',
+    ],
+  ])(
+    "zooms a %s image that is a link's only content and offers the link from the viewer",
+    async (_form, markdown) => {
+      const user = userEvent.setup();
+      const openExternalHttps = vi.fn(async () => true);
+      desktop = installDesktopDouble(
+        {
+          "/v1/reviews/markdown-image": () =>
+            success({ dataUri: "data:image/png;base64,AAAA" }),
+        },
+        { openExternalHttps },
+      );
+      renderWithImageCache(
+        <PullRequestDescriptionPreview
+          markdown={markdown}
+          pullRequest={pullRequest}
+          profileId="octo-org"
+        />,
+      );
+
+      await user.click(
+        await screen.findByRole("button", { name: "Screenshot" }),
+      );
+      expect(openExternalHttps).not.toHaveBeenCalled();
+      const dialog = screen.getByRole("dialog", { name: "Image viewer" });
+      expect(
+        within(dialog).getByRole("img", { name: "Screenshot" }),
+      ).toBeTruthy();
+
+      await user.click(
+        within(dialog).getByRole("button", { name: "Open link" }),
+      );
+      expect(openExternalHttps).toHaveBeenCalledWith(
+        "https://example.com/full.png",
+      );
+    },
+  );
+
+  it.each([
+    [
+      "a link with words beside its image",
+      "[See ![Screenshot](/octo-org/patchdesk/raw/main/shot.png)](https://example.com/full.png)",
+    ],
+    [
+      "a badge in a row of badges",
+      "[![Screenshot](/octo-org/patchdesk/raw/main/shot.png)](https://example.com/full.png) [![Coverage](/octo-org/patchdesk/raw/main/cov.svg)](https://example.com/cov)",
+    ],
+  ])("keeps %s as a link", async (_case, markdown) => {
+    const user = userEvent.setup();
+    const openExternalHttps = vi.fn(async () => true);
+    desktop = installDesktopDouble(
+      {
+        "/v1/reviews/markdown-image": () =>
+          success({ dataUri: "data:image/png;base64,AAAA" }),
+      },
+      { openExternalHttps },
+    );
+    renderWithImageCache(
+      <PullRequestDescriptionPreview
+        markdown={markdown}
+        pullRequest={pullRequest}
+        profileId="octo-org"
+      />,
+    );
+
+    const image = await screen.findByRole("img", { name: "Screenshot" });
+    const link = image.closest("button");
+    if (link === null) throw new Error("expected the image inside its link");
+    await user.click(link);
+
+    expect(openExternalHttps).toHaveBeenCalledWith(
+      "https://example.com/full.png",
+    );
+    expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
   });
 
   it("keeps the placeholder for an image no profile can be fetched as", () => {

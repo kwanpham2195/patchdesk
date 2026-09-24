@@ -29,7 +29,7 @@ B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issu
 | B-08 | Navigate shortcut opens from a focused Review reply editor                               | medium   | Review workbench / Keyboard        | fixed (`75fadec`)             | —                                                            |
 | B-14 | A re-render can cancel heading focus after a destination change                          | low      | Navigation / Focus                 | fix (named follow-up)         | —                                                            |
 | B-16 | The Visited pull requests column keeps rows for removed Reviews                          | low      | Visited pull requests column       | fix                           | —                                                            |
-| B-18 | A Markdown-syntax image never opens the full-size view                                   | low      | Review workbench / Conversation    | fix                           | —                                                            |
+| B-18 | A Markdown-syntax image never opens the full-size view                                   | low      | Review workbench / Conversation    | fixed (#348)                  | —                                                            |
 | B-19 | Try again and related run controls stay enabled on a merged or closed Review             | low      | Review workbench / Insights        | fixed (#348)                  | —                                                            |
 | B-20 | Some Pull requests filters are not measured against the search length limit              | low      | Pull requests / Filters            | fix                           | —                                                            |
 | B-21 | Dismissed Findings still add to Finding badges                                           | low      | Review workbench / Diff            | fix                           | —                                                            |
@@ -254,7 +254,7 @@ B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issu
 - **Severity:** `low`. Inconsistent affordance; the image is still readable.
 - **Decision needed:** `fix`. Treat an image that is the only content of its paragraph as block-level.
 - **Raised by:** [Conversation and pull request metadata](review-workbench/conversation-and-metadata.md#open-questions-and-verification).
-- **Status:** confirmed 2026-09-14 on `5fe7df3b` on #86, a fixture built for image rendering, by the workbench live pass.
+- **Status:** confirmed 2026-09-14 on `5fe7df3b` on #86, a fixture built for image rendering, by the workbench live pass. Fixed for #348: a Markdown image alone in its paragraph or table cell zooms, and so does a link whose only content is one, with the link under **Open link** in the full-size view. Confirmed live on #423's before/after table.
 - **Issue:** —
 
 ### B-19: Try again and related run controls stay enabled on a merged or closed Review

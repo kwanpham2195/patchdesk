@@ -17,6 +17,8 @@ type MarkdownLinkRenderInput = {
   readonly href: string;
   readonly children: ReadonlyArray<ReactNode>;
   readonly key: string;
+  /** The link is alone in its paragraph or table cell and wraps one image and nothing else. */
+  readonly imageOnly?: boolean;
 };
 
 /** A source-specific decision for one Markdown image. */
@@ -39,6 +41,8 @@ type MarkdownHtmlRenderInput = {
   readonly key: string;
   readonly closeHtml?: string;
   readonly children?: ReadonlyArray<ReactNode>;
+  /** The reassembled element is alone in its paragraph or table cell and wraps one image and nothing else. */
+  readonly imageOnly?: boolean;
 };
 
 /** A source-specific decision for one Mermaid code fence. */
@@ -172,7 +176,7 @@ function renderBlocks(
       case "paragraph":
         return (
           <p key={key} className="whitespace-pre-wrap break-words">
-            {renderInline(tokensOf(token), policy)}
+            {renderInline(tokensOf(token), policy, true)}
           </p>
         );
       case "text":
@@ -238,7 +242,7 @@ function renderBlocks(
                         key={`${key}-h-${cellIndex}`}
                         className="px-2 py-1.5 font-medium"
                       >
-                        {renderInline(cell.tokens ?? [], policy)}
+                        {renderInline(cell.tokens ?? [], policy, true)}
                       </th>
                     ),
                   )}
@@ -252,7 +256,7 @@ function renderBlocks(
                         key={`${key}-${rowIndex}-${cellIndex}`}
                         className="px-2 py-1.5 align-top"
                       >
-                        {renderInline(cell.tokens ?? [], policy)}
+                        {renderInline(cell.tokens ?? [], policy, true)}
                       </td>
                     ))}
                   </tr>
@@ -271,18 +275,27 @@ function renderBlocks(
   });
 }
 
+/**
+ * `ownsBlock` says these tokens fill a whole paragraph or table cell, so a
+ * lone image among them is a picture on its own line, not a badge in a
+ * sentence or in a row of badges.
+ */
 function renderInline(
   tokens: ReadonlyArray<MarkdownNode>,
   policy: MarkdownContentPolicy,
+  ownsBlock = false,
 ): ReadonlyArray<ReactNode> {
-  return groupMarkdownHtml(tokens).map((token, index) => {
+  const nodes = groupMarkdownHtml(tokens);
+  const standalone = ownsBlock && withoutBlankText(nodes).length === 1;
+  return nodes.map((token, index) => {
     const key = tokenKey(token, index);
     if (isMarkdownHtmlElement(token)) {
       return policy.renderHtml({
         html: token.openTag,
         closeHtml: token.closeTag,
-        children: renderInline(token.tokens, policy),
+        children: renderInline(token.tokens, policy, standalone),
         key,
+        imageOnly: standalone && wrapsOneImage(token.tokens),
       });
     }
     switch (token.type) {
@@ -308,17 +321,41 @@ function renderInline(
       case "link":
         return policy.renderLink({
           href: token.href,
-          children: renderInline(tokensOf(token), policy),
+          children: renderInline(tokensOf(token), policy, standalone),
           key,
+          imageOnly: standalone && wrapsOneImage(tokensOf(token)),
         });
       case "image":
-        return policy.renderImage({ token, key, inline: true });
+        return policy.renderImage({ token, key, inline: !standalone });
       case "html":
         return policy.renderHtml({ html: token.text, key });
       default:
         return null;
     }
   });
+}
+
+function withoutBlankText(
+  nodes: ReadonlyArray<MarkdownNode>,
+): ReadonlyArray<MarkdownNode> {
+  return nodes.filter(
+    (node) =>
+      isMarkdownHtmlElement(node) ||
+      node.type !== "text" ||
+      node.raw.trim() !== "",
+  );
+}
+
+/** Whether a link or element holds exactly one image, written as Markdown or as a raw `<img>`. */
+function wrapsOneImage(tokens: ReadonlyArray<MarkdownNode>): boolean {
+  const content = withoutBlankText(groupMarkdownHtml(tokens));
+  const [only] = content;
+  if (content.length !== 1 || only === undefined) return false;
+  if (isMarkdownHtmlElement(only)) return false;
+  return (
+    only.type === "image" ||
+    (only.type === "html" && /^<img\b/i.test(only.raw.trim()))
+  );
 }
 
 function MarkdownTaskListItem({
