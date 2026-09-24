@@ -60,6 +60,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
         type,
         model: "model",
         reasoning: "medium",
+        language: "en",
       });
       if (started._tag === "err") throw new Error("expected active run");
 
@@ -141,6 +142,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
         type: "analysis",
         model: "model",
         reasoning: "medium",
+        language: "en",
       })
       .then((result) => {
         completed = true;
@@ -162,7 +164,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
     if (result._tag === "err") throw new Error("expected queued Insight");
     await settled(value.coordinator, value.review.id, result.value.runId);
   });
-  it("starts from session artifacts, retains a valid result, and exposes completion", async () => {
+  it("starts from session artifacts in the chosen language, retains a valid result, and exposes completion", async () => {
     let received: unknown;
     const value = await fixture({
       async invoke(input) {
@@ -176,6 +178,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "vi",
     });
     expect(started).toMatchObject({
       _tag: "ok",
@@ -194,12 +197,18 @@ describe("InsightRunCoordinator current lifecycle", () => {
       ),
       patchPath: value.session.patchPath,
       worktreePath: value.session.worktree.path,
+      language: "vi",
     });
     expect(
       await value.insights.load(profileId, value.review.id, "analysis"),
     ).toMatchObject({
       _tag: "ok",
-      value: { retained: { value: { summary: "Check the guard." } } },
+      value: {
+        retained: {
+          provenance: { language: "vi" },
+          value: { summary: "Check the guard." },
+        },
+      },
     });
   });
 
@@ -230,6 +239,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "brief",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     expect(
@@ -309,6 +319,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "brief",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     expect(
@@ -372,6 +383,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     expect(
@@ -434,6 +446,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       provider: "codex-cli-account",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     const trace = {
@@ -490,6 +503,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       provider: "codex-cli-account",
       model: "model",
       reasoning: "medium",
+      language: "en",
     } as const;
     const first = await value.coordinator.start(startInput);
     if (first._tag === "err") throw new Error("expected first run");
@@ -541,6 +555,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     await expect(
@@ -581,6 +596,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     await writeFile(
@@ -616,6 +632,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     expect(
@@ -652,6 +669,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (first._tag === "err") throw new Error("expected first run");
     await settled(value.coordinator, value.review.id, first.value.runId);
@@ -661,6 +679,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (second._tag === "err") throw new Error("expected second run");
     expect(
@@ -694,6 +713,7 @@ describe("InsightRunCoordinator desktop notifications", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
     await during?.(value);
@@ -856,6 +876,7 @@ describe("InsightRunCoordinator Finding suggestions", () => {
           provider: "pi",
           model: "model",
           reasoning: "medium",
+          language: "en",
           startedAt: now,
         }),
     });
@@ -877,6 +898,7 @@ describe("InsightRunCoordinator Finding suggestions", () => {
               provider: "pi",
               model: "model",
               reasoning: "medium",
+              language: "en",
             },
             value: { ...analysisResult, verdict: "comment", findings },
           },

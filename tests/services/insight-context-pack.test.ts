@@ -40,6 +40,7 @@ describe("Insight run context pack", () => {
       type,
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err")
       throw new Error(`start failed: ${started.error}`);
@@ -193,6 +194,7 @@ describe("Insight run context pack", () => {
         type: "analysis",
         model: "model",
         reasoning: "medium",
+        language: "en",
       }),
       value.coordinator.start({
         profileId,
@@ -200,6 +202,7 @@ describe("Insight run context pack", () => {
         type: "brief",
         model: "model",
         reasoning: "medium",
+        language: "en",
       }),
     ]);
     if (first._tag === "err" || second._tag === "err")
@@ -235,6 +238,7 @@ describe("Insight run context pack", () => {
         type: "analysis",
         model: "model",
         reasoning: "medium",
+        language: "en",
       }),
     ).toEqual({ _tag: "err", error: "storage_unavailable" });
     // Nothing started, so nothing has to be swept later.

@@ -21,7 +21,7 @@ async function briefPromptResult(patch: string | Buffer) {
   try {
     const patchPath = join(root, "patch.diff");
     await writeFile(patchPath, patch);
-    return await prepareBriefPrompt({ patchPath });
+    return await prepareBriefPrompt({ patchPath, language: "en" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

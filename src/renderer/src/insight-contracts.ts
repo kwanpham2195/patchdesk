@@ -1,12 +1,22 @@
 import * as v from "valibot";
 
-import type { InsightProvider } from "../../domain/insight-provider";
+import {
+  INSIGHT_LANGUAGES,
+  type InsightLanguage,
+  type InsightProvider,
+} from "../../domain/insight-provider";
 
 /** What each provider is called wherever a retained Insight states its provenance. */
 export const INSIGHT_PROVIDER_LABELS = {
   pi: "API key",
   "codex-cli-account": "Codex CLI account",
 } as const satisfies Record<InsightProvider, string>;
+
+/** What each Insight language is called in the run dialog and the Insight header. */
+export const INSIGHT_LANGUAGE_LABELS = {
+  en: "English",
+  vi: "Vietnamese",
+} as const satisfies Record<InsightLanguage, string>;
 
 /** Which Verification steps of a retained Analysis are ticked, as projected and as the save route answers. */
 export const analysisVerificationSchema = v.strictObject({
@@ -85,6 +95,7 @@ export const retainedInsightFields = {
       provider: v.picklist(["pi", "codex-cli-account"]),
       model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
       reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
+      language: v.picklist(INSIGHT_LANGUAGES),
     }),
   ),
 } as const;

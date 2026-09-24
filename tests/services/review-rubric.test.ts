@@ -5,6 +5,7 @@ const prompt = composeReviewPrompt({
   reviewInput: "# PR review input",
   context: '{"projectReviewCriteria":[]}',
   fullPatch: "patch",
+  language: "en",
 });
 
 describe("review rubric", () => {

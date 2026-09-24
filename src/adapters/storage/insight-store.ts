@@ -23,6 +23,7 @@ import {
   type RetainedInsightEnvelope,
   type WalkthroughProgress,
 } from "../../domain/insight-record";
+import { INSIGHT_LANGUAGES } from "../../domain/insight-provider";
 import { KeyedMutex } from "../../domain/keyed-mutex";
 import { err, ok, type Result } from "../../domain/result";
 import {
@@ -52,6 +53,8 @@ const activeRunFields = {
   token: v.pipe(v.number(), v.integer(), v.minValue(1)),
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
+  // A run started before Insights had a language runs with the English prompt.
+  language: v.optional(v.picklist(INSIGHT_LANGUAGES), "en"),
   status: v.picklist(["queued", "running", "cancelling"]),
   startedAt: v.pipe(v.string(), v.isoTimestamp()),
 };
@@ -379,6 +382,7 @@ function parseActiveRun(
     provider,
     model: input.model,
     reasoning: input.reasoning,
+    language: input.language,
     status: input.status,
     startedAt: startedAt.value,
   });

@@ -130,6 +130,7 @@ const preferences = [
       model: "opus",
       reasoning: "high",
     }),
+    // Saved before Insights had a language, so it reads back as English.
     accepted: JSON.stringify({
       provider: "pi",
       model: "opus",
@@ -141,9 +142,15 @@ const preferences = [
         provider: "pi",
         model: "opus",
         reasoning: "high",
+        language: "en",
       }),
     fallback: undefined,
-    acceptedValue: { provider: "pi", model: "opus", reasoning: "high" },
+    acceptedValue: {
+      provider: "pi",
+      model: "opus",
+      reasoning: "high",
+      language: "en",
+    },
   },
   {
     name: "navigator width",
@@ -275,6 +282,7 @@ describe("every renderer preference", () => {
         provider: "pi",
         model: `${type}-model`,
         reasoning: "high",
+        language: "en",
       });
 
     for (const type of INSIGHT_PREFERENCE_TYPES)

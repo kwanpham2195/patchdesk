@@ -26,9 +26,11 @@ const baseProps = {
   models,
   model: null,
   reasoning: "medium" as const,
+  language: "en" as const,
   onOpenChange: vi.fn(),
   onModelChange: vi.fn(),
   onReasoningChange: vi.fn(),
+  onLanguageChange: vi.fn(),
   onConfirm: vi.fn(),
 };
 
@@ -82,15 +84,17 @@ describe("InsightRunDialog model picker", () => {
     expect(await screen.findByText("No models found.")).toBeTruthy();
   });
 
-  it("uses Base Select controls for provider and reasoning choices", async () => {
+  it("uses Base Select controls for provider, reasoning, and language choices", async () => {
     const onProviderChange = vi.fn();
     const onReasoningChange = vi.fn();
+    const onLanguageChange = vi.fn();
     const user = userEvent.setup();
     render(
       <InsightRunDialog
         {...baseProps}
         onProviderChange={onProviderChange}
         onReasoningChange={onReasoningChange}
+        onLanguageChange={onLanguageChange}
         model="provider/model-0"
       />,
     );
@@ -115,6 +119,12 @@ describe("InsightRunDialog model picker", () => {
     await user.click(reasoning);
     await user.click(await screen.findByRole("option", { name: "high" }));
     expect(onReasoningChange).toHaveBeenCalledWith("high");
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Insight language" }),
+    );
+    await user.click(await screen.findByRole("option", { name: "Vietnamese" }));
+    expect(onLanguageChange).toHaveBeenCalledWith("vi");
   });
 });
 

@@ -194,7 +194,7 @@ describe("useInsightRun routes", () => {
         useInsightRun({ profileId: "profile", reviewId: "review-42", type }),
       );
 
-      act(() => result.current.run("pi", "fixture-model", "medium"));
+      act(() => result.current.run("pi", "fixture-model", "medium", "en"));
       await waitFor(() => expect(result.current.runId).toBe("run-a"));
       expect(
         calls
@@ -224,8 +224,8 @@ describe("useInsightRun", () => {
     );
 
     act(() => {
-      result.current.run("pi", "fixture-model", "medium");
-      result.current.run("pi", "fixture-model", "medium");
+      result.current.run("pi", "fixture-model", "medium", "en");
+      result.current.run("pi", "fixture-model", "medium", "en");
     });
     expect(calls.filter(({ path }) => path.endsWith("/run"))).toHaveLength(1);
     await act(async () => {
@@ -269,7 +269,7 @@ describe("useInsightRun", () => {
       },
     );
 
-    act(() => result.current.run("pi", "fixture-model", "medium"));
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
     await act(async () => {
       start.resolve(started);
       await start.promise;
@@ -317,7 +317,7 @@ describe("useInsightRun", () => {
       { initialProps: { reviewId: "review-42" } },
     );
 
-    act(() => result.current.run("pi", "fixture-model", "medium"));
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
     await act(async () => {
       start.resolve(started);
       await start.promise;
@@ -369,7 +369,7 @@ describe("useInsightRun", () => {
         onInsightPatch: (_type, value) => patches.push(value),
       }),
     );
-    act(() => result.current.run("pi", "fixture-model", "medium"));
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
     await act(async () => {
       start.resolve(started);
       await start.promise;
@@ -417,7 +417,7 @@ describe("useInsightRun", () => {
         onInsightPatch: (_type, value) => oldPatches.push(value),
       }),
     );
-    act(() => old.result.current.run("pi", "fixture-model", "medium"));
+    act(() => old.result.current.run("pi", "fixture-model", "medium", "en"));
     await act(async () => {
       oldStart.resolve({ ...started, runId: "run-old" });
       await oldStart.promise;
@@ -432,7 +432,7 @@ describe("useInsightRun", () => {
         onInsightPatch: (_type, value) => newPatches.push(value),
       }),
     );
-    act(() => newer.result.current.run("pi", "fixture-model", "medium"));
+    act(() => newer.result.current.run("pi", "fixture-model", "medium", "en"));
     await act(async () => {
       newStart.resolve({ ...started, runId: "run-new" });
       await newStart.promise;
@@ -473,7 +473,7 @@ describe("useInsightRun", () => {
         onCompleted: () => completed.push(true),
       }),
     );
-    act(() => result.current.run("pi", "fixture-model", "medium"));
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
     await act(async () => {
       start.resolve(started);
       await start.promise;
@@ -538,9 +538,9 @@ describe("useInsightRun", () => {
       { initialProps: { reviewId: "review-42" } },
     );
 
-    act(() => result.current.run("pi", "fixture-model", "medium"));
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
     rerender({ reviewId: "review-43" });
-    act(() => result.current.run("pi", "fixture-model", "medium"));
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
     expect(calls.filter(({ path }) => path.endsWith("/run"))).toHaveLength(2);
     await act(async () => {
       newStart.resolve({ ...started, runId: "run-new" });
@@ -583,7 +583,9 @@ describe("useInsightRun", () => {
       }),
     );
 
-    act(() => result.current.run("codex-cli-account", "fixture-model", "low"));
+    act(() =>
+      result.current.run("codex-cli-account", "fixture-model", "low", "en"),
+    );
     await waitFor(() => expect(result.current.activity).toEqual(activity));
     unmount();
   });
@@ -608,7 +610,7 @@ describe("useInsightRun", () => {
       }),
     );
 
-    act(() => result.current.run("pi", "fixture-model", "medium"));
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
     await waitFor(() => expect(result.current.requestFailure).toBe("status"));
     expect(result.current.runId).toBe("run-a");
     expect(result.current.busy).toBe(true);

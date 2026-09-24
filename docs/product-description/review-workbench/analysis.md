@@ -28,7 +28,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Analysis opens in the Insights slot for the represented Review session. At the right end of the tab strip, a muted meta line says when the Analysis was generated ("Generated 7h", or "Outdated · generated 7h"), and the provider and model, with a secondary Regenerate button while the Insight is current.
+Analysis opens in the Insights slot for the represented Review session. At the right end of the tab strip, a muted meta line says when the Analysis was generated ("Generated 7h", or "Outdated · generated 7h"), the provider and model, and the language when it is not English (for example "Vietnamese"), with a secondary Regenerate button while the Insight is current.
 
 The reader shows its cards in a fixed order.
 
@@ -58,7 +58,7 @@ Ticking a Verification checkbox records nothing on GitHub. Patchdesk saves the t
 
 ### Begin an action
 
-Generate analysis or Regenerate opens the shared Insight run dialog described in [Brief](brief.md#begin-an-action), seeded with the saved Analysis provider, model, and reasoning preference. Both are disabled unless an Insight provider is available; on a merged or closed Review, neither Generate analysis nor Regenerate is drawn.
+Generate analysis or Regenerate opens the shared Insight run dialog described in [Brief](brief.md#begin-an-action), seeded with the saved Analysis provider, model, reasoning, and language preference. A Vietnamese Analysis writes its summaries and Findings in Vietnamese, so a Finding added to a GitHub review is posted in Vietnamese; paths and identifiers stay as written. Both are disabled unless an Insight provider is available; on a merged or closed Review, neither Generate analysis nor Regenerate is drawn.
 
 Add to review appears only when the Analysis is current, the Review is open, the Finding has a location on the represented diff, the projected Analysis action state is actionable, and GitHub writes are not paused. Dismiss appears on open Findings of a current Analysis on an open Review, except Findings already Added or Published.
 
@@ -130,7 +130,7 @@ A Finding that no longer maps to the represented diff, or an Add while the pendi
 
 **Feedback, errors, and diagnostics.** Pending, pending review, published, dismissed, failed, and recovery-required are distinct. A Codex CLI account run's command trace and one reasoning line enter the renderer projection, bounded as [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md) records; raw prompts, command output, raw provider events, and unbounded errors do not.
 
-**Preferences, keyboard commands, and desktop integration.** Analysis remembers provider, model, and reasoning defaults. No desktop menu shortcut accepts a Finding.
+**Preferences, keyboard commands, and desktop integration.** Analysis remembers provider, model, reasoning, and language defaults. No desktop menu shortcut accepts a Finding.
 
 **Supported input and accessibility limits.** Findings, evidence, checkboxes, fields, and dialogs support keyboard and mouse. Patchdesk does not claim screen-reader, touch, or pen support.
 

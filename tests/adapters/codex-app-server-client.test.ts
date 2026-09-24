@@ -732,6 +732,7 @@ describe("buildCodexAnalysisPrompt", () => {
       reviewInput: "# PR review input",
       context: '{"projectReviewCriteria":[]}',
       fullPatch: "diff --git a/src/a.ts b/src/a.ts",
+      language: "en",
     });
     const result = buildCodexAnalysisPrompt({
       analysisPrompt: shared,

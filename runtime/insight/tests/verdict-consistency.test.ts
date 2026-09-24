@@ -179,6 +179,7 @@ describe("rejected submission on disk", () => {
       patchPath: paths.patchFile(profileId, sessionId),
       model: "faux/test",
       reasoning: "low" as const,
+      language: "en" as const,
     };
     expect(
       canonicalizeProductionInvocation({ type: "brief", input: shared }, paths),

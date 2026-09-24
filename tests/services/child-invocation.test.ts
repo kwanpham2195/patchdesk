@@ -77,6 +77,7 @@ async function walkthroughInput(): Promise<WalkthroughInput> {
     sessionId: "session",
     model: "test-model",
     reasoning: "medium",
+    language: "en",
     ...(await writeArtifacts()),
   };
 }

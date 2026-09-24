@@ -1,4 +1,5 @@
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
+import type { InsightLanguage } from "../domain/insight-provider";
 
 /**
  * The severity scale the profile's merge policy keys on: it blocks or asks for
@@ -39,10 +40,11 @@ export function composeReviewPrompt(input: {
   readonly reviewInput: string;
   readonly context: string;
   readonly fullPatch: string;
+  readonly language: InsightLanguage;
 }): string {
   return [
     "Review the complete represented pull request and decide whether it should merge.",
-    insightOutputGuidance("analysis"),
+    insightOutputGuidance("analysis", input.language),
     SEVERITY_RUBRIC,
     FINDING_CONTENT,
     REPOSITORY_RULES,

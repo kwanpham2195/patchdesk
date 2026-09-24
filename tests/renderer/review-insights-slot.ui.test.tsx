@@ -467,6 +467,78 @@ describe("InsightsSlot run requests", () => {
     );
   });
 
+  it("defaults Language to English, sends the chosen language, and preselects it next time", async () => {
+    const runBodies: unknown[] = [];
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+      "/v1/reviews/insights/analysis/run": (input) => {
+        runBodies.push(input.body);
+        return success({ runId: "run-vi", type: "analysis", status: "queued" });
+      },
+      // The poll never settles, so the accepted run stays queued.
+      "/v1/reviews/insights/runs/run-vi": () => new Promise(() => undefined),
+    });
+    const user = userEvent.setup();
+    renderInsights(projection(), "analysis");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Generate analysis" }),
+    );
+    const language = screen.getByRole("combobox", { name: "Insight language" });
+    expect(language.textContent).toContain("English");
+    await user.click(language);
+    await user.click(await screen.findByRole("option", { name: "Vietnamese" }));
+    await user.click(screen.getByRole("button", { name: "Start run" }));
+    await waitFor(() => expect(runBodies).toHaveLength(1));
+    expect(runBodies[0]).toMatchObject({ type: "analysis", language: "vi" });
+
+    cleanup();
+    renderInsights(projection(), "analysis");
+    await user.click(
+      await screen.findByRole("button", { name: "Generate analysis" }),
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Insight language" }).textContent,
+    ).toContain("Vietnamese");
+  });
+
+  it.each([
+    { language: "vi" as const, named: "Vietnamese" },
+    { language: "en" as const, named: undefined },
+  ])(
+    "names the $language result's language in the header only when it is not English",
+    ({ language, named }) => {
+      const retained = briefInsight().retained;
+      if (retained === undefined)
+        throw new Error("Brief fixture lost its retained result");
+      renderInsights(
+        projection({
+          insights: {
+            analysis: { status: "not_generated" },
+            walkthrough: { status: "not_generated" },
+            brief: briefInsight({
+              retained: {
+                ...retained,
+                provenance: {
+                  provider: "pi",
+                  model: "fixture-model",
+                  reasoning: "medium",
+                  language,
+                },
+              },
+            }),
+          },
+        }),
+      );
+
+      const insights = screen.getByRole("region", { name: "Review insights" });
+      expect(within(insights).queryByText(/Vietnamese/) !== null).toBe(
+        named !== undefined,
+      );
+      expect(within(insights).queryByText(/English/)).toBeNull();
+    },
+  );
+
   it("keeps start pending visible and shows a bounded start failure", async () => {
     const start = deferred<DesktopResponse>();
     desktop = installDesktopDouble({

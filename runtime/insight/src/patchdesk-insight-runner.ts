@@ -514,30 +514,32 @@ export async function runProductionChild(
     rejectedResultPath: canonical.rejectedResultPath,
     ...definedProps({ providers: options.providers }),
   };
+  // The language shapes only the prompt composed here; the agent invocation takes the finished prompt.
   if (canonical.type === "walkthrough") {
-    const prompt = await prepareWalkthroughPrompt(canonical.input);
+    const { language, ...input } = canonical.input;
+    const prompt = await prepareWalkthroughPrompt({ ...input, language });
     if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
     return await runPatchdeskChild(
-      {
-        type: "walkthrough",
-        input: { ...canonical.input, prompt: prompt.value },
-      },
+      { type: "walkthrough", input: { ...input, prompt: prompt.value } },
       childOptions,
     );
   }
   if (canonical.type === "brief") {
-    const prompt = await prepareBriefPrompt(canonical.input);
+    const { language, ...input } = canonical.input;
+    const prompt = await prepareBriefPrompt({ ...input, language });
     if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
     return await runPatchdeskChild(
-      { type: "brief", input: { ...canonical.input, prompt: prompt.value } },
+      { type: "brief", input: { ...input, prompt: prompt.value } },
       childOptions,
     );
   }
+  const { language, ...analysisInput } = canonical.input;
   const commands = new CommandRunner();
   let prepared: PreparedModelReview;
   try {
     prepared = await prepareModelReview({
-      ...canonical.input,
+      ...analysisInput,
+      language,
       debugPath: canonical.debugPath ?? "",
       async gitShow(argv) {
         const output = await commands.runText({
@@ -556,7 +558,7 @@ export async function runProductionChild(
   return await runPatchdeskChild(
     {
       type: "analysis",
-      input: { ...canonical.input, prompt: prepared.prompt },
+      input: { ...analysisInput, prompt: prepared.prompt },
     },
     {
       ...childOptions,

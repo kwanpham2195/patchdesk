@@ -4,6 +4,7 @@ import {
   MAX_REACH_SYMBOLS,
 } from "../domain/brief";
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
+import type { InsightLanguage } from "../domain/insight-provider";
 import { err, ok, type Result } from "../domain/result";
 import { readBoundedArtifact } from "./walkthrough-artifact-reader";
 
@@ -16,6 +17,7 @@ export type BriefInput = {
   readonly patchPath: string;
   readonly model: string;
   readonly reasoning: "low" | "medium" | "high";
+  readonly language: InsightLanguage;
 };
 
 /** Why a Brief prompt could not be composed from its patch artifact. */
@@ -35,6 +37,7 @@ export type BriefPromptFailure =
  */
 export async function prepareBriefPrompt(input: {
   readonly patchPath: string;
+  readonly language: InsightLanguage;
 }): Promise<Result<string, BriefPromptFailure>> {
   const patch = await readBoundedArtifact(
     input.patchPath,
@@ -51,7 +54,7 @@ export async function prepareBriefPrompt(input: {
   return ok(
     [
       "Write a read-only Brief for the supplied immutable patch.",
-      insightOutputGuidance("brief"),
+      insightOutputGuidance("brief", input.language),
       "Every citation in flow must be an h alias from the supplied BRIEF CITATION MANIFEST; a citation that does not resolve is discarded.",
       `List in reachSymbols up to ${MAX_REACH_SYMBOLS} exported functions, types, or constants whose signature or meaning this patch changes. Write the exact identifier names, as spelled in the patch, and nothing else: no counts, no paths, no prose. Prefer names that callers outside the changed files use -- a helper whose behavior changed and that other files call matters more than a new constant only the patch references. Patchdesk counts their callers itself.`,
       "BRIEF CITATION MANIFEST:",

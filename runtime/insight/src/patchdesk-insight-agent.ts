@@ -7,6 +7,7 @@ import * as v from "valibot";
 
 import { briefOutputSchema } from "../../../src/domain/brief";
 import { parseReviewSessionId } from "../../../src/domain/ids";
+import { INSIGHT_LANGUAGES } from "../../../src/domain/insight-provider";
 import {
   modelReviewResultSchema,
   requiredVerdictForFindings,
@@ -19,6 +20,7 @@ export const MAX_RUNTIME_STDOUT_BYTES = 2 * 1024 * 1024;
 const NODE_FLOOR = [22, 19, 0] as const;
 
 const reasoningSchema = v.picklist(["low", "medium", "high"]);
+const languageSchema = v.picklist(INSIGHT_LANGUAGES);
 const boundedPath = v.pipe(v.string(), v.minLength(1), v.maxLength(4_096));
 const profileId = v.pipe(
   v.string(),
@@ -84,6 +86,7 @@ export const productionAnalysisInvocationSchema = v.strictObject({
   worktreePath: boundedPath,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
+  language: languageSchema,
 });
 
 /** Production child Walkthrough input likewise never accepts model prompt text. */
@@ -94,6 +97,7 @@ export const productionWalkthroughInvocationSchema = v.strictObject({
   patchPath: boundedPath,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
+  language: languageSchema,
 });
 
 /**
@@ -106,6 +110,7 @@ export const productionBriefInvocationSchema = v.strictObject({
   patchPath: boundedPath,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
+  language: languageSchema,
 });
 
 export type AnalysisInvocation = v.InferOutput<typeof analysisInvocationSchema>;

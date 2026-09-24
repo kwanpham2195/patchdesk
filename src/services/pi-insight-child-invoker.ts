@@ -9,6 +9,7 @@ import type {
 } from "../adapters/github/command-runner";
 import { parseBriefOutput } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
+import type { InsightLanguage } from "../domain/insight-provider";
 import { parseAbsolutePath, type AbsolutePath } from "../domain/ids";
 import { parseModelReviewResult } from "../domain/review-result";
 import { casesHandled, err, ok, type Result } from "../domain/result";
@@ -65,6 +66,7 @@ type PiInsightChildAnalysisInput = {
   readonly worktreePath: AbsolutePath;
   readonly model: string;
   readonly reasoning: "low" | "medium" | "high";
+  readonly language: InsightLanguage;
 };
 
 /**
@@ -126,6 +128,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
           patchPath: input.patchPath,
           model: input.model,
           reasoning,
+          language: input.language,
         },
         options,
       );
@@ -136,6 +139,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
         patchPath: input.patchPath,
         model: input.model,
         reasoning,
+        language: input.language,
       };
       const brief = await this.runChild(
         { type: "brief", input: briefInput },
@@ -170,6 +174,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
       worktreePath: worktreePath.value,
       model: input.model,
       reasoning,
+      language: input.language,
     };
     const analysis = await this.runChild(
       { type: "analysis", input: analysisInput },

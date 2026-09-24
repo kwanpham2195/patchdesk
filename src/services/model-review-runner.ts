@@ -4,6 +4,7 @@ import { isAbsolute, win32 } from "node:path";
 import * as v from "valibot";
 
 import { ReviewInspector } from "./review-inspector";
+import type { InsightLanguage } from "../domain/insight-provider";
 import { composeReviewPrompt } from "./review-rubric";
 
 const MAX_SNAPSHOT_FILE_BYTES = 512 * 1024;
@@ -48,6 +49,7 @@ type PrepareModelReviewInput = {
   readonly reviewInputPath: string;
   readonly patchPath: string;
   readonly debugPath: string;
+  readonly language: InsightLanguage;
   readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string>;
 };
 
@@ -76,7 +78,12 @@ export async function prepareModelReview(
     allowedRevisions: headSha === undefined ? ["HEAD"] : ["HEAD", headSha],
     gitShow: input.gitShow,
   });
-  const prompt = composeReviewPrompt({ reviewInput, context, fullPatch });
+  const prompt = composeReviewPrompt({
+    reviewInput,
+    context,
+    fullPatch,
+    language: input.language,
+  });
   if (Buffer.byteLength(prompt, "utf8") > MAX_ANALYSIS_PROMPT_BYTES)
     throw new AnalysisPromptTooLargeError();
   return {

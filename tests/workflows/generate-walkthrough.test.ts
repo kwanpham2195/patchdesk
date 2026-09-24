@@ -169,6 +169,7 @@ describe("walkthrough prompt preparation", () => {
       const prepared = await prepareWalkthroughPrompt({
         contextPath,
         patchPath,
+        language: "en",
       });
       if (prepared._tag === "err")
         throw new Error(
@@ -223,6 +224,7 @@ describe("walkthrough prompt preparation", () => {
         prepareWalkthroughPrompt({
           contextPath,
           patchPath,
+          language: "en",
         }),
       ).resolves.toEqual({
         _tag: "err",
@@ -244,6 +246,7 @@ describe("walkthrough prompt preparation", () => {
         prepareWalkthroughPrompt({
           contextPath,
           patchPath: join(directory, "missing.diff"),
+          language: "en",
         }),
       ).resolves.toEqual({
         _tag: "err",
