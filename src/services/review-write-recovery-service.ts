@@ -15,7 +15,7 @@ import {
   setReviewWriteResolution,
   type ReviewWriteOperation,
 } from "../domain/review-write-operation";
-import { err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { requireCurrentHead, type ReviewWriteGate } from "./review-write-gate";
 
@@ -110,16 +110,24 @@ export class ReviewWriteRecoveryService {
           ? "github_read_failed"
           : "not_fresh",
       );
-    if (
-      operation.intent._tag === "EditPublishedComment" ||
-      operation.intent._tag === "DeletePublishedComment" ||
-      operation.intent._tag === "DismissPublishedReview"
-    )
-      return this.recoverPublishedFeedbackOperation(
-        operation,
-        fresh.value.profile,
-        fresh.value.session,
-      );
+    switch (operation.intent._tag) {
+      case "EditPublishedComment":
+      case "DeletePublishedComment":
+      case "DismissPublishedReview":
+        return this.recoverPublishedFeedbackOperation(
+          operation,
+          fresh.value.profile,
+          fresh.value.session,
+        );
+      case "CreateComment":
+      case "Reply":
+      case "SetThreadState":
+      case "EditComment":
+      case "DeleteComment":
+        break;
+      default:
+        return casesHandled(operation.intent);
+    }
     const comments = await this.github.getPullRequestComments({
       profile: fresh.value.profile,
       pr: {
@@ -281,61 +289,94 @@ export function classifyConversationIntent(
   comments: GitHubComments,
 ): ClassifiedRecovery {
   const intent = operation.intent;
-  if (!("expected" in intent)) return { _tag: "CheckRequired" };
-  if (intent._tag === "SetThreadState") {
-    const thread = comments.threads.find(
-      (entry) => entry.id === intent.threadId,
-    );
-    if (thread?.state !== intent.state) return { _tag: "CheckRequired" };
-    return {
-      _tag: "Confirmed",
-      receipt: {
-        _tag: "ThreadState",
-        threadId: thread.id,
-        state: intent.state,
-      },
-    };
+  switch (intent._tag) {
+    case "SetThreadState": {
+      const thread = comments.threads.find(
+        (entry) => entry.id === intent.threadId,
+      );
+      if (thread?.state !== intent.state) return { _tag: "CheckRequired" };
+      return {
+        _tag: "Confirmed",
+        receipt: {
+          _tag: "ThreadState",
+          threadId: thread.id,
+          state: intent.state,
+        },
+      };
+    }
+    case "DeleteComment":
+      return allThreadComments(comments).some(
+        (entry) => entry.comment.id === intent.commentId,
+      )
+        ? { _tag: "CheckRequired" }
+        : { _tag: "Confirmed" };
+    case "EditComment": {
+      const match = allThreadComments(comments).find(
+        (entry) => entry.comment.id === intent.commentId,
+      );
+      return match !== undefined && sameBody(match.comment.body, intent.body)
+        ? {
+            _tag: "Confirmed",
+            receipt: { _tag: "Comment", commentId: intent.commentId },
+          }
+        : { _tag: "CheckRequired" };
+    }
+    case "CreateComment":
+    case "Reply":
+      return classifyAuthoredComment(operation, intent, comments);
+    // Published-feedback and metadata intents never reach this classifier; stay locked for a manual check.
+    case "EditPublishedComment":
+    case "DeletePublishedComment":
+    case "DismissPublishedReview":
+    case "AddLabels":
+    case "RemoveLabels":
+    case "AddAssignees":
+    case "RemoveAssignees":
+    case "RequestReviewers":
+    case "RemoveReviewers":
+    case "SetDraftState":
+    case "SetBaseBranch":
+      return { _tag: "CheckRequired" };
+    default:
+      return casesHandled(intent);
   }
-  const allComments = comments.threads.flatMap((thread) =>
+}
+
+function allThreadComments(comments: GitHubComments) {
+  return comments.threads.flatMap((thread) =>
     thread.comments.map((comment) => ({ thread, comment })),
   );
-  if (intent._tag === "DeleteComment") {
-    return allComments.some((entry) => entry.comment.id === intent.commentId)
-      ? { _tag: "CheckRequired" }
-      : { _tag: "Confirmed" };
-  }
-  if (intent._tag === "EditComment") {
-    const match = allComments.find(
-      (entry) => entry.comment.id === intent.commentId,
-    );
-    return match !== undefined && sameBody(match.comment.body, intent.body)
-      ? {
-          _tag: "Confirmed",
-          receipt: { _tag: "Comment", commentId: intent.commentId },
-        }
-      : { _tag: "CheckRequired" };
-  }
-  if (intent._tag !== "CreateComment" && intent._tag !== "Reply")
-    return { _tag: "CheckRequired" };
-  const candidates = allComments.filter(({ thread, comment }) => {
-    if (
-      !isMatchingAuthoredComment(
-        comment,
-        intent.body,
-        operation.startedAt,
-        intent.actor,
+}
+
+function classifyAuthoredComment(
+  operation: ReviewWriteOperation,
+  intent: Extract<
+    ReviewWriteOperation["intent"],
+    { readonly _tag: "CreateComment" | "Reply" }
+  >,
+  comments: GitHubComments,
+): ClassifiedRecovery {
+  const candidates = allThreadComments(comments).filter(
+    ({ thread, comment }) => {
+      if (
+        !isMatchingAuthoredComment(
+          comment,
+          intent.body,
+          operation.startedAt,
+          intent.actor,
+        )
       )
-    )
-      return false;
-    if (intent._tag === "Reply") return thread.id === intent.threadId;
-    const location = comment.location ?? thread.location;
-    return (
-      location?.path === intent.anchor.path &&
-      location.line === intent.anchor.startLine &&
-      (location.lineEnd ?? location.line) === intent.anchor.line &&
-      location.diffSide === intent.anchor.side
-    );
-  });
+        return false;
+      if (intent._tag === "Reply") return thread.id === intent.threadId;
+      const location = comment.location ?? thread.location;
+      return (
+        location?.path === intent.anchor.path &&
+        location.line === intent.anchor.startLine &&
+        (location.lineEnd ?? location.line) === intent.anchor.line &&
+        location.diffSide === intent.anchor.side
+      );
+    },
+  );
   if (candidates.length === 0) return { _tag: "CheckRequired" };
   if (candidates.length > 1) return { _tag: "ManualResolutionRequired" };
   const candidate = candidates[0];
@@ -352,54 +393,66 @@ export function classifyMetadataIntent(
   pullRequest: PullRequestSummary,
 ): RecentReviewWrite | undefined {
   const intent = operation.intent;
-  if (intent._tag === "AddLabels" || intent._tag === "RemoveLabels") {
-    const names = new Set(pullRequest.labels.map((label) => label.name));
-    const confirmed = intent.names.every((name) =>
-      intent._tag === "AddLabels" ? names.has(name) : !names.has(name),
-    );
-    if (!confirmed) return undefined;
-    return intent._tag === "AddLabels"
-      ? { _tag: "LabelChange", added: intent.names, removed: [] }
-      : { _tag: "LabelChange", added: [], removed: intent.names };
+  switch (intent._tag) {
+    case "AddLabels":
+    case "RemoveLabels": {
+      const names = new Set(pullRequest.labels.map((label) => label.name));
+      const confirmed = intent.names.every((name) =>
+        intent._tag === "AddLabels" ? names.has(name) : !names.has(name),
+      );
+      if (!confirmed) return undefined;
+      return intent._tag === "AddLabels"
+        ? { _tag: "LabelChange", added: intent.names, removed: [] }
+        : { _tag: "LabelChange", added: [], removed: intent.names };
+    }
+    case "AddAssignees":
+    case "RemoveAssignees": {
+      if (pullRequest.assignees === undefined) return undefined;
+      const logins = new Set(pullRequest.assignees);
+      const confirmed = intent.logins.every((login) =>
+        intent._tag === "AddAssignees" ? logins.has(login) : !logins.has(login),
+      );
+      if (!confirmed) return undefined;
+      return intent._tag === "AddAssignees"
+        ? { _tag: "AssigneeChange", added: intent.logins, removed: [] }
+        : { _tag: "AssigneeChange", added: [], removed: intent.logins };
+    }
+    case "RequestReviewers":
+    case "RemoveReviewers": {
+      if (pullRequest.requestedReviewers === undefined) return undefined;
+      const logins = new Set(pullRequest.requestedReviewers);
+      const confirmed = intent.logins.every((login) =>
+        intent._tag === "RequestReviewers"
+          ? logins.has(login)
+          : !logins.has(login),
+      );
+      if (!confirmed) return undefined;
+      return intent._tag === "RequestReviewers"
+        ? { _tag: "ReviewerChange", requested: intent.logins, removed: [] }
+        : { _tag: "ReviewerChange", requested: [], removed: intent.logins };
+    }
+    case "SetDraftState":
+      // `isDraft` is required on every pull request read, so a mismatch is real evidence the write did not land.
+      return pullRequest.isDraft === intent.draft
+        ? { _tag: "DraftStateChange", draft: intent.draft }
+        : undefined;
+    case "SetBaseBranch":
+      return pullRequest.baseBranch === intent.branch
+        ? { _tag: "BaseBranchChange", branch: intent.branch }
+        : undefined;
+    // Conversation and published-feedback intents are not confirmed from pull request metadata.
+    case "CreateComment":
+    case "Reply":
+    case "SetThreadState":
+    case "EditComment":
+    case "DeleteComment":
+    case "EditPublishedComment":
+    case "DeletePublishedComment":
+    case "DismissPublishedReview":
+      return undefined;
+    default:
+      return casesHandled(intent);
   }
-  if (intent._tag === "AddAssignees" || intent._tag === "RemoveAssignees") {
-    if (pullRequest.assignees === undefined) return undefined;
-    const logins = new Set(pullRequest.assignees);
-    const confirmed = intent.logins.every((login) =>
-      intent._tag === "AddAssignees" ? logins.has(login) : !logins.has(login),
-    );
-    if (!confirmed) return undefined;
-    return intent._tag === "AddAssignees"
-      ? { _tag: "AssigneeChange", added: intent.logins, removed: [] }
-      : { _tag: "AssigneeChange", added: [], removed: intent.logins };
-  }
-  if (intent._tag === "RequestReviewers" || intent._tag === "RemoveReviewers") {
-    if (pullRequest.requestedReviewers === undefined) return undefined;
-    const logins = new Set(pullRequest.requestedReviewers);
-    const confirmed = intent.logins.every((login) =>
-      intent._tag === "RequestReviewers"
-        ? logins.has(login)
-        : !logins.has(login),
-    );
-    if (!confirmed) return undefined;
-    return intent._tag === "RequestReviewers"
-      ? { _tag: "ReviewerChange", requested: intent.logins, removed: [] }
-      : { _tag: "ReviewerChange", requested: [], removed: intent.logins };
-  }
-  if (intent._tag === "SetDraftState") {
-    // `isDraft` is a required field on every pull request read, so an
-    // unconfirmed toggle is real evidence the write did not land, unlike the
-    // optional assignee and reviewer fields above.
-    return pullRequest.isDraft === intent.draft
-      ? { _tag: "DraftStateChange", draft: intent.draft }
-      : undefined;
-  }
-  if (intent._tag === "SetBaseBranch") {
-    return pullRequest.baseBranch === intent.branch
-      ? { _tag: "BaseBranchChange", branch: intent.branch }
-      : undefined;
-  }
-  return undefined;
 }
 
 /** Classify a published-feedback intent only after the caller proves a complete read. */
@@ -408,33 +461,50 @@ export function classifyPublishedFeedbackIntent(
   feedback: GitHubPublishedFeedback,
 ): ClassifiedRecovery {
   const intent = operation.intent;
-  if (intent._tag === "EditPublishedComment") {
-    const comment = feedback.comments.find(
-      (candidate) => candidate.id === intent.commentId,
-    );
-    return comment !== undefined && sameBody(comment.body, intent.body)
-      ? {
-          _tag: "Confirmed",
-          receipt: { _tag: "Comment", commentId: intent.commentId },
-        }
-      : { _tag: "CheckRequired" };
+  switch (intent._tag) {
+    case "EditPublishedComment": {
+      const comment = feedback.comments.find(
+        (candidate) => candidate.id === intent.commentId,
+      );
+      return comment !== undefined && sameBody(comment.body, intent.body)
+        ? {
+            _tag: "Confirmed",
+            receipt: { _tag: "Comment", commentId: intent.commentId },
+          }
+        : { _tag: "CheckRequired" };
+    }
+    case "DeletePublishedComment":
+      return feedback.comments.some(
+        (candidate) => candidate.id === intent.commentId,
+      )
+        ? { _tag: "CheckRequired" }
+        : { _tag: "Confirmed" };
+    case "DismissPublishedReview": {
+      const review = feedback.reviews.find(
+        (candidate) => candidate.id === intent.publishedReviewId,
+      );
+      return review?.event === "DISMISSED"
+        ? { _tag: "Confirmed" }
+        : { _tag: "CheckRequired" };
+    }
+    // Conversation and metadata intents are not confirmed from published feedback; stay locked for a manual check.
+    case "CreateComment":
+    case "Reply":
+    case "SetThreadState":
+    case "EditComment":
+    case "DeleteComment":
+    case "AddLabels":
+    case "RemoveLabels":
+    case "AddAssignees":
+    case "RemoveAssignees":
+    case "RequestReviewers":
+    case "RemoveReviewers":
+    case "SetDraftState":
+    case "SetBaseBranch":
+      return { _tag: "CheckRequired" };
+    default:
+      return casesHandled(intent);
   }
-  if (intent._tag === "DeletePublishedComment") {
-    return feedback.comments.some(
-      (candidate) => candidate.id === intent.commentId,
-    )
-      ? { _tag: "CheckRequired" }
-      : { _tag: "Confirmed" };
-  }
-  if (intent._tag === "DismissPublishedReview") {
-    const review = feedback.reviews.find(
-      (candidate) => candidate.id === intent.publishedReviewId,
-    );
-    return review?.event === "DISMISSED"
-      ? { _tag: "Confirmed" }
-      : { _tag: "CheckRequired" };
-  }
-  return { _tag: "CheckRequired" };
 }
 
 function isMatchingAuthoredComment(
