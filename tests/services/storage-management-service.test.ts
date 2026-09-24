@@ -366,6 +366,14 @@ describe("StorageManagementService", () => {
     },
   );
 
+  it("reports the log bytes without reading any workspace", async () => {
+    const value = await fixture();
+    await mkdir(value.paths.logsDirectory(), { recursive: true });
+    await writeFile(value.paths.logFile(), "y".repeat(300));
+
+    await expect(value.service.logsBytes()).resolves.toBe(300);
+  });
+
   it("protects an active preparation journal before touching durable state", async () => {
     const value = await fixture();
     await expect(

@@ -182,7 +182,7 @@ export function ReviewWorkbenchHeader({
           {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
           {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
           {model.revision.reviewedHeadSha.slice(0, 8)}
-          {/* A merged or closed Review is never refreshed, so its freshness would only age. */}
+          {/* A merged or closed Review is never refreshed, so its freshness and updates notice would only age. */}
           {terminal ? null : (
             <>
               {" "}
@@ -193,7 +193,7 @@ export function ReviewWorkbenchHeader({
               />
             </>
           )}
-          {hasUpdates ? (
+          {hasUpdates && !terminal ? (
             <span
               className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-status-warning/50 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning"
               role="status"

@@ -332,6 +332,52 @@ describe("SettingsModal", () => {
     ).toBe(true);
   });
 
+  it("shows the log size with no active workspace, asking for no workspace's usage", async () => {
+    const desktopApi = installDesktopApi({
+      storageUsage: () => ({ logsBytes: 2_100_000 }),
+    });
+    const user = userEvent.setup();
+
+    render(
+      <SettingsModal
+        open
+        onOpenChange={() => undefined}
+        appearance="system"
+        onAppearanceChange={() => undefined}
+        diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
+        onDiffThemeChange={() => undefined}
+        profiles={[]}
+        onWorkspaceReload={async () => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    const storage = within(screen.getByTestId("local-review-data-card"));
+    expect(await storage.findByText("· 2.1 MB")).toBeTruthy();
+    const usagePaths = desktopApi.request.mock.calls.flatMap(([input]) =>
+      "path" in input && input.path.startsWith("/v1/storage/usage")
+        ? [input.path]
+        : [],
+    );
+    expect(usagePaths).toEqual(["/v1/storage/usage"]);
+  });
+
+  it("rolls a size that rounds to 1000 over to the next unit", async () => {
+    installDesktopApi({
+      storageUsage: () => ({
+        cacheBytes: 999_950,
+        localReviewDataBytes: 0,
+        logsBytes: 0,
+      }),
+    });
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    const storage = within(screen.getByTestId("local-review-data-card"));
+    expect(await storage.findByText("· 1.0 MB")).toBeTruthy();
+  });
+
   it("returns focus to the opener after closing", async () => {
     installDesktopApi();
     const opener = document.createElement("button");
@@ -384,8 +430,8 @@ function installDesktopApi(
   options: {
     readonly clearLocalDataFails?: boolean;
     readonly storageUsage?: () => {
-      readonly cacheBytes: number;
-      readonly localReviewDataBytes: number;
+      readonly cacheBytes?: number;
+      readonly localReviewDataBytes?: number;
       readonly logsBytes: number;
     };
   } = {},

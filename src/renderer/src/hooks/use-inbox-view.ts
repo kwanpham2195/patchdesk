@@ -100,12 +100,18 @@ export function useInboxView(params: {
   );
   const { inspectorOpen, selectedKey } = inboxView;
   const [narrow, setNarrow] = useState(() => isNarrowViewport());
+  // The narrow overlay is modal, so it opens only on request and closes when the
+  // viewport crosses the breakpoint; the persisted preference drives the inline panel.
+  const [overlayOpen, setOverlayOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const query = narrowViewportQuery();
     if (query === undefined) return;
-    const update = (): void => setNarrow(query.matches);
+    const update = (): void => {
+      setNarrow(query.matches);
+      setOverlayOpen(false);
+    };
     update();
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
@@ -133,6 +139,10 @@ export function useInboxView(params: {
     saveInboxViewPreferences(profileId, { selectedIdentity: key });
   };
   const toggleInspector = (): void => {
+    if (narrow) {
+      setOverlayOpen((open) => !open);
+      return;
+    }
     const next = !inspectorOpen;
     dispatchInboxView({ _tag: "inspectorToggled" });
     saveInboxViewPreferences(profileId, { inspectorOpen: next });
@@ -173,6 +183,7 @@ export function useInboxView(params: {
 
   return {
     inspectorOpen,
+    overlayOpen,
     narrow,
     listRef,
     selected,

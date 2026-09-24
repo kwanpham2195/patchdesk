@@ -218,6 +218,7 @@ export function MaintainerInbox({
   const columns = inboxColumnVisibility(effectiveRows);
   const {
     inspectorOpen,
+    overlayOpen,
     narrow,
     listRef,
     selected,
@@ -274,7 +275,7 @@ export function MaintainerInbox({
         rowCount={effectiveRows.length}
         {...(matchCount === undefined ? {} : { matchCount })}
         listPending={listPending}
-        inspectorOpen={inspectorOpen}
+        inspectorOpen={narrow ? overlayOpen : inspectorOpen}
         onToggleInspector={toggleInspector}
       />
       <InboxColumnHeader columns={columns} />
@@ -324,6 +325,7 @@ export function MaintainerInbox({
       {main}
       <ReviewDetailsPanel
         inspectorOpen={inspectorOpen}
+        overlayOpen={overlayOpen}
         narrow={narrow}
         selected={selected}
         freshness={freshness}
@@ -704,6 +706,7 @@ function InboxFooter({
 
 function ReviewDetailsPanel({
   inspectorOpen,
+  overlayOpen,
   narrow,
   selected,
   freshness,
@@ -712,6 +715,7 @@ function ReviewDetailsPanel({
   openingOperations,
 }: {
   readonly inspectorOpen: boolean;
+  readonly overlayOpen: boolean;
   readonly narrow: boolean;
   readonly selected: InboxRow | undefined;
   readonly freshness: InboxDataFreshness;
@@ -745,7 +749,7 @@ function ReviewDetailsPanel({
         </ScrollArea>
       </aside>
       <Sheet
-        open={narrow && inspectorOpen && selected !== undefined}
+        open={narrow && overlayOpen && selected !== undefined}
         onOpenChange={(open) => {
           if (!open && narrow) onToggleInspector();
         }}

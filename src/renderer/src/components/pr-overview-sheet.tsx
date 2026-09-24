@@ -880,6 +880,19 @@ export function isUnconfirmedBlock(
   );
 }
 
+// A draft is the author's choice to hold the merge, not a problem to fix, so a
+// block made only of draft and closed states is not given the destructive tone.
+function isDraftOnlyBlock(
+  tag: WorkbenchResponse["mergeReadiness"]["_tag"],
+  blockers: readonly string[],
+): boolean {
+  return (
+    tag === "Blocked" &&
+    blockers.includes("draft") &&
+    blockers.every((blocker) => blocker === "draft" || blocker === "closed")
+  );
+}
+
 /** What the Merge readiness header reads for one readiness tag. */
 // oxlint-disable-next-line react/only-export-components -- Shared readiness rule, tested as a function in tests/renderer/merge-readiness-header.test.ts.
 export function mergeReadinessLabel(
@@ -887,6 +900,7 @@ export function mergeReadinessLabel(
   blockers: readonly string[],
 ): string {
   if (isUnconfirmedBlock(tag, blockers)) return "Unknown";
+  if (isDraftOnlyBlock(tag, blockers)) return "Draft";
   switch (tag) {
     case "Ready":
       return "Ready to merge";
@@ -904,6 +918,7 @@ export function mergeReadinessTone(
   blockers: readonly string[],
 ): string {
   if (isUnconfirmedBlock(tag, blockers)) return infoTone;
+  if (isDraftOnlyBlock(tag, blockers)) return mutedTone;
   switch (tag) {
     case "Ready":
       return successTone;

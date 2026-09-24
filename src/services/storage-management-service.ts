@@ -100,6 +100,11 @@ export class StorageManagementService {
     this.lifecycleGate = deps.lifecycleGate ?? new ReviewLifecycleGate();
   }
 
+  /** Bytes used by the app log directory, which belongs to no workspace. */
+  async logsBytes(): Promise<number> {
+    return await this.deps.artifacts.logsBytes();
+  }
+
   async list(
     profileId: WorkspaceProfileId,
   ): Promise<Result<StorageOverview, StorageManagementFailure>> {

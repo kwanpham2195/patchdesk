@@ -419,6 +419,7 @@ describe("local API current Review capability boundary", () => {
     const api = await start({
       storageManagement: {
         list: async () => err({ _tag: "StorageUnavailable" }),
+        logsBytes: async () => 0,
         clearCache: record("clearCache"),
         clearLocalData: record("clearLocalData"),
         sweepRetained: record("sweepRetained"),
@@ -442,6 +443,30 @@ describe("local API current Review capability boundary", () => {
       { operation: "clearCache", profileId: "profile" },
       { operation: "clearLocalData", profileId: "profile" },
     ]);
+  });
+
+  it("reports only the log size when storage usage names no workspace", async () => {
+    const listed: WorkspaceProfileId[] = [];
+    const api = await start({
+      storageManagement: {
+        list: async (profileId) => {
+          listed.push(profileId);
+          return err({ _tag: "StorageUnavailable" });
+        },
+        logsBytes: async () => 2_100,
+        clearCache: async () => ok(undefined),
+        clearLocalData: async () => ok(undefined),
+        sweepRetained: async () => ok(undefined),
+      },
+    });
+
+    const response = await fetch(new URL("v1/storage/usage", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ logsBytes: 2_100 });
+    expect(listed).toEqual([]);
   });
 
   it("does not expose deleted dashboard, list, model, write, or cleanup routes", async () => {

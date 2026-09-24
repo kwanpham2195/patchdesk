@@ -51,7 +51,11 @@ export function registerStorageDiagnosticsRoutes(
     );
   };
   app.get("/v1/storage/usage", async (context) => {
-    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const rawProfileId = context.req.query("profileId");
+    // Logs are app-wide, so Settings can show their size before any workspace exists.
+    if (rawProfileId === undefined)
+      return context.json({ logsBytes: await storageManagement.logsBytes() });
+    const profileId = parseWorkspaceProfileId(rawProfileId);
     if (profileId._tag === "err")
       return context.json({ error: "invalid_input" }, 400);
     const overview = await storageManagement.list(profileId.value);

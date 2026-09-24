@@ -71,13 +71,14 @@ export const FLATTENED_PATH_TREE_STYLE = [
  * The library hard-codes a middle truncation split at the extension, which
  * shows the stem's shared prefix and turns sibling files into identical
  * `sidebar-variant…tsx` rows. The trailing LRM keeps the stem's final `.` on
- * the right inside the RTL box.
+ * the right inside the RTL box. `text-overflow` drops whole glyphs and draws
+ * the ellipsis against the text; the library's overlaid marker covered a
+ * clipped glyph at a varying offset, so it is hidden here.
  */
 export const FILE_NAME_TREE_STYLE = [
-  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { direction: rtl; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { direction: rtl; overflow: hidden; text-overflow: ellipsis; }`,
   `[data-truncate-segment-priority="2"] [data-truncate-content="visible"]::after { content: "\\200E"; }`,
-  `[data-truncate-segment-priority="2"] [data-truncate-marker] { left: 0; right: auto; }`,
-  `[data-truncate-segment-priority="2"] [data-truncate-container] { --truncate-marker-gap: 1px; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-marker-cell] { display: none; }`,
 ].join(" ");
 
 /**

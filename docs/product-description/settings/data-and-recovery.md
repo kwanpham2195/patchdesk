@@ -25,7 +25,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The active workspace profile is the target. With no active profile, both cleanup buttons are disabled, and the section shows `No active workspace`.
+The active workspace profile is the target. With no active profile, both cleanup buttons are disabled, and the section shows `No active workspace`. The Logs row still shows its size, since the app log belongs to no workspace; Cache and Local review data show none.
 
 The Storage card lists three rows, each with a one-line description and its size on disk: Cache (`Cache · 246 MB`, rebuildable pull request checkouts), Local review data (`Local review data · 1.6 MB`, completed and failed local Reviews), and Logs (`Logs · 19 MB`, the app log that Diagnostics shows). Cache and Local review data carry their clear button on the right; the Logs row is read-only. Each size is what that clear frees: Local review data counts only sessions no active work protects. Sizes use decimal units, with one decimal below 10. A size that cannot be measured is left off its row. Each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. Review activity moved to the Diagnostics overlay; see [Logs and diagnostics](logs-and-diagnostics.md).
 
