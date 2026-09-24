@@ -88,6 +88,7 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
       provider: "pi",
       model: "model",
       reasoning: "medium",
+      language: "en",
     }),
   ).toBe(202);
   expect(
@@ -110,6 +111,7 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
       provider: "pi",
       model: "model",
       reasoning: "medium",
+      language: "en",
     }),
   ).toBe(400);
 
