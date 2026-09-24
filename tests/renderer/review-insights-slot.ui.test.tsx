@@ -218,7 +218,7 @@ describe("InsightsSlot on a merged Review", () => {
     { status: "closed", offersActions: false },
     { status: "merged", offersActions: false },
   ] as const)(
-    "offers Add and Dismiss on a saved Analysis finding of a $status Review: $offersActions",
+    "offers Add, Add all, and Dismiss on a saved Analysis finding of a $status Review: $offersActions",
     ({ status, offersActions }) => {
       const workbench = withAnalysis("actionable");
       render(
@@ -229,10 +229,15 @@ describe("InsightsSlot on a merged Review", () => {
           onWorkbenchPatch={() => undefined}
           onReprepare={async () => workbench}
           onAddFinding={async () => undefined}
+          addAllFindings={{
+            progress: undefined,
+            addAll: async () => ({ _tag: "completed" }),
+            stop: () => undefined,
+          }}
         />,
       );
 
-      for (const name of ["Add to review", "Dismiss"]) {
+      for (const name of ["Add to review", "Add all to review", "Dismiss"]) {
         expect(screen.queryByRole("button", { name }) !== null).toBe(
           offersActions,
         );

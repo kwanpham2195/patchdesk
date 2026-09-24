@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { AnalysisReader } from "../../src/renderer/src/components/analysis-reader";
 import { renderAnalysisFixPrompt } from "../../src/renderer/src/analysis-fix-prompt";
@@ -10,6 +17,10 @@ import {
   contextualMessage,
 } from "../../src/renderer/src/api-client";
 import { FINDING_ACTION_MESSAGES } from "../../src/renderer/src/review-copy";
+import type {
+  AddAllFindingsControls,
+  AddAllFindingsOutcome,
+} from "../../src/renderer/src/flows/use-add-all-findings";
 
 const result: Parameters<typeof AnalysisReader>[0]["result"] = {
   changeSummary: "Analysis of the `currentChange`",
@@ -87,6 +98,38 @@ const patch = [
 ].join("\n");
 
 afterEach(cleanup);
+
+function idleBatch(
+  outcome: AddAllFindingsOutcome = { _tag: "completed" },
+): AddAllFindingsControls & {
+  readonly addAll: Mock<AddAllFindingsControls["addAll"]>;
+} {
+  return {
+    progress: undefined,
+    addAll: vi.fn<AddAllFindingsControls["addAll"]>(async () => outcome),
+    stop: vi.fn(),
+  };
+}
+
+const threeFindingResult: Parameters<typeof AnalysisReader>[0]["result"] = {
+  ...result,
+  findings: [
+    { ...findingFixture, id: "finding-3", severity: "P3", title: "Naming" },
+    findingFixture,
+    { ...findingFixture, id: "finding-2", title: "Already added" },
+  ],
+};
+const threeFindingStatuses = {
+  "finding-1": "actionable",
+  "finding-2": "pending_review",
+  "finding-3": "actionable",
+} as const;
+
+function findingRow(title: string): HTMLElement {
+  const row = screen.getByText(title).closest("li");
+  if (row === null) throw new Error(`no row for ${title}`);
+  return row;
+}
 
 describe("AnalysisReader", () => {
   it("reveals the complete containing hunk and highlights the mapped Finding range on demand", async () => {
@@ -282,13 +325,13 @@ describe("AnalysisReader", () => {
           findingStatuses={{ "finding-1": state }}
           onAddFinding={vi.fn(async () => undefined)}
           onDismissFinding={vi.fn(async () => undefined)}
+          addAllFindings={idleBatch()}
         />,
       );
 
       expect(screen.getByText(label)).toBeTruthy();
-      expect(
-        screen.queryByRole("button", { name: "Add to review" }),
-      ).toBeNull();
+      for (const name of ["Add to review", "Add all to review"])
+        expect(screen.queryByRole("button", { name })).toBeNull();
       expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
     },
   );
@@ -663,6 +706,96 @@ it("deduplicates and groups supporting details by reviewer purpose", async () =>
   ).toBeTruthy();
   expect(screen.getByRole("heading", { name: /Assumptions 1/ })).toBeTruthy();
   expect(screen.getAllByRole("listitem")).toHaveLength(5);
+});
+
+describe("Add all to review", () => {
+  it("lists every actionable Finding in the confirmation and adds exactly those, in reading order", async () => {
+    const user = userEvent.setup();
+    const batch = idleBatch();
+    render(
+      <AnalysisReader
+        result={threeFindingResult}
+        findingStatuses={threeFindingStatuses}
+        onAddFinding={vi.fn(async () => undefined)}
+        addAllFindings={batch}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add all to review" }));
+    const listed = within(
+      screen.getByRole("list", { name: "Findings to add" }),
+    ).getAllByRole("listitem");
+    expect(listed.map((item) => item.textContent)).toEqual([
+      "P1Missing boundary checksrc/a.ts:2",
+      "P3Namingsrc/a.ts:2",
+    ]);
+    expect(batch.addAll).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Add all" }));
+
+    expect(
+      batch.addAll.mock.calls[0]?.[0].map((finding) => finding.id),
+    ).toEqual(["finding-1", "finding-3"]);
+  });
+
+  it("shows the batch failure under the Finding that failed", async () => {
+    const user = userEvent.setup();
+    render(
+      <AnalysisReader
+        result={threeFindingResult}
+        findingStatuses={threeFindingStatuses}
+        onAddFinding={vi.fn(async () => undefined)}
+        addAllFindings={idleBatch({
+          _tag: "failed",
+          findingId: "finding-3",
+          message: "GitHub refused the comment.",
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add all to review" }));
+    await user.click(screen.getByRole("button", { name: "Add all" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+
+    expect(
+      within(findingRow("Naming")).getByText("GitHub refused the comment."),
+    ).toBeTruthy();
+    expect(
+      within(findingRow("Missing boundary check")).queryByText(
+        "GitHub refused the comment.",
+      ),
+    ).toBeNull();
+  });
+
+  it("disables every Finding action while a batch runs and stops it on request", async () => {
+    const user = userEvent.setup();
+    const stop = vi.fn();
+    render(
+      <AnalysisReader
+        result={threeFindingResult}
+        findingStatuses={threeFindingStatuses}
+        onAddFinding={vi.fn(async () => undefined)}
+        onDismissFinding={vi.fn(async () => undefined)}
+        addAllFindings={{
+          ...idleBatch(),
+          progress: {
+            done: 0,
+            total: 2,
+            currentFindingId: "finding-1",
+            stopping: false,
+          },
+          stop,
+        }}
+      />,
+    );
+
+    for (const button of [
+      ...screen.getAllByRole("button", { name: /Add to review|Adding/ }),
+      ...screen.getAllByRole("button", { name: "Dismiss" }),
+    ])
+      expect(button).toHaveProperty("disabled", true);
+    await user.click(screen.getByRole("button", { name: "Stop adding" }));
+    expect(stop).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Copy as markdown prompt", () => {

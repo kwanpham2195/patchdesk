@@ -86,7 +86,7 @@ A confirmed rejection of an inline Start or Add leaves a failed card with the co
 
 **Network, local tools, and Insight providers.** GitHub owns the pending review. Analysis may provide a proposed comment or initial summary but cannot submit it autonomously.
 
-**Concurrent operations and locking.** One pending-review busy state covers the whole command. Detect/write coordination and recovery locking prevent duplicate or stale mutations.
+**Concurrent operations and locking.** One pending-review busy state covers the whole command. An Analysis Add all to review batch holds that busy state from its first write until it ends, so Finish review, inline review comments, and navigation away wait for it; each Finding in the batch is its own Start or Add command, and an unknown outcome locks and stops the batch. Detect/write coordination and recovery locking prevent duplicate or stale mutations.
 
 **Feedback, errors, and diagnostics.** Comment count, pending ledger, busy labels, bounded errors, recovery banner, and manual-resolution guidance expose distinct states.
 

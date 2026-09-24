@@ -7,6 +7,7 @@ import { projectReadOnlyConversationAnnotations } from "../inline-conversation-m
 import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
+import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
 import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
@@ -18,6 +19,7 @@ type InsightReaderBuilderInput = {
   readonly selectedInsight: InsightRunDialogType;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
   readonly addFinding?: (finding: AnalysisFinding) => Promise<void>;
+  readonly addAllFindings?: AddAllFindingsControls;
   readonly dismissFinding: (
     finding: AnalysisFinding,
     reason: string,
@@ -75,6 +77,7 @@ export function buildInsightReaders({
   selectedInsight,
   onFinishWithAnalysisSummary,
   addFinding,
+  addAllFindings,
   dismissFinding,
   analysisVerification,
   walkthroughProgress,
@@ -163,7 +166,7 @@ export function buildInsightReaders({
         workbench.review.status === "open"
           ? {
               onDismissFinding: dismissFinding,
-              ...definedProps({ onAddFinding: addFinding }),
+              ...definedProps({ onAddFinding: addFinding, addAllFindings }),
             }
           : {})}
       />

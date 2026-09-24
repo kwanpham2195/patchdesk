@@ -7,6 +7,7 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import { InsightsSlot } from "../components/review-insights-slot";
 import { useWorkbenchActions } from "./use-workbench-actions";
 import { useAnalysisReviewActions } from "./use-analysis-review-actions";
+import { useAddAllFindings } from "./use-add-all-findings";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
 import { usePendingReviewActions } from "./use-pending-review-actions";
@@ -139,6 +140,12 @@ export function ReviewWorkbenchFlow({
     onWorkbenchReplace: replaceWorkbench,
     runDirectCommand,
   });
+  const addAllFindings = useAddAllFindings({
+    addFinding: addFindingToPendingReview,
+    analysisRunId: workbench.insights.analysis.retained?.runId,
+  });
+  // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
+  const findingBatchRunning = addAllFindings.progress !== undefined;
 
   const viewedFiles = useViewedFiles({
     profileId: workbench.session.key.profileId,
@@ -164,8 +171,14 @@ export function ReviewWorkbenchFlow({
     conversation,
     observation: { runDetect, refresh, refreshing, refreshError },
     merge: mergeAction,
-    pendingReviewComposer,
-    pendingReview,
+    pendingReviewComposer:
+      pendingReviewComposer === undefined || !findingBatchRunning
+        ? pendingReviewComposer
+        : { ...pendingReviewComposer, busy: true },
+    pendingReview:
+      pendingReview === undefined || !findingBatchRunning
+        ? pendingReview
+        : { ...pendingReview, busy: true },
     directSummary,
     reportNavigationState: onNavigationStateChange,
   });
@@ -196,6 +209,7 @@ export function ReviewWorkbenchFlow({
                 ? {}
                 : {
                     onAddFinding: addFindingToPendingReview,
+                    addAllFindings,
                     onFinishWithAnalysisSummary: openFinishDialogWithSummary,
                   })}
             />

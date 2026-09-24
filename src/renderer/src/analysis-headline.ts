@@ -63,3 +63,12 @@ export function checkStatusLabel(status: CheckStatus): string {
       return "Unknown";
   }
 }
+
+/** A Finding's `file:line` label, or undefined when it has no file. */
+export function findingLocation(
+  finding: AnalysisResult["findings"][number],
+): string | undefined {
+  return finding.file === undefined
+    ? undefined
+    : `${finding.file}${finding.lineStart === undefined ? "" : `:${finding.lineStart}`}`;
+}

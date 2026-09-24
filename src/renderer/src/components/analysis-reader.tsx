@@ -15,11 +15,14 @@ import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
 import {
   analysisVerdictLabel,
   checkStatusLabel,
+  findingLocation,
   unhandledAnalysisFindings,
   type AnalysisFindingStatus as FindingStatus,
   type AnalysisResult,
   type CheckStatus,
 } from "../analysis-headline";
+import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
+import { AnalysisAddAllFindings } from "./analysis-add-all-findings";
 import { AnalysisDismissedFindingRow } from "./analysis-dismissed-finding-row";
 import { FindingEvidenceHunk } from "./finding-evidence-hunk";
 import { FindingSuggestionPreview } from "./finding-suggestion-preview";
@@ -92,6 +95,8 @@ export type AnalysisReaderProps = {
   readonly fixPromptContext?: AnalysisFixPromptContext | undefined;
   /** Saved Verification ticks; without it the checklist is read-only. */
   readonly verification?: AnalysisVerificationControls;
+  /** Batch Add; offered only alongside `onAddFinding`. */
+  readonly addAllFindings?: AddAllFindingsControls;
 };
 
 /** Decision-first read-side view of one retained Analysis result. */
@@ -108,6 +113,7 @@ export function AnalysisReader({
   onOpenFindingInDiff,
   fixPromptContext,
   verification,
+  addAllFindings,
 }: AnalysisReaderProps): React.JSX.Element {
   const admittedFindingIds = useRef<Set<string>>(new Set());
   const [findingActions, setFindingActions] = useState<
@@ -142,7 +148,7 @@ export function AnalysisReader({
     (count, group) => count + group.details.length,
     0,
   );
-  const recommendation = recommendationFor(result.verdict);
+  const batchProgress = addAllFindings?.progress;
   const runFindingAction = async (
     findingId: string,
     state: FindingActionState,
@@ -187,7 +193,12 @@ export function AnalysisReader({
         finding={finding}
         status={findingStatuses?.[finding.id]}
         needsReply={needsReplyFindingIds?.has(finding.id) ?? false}
-        actionState={findingActions.get(finding.id)}
+        actionState={
+          batchProgress?.currentFindingId === finding.id
+            ? "adding"
+            : findingActions.get(finding.id)
+        }
+        actionsDisabled={batchProgress !== undefined}
         actionError={findingErrors.get(finding.id)}
         {...(evidencePatch === undefined ? {} : { evidencePatch })}
         {...(onOpenFindingInDiff === undefined ? {} : { onOpenFindingInDiff })}
@@ -223,35 +234,16 @@ export function AnalysisReader({
       aria-label="Analysis reader"
       className="flex w-full flex-col gap-3 pb-4"
     >
-      <Card size="sm">
-        <CardHeader>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Badge variant={recommendation.variant}>
-              {analysisVerdictLabel(result.verdict)}
-            </Badge>
-            <Badge variant="outline">
-              {hasNoGeneratedFindings ? "No findings" : handledProgress}
-            </Badge>
-            <Badge
-              variant={checkStatus === "failing" ? "destructive" : "outline"}
-            >
-              CI · {checkStatusLabel(checkStatus)}
-            </Badge>
-          </div>
-          <h2 className="text-lg font-semibold">{recommendation.heading}</h2>
-          <CardDescription className="max-w-4xl">
-            <GeneratedMarkdown markdown={result.summary} />
-          </CardDescription>
-          {canFinishWithAnalysisSummary &&
-          onFinishWithAnalysisSummary !== undefined ? (
-            <CardAction>
-              <Button size="sm" onClick={onFinishWithAnalysisSummary}>
-                Finish review
-              </Button>
-            </CardAction>
-          ) : null}
-        </CardHeader>
-      </Card>
+      <AnalysisVerdictCard
+        result={result}
+        badge={hasNoGeneratedFindings ? "No findings" : handledProgress}
+        checkStatus={checkStatus}
+        {...definedProps({
+          onFinishWithAnalysisSummary: canFinishWithAnalysisSummary
+            ? onFinishWithAnalysisSummary
+            : undefined,
+        })}
+      />
 
       <Card size="sm">
         <CardHeader>
@@ -265,7 +257,23 @@ export function AnalysisReader({
           {hasNoGeneratedFindings ? null : (
             <CardDescription>{handledProgress}</CardDescription>
           )}
-          <CardAction>
+          <CardAction className="flex flex-wrap items-center justify-end gap-2">
+            {addAllFindings === undefined ||
+            onAddFinding === undefined ? null : (
+              <AnalysisAddAllFindings
+                findings={[...highSeverityFindings, ...lowerSeverityFindings]}
+                findingStatuses={findingStatuses}
+                controls={addAllFindings}
+                disabled={findingActions.size > 0}
+                onClearError={clearFindingError}
+                onFailed={(findingId, message) => {
+                  recordFindingError(findingId, message);
+                  // The failed row must be visible to show its error.
+                  if (lowerSeverityFindings.some(({ id }) => id === findingId))
+                    setLowerSeverityOpen(true);
+                }}
+              />
+            )}
             <CopyFixPromptButton
               disabled={
                 !result.findings.some(
@@ -376,6 +384,48 @@ export function AnalysisReader({
   );
 }
 
+function AnalysisVerdictCard({
+  result,
+  badge,
+  checkStatus,
+  onFinishWithAnalysisSummary,
+}: {
+  readonly result: AnalysisResult;
+  readonly badge: string;
+  readonly checkStatus: CheckStatus;
+  readonly onFinishWithAnalysisSummary?: () => void;
+}): React.JSX.Element {
+  const recommendation = recommendationFor(result.verdict);
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Badge variant={recommendation.variant}>
+            {analysisVerdictLabel(result.verdict)}
+          </Badge>
+          <Badge variant="outline">{badge}</Badge>
+          <Badge
+            variant={checkStatus === "failing" ? "destructive" : "outline"}
+          >
+            CI · {checkStatusLabel(checkStatus)}
+          </Badge>
+        </div>
+        <h2 className="text-lg font-semibold">{recommendation.heading}</h2>
+        <CardDescription className="max-w-4xl">
+          <GeneratedMarkdown markdown={result.summary} />
+        </CardDescription>
+        {onFinishWithAnalysisSummary !== undefined ? (
+          <CardAction>
+            <Button size="sm" onClick={onFinishWithAnalysisSummary}>
+              Finish review
+            </Button>
+          </CardAction>
+        ) : null}
+      </CardHeader>
+    </Card>
+  );
+}
+
 /**
  * Copies the open findings as a markdown prompt. The label only flips to
  * "Copied" once the clipboard write resolves, so a rejection never claims
@@ -461,6 +511,7 @@ function AnalysisFindingRow({
   status,
   needsReply,
   actionState,
+  actionsDisabled,
   actionError,
   evidencePatch,
   onAddFinding,
@@ -471,6 +522,8 @@ function AnalysisFindingRow({
   readonly status?: FindingStatus | undefined;
   readonly needsReply: boolean;
   readonly actionState?: FindingActionState | undefined;
+  /** A batch Add owns every Finding's actions while it runs. */
+  readonly actionsDisabled: boolean;
   readonly actionError?: string | undefined;
   readonly evidencePatch?: string | undefined;
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
@@ -508,7 +561,7 @@ function AnalysisFindingRow({
     ],
   );
   const disposition = finding.disposition ?? "open";
-  const actionPending = actionState !== undefined;
+  const actionPending = actionState !== undefined || actionsDisabled;
   const reviewStatus =
     status ?? (disposition === "dismissed" ? "dismissed" : "unavailable");
   const evidenceAnchor =
@@ -856,12 +909,6 @@ function significantTokens(value: string): ReadonlySet<string> {
       .match(/[a-z0-9]+/g)
       ?.filter((token) => token.length > 2 || /^\d+$/.test(token)) ?? [],
   );
-}
-
-function findingLocation(finding: AnalysisFinding): string | undefined {
-  return finding.file === undefined
-    ? undefined
-    : `${finding.file}${finding.lineStart === undefined ? "" : `:${finding.lineStart}`}`;
 }
 
 /** An actionable Finding needs no label: its Add and Dismiss buttons say it. */
