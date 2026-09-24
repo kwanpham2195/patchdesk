@@ -127,7 +127,7 @@ export function AppShell({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        if (isTextEntryTarget(event.target)) return;
+        if (isTextEntryTarget(event)) return;
         event.preventDefault();
         if (navigationBlocked) return;
         setCommandQuery("");

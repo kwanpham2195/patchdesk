@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed ⌘K opening **Navigate** while typing in the **Browse** search field, which appears for pull requests with 500 or more files. #348
+
 - Fixed a disabled switch or checkbox looking enabled, such as **Split view** in **View options** when the pane is too narrow. It now draws faded with a not-allowed cursor. #348
 
 - A merged or closed Review no longer offers **Regenerate** on a saved Insight, or **Add to review**, **Add suggestion to review**, or **Dismiss** on an Analysis Finding, all of which it refused; the line explaining that Insights cannot be generated stays. A Finding already **Added** or **Published** no longer offers **Dismiss**. #348
