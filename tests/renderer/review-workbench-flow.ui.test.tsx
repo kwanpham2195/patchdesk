@@ -927,7 +927,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(
       screen.queryByRole("button", { name: "Refresh GitHub state" }),
     ).toBeNull();
-    expect(screen.getByText("Merged on GitHub.")).toBeTruthy();
     expect(screen.getByText("Merge · Merged")).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: "#42 Canonical workbench" }),

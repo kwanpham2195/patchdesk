@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Review header keeps one layout for every pull request state: the status chips sit under the title and Refresh ends the meta line. A merged or closed Review states that once, in the **Merge** chip, and its Insights draw no disabled **Generate** button. Freshness reads in plain words, such as "Up to date with GitHub · checked 7 h ago" and "Generated 7 h ago", in place of "Current" and "retained". #361
+
 - Saved **Viewed** marks in the Diff. Files marked Viewed stay marked after leaving the Review, switching Reviews, or restarting Patchdesk, and a new head starts with none viewed. #358
 
 - In the Diff with **All files** chosen, `n` and `p` jump to the next and previous file not marked **Viewed**, wrapping at the ends, and `v` toggles **Viewed** on the current file. The **All files** tooltip lists the new keys. #357

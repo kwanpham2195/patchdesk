@@ -70,13 +70,15 @@ export function ReviewWorkbenchHeader({
       data-review-workbench-toolbar
       className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-3"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="min-w-0 text-lg font-semibold" title={title}>
-          #{model.session.key.prNumber} {title}
-        </h1>
+      <h1 className="min-w-0 text-lg font-semibold" title={title}>
+        #{model.session.key.prNumber} {title}
+      </h1>
+      {/* Chips always take their own row so the header keeps one layout for every PR state and title length. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div
           className="flex flex-wrap items-center gap-2"
-          aria-label="Pull request status and actions"
+          role="group"
+          aria-label="Pull request status"
         >
           {model.pullRequest?.isDraft === true ? (
             <Badge variant="outline" className="h-6 px-2 text-[10px]">
@@ -117,6 +119,12 @@ export function ReviewWorkbenchHeader({
             {mergeIcon(mergeStatus)}
             Merge · {mergeText}
           </Button>
+        </div>
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Pull request actions"
+        >
           <Button
             variant="outline"
             size="sm"
@@ -146,16 +154,8 @@ export function ReviewWorkbenchHeader({
           )}
         </div>
       </div>
-      {terminal ? (
-        <p
-          role="status"
-          className="border-t border-status-success/30 bg-status-success/10 px-1 py-2 text-sm text-status-success"
-        >
-          {model.review.status === "merged"
-            ? "Merged on GitHub."
-            : "Closed on GitHub."}
-        </p>
-      ) : (
+      {/* A merged or closed Review states that once, in the Merge chip. */}
+      {terminal ? null : (
         <PendingReviewNotice pendingReview={actions.pendingReview} />
       )}
       {model.localCheckout === undefined ? null : (
@@ -167,7 +167,7 @@ export function ReviewWorkbenchHeader({
           {model.localCheckout.message}
         </p>
       )}
-      <div className="flex items-center gap-1">
+      <div className="flex min-h-6 items-center gap-1">
         <p
           className="text-xs text-muted-foreground"
           title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}
@@ -175,7 +175,7 @@ export function ReviewWorkbenchHeader({
           {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
           {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
           {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·{" "}
-          <RelativeTime iso={model.revision.refreshedAt} prefix="refreshed " />
+          <RelativeTime iso={model.revision.refreshedAt} prefix="checked " />
           {hasUpdates ? (
             <span
               className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-status-warning/50 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning"

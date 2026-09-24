@@ -22,6 +22,7 @@ import {
   pullRequestPageUrl,
 } from "../external-links";
 import { DRAFT_STATE_MESSAGES } from "../review-copy";
+import { revisionFreshnessLabel } from "../rail-freshness";
 import {
   CompactMergeCommand,
   type MergeCommandResult,
@@ -202,7 +203,11 @@ export function CanonicalReviewOverviewSheet({
           <OverviewRow
             title="Revision"
             defaultOpen
-            trailing={revisionFreshnessLabel(freshness)}
+            trailing={
+              freshness === undefined
+                ? "Unavailable"
+                : revisionFreshnessLabel(freshness)
+            }
             trailingTone={revisionFreshnessTone(freshness)}
           >
             <RevisionDetails overview={overview} />
@@ -390,7 +395,7 @@ function RevisionDetails({
         </>
       )}
       <p className="text-xs text-muted-foreground">
-        Refreshed <RelativeTime iso={revision.refreshedAt} />
+        Checked <RelativeTime iso={revision.refreshedAt} />
       </p>
       {counts.length === 0 ? null : (
         <p className="text-xs text-muted-foreground">{counts.join(" · ")}</p>
@@ -778,23 +783,6 @@ function readinessWarningLabel(warning: OverviewMergeWarning): string {
   }
 }
 
-function revisionFreshnessLabel(
-  freshness: RevisionFreshness | undefined,
-): string {
-  switch (freshness) {
-    case "updates_available":
-      return "Updates available";
-    case "unavailable":
-      return "Remote state unavailable";
-    case "not_refreshed":
-      return "Not refreshed";
-    case "fresh":
-      return "Current";
-    default:
-      return "Unavailable";
-  }
-}
-
 function revisionFreshnessTone(
   freshness: RevisionFreshness | undefined,
 ): string {
@@ -826,7 +814,7 @@ function insightStatusLabel(status: ReviewInsightStatus): string {
     case "running":
       return "Running";
     case "current":
-      return "Current";
+      return "Generated";
     case "outdated":
       return "Outdated";
     case "failed":

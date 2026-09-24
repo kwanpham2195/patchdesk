@@ -32,8 +32,9 @@ Low:
 - [UX-15](#ux-15-the-merge-conflicts-notice-asks-for-a-push-patchdesk-cannot-make): The Merge conflicts notice asks for a push Patchdesk cannot make. Rejected with evidence.
 - [UX-16](#ux-16-insights-opens-on-an-empty-brief-beside-an-overview-that-repeats-the-tab-strip): Insights opens on an empty Brief beside an Overview that repeats the tab strip. Fixed with [#350](https://github.com/kwanpham2195/patchdesk/issues/350).
 - [UX-17](#ux-17-the-review-details-inspector-repeats-the-workbenchs-insight-controls): The Review details inspector repeats the workbench's Insight controls. Fixed with [#351](https://github.com/kwanpham2195/patchdesk/issues/351).
+- [UX-18](#ux-18-the-review-header-changes-shape-by-pull-request-state): The Review header changes shape by pull request state. Fixed with [#361](https://github.com/kwanpham2195/patchdesk/issues/361).
 
-Count: 17 items, 5 medium and 12 low; 12 named follow-ups, all now fixed, 2 fixed now, and 3 rejected with evidence.
+Count: 18 items, 5 medium and 13 low; 12 named follow-ups, all now fixed, 3 fixed now, and 3 rejected with evidence.
 
 Friction the passes reported that is a defect, with the independent review's disposition, is tracked in bug-triage.md:
 
@@ -262,5 +263,17 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Disposition:** fix now, [#351](https://github.com/kwanpham2195/patchdesk/issues/351).
 - **Status:** fixed by the #351 change: the inspector shows its status, facts, read-only Insight chips, Watch on an open row, and Open. The toggle shows a panel icon and a tooltip.
 - **Page:** [The repository listing](pull-requests/repository-listing.md#the-simple-case).
+
+### UX-18: The Review header changes shape by pull request state
+
+- **Screen:** Review workbench header, on merged #347, open #345, and Insights on merged or closed Reviews, on 2026-09-24.
+- **What the maintainer does:** Opens Reviews in different states and reads the header and Insights.
+- **What they see:** On #347 the chips sit beside the title; on #345 they wrap below it and the refresh button moves. A merged Review shows both a "Merged on GitHub." banner and a "Merge · Merged" chip. The meta line reads "Current · refreshed 7 h ago" and Analysis reads "Current · retained 7 h ago". Brief shows a large disabled "Generate brief" under the line explaining that Insights cannot be generated.
+- **Why it hurts:** Controls move between Reviews, the terminal state is said twice, "Current" and "retained" are internal words, and a button that can never work draws the eye.
+- **Suggested improvement:** One header layout, the terminal state stated once, plain freshness words, and no Generate button on a merged or closed Review.
+- **Severity:** low.
+- **Disposition:** fix now, [#361](https://github.com/kwanpham2195/patchdesk/issues/361).
+- **Status:** fixed by the #361 change: chips always sit on their own row under the title, the banner is gone because the Merge chip already states the outcome and opens PR overview, the meta line reads "Up to date with GitHub · checked 7 h ago", Insight headers read "Generated 7 h ago", and the Generate button is not drawn on a merged or closed Review while the explanation stays.
+- **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#arrive).
 
 Drafted from the 2026-09-14 live passes at `5fe7df3b` and the independent review; source citations rechecked against application commit `737c515c`.

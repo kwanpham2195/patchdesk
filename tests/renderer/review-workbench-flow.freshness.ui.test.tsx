@@ -44,7 +44,7 @@ describe("ReviewWorkbenchFlow revision freshness", () => {
         revision: { ...projection().revision, freshness: "unavailable" },
       }),
     );
-    expect(screen.getByText(/Remote state unavailable/)).toBeTruthy();
+    expect(screen.getByText(/Could not reach GitHub/)).toBeTruthy();
     expect(
       screen
         .getByRole("button", { name: "Refresh GitHub state" })

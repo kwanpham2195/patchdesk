@@ -333,12 +333,11 @@ export function InsightEmpty({
   type,
   onRun,
   disabled,
-  describedBy,
 }: {
   readonly type: InsightRunDialogType;
-  readonly onRun: () => void;
+  /** Absent on a merged or closed Review, which can never run one, so no Generate button is drawn. */
+  readonly onRun?: () => void;
   readonly disabled: boolean;
-  readonly describedBy?: string;
 }): React.JSX.Element {
   const Icon = INSIGHT_ICONS[type];
   return (
@@ -350,16 +349,13 @@ export function InsightEmpty({
         <EmptyTitle>No {INSIGHT_NOUNS[type].toLowerCase()} yet</EmptyTitle>
         <EmptyDescription>{INSIGHT_PURPOSES[type]}</EmptyDescription>
       </EmptyHeader>
-      <EmptyContent>
-        <Button
-          size="sm"
-          onClick={onRun}
-          disabled={disabled}
-          aria-describedby={describedBy}
-        >
-          {GENERATE_LABELS[type]}
-        </Button>
-      </EmptyContent>
+      {onRun === undefined ? null : (
+        <EmptyContent>
+          <Button size="sm" onClick={onRun} disabled={disabled}>
+            {GENERATE_LABELS[type]}
+          </Button>
+        </EmptyContent>
+      )}
     </Empty>
   );
 }
@@ -371,7 +367,7 @@ function insightStatusLabel(status: string): string {
     case "running":
       return "Running";
     case "current":
-      return "Current";
+      return "Generated";
     case "outdated":
       return "Outdated";
     case "failed":

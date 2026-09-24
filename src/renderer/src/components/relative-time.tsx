@@ -6,7 +6,7 @@ export function RelativeTime({
   prefix,
 }: {
   readonly iso: string;
-  /** Text drawn before the age inside the same element, e.g. "retained ". */
+  /** Text drawn before the age inside the same element, e.g. "checked ". */
   readonly prefix?: string;
 }): React.JSX.Element {
   return (

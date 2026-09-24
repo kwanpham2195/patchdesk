@@ -26,3 +26,17 @@ export function freshnessCopy(freshness: RevisionFreshness): string {
       return "not refreshed yet";
   }
 }
+
+/** The plain words the workbench meta line and PR overview use for a Review's freshness; the glossary calls the first state Fresh. */
+export function revisionFreshnessLabel(freshness: RevisionFreshness): string {
+  switch (freshness) {
+    case "fresh":
+      return "Up to date with GitHub";
+    case "updates_available":
+      return "Newer revision on GitHub";
+    case "unavailable":
+      return "Could not reach GitHub";
+    case "not_refreshed":
+      return "Not checked with GitHub yet";
+  }
+}
