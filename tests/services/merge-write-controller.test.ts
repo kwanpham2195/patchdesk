@@ -33,6 +33,7 @@ import {
   type MergeCommand,
 } from "../../src/services/merge-write-controller";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+import type { LogEntryInput } from "../../src/domain/log-entry";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import type { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewWriteGate } from "../../src/services/review-write-gate";
@@ -50,7 +51,11 @@ type GatewayMergeResult = Awaited<
   ReturnType<GitHubMergeWriter["mergePullRequest"]>
 >;
 type FreshResult = Awaited<ReturnType<ReviewWriteGate["requireFresh"]>>;
+type LoadResult = Awaited<ReturnType<ReviewStore["load"]>>;
 type SaveResult = Awaited<ReturnType<ReviewStore["save"]>>;
+type RemoveResult = Awaited<
+  ReturnType<MergeOperationStore["removeAfterSessionReceipt"]>
+>;
 type TerminalWriteEffect = "review_saved" | "merge_receipt_removed";
 
 const values = createReviewRefreshFixtureValues();
@@ -76,7 +81,10 @@ class RecordingMergeOperationStore extends MergeOperationStore {
     readonly sessionId: MergeOperation["sessionId"];
   }> = [];
 
-  constructor(private readonly terminalWriteEffects: TerminalWriteEffect[]) {
+  constructor(
+    private readonly terminalWriteEffects: TerminalWriteEffect[],
+    private readonly removeResult: RemoveResult,
+  ) {
     super(PatchdeskPaths.forTest(unusedStoreRoot));
   }
 
@@ -116,7 +124,7 @@ class RecordingMergeOperationStore extends MergeOperationStore {
   > {
     this.removed.push({ profileId, sessionId });
     this.terminalWriteEffects.push("merge_receipt_removed");
-    return ok(undefined);
+    return this.removeResult;
   }
 }
 
@@ -331,7 +339,9 @@ function analysisInsights(analysis: AnalysisFixture | undefined) {
 
 function fixture(
   options: {
+    readonly loadReview?: LoadResult;
     readonly saveReview?: SaveResult;
+    readonly removeReceipt?: RemoveResult;
     readonly mergeResult?: GatewayMergeResult;
     readonly mergeability?: MergePolicySnapshot["mergeability"];
     readonly analysis?: AnalysisFixture;
@@ -339,6 +349,7 @@ function fixture(
   } = {},
 ) {
   const notifications: DesktopNotificationEvent[] = [];
+  const logEntries: LogEntryInput[] = [];
   const created = createReviewSession({
     key: values.session.key,
     pr: values.session.pr,
@@ -371,8 +382,13 @@ function fixture(
     freshness: { _tag: "Fresh" },
   };
   const terminalWriteEffects: TerminalWriteEffect[] = [];
-  const operations = new RecordingMergeOperationStore(terminalWriteEffects);
-  const loadReview = vi.fn(async () => ok(review));
+  const operations = new RecordingMergeOperationStore(
+    terminalWriteEffects,
+    options.removeReceipt ?? ok(undefined),
+  );
+  const loadReview = vi.fn(
+    async (): Promise<LoadResult> => options.loadReview ?? ok(review),
+  );
   const saveReview = vi.fn(async (): Promise<SaveResult> => {
     terminalWriteEffects.push("review_saved");
     return options.saveReview ?? ok(undefined);
@@ -416,9 +432,11 @@ function fixture(
     { reviews, insights: analysisInsights(options.analysis) },
     coordinator,
     { notify: (event) => notifications.push(event) },
+    { write: (entry) => logEntries.push(entry) },
   );
   return {
     controller,
+    logEntries,
     notifications,
     coordinator,
     gateway,
@@ -525,7 +543,7 @@ describe("MergeWriteController", () => {
     });
   });
 
-  it("posts one merge-completed event only after the receipt is removed", async () => {
+  it("posts one merge-completed event for a confirmed merge", async () => {
     const current = fixture();
 
     await current.controller.merge(request());
@@ -538,30 +556,52 @@ describe("MergeWriteController", () => {
     ]);
   });
 
-  it("posts no merge-completed event when the merge confirms but the terminal Review cannot be saved", async () => {
-    const current = fixture({
-      saveReview: err({ _tag: "ReviewConflict", reason: "stale_revision" }),
-    });
-
-    await current.controller.merge(request());
-
-    expect(current.notifications).toEqual([]);
+  // GitHub already merged, so a failed local step after confirm must not report the outcome as unknown.
+  const reviewLoadFailure: LoadResult = err({
+    _tag: "StorageFailure",
+    operation: "read",
+    reason: "io",
   });
-
-  it("retains confirmed evidence if terminal Review persistence fails", async () => {
-    const saveFailure: SaveResult = err({
-      _tag: "ReviewConflict",
-      reason: "stale_revision",
-    });
-    const current = fixture({ saveReview: saveFailure });
-    await expect(current.controller.merge(request())).resolves.toEqual({
-      _tag: "err",
-      error: { reason: "merge_outcome_unknown" },
-    });
-    expect(current.operations.confirmed).toHaveLength(1);
-    expect(current.operations.removed).toHaveLength(0);
-    expect(current.gateway.mergeRequests).toHaveLength(1);
+  const reviewSaveFailure: SaveResult = err({
+    _tag: "ReviewConflict",
+    reason: "stale_revision",
   });
+  const receiptRemovalFailure: RemoveResult = err({
+    _tag: "StorageFailure",
+    operation: "write",
+    reason: "io",
+  });
+  it.each([
+    {
+      step: "loading the Review",
+      failure: { loadReview: reviewLoadFailure },
+      receiptRemoved: false,
+    },
+    {
+      step: "saving the terminal Review",
+      failure: { saveReview: reviewSaveFailure },
+      receiptRemoved: false,
+    },
+    {
+      step: "removing the merge receipt",
+      failure: { removeReceipt: receiptRemovalFailure },
+      receiptRemoved: true,
+    },
+  ] as const)(
+    "reports a confirmed merge as merged when $step fails",
+    async ({ failure, receiptRemoved }) => {
+      const current = fixture(failure);
+
+      await expect(current.controller.merge(request())).resolves.toMatchObject({
+        _tag: "ok",
+        value: { review: { status: { _tag: "Terminal", state: "merged" } } },
+      });
+      expect(current.operations.confirmed).toHaveLength(1);
+      expect(current.operations.removed).toHaveLength(receiptRemoved ? 1 : 0);
+      expect(current.notifications).toMatchObject([{ _tag: "MergeCompleted" }]);
+      expect(current.logEntries).toMatchObject([{ level: "error" }]);
+    },
+  );
 
   // The gate only ever saw an empty Finding list, because this controller --
   // the one production caller of `mergePullRequest` -- did not pass `result`.

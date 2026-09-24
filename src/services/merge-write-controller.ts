@@ -3,7 +3,10 @@ import type {
   GitHubReader,
 } from "../adapters/github/github-adapter";
 import type { InsightStore } from "../adapters/storage/insight-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import type {
+  ReviewStore,
+  ReviewStoreFailure,
+} from "../adapters/storage/review-store";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import {
   mergeGateFindings,
@@ -26,6 +29,7 @@ import {
   markMergeOutcomeUnknown,
   rejectMergeOperation,
   requestMergeOperation,
+  type MergeOperation,
 } from "../domain/merge-operation";
 import { markReviewTerminal, type Review } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
@@ -35,6 +39,7 @@ import {
   postDesktopNotification,
   type DesktopNotifier,
 } from "./desktop-notifier";
+import type { AppLogService } from "./app-log-service";
 import { mergePullRequest, type MergeMethod } from "./merge-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
@@ -107,6 +112,7 @@ export class MergeWriteController {
     },
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly notifier?: DesktopNotifier,
+    private readonly log?: Pick<AppLogService, "write">,
   ) {}
 
   /** Merges once the gate, the represented revision, and the acknowledgement all match what the maintainer confirmed. */
@@ -221,29 +227,10 @@ export class MergeWriteController {
         (await this.operations.confirm(confirmed.value))._tag === "err"
       )
         return err({ reason: "merge_outcome_unknown" });
-      const currentReview = await this.stores.reviews.load(
-        profileId,
-        requested.value.reviewId,
+      const terminalReview = await this.recordMergedReview(
+        confirmed.value,
+        gated.value.review,
       );
-      if (currentReview._tag !== "ok")
-        return err({ reason: "merge_outcome_unknown" });
-      const terminalReview = markReviewTerminal(
-        currentReview.value,
-        "merged",
-        startedAt,
-      );
-      const savedReview = await this.stores.reviews.save(
-        terminalReview,
-        currentReview.value.updatedAt,
-      );
-      if (savedReview._tag === "err")
-        return err({ reason: "merge_outcome_unknown" });
-      const removed = await this.operations.removeAfterSessionReceipt(
-        profileId,
-        sessionId,
-      );
-      if (removed._tag === "err")
-        return err({ reason: "merge_outcome_unknown" });
       postDesktopNotification(this.notifier, {
         _tag: "MergeCompleted",
         reviewId,
@@ -253,6 +240,65 @@ export class MergeWriteController {
     } finally {
       this.writeCoordinator.release(key);
     }
+  }
+
+  /**
+   * Marks the Review merged and drops the confirmed receipt. GitHub already
+   * merged, so a failure here is logged and left for startup recovery, which
+   * reconciles any Confirmed operation still on disk.
+   */
+  private async recordMergedReview(
+    operation: MergeOperation,
+    gatedReview: Review,
+  ): Promise<Review> {
+    const { profileId, reviewId, sessionId, startedAt } = operation;
+    const current = await this.stores.reviews.load(profileId, reviewId);
+    if (current._tag === "err") {
+      this.logBookkeepingFailure(operation, "review load", current.error);
+      return markReviewTerminal(gatedReview, "merged", startedAt);
+    }
+    const terminal = markReviewTerminal(current.value, "merged", startedAt);
+    const saved = await this.stores.reviews.save(
+      terminal,
+      current.value.updatedAt,
+    );
+    // The receipt stays until the terminal Review is on disk, so recovery can still finish it.
+    if (saved._tag === "err") {
+      this.logBookkeepingFailure(
+        operation,
+        "terminal review save",
+        saved.error,
+      );
+      return terminal;
+    }
+    const removed = await this.operations.removeAfterSessionReceipt(
+      profileId,
+      sessionId,
+    );
+    if (removed._tag === "err")
+      this.logBookkeepingFailure(operation, "receipt removal", removed.error);
+    return terminal;
+  }
+
+  private logBookkeepingFailure(
+    operation: MergeOperation,
+    step: string,
+    failure: ReviewStoreFailure,
+  ): void {
+    this.log?.write({
+      process: "main",
+      level: "error",
+      topic: "merge",
+      message: `confirmed merge ${step} failed; left for recovery`,
+      profileId: operation.profileId,
+      sessionId: operation.sessionId,
+      meta: {
+        reviewId: operation.reviewId,
+        operationId: operation.operationId,
+        tag: failure._tag,
+        reason: failure.reason,
+      },
+    });
   }
 
   /**
