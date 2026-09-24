@@ -152,6 +152,7 @@ Dev app and live checks:
 - App data is `~/.local/share/patchdesk` for every instance; a separate `--user-data-dir` does not give a separate workspace or review store.
 - After a renderer `.ts` -> `.tsx` rename, restart `pnpm dev`. Vite's transform cache keeps the old import path in every importer, the lazy route fails on MIME, and `agent-browser reload` does not clear it.
 - `agent-browser` must use the default session: named sessions call `Target.createTarget`, which Electron's CDP does not implement. Base UI `Select` opens with focus then Enter, not a click. Fixture hashes route only on a full load, so `agent-browser reload` after changing the hash.
+- Before a live check, `agent-browser eval 'document.visibilityState'` must say `visible`. A covered or off-screen window drops CDP input while `agent-browser click` still prints Done, and Base UI dialogs never finish closing; bring it forward with `aerospace focus --window-id <id>` (`aerospace list-windows --all | grep Patchdesk`).
 - Inline finding cards on the Diff tab are slotted into `<diffs-container>` only while their row is in the render window; scroll `.review-diff-viewport`, not the card.
 - Behaviour that needs a second GitHub actor (someone else's last comment, a push while away) cannot be self-verified live. Say so and name the state a reviewer should check.
 
