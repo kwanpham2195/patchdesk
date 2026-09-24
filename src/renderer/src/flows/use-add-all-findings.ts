@@ -5,7 +5,7 @@ import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { FINDING_ACTION_MESSAGES } from "../review-copy";
 import type { AnalysisFinding } from "./use-analysis-review-actions";
 
-export type AddAllFindingsProgress = {
+type AddAllFindingsProgress = {
   /** Findings whose write has settled in this batch. */
   readonly done: number;
   readonly total: number;
