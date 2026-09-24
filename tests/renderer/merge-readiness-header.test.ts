@@ -5,7 +5,9 @@ import {
   mergeReadinessLabel,
   mergeReadinessTone,
 } from "../../src/renderer/src/components/pr-overview-sheet";
+import { firstMergeBlockerLabel } from "../../src/renderer/src/components/merge-readiness-items";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type { MergeDisplayReason } from "../../src/domain/github-context";
 
 type Tag = WorkbenchResponse["mergeReadiness"]["_tag"];
 
@@ -101,5 +103,124 @@ describe("mergeReadinessLabel and mergeReadinessTone", () => {
     expect(mergeReadinessTone("Blocked", ["mergeability_unknown"])).not.toBe(
       destructiveTone,
     );
+  });
+});
+
+describe("firstMergeBlockerLabel", () => {
+  const reason = (code: MergeDisplayReason["code"]): MergeDisplayReason => ({
+    code,
+    message: `${code} message`,
+    source: "github_pr_state",
+    availability: "available",
+    openOnGitHub: false,
+  });
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly blockers: ReadonlyArray<string>;
+    readonly reasons: ReadonlyArray<MergeDisplayReason>;
+    readonly label: string | undefined;
+  }> = [
+    { name: "draft blocker", blockers: ["draft"], reasons: [], label: "Draft" },
+    {
+      name: "conflicting blocker",
+      blockers: ["conflicting"],
+      reasons: [],
+      label: "Conflicts",
+    },
+    {
+      name: "required check blocker",
+      blockers: ["required_check"],
+      reasons: [],
+      label: "Checks",
+    },
+    {
+      name: "failing check blocker",
+      blockers: ["failing_check"],
+      reasons: [],
+      label: "Checks",
+    },
+    {
+      name: "GitHub review blocker",
+      blockers: ["github_review"],
+      reasons: [],
+      label: "Review",
+    },
+    {
+      name: "stale head blocker",
+      blockers: ["stale_head"],
+      reasons: [],
+      label: "Outdated",
+    },
+    {
+      name: "closed blocker",
+      blockers: ["closed"],
+      reasons: [],
+      label: "Closed",
+    },
+    {
+      name: "analysis finding blocker",
+      blockers: ["analysis_finding"],
+      reasons: [],
+      label: "Findings",
+    },
+    {
+      name: "the first of several blockers in evaluation order",
+      blockers: ["draft", "conflicting", "failing_check"],
+      reasons: [],
+      label: "Draft",
+    },
+    {
+      name: "a GitHub display reason ahead of the raw blockers it replaces",
+      blockers: ["draft", "conflicting"],
+      reasons: [reason("conflicts")],
+      label: "Conflicts",
+    },
+    {
+      name: "review required reason",
+      blockers: [],
+      reasons: [reason("review_required"), reason("checks")],
+      label: "Review",
+    },
+    {
+      name: "changes requested reason",
+      blockers: [],
+      reasons: [reason("changes_requested")],
+      label: "Changes requested",
+    },
+    {
+      name: "behind reason",
+      blockers: [],
+      reasons: [reason("behind")],
+      label: "Behind base",
+    },
+    {
+      name: "checks reason",
+      blockers: [],
+      reasons: [reason("checks")],
+      label: "Checks",
+    },
+    {
+      name: "no named cause for the generic blocked reason",
+      blockers: ["merge_blocked"],
+      reasons: [reason("blocked")],
+      label: undefined,
+    },
+    {
+      name: "no named cause for GitHub's generic merge_blocked",
+      blockers: ["merge_blocked"],
+      reasons: [],
+      label: undefined,
+    },
+    {
+      name: "no named cause for unknown mergeability",
+      blockers: ["mergeability_unknown"],
+      reasons: [],
+      label: undefined,
+    },
+    { name: "no blockers at all", blockers: [], reasons: [], label: undefined },
+  ];
+
+  it.each(cases)("names $name", ({ blockers, reasons, label }) => {
+    expect(firstMergeBlockerLabel(blockers, reasons)).toBe(label);
   });
 });

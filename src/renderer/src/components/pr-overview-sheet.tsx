@@ -27,6 +27,7 @@ import {
   type MergeCommandResult,
   type MergeMethod,
 } from "./compact-merge-command";
+import { mergeReadinessItems } from "./merge-readiness-items";
 import { RelativeTime } from "./relative-time";
 import { ReviewChecks, presentOverallCheckResult } from "./review-checks";
 import { Button } from "@/components/ui/button";
@@ -481,20 +482,39 @@ function MergeReadinessDetail({
 }): React.JSX.Element {
   const { mergeReadiness, mergeReasons } = overview;
   const pullRequest = overview.pullRequest;
-  const showBlockers = mergeReasons.length === 0;
-  const isEmpty =
-    mergeReasons.length === 0 &&
-    mergeReadiness.blockers.length === 0 &&
-    mergeReadiness.warnings.length === 0;
+  const items = mergeReadinessItems(mergeReadiness.blockers, mergeReasons);
+  const isEmpty = items.length === 0 && mergeReadiness.warnings.length === 0;
   // Every reason links to the same pull request, so only the first
   // GitHub-worthy reason gets the "Open on GitHub" action; repeating it on
   // every stacked card would be noise once several reasons render at once.
-  const firstOpenOnGitHubIndex = mergeReasons.findIndex(
-    (reason) => reason.openOnGitHub,
+  const firstOpenOnGitHubIndex = items.findIndex(
+    (item) => item.kind === "reason" && item.reason.openOnGitHub,
   );
   return (
     <div className="flex flex-col gap-2 text-sm">
-      {mergeReasons.map((reason, index) => {
+      {items.map((item, index) => {
+        if (item.kind === "blocker") {
+          const blocker = item.blocker;
+          const isUnknown = blocker === "mergeability_unknown";
+          const BlockerIcon = isUnknown ? Info : XCircle;
+          return (
+            <p
+              key={`blocker-${blocker}`}
+              data-blocker={blocker}
+              className={cn(
+                "flex items-start gap-2 rounded-md border px-3 py-2",
+                isUnknown ? infoCard : destructiveCard,
+              )}
+            >
+              <BlockerIcon
+                className="mt-0.5 size-4 shrink-0"
+                aria-hidden="true"
+              />
+              {readinessBlockerLabel(blocker)}
+            </p>
+          );
+        }
+        const reason = item.reason;
         const isConfirmed = reason.availability === "available";
         const cardTone = isConfirmed ? destructiveCard : infoCard;
         const Icon = isConfirmed ? XCircle : Info;
@@ -556,26 +576,6 @@ function MergeReadinessDetail({
           </div>
         );
       })}
-      {showBlockers
-        ? mergeReadiness.blockers.map((blocker) => {
-            const isUnknown = blocker === "mergeability_unknown";
-            const cardTone = isUnknown ? infoCard : destructiveCard;
-            const Icon = isUnknown ? Info : XCircle;
-            return (
-              <p
-                key={`blocker-${blocker}`}
-                data-blocker={blocker}
-                className={cn(
-                  "flex items-start gap-2 rounded-md border px-3 py-2",
-                  cardTone,
-                )}
-              >
-                <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                {readinessBlockerLabel(blocker)}
-              </p>
-            );
-          })
-        : null}
       {mergeReadiness.warnings.map((warning) =>
         warning.code === "findings_need_acknowledgement" ? (
           <FindingsAcknowledgementCard
