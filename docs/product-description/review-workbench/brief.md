@@ -30,7 +30,7 @@ A retained result is laid out in two columns on a wide window and one column on 
 
 The Provenance card lists the Revision as a short commit hash, when the Brief was Generated as a local date and time, the Provider and model when the run recorded them, and Citations as "all citations verified" or "some citations could not be verified". The card ends with a Regenerate button.
 
-At the right end of the tab strip, a muted meta line says when the Brief was generated, for example "Generated 7 h ago", or "Outdated · generated 7 h ago" for an earlier revision. Unlike the Analysis and Walkthrough meta lines, it does not repeat the provider and model, because the Provenance card states them. The meta line also carries its own Regenerate button, so a current Brief shows Regenerate in two places.
+At the right end of the tab strip, a muted meta line says when the Brief was generated, for example "Generated 7h", or "Outdated · generated 7h" for an earlier revision. Unlike the Analysis and Walkthrough meta lines, it does not repeat the provider and model, because the Provenance card states them. The meta line also carries its own Regenerate button, so a current Brief shows Regenerate in two places.
 
 Older retained Briefs can lack Reach or Start here because those fields did not exist when the artifact was stored. Patchdesk omits an absent legacy block without inventing data. When Reach was attempted but could not answer, the reader says "Reach was not counted:" and names the reason.
 

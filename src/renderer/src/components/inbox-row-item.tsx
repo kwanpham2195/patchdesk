@@ -16,11 +16,13 @@ import {
   ReviewOpeningNotice,
   type ReviewOpeningState,
 } from "./review-opening-status";
+import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import { inboxGridStyle, type InboxColumnVisibility } from "@/inbox-columns";
+import { changeCountToneClass } from "@/lib/change-count-tone";
 import { cn } from "@/lib/utils";
 
 /** The author's cached avatar at the row's text scale; initials until the cache warms. */
@@ -170,7 +172,7 @@ export function InboxRowItem({
           <CheckIcon overall={row.checks.overall} />
         </span>
         <span className="text-right text-[11px] leading-5 text-muted-foreground">
-          {relativeTime(row.updatedAt)}
+          <RelativeTime iso={row.updatedAt} />
         </span>
         <div className="col-span-2 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground min-[1280px]:hidden">
           <CheckIcon overall={row.checks.overall} />
@@ -326,19 +328,13 @@ function ChangeSize({
         </span>
       )}
       {additions === undefined ? null : (
-        <span
-          className={
-            additions === 0 ? "text-muted-foreground" : "text-diff-added-fg"
-          }
-        >
+        <span className={changeCountToneClass(additions, "text-diff-added-fg")}>
           +{compactCount(additions)}
         </span>
       )}
       {deletions === undefined ? null : (
         <span
-          className={
-            deletions === 0 ? "text-muted-foreground" : "text-diff-removed-fg"
-          }
+          className={changeCountToneClass(deletions, "text-diff-removed-fg")}
         >
           -{compactCount(deletions)}
         </span>
@@ -362,12 +358,4 @@ function compactCount(value: number): string {
   if (value < 1_000) return String(value);
   if (value < 1_000_000) return `${Math.round(value / 100) / 10}k`;
   return `${Math.round(value / 100_000) / 10}M`;
-}
-function relativeTime(iso: string): string {
-  const timestamp = Date.parse(iso);
-  if (Number.isNaN(timestamp)) return "";
-  const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 1_440) return `${Math.round(minutes / 60)}h`;
-  return `${Math.round(minutes / 1_440)}d`;
 }

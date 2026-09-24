@@ -2,10 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  formatCompactRelativeTime,
-  formatExactTime,
-} from "@/lib/relative-time";
+import { formatExactTime, formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import type { VisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
@@ -76,8 +73,8 @@ export function VisitedPullRequests({
         </span>
         {/* Names the order the list is in and the cap it stops at
          * (`SIDEBAR_ROW_LIMIT`), which is otherwise silent. */}
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          recent
+        <span className="shrink-0 text-[11px] tracking-tight text-muted-foreground uppercase">
+          Recent
         </span>
       </div>
       <ScrollArea className="min-h-0 flex-1">
@@ -266,7 +263,7 @@ function VisitedRow({
           <span>{title}</span>
         </span>
         <span className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted-foreground">
-          {/* The age is computed once per render; nothing ticks it. "opened"
+          {/* The age is computed once per render; nothing ticks it. "visited"
            * keeps it apart from the state marker's "seen" age (ADR 0042). The
            * reference is the only part that clips, because the age is what
            * the row exists to tell you and it never gets its space back. A row
@@ -283,7 +280,7 @@ function VisitedRow({
                 title={formatExactTime(row.lastOpenedAt)}
                 className="shrink-0"
               >
-                opened {formatCompactRelativeTime(row.lastOpenedAt)}
+                visited {formatRelativeTime(row.lastOpenedAt)}
               </time>
             )}
           </span>
@@ -413,7 +410,7 @@ export function visitedTerminalMarker(
   terminal: NonNullable<SidebarReviewRow["terminal"]>,
   now: number = Date.now(),
 ): VisitedTerminalMarker {
-  const seen = `seen ${formatCompactRelativeTime(terminal.observedAt, now)}`;
+  const seen = `seen ${formatRelativeTime(terminal.observedAt, now)}`;
   return terminal.state === "merged"
     ? { label: `merged, ${seen}`, dot: "bg-primary" }
     : { label: `closed, ${seen}`, dot: "bg-muted-foreground" };

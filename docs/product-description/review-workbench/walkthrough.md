@@ -29,7 +29,7 @@ stateDiagram-v2
 
 The reader opens on the saved current section when it is still valid, or on the first section. It always opens docked. Opening the Walkthrough does not move keyboard focus.
 
-The docked layout keeps the Insight tab strip and the Walkthrough's own title above the reader. A muted meta line at the right end of the tab strip shows when it was generated ("Generated 7 h ago", or "Outdated · generated 7 h ago"), the provider and model, and a Regenerate button. On a window at least 1280 pixels wide, the chapter rail sits in a column on the left; on a narrower window it sits above the reading surface with a limited height.
+The docked layout keeps the Insight tab strip and the Walkthrough's own title above the reader. A muted meta line at the right end of the tab strip shows when it was generated ("Generated 7h", or "Outdated · generated 7h"), the provider and model, and a Regenerate button. On a window at least 1280 pixels wide, the chapter rail sits in a column on the left; on a narrower window it sits above the reading surface with a limited height.
 
 The chapter rail is headed Chapters and shows progress as the current position and the reviewed count, for example "2/5 · 1 of 5 reviewed" on one line beside the heading. It lists each chapter's sections with a two-digit number, the section title with the full title on hover, and a "done" badge for a reviewed section. The active section is highlighted. Below the chapters, a collapsed Support disclosure holds the Support group.
 

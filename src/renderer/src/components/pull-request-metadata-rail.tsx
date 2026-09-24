@@ -654,14 +654,15 @@ export function PullRequestMetadataRail({
   readonly assigneeActions?: AssigneesSectionActions;
   readonly reviewerActions?: ReviewerPickerActions;
 }): React.JSX.Element {
+  const caption = freshnessCopy(freshness);
   return (
     <aside
       aria-label="Pull request metadata"
       className="w-full rounded-lg border bg-card p-3 min-[1100px]:sticky min-[1100px]:top-0 min-[1100px]:w-[272px] min-[1100px]:shrink-0"
     >
-      <p className="pb-2 text-[10px] text-muted-foreground">
-        {freshnessCopy(freshness)}
-      </p>
+      {caption === undefined ? null : (
+        <p className="pb-2 text-[10px] text-muted-foreground">{caption}</p>
+      )}
       <ReviewersSection
         requestedReviewers={requestedReviewers}
         refreshedAt={refreshedAt}

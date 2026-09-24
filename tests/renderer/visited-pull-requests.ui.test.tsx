@@ -190,7 +190,7 @@ describe("VisitedPullRequests", () => {
     // The label is the one truncatable string with no other hover fallback.
     const label = within(column).getByTitle("Personal");
     expect(label.textContent).toBe("Personal");
-    expect(within(column).getByText("recent").textContent).toBe("recent");
+    expect(within(column).getByText("Recent").textContent).toBe("Recent");
   });
 
   it("renders the stored title and numeric reference on the row", async () => {
@@ -331,7 +331,7 @@ describe("VisitedPullRequests", () => {
     expect(document.activeElement).toBe(open);
   });
 
-  it("stamps the row with the time it was opened and never ticks it", async () => {
+  it("stamps the row with the time it was visited and never ticks it", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));
     renderColumn({ rows: [titled] });
@@ -340,12 +340,12 @@ describe("VisitedPullRequests", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const row = screen.getByRole("button", { name: /#125/ });
-    // How the age reads is `formatCompactRelativeTime`'s own test; the row
+    // How the age reads is `formatRelativeTime`'s own test; the row
     // only has to carry the stamp and never redraw it (ADR 0032).
     const age = row.querySelector("time");
     expect(age?.dateTime).toBe(OPENED_AT);
     // Named, so it is not read as the state marker's "seen" age (ADR 0042).
-    expect(age?.textContent).toMatch(/^opened /);
+    expect(age?.textContent).toMatch(/^visited /);
     const shown = age?.textContent;
 
     await act(async () => {

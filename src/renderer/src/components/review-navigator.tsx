@@ -223,7 +223,7 @@ export function ReviewNavigator({
           >
             {threadRows.length === 0 ? (
               <p className="p-2 text-sm text-muted-foreground">
-                No Conversation threads on this revision.
+                No conversation threads on this revision.
               </p>
             ) : (
               threadRows.map((row) => {

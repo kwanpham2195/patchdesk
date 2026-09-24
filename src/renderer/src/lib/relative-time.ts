@@ -4,34 +4,15 @@ const exactTimeFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 /**
- * A short age for a timestamp: "45 s ago", "2 min ago", "14 h ago", "3 d ago".
- * A future timestamp clamps to "just now" rather than counting backwards, and
- * an unreadable value comes back as given so nothing is hidden.
+ * The one short age every relative time in the app uses: "now", "45s", "2m",
+ * "14h", "3d", then "8w" from twenty-eight days, where a day count stops being
+ * worth reading. It fits a narrow column (ADR 0042); the caller's own word
+ * ("checked", "seen") says what the age is of. Elapsed hours never name a
+ * calendar day, since a visited row's date header buckets by local day and the
+ * two disagree across midnight. A future timestamp clamps to "now", and an
+ * unreadable value comes back as given so nothing is hidden.
  */
 export function formatRelativeTime(
-  iso: string,
-  now: number = Date.now(),
-): string {
-  const timestamp = Date.parse(iso);
-  if (Number.isNaN(timestamp)) return iso;
-  const seconds = Math.floor((now - timestamp) / 1_000);
-  if (seconds < 1) return "just now";
-  if (seconds < 60) return `${seconds} s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return `${Math.floor(hours / 24)} d ago`;
-}
-
-/**
- * The same age in the width a narrow column can spare: "45s", "2m", "14h",
- * "3d", "8w". Boundaries match `formatRelativeTime` throughout; the column
- * rolls over to weeks at twenty-eight days, where a day count stops being
- * worth reading. Elapsed hours never name a calendar day — a row's date
- * header carries that, and the two disagree across local midnight.
- */
-export function formatCompactRelativeTime(
   iso: string,
   now: number = Date.now(),
 ): string {

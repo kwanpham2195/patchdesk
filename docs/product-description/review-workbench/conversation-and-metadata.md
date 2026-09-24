@@ -26,7 +26,7 @@ stateDiagram-v2
 
 Conversation opens inside the represented Review without changing the Review revision. A non-empty pull request description appears first, in a card labeled "Pull request description", and counts as conversation content even when the timeline has no entries. When both the description and the timeline are empty, the view reads "No conversation yet."
 
-The timeline below it lists entries in time order. A plain issue comment — one posted on the pull request rather than on a line of the diff — is an entry of its own, beside review summaries and general review threads. A review summary shows its author, time, and a verdict badge: Approved, Changes requested, Commented, or Dismissed. Comment and review times read as an age, such as "3 d ago", with the exact date and time on hover. Authors use cached avatars when available and initials otherwise; review summaries always show initials.
+The timeline below it lists entries in time order. A plain issue comment — one posted on the pull request rather than on a line of the diff — is an entry of its own, beside review summaries and general review threads. A review summary shows its author, time, and a verdict badge: Approved, Changes requested, Commented, or Dismissed. Comment and review times read as an age, such as "3d", with the exact date and time on hover. Authors use cached avatars when available and initials otherwise; review summaries always show initials.
 
 Markdown in the description, comments, review summaries, and threads is rendered through Patchdesk's safe shared renderer:
 
