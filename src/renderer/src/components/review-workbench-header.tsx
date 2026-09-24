@@ -276,17 +276,14 @@ function PendingReviewNotice({
   const projection = pendingReview?.projection;
   // A Finish that found its pending review gone on GitHub reports it here,
   // since the Finish dialog closes with the review.
-  if (
-    projection?.state === "none" &&
-    pendingReview?.recoveryError !== undefined
-  )
+  if (pendingReview?.goneNotice !== undefined)
     return (
       <div
         role="status"
         data-review-pending-recovery
         className="rounded-md border border-status-warning/50 bg-status-warning/10 px-3 py-1.5 text-xs text-status-warning"
       >
-        {pendingReview.recoveryError}
+        {pendingReview.goneNotice}
       </div>
     );
   if (

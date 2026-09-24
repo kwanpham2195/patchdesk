@@ -82,6 +82,10 @@ const PENDING_REVIEW_EXISTS =
 const PENDING_REVIEW_CHANGED =
   "The pending review changed. Check GitHub again or refresh.";
 
+/** Finish found a different pending review on GitHub than the one it recorded. */
+export const PENDING_REVIEW_REPLACED =
+  "A different pending review now exists on GitHub, so nothing was sent. Check it, then finish again.";
+
 const CHECK_GITHUB_UNAVAILABLE =
   "Patchdesk could not check GitHub right now. Try again.";
 

@@ -14,6 +14,7 @@ import {
 import {
   FINISH_REVIEW_MESSAGES,
   PENDING_REVIEW_RECOVERY_MESSAGES,
+  PENDING_REVIEW_REPLACED,
 } from "../review-copy";
 import type { PendingReviewComposerActions } from "../components/review-diff-view";
 import {
@@ -70,6 +71,8 @@ type PendingReviewPanel = {
   readonly onCheckGitHubAgain: () => Promise<void>;
   readonly finishDialogError?: string;
   readonly recoveryError?: string;
+  /** Why the last Finish sent nothing: its pending review was gone on GitHub. */
+  readonly goneNotice?: string;
 };
 
 export type PendingReviewActionsInput = {
@@ -79,6 +82,7 @@ export type PendingReviewActionsInput = {
   readonly runDirectCommand: RunDirectCommand;
   readonly appendRecentWrites: AppendRecentWrites;
   readonly observeConfirmedReviewWrite: () => Promise<void>;
+  readonly refreshing: boolean;
 };
 
 export type PendingReviewActionsResult = {
@@ -86,6 +90,16 @@ export type PendingReviewActionsResult = {
   readonly pendingReview: PendingReviewPanel | undefined;
   readonly openFinishDialogWithSummary: (summary: string) => void;
 };
+
+function parsePendingReviewEnvelope(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the JSON I/O boundary parser for every command response that may carry a pending-review projection.
+  value: unknown,
+): PendingReviewProjection | undefined {
+  const envelope = v.safeParse(pendingReviewEnvelopeSchema, value);
+  return parsePendingReviewProjection(
+    envelope.success ? envelope.output.pendingReview : undefined,
+  );
+}
 
 function threadIdsOf(
   projection: PendingReviewProjection | undefined,
@@ -123,6 +137,7 @@ export function usePendingReviewActions({
   runDirectCommand,
   appendRecentWrites,
   observeConfirmedReviewWrite,
+  refreshing,
 }: PendingReviewActionsInput): PendingReviewActionsResult {
   const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
   const latestWorkbenchRef = useLatestCommitted(workbench);
@@ -133,14 +148,22 @@ export function usePendingReviewActions({
   const [finishDialogError, setFinishDialogError] = useState<
     string | undefined
   >(undefined);
+  const [goneNotice, setGoneNotice] = useState<string | undefined>(undefined);
+  // A completed Refresh shows what GitHub holds now, so an earlier Finish
+  // outcome no longer describes the screen.
+  const [previousRefreshing, setPreviousRefreshing] = useState(refreshing);
+  if (previousRefreshing !== refreshing) {
+    setPreviousRefreshing(refreshing);
+    if (!refreshing) {
+      setFinishDialogError(undefined);
+      setGoneNotice(undefined);
+    }
+  }
 
   const applyPendingReviewProjection = useCallback(
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this callback is itself the JSON I/O boundary parser shared by every command response that may carry a pending-review projection; there is no earlier boundary to run it at.
     (value: unknown): PendingReviewProjection | undefined => {
-      const envelope = v.safeParse(pendingReviewEnvelopeSchema, value);
-      const projection = parsePendingReviewProjection(
-        envelope.success ? envelope.output.pendingReview : undefined,
-      );
+      const projection = parsePendingReviewEnvelope(value);
       if (projection !== undefined)
         onWorkbenchPatch({ pendingReview: projection });
       return projection;
@@ -328,6 +351,8 @@ export function usePendingReviewActions({
 
   const onOpenFinishDialog = useCallback((): void => {
     setFinishDialogInitialSummary(undefined);
+    setFinishDialogError(undefined);
+    setGoneNotice(undefined);
     setFinishDialogOpen(true);
   }, []);
   const onCloseFinishDialog = useCallback((): void => {
@@ -336,6 +361,8 @@ export function usePendingReviewActions({
   }, []);
   const openFinishDialogWithSummary = useCallback((summary: string): void => {
     setFinishDialogInitialSummary(summary);
+    setFinishDialogError(undefined);
+    setGoneNotice(undefined);
     setFinishDialogOpen(true);
   }, []);
 
@@ -378,8 +405,16 @@ export function usePendingReviewActions({
         await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
         setFinishDialogOpen(false);
       } catch (cause) {
-        setFinishDialogError(contextualMessage(cause, FINISH_REVIEW_MESSAGES));
-        if (isApiErrorCode(cause, "pending_review_gone")) {
+        if (!isApiErrorCode(cause, "pending_review_gone")) {
+          setFinishDialogError(
+            contextualMessage(cause, FINISH_REVIEW_MESSAGES),
+          );
+        } else {
+          setGoneNotice(
+            parsePendingReviewEnvelope(cause.responseBody)?.state === "pending"
+              ? PENDING_REVIEW_REPLACED
+              : contextualMessage(cause, FINISH_REVIEW_MESSAGES),
+          );
           // The main process already released the gone review's Findings;
           // reload so the header and Analysis show what GitHub holds.
           setFinishDialogOpen(false);
@@ -414,7 +449,9 @@ export function usePendingReviewActions({
   const pendingReview =
     pendingReviewComposer === undefined
       ? undefined
-      : pendingReviewPanelWithRecoveryError;
+      : goneNotice === undefined
+        ? pendingReviewPanelWithRecoveryError
+        : { ...pendingReviewPanelWithRecoveryError, goneNotice };
 
   return {
     pendingReviewComposer,

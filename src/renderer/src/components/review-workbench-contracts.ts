@@ -68,6 +68,8 @@ export type ReviewWorkbenchActions = {
     readonly onCheckGitHubAgain: () => Promise<void>;
     readonly finishDialogError?: string;
     readonly recoveryError?: string;
+    /** Why the last Finish sent nothing: its pending review was gone on GitHub. */
+    readonly goneNotice?: string;
   };
   readonly setThreadState?: (
     threadId: string,
