@@ -16,22 +16,19 @@ import {
 } from "./review-workbench-fixtures";
 
 const firstSha = "c".repeat(40);
-// The head commit inserts `inserted` above `first`, so head line 2 is `inserted` while the first commit's line 2 is `first`.
+const header =
+  "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n";
+// Base line 8 is `}`. The first commit adds another `}` as its line 10 with no context; the head commit inserts i1 and i2 after base 5, so head line 10 is base 8's `}` at the end of its hunk: same text, no shared neighbours, different code.
 const fullPatch =
-  "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,3 @@\n a\n+inserted\n+first\n";
+  header +
+  "@@ -3,6 +3,8 @@\n b3\n b4\n b5\n+i1\n+i2\n b6\n b7\n }\n@@ -9,0 +12,1 @@\n+}\n";
 const commitPatches = new Map([
-  [
-    firstSha,
-    "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,2 @@\n a\n+first\n",
-  ],
-  [
-    sha,
-    "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,2 +1,3 @@\n a\n+inserted\n first\n",
-  ],
+  [firstSha, header + "@@ -9,0 +10,1 @@\n+}\n"],
+  [sha, header + "@@ -3,6 +3,8 @@\n b3\n b4\n b5\n+i1\n+i2\n b6\n b7\n }\n"],
 ]);
 const commits = [
-  { sha: firstSha, message: "Add first" },
-  { sha, message: "Insert above first" },
+  { sha: firstSha, message: "Add a brace" },
+  { sha, message: "Insert i1 and i2" },
 ].map((commit, index) => ({
   ...commit,
   author: "author",
@@ -100,16 +97,20 @@ function commentTargetFor(text: string): HTMLElement | undefined {
 }
 
 describe("ReviewWorkbenchFlow commit slice comments", () => {
-  it("offers no comment on a commit line the head shows different code at", async () => {
-    await openCommit("Add first");
+  it("offers no comment in an older commit and says why", async () => {
+    await openCommit("Add a brace");
 
-    expect(commentTargetFor("first")).toBeUndefined();
+    expect(
+      screen.queryAllByRole("button", { name: "Add comment on src/a.ts" }),
+    ).toEqual([]);
+    expect(screen.getByRole("note")).toBeTruthy();
   });
 
-  it("anchors a comment on a head-commit line to the same head line", async () => {
-    const { request, user } = await openCommit("Insert above first");
+  it("anchors a comment in the head commit to the same head line", async () => {
+    const { request, user } = await openCommit("Insert i1 and i2");
 
-    const target = commentTargetFor("inserted");
+    expect(screen.queryByRole("note")).toBeNull();
+    const target = commentTargetFor("i1");
     if (target === undefined) throw new Error("missing comment action");
     await user.click(target);
     const composer = screen.getByRole("region", {
@@ -127,7 +128,7 @@ describe("ReviewWorkbenchFlow commit slice comments", () => {
       ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
     );
     expect(JSON.stringify(callBody(command?.[0]))).toContain(
-      '"path":"src/a.ts","startLine":2,"line":2,"side":"new"',
+      '"path":"src/a.ts","startLine":6,"line":6,"side":"new"',
     );
   });
 });
