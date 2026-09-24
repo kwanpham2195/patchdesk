@@ -135,6 +135,9 @@ export function NarrativeWalkthroughDiff({
     [visibleConversation],
   );
   const selectedPath = hunks[0]?.path;
+  // The file header inside the diff names the path, so the toolbar carries only the hunk ids.
+  const hunkLabel = `${hunks.map((hunk) => hunk.id).join(", ")} · ${hunks.length} hunk${hunks.length === 1 ? "" : "s"}`;
+  const citedPaths = [...new Set(hunks.map((hunk) => hunk.path))].join(", ");
 
   return (
     <div
@@ -145,15 +148,6 @@ export function NarrativeWalkthroughDiff({
       data-walkthrough-hunk-id={hunks.length === 1 ? hunks[0]?.id : undefined}
       className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
-      <div className="flex min-w-0 shrink-0 items-center gap-2 border-b bg-muted/40 px-2 py-1.5 text-xs">
-        <span className="truncate font-mono">
-          {[...new Set(hunks.map((hunk) => hunk.path))].join(", ")}
-        </span>
-        <span className="shrink-0 text-muted-foreground">
-          {hunks.map((hunk) => hunk.id).join(", ")} · {hunks.length} hunk
-          {hunks.length === 1 ? "" : "s"}
-        </span>
-      </div>
       {visibleConversation.some(({ relation }) => relation === "partial") ? (
         <p className="border-b px-2 py-1.5 text-xs text-muted-foreground">
           A conversation thread overlaps this cited range; its GitHub anchor is
@@ -162,7 +156,8 @@ export function NarrativeWalkthroughDiff({
       ) : null}
       {filteredPatch.length === 0 || parsedDiff.files.length === 0 ? (
         <p className="p-3 text-sm text-muted-foreground">
-          Stored patch unavailable for this section.
+          Stored patch unavailable for{" "}
+          <span className="font-mono">{citedPaths}</span>.
         </p>
       ) : (
         <div
@@ -183,6 +178,11 @@ export function NarrativeWalkthroughDiff({
             onCollapsedPathsChange={() => undefined}
             {...(sourceSession === undefined ? {} : { sourceSession })}
             virtualized={false}
+            toolbarLeadingAction={
+              <span className="px-1 text-xs text-muted-foreground tabular-nums">
+                {hunkLabel}
+              </span>
+            }
           />
         </div>
       )}

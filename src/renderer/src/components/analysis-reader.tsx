@@ -30,7 +30,10 @@ import {
   analysisFindingRowId,
   ReviewWorkbenchFindingNavigationContext,
 } from "./review-workbench-finding-navigation";
-import { GeneratedMarkdown } from "./generated-markdown";
+import {
+  GeneratedMarkdown,
+  GeneratedMarkdownInline,
+} from "./generated-markdown";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -629,7 +632,9 @@ function AnalysisFindingRow({
             >
               {finding.severity}
             </Badge>
-            <p className="font-medium">{finding.title}</p>
+            <p className="font-medium">
+              <GeneratedMarkdownInline markdown={finding.title} />
+            </p>
           </div>
           <GeneratedMarkdown
             markdown={finding.explanation}

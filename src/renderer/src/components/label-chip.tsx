@@ -32,7 +32,7 @@ export function LabelColorDot({
   return (
     <span
       aria-hidden="true"
-      className="size-2 shrink-0 rounded-full ring-1 ring-inset ring-foreground/15"
+      className="size-2 shrink-0 rounded-full ring-1 ring-inset ring-muted-foreground/60"
       style={{ backgroundColor: `#${color}` }}
     />
   );

@@ -1,7 +1,10 @@
 import { ChevronDownIcon } from "lucide-react";
 
 import type { AnalysisResult } from "../analysis-headline";
-import { GeneratedMarkdown } from "./generated-markdown";
+import {
+  GeneratedMarkdown,
+  GeneratedMarkdownInline,
+} from "./generated-markdown";
 import { analysisFindingRowId } from "./review-workbench-finding-navigation";
 import { Badge } from "./ui/badge";
 import {
@@ -28,7 +31,9 @@ export function AnalysisDismissedFindingRow({
       <Collapsible>
         <CollapsibleTrigger className="group flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Badge variant="outline">{finding.severity}</Badge>
-          <span className="min-w-0 shrink truncate">{finding.title}</span>
+          <span className="min-w-0 shrink truncate">
+            <GeneratedMarkdownInline markdown={finding.title} />
+          </span>
           <span className="min-w-0 flex-1 truncate">
             Dismissed
             {finding.dismissalReason === undefined

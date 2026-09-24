@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
+import { GeneratedMarkdownInline } from "./generated-markdown";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Spinner } from "./ui/spinner";
@@ -113,7 +114,9 @@ export function AnalysisAddAllFindings({
                 >
                   {finding.severity}
                 </Badge>
-                <span className="truncate font-medium">{finding.title}</span>
+                <span className="truncate font-medium">
+                  <GeneratedMarkdownInline markdown={finding.title} />
+                </span>
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {findingLocation(finding)}

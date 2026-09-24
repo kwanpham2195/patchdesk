@@ -309,11 +309,10 @@ export function NarrativeWalkthrough({
                 role="status"
                 aria-label="Walkthrough progress"
                 data-walkthrough-progress
-                className="text-[11px] tabular-nums text-muted-foreground"
+                className="whitespace-nowrap text-[11px] tabular-nums text-muted-foreground"
               >
                 {sectionPosition}/{sections.length} · {reviewedCount} of{" "}
-                {sections.length} section
-                {sections.length === 1 ? "" : "s"} reviewed
+                {sections.length} reviewed
               </span>
             </div>
             <Separator className="my-1.5" />

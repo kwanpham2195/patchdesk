@@ -239,8 +239,16 @@ function StartHereCard({
       <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-xs text-muted-foreground">
         {startHere.order.map((entry) => (
           <li key={entry.path} className="min-w-0">
-            <span className="break-all font-mono text-foreground">
-              {entry.path}
+            {/* Each segment wraps as one box, so a line breaks after a separator and file names stay whole where they fit. */}
+            <span className="font-mono text-foreground">
+              {entry.path.split("/").map((segment, index, segments) => (
+                <span
+                  key={index}
+                  className="inline-block max-w-full break-words"
+                >
+                  {index === segments.length - 1 ? segment : `${segment}/`}
+                </span>
+              ))}
             </span>
             {entry.why === undefined ? null : (
               <>
@@ -536,6 +544,7 @@ function HunkDiff({
         onPreferencesChange={() => undefined}
         onCollapsedPathsChange={() => undefined}
         virtualized={false}
+        showToolbar={false}
       />
     </div>
   );

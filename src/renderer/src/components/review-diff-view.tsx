@@ -253,6 +253,8 @@ type ReviewDiffViewProps = {
   /** Drawn first in the toolbar, such as the review navigator toggle. */
   readonly toolbarLeadingAction?: React.ReactNode;
   readonly sinceReview?: SinceReviewControl | undefined;
+  /** False on read-only evidence previews whose preferences are fixed, where every toolbar control would be inert. */
+  readonly showToolbar?: boolean;
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
@@ -282,6 +284,7 @@ function ReviewDiffSurface({
   scopeFilter,
   toolbarLeadingAction,
   sinceReview,
+  showToolbar = true,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const { appearance, themePreferences } = useDiffAppearanceTheme();
@@ -442,6 +445,7 @@ function ReviewDiffSurface({
       scopeFilter={scopeFilter}
       toolbarLeadingAction={toolbarLeadingAction}
       sinceReview={sinceReview}
+      showToolbar={showToolbar}
     />
   );
 }
@@ -501,6 +505,7 @@ type ReviewDiffRenderSiteProps = {
   readonly scopeFilter: ScopeFilterControl | undefined;
   readonly toolbarLeadingAction: React.ReactNode;
   readonly sinceReview: SinceReviewControl | undefined;
+  readonly showToolbar: boolean;
 };
 
 function ReviewDiffRenderSite({
@@ -545,6 +550,7 @@ function ReviewDiffRenderSite({
   scopeFilter,
   toolbarLeadingAction,
   sinceReview,
+  showToolbar,
 }: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
     () => ({
@@ -656,23 +662,25 @@ function ReviewDiffRenderSite({
 
   return (
     <>
-      <ReviewDiffToolbar
-        virtualized={virtualized}
-        preferences={preferences}
-        selectedPath={selectedPath}
-        onPreferencesChange={onPreferencesChange}
-        contextControl={contextControl}
-        contextStatus={contextStatus}
-        expandUnchanged={expandUnchanged}
-        onExpandUnchangedChange={onExpandUnchangedChange}
-        collapsedPaths={collapsedPaths}
-        files={files}
-        onSetAllCollapsed={setAllCollapsed}
-        scopeFilter={scopeFilter}
-        markdownPreview={markdownPreview}
-        leadingAction={toolbarLeadingAction}
-        sinceReview={sinceReview}
-      />
+      {showToolbar ? (
+        <ReviewDiffToolbar
+          virtualized={virtualized}
+          preferences={preferences}
+          selectedPath={selectedPath}
+          onPreferencesChange={onPreferencesChange}
+          contextControl={contextControl}
+          contextStatus={contextStatus}
+          expandUnchanged={expandUnchanged}
+          onExpandUnchangedChange={onExpandUnchangedChange}
+          collapsedPaths={collapsedPaths}
+          files={files}
+          onSetAllCollapsed={setAllCollapsed}
+          scopeFilter={scopeFilter}
+          markdownPreview={markdownPreview}
+          leadingAction={toolbarLeadingAction}
+          sinceReview={sinceReview}
+        />
+      ) : null}
       {!browserSupportsPierre &&
       localComposerAnnotation?.localComposer !== undefined ? (
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />

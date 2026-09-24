@@ -56,6 +56,7 @@ export function FindingSuggestionPreview({
           onPreferencesChange={() => undefined}
           onCollapsedPathsChange={() => undefined}
           virtualized={false}
+          showToolbar={false}
         />
       </div>
     </section>

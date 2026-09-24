@@ -48,7 +48,7 @@ const STATUS_DOT_CLASS = {
   warning: "bg-status-warning",
   secondary: "bg-muted-foreground",
   destructive: "bg-destructive",
-  outline: "border border-muted-foreground",
+  outline: "ring-1 ring-inset ring-muted-foreground",
 } as const satisfies Record<InsightStatusTone, string>;
 const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
 const INSIGHT_EMPTY_CLASS = "mx-auto max-w-2xl justify-start py-10";
