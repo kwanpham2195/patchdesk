@@ -16,10 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import {
-  InsightsSlot,
-  TERMINAL_REVIEW_INSIGHT_REASON,
-} from "../../src/renderer/src/components/review-insights-slot";
+import { InsightsSlot } from "../../src/renderer/src/components/review-insights-slot";
 import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
@@ -175,8 +172,12 @@ describe("InsightsSlot empty states", () => {
   }
 });
 
+// The header's Merge chip states a Review is merged or closed, so the Insights tab no longer repeats it (#348).
+const REMOVED_TERMINAL_REASON =
+  /merged or closed; Insights cannot be generated/;
+
 describe("InsightsSlot on a merged Review", () => {
-  it("draws no Generate button and keeps the terminal reason on each empty Insight", async () => {
+  it("draws no Generate button and no terminal reason line on each empty Insight", async () => {
     desktop = installDesktopDouble({
       "/v1/insight-providers": () => success(json(providerCatalog)),
     });
@@ -191,12 +192,12 @@ describe("InsightsSlot on a merged Review", () => {
       [/^Analysis/, "Generate analysis"],
     ] as const) {
       await user.click(screen.getByRole("tab", { name: tab }));
-      expect(screen.getByText(TERMINAL_REVIEW_INSIGHT_REASON)).toBeTruthy();
+      expect(screen.queryByText(REMOVED_TERMINAL_REASON)).toBeNull();
       expect(screen.queryByRole("button", { name: action })).toBeNull();
     }
   });
 
-  it("hides both Brief Regenerate controls and keeps the terminal reason", () => {
+  it("hides both Brief Regenerate controls and draws no terminal reason line", () => {
     renderInsights(
       projection({
         review: { id: "review-42", status: "closed" },
@@ -210,7 +211,7 @@ describe("InsightsSlot on a merged Review", () => {
 
     expect(screen.getByRole("region", { name: "Provenance" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
-    expect(screen.getByText(TERMINAL_REVIEW_INSIGHT_REASON)).toBeTruthy();
+    expect(screen.queryByText(REMOVED_TERMINAL_REASON)).toBeNull();
   });
 
   it.each([
@@ -290,7 +291,7 @@ describe("InsightsSlot on a merged Review", () => {
     expect(marker.hasAttribute("disabled")).toBe(true);
   });
 
-  it("hides the Analysis Regenerate on a closed Review and keeps the terminal reason", () => {
+  it("hides the Analysis Regenerate on a closed Review and draws no terminal reason line", () => {
     const workbench = withAnalysis("actionable");
     renderInsights(
       { ...workbench, review: { ...workbench.review, status: "closed" } },
@@ -301,7 +302,7 @@ describe("InsightsSlot on a merged Review", () => {
       screen.getByRole("region", { name: "Analysis reader" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
-    expect(screen.getByText(TERMINAL_REVIEW_INSIGHT_REASON)).toBeTruthy();
+    expect(screen.queryByText(REMOVED_TERMINAL_REASON)).toBeNull();
   });
 
   it("gives no reason on an open Review with a provider", async () => {

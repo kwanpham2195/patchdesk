@@ -9,7 +9,7 @@ A primitive is a component under `src/renderer/src/components/ui/`; the shared s
 The window is three layers, each one shade lighter than the one behind it, in both themes.
 The shell (`--shell`) is the window itself and the titlebar.
 The working area sits on a rounded, hairline-bordered panel painted `--background`; this is the `main` element in `app-shell.tsx`.
-Side columns and cards sit on `--card`: the Review details column on Pull requests and the metadata column on Conversation are both `bg-card`.
+Side columns and cards sit on `--card`: the Review details column on Pull requests and the metadata column on Conversation are both `bg-card`. The Visited pull requests column is the exception: it sits on `--shell`, so it reads as window chrome for navigation.
 A box that has to stand out inside a card column, such as the status block at the top of Review details, steps up once more to `--muted`.
 Do not skip a layer, and do not invent a fourth shade.
 
@@ -27,6 +27,7 @@ Base UI activates tabs manually: the arrow keys move focus along the list, and E
 
 A state is shown as one `Badge`, and the tone comes from a plain function, never from a bare grey word or an inline `variant` picked at the call site.
 `insightStatusTone` in `src/renderer/src/insight-status-tone.ts` maps the five Insight states: Current is `success` (green), Outdated is `warning` (amber), Running is `secondary` with a `Spinner` beside the label, Failed is `destructive` (red), and Not generated is `outline`.
+The Brief / Walkthrough / Analysis rail is the exception to the `Badge` rule: a tab label is already a control, so each state is muted text after a small dot in that tone, a hollow ring for Not generated, or a `Spinner` for Running.
 Add a new state to that function, so the rail and the PR overview sheet change together.
 
 ## Empty, running, and failed states

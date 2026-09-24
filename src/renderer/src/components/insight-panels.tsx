@@ -3,7 +3,6 @@ import { useState } from "react";
 import { History } from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
   Empty,
@@ -21,7 +20,10 @@ import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { InsightRunActivity } from "../insight-contracts";
 import { RelativeTime } from "./relative-time";
-import { insightStatusTone } from "../insight-status-tone";
+import {
+  insightStatusTone,
+  type InsightStatusTone,
+} from "../insight-status-tone";
 import { INSIGHT_ICONS } from "../insight-icons";
 
 export type InsightProjection =
@@ -40,6 +42,14 @@ const INSIGHT_PURPOSES = {
   walkthrough: "Chapter-by-chapter read of the change.",
   brief: "Structure and where to start.",
 } as const satisfies Record<InsightRunDialogType, string>;
+/** The rail marks each state with a small dot so the tabs stay quiet; Not generated is a hollow ring. */
+const STATUS_DOT_CLASS = {
+  success: "bg-status-success",
+  warning: "bg-status-warning",
+  secondary: "bg-muted-foreground",
+  destructive: "bg-destructive",
+  outline: "border border-muted-foreground",
+} as const satisfies Record<InsightStatusTone, string>;
 const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
 const INSIGHT_EMPTY_CLASS = "mx-auto max-w-2xl justify-start py-10";
 
@@ -47,12 +57,15 @@ export function InsightNavRail({
   workbench,
   selectedInsight,
   setSelectedInsight,
+  trailing,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly selectedInsight: InsightRunDialogType;
   readonly setSelectedInsight: React.Dispatch<
     React.SetStateAction<InsightRunDialogType>
   >;
+  /** The selected document's meta line and run action, drawn at the row's right end so the tab strip is the only divider above the content. */
+  readonly trailing?: React.ReactNode;
 }): React.JSX.Element {
   // Reading order: Brief says what changed structurally, Walkthrough how it
   // behaves now, Analysis whether it should merge. The judgment comes last.
@@ -64,44 +77,51 @@ export function InsightNavRail({
     readonly [InsightRunDialogType, InsightProjection]
   >;
   return (
-    <nav
-      aria-label="Insight navigation"
-      className="shrink-0 overflow-x-auto overflow-y-hidden border-b"
-    >
-      <Tabs
-        value={selectedInsight}
-        onValueChange={(value) =>
-          // SAFETY: every TabsTrigger below is keyed by an InsightRunDialogType
-          // literal, so Base UI's reported value can only ever be one of those.
-          setSelectedInsight(value as InsightRunDialogType)
-        }
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b">
+      <nav
+        aria-label="Insight navigation"
+        className="max-w-full overflow-x-auto overflow-y-hidden"
       >
-        <TabsList variant="line" className="pb-1">
-          {documents.map(([type, projection]) => (
-            <TabsTrigger key={type} value={type}>
-              {INSIGHT_NOUNS[type]}
-              <InsightStatusBadge status={projection.status} />
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-    </nav>
+        <Tabs
+          value={selectedInsight}
+          onValueChange={(value) =>
+            // SAFETY: every TabsTrigger below is keyed by an InsightRunDialogType
+            // literal, so Base UI's reported value can only ever be one of those.
+            setSelectedInsight(value as InsightRunDialogType)
+          }
+        >
+          <TabsList variant="line" className="pb-1">
+            {documents.map(([type, projection]) => (
+              <TabsTrigger key={type} value={type}>
+                {INSIGHT_NOUNS[type]}
+                <InsightStatusMark status={projection.status} />
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </nav>
+      {trailing}
+    </div>
   );
 }
 
-function InsightStatusBadge({
+function InsightStatusMark({
   status,
 }: {
   readonly status: InsightProjection["status"];
 }): React.JSX.Element {
   return (
-    <Badge
-      variant={insightStatusTone(status)}
-      className="h-4 px-1.5 text-[10px] font-normal"
-    >
-      {status === "running" ? <Spinner /> : null}
+    <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+      {status === "running" ? (
+        <Spinner className="size-3" />
+      ) : (
+        <span
+          aria-hidden="true"
+          className={`size-1.5 shrink-0 rounded-full ${STATUS_DOT_CLASS[insightStatusTone(status)]}`}
+        />
+      )}
       {insightStatusLabel(status)}
-    </Badge>
+    </span>
   );
 }
 
