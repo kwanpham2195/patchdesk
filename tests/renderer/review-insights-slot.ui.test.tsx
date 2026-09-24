@@ -282,21 +282,29 @@ describe("InsightsSlot on a merged Review", () => {
   });
 
   it.each([
-    { status: "open", offersDismiss: true },
-    { status: "closed", offersDismiss: false },
-    { status: "merged", offersDismiss: false },
+    { status: "open", offersActions: true },
+    { status: "closed", offersActions: false },
+    { status: "merged", offersActions: false },
   ] as const)(
-    "offers Dismiss on a saved Analysis finding of a $status Review: $offersDismiss",
-    ({ status, offersDismiss }) => {
+    "offers Add and Dismiss on a saved Analysis finding of a $status Review: $offersActions",
+    ({ status, offersActions }) => {
       const workbench = withAnalysis("actionable");
-      renderInsights(
-        { ...workbench, review: { ...workbench.review, status } },
-        "analysis",
+      render(
+        <InsightsSlot
+          workbench={{ ...workbench, review: { ...workbench.review, status } }}
+          initialDetail="analysis"
+          onWorkbenchReplace={() => undefined}
+          onWorkbenchPatch={() => undefined}
+          onReprepare={async () => workbench}
+          onAddFinding={async () => undefined}
+        />,
       );
 
-      expect(screen.queryByRole("button", { name: "Dismiss" }) !== null).toBe(
-        offersDismiss,
-      );
+      for (const name of ["Add to review", "Dismiss"]) {
+        expect(screen.queryByRole("button", { name }) !== null).toBe(
+          offersActions,
+        );
+      }
     },
   );
 

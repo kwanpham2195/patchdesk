@@ -1,3 +1,4 @@
+import { definedProps } from "../../../domain/defined-props";
 import type { ParsedPatchFile } from "../../../domain/patch";
 import { BriefReader } from "./brief-reader";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
@@ -159,13 +160,12 @@ export function buildInsightReaders({
             }
           : {})}
         {...(workbench.insights.analysis.status === "current" &&
-        addFinding !== undefined
-          ? { onAddFinding: addFinding }
-          : {})}
-        {...(workbench.insights.analysis.status === "current" &&
-        // The server refuses a dismissal on a merged or closed Review.
+        // The server refuses Add and Dismiss on a merged or closed Review.
         workbench.review.status === "open"
-          ? { onDismissFinding: dismissFinding }
+          ? {
+              onDismissFinding: dismissFinding,
+              ...definedProps({ onAddFinding: addFinding }),
+            }
           : {})}
       />
     ) : null;
