@@ -6,7 +6,7 @@ Analysis presents a model-backed review of the represented patch. It leads with 
 
 ## The simple case
 
-The maintainer generates or opens a retained Analysis. If none exists, a borderless empty state centers the Analysis icon, the heading "No analysis yet", a one-line explanation, and the Generate analysis action in the available reader space. With a retained Analysis, they read the verdict card, then the Findings that need attention, expand a Finding's complete containing hunk, and tick off the Verification steps as they check them. For an actionable Finding mapped to the represented diff, they choose Add to review. Patchdesk starts or extends the pending review with the original suggested comment, then labels the Finding Added or Published from the exact receipt-derived state. A Finding carrying a verified replacement reads Add suggestion to review instead, and what reaches GitHub is that Finding's comment followed by one suggestion block. The maintainer can instead choose Dismiss, provide a reason, and confirm.
+The maintainer generates or opens a retained Analysis. If none exists, a borderless empty state centers the Analysis icon, the heading "No analysis yet", a one-line explanation, and the Generate analysis action in the available reader space. With a retained Analysis, they read the verdict card, then the Findings that need attention, expand a Finding's complete containing hunk, and tick off the Verification steps as they check them. For an actionable Finding mapped to the represented diff, they choose Add to review. Patchdesk starts or extends the pending review with the original suggested comment, then labels the Finding Added or Published from the exact receipt-derived state. A Finding carrying a verified replacement reads Add suggestion to review instead, and what reaches GitHub is that Finding's comment followed by one suggestion block. The maintainer can instead choose Dismiss, provide a reason, and confirm. With several actionable Findings, Add all to review adds them in one confirmed batch.
 
 ## The task, event by event
 
@@ -21,6 +21,9 @@ stateDiagram-v2
     adding --> represented : exact pending-review projection
     dismissing --> dismissed : confirmed dismissal
     adding --> recovery : outcome unknown
+    reading --> batch : Add all to review and confirm
+    batch --> batch : next Finding confirmed
+    batch --> reading : all added, Stop, or first failure
 ```
 
 ### Arrive
@@ -30,7 +33,7 @@ Analysis opens in the Insights slot for the represented Review session. Above th
 The reader shows its cards in a fixed order.
 
 - **Verdict card.** A verdict badge reads Ready to approve, Changes requested, or Comment recommended. Beside it, one badge reads "X of Y handled", or "No findings" when Analysis generated none, and one badge gives the CI state as Passing, Failing, Pending, Skipped, or Unknown; Failing is drawn as destructive. A heading follows the verdict: "The change is ready for your final review.", "Resolve the blocking findings before approval.", or "Review the highlighted concern before you finish." The generated summary sits below the heading. When Patchdesk allows finishing with an Analysis summary, the card carries a Finish review button.
-- **Findings card.** Its title is Needs attention, No findings need attention, or No findings. Below the title, "X of Y handled" counts the Findings added to the review, published, or dismissed. Its header carries Copy as markdown prompt.
+- **Findings card.** Its title is Needs attention, No findings need attention, or No findings. Below the title, "X of Y handled" counts the Findings added to the review, published, or dismissed. Its header carries Copy as markdown prompt, and Add all to review when at least one Finding can be added.
 - **What changed.** The generated change summary describes the patch in one to three sentences. The verdict card's summary explains the decision in one or two sentences without repeating the change summary.
 - **Verification.** One checkbox per generated verification step, under "N of M checked." The card is absent when Analysis generated no steps. If a tick cannot be saved, the step unticks again and the card says "Verification ticks could not be saved."
 - **Supporting details.** A collapsed card that counts its details and groups, with Show details. The groups are Reviewer callouts, Open questions, and Assumptions. Duplicate supporting details are removed before grouping.
@@ -59,6 +62,8 @@ Generate analysis or Regenerate opens the shared Insight run dialog described in
 
 Add to review appears only when the Analysis is current, the Review is open, the Finding has a location on the represented diff, the projected Analysis action state is actionable, and GitHub writes are not paused. Dismiss appears on open Findings of a current Analysis on an open Review, except Findings already Added or Published.
 
+Add all to review appears under the same conditions as Add to review, when at least one Finding qualifies: not Added, Published, Dismissed, or Locked. It opens one confirmation that lists every Finding it will add, in reading order, with its severity, title, and file and line. Cancel sends nothing. Add all adds each listed Finding through the same single-Finding path as its own Add to review or Add suggestion to review, so each one records its own intent before its own write.
+
 Add to review sends the Finding's original suggested comment together with its Analysis run ID, Finding ID, session ID, head SHA, patch hash, and diff anchor. On a Finding with a verified replacement the same control reads Add suggestion to review and sends less: the Analysis run and Finding identity and the revision the reader expects, with no comment text and no anchor. Dismiss opens a small form titled Dismiss finding; Confirm dismissal stays disabled until the reason is non-blank.
 
 Finish review in the verdict card opens Finish review with an Analysis-built summary. It prefills only the modal-local review summary and leaves Comment selected; it does not silently submit or change pending comments.
@@ -68,6 +73,8 @@ A Finding card's Open in Analysis opens Insights on the Analysis reader, opens L
 ### While the action runs
 
 Each Finding owns its pending and error state. Add to review reads Adding… and Confirm dismissal reads Dismissing… while their requests run. Add or Dismiss is admitted once synchronously for that Finding, while another Finding can remain usable. Reverse settlement of concurrent Finding actions does not move an error or confirmation to the wrong Finding.
+
+During Add all to review, the Findings card reads "Adding N of M…" with a Stop adding button, the Finding being written reads Adding…, and every other Finding action and the Add all button are disabled. Patchdesk treats the batch as a GitHub write in flight: leaving the Review waits for it, and Finish review and inline review comments stay disabled. Stop adding lets the in-flight write finish and sends nothing more. The batch also stops before its next write if a new Analysis run replaces the one it started from.
 
 Add to review passes through the detect-before-write gate and pending-review coordinator. A malformed success or unknown outcome never marks the Finding confirmed. Dismissal applies only the exact returned Finding ID and status.
 
@@ -80,6 +87,8 @@ A generation run follows the lifecycle described in [Brief](brief.md#while-the-a
 An exact pending-review projection updates the canonical workbench immediately without an advisory full Review load. A Finding becomes pending review only when the projection's unresolved Finding identity matches the run, Finding, session, head, patch, and pending-review node. It becomes published only from matching recent-write evidence. A suggestion is confirmed against the comment Patchdesk composed and returned, not against text the reader assembled, and its cited range is preserved whole whether the write started the pending review or appended to one. Once the review is submitted, GitHub renders that comment as a suggested change the pull request author can commit or add to a batch; Patchdesk neither applies it nor tracks what the author does with it.
 
 A confirmed dismissal patches the retained Analysis locally and collapses the Finding to its one-line dismissed row. Nothing in the reader restores a dismissed Finding. A failed Finding action shows "The Finding action could not be saved. Try again." under that Finding, keeps it retryable, and preserves the dismissal reason. Unknown pending-review outcome locks mutation and delegates settlement to Check GitHub again or manual GitHub inspection; a locked Finding says "Locked: GitHub comment unconfirmed."
+
+Add all to review stops at the first failure and rolls nothing back. Findings already added stay Added; the failed Finding shows its own error, or its locked or recovery state when the outcome is unknown; the Findings after it stay actionable. When the failed Finding is P2 or P3, Lower severity opens so its error is visible.
 
 A Finding that no longer maps to the represented diff, or an Add while the pending review needs recovery, sends nothing and says the Finding no longer matches the current diff or pending review, with Check GitHub again or refresh as the next step. A malformed or stale response to Add or Dismiss is worded as unconfirmed: the row says GitHub did not confirm the Finding action and to check GitHub before retrying. The row keeps that sentence until the maintainer starts another action on the same Finding.
 

@@ -31,6 +31,7 @@ import { useAnalysisVerification } from "../hooks/use-analysis-verification";
 import { useWalkthroughProgress } from "../hooks/use-walkthrough-progress";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
+import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
 import { RelativeTime } from "./relative-time";
@@ -196,6 +197,7 @@ export function InsightsSlot({
   onWorkbenchPatch,
   onReprepare,
   onAddFinding,
+  addAllFindings,
   onFinishWithAnalysisSummary,
 }: {
   readonly workbench: WorkbenchResponse;
@@ -204,6 +206,7 @@ export function InsightsSlot({
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly onReprepare: () => Promise<WorkbenchResponse>;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
+  readonly addAllFindings?: AddAllFindingsControls;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
 }): React.JSX.Element {
   const {
@@ -295,6 +298,7 @@ export function InsightsSlot({
     ...definedProps({
       onFinishWithAnalysisSummary,
       addFinding: onAddFinding,
+      addAllFindings,
       onOpenFindingInDiff: openFindingInDiff,
     }),
     dismissFinding,
