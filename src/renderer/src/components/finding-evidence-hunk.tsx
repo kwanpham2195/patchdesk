@@ -41,12 +41,6 @@ export function FindingEvidenceHunk({
       aria-label={`Finding evidence ${evidence.path}`}
       className="mt-3 overflow-hidden rounded-md border"
     >
-      <p className="border-b bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
-        {evidence.path}:{evidence.selectedRange.start}
-        {evidence.selectedRange.end === evidence.selectedRange.start
-          ? ""
-          : `–${evidence.selectedRange.end}`}
-      </p>
       <div
         aria-label="Code evidence"
         className="max-h-[75vh] resize-y overflow-auto"
@@ -62,6 +56,7 @@ export function FindingEvidenceHunk({
           onPreferencesChange={() => undefined}
           onCollapsedPathsChange={() => undefined}
           virtualized={false}
+          showToolbar={false}
         />
       </div>
     </section>

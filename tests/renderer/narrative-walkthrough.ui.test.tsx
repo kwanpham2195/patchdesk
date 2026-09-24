@@ -226,7 +226,7 @@ describe("narrative walkthrough takeover", () => {
       expect(
         screen.getByRole("status", { name: "Walkthrough progress" })
           .textContent,
-      ).toContain("0 of 10 sections reviewed");
+      ).toContain("0 of 10 reviewed");
 
       const activeSections = screen
         .getAllByRole("button")

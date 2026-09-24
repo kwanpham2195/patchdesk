@@ -151,6 +151,26 @@ describe("AnalysisReader", () => {
         '[data-selected-line="true"][data-line-number="2"]',
       ),
     ).toBeTruthy();
+    // Evidence preferences are fixed, so a View or Context control would do nothing.
+    expect(
+      within(evidence).queryByRole("button", { name: "View options" }),
+    ).toBeNull();
+  });
+
+  it("renders inline code in a Finding title instead of raw backticks", () => {
+    render(
+      <AnalysisReader
+        result={{
+          ...result,
+          findings: [
+            { ...findingFixture, title: "`BRIEF_CONTRACT` may be unused" },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("BRIEF_CONTRACT").tagName).toBe("CODE");
+    expect(screen.queryByText(/`BRIEF_CONTRACT`/)).toBeNull();
   });
 
   it("collapses P2 and P3 findings under a disclosure the keyboard can open", async () => {
