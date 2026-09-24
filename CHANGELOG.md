@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The **Visited pull requests** column now sits on the window background with no border, and its merged and closed markers read in muted grey after a purple or grey dot instead of bright blue and red. The open Review's row has a solid fill and a bold title, so it stands apart from a hovered row. #399
+
 - Changing **Check watched pull requests** in Settings → General → Notifications now takes effect at once: the next check comes one new interval after the change, with no restart. #365
 
 - Trimmed the Brief's **Untested reach** list to file paths. Each row repeated "changed, no test in this PR names it", which the row's own hint already says. #348

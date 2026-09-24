@@ -62,7 +62,8 @@ export function VisitedPullRequests({
     <aside
       id="visited-pull-requests"
       aria-label="Pull requests you have opened"
-      className="mr-1 flex w-[252px] shrink-0 flex-col overflow-hidden rounded-t-lg border border-b-0 bg-card"
+      // Navigation sits on the window itself so the main pane stays the one raised surface.
+      className="mr-1 flex w-[252px] shrink-0 flex-col overflow-hidden bg-shell"
     >
       {/* The strip keeps its height with no label so the list does not jump
        * up while a workspace switch is in flight. */}
@@ -235,15 +236,21 @@ function VisitedRow({
       onClick={selected ? undefined : onOpen}
       className={cn(
         "ui-state-transition relative flex w-full min-w-0 items-start py-1.5 pr-3 pl-2.5 text-left outline-none",
-        "hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-        selected && "bg-primary/10",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        // The selected row is inert, so it takes no hover fill that would lighten it.
+        selected ? "bg-foreground/10" : "hover:bg-foreground/5",
       )}
     >
       {selected ? (
         <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" />
       ) : null}
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="min-w-0 truncate text-[13px] leading-snug font-medium">
+        <span
+          className={cn(
+            "min-w-0 truncate text-[13px] leading-snug",
+            selected ? "font-semibold" : "font-medium",
+          )}
+        >
           {title}
         </span>
         <span className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted-foreground">
@@ -296,30 +303,31 @@ function TerminalMarker({
 }: {
   readonly terminal: NonNullable<SidebarReviewRow["terminal"]>;
 }): React.JSX.Element {
-  const { label, tone } = visitedTerminalMarker(terminal);
+  const { label, dot } = visitedTerminalMarker(terminal);
   return (
     <time
       dateTime={terminal.observedAt}
       title={formatExactTime(terminal.observedAt)}
-      className={cn("ml-auto shrink-0 text-[10px] font-medium", tone)}
+      className="ml-auto inline-flex shrink-0 items-center gap-1 text-[10px]"
     >
+      <span className={cn("size-1.5 rounded-full", dot)} aria-hidden="true" />
       {label}
     </time>
   );
 }
 
-/** The text colour that tells the state apart at a glance. */
-type VisitedTerminalTone = "text-status-info" | "text-destructive";
+/** The dot fill that tells the state apart at a glance; the words stay muted. */
+type VisitedTerminalDot = "bg-primary" | "bg-muted-foreground";
 
 type VisitedTerminalMarker = {
   readonly label: string;
-  readonly tone: VisitedTerminalTone;
+  readonly dot: VisitedTerminalDot;
 };
 
 /**
- * The marker a closed or merged row carries, and its tone. Merged is the
- * ordinary end of a review, so it takes the informational blue; closed ended
- * without the change landing, so it takes the destructive red. "seen" is the
+ * The marker a closed or merged row carries, and its dot. Merged takes the
+ * primary hue the Pull requests screen already uses for merged, and closed a
+ * grey, as GitHub does; neither is an alert, so the words stay muted. "seen" is the
  * whole claim: three of the four writers of `observedAt` stamp Patchdesk's own
  * clock beside the GitHub read, so the age is when Patchdesk saw the state,
  * not when GitHub reached it. The fourth, `ReviewRecoveryService`, dates a
@@ -334,8 +342,8 @@ export function visitedTerminalMarker(
 ): VisitedTerminalMarker {
   const seen = `seen ${formatCompactRelativeTime(terminal.observedAt, now)}`;
   return terminal.state === "merged"
-    ? { label: `merged, ${seen}`, tone: "text-status-info" }
-    : { label: `closed, ${seen}`, tone: "text-destructive" };
+    ? { label: `merged, ${seen}`, dot: "bg-primary" }
+    : { label: `closed, ${seen}`, dot: "bg-muted-foreground" };
 }
 
 type VisitedRowLabels = {

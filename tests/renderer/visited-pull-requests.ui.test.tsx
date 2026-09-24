@@ -485,16 +485,16 @@ function iso(daysAgo: number): string {
 }
 
 describe("visitedTerminalMarker", () => {
-  it("dates a merged pull request with when Patchdesk saw it, in the info tone", () => {
+  it("dates a merged pull request with when Patchdesk saw it, with the primary dot", () => {
     expect(
       visitedTerminalMarker({ state: "merged", observedAt: iso(3) }, MIDDAY),
-    ).toEqual({ label: "merged, seen 3d", tone: "text-status-info" });
+    ).toEqual({ label: "merged, seen 3d", dot: "bg-primary" });
   });
 
-  it("dates a closed pull request the same way, in the destructive tone", () => {
+  it("dates a closed pull request the same way, with the grey dot", () => {
     expect(
       visitedTerminalMarker({ state: "closed", observedAt: iso(12) }, MIDDAY),
-    ).toEqual({ label: "closed, seen 12d", tone: "text-destructive" });
+    ).toEqual({ label: "closed, seen 12d", dot: "bg-muted-foreground" });
   });
 });
 
