@@ -57,6 +57,8 @@ export function checkStatusLabel(status: CheckStatus): string {
       return "Pending";
     case "skipped":
       return "Skipped";
+    case "none":
+      return "No checks";
     case "unknown":
       return "Unknown";
   }

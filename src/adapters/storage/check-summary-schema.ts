@@ -1,8 +1,9 @@
 import * as v from "valibot";
 
-import type {
-  CheckRunSummary,
-  CheckSummary,
+import {
+  CHECK_OVERALL_STATES,
+  type CheckRunSummary,
+  type CheckSummary,
 } from "../../domain/github-context";
 
 /**
@@ -52,7 +53,7 @@ import type {
  * the wire projection, which closes storage, IPC, and renderer together.
  */
 export const checksSchema = v.strictObject({
-  overall: v.picklist(["passing", "failing", "pending", "skipped", "unknown"]),
+  overall: v.picklist(CHECK_OVERALL_STATES),
   checks: v.array(
     v.strictObject({
       name: v.string(),

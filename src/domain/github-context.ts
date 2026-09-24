@@ -90,8 +90,18 @@ export type CheckRunSummary = {
   readonly url?: string;
 };
 
+/** `none` is a successful read that found no checks; `unknown` means the checks could not be read or classified. */
+export const CHECK_OVERALL_STATES = [
+  "passing",
+  "failing",
+  "pending",
+  "skipped",
+  "none",
+  "unknown",
+] as const;
+
 export type CheckSummary = {
-  readonly overall: "passing" | "failing" | "pending" | "skipped" | "unknown";
+  readonly overall: (typeof CHECK_OVERALL_STATES)[number];
   readonly checks: ReadonlyArray<CheckRunSummary>;
 };
 

@@ -2,12 +2,14 @@ import {
   CheckCircle2,
   CircleAlert,
   CircleDashed,
+  CircleOff,
   CircleSlash,
   Clock3,
   Eye,
   GitPullRequest,
 } from "lucide-react";
 
+import { checkStatusLabel } from "@/analysis-headline";
 import { inboxIdentityKey, type InboxRow } from "@/renderer-contracts";
 import { LabelChip } from "./label-chip";
 import {
@@ -243,6 +245,13 @@ export function CheckStatusIcon({
           aria-hidden="true"
         />
       );
+    case "none":
+      return (
+        <CircleOff
+          className="size-3.5 text-muted-foreground"
+          aria-hidden="true"
+        />
+      );
     case "unknown":
       return (
         <CircleDashed
@@ -261,7 +270,10 @@ export function CheckIcon({
   readonly overall: InboxRow["checks"]["overall"];
 }): React.JSX.Element {
   return (
-    <span className="inline-flex items-center" title={`Checks ${overall}`}>
+    <span
+      className="inline-flex items-center"
+      title={checkStatusLabel(overall)}
+    >
       <CheckStatusIcon overall={overall} />
     </span>
   );

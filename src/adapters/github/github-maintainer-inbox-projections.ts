@@ -139,9 +139,11 @@ export function mapReviewDecision(
   }
 }
 
-/** A head commit's `statusCheckRollup.state` as the aggregate check status. */
+/** A head commit's `statusCheckRollup.state` as the aggregate check status; no rollup means the head has no checks. */
 export function rollupCheckSummary(value: string | undefined): CheckSummary {
   switch (value) {
+    case undefined:
+      return { overall: "none", checks: [] };
     case "SUCCESS":
       return { overall: "passing", checks: [] };
     case "FAILURE":
