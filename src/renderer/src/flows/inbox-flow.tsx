@@ -5,7 +5,6 @@ import {
   type InboxLabelActions,
 } from "../components/maintainer-inbox";
 import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
-import type { InspectorInsightRequests } from "../components/review-details-inspector";
 import {
   Alert,
   AlertAction,
@@ -38,7 +37,6 @@ import type {
 } from "../renderer-contracts";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
 import { WorkspaceFirstRun } from "./inbox-first-run";
-import { useInboxInsightRequests } from "./use-inbox-insight-requests";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
 export function InboxFlow({
@@ -155,10 +153,6 @@ export function InboxFlow({
     dismissOpenedPr,
     dismissOpenError,
   } = reviewOpening;
-  // A completed run re-reads the listing through the screen's one refresh
-  // path, so the inspector's chip and the row's tag update together.
-  const { insightRequests, insightRequestAvailability, requestInsight } =
-    useInboxInsightRequests({ dashboard, onRowRefresh: onRefresh });
   const fetchInboxLabels = useCallback(async (): Promise<
     RepositoryLabelListResponse | undefined
   > => {
@@ -271,11 +265,6 @@ export function InboxFlow({
       onPreviousInboxPage={onPreviousInboxPage}
       onNextInboxPage={onNextInboxPage}
       openingOperations={openingOperations}
-      insightRequests={{
-        requests: insightRequests,
-        availability: insightRequestAvailability,
-        onRequest: requestInsight,
-      }}
       onSettings={onSettings}
       onDismissOpenedPr={dismissOpenedPr}
       onDismissOpenError={dismissOpenError}
@@ -324,7 +313,6 @@ function InboxScreen({
   onPreviousInboxPage,
   onNextInboxPage,
   openingOperations,
-  insightRequests,
   refreshStatus,
   onSettings,
   onDismissOpenedPr,
@@ -378,7 +366,6 @@ function InboxScreen({
     string,
     { readonly status: "opening" | "error"; readonly error?: string }
   >;
-  readonly insightRequests: InspectorInsightRequests;
   readonly refreshStatus: InboxFreshnessLabel;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onDismissOpenedPr: () => void;
@@ -463,7 +450,6 @@ function InboxScreen({
           onPreviousPage={onPreviousInboxPage}
           onNextPage={onNextInboxPage}
           openingOperations={openingOperations}
-          insightRequests={insightRequests}
           onOpenReview={onOpenReview}
           onOpenReviewId={onOpenReviewId}
         />

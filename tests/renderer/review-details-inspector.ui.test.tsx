@@ -93,6 +93,37 @@ describe("ReviewDetailsInspector", () => {
     expect(screen.getAllByRole("button", { name: "Open" })).toHaveLength(1);
   });
 
+  it("lists each Insight's readiness read-only, with Open as the only action", () => {
+    render(
+      <MaintainerInbox
+        profileId="inspector-insights"
+        profileLabel="P"
+        rows={[{ ...row, insights: { brief: "ready", analysis: "outdated" } }]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const inspector = screen.getByRole("complementary", {
+      name: "Review details",
+    });
+    expect(
+      within(inspector).getByRole("status", { name: "Current" }),
+    ).toBeTruthy();
+    expect(within(inspector).getByLabelText("Brief: Ready")).toBeTruthy();
+    expect(within(inspector).getByLabelText("Analysis: Outdated")).toBeTruthy();
+    expect(
+      within(inspector).getByLabelText("Walkthrough: Not run"),
+    ).toBeTruthy();
+    expect(
+      within(inspector).getAllByRole("button", { name: "Open" }),
+    ).toHaveLength(1);
+    expect(
+      within(inspector).queryByRole("button", { name: /Request/ }),
+    ).toBeNull();
+  });
+
   it("shows the scope legend for a row that carries a retained scope", () => {
     render(
       <MaintainerInbox

@@ -10,10 +10,7 @@ import { InboxFiltersBar } from "./inbox-filters-bar";
 import { LabelFilterPopover } from "./inbox-label-filter";
 import { InboxRowItem } from "./inbox-row-item";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
-import {
-  ReviewDetailsInspector,
-  type InspectorInsightRequests,
-} from "./review-details-inspector";
+import { ReviewDetailsInspector } from "./review-details-inspector";
 import { useInboxView } from "../hooks/use-inbox-view";
 import { formatInboxAge, type InboxFreshnessLabel } from "@/inbox-freshness";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
@@ -162,8 +159,6 @@ type MaintainerInboxProps = {
   >;
   readonly onOpenReview: (row: InboxRow) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
-  /** The inspector's Insight chips and Request buttons; absent, the chips render read-only. */
-  readonly insightRequests?: InspectorInsightRequests;
 };
 
 /** Dense, keyboard-operable maintainer queue built from the parsed local API projection. */
@@ -206,7 +201,6 @@ export function MaintainerInbox({
   openingOperations = new Map(),
   onOpenReview,
   onOpenReviewId,
-  insightRequests,
 }: MaintainerInboxProps): React.JSX.Element {
   // While a filter change is in flight, `rows` still belongs to the previous
   // request. Every row-derived view (the row list, selection, labels) must
@@ -328,7 +322,6 @@ export function MaintainerInbox({
           selected === undefined ? undefined : triggerAction(selected)
         }
         openingOperations={openingOperations}
-        {...(insightRequests === undefined ? {} : { insightRequests })}
       />
     </div>
   );
@@ -680,7 +673,6 @@ function ReviewDetailsPanel({
   onToggleInspector,
   onAction,
   openingOperations,
-  insightRequests,
 }: {
   readonly inspectorOpen: boolean;
   readonly narrow: boolean;
@@ -692,14 +684,11 @@ function ReviewDetailsPanel({
     string,
     Exclude<ReviewOpeningState, undefined>
   >;
-  readonly insightRequests?: InspectorInsightRequests;
 }): React.JSX.Element {
   const openingState =
     selected === undefined
       ? undefined
       : openingOperations.get(inboxIdentityKey(selected));
-  const insightRequestsField =
-    insightRequests === undefined ? {} : { insightRequests };
   return (
     <>
       <aside
@@ -715,7 +704,6 @@ function ReviewDetailsPanel({
             freshness={freshness}
             onAction={onAction}
             {...(openingState === undefined ? {} : { openingState })}
-            {...insightRequestsField}
           />
         </ScrollArea>
       </aside>
@@ -734,7 +722,6 @@ function ReviewDetailsPanel({
             freshness={freshness}
             onAction={onAction}
             {...(openingState === undefined ? {} : { openingState })}
-            {...insightRequestsField}
           />
         </SheetContent>
       </Sheet>

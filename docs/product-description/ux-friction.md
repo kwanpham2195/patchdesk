@@ -31,8 +31,9 @@ Low:
 - [UX-14](#ux-14-skip-to-content-leaves-main-content-in-the-address): Skip to content leaves `#main-content` in the address. Rejected with evidence.
 - [UX-15](#ux-15-the-merge-conflicts-notice-asks-for-a-push-patchdesk-cannot-make): The Merge conflicts notice asks for a push Patchdesk cannot make. Rejected with evidence.
 - [UX-16](#ux-16-insights-opens-on-an-empty-brief-beside-an-overview-that-repeats-the-tab-strip): Insights opens on an empty Brief beside an Overview that repeats the tab strip. Fixed with [#350](https://github.com/kwanpham2195/patchdesk/issues/350).
+- [UX-17](#ux-17-the-review-details-inspector-repeats-the-workbenchs-insight-controls): The Review details inspector repeats the workbench's Insight controls. Fixed with [#351](https://github.com/kwanpham2195/patchdesk/issues/351).
 
-Count: 16 items, 5 medium and 11 low; 12 named follow-ups, all now fixed, 1 fixed now, and 3 rejected with evidence.
+Count: 17 items, 5 medium and 12 low; 12 named follow-ups, all now fixed, 2 fixed now, and 3 rejected with evidence.
 
 Friction the passes reported that is a defect, with the independent review's disposition, is tracked in bug-triage.md:
 
@@ -248,5 +249,17 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Disposition:** fix now, [#350](https://github.com/kwanpham2195/patchdesk/issues/350).
 - **Status:** fixed by the #350 change: the strip reads Brief, Walkthrough, Analysis, and Insights opens on the first of them with a retained result, or on Brief when none has one. A restored Insight still wins.
 - **Page:** [Brief](review-workbench/brief.md#arrive).
+
+### UX-17: The Review details inspector repeats the workbench's Insight controls
+
+- **Screen:** Pull requests, Review details inspector, on #347 on 2026-09-24.
+- **What the maintainer does:** Selects a row to decide whether to open it.
+- **What they see:** "Analysis · Ready" beside a Request Analysis button, with Request Brief and Request Walkthrough below it, and an icon-only chevron toggle at the end of the filter bar with no tooltip.
+- **Why it hurts:** The inspector should answer "what is this pull request and should I open it" with one action; three run buttons compete with Open and start runs away from where their results are read.
+- **Suggested improvement:** Remove the Request buttons and keep the chips read-only. Give the inspector toggle a panel icon and a tooltip matching its accessible name, as UX-07 did for the titlebar toggle.
+- **Severity:** low.
+- **Disposition:** fix now, [#351](https://github.com/kwanpham2195/patchdesk/issues/351).
+- **Status:** fixed by the #351 change: the inspector shows its status, facts, read-only Insight chips, Watch on an open row, and Open. The toggle shows a panel icon and a tooltip.
+- **Page:** [The repository listing](pull-requests/repository-listing.md#the-simple-case).
 
 Drafted from the 2026-09-14 live passes at `5fe7df3b` and the independent review; source citations rechecked against application commit `737c515c`.

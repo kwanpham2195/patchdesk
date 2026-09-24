@@ -2,9 +2,11 @@
 
 ## Unreleased
 
+- Removed the **Request Brief**, **Request Analysis**, and **Request Walkthrough** buttons from the Pull requests inspector. Its Insight chips stay as a read-only readiness line, and Insights run from the Review where their results are read. The inspector toggle at the end of the filter bar now shows a panel icon and a tooltip. #351
+
 - Removed the **Overview** tab from Insights. Each Insight tab already shows its status, and Scope stays in the header gauge, the Brief side column, and the Diff toolbar's **Scope** picker. Insights now opens on the first of **Brief**, **Walkthrough**, and **Analysis** that has a result, and on **Brief** when none has one; an Insight you opened last still wins. #350
 
-- Removed the **Review** tab from Settings. It set only an API-key model and reasoning level for Analysis, could not show or pick the Codex CLI account, and a change there switched a Codex Analysis default back to API key. Brief, Analysis, and Walkthrough each remember the provider, model, and reasoning last confirmed in their run dialog, and the pull-request list's **Request** buttons use that choice.
+- Removed the **Review** tab from Settings. It set only an API-key model and reasoning level for Analysis, could not show or pick the Codex CLI account, and a change there switched a Codex Analysis default back to API key. Brief, Analysis, and Walkthrough each remember the provider, model, and reasoning last confirmed in their run dialog.
 
 - Shortened generated Analysis text by limiting summaries and finding prose. The change summary now describes the patch, the verdict summary explains the decision, and findings put the symptom and cause in one explanation. Older saved Analyses remain readable. #344
 
