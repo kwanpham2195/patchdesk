@@ -20,6 +20,7 @@ import {
   type AnalysisResult,
   type CheckStatus,
 } from "../analysis-headline";
+import { AnalysisDismissedFindingRow } from "./analysis-dismissed-finding-row";
 import { FindingEvidenceHunk } from "./finding-evidence-hunk";
 import { FindingSuggestionPreview } from "./finding-suggestion-preview";
 import {
@@ -119,6 +120,7 @@ export function AnalysisReader({
   } = useFindingErrors(result, findingStatuses);
   const verifiedSteps = verification?.checkedSteps ?? new Set<number>();
   const unhandledFindings = unhandledAnalysisFindings(result, findingStatuses);
+  const handledProgress = `${result.findings.length - unhandledFindings.length} of ${result.findings.length} handled`;
   const highSeverityFindings = result.findings.filter(isHighSeverity);
   const lowerSeverityFindings = result.findings.filter(
     (finding) => !isHighSeverity(finding),
@@ -172,42 +174,49 @@ export function AnalysisReader({
       });
     }
   };
-  const renderFindingRow = (finding: AnalysisFinding): React.JSX.Element => (
-    <AnalysisFindingRow
-      key={finding.id}
-      finding={finding}
-      status={findingStatuses?.[finding.id]}
-      needsReply={needsReplyFindingIds?.has(finding.id) ?? false}
-      actionState={findingActions.get(finding.id)}
-      actionError={findingErrors.get(finding.id)}
-      {...(evidencePatch === undefined ? {} : { evidencePatch })}
-      {...(onOpenFindingInDiff === undefined ? {} : { onOpenFindingInDiff })}
-      {...(onAddFinding === undefined
-        ? {}
-        : {
-            onAddFinding: async (value: AnalysisFinding) => {
-              await runFindingAction(value.id, "adding", () =>
-                onAddFinding(value),
-              );
-            },
-          })}
-      {...(onDismissFinding === undefined
-        ? {}
-        : {
-            onDismissFinding: async (
-              value: AnalysisFinding,
-              reason: string,
-            ) => {
-              const succeeded = await runFindingAction(
-                value.id,
-                "dismissing",
-                () => onDismissFinding(value, reason),
-              );
-              if (!succeeded) throw new Error("Finding dismissal failed");
-            },
-          })}
-    />
-  );
+  const renderFindingRow = (finding: AnalysisFinding): React.JSX.Element =>
+    finding.disposition === "dismissed" ? (
+      <AnalysisDismissedFindingRow
+        key={finding.id}
+        finding={finding}
+        location={findingLocation(finding)}
+      />
+    ) : (
+      <AnalysisFindingRow
+        key={finding.id}
+        finding={finding}
+        status={findingStatuses?.[finding.id]}
+        needsReply={needsReplyFindingIds?.has(finding.id) ?? false}
+        actionState={findingActions.get(finding.id)}
+        actionError={findingErrors.get(finding.id)}
+        {...(evidencePatch === undefined ? {} : { evidencePatch })}
+        {...(onOpenFindingInDiff === undefined ? {} : { onOpenFindingInDiff })}
+        {...(onAddFinding === undefined
+          ? {}
+          : {
+              onAddFinding: async (value: AnalysisFinding) => {
+                await runFindingAction(value.id, "adding", () =>
+                  onAddFinding(value),
+                );
+              },
+            })}
+        {...(onDismissFinding === undefined
+          ? {}
+          : {
+              onDismissFinding: async (
+                value: AnalysisFinding,
+                reason: string,
+              ) => {
+                const succeeded = await runFindingAction(
+                  value.id,
+                  "dismissing",
+                  () => onDismissFinding(value, reason),
+                );
+                if (!succeeded) throw new Error("Finding dismissal failed");
+              },
+            })}
+      />
+    );
 
   return (
     <section
@@ -221,9 +230,7 @@ export function AnalysisReader({
               {analysisVerdictLabel(result.verdict)}
             </Badge>
             <Badge variant="outline">
-              {unhandledFindings.length === 0
-                ? "No findings need attention"
-                : `${unhandledFindings.length} ${unhandledFindings.length === 1 ? "item needs" : "items need"} attention`}
+              {hasNoGeneratedFindings ? "No findings" : handledProgress}
             </Badge>
             <Badge
               variant={checkStatus === "failing" ? "destructive" : "outline"}
@@ -255,10 +262,8 @@ export function AnalysisReader({
                 ? "No findings need attention"
                 : "Needs attention"}
           </CardTitle>
-          {hasNoGeneratedFindings || unhandledFindings.length === 0 ? null : (
-            <CardDescription>
-              Resolve or add each item before you finish the review.
-            </CardDescription>
+          {hasNoGeneratedFindings ? null : (
+            <CardDescription>{handledProgress}</CardDescription>
           )}
           <CardAction>
             <CopyFixPromptButton
@@ -546,10 +551,8 @@ function AnalysisFindingRow({
     }
   };
 
-  const location =
-    finding.file === undefined
-      ? undefined
-      : `${finding.file}${finding.lineStart === undefined ? "" : `:${finding.lineStart}`}`;
+  const location = findingLocation(finding);
+  const statusLabel = findingStatusLabel(reviewStatus);
 
   return (
     // Focusable so a Diff card's "Open in Analysis" can land keyboard focus here.
@@ -593,22 +596,18 @@ function AnalysisFindingRow({
           )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Badge
-            variant={
-              reviewStatus === "published" || reviewStatus === "pending_review"
-                ? "secondary"
-                : "outline"
-            }
-            // A state, not an action: no border, so it cannot pass for a
-            // button beside Add to review and Dismiss.
-            className={
-              reviewStatus === "actionable"
-                ? "border-transparent bg-muted text-muted-foreground"
-                : undefined
-            }
-          >
-            {reviewStatus.replaceAll("_", " ")}
-          </Badge>
+          {statusLabel === undefined ? null : (
+            <Badge
+              variant={
+                reviewStatus === "published" ||
+                reviewStatus === "pending_review"
+                  ? "secondary"
+                  : "outline"
+              }
+            >
+              {statusLabel}
+            </Badge>
+          )}
           {needsReply ? (
             <Badge variant="warning">Needs your reply</Badge>
           ) : null}
@@ -853,6 +852,32 @@ function significantTokens(value: string): ReadonlySet<string> {
       .match(/[a-z0-9]+/g)
       ?.filter((token) => token.length > 2 || /^\d+$/.test(token)) ?? [],
   );
+}
+
+function findingLocation(finding: AnalysisFinding): string | undefined {
+  return finding.file === undefined
+    ? undefined
+    : `${finding.file}${finding.lineStart === undefined ? "" : `:${finding.lineStart}`}`;
+}
+
+/** An actionable Finding needs no label: its Add and Dismiss buttons say it. */
+function findingStatusLabel(
+  status: FindingStatus | "dismissed" | "unavailable",
+): string | undefined {
+  switch (status) {
+    case "actionable":
+      return undefined;
+    case "pending_review":
+      return "Added";
+    case "published":
+      return "Published";
+    case "locked":
+      return "Locked";
+    case "dismissed":
+      return "Dismissed";
+    case "unavailable":
+      return "Unavailable";
+  }
 }
 
 function isHighSeverity(finding: AnalysisFinding): boolean {

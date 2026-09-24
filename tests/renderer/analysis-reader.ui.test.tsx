@@ -277,7 +277,7 @@ describe("AnalysisReader", () => {
         findingStatuses={{ "finding-1": "pending_review" }}
       />,
     );
-    expect(screen.getByText("pending review")).toBeTruthy();
+    expect(screen.getByText("Added")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
 
     rerender(
@@ -286,7 +286,7 @@ describe("AnalysisReader", () => {
         findingStatuses={{ "finding-1": "published" }}
       />,
     );
-    expect(screen.getByText("published")).toBeTruthy();
+    expect(screen.getByText("Published")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
@@ -313,37 +313,73 @@ describe("AnalysisReader", () => {
   });
 
   // The banner and merge readiness share one handled rule: a receipt handles
-  // a finding the same way a dismissal does.
-  it("drops a finding from the attention count once it has a review receipt", () => {
+  // a finding the same way a dismissal does, and a lock does not.
+  it("counts added and dismissed Findings as handled", () => {
+    const threeFindingResult = {
+      ...twoFindingResult,
+      findings: [
+        ...twoFindingResult.findings,
+        {
+          ...findingFixture,
+          id: "finding-3",
+          title: "Third boundary issue",
+          disposition: "dismissed" as const,
+          dismissalReason: "Covered by the API contract",
+        },
+      ],
+    };
     const { rerender } = render(
       <AnalysisReader
-        result={twoFindingResult}
+        result={threeFindingResult}
         findingStatuses={{
           "finding-1": "actionable",
           "finding-2": "actionable",
         }}
       />,
     );
-    expect(screen.getByText("2 items need attention")).toBeTruthy();
+    expect(screen.getAllByText("1 of 3 handled")).toHaveLength(2);
 
     rerender(
       <AnalysisReader
-        result={twoFindingResult}
+        result={threeFindingResult}
         findingStatuses={{
           "finding-1": "pending_review",
-          "finding-2": "actionable",
+          "finding-2": "locked",
         }}
       />,
     );
-    expect(screen.getByText("1 item needs attention")).toBeTruthy();
+    expect(screen.getAllByText("2 of 3 handled")).toHaveLength(2);
+  });
 
-    rerender(
+  it("collapses a dismissed Finding to one row that the keyboard can expand", async () => {
+    const user = userEvent.setup();
+    render(
       <AnalysisReader
-        result={twoFindingResult}
-        findingStatuses={{ "finding-1": "published", "finding-2": "locked" }}
+        result={{
+          ...result,
+          findings: [
+            {
+              ...findingFixture,
+              disposition: "dismissed",
+              dismissalReason: "Covered by the API contract",
+            },
+          ],
+        }}
+        onDismissFinding={vi.fn(async () => undefined)}
       />,
     );
-    expect(screen.getByText("1 item needs attention")).toBeTruthy();
+
+    const row = screen.getByRole("button", {
+      name: /Missing boundary check.*Covered by the API contract/,
+    });
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText(findingFixture.explanation)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+
+    row.focus();
+    await user.keyboard("{Enter}");
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText(findingFixture.explanation)).toBeTruthy();
   });
 
   it("admits Add synchronously once and leaves another Finding usable", async () => {

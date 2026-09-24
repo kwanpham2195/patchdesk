@@ -4,6 +4,7 @@ import {
   analysisMergeInput,
   isAnalysisFindingHandled,
   mergeGateFindings,
+  projectAnalysisFindings,
 } from "../../src/domain/analysis-merge-findings";
 import type {
   ContentHash,
@@ -137,5 +138,37 @@ describe("mergeGateFindings", () => {
       ],
     );
     expect(findings.map((f) => f.addedToReview)).toEqual([false]);
+  });
+});
+
+describe("projectAnalysisFindings", () => {
+  // The reader shows the reason on the collapsed row after a reload, so it has
+  // to come from the stored dismissal rather than the renderer's own patch.
+  it("carries the stored reason onto the dismissed Finding only", () => {
+    const stored = record([
+      { id: firstFindingId, severity: "P1" },
+      { id: secondFindingId, severity: "P2" },
+    ]) as Parameters<typeof projectAnalysisFindings>[1];
+    const withDismissal = {
+      ...stored,
+      dismissals: [
+        {
+          findingId: secondFindingId,
+          reason: "Covered by the API contract",
+          dismissedAt: "2026-01-02T00:00:00.000Z" as never,
+        },
+      ],
+    };
+    if (stored.retained === undefined) throw new Error("missing retained");
+    const [first, second] = projectAnalysisFindings(
+      stored.retained.value,
+      withDismissal,
+    ).findings;
+    expect(first).toMatchObject({ disposition: "open" });
+    expect(first?.dismissalReason).toBeUndefined();
+    expect(second).toMatchObject({
+      disposition: "dismissed",
+      dismissalReason: "Covered by the API contract",
+    });
   });
 });

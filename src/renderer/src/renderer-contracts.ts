@@ -141,10 +141,8 @@ const inboxResponseSchema = v.strictObject({
       v.array(
         v.object({
           ...repositoryIdentityFields,
-          // Absent on a watched repository with no local checkout configured
-          // (the main process omits the key rather than sending `null`; see
-          // `parseWatchedRepo` in `src/domain/workspace-profile.ts`). Without
-          // this field the Settings watchlist grouping
+          // Absent on a watched repository with no local checkout (see
+          // `parseWatchedRepo`); without it the Settings watchlist grouping
           // (`groupWatchlistEntries` in `settings-workspace-repositories.tsx`)
           // could never match a repo to its saved workspace root.
           localPath: v.optional(v.pipe(v.string(), v.minLength(1))),
@@ -561,6 +559,7 @@ const reviewResultSchema = v.strictObject({
       ),
       mappingStatus: v.picklist(FINDING_MAPPING_STATUSES),
       disposition: v.optional(v.picklist(["open", "added", "dismissed"])),
+      dismissalReason: v.optional(v.pipe(v.string(), v.minLength(1))),
     }),
   ),
   validationPlan: v.array(v.string()),

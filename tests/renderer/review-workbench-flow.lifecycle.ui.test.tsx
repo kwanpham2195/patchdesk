@@ -124,7 +124,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     mount(projected);
     await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
-    expect(await screen.findByText("pending review")).toBeTruthy();
+    expect(await screen.findByText("Added")).toBeTruthy();
 
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });

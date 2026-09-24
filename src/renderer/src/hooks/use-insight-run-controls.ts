@@ -158,7 +158,11 @@ export function useInsightRunControls({
           ...retained.value,
           findings: retained.value.findings.map((candidate) =>
             candidate.id === finding.id
-              ? { ...candidate, disposition: "dismissed" as const }
+              ? {
+                  ...candidate,
+                  disposition: "dismissed" as const,
+                  dismissalReason: reason,
+                }
               : candidate,
           ),
         },

@@ -280,15 +280,38 @@ export const analysisFixtureData = {
         ...finding,
         severity: "P1",
       })),
+      {
+        id: "added",
+        severity: "P1",
+        title: "Log the refused write",
+        file: "src/a.ts",
+        lineStart: 3,
+        explanation: "A refused write leaves no trace in the diagnostics log.",
+        confidence: "medium",
+        mappingStatus: "mapped",
+      },
+      {
+        id: "dismissed",
+        severity: "P1",
+        title: "Rename the write helper",
+        file: "src/a.ts",
+        lineStart: 4,
+        explanation: "The helper name does not say that it writes to GitHub.",
+        confidence: "low",
+        mappingStatus: "mapped",
+        disposition: "dismissed",
+        dismissalReason: "The name matches the adapter's other helpers",
+      },
     ],
   },
 };
 
-/** Both mapped Findings are actionable, so the fixture shows both add labels. */
+/** Both mapped Findings are actionable, so the fixture shows both add labels; one more is Added. */
 export const analysisFixtureReviewActions = {
   findings: {
     suggested: { state: "actionable" as const },
     mapped: { state: "actionable" as const },
+    added: { state: "pending_review" as const },
   },
   canFinishWithAnalysisSummary: false,
 };
