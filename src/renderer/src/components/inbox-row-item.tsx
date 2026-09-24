@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 /** The author's cached avatar at the row's text scale; initials until the cache warms. */
 const authorAvatarClassName = "size-4 border-0 text-[9px]";
 
-const inlineBadgeClassName = "ml-1.5 h-4 px-1 align-middle text-[10px]";
+const inlineBadgeClassName = "h-4 px-1 text-[10px]";
 
 export function InboxRowItem({
   row,
@@ -85,11 +85,11 @@ export function InboxRowItem({
             className={cn("mt-0.5 size-3.5 shrink-0", pullRequestIconTone(row))}
           />
           <div className="min-w-0">
-            {/* Badges flow inline after the title's last word, so one- and two-line titles place them the same way. */}
-            <div className="line-clamp-2 min-w-0 text-[13px] leading-5">
+            {/* Only the title clamps; the badges wrap after it and are never clipped, since "New" is the one sign of commits since the last look. */}
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] leading-5">
               <span
                 data-slot="pull-request-title"
-                className="cursor-pointer font-medium hover:text-primary hover:underline"
+                className="line-clamp-2 min-w-0 cursor-pointer font-medium hover:text-primary hover:underline"
                 title={`#${row.identity.number} ${row.title}`}
               >
                 #{row.identity.number} {row.title}
@@ -100,10 +100,7 @@ export function InboxRowItem({
                 </Badge>
               ) : null}
               {watched ? (
-                <span
-                  className="ml-1.5 inline-flex align-middle"
-                  title="Watched"
-                >
+                <span className="inline-flex shrink-0" title="Watched">
                   <Eye className="size-3 text-muted-foreground" />
                   <span className="sr-only">Watched</span>
                 </span>

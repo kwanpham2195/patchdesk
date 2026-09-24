@@ -29,6 +29,7 @@ type RetainedFixture =
       readonly headSha?: string;
       readonly value?: unknown;
       readonly failed?: true;
+      readonly running?: true;
     }
   | "unreadable";
 
@@ -121,6 +122,9 @@ describe("MaintainerInboxService insight readiness", () => {
         ...(fixture?.failed === true && {
           replacementFailure: { reason: "failed" },
         }),
+        ...(fixture?.running === true && {
+          activeRun: { status: "running" },
+        }),
       });
     }
     const insights = {
@@ -198,6 +202,17 @@ describe("MaintainerInboxService insight readiness", () => {
         })
       ).insights,
     ).toEqual({ brief: "failed", analysis: "failed", walkthrough: "ready" });
+  });
+
+  it("reads the retained state, not failed, while a new run is active after a failure", async () => {
+    expect(
+      (
+        await rowFor({
+          brief: { headSha, failed: true, running: true },
+          analysis: { headSha: earlierHeadSha, failed: true, running: true },
+        })
+      ).insights,
+    ).toEqual({ brief: "ready", analysis: "outdated" });
   });
 
   it("reports every kind the review retains in one row", async () => {
