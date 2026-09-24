@@ -8,6 +8,7 @@ import {
 import type {
   InsightCoordinatorSeam,
   LocalApiConfiguration,
+  ReviewWorkbenchSeam,
 } from "./local-api-configuration";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
@@ -73,7 +74,7 @@ export type LocalApiContainer = {
   readonly configuredProfiles: ReadonlyArray<WorkspaceProfileConfig>;
   readonly dashboard: DashboardController;
   readonly recovery: ReviewRecoveryService;
-  readonly reviewWorkbench: ReviewWorkbenchController;
+  readonly reviewWorkbench: ReviewWorkbenchSeam;
   readonly reviewDiffSources: ReviewDiffSourceService;
   readonly mergeWrites: MergeWriteController | undefined;
   readonly inlineConversations: InlineConversationService;
@@ -433,10 +434,9 @@ export async function buildLocalApiContainer(
     sessions,
     configuration.readOnlyGit ?? readOnlyGit,
   );
-  const reviewWorkbench = new ReviewWorkbenchController(
-    reviewPreparation,
-    reviewProjection,
-    {
+  const reviewWorkbench =
+    configuration.reviewWorkbench ??
+    new ReviewWorkbenchController(reviewPreparation, reviewProjection, {
       reviews,
       sessions,
       artifacts: storageArtifacts,
@@ -447,8 +447,7 @@ export async function buildLocalApiContainer(
       observation: reviewObservation,
       commits: reviewCommits,
       logs,
-    },
-  );
+    });
   const merger =
     configuration.mergeWriter ??
     (isGitHubMergeWriter(github) ? github : undefined);

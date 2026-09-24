@@ -4,6 +4,7 @@ import {
   localApiConfigurationSchema,
   type LocalApiConfiguration,
   type ParsedLocalApiConfiguration,
+  type StorageManagementSeam,
 } from "./local-api-configuration";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
@@ -103,6 +104,43 @@ export function createGitHubHttpClient(
   );
 }
 
+/** Builds the production process runner, which logs every spawn and every unclassified failure. */
+function createLoggedCommandRunner(
+  logs: Pick<AppLogService, "write">,
+): CommandRunner {
+  // Every slow operation in this app is a child process; this is the only
+  // place that counts them, so `scripts/gh-spawn-report.mjs` can tell which
+  // endpoints a route spawned and how often it repeated one.
+  const executor = new NodeCommandExecutor(undefined, undefined, (record) => {
+    logs.write({
+      process: "main",
+      level: "debug",
+      topic: "command-spawn",
+      message: `${record.executable} ${record.label}`,
+      meta: {
+        executable: record.executable,
+        label: record.label,
+        durationMs: record.durationMs,
+        outcome: record.outcome,
+        exitCode: record.exitCode,
+      },
+    });
+  });
+  return new CommandRunner(executor, (stderr) => {
+    // Fires only when a nonzero-exit command failure matched neither a
+    // structured signal nor any regex predicate — genuine gh-wording drift
+    // worth a human noticing. AppLogService.write already masks credential
+    // shapes and bounds message length.
+    logs.write({
+      process: "main",
+      level: "warn",
+      topic: "command-runner",
+      message: "unclassified command failure",
+      meta: { stderr },
+    });
+  });
+}
+
 /** Every store, adapter and seam the loopback API's services are built from. */
 export type LocalApiStores = {
   readonly parsedConfiguration: {
@@ -128,7 +166,7 @@ export type LocalApiStores = {
   readonly lifecycleGate: ReviewLifecycleGate;
   readonly insights: InsightStore;
   readonly watchedPullRequests: WatchedPullRequestStore;
-  readonly storageManagement: StorageManagementService;
+  readonly storageManagement: StorageManagementSeam;
 };
 
 /** Either the built stores, or the startup refusal that stopped them. */
@@ -151,37 +189,7 @@ export async function buildLocalApiStores(
 
   const paths = configuration.paths ?? PatchdeskPaths.default();
   const logs = configuration.logs ?? new AppLogService(paths);
-  // Every slow operation in this app is a child process; this is the only
-  // place that counts them, so `scripts/gh-spawn-report.mjs` can tell which
-  // endpoints a route spawned and how often it repeated one.
-  const executor = new NodeCommandExecutor(undefined, undefined, (record) => {
-    logs.write({
-      process: "main",
-      level: "debug",
-      topic: "command-spawn",
-      message: `${record.executable} ${record.label}`,
-      meta: {
-        executable: record.executable,
-        label: record.label,
-        durationMs: record.durationMs,
-        outcome: record.outcome,
-        exitCode: record.exitCode,
-      },
-    });
-  });
-  const commands = new CommandRunner(executor, (stderr) => {
-    // Fires only when a nonzero-exit command failure matched neither a
-    // structured signal nor any regex predicate — genuine gh-wording drift
-    // worth a human noticing. AppLogService.write already masks credential
-    // shapes and bounds message length.
-    logs.write({
-      process: "main",
-      level: "warn",
-      topic: "command-runner",
-      message: "unclassified command failure",
-      meta: { stderr },
-    });
-  });
+  const commands = configuration.commands ?? createLoggedCommandRunner(logs);
   const credentials =
     configuration.githubCredentials ?? new GitHubCliCredentials(commands);
   const github =
@@ -247,11 +255,13 @@ export async function buildLocalApiStores(
     git: configuration.readOnlyGit ?? readOnlyGit,
     now: systemNow,
   };
-  const storageManagement = new StorageManagementService(
-    configuration.trash === undefined
-      ? storageManagementInput
-      : { ...storageManagementInput, trash: configuration.trash },
-  );
+  const storageManagement =
+    configuration.storageManagement ??
+    new StorageManagementService(
+      configuration.trash === undefined
+        ? storageManagementInput
+        : { ...storageManagementInput, trash: configuration.trash },
+    );
 
   return {
     _tag: "ok",

@@ -11,7 +11,12 @@ import {
 import type { AppCapability } from "./ipc-contract";
 import type { WorkspaceProfileId } from "../domain/ids";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { TrashMover } from "../services/storage-management-service";
+import type {
+  StorageManagementService,
+  TrashMover,
+} from "../services/storage-management-service";
+import type { CommandRunner } from "../adapters/github/command-runner";
+import type { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import type { GitHubCredentials } from "../adapters/github/github-credentials";
 import type { GitHubFetch } from "../adapters/github/github-http-client";
 import type {
@@ -42,6 +47,24 @@ export type InsightCoordinatorSeam = Pick<
       "updateWalkthroughProgress" | "updateAnalysisVerification" | "addFinding"
     >
   >;
+
+/** The Review workbench operations the lifecycle and write routes call. */
+export type ReviewWorkbenchSeam = Pick<
+  ReviewWorkbenchController,
+  | "open"
+  | "openMerged"
+  | "load"
+  | "leave"
+  | "detectUpdates"
+  | "commitDiff"
+  | "sinceReviewDiff"
+>;
+
+/** The storage operations the cleanup routes and the retention sweep call. */
+export type StorageManagementSeam = Pick<
+  StorageManagementService,
+  "clearCache" | "clearLocalData" | "sweepRetained"
+>;
 
 export const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -75,6 +98,12 @@ export type LocalApiConfiguration = {
   readonly github?: GitHubReader;
   /** Test-only write seam. A reader alone must never enable review-write routes. */
   readonly reviewWriter?: GitHubReviewWriter;
+  /** Test-only process seam; production spawns real processes and logs each spawn. */
+  readonly commands?: CommandRunner;
+  /** Test-only workbench seam; production builds the controller over the container's services. */
+  readonly reviewWorkbench?: ReviewWorkbenchSeam;
+  /** Test-only storage seam; production builds the service over the container's stores. */
+  readonly storageManagement?: StorageManagementSeam;
   /** Test-only merge seam. Production gets this capability from the main-process adapter. */
   readonly mergeWriter?: GitHubMergeWriter;
   readonly origins?: OriginFinder;
