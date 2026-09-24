@@ -25,7 +25,7 @@ General is the default Settings section. Appearance offers System, Light, and Da
 
 Appearance is in place before Patchdesk draws anything. At launch Patchdesk reads the saved appearance before it creates the window, so the native window background and the first painted frame already use it, and no frame of the other theme shows while the app starts. A renderer reload paints with the appearance currently applied rather than the one the window launched with.
 
-Diff theme offers separate Light appearance and Dark appearance selectors from the installed theme catalog. The default pair is `pierre-light` and `pierre-dark`. The selected appearance determines which member of the pair a Review diff uses.
+Diff theme offers separate Light appearance and Dark appearance selectors from the installed theme catalog. Each General setting is one row with its label on the left and its selector on the right, and every selector on General, including the watched pull request interval, has the same width. The default pair is `pierre-light` and `pierre-dark`. The selected appearance determines which member of the pair a Review diff uses.
 
 ### Leave unchanged
 

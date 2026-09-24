@@ -45,6 +45,9 @@ export type StorageOverview = {
     readonly quarantinedAt: string;
   }>;
   readonly cacheBytes: number;
+  /** What Clear local review data frees: the sessions it would remove. */
+  readonly localReviewDataBytes: number;
+  readonly logsBytes: number;
 };
 export type StorageDiscardInput = {
   readonly profileId: WorkspaceProfileId;
@@ -107,10 +110,11 @@ export class StorageManagementService {
           ? { _tag: "ProfileNotFound" }
           : { _tag: "ProfileUnavailable" },
       );
-    const [sessions, quarantined, cacheBytes] = await Promise.all([
+    const [sessions, quarantined, cacheBytes, logsBytes] = await Promise.all([
       this.deps.sessions.listSessions(profileId),
       this.deps.artifacts.listQuarantined(profileId),
       this.deps.artifacts.cacheBytes(profileId),
+      this.deps.artifacts.logsBytes(),
     ]);
     if (
       sessions._tag === "err" ||
@@ -119,15 +123,23 @@ export class StorageManagementService {
     )
       return err({ _tag: "StorageUnavailable" });
     const projected: StorageSessionProjection[] = [];
+    const discardable: ReviewSessionId[] = [];
     for (const session of sessions.value) {
       const running = await this.isRunningState(profileId, session);
       if (running._tag === "err") return running;
       projected.push(projectSession(session, !running.value.running));
+      if (!running.value.running) discardable.push(session.id);
     }
+    const localReviewDataBytes = await this.deps.artifacts.sessionBytes(
+      profileId,
+      discardable,
+    );
     return ok({
       sessions: projected,
       quarantined: quarantined.value,
       cacheBytes: cacheBytes.value,
+      localReviewDataBytes,
+      logsBytes,
     });
   }
 

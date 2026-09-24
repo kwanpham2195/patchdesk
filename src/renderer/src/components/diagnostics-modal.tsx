@@ -84,7 +84,9 @@ export function DiagnosticsModal({
             aria-label="Diagnostics content"
             className="min-h-0 flex-1"
           >
-            <ScrollArea className="h-full px-10 py-8">
+            {/* Keyed by tab: the scrollbar keeps the previous tab's overflow
+                when shorter content replaces it in the same viewport. */}
+            <ScrollArea key={section} className="h-full px-10 py-8">
               <TabsContent value={section} className="mt-0">
                 {section === "logs" ? (
                   <LogsPanel />

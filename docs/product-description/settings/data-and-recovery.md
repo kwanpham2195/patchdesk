@@ -27,7 +27,7 @@ stateDiagram-v2
 
 The active workspace profile is the target. With no active profile, both cleanup buttons are disabled, and the section shows `No active workspace`.
 
-The Local review data card carries the two actions with no preamble; each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. Review activity moved to the Diagnostics overlay; see [Logs and diagnostics](logs-and-diagnostics.md).
+The Storage card lists three rows, each with a one-line description and its size on disk: Cache (`Cache · 246 MB`, rebuildable pull request checkouts), Local review data (`Local review data · 1.6 MB`, completed and failed local Reviews), and Logs (`Logs · 19 MB`, the app log that Diagnostics shows). Cache and Local review data carry their clear button on the right; the Logs row is read-only. Each size is what that clear frees: Local review data counts only sessions no active work protects. Sizes use decimal units, with one decimal below 10. A size that cannot be measured is left off its row. Each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. Review activity moved to the Diagnostics overlay; see [Logs and diagnostics](logs-and-diagnostics.md).
 
 The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: a terminal Review older than 14 days is removed with its record and session, orphaned sessions older than 14 days and quarantine entries older than 30 days are removed, as [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) describes.
 
@@ -49,7 +49,7 @@ Cleanup does not ask GitHub to delete anything. It does not remove Diagnostic re
 
 ### Settle
 
-A successful cleanup reloads workspace data and closes Settings. Saved Review history remains after Clear cache, and the destination underneath is unchanged. After Clear local review data, the app returns to Pull requests; removed completed or failed Reviews are no longer available locally, while protected active work and Diagnostic records remain.
+A successful cleanup reloads workspace data, measures the sizes again, and closes Settings. Saved Review history remains after Clear cache, and the destination underneath is unchanged. After Clear local review data, the app returns to Pull requests; removed completed or failed Reviews are no longer available locally, while protected active work and Diagnostic records remain.
 
 If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could not clear cache. Try again.` or `Could not clear local review data. Try again.`, the same alert appears in the card, and the same action remains available for an explicit retry. A missing profile or unavailable storage is reported as a failure; Patchdesk does not silently broaden the target.
 

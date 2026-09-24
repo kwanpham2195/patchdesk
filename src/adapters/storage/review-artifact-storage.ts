@@ -412,6 +412,32 @@ export class ReviewArtifactStorage {
     return ok(sizes.reduce((total, size) => total + size, 0));
   }
 
+  /** Sum the bytes of the given session directories; unreadable or uncontained ones count as zero. */
+  async sessionBytes(
+    profileId: WorkspaceProfileId,
+    sessionIds: ReadonlyArray<ReviewSessionId>,
+  ): Promise<number> {
+    const root = this.paths.profileReviewsDirectory(profileId);
+    const limit = createIoLimiter(8);
+    const sizes = await Promise.all(
+      sessionIds.map(async (sessionId) => {
+        const directory = this.paths.sessionDirectory(profileId, sessionId);
+        return (await this.isUnderRoot(directory, root))
+          ? await measureBytes(directory, limit)
+          : 0;
+      }),
+    );
+    return sizes.reduce((total, size) => total + size, 0);
+  }
+
+  /** Bytes used by the app log directory. */
+  async logsBytes(): Promise<number> {
+    const directory = this.paths.logsDirectory();
+    return (await this.isUnderRoot(directory, this.paths.dataDirectory()))
+      ? await measureBytes(directory, createIoLimiter(8))
+      : 0;
+  }
+
   /**
    * Return the names of every direct child of the worktree cache root that
    * is not a symlink, the `.quarantine` directory, or a `.trash` directory.

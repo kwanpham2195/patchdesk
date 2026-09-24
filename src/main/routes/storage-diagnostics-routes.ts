@@ -19,6 +19,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../domain/ids";
 import { rawJsonValueSchema } from "../../domain/json";
+import { ok } from "../../domain/result";
 import type { LogEntryInput } from "../../domain/log-entry";
 import type { LocalApiContainer } from "../local-api-container";
 import { jsonBody } from "./json-body";
@@ -49,6 +50,22 @@ export function registerStorageDiagnosticsRoutes(
         : await storageManagement.clearLocalData(profileId.value),
     );
   };
+  app.get("/v1/storage/usage", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    if (profileId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const overview = await storageManagement.list(profileId.value);
+    return storageResponse(
+      context,
+      overview._tag === "ok"
+        ? ok({
+            cacheBytes: overview.value.cacheBytes,
+            localReviewDataBytes: overview.value.localReviewDataBytes,
+            logsBytes: overview.value.logsBytes,
+          })
+        : overview,
+    );
+  });
   app.post("/v1/storage/cache/clear", async (context) =>
     storageCleanup(context, "cache"),
   );

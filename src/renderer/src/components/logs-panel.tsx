@@ -13,13 +13,7 @@ import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { cn } from "../lib/utils";
 import * as v from "valibot";
 import { Button } from "./ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "./ui/card";
 import {
   Select,
   SelectContent,
@@ -177,7 +171,6 @@ export function LogsPanel(): React.JSX.Element {
   return (
     <Card data-testid="logs-card">
       <CardHeader>
-        <CardTitle>Logs</CardTitle>
         <CardDescription>
           Live app activity. Credentials are masked.
         </CardDescription>
@@ -283,28 +276,29 @@ export function LogsPanel(): React.JSX.Element {
           ) : (
             <ol className="flex flex-col gap-1">
               {visible.map((entry) => (
-                <li key={entry.seq} className="flex gap-2 px-1 py-0.5">
-                  <span className="shrink-0 text-muted-foreground">
+                <li
+                  key={entry.seq}
+                  className="grid grid-cols-[6rem_3rem_4.5rem_7rem_minmax(0,18rem)_minmax(0,1fr)] gap-2 px-1 py-0.5"
+                >
+                  <span className="text-muted-foreground">
                     {entry.at.slice(11, 23)}
                   </span>
-                  <span
-                    className={cn(
-                      "w-12 shrink-0 font-medium",
-                      levelClass(entry.level),
-                    )}
-                  >
+                  <span className={cn("font-medium", levelClass(entry.level))}>
                     {entry.level}
                   </span>
-                  <span className="w-16 shrink-0 text-muted-foreground">
-                    {entry.process}
-                  </span>
-                  <span className="w-28 shrink-0 truncate text-muted-foreground">
+                  <span className="text-muted-foreground">{entry.process}</span>
+                  <span className="truncate text-muted-foreground">
                     {entry.topic}
                   </span>
-                  <span className="min-w-0 flex-1">{entry.message}</span>
+                  <span className="truncate" title={entry.message}>
+                    {entry.message}
+                  </span>
                   {entry.meta === undefined ? null : (
-                    <span className="min-w-0 shrink truncate text-muted-foreground">
-                      {JSON.stringify(entry.meta).slice(0, 240)}
+                    <span
+                      className="truncate text-muted-foreground"
+                      title={JSON.stringify(entry.meta)}
+                    >
+                      {JSON.stringify(entry.meta)}
                     </span>
                   )}
                 </li>

@@ -26,7 +26,7 @@ stateDiagram-v2
 
 Logs starts with up to 300 recent entries, then asks for entries after the last delivered sequence every two seconds. The panel's own poll is not logged, so it does not fill the tail it draws. It shows All levels, Error, Warn, Info, or Debug and All processes, Main, or Renderer. The visible list holds at most 1,000 entries.
 
-Each row shows time, level, process, topic, message, and bounded metadata when present. Credentials are masked. The stream is also appended to the local `patchdesk.jsonl` log file, which is separate from Review Diagnostic records.
+Each row shows time, level, process, topic, message, and metadata when present, in fixed columns so the metadata starts at the same place on every row. A message or metadata too long for its column is cut to one line; hovering it shows the full text. Credentials are masked. Each tab's card opens on its description; the tab label is its only heading, and a tab whose content fits shows no scrollbar. The stream is also appended to the local `patchdesk.jsonl` log file, which is separate from Review Diagnostic records.
 
 Review activity is loaded only when the maintainer asks for it and an active profile exists. It shows up to the most recent 40 profile events in reverse chronological order, with a friendly phase, category, retryability, duration when available, and safe detail.
 
