@@ -10,6 +10,7 @@ import {
   renderAnalysisFixPrompt,
   type AnalysisFixPromptContext,
 } from "../analysis-fix-prompt";
+import type { ReviewVerdictState } from "../../../domain/review-verdicts";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
 import {
@@ -34,6 +35,8 @@ import {
   GeneratedMarkdown,
   GeneratedMarkdownInline,
 } from "./generated-markdown";
+import { NeedsReplyBadge } from "./needs-reply-badge";
+import { ReviewVerdictIcon } from "./review-verdict-icon";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -405,6 +408,7 @@ function AnalysisVerdictCard({
       <CardHeader>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge variant={recommendation.variant}>
+            <ReviewVerdictIcon verdict={recommendation.reviewVerdict} />
             {analysisVerdictLabel(result.verdict)}
           </Badge>
           <Badge variant="outline">{badge}</Badge>
@@ -669,9 +673,7 @@ function AnalysisFindingRow({
               {statusLabel}
             </Badge>
           )}
-          {needsReply ? (
-            <Badge variant="warning">Needs your reply</Badge>
-          ) : null}
+          {needsReply ? <NeedsReplyBadge /> : null}
           {disposition === "open" &&
           reviewStatus === "actionable" &&
           finding.mappingStatus === "mapped" &&
@@ -945,6 +947,7 @@ function isHighSeverity(finding: AnalysisFinding): boolean {
 
 type VerdictPresentation = {
   readonly heading: string;
+  readonly reviewVerdict: ReviewVerdictState;
   readonly variant: "secondary" | "default" | "destructive";
 };
 
@@ -956,16 +959,19 @@ function recommendationFor(
       return {
         heading: "The change is ready for your final review.",
         variant: "secondary",
+        reviewVerdict: "approved",
       };
     case "request_changes":
       return {
         heading: "Resolve the blocking findings before approval.",
         variant: "destructive",
+        reviewVerdict: "changes_requested",
       };
     case "comment":
       return {
         heading: "Review the highlighted concern before you finish.",
         variant: "default",
+        reviewVerdict: "commented",
       };
   }
 }

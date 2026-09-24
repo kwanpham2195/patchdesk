@@ -15,7 +15,10 @@ import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import type { ReviewVerdictState } from "../../../domain/review-verdicts";
 import { RelativeTime } from "./relative-time";
+import { ReviewVerdictIcon } from "./review-verdict-icon";
+import { REVIEW_VERDICT_LABELS } from "../review-verdict-labels";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -403,14 +406,14 @@ function ReviewSummaryEntry({
   const [dismissing, setDismissing] = useState(false);
   const dismissingRef = useRef(false);
   const [error, setError] = useState<string>();
-  const verdictLabel =
+  const verdict: ReviewVerdictState =
     dismissed || review.event === "DISMISSED"
-      ? "Dismissed"
+      ? "dismissed"
       : review.event === "APPROVED"
-        ? "Approved"
+        ? "approved"
         : review.event === "CHANGES_REQUESTED"
-          ? "Changes requested"
-          : "Commented";
+          ? "changes_requested"
+          : "commented";
   return (
     <div className="flex gap-3 border-b py-3">
       {/* `PublishedReview.author` is a plain string with no avatar field,
@@ -423,8 +426,9 @@ function ReviewSummaryEntry({
           <span className="text-[11px] text-muted-foreground">
             <RelativeTime iso={review.submittedAt} />
           </span>
-          <Badge variant="outline" className="text-[10px]">
-            {verdictLabel}
+          <Badge variant="outline" className="gap-1 text-[10px]">
+            <ReviewVerdictIcon verdict={verdict} />
+            {REVIEW_VERDICT_LABELS[verdict]}
           </Badge>
         </div>
         {review.body.length > 0 && (

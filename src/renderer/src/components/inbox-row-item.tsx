@@ -6,11 +6,13 @@ import {
   CircleSlash,
   Clock3,
   Eye,
+  GitMerge,
   GitPullRequest,
 } from "lucide-react";
 
 import { checkStatusLabel } from "@/analysis-headline";
 import { inboxIdentityKey, type InboxRow } from "@/renderer-contracts";
+import { InsightStatusIcon } from "./insight-status-icon";
 import { LabelChip } from "./label-chip";
 import {
   ReviewOpeningNotice,
@@ -122,11 +124,13 @@ export function InboxRowItem({
               ) : null}
               {row.remoteState === "merged" && stateFilter !== "merged" ? (
                 <Badge variant="secondary" className={inlineBadgeClassName}>
+                  <GitMerge aria-hidden="true" />
                   Merged
                 </Badge>
               ) : null}
               {row.insights?.brief === "ready" ? (
                 <Badge variant="outline" className={inlineBadgeClassName}>
+                  <InsightStatusIcon status="current" />
                   Brief
                 </Badge>
               ) : null}
