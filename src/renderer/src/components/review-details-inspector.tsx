@@ -6,13 +6,6 @@ import type {
   InboxInsightKind,
 } from "../../../domain/maintainer-inbox";
 import {
-  INBOX_INSIGHT_NOUNS,
-  INSPECTOR_INSIGHT_KINDS,
-  inboxInsightRequestKey,
-  type InboxInsightRequestAvailability,
-  type InboxInsightRequestState,
-} from "@/inbox-insight-request";
-import {
   inspectorReviewStatus,
   type InspectorReviewStatus,
   type InspectorReviewStatusKind,
@@ -29,28 +22,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InlineError } from "@/components/ui/inline-error";
-import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-
-/** The Insight request controls the Pull requests screen hands the inspector. */
-export type InspectorInsightRequests = {
-  readonly requests: ReadonlyMap<string, InboxInsightRequestState>;
-  readonly availability: InboxInsightRequestAvailability;
-  readonly onRequest: (row: InboxRow, kind: InboxInsightKind) => void;
-};
 
 export function ReviewDetailsInspector({
   row,
   freshness,
   onAction,
   openingState,
-  insightRequests,
 }: {
   readonly row?: InboxRow;
   readonly freshness: InboxDataFreshness;
   readonly onAction: () => void | undefined;
   readonly openingState?: Exclude<ReviewOpeningState, undefined>;
-  readonly insightRequests?: InspectorInsightRequests;
 }): React.JSX.Element {
   if (row === undefined)
     return (
@@ -111,10 +94,7 @@ export function ReviewDetailsInspector({
             </dd>
           </div>
         ) : null}
-        <InsightsFact
-          row={row}
-          {...(insightRequests === undefined ? {} : { insightRequests })}
-        />
+        <InsightsFact row={row} />
       </dl>
       {freshness === "cached" ? (
         <Card className="gap-1.5 border-status-warning/30 bg-status-warning/5 py-2.5">
@@ -216,83 +196,39 @@ const INSIGHT_STATE_TONES = {
   absent: "outline",
 } as const;
 
-const INSIGHT_REQUEST_PENDING_LABELS = {
-  preparing: "Preparing…",
-  starting: "Requesting…",
-  running: "Running…",
-} as const satisfies Record<
-  Exclude<InboxInsightRequestState["status"], "error">,
-  string
->;
+/** The Insight kinds the inspector lists, in reading order. */
+const INSPECTOR_INSIGHTS = [
+  { kind: "brief", noun: "Brief" },
+  { kind: "analysis", noun: "Analysis" },
+  { kind: "walkthrough", noun: "Walkthrough" },
+] as const satisfies ReadonlyArray<{
+  readonly kind: InboxInsightKind;
+  readonly noun: string;
+}>;
 
-/**
- * The row's Insight readiness, one chip per kind, each beside a Request
- * button that starts that Insight with the profile's saved Review defaults
- * and stays on the list while it runs.
- */
-function InsightsFact({
-  row,
-  insightRequests,
-}: {
-  readonly row: InboxRow;
-  readonly insightRequests?: InspectorInsightRequests;
-}): React.JSX.Element {
+/** The row's Insight readiness, one read-only chip per kind; runs start from the Review. */
+function InsightsFact({ row }: { readonly row: InboxRow }): React.JSX.Element {
   return (
     <div className="col-span-2 min-w-0">
       <FactLabel>Insights</FactLabel>
       <dd className="mt-1">
-        <ul className="space-y-1" aria-label="Insights">
-          {INSPECTOR_INSIGHT_KINDS.map((kind) => {
-            const noun = INBOX_INSIGHT_NOUNS[kind];
+        <ul className="flex flex-wrap gap-1" aria-label="Insights">
+          {INSPECTOR_INSIGHTS.map(({ kind, noun }) => {
             const state = row.insights?.[kind] ?? "absent";
-            const request = insightRequests?.requests.get(
-              inboxInsightRequestKey(row, kind),
-            );
-            const available = insightRequests?.availability[kind] ?? false;
-            const pendingLabel =
-              request === undefined || request.status === "error"
-                ? undefined
-                : INSIGHT_REQUEST_PENDING_LABELS[request.status];
-            const pending = pendingLabel !== undefined;
             return (
-              <li key={kind} className="min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <Badge
-                    variant={INSIGHT_STATE_TONES[state]}
-                    aria-label={`${noun}: ${INSIGHT_STATE_LABELS[state]}`}
-                    className={cn(
-                      "h-5 gap-1 px-1.5 text-[10px]",
-                      state === "absent" && "text-muted-foreground",
-                    )}
-                  >
-                    {noun}
-                    <span aria-hidden="true">·</span>
-                    {INSIGHT_STATE_LABELS[state]}
-                  </Badge>
-                  {insightRequests === undefined ? null : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      className="h-6 text-[11px]"
-                      disabled={!available || pending}
-                      title={
-                        available
-                          ? undefined
-                          : "Run it once from the Review to save a model and reasoning level."
-                      }
-                      onClick={() => insightRequests.onRequest(row, kind)}
-                    >
-                      {pending ? <Spinner className="size-3" /> : null}
-                      {pendingLabel ?? `Request ${noun}`}
-                    </Button>
+              <li key={kind}>
+                <Badge
+                  variant={INSIGHT_STATE_TONES[state]}
+                  aria-label={`${noun}: ${INSIGHT_STATE_LABELS[state]}`}
+                  className={cn(
+                    "h-5 gap-1 px-1.5 text-[10px]",
+                    state === "absent" && "text-muted-foreground",
                   )}
-                </div>
-                {request?.status === "error" ? (
-                  <InlineError className="mt-1 text-[11px] leading-4">
-                    {request.error}
-                  </InlineError>
-                ) : null}
+                >
+                  {noun}
+                  <span aria-hidden="true">·</span>
+                  {INSIGHT_STATE_LABELS[state]}
+                </Badge>
               </li>
             );
           })}

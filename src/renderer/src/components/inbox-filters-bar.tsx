@@ -1,10 +1,10 @@
 import {
-  ChevronLeft,
-  ChevronRight,
   CircleDashed,
   Clock3,
   GitBranch,
   ListFilter,
+  PanelRightClose,
+  PanelRightOpen,
   User,
   UserRoundCheck,
   type LucideIcon,
@@ -49,6 +49,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /** Pull-request state, ownership, label, review, and check filter controls. */
 export function InboxFiltersBar({
@@ -100,6 +105,9 @@ export function InboxFiltersBar({
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }): React.JSX.Element {
+  const inspectorToggleLabel = inspectorOpen
+    ? "Hide review details"
+    : "Show review details";
   return (
     <section
       className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5"
@@ -176,17 +184,22 @@ export function InboxFiltersBar({
             ? `${rowCount} on this page`
             : `${matchCount} ${state === "open" ? "open" : "merged"}`}
       </span>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        onClick={onToggleInspector}
-        aria-label={
-          inspectorOpen ? "Hide review details" : "Show review details"
-        }
-        aria-expanded={inspectorOpen}
-      >
-        {inspectorOpen ? <ChevronRight /> : <ChevronLeft />}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onToggleInspector}
+              aria-label={inspectorToggleLabel}
+              aria-expanded={inspectorOpen}
+            />
+          }
+        >
+          {inspectorOpen ? <PanelRightClose /> : <PanelRightOpen />}
+        </TooltipTrigger>
+        <TooltipContent>{inspectorToggleLabel}</TooltipContent>
+      </Tooltip>
     </section>
   );
 }

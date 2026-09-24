@@ -8,7 +8,7 @@ The repository listing is the Pull requests screen's GitHub-ordered page of pull
 
 The maintainer scans the rows from GitHub. A row names its pull request number and title, shows Draft or Merged when applicable, and provides labels, author, changed files, additions, deletions, checks, and relative update time. Selecting a row shows it in the Review details inspector, which leads with the row's Review status and then gives its facts, scope, labels, Insights, and one Open action.
 
-The Insights line shows one chip per Insight, Brief, Analysis, and Walkthrough, reading Ready when Patchdesk retains that Insight for the row's current head, Outdated when it is retained for an earlier head, and Not run otherwise. Beside each chip, Request Brief, Request Analysis, or Request Walkthrough starts that Insight in one click with the provider, model, and reasoning last confirmed in that kind's run dialog, falling back to the Analysis choice and stays on the list. A row that has never been opened first has its Review prepared in the background, which reads GitHub and writes nothing there; the button reads Preparing…, then Requesting…, then Running… until the run settles, and the listing is re-read so the chip updates. A kind with no saved choice keeps its button disabled until one of those dialogs has started a run.
+The Insights line shows one read-only chip per Insight, Brief, Analysis, and Walkthrough, reading Ready when Patchdesk retains that Insight for the row's current head, Outdated when it is retained for an earlier head, and Not run otherwise. Insights run from the Review workbench, where their results are read; the inspector does not start them.
 
 Below the Insights line, **Watch** asks Patchdesk to watch an open pull request (ADR 0045); the button then reads **Unwatch**. A watched row carries an eye mark beside its badges, and so does its row in the [Visited pull requests](../foundations/visited-pull-requests.md) column. The inspector hides Watch for a merged pull request. The Review header offers the same toggle on an open Review, and the ⌘K palette offers Watch or Unwatch for a pull request reference typed into it. If the palette resolves a merged or closed pull request, Patchdesk refuses the watch and names that state. Watching reads the pull request once from GitHub and changes nothing there. A workspace watches at most 20 pull requests; a 21st Watch is refused with that limit named beside the button.
 
@@ -32,11 +32,11 @@ stateDiagram-v2
 
 The listing receives one page already filtered and ordered by GitHub. The header and filter bar identify the Selected repository and current query. The row list is a keyboard-operable listbox; the selected row is highlighted and the Review details inspector is open by default when the viewport allows it.
 
-Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. The author appears with their GitHub avatar when Patchdesk holds it in the local avatar cache, and with an initials circle otherwise. Missing change statistics show an em dash rather than a fabricated zero. A row whose head moved since the maintainer last left its Review shows a **New** mark; new comments, reviews, labels, and checks alone do not light it, and a pull request never left in a Review shows none. The inspector adds branch direction, current head, checks, labels, Insight readiness chips with their Request buttons, last-review head, and local Review status.
+Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. The author appears with their GitHub avatar when Patchdesk holds it in the local avatar cache, and with an initials circle otherwise. Missing change statistics show an em dash rather than a fabricated zero. A row whose head moved since the maintainer last left its Review shows a **New** mark; new comments, reviews, labels, and checks alone do not light it, and a pull request never left in a Review shows none. The inspector adds branch direction, current head, checks, labels, Insight readiness chips, last-review head, and local Review status.
 
 ### Leave unchanged
 
-Reading a row, opening the inspector, or moving selection does not write to GitHub. Arrow keys move selection and focus; Tab does not step through every row. Closing or hiding the inspector changes only local presentation preference.
+Reading a row, opening the inspector, or moving selection does not write to GitHub. Arrow keys move selection and focus; Tab does not step through every row. Closing or hiding the inspector changes only local presentation preference. The inspector toggle at the end of the filter bar shows a panel icon and a tooltip naming its action, Hide review details or Show review details.
 
 ### Begin an action
 
@@ -112,8 +112,7 @@ After a row-open failure, the row remains inspectable and can be activated again
 - A ready row shows its Ready to merge evidence among the inspector's facts and opens like any other row. A cached row shows the cached-data notice instead, because a cache cannot make a current merge-shaped claim.
 - The pull-request icon at the start of a row is coloured by state: green for an open pull request, muted for a draft, and the primary colour for a merged one.
 - The inspector's Scope row appears only when a retained Review supplies scope. It shows the gauge above a legend naming each bucket and its file count.
-- A second click on a Request button while that kind is in flight for that row does nothing; the other kinds and other rows stay requestable. A failed or cancelled run reports beside its chip and the button becomes live again.
-- Requesting an Insight for a row with a saved Review runs it against that Review; a row whose head moved since then reads Outdated until the Review is opened and refreshed.
+- A row whose head moved since its Insight ran reads Outdated until the Review is opened and the Insight is run again.
 - A selected row disappears after a filter or refresh; the inspector then falls back to the next available row or its empty prompt.
 - Opening one row leaves unrelated rows interactive.
 - A saved Review may be missing or obsolete; opening can recover by Pull request identity.
@@ -123,7 +122,7 @@ After a row-open failure, the row remains inspectable and can be activated again
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed the inspector's Insights line, its Request Brief, Request Analysis, and Request Walkthrough buttons, and the Scope gauge with bucket counts. No Request button was pressed.
+- Live pass on 2026-09-14 confirmed the inspector's Insights line and the Scope gauge with bucket counts. The Request buttons it also saw were removed with [#351](https://github.com/kwanpham2195/patchdesk/issues/351).
 - Confirm row selection, inspector focus, and Arrow key wrapping in a real window.
 - Confirm the exact visible behavior when a selected row disappears during refresh.
 - Confirm which cached listing actions remain available in the running workbench.
