@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Saved Analysis **Verification** ticks. A ticked step now stays ticked after switching Insight tabs, leaving the Review, or restarting Patchdesk, and a regenerated Analysis starts unticked. The "Ticks are not saved" note is gone. #352
+
 - Removed the **Request Brief**, **Request Analysis**, and **Request Walkthrough** buttons from the Pull requests inspector. Its Insight chips stay as a read-only readiness line, and Insights run from the Review where their results are read. The inspector toggle at the end of the filter bar now shows a panel icon and a tooltip. #351
 
 - Removed the **Overview** tab from Insights. Each Insight tab already shows its status, and Scope stays in the header gauge, the Brief side column, and the Diff toolbar's **Scope** picker. Insights now opens on the first of **Brief**, **Walkthrough**, and **Analysis** that has a result, and on **Brief** when none has one; an Insight you opened last still wins. #350

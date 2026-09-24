@@ -27,6 +27,7 @@ import { useInsightSelection } from "../hooks/use-insight-selection";
 import { useWalkthroughFocusTransition } from "../hooks/use-walkthrough-focus-transition";
 import type { InsightRunConfiguration } from "../hooks/use-insight-configuration";
 import { useInsightRunControls } from "../hooks/use-insight-run-controls";
+import { useAnalysisVerification } from "../hooks/use-analysis-verification";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
@@ -237,6 +238,12 @@ export function InsightsSlot({
     onWorkbenchReplace,
     onWorkbenchPatch,
   });
+  const analysisVerification = useAnalysisVerification({
+    profileId,
+    reviewId,
+    analysis: workbench.insights.analysis,
+    onWorkbenchPatch,
+  });
   const brief = workbench.insights.brief ?? NOT_GENERATED_BRIEF;
   const projections = {
     analysis: workbench.insights.analysis,
@@ -283,6 +290,7 @@ export function InsightsSlot({
       onOpenFindingInDiff: openFindingInDiff,
     }),
     dismissFinding,
+    analysisVerification,
     walkthroughFocused,
     setWalkthroughFocused: requestWalkthroughFocusChange,
     onRegenerateBrief: () => openRunDialog("regenerate"),

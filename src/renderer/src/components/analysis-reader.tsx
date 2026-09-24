@@ -5,6 +5,7 @@ import { definedProps } from "../../../domain/defined-props";
 import { contextualMessage } from "../api-client";
 import { FINDING_ACTION_MESSAGES } from "../review-copy";
 import { useFindingErrors } from "../hooks/use-finding-errors";
+import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
 import {
   renderAnalysisFixPrompt,
   type AnalysisFixPromptContext,
@@ -88,6 +89,8 @@ export type AnalysisReaderProps = {
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
   /** Names the repository and branches in the copied fix prompt. */
   readonly fixPromptContext?: AnalysisFixPromptContext | undefined;
+  /** Saved Verification ticks; without it the checklist is read-only. */
+  readonly verification?: AnalysisVerificationControls;
 };
 
 /** Decision-first read-side view of one retained Analysis result. */
@@ -103,6 +106,7 @@ export function AnalysisReader({
   onFinishWithAnalysisSummary,
   onOpenFindingInDiff,
   fixPromptContext,
+  verification,
 }: AnalysisReaderProps): React.JSX.Element {
   const admittedFindingIds = useRef<Set<string>>(new Set());
   const [findingActions, setFindingActions] = useState<
@@ -113,9 +117,7 @@ export function AnalysisReader({
     clear: clearFindingError,
     record: recordFindingError,
   } = useFindingErrors(result, findingStatuses);
-  const [verifiedSteps, setVerifiedSteps] = useState<ReadonlySet<number>>(
-    new Set(),
-  );
+  const verifiedSteps = verification?.checkedSteps ?? new Set<number>();
   const unhandledFindings = unhandledAnalysisFindings(result, findingStatuses);
   const highSeverityFindings = result.findings.filter(isHighSeverity);
   const lowerSeverityFindings = result.findings.filter(
@@ -169,14 +171,6 @@ export function AnalysisReader({
         return next;
       });
     }
-  };
-  const setStepChecked = (index: number, checked: boolean): void => {
-    setVerifiedSteps((current) => {
-      const next = new Set(current);
-      if (checked) next.add(index);
-      else next.delete(index);
-      return next;
-    });
   };
   const renderFindingRow = (finding: AnalysisFinding): React.JSX.Element => (
     <AnalysisFindingRow
@@ -332,10 +326,14 @@ export function AnalysisReader({
             <CardTitle>Verification</CardTitle>
             <CardDescription>
               {verifiedSteps.size} of {result.validationPlan.length} checked.
-              Ticks are not saved and reset when you leave Analysis.
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {verification?.saveFailed === true ? (
+              <InlineError className="pb-2">
+                Verification ticks could not be saved.
+              </InlineError>
+            ) : null}
             <div className="flex flex-col gap-3">
               {result.validationPlan.map((step, index) => {
                 const id = `analysis-verification-${index}`;
@@ -344,8 +342,9 @@ export function AnalysisReader({
                     <Checkbox
                       id={id}
                       checked={verifiedSteps.has(index)}
+                      disabled={verification === undefined}
                       onCheckedChange={(checked) =>
-                        setStepChecked(index, checked)
+                        verification?.setStepChecked(index, checked)
                       }
                     />
                     <FieldLabel

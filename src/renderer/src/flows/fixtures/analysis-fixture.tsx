@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { buildInsightReaders } from "../../components/insight-readers";
 import { parseUnifiedPatch } from "../../../../domain/patch";
@@ -26,6 +26,9 @@ export function AnalysisFixture(): React.ReactNode {
     () => parseUnifiedPatch(analysisFixtureData.fullPatch),
     [],
   );
+  const [checkedSteps, setCheckedSteps] = useState<ReadonlySet<number>>(
+    new Set(),
+  );
   return (
     <div className="mx-auto max-w-4xl overflow-auto p-6">
       {buildInsightReaders({
@@ -36,6 +39,17 @@ export function AnalysisFixture(): React.ReactNode {
         reviewId: "fixture-review",
         addFinding: async () => undefined,
         dismissFinding: async () => undefined,
+        analysisVerification: {
+          checkedSteps,
+          saveFailed: false,
+          setStepChecked: (index, checked) =>
+            setCheckedSteps((current) => {
+              const next = new Set(current);
+              if (checked) next.add(index);
+              else next.delete(index);
+              return next;
+            }),
+        },
         walkthroughFocused: false,
         setWalkthroughFocused: () => undefined,
         onRegenerateBrief: () => undefined,

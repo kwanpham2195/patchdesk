@@ -506,3 +506,26 @@ describe("InsightsSlot run requests", () => {
     expect(screen.getByText("Analysis is running")).toBeTruthy();
   });
 });
+
+describe("InsightsSlot Verification ticks", () => {
+  it("keeps a ticked step after switching to Brief and back", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+      "/v1/reviews/insights/analysis/verification": () =>
+        success({ checkedStepIndexes: [0] }),
+    });
+    const user = userEvent.setup();
+    renderInsights(withAnalysis("actionable"));
+    const stepName = "Verify invalid values are rejected.";
+
+    await user.click(screen.getByRole("checkbox", { name: stepName }));
+    await user.click(screen.getByRole("tab", { name: /^Brief/ }));
+    await user.click(screen.getByRole("tab", { name: /^Analysis/ }));
+
+    expect(
+      screen
+        .getByRole("checkbox", { name: stepName })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+});

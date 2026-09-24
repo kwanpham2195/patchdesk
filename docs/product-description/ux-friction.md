@@ -177,6 +177,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Disposition:** named follow-up.
 - **Issue:** [#199](https://github.com/kwanpham2195/patchdesk/issues/199)
 - **Status:** fixed by `e5091235`: the Verification card says the ticks are not saved. Read from source at `737c515c`, not observed live.
+- **Reversal:** [#352](https://github.com/kwanpham2195/patchdesk/issues/352) (decided in [#348](https://github.com/kwanpham2195/patchdesk/issues/348)) replaced the warning with saved ticks: they now survive tab switches, leaving the Review, and restarts, and the "not saved" text is removed.
 - **Page:** [Analysis](review-workbench/analysis.md#leave-unchanged).
 
 ### UX-11: Walkthrough `j` and `k` run opposite to the Vim convention

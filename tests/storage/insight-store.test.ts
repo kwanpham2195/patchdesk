@@ -1,5 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { parseInsightRecord } from "../../src/adapters/storage/insight-store";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  InsightStore,
+  parseInsightRecord,
+} from "../../src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import {
+  parseIsoTimestamp,
+  parseReviewId,
+  parseWorkspaceProfileId,
+} from "../../src/domain/ids";
+import { setAnalysisVerificationStep } from "../../src/domain/insight-record";
 
 const currentRecord = {
   schemaVersion: 2 as const,
@@ -143,4 +157,79 @@ it("rejects schema-2 records without current failure provenance", () => {
       },
     })._tag,
   ).toBe("err");
+});
+
+describe("InsightStore Analysis Verification ticks", () => {
+  let root: string | undefined;
+  afterEach(async () => {
+    if (root !== undefined) await rm(root, { recursive: true, force: true });
+    root = undefined;
+  });
+  const profile = parseWorkspaceProfileId("acme");
+  const review = parseReviewId(currentRecord.reviewId);
+  const at = parseIsoTimestamp("2026-08-01T00:02:00.000Z");
+  if (profile._tag === "err" || review._tag === "err" || at._tag === "err")
+    throw new Error("invalid fixture ids");
+  const { walkthroughProgress: _walkthroughOnly, ...walkthroughFree } =
+    currentRecord;
+  void _walkthroughOnly;
+  const seed = { ...walkthroughFree, type: "analysis" as const };
+
+  it("writes ticks atomically beside the retained Analysis and reads them back", async () => {
+    root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
+    const paths = PatchdeskPaths.forTest(root);
+    const store = new InsightStore(paths);
+    const seeded = parseInsightRecord(seed);
+    if (seeded._tag === "err") throw new Error("invalid seed record");
+    await store.save(profile.value, seeded.value);
+
+    const saved = await store.mutate({
+      profileId: profile.value,
+      reviewId: review.value,
+      type: "analysis",
+      now: at.value,
+      operation: (record) =>
+        setAnalysisVerificationStep(
+          record,
+          { index: 1, count: 2 },
+          true,
+          at.value,
+        ),
+    });
+
+    expect(saved).toMatchObject({
+      _tag: "ok",
+      value: { analysisVerification: { checkedStepIndexes: [1] } },
+    });
+    const file = paths.insightFile(profile.value, review.value, "analysis");
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
+      analysisVerification: { checkedStepIndexes: [1] },
+    });
+    expect(await readdir(join(file, ".."))).toEqual(["analysis.json"]);
+  });
+
+  it("reads a record with duplicate ticked steps as invalid", async () => {
+    root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
+    const paths = PatchdeskPaths.forTest(root);
+    const store = new InsightStore(paths);
+    const seeded = parseInsightRecord(seed);
+    if (seeded._tag === "err") throw new Error("invalid seed record");
+    await store.save(profile.value, seeded.value);
+    const file = paths.insightFile(profile.value, review.value, "analysis");
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...seed,
+        analysisVerification: { checkedStepIndexes: [0, 0] },
+      }),
+      "utf8",
+    );
+
+    expect(
+      await store.load(profile.value, review.value, "analysis"),
+    ).toMatchObject({
+      _tag: "err",
+      error: { reason: "invalid_stored_value" },
+    });
+  });
 });

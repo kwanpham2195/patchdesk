@@ -2,8 +2,11 @@ import type { Context, Hono } from "hono";
 import {
   array,
   boolean,
+  integer,
   maxLength,
   minLength,
+  minValue,
+  number,
   optional,
   picklist,
   pipe,
@@ -95,6 +98,9 @@ export function registerInsightRoutes(
       insights,
       await jsonBody(context),
     ),
+  );
+  app.post("/v1/reviews/insights/analysis/verification", async (context) =>
+    analysisVerificationResponse(context, insights, await jsonBody(context)),
   );
   app.get("/v1/reviews/insights/runs/:runId", async (context) => {
     if (insights === undefined)
@@ -207,7 +213,8 @@ function insightResultResponse(
     | Awaited<ReturnType<InsightCoordinatorSeam["start"]>>
     | Awaited<ReturnType<InsightCoordinatorSeam["cancel"]>>
     | Awaited<ReturnType<InsightCoordinatorSeam["dismissFinding"]>>
-    | Awaited<ReturnType<InsightRunCoordinator["updateWalkthroughProgress"]>>,
+    | Awaited<ReturnType<InsightRunCoordinator["updateWalkthroughProgress"]>>
+    | Awaited<ReturnType<InsightRunCoordinator["updateAnalysisVerification"]>>,
   successStatus: 200 | 202 = 200,
 ): Response {
   if (result._tag === "ok") return context.json(result.value, successStatus);
@@ -265,6 +272,44 @@ async function insightWalkthroughProgressResponse(
     reviewId: reviewId.value,
     runId: runId.value,
     progress,
+  });
+  return insightResultResponse(context, result);
+}
+
+async function analysisVerificationResponse(
+  context: Context,
+  coordinator: InsightCoordinatorSeam | undefined,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
+  body: unknown,
+): Promise<Response> {
+  if (coordinator?.updateAnalysisVerification === undefined)
+    return context.json({ error: "workflow_unavailable" }, 503);
+  const parsed = safeParse(
+    strictObject({
+      profileId: string(),
+      reviewId: string(),
+      runId: string(),
+      stepIndex: pipe(number(), integer(), minValue(0)),
+      checked: boolean(),
+    }),
+    body,
+  );
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const runId = parseInsightRunId(parsed.output.runId);
+  if (
+    profileId._tag === "err" ||
+    reviewId._tag === "err" ||
+    runId._tag === "err"
+  )
+    return context.json({ error: "invalid_input" }, 400);
+  const result = await coordinator.updateAnalysisVerification({
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    runId: runId.value,
+    stepIndex: parsed.output.stepIndex,
+    checked: parsed.output.checked,
   });
   return insightResultResponse(context, result);
 }

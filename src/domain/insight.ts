@@ -8,6 +8,7 @@ import type {
 import {
   sameInsightRevision,
   type InsightFailureCategory,
+  type AnalysisVerification,
   type InsightRecord,
   type RetainedInsight,
   type WalkthroughProgress,
@@ -52,6 +53,7 @@ export type InsightProjection<T> = {
     readonly scope?: InsightScopeProjection;
   };
   readonly progress?: WalkthroughProgress;
+  readonly verification?: AnalysisVerification;
   readonly activeRun?: {
     readonly runId?: InsightRunId;
     readonly sessionId: ReviewSessionId;
@@ -112,6 +114,9 @@ export function projectStoredInsight<T>(
       ...(record.walkthroughProgress !== undefined && {
         progress: record.walkthroughProgress,
       }),
+      ...(record.analysisVerification !== undefined && {
+        verification: record.analysisVerification,
+      }),
       ...(retained !== undefined && { retained }),
       activeRun: {
         runId: record.activeRun.id,
@@ -126,6 +131,9 @@ export function projectStoredInsight<T>(
       ...(artifactStatus !== undefined && { artifactStatus }),
       ...(record.walkthroughProgress !== undefined && {
         progress: record.walkthroughProgress,
+      }),
+      ...(record.analysisVerification !== undefined && {
+        verification: record.analysisVerification,
       }),
       ...(retained !== undefined && { retained }),
       replacementFailure: {
@@ -145,6 +153,9 @@ export function projectStoredInsight<T>(
       ...(record?.walkthroughProgress !== undefined && {
         progress: record.walkthroughProgress,
       }),
+      ...(record?.analysisVerification !== undefined && {
+        verification: record.analysisVerification,
+      }),
     };
   const retainedRecord = record?.retained;
   const isCurrent =
@@ -160,6 +171,9 @@ export function projectStoredInsight<T>(
     ...(artifactStatus !== undefined && { artifactStatus }),
     ...(record?.walkthroughProgress !== undefined && {
       progress: record.walkthroughProgress,
+    }),
+    ...(record?.analysisVerification !== undefined && {
+      verification: record.analysisVerification,
     }),
     retained,
   };
