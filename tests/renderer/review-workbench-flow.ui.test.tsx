@@ -123,7 +123,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       name: "Open PR overview: checks passing",
     });
     const merge = screen.getByRole("button", {
-      name: "Open PR overview: merge blocked · draft",
+      name: "Open PR overview: merge blocked: draft",
     });
     expect(screen.queryByRole("button", { name: "PR overview" })).toBeNull();
 
