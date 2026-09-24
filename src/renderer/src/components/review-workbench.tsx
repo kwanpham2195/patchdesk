@@ -71,7 +71,7 @@ import {
   loadNavigatorWidthPreferences,
   saveNavigatorWidthPreferences,
 } from "../navigator-width-preferences";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { RelativeTime } from "./relative-time";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
@@ -555,7 +555,15 @@ export function ReviewWorkbench({
           title:
             selectedCommit.message.split("\n", 1)[0] ??
             selectedCommit.sha.slice(0, 8),
-          subtitle: `${selectedCommit.author} · ${selectedCommit.sha.slice(0, 8)} · ${formatRelativeTime(selectedCommit.authoredAt)} · ${commitDiff.position} of ${commitDiff.total} · ${commitDiff.fileCount} files · +${commitDiff.additions}/-${commitDiff.deletions}`,
+          subtitle: (
+            <>
+              {selectedCommit.author} · {selectedCommit.sha.slice(0, 8)} ·{" "}
+              <RelativeTime iso={selectedCommit.authoredAt} /> ·{" "}
+              {commitDiff.position} of {commitDiff.total} ·{" "}
+              {commitDiff.fileCount} files · +{commitDiff.additions}/-
+              {commitDiff.deletions}
+            </>
+          ),
         };
 
   const { conversationTabProps, diffConversationActions } =

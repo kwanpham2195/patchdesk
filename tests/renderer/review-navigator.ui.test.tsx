@@ -27,6 +27,7 @@ function renderNavigator(commits: WorkbenchResponse["commits"]): void {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("review navigator", () => {
@@ -55,6 +56,26 @@ describe("review navigator", () => {
     ]);
 
     expect(screen.getByRole("tab", { name: "Commits 2" })).toBeTruthy();
+  });
+
+  it("dates a commit row as an age with the exact time on hover", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-02T00:00:00.000Z"));
+    renderNavigator([
+      {
+        sha: "a".repeat(40),
+        message: "First commit",
+        author: "Author",
+        authoredAt: "2026-08-01T00:00:00.000Z",
+        isHead: true,
+      },
+    ]);
+
+    const stamp = screen
+      .getByRole("button", { name: /First commit/ })
+      .querySelector("time");
+    expect(stamp?.dateTime).toBe("2026-08-01T00:00:00.000Z");
+    expect(stamp?.title).not.toBe("");
   });
 
   it("browses only the Scope filter's files while Commits and Threads stay complete", () => {
