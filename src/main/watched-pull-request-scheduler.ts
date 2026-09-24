@@ -6,6 +6,8 @@ import type { ReviewOperationCoordinator } from "../services/review-operation-co
 import type { WatchedPullRequestService } from "../services/watched-pull-request-service";
 
 export type WatchedPullRequestScheduler = {
+  /** Restarts the wait from now when the interval changed; a tick in flight still finishes once. */
+  reschedule(intervalMinutes: NotificationSettings["intervalMinutes"]): void;
   stop(): Promise<void>;
 };
 
@@ -13,7 +15,7 @@ type WatchedPullRequestSchedulerInput = {
   readonly profiles: ReadonlyArray<WorkspaceProfileConfig>;
   readonly watched: Pick<WatchedPullRequestService, "poll">;
   readonly coordinator: Pick<ReviewOperationCoordinator, "hasActiveOperation">;
-  /** Read once at start, so a changed interval applies at the next launch. */
+  /** The interval at start; `reschedule` replaces it. */
   readonly intervalMinutes: NotificationSettings["intervalMinutes"];
   /** Read on every tick: with notifications off, nothing asks GitHub. */
   readonly settings: () => Promise<
@@ -25,14 +27,16 @@ type WatchedPullRequestSchedulerInput = {
 
 /**
  * Polls every watched pull request while the app runs (ADR 0045): once at
- * start, then every `intervalMinutes`. A tick with notifications off asks
- * GitHub nothing, a profile with a GitHub write or write recovery in flight
- * waits for the next tick, and a failed tick is not retried early.
+ * start, then every `intervalMinutes` until `reschedule` changes it. A tick
+ * with notifications off asks GitHub nothing, a profile with a GitHub write or
+ * write recovery in flight waits for the next tick, and a failed tick is not
+ * retried early.
  */
 export function startWatchedPullRequestScheduler(
   input: WatchedPullRequestSchedulerInput,
 ): WatchedPullRequestScheduler {
-  if (!input.enabled) return { stop: async () => undefined };
+  if (!input.enabled)
+    return { reschedule: () => undefined, stop: async () => undefined };
 
   let stopped = false;
   let activeRun: Promise<void> | undefined;
@@ -46,11 +50,24 @@ export function startWatchedPullRequestScheduler(
     activeRun = trackedRun;
   };
 
+  const every = (minutes: number): NodeJS.Timeout => {
+    const timer = setInterval(run, minutes * 60_000);
+    timer.unref();
+    return timer;
+  };
+
   run();
-  const timer = setInterval(run, input.intervalMinutes * 60_000);
-  timer.unref();
+  let intervalMinutes = input.intervalMinutes;
+  let timer = every(intervalMinutes);
 
   return {
+    reschedule(next): void {
+      // Every settings save sends the interval, so an unchanged one must not push the next tick back.
+      if (stopped || next === intervalMinutes) return;
+      clearInterval(timer);
+      intervalMinutes = next;
+      timer = every(next);
+    },
     stop(): Promise<void> {
       if (stopPromise !== undefined) return stopPromise;
       stopped = true;

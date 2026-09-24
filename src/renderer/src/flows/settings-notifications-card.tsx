@@ -95,7 +95,6 @@ export function NotificationsCard(): React.JSX.Element {
               <FieldLabel htmlFor="notifications-watch-interval">
                 Check watched pull requests
               </FieldLabel>
-              <FieldDescription>Applies after restart.</FieldDescription>
             </FieldContent>
             <Select
               value={String(settings?.intervalMinutes ?? 3)}

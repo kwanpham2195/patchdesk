@@ -51,7 +51,32 @@ export async function startLocalApiServer(
   app.use("*", logLocalApiRequests(logs));
   app.get("/health", (context) => context.json({ status: "ok" }));
 
-  registerDashboardRoutes(app, container);
+  const notificationSettings = async (): Promise<
+    Result<NotificationSettings, "config_unreadable">
+  > => {
+    const settings = await container.dashboard.getSettings();
+    return settings._tag === "ok"
+      ? ok(notificationSettingsOf(settings.value))
+      : err("config_unreadable");
+  };
+  const startupSettings = await notificationSettings();
+  // Started before the routes so `PATCH /v1/settings` can reschedule it.
+  const watchedPullRequestScheduler = startWatchedPullRequestScheduler({
+    profiles: container.configuredProfiles,
+    watched: container.watchedPullRequests,
+    coordinator: container.reviewOperations,
+    intervalMinutes:
+      startupSettings._tag === "ok"
+        ? startupSettings.value.intervalMinutes
+        : notificationSettingsOf({}).intervalMinutes,
+    settings: notificationSettings,
+    enabled: configuration.watchedPullRequestPolling ?? false,
+    logs,
+  });
+
+  registerDashboardRoutes(app, container, (notifications) =>
+    watchedPullRequestScheduler.reschedule(notifications.intervalMinutes),
+  );
   registerReviewWriteRoutes(app, container);
   registerPendingReviewRoutes(app, container);
   registerPublishedFeedbackRoutes(app, container);
@@ -71,27 +96,6 @@ export async function startLocalApiServer(
     storageManagement: container.storageManagement,
     enabled: configuration.retentionSweep ?? false,
     diagnostics: container.diagnostics,
-  });
-  const notificationSettings = async (): Promise<
-    Result<NotificationSettings, "config_unreadable">
-  > => {
-    const settings = await container.dashboard.getSettings();
-    return settings._tag === "ok"
-      ? ok(notificationSettingsOf(settings.value))
-      : err("config_unreadable");
-  };
-  const startupSettings = await notificationSettings();
-  const watchedPullRequestScheduler = startWatchedPullRequestScheduler({
-    profiles: container.configuredProfiles,
-    watched: container.watchedPullRequests,
-    coordinator: container.reviewOperations,
-    intervalMinutes:
-      startupSettings._tag === "ok"
-        ? startupSettings.value.intervalMinutes
-        : notificationSettingsOf({}).intervalMinutes,
-    settings: notificationSettings,
-    enabled: configuration.watchedPullRequestPolling ?? false,
-    logs,
   });
 
   return {

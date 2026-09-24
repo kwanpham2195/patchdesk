@@ -21,6 +21,10 @@ import {
   type InboxReviewStateFilter,
 } from "../../domain/maintainer-inbox";
 import {
+  notificationSettingsOf,
+  type NotificationSettings,
+} from "../../domain/contracts";
+import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -38,6 +42,8 @@ import { jsonBody } from "./json-body";
 export function registerDashboardRoutes(
   app: Hono,
   container: LocalApiContainer,
+  /** Told after each saved settings patch, so the watched pull request poll follows a new interval at once (ADR 0045). */
+  onSettingsSaved: (notifications: NotificationSettings) => void,
 ): void {
   const {
     commands,
@@ -80,9 +86,12 @@ export function registerDashboardRoutes(
   app.get("/v1/settings", async (context) =>
     response(context, await dashboard.getSettings()),
   );
-  app.patch("/v1/settings", async (context) =>
-    response(context, await dashboard.updateSettings(await jsonBody(context))),
-  );
+  app.patch("/v1/settings", async (context) => {
+    const saved = await dashboard.updateSettings(await jsonBody(context));
+    if (saved._tag === "ok")
+      onSettingsSaved(notificationSettingsOf(saved.value));
+    return response(context, saved);
+  });
   app.get("/v1/inbox", async (context) =>
     runWithRequestAbortSignal(context.req.raw.signal, async () => {
       // The filter is a structured, enumerated value — each field is
