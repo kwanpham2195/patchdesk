@@ -24,6 +24,7 @@ import {
 } from "../domain/review-write-operation";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { ReviewRefreshFailure } from "./review-refresh-service";
 import {
   requireCurrentHead,
   type FreshReview,
@@ -99,7 +100,7 @@ export class PublishedFeedbackService {
     private readonly refresh?: (input: {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;
-    }) => Promise<Result<unknown, unknown>>,
+    }) => Promise<Result<undefined, ReviewRefreshFailure>>,
   ) {}
 
   async editComment(
