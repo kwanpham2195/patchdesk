@@ -81,7 +81,7 @@ export function DiffWorkbench({
   readonly onActiveFileChange?: (path: string) => void;
   readonly hideFileNavigation?: boolean;
   readonly diffTitle?: string;
-  readonly diffSubtitle?: string;
+  readonly diffSubtitle?: React.ReactNode;
   readonly copyValue?: string;
   readonly preferences?: ReviewViewPreferences;
   readonly onPreferencesChange?: (

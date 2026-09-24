@@ -71,7 +71,7 @@ A commit-diff load shows a loading state. If it fails, Patchdesk keeps the repre
 
 ### Settle
 
-A valid file response renders only for the patch generation that requested it. Verified Markdown head text makes Preview available only for that file; neighboring files keep their own Diff or Preview mode. A valid commit response shows its author, short SHA, relative time, position, file count, additions, and deletions. Clearing the commit returns to the full pull-request patch.
+A valid file response renders only for the patch generation that requested it. Verified Markdown head text makes Preview available only for that file; neighboring files keep their own Diff or Preview mode. A valid commit response shows its author, short SHA, relative time with the exact time on hover, position, file count, additions, and deletions. Clearing the commit returns to the full pull-request patch.
 
 Keyboard movement shows one visible latest-status message for the resolved file, hunk, or unresolved-thread target and for a first or last boundary, such as "Already at the last hunk." It reports a target only after that target materializes; a fallback never claims false success. One shared generation cancels stale file, hunk, and thread effects. A target that mounts after virtualized scrolling is polled across animation frames, then focused unless the Review became stale.
 

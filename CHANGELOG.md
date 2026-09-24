@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Conversation comment and review times now read as an age, such as "3 d ago", instead of a raw timestamp. Commit rows in the Diff's **Commits** tab and the selected commit's header use the same age wording, and all of them show the exact date and time on hover. #148
+
 - The **GitHub writes are paused** notification now also covers a merge or a **Finish review** submission whose outcome Patchdesk could not confirm. It follows the same rules as the other write notifications: nothing while Patchdesk is focused on that Review or while **Notifications** is off. #266
 
 - Fixed a merge GitHub confirmed being reported as **Merge not confirmed** when Patchdesk then failed to save the merged Review or clear its merge record. The Review now shows Merged, the merge-completed notification is posted, and the failed local step is logged and finished by startup recovery. #349

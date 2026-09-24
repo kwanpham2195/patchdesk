@@ -15,6 +15,7 @@ import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { RelativeTime } from "./relative-time";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -368,7 +369,7 @@ function TimelineCommentEntry({
         <div className="flex items-baseline gap-2">
           <span className="text-xs font-semibold">{comment.author}</span>
           <span className="text-[11px] text-muted-foreground">
-            {comment.createdAt}
+            <RelativeTime iso={comment.createdAt} />
           </span>
         </div>
         <div className="mt-1 text-sm leading-6">
@@ -420,7 +421,7 @@ function ReviewSummaryEntry({
         <div className="flex items-baseline gap-2">
           <span className="text-xs font-semibold">{review.author}</span>
           <span className="text-[11px] text-muted-foreground">
-            {review.submittedAt}
+            <RelativeTime iso={review.submittedAt} />
           </span>
           <Badge variant="outline" className="text-[10px]">
             {verdictLabel}

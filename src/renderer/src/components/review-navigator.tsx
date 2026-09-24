@@ -9,14 +9,11 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import { parseReviewDiff } from "../review-diff-data";
 import type { FileFindingCount } from "../review-finding-counts";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
+import { RelativeTime } from "./relative-time";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
 import type { WorkbenchSection } from "../lib/screen-restore";
-
-const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
-  numeric: "auto",
-});
 
 export type ReviewNavigatorSection = Exclude<WorkbenchSection, "insights">;
 
@@ -199,7 +196,7 @@ export function ReviewNavigator({
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {commit.author} · {commit.sha.slice(0, 8)} ·{" "}
-                    {formatCommitDate(commit.authoredAt)}
+                    <RelativeTime iso={commit.authoredAt} />
                   </span>
                 </button>
               ))
@@ -270,23 +267,6 @@ export function ReviewNavigator({
       </Tabs>
     </aside>
   );
-}
-
-function formatCommitDate(value: string): string {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  const seconds = Math.round((timestamp - Date.now()) / 1_000);
-  const units: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 31_536_000],
-    ["month", 2_592_000],
-    ["day", 86_400],
-    ["hour", 3_600],
-    ["minute", 60],
-  ];
-  for (const [unit, divisor] of units)
-    if (Math.abs(seconds) >= divisor)
-      return relativeTimeFormatter.format(Math.round(seconds / divisor), unit);
-  return relativeTimeFormatter.format(seconds, "second");
 }
 
 type ThreadStateBadge = {

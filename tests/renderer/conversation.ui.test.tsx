@@ -9,6 +9,7 @@ import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contract
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function generalThreadEntry(
@@ -370,6 +371,53 @@ describe("Conversation", () => {
     const avatar = container.querySelector('[data-slot="avatar"]');
     expect(avatar?.tagName).toBe("IMG");
     expect(avatar?.getAttribute("src")).toBe(dataUri);
+  });
+
+  it.each([
+    {
+      name: "timeline comment",
+      entry: {
+        _tag: "IssueComment",
+        comment: {
+          id: "ic-age",
+          author: "reviewer",
+          body: "Aged comment.",
+          createdAt: "2026-08-01T00:00:00.000Z",
+        },
+      },
+    },
+    {
+      name: "review summary",
+      entry: {
+        _tag: "ReviewSummary",
+        review: {
+          id: "r-age",
+          author: "approver",
+          body: "Aged review.",
+          event: "APPROVED",
+          submittedAt: "2026-08-01T00:00:00.000Z",
+          canDismiss: false,
+        },
+      },
+    },
+  ])("dates a $name as an age with the exact time on hover", ({ entry }) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-02T00:00:00.000Z"));
+    const { container } = render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          // SAFETY: both literals match the wire entry shapes the component
+          // destructures; fixture data, not a runtime-decoded value.
+          entries: [entry] as WorkbenchResponse["conversation"]["entries"],
+        }}
+      />,
+    );
+
+    const stamp = container.querySelector("time");
+    expect(stamp?.dateTime).toBe("2026-08-01T00:00:00.000Z");
+    expect(stamp?.title).not.toBe("");
+    expect(screen.queryByText("2026-08-01T00:00:00.000Z")).toBeNull();
   });
 
   it("renders the initials fallback for a review summary, since PublishedReview carries no avatar data", () => {
