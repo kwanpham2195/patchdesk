@@ -55,8 +55,11 @@ import {
   hasFindingReceipt,
   nextFindingReceipts,
   reconcileObservedFindingReceipts,
+  releaseGoneFindingReceipts,
   sameFindingSource,
+  type FindingReceiptEvidence,
 } from "./pending-review-finding-receipts";
+import type { AppLogService } from "./app-log-service";
 
 export type StartPendingReviewInput = {
   readonly profileId: WorkspaceProfileId;
@@ -179,6 +182,7 @@ export class PendingReviewService {
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly recentWrites: ConfirmedWriteJournal,
     private readonly notifier?: DesktopNotifier,
+    private readonly log?: Pick<AppLogService, "write">,
   ) {}
 
   /**
@@ -262,6 +266,7 @@ export class PendingReviewService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly recover?: boolean;
+    readonly evidence?: FindingReceiptEvidence;
   }): Promise<
     Result<
       {
@@ -306,37 +311,77 @@ export class PendingReviewService {
     } else {
       next = adoptObservedPendingReview(stored, read.value);
     }
+    // A locked operation may still own a receipt's thread, so only an
+    // unlocked Review releases receipts; recovery settles the lock first.
+    const released =
+      input.evidence === undefined || isPendingReviewLocked(stored)
+        ? undefined
+        : releaseGoneFindingReceipts({
+            receipts: session.findingReviewReceipts,
+            observed: read.value,
+            evidence: input.evidence,
+          });
+    const releasedAny =
+      released !== undefined && released.pendingReviewNodeIds.length > 0;
     if (
       session.pendingReview !== undefined &&
-      samePendingReviewState(next, stored)
+      samePendingReviewState(next, stored) &&
+      !releasedAny
     ) {
       return ok({ session, state: next, unavailable: false });
     }
+    const receipts = releasedAny
+      ? released.receipts
+      : session.findingReviewReceipts;
+    const {
+      findingReviewReceipts: _previousReceipts,
+      ...sessionWithoutReceipts
+    } = session;
+    void _previousReceipts;
+    const nextSession: ReviewSession =
+      receipts === undefined || receipts.length === 0
+        ? { ...sessionWithoutReceipts, pendingReview: next }
+        : {
+            ...sessionWithoutReceipts,
+            pendingReview: next,
+            findingReviewReceipts: receipts,
+          };
     // Compare-and-swap against the session this reconcile read, so a write
     // that landed during the GitHub reads is reported instead of overwritten.
     const saved = await this.sessions.save(
-      {
-        ...session,
-        pendingReview: next,
-        updatedAt: this.now(),
-      },
+      { ...nextSession, updatedAt: this.now() },
       session.updatedAt,
     );
     if (saved._tag === "err") {
       return ok({ session, state: stored, unavailable: true });
     }
-    return ok({
-      session: { ...session, pendingReview: next },
-      state: next,
-      unavailable: false,
-    });
+    if (releasedAny)
+      this.log?.write({
+        process: "main",
+        level: "info",
+        topic: "pending-review",
+        message: "pending review gone on GitHub; released its Finding receipts",
+        profileId: input.profileId,
+        sessionId: session.id,
+        meta: {
+          reviewId: input.reviewId,
+          pendingReviewNodeIds: [...released.pendingReviewNodeIds],
+          cleared: released.cleared,
+          published: released.published,
+        },
+      });
+    return ok({ session: nextSession, state: next, unavailable: false });
   }
 
-  /** Reconcile when the caller already owns the shared Review lock. */
+  /**
+   * Reconcile when the caller already owns the shared Review lock. Refresh
+   * passes the thread evidence it read so receipts of a pending review deleted
+   * on GitHub are released (#419).
+   */
   async reconcileWithinReviewLock(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
-    readonly recover?: boolean;
+    readonly evidence: FindingReceiptEvidence;
   }): Promise<
     Result<
       {

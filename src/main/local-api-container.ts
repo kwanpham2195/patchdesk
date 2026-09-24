@@ -295,6 +295,7 @@ export async function buildLocalApiContainer(
           reviewOperations,
           recentWriteJournals,
           configuration.desktopNotifier,
+          logs,
         )
       : undefined;
   if (pendingReviewGateway === undefined || pendingReviews === undefined)

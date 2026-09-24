@@ -449,6 +449,7 @@ export class ReviewRefreshService {
       await this.dependencies.pendingReview.reconcileWithinReviewLock({
         profileId,
         reviewId,
+        evidence: prepared.snapshot,
       });
     // SAFETY: `{ _tag: "None" }` is a literal, complete member of the
     // PendingReviewState union (no other fields required).
@@ -478,6 +479,7 @@ export class ReviewRefreshService {
     await this.dependencies.pendingReview.reconcileWithinReviewLock({
       profileId: prepared.nextReview.identity.profileId,
       reviewId: prepared.nextReview.id,
+      evidence: prepared.snapshot,
     });
   }
 

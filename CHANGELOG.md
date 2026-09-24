@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Analysis Findings staying **Added**, with **Finish review** still shown, after their pending review was deleted on GitHub. Refresh now returns those Findings to **Add to review** and the header to **Start a review** once GitHub confirms the pending review is gone; a failed or incomplete GitHub read changes nothing. #419
+
 - Fixed **Add all to review** continuing after the Review changed mid-batch. When the session, reviewed head, patch, or Analysis run changes, the batch stops, the Finding being written is not counted as added, nothing after it is written, and the Findings card reads "Review changed: added 1 of 3" beside the button. #418
 
 - A merged or closed Review no longer shows **Updates available** in its header. PR overview **Merge readiness** reads **Draft** in muted text, where it read a red **Blocked**, when the draft state is the only blocker. Browse tree file names cut from the start keep whole letters after the "…". Settings → **Data & recovery** shows the Logs size with no active workspace, sizes such as 999,950 bytes read "1.0 MB" where they read "1000 KB", and Diagnostics log metadata is cut to 240 characters again, shown in full on hover. Below 1280 px the Pull requests inspector drawer opens only from its toggle, closes when the window crosses 1280 px, and no longer hides the wide-window inspector when closed. #348
