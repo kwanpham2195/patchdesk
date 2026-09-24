@@ -128,7 +128,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - Every titlebar icon button shows a hover tooltip: the collapse toggle, Back, Settings, and Navigate.
 - Activating Skip to content adds `#main-content` to the renderer address, and it stays there through later navigation.
 - A clicked Insight notification for the Review already on screen reopens that Review on the Insight, unless an unsaved draft or pending write holds it; then the window is only focused.
-- A write that GitHub rejected, or one refused because an earlier write already holds the lock, posts no notification.
+- A write that GitHub rejected, or one refused because an earlier write already holds the lock, posts no notification. When Patchdesk cannot then save the rejection, the Review stays waiting for **Check GitHub again** and the notification is posted.
 
 ## Open questions and verification
 

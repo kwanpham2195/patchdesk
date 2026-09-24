@@ -4,10 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { StorageFailure } from "../../src/adapters/storage/json-file";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { createReviewSessionId, type IsoTimestamp } from "../../src/domain/ids";
-import { err, ok } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 import type { DirectSummaryReviewState } from "../../src/domain/direct-summary-review";
 import type { PendingReviewState } from "../../src/domain/pending-review";
 import type { ReviewSession } from "../../src/domain/review-session";
@@ -80,11 +81,13 @@ function fixture(
   const saves: unknown[] = [];
   const sessions = {
     load: vi.fn(async () => ok(stored)),
-    save: vi.fn(async (next: ReviewSession) => {
-      stored = next;
-      saves.push(next);
-      return ok(undefined);
-    }),
+    save: vi.fn(
+      async (next: ReviewSession): Promise<Result<void, StorageFailure>> => {
+        stored = next;
+        saves.push(next);
+        return ok(undefined);
+      },
+    ),
   };
   const gate = {
     requireFresh: vi.fn(async () =>
@@ -122,6 +125,7 @@ function fixture(
       { notify: (event) => notifications.push(event) },
     ),
     notifications,
+    sessions,
     github,
     coordinator,
     recentWrites,
@@ -218,6 +222,31 @@ describe("DirectSummaryReviewService", () => {
     });
     expect(value.github.createDirectSummaryReview).toHaveBeenCalledTimes(1);
     // The second submit is refused by the first one's lock and posts nothing.
+    expect(value.notifications).toMatchObject([
+      { _tag: "WriteNeedsRecovery", reviewId, pullRequest: { number: 42 } },
+    ]);
+  });
+
+  it("posts one recovery event when a refused write cannot clear its intent", async () => {
+    const value = fixture(undefined, {
+      createDirectSummaryReview: vi.fn(async () =>
+        err({ category: "rejected" }),
+      ),
+    });
+    const persistIntent = value.sessions.save.getMockImplementation();
+    if (persistIntent === undefined) throw new Error("fixture save missing");
+    value.sessions.save
+      .mockImplementationOnce(persistIntent)
+      .mockImplementationOnce(async () =>
+        err({ _tag: "StorageFailure", operation: "write", reason: "io" }),
+      );
+    await expect(submit(value.service)).resolves.toEqual({
+      _tag: "err",
+      error: "rejected",
+    });
+    expect(value.current()).toMatchObject({
+      directSummaryReview: { _tag: "WriteInFlight" },
+    });
     expect(value.notifications).toMatchObject([
       { _tag: "WriteNeedsRecovery", reviewId, pullRequest: { number: 42 } },
     ]);
