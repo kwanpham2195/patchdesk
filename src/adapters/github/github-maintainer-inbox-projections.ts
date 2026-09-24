@@ -25,6 +25,7 @@ import type { InboxStateFilter } from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import {
   mapMergeability,
+  mapMergeStateStatus,
   parseGitHubTimestamp,
 } from "./github-wire-projections";
 import type { MaintainerPullRequestConnection } from "./github-wire-schemas";
@@ -97,6 +98,7 @@ function parseMaintainerPullRequest(
     isOpen: state === "open",
     reviewState: mapReviewDecision(input.reviewDecision),
     mergeability: mapMergeability(input.mergeable),
+    mergeStateStatus: mapMergeStateStatus(input.mergeStateStatus),
     labels: input.labels.nodes.map((label) => ({
       name: label.name,
       color: label.color,

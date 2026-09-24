@@ -442,6 +442,7 @@ const maintainerInboxNodeSchema = v.looseObject({
   ),
   updatedAt: v.string(),
   mergeable: v.string(),
+  mergeStateStatus: v.nullish(v.string()),
   reviewDecision: v.nullish(v.string()),
   additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
   deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),

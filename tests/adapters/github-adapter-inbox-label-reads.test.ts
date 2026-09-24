@@ -27,6 +27,7 @@ describe("GitHubAdapter inbox and repository-label reads", () => {
                   author: { login: "reviewer" },
                   updatedAt: "2026-07-16T12:00:00Z",
                   mergeable: "MERGEABLE",
+                  mergeStateStatus: "BLOCKED",
                   reviewDecision: "REVIEW_REQUIRED",
                   additions: 12,
                   deletions: 3,
@@ -76,6 +77,7 @@ describe("GitHubAdapter inbox and repository-label reads", () => {
               summary: {
                 reviewState: "review_pending",
                 mergeability: "mergeable",
+                mergeStateStatus: "blocked",
                 labels: [{ name: "bug", color: "d73a4a" }],
                 labelCount: 2,
               },

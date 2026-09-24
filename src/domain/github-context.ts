@@ -105,17 +105,20 @@ export type CheckSummary = {
   readonly checks: ReadonlyArray<CheckRunSummary>;
 };
 
+export const GITHUB_MERGE_STATE_STATUSES = [
+  "blocked",
+  "behind",
+  "dirty",
+  "draft",
+  "has_hooks",
+  "unstable",
+  "clean",
+  "unknown",
+  // GitHub did not provide this field in the response.
+  "unavailable",
+] as const;
 export type GitHubMergeStateStatus =
-  | "blocked"
-  | "behind"
-  | "dirty"
-  | "draft"
-  | "has_hooks"
-  | "unstable"
-  | "clean"
-  | "unknown"
-  /** GitHub did not provide this field in the response. */
-  | "unavailable";
+  (typeof GITHUB_MERGE_STATE_STATUSES)[number];
 
 /** Aggregate merge evidence reported by GitHub for a pull request. */
 export type GitHubMergeEvidence = {
@@ -503,6 +506,8 @@ export type PullRequestSummary = PullRequestSnapshot & {
     | "changes_requested"
     | "unknown";
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
+  /** GitHub's rule-level merge verdict when the read source reports it; the listing query does, the REST reader does not. */
+  readonly mergeStateStatus?: GitHubMergeStateStatus;
   readonly labels: ReadonlyArray<GitHubLabel>;
   /** Total labels on the pull request when the read source reports it; undefined when not applicable (e.g. the REST reader, which never truncates). Compare against `labels.length` to detect truncation. */
   readonly labelCount?: number;
