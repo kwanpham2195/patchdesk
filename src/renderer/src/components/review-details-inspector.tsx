@@ -280,7 +280,10 @@ function ChangesFact({
   const parts = [
     changedFiles === undefined
       ? undefined
-      : { text: `${changedFiles} files`, zero: false },
+      : {
+          text: `${changedFiles} ${changedFiles === 1 ? "file" : "files"}`,
+          zero: false,
+        },
     additions === undefined
       ? undefined
       : { text: `+${additions}`, zero: additions === 0 },
