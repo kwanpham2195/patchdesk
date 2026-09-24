@@ -28,3 +28,9 @@ The recent-write journal (`recent-writes.json` in a Review's directory) is a fou
 - Its quarantine copy is a single fixed-name file, `recent-writes.quarantine.json`, beside the journal and outside the retention sweep. The next quarantine overwrites it, so a Review keeps at most one copy, and it goes when the Review's directory goes.
 
 For the same reason a journal write is never fatal: once GitHub has confirmed a write, a failed journal append is logged and the write still releases its operation record and the write lock (ADR "Reconcile every uncertain GitHub write").
+
+## Update (2026-09-24): viewed files and Insight records
+
+Viewed-file marks (`viewed-files.json` in a Review session's directory, #358) are a fifth artifact class that rebuilds empty, like the recent-write journal. An invalid file moves aside to the fixed-name `viewed-files.quarantine.json` and reads as no marks; the reviewer re-marks files. It goes when the session directory goes.
+
+An invalid Insight record is now overwritten by the next run start instead of failing it with a storage error (#348, PR #392). Only starting a run can write over it; every other Insight mutation needs a matching active or retained run and refuses on the blank record.

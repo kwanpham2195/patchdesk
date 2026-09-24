@@ -181,7 +181,7 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 - `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its remaining callers are `git`, `gh auth`, the `gh --version` probe in `github-environment-probe.ts`, and the Insight runtime child, which `pi-insight-child-invoker.ts` spawns as this process's own executable running the staged runner.
 - `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every request runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory and are never logged or persisted.
 - `storage/json-file.ts` reads and writes one JSON value per file with atomic replacement and a sensitive-value guard.
-- `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, and others.
+- `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, `viewed-files-store.ts` (per-session Diff viewed marks), and others.
 - `storage/review-remote-store.ts` stores remote snapshots by content hash. A stored snapshot that does not match its hash fails the hash check and is never trusted.
 - `storage/review-artifact-storage.ts` stores artifacts and quarantines corrupt or unexpected files.
 - `storage/patchdesk-paths.ts` builds every app-owned path without doing I/O.
