@@ -220,8 +220,8 @@ export function briefReachMethodLine(
 /** One named thing a Reach row lists, with the count Patchdesk made for it. */
 type BriefReachItem = {
   readonly name: string;
-  /** Already written out, because the count and its unit belong in one phrase. */
-  readonly count: string;
+  /** Already written out, because the count and its unit belong in one phrase; absent when the row's hint already says it. */
+  readonly count?: string;
   /** True when something outside this pull request is reached; drawn in the warning hue. */
   readonly hot: boolean;
   readonly paths: ReadonlyArray<string>;
@@ -271,7 +271,6 @@ export function briefReachRows(reach: BriefReach): BriefReachRows {
       empty: "Every changed file has a test in this PR.",
       items: reach.untested.map((item) => ({
         name: item.path,
-        count: "changed, no test in this PR names it",
         hot: true,
         paths: [],
       })),

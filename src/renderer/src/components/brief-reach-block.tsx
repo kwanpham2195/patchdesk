@@ -61,7 +61,7 @@ export function ReachBlock({
   );
 }
 
-/** One list row: each name beside the count Patchdesk made for it, then where. */
+/** One list row: each name beside the count Patchdesk made for it, when it has one, then where. */
 function ReachListRow({
   row,
 }: {
@@ -78,12 +78,18 @@ function ReachListRow({
               key={item.name}
               className="flex flex-wrap items-baseline gap-x-3"
             >
-              <span className="font-mono text-xs">{item.name}</span>
               <span
-                className={`font-mono text-[11px] tabular-nums ${item.hot ? "text-[var(--status-warning)]" : "text-muted-foreground"}`}
+                className={`font-mono text-xs ${item.count === undefined && item.hot ? "text-[var(--status-warning)]" : ""}`}
               >
-                {item.count}
+                {item.name}
               </span>
+              {item.count === undefined ? null : (
+                <span
+                  className={`font-mono text-[11px] tabular-nums ${item.hot ? "text-[var(--status-warning)]" : "text-muted-foreground"}`}
+                >
+                  {item.count}
+                </span>
+              )}
               {item.paths.length === 0 ? null : (
                 <span className="basis-full pl-3 font-mono text-[11px] text-muted-foreground">
                   {item.paths.join(" · ")}

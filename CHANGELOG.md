@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Trimmed the Brief's **Untested reach** list to file paths. Each row repeated "changed, no test in this PR names it", which the row's own hint already says. #348
+
 - Fixed Walkthrough reviewed markers and the current section going back to their earlier state after leaving the Walkthrough for another Insight or tab and returning in the same Review. #348
 
 - Fixed a Markdown file **Preview** showing its file path nowhere on screen. The path now heads the preview and stays in view while it scrolls. #348
