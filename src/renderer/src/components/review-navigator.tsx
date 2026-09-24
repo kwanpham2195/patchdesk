@@ -38,6 +38,9 @@ type ReviewNavigatorProps = {
   readonly onThreadSelect: (row: ConversationThreadRow) => void;
 };
 
+const commitSubject = (message: string): string =>
+  message.split("\n", 1)[0] ?? message;
+
 /** The review navigator owns browsing and commit selection. */
 export function ReviewNavigator({
   patch,
@@ -186,12 +189,18 @@ export function ReviewNavigator({
                   className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
                   onClick={() => onCommitSelect(commit.sha)}
                 >
-                  <span className="flex w-full items-center gap-2">
-                    <span className="truncate font-medium">
-                      {commit.message.split("\n", 1)[0]}
+                  <span className="flex w-full min-w-0 items-start gap-2">
+                    {/* Two lines, because sibling commits often share their first dozen characters. */}
+                    <span
+                      className="line-clamp-2 min-w-0 font-medium break-words"
+                      title={commitSubject(commit.message)}
+                    >
+                      {commitSubject(commit.message)}
                     </span>
                     {commit.isHead ? (
-                      <Badge variant="secondary">HEAD</Badge>
+                      <Badge variant="secondary" className="shrink-0">
+                        HEAD
+                      </Badge>
                     ) : null}
                   </span>
                   <span className="text-xs text-muted-foreground">

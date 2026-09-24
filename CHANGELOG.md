@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Diff tab's Browse tree now shortens long file names from the front, so sibling files such as `sidebar-variant-a-tree.tsx` and `sidebar-variant-b-queue.tsx` read differently, and a collapsed folder path such as `src / renderer / src / components` keeps its last folders whole. Commit subjects on the Commits tab wrap to two lines with the full subject on hover, the **Merge conflicts** notice no longer runs past the pane's right edge, and the active **All files** or **Selected** segment is now the highlighted one where the **Scope** button used to look pressed. #348
+
 - Fixed a merged pull request reading **Ready to merge** with "No blockers or warnings." in PR overview. A merged or closed Review now reads **Merged** or **Closed** there with no blocker cards or merge controls, drops "Up to date with GitHub · checked 8 d ago" from the header and the Revision row, and hides the **Checks** chip and the Analysis CI badge when its checks are unknown. The **Merge** chip now counts causes beyond the first, as in "Merge · Blocked · Draft +1", and a draft reads as a neutral card instead of a red error. #348
 
 - The Pull requests inspector now shows **Failed** for an Insight whose last run failed, where it read **Not run**, and lists the chips Brief, Walkthrough, Analysis like the Insights tabs. The Merged filter no longer wraps its inspector toggle onto an empty second row or repeats a **Merged** badge on every row, row badges now follow the title's last word, and a zero change count such as "-0" reads muted instead of red or green. #348

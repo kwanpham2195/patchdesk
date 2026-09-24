@@ -34,6 +34,11 @@ import { cn } from "@/lib/utils";
 import { ReviewDiffOptionsPopover } from "./review-diff-options-popover";
 import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
 
+// `secondary` alone is the same fill as an idle button, so a pressed segment
+// takes the selection accent the file tree and commit list use.
+const PRESSED_SEGMENT_CLASS =
+  "aria-pressed:bg-accent aria-pressed:text-accent-foreground";
+
 /** The Scope buckets the diff can be narrowed to, and the state of that choice. */
 export type ScopeFilterControl = {
   /** The populated buckets in gauge order; an empty bucket is never offered. */
@@ -76,7 +81,7 @@ function ReviewDiffScopePicker({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="secondary" size="xs" aria-label="Scope filter">
+          <Button variant="outline" size="xs" aria-label="Scope filter">
             {activeBucket === undefined ? null : (
               <ScopeBucketSwatch bucket={activeBucket} />
             )}
@@ -166,6 +171,7 @@ function MarkdownPreviewModeSwitch({
       <Button
         variant={preview.active ? "ghost" : "secondary"}
         size="xs"
+        className={PRESSED_SEGMENT_CLASS}
         aria-pressed={!preview.active}
         onClick={() => preview.onChange(false)}
       >
@@ -174,6 +180,7 @@ function MarkdownPreviewModeSwitch({
       <Button
         variant={preview.active ? "secondary" : "ghost"}
         size="xs"
+        className={PRESSED_SEGMENT_CLASS}
         aria-pressed={preview.active}
         onClick={() => preview.onChange(true)}
       >
@@ -260,6 +267,7 @@ export function ReviewDiffToolbar({
                         : "ghost"
                     }
                     size="xs"
+                    className={PRESSED_SEGMENT_CLASS}
                     aria-pressed={
                       preferences.fileMode === "all" && !sinceReviewActive
                     }
@@ -278,6 +286,7 @@ export function ReviewDiffToolbar({
                   : "ghost"
               }
               size="xs"
+              className={PRESSED_SEGMENT_CLASS}
               aria-pressed={
                 preferences.fileMode === "selected" && !sinceReviewActive
               }
@@ -290,6 +299,7 @@ export function ReviewDiffToolbar({
               <Button
                 variant={sinceReviewActive ? "secondary" : "ghost"}
                 size="xs"
+                className={PRESSED_SEGMENT_CLASS}
                 aria-pressed={sinceReviewActive}
                 disabled={sinceReview.disabledReason !== undefined}
                 onClick={() => {
