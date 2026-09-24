@@ -7,13 +7,13 @@ import { projectReadOnlyConversationAnnotations } from "../inline-conversation-m
 import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
-import type { InsightSelection } from "./insight-panels";
+import type { InsightRunDialogType } from "./insight-run-dialog";
 
 type InsightReaderBuilderInput = {
   readonly workbench: WorkbenchResponse;
   /** `workbench.fullPatch` already parsed, so a render does not reparse megabytes of diff text. */
   readonly patchFiles: ReadonlyArray<ParsedPatchFile>;
-  readonly selectedInsight: InsightSelection;
+  readonly selectedInsight: InsightRunDialogType;
   readonly profileId: string;
   readonly reviewId: string;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;

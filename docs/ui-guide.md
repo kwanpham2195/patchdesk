@@ -18,7 +18,7 @@ Do not skip a layer, and do not invent a fourth shade.
 `Tabs` wraps Base UI's Tabs. `TabsList` has three looks, chosen with `variant`:
 
 - `ghost`: a screen's top strip. The Conversation / Diff / Insights strip uses it; the active tab is a quiet pill on the card colour.
-- `line`: a secondary rail under the strip. The Overview / Brief / Walkthrough / Analysis rail uses it; the active tab has an underline.
+- `line`: a secondary rail under the strip. The Brief / Walkthrough / Analysis rail uses it; the active tab has an underline.
 - `default`: the filled grey track shadcn ships. No screen uses it today; keep it for a compact switch inside a dialog or a settings form.
 
 Base UI activates tabs manually: the arrow keys move focus along the list, and Enter or Space selects. Do not pass `activateOnFocus`.
@@ -27,7 +27,7 @@ Base UI activates tabs manually: the arrow keys move focus along the list, and E
 
 A state is shown as one `Badge`, and the tone comes from a plain function, never from a bare grey word or an inline `variant` picked at the call site.
 `insightStatusTone` in `src/renderer/src/insight-status-tone.ts` maps the five Insight states: Current is `success` (green), Outdated is `warning` (amber), Running is `secondary` with a `Spinner` beside the label, Failed is `destructive` (red), and Not generated is `outline`.
-Add a new state to that function, so the rail, the Overview cards, and the PR overview sheet all change together.
+Add a new state to that function, so the rail and the PR overview sheet change together.
 
 ## Empty, running, and failed states
 
@@ -46,7 +46,7 @@ Give the button `ui-state-transition` and the hover lift (`hover:-translate-y-px
 ## Icons
 
 Each Insight type has one glyph, declared in `src/renderer/src/insight-icons.ts` as `INSIGHT_ICONS`.
-The Overview cards, the empty states, and the PR overview sheet all read from it.
+The empty states and the PR overview sheet read from it.
 Add a type there; never import a Lucide icon for an Insight inline.
 
 ## Motion

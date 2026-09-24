@@ -149,54 +149,17 @@ function walkthroughProjection() {
   });
 }
 
-describe("InsightsSlot overview", () => {
-  it("headlines each card from its retained document", async () => {
-    const user = userEvent.setup();
-    const analysis = withAnalysis("actionable");
-    renderInsights(
-      projection({
-        ...analysis,
-        insights: {
-          ...analysis.insights,
-          brief: briefInsight(),
-          walkthrough: walkthroughProjection().insights.walkthrough,
-        },
-      }),
-    );
-
-    await user.click(screen.getByRole("tab", { name: /^Overview/ }));
-    const overview = within(
-      screen.getByRole("article", { name: "Insight overview" }),
-    );
-    expect(overview.queryByText(/Choose one retained document/)).toBeNull();
-    // Cards follow the reading order: Brief, Walkthrough, Analysis.
-    const [brief, walkthrough, analysisCard] = overview.getAllByRole("button");
-    expect(brief?.textContent).toMatch(
-      /^BriefInsight runCurrent · retained \d+ d ago$/,
-    );
-    expect(walkthrough?.textContent).toMatch(
-      /^Walkthrough1 chapter · 1 sectionCurrent · retained \d+ d ago$/,
-    );
-    expect(analysisCard?.textContent).toMatch(
-      /^AnalysisComment recommended · 1 needs attention · CI passingCurrent · retained \d+ d ago$/,
-    );
-    for (const card of [brief, analysisCard, walkthrough]) {
-      const time = card?.querySelector("time");
-      expect(time?.getAttribute("datetime")).toBe("2026-08-01T00:00:00.000Z");
-      expect(time?.getAttribute("title")).toBeTruthy();
-    }
-  });
-});
-
 describe("InsightsSlot reading order", () => {
-  it("lands on Brief by default", () => {
-    renderInsights();
+  it("lists the three Insights and lands on the one with a result", () => {
+    renderInsights(withAnalysis("actionable"));
 
     const rail = within(
       screen.getByRole("navigation", { name: "Insight navigation" }),
     );
-    expect(rail.getByRole("tab", { selected: true }).textContent).toBe(
-      "BriefNot generated",
+    expect(rail.getAllByRole("tab")).toHaveLength(3);
+    expect(rail.queryByRole("tab", { name: /^Overview/ })).toBeNull();
+    expect(rail.getByRole("tab", { selected: true }).textContent).toMatch(
+      /^Analysis/,
     );
   });
 });

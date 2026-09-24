@@ -91,7 +91,7 @@ Do not describe code. Describe what the maintainer sees and does. Technical deta
 - A launch that restores a Review whose record no longer exists returns quietly to Pull requests and saves that destination. A Review opened during the session that fails to load shows `Could not open review` and leaves the destination on that Review.
 - The retention sweep removes a terminal Review's record together with its session, unless the Review still holds an unreconciled GitHub write operation.
 - The file display mode defaults to All files and is saved per profile. File, hunk, and unresolved-comment keyboard commands work only in All files.
-- The Checks and Merge status controls both open PR overview; only Merge moves focus, to Merge readiness. Insights opens on Brief. Generating or regenerating an Insight requires an open Review.
+- The Checks and Merge status controls both open PR overview; only Merge moves focus, to Merge readiness. Insights opens on the first of Brief, Walkthrough, and Analysis that has a retained result, and on Brief when none has one. Generating or regenerating an Insight requires an open Review.
 
 ## State ownership in the Review workbench
 

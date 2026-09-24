@@ -46,7 +46,7 @@ describe("useInsightConfiguration", () => {
     const { result } = renderHook(() =>
       useInsightConfiguration({
         profileId: "profile",
-        initialDetail: undefined,
+        initialInsight: "brief",
         selectedInsight: "brief",
       }),
     );
@@ -84,7 +84,7 @@ describe("useInsightConfiguration", () => {
     const { result } = renderHook(() =>
       useInsightConfiguration({
         profileId: "profile",
-        initialDetail: undefined,
+        initialInsight: "brief",
         selectedInsight: "brief",
       }),
     );
@@ -124,7 +124,7 @@ describe("useInsightConfiguration", () => {
     const { result } = renderHook(() =>
       useInsightConfiguration({
         profileId: "profile",
-        initialDetail: undefined,
+        initialInsight: "brief",
         selectedInsight: "brief",
       }),
     );

@@ -12,11 +12,8 @@ import type { WorkbenchPosition } from "../lib/screen-restore";
 
 /** Which Scope bucket the Diff is filtered by, and the files that bucket leaves visible. */
 export type ReviewScopeFilterState = {
-  readonly activeScopeBucket: ChangeScopeBucket | undefined;
   /** The paths Browse and the diff pane may show; absent when no filter is active. */
   readonly scopeFilteredPaths: ReadonlySet<string> | undefined;
-  /** Applies a bucket, or clears the filter when that bucket is already active. */
-  readonly selectScopeBucket: (bucket: ChangeScopeBucket) => void;
   /** Drives the diff toolbar's Scope picker; absent where no bucket can apply. */
   readonly scopeFilter: ScopeFilterControl | undefined;
   readonly clearScopeBucket: () => void;
@@ -100,16 +97,6 @@ export function useReviewScopeFilter({
       setActivePath,
     ],
   );
-  const selectScopeBucket = useCallback(
-    (bucket: ChangeScopeBucket): void => {
-      if (activeScopeBucket === bucket) {
-        setActiveScopeBucket(undefined);
-        return;
-      }
-      applyScopeBucket(bucket);
-    },
-    [activeScopeBucket, applyScopeBucket],
-  );
   const scopeFilter = useMemo<ScopeFilterControl | undefined>(
     () =>
       scope === undefined || scope.buckets.length === 0 || commitSliceActive
@@ -117,8 +104,6 @@ export function useReviewScopeFilter({
         : {
             buckets: scope.buckets,
             activeBucket: activeScopeBucket,
-            // The picker already shows which bucket is active, so choosing it
-            // again is a no-op rather than the card's toggle.
             onSelect: applyScopeBucket,
             onClear: clearScopeBucket,
           },
@@ -131,9 +116,7 @@ export function useReviewScopeFilter({
     ],
   );
   return {
-    activeScopeBucket,
     scopeFilteredPaths,
-    selectScopeBucket,
     scopeFilter,
     clearScopeBucket,
   };

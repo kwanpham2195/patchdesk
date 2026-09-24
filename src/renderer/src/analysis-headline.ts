@@ -11,22 +11,10 @@ export type AnalysisFindingStatus =
   | "locked";
 export type CheckStatus = WorkbenchResponse["checks"]["overall"];
 
-/** Each finding's review state, keyed by id, as the Analysis reader consumes it. */
-export function analysisFindingStatuses(
-  actions: WorkbenchResponse["analysisReviewActions"],
-): Readonly<Record<string, AnalysisFindingStatus>> {
-  return Object.fromEntries(
-    Object.entries(actions?.findings ?? {}).map(([id, status]) => [
-      id,
-      status.state,
-    ]),
-  );
-}
-
 /**
  * The findings still waiting on the maintainer. Same handled rule as merge
- * readiness, so the banner, the overview card, and the readiness card never
- * disagree on how many findings are open.
+ * readiness, so the banner and the readiness card never disagree on
+ * how many findings are open.
  */
 export function unhandledAnalysisFindings(
   result: AnalysisResult,
@@ -72,24 +60,4 @@ export function checkStatusLabel(status: CheckStatus): string {
     case "unknown":
       return "Unknown";
   }
-}
-
-/** One line for the overview card: verdict, open finding count, CI state. */
-export function analysisHeadline({
-  result,
-  findingStatuses,
-  checkStatus,
-}: {
-  readonly result: AnalysisResult;
-  readonly findingStatuses:
-    | Readonly<Record<string, AnalysisFindingStatus>>
-    | undefined;
-  readonly checkStatus: CheckStatus;
-}): string {
-  const open = unhandledAnalysisFindings(result, findingStatuses).length;
-  const attention =
-    open === 0
-      ? "none need attention"
-      : `${open} ${open === 1 ? "needs" : "need"} attention`;
-  return `${analysisVerdictLabel(result.verdict)} · ${attention} · CI ${checkStatusLabel(checkStatus).toLowerCase()}`;
 }

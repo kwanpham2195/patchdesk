@@ -24,7 +24,7 @@ const LEGEND_BUCKETS: ReadonlyArray<ChangeScopeBucket> = [
  * The Scope gauge: one bar whose segments are the changed lines per bucket.
  * `bar` is the inbox row, whose Changes cell already prints the totals; `mini`
  * is the workbench header chip, which has no other place to show them; `card`
- * is the Scope card in the Insights tab; `legend` is the inspector's Scope
+ * is the Scope card in the Brief reader's side column; `legend` is the inspector's Scope
  * cell, which sits inside a `<dl>` that already carries the heading and so
  * only wants the bar and the buckets that actually have files. Bucket colors
  * are categorical (`--scope-*`) and never the status hues, so a large
@@ -34,16 +34,10 @@ export function ScopeGauge({
   scope,
   size,
   className,
-  activeBucket,
-  onBucketSelect,
 }: {
   readonly scope: ChangeScope;
   readonly size: "bar" | "mini" | "card" | "legend";
   readonly className?: string;
-  /** The bucket the Diff is currently filtered by, highlighted on the card. */
-  readonly activeBucket?: ChangeScopeBucket | undefined;
-  /** Given only where a bucket can filter the Diff; without it the card stays read-only. */
-  readonly onBucketSelect?: ((bucket: ChangeScopeBucket) => void) | undefined;
 }): React.JSX.Element {
   const label = scopeGaugeLabel(scope);
   if (size === "bar")
@@ -108,8 +102,16 @@ export function ScopeGauge({
       <ul className="flex flex-wrap gap-x-4 gap-y-1">
         {LEGEND_BUCKETS.map((bucket) => {
           const totals = counted.get(bucket);
-          const row = (
-            <>
+          return (
+            <li
+              key={bucket}
+              className={cn(
+                "flex items-center gap-1.5 text-xs",
+                totals === undefined
+                  ? "text-muted-foreground/60"
+                  : "text-muted-foreground",
+              )}
+            >
               <span
                 aria-hidden="true"
                 className={cn(
@@ -126,32 +128,6 @@ export function ScopeGauge({
                   additions={totals.additions}
                   deletions={totals.deletions}
                 />
-              )}
-            </>
-          );
-          const rowClassName = cn(
-            "flex items-center gap-1.5 text-xs",
-            totals === undefined
-              ? "text-muted-foreground/60"
-              : "text-muted-foreground",
-          );
-          // An empty bucket has no files to filter to, so it stays plain text.
-          return (
-            <li key={bucket}>
-              {onBucketSelect === undefined || totals === undefined ? (
-                <span className={rowClassName}>{row}</span>
-              ) : (
-                <button
-                  type="button"
-                  aria-pressed={activeBucket === bucket}
-                  onClick={() => onBucketSelect(bucket)}
-                  className={cn(
-                    rowClassName,
-                    "-mx-1 rounded px-1 py-0.5 hover:bg-accent hover:text-foreground aria-pressed:bg-primary/10 aria-pressed:font-medium aria-pressed:text-foreground",
-                  )}
-                >
-                  {row}
-                </button>
               )}
             </li>
           );

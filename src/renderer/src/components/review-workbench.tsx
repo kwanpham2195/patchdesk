@@ -351,21 +351,16 @@ export function ReviewWorkbench({
     model,
     ...definedProps({ initialState, onPositionCommitted }),
   });
-  const {
-    activeScopeBucket,
-    scopeFilteredPaths,
-    selectScopeBucket,
-    scopeFilter,
-    clearScopeBucket,
-  } = useReviewScopeFilter({
-    fullPatch: model.fullPatch,
-    scope: model.scope,
-    selectedPath,
-    commitSliceActive: selectedCommitSha !== undefined,
-    commitWorkbenchPosition,
-    selectSection,
-    setActivePath,
-  });
+  const { scopeFilteredPaths, scopeFilter, clearScopeBucket } =
+    useReviewScopeFilter({
+      fullPatch: model.fullPatch,
+      scope: model.scope,
+      selectedPath,
+      commitSliceActive: selectedCommitSha !== undefined,
+      commitWorkbenchPosition,
+      selectSection,
+      setActivePath,
+    });
   // A Scope bucket and a commit slice are mutually exclusive readings of the
   // diff: choosing a bucket already drops the commit, so entering a commit
   // drops the bucket rather than leaving a filtered tree beside a full slice.
@@ -855,10 +850,7 @@ export function ReviewWorkbench({
             <ReviewWorkbenchFindingNavigationContext.Provider
               value={findingNavigation}
             >
-              {slots.insights({
-                activeScopeBucket,
-                onSelectScopeBucket: selectScopeBucket,
-              })}
+              {slots.insights}
             </ReviewWorkbenchFindingNavigationContext.Provider>
           </div>
         )}

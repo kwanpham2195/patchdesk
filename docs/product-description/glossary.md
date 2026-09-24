@@ -82,7 +82,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Scope bucket.** One of the five groups a changed file falls into by its path alone: Core, Tests, Generated, Docs, or Config. Every changed file lands in exactly one bucket.
 
-**Scope filter.** The narrowing of Browse and the diff pane to one Scope bucket, chosen from the Scope card or the diff toolbar's Scope picker. Choosing the same bucket on the Scope card, All files in the picker, or the Commits tab clears it. It is not saved with the workbench position.
+**Scope filter.** The narrowing of Browse and the diff pane to one Scope bucket, chosen from the diff toolbar's Scope picker. Choosing Clear scope in the picker, or the Commits tab, clears it. It is not saved with the workbench position.
 
 **Finding badge.** The count on a Browse row and in a diff file header of how many mapped Findings in the current Analysis cite that file. Its tone follows the most severe of them: destructive for P0 and P1, warning for P2, muted for P3.
 
@@ -148,7 +148,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Walkthrough.** The latest successful guided explanation of a represented revision. It orders narrative chapters and cited diff hunks without changing GitHub.
 
-**Scope gauge.** The deterministic bar that groups changed files into Scope buckets, with added and removed line counts. It needs no model and is absent when the patch cannot be read. The pull-request list and the workbench header show it; on Insights Overview it is the Scope card, whose bucket rows apply a Scope filter.
+**Scope gauge.** The deterministic bar that groups changed files into Scope buckets, with added and removed line counts. It needs no model and is absent when the patch cannot be read. The pull-request list and the workbench header show it; the Brief's side column shows it as the read-only Scope card.
 
 ## Task state
 

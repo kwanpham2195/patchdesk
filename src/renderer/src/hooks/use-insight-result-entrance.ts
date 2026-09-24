@@ -17,7 +17,7 @@ export function useInsightResultEntrance({
   selectedProjectionStatus,
 }: {
   readonly retainedRunIds: RetainedRunIds;
-  readonly selectedInsight: InsightResult | "overview";
+  readonly selectedInsight: InsightResult;
   readonly selectedProjectionStatus: InsightResultStatus | undefined;
 }): RefObject<HTMLDivElement | null> {
   const {
@@ -36,12 +36,9 @@ export function useInsightResultEntrance({
         ? analysisRunId
         : selectedInsight === "brief"
           ? briefRunId
-          : selectedInsight === "walkthrough"
-            ? walkthroughRunId
-            : undefined;
+          : walkthroughRunId;
     const wrapper = resultRef.current;
     const shouldEnter =
-      selectedInsight !== "overview" &&
       selectedProjectionStatus === "current" &&
       selectedRunId !== undefined &&
       selectedRunId !== observed[selectedInsight] &&

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { ChevronRight, History } from "lucide-react";
+import { History } from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -13,8 +13,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "./ui/empty";
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
-import { ScopeGauge } from "./scope-gauge";
 import { Spinner } from "./ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import type { InsightFailureCategory } from "../../../domain/insight-record";
@@ -22,16 +20,10 @@ import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { InsightRunActivity } from "../insight-contracts";
-import {
-  analysisHeadline,
-  type AnalysisFindingStatus,
-  type CheckStatus,
-} from "../analysis-headline";
 import { RelativeTime } from "./relative-time";
 import { insightStatusTone } from "../insight-status-tone";
 import { INSIGHT_ICONS } from "../insight-icons";
 
-export type InsightSelection = "overview" | InsightRunDialogType;
 export type InsightProjection =
   | WorkbenchResponse["insights"]["analysis"]
   | WorkbenchResponse["insights"]["walkthrough"]
@@ -57,9 +49,9 @@ export function InsightNavRail({
   setSelectedInsight,
 }: {
   readonly workbench: WorkbenchResponse;
-  readonly selectedInsight: InsightSelection;
+  readonly selectedInsight: InsightRunDialogType;
   readonly setSelectedInsight: React.Dispatch<
-    React.SetStateAction<InsightSelection>
+    React.SetStateAction<InsightRunDialogType>
   >;
 }): React.JSX.Element {
   // Reading order: Brief says what changed structurally, Walkthrough how it
@@ -79,13 +71,12 @@ export function InsightNavRail({
       <Tabs
         value={selectedInsight}
         onValueChange={(value) =>
-          // SAFETY: every TabsTrigger below is keyed by an InsightSelection
+          // SAFETY: every TabsTrigger below is keyed by an InsightRunDialogType
           // literal, so Base UI's reported value can only ever be one of those.
-          setSelectedInsight(value as InsightSelection)
+          setSelectedInsight(value as InsightRunDialogType)
         }
       >
         <TabsList variant="line" className="pb-1">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
           {documents.map(([type, projection]) => (
             <TabsTrigger key={type} value={type}>
               {INSIGHT_NOUNS[type]}
@@ -111,145 +102,6 @@ function InsightStatusBadge({
       {status === "running" ? <Spinner /> : null}
       {insightStatusLabel(status)}
     </Badge>
-  );
-}
-
-/** The Scope card's active bucket and the action that changes it, wired only where the Diff can be filtered. */
-export type InsightScopeFilter = {
-  readonly activeScopeBucket: ChangeScopeBucket | undefined;
-  readonly onSelectScopeBucket: (bucket: ChangeScopeBucket) => void;
-};
-
-export function InsightOverview({
-  brief,
-  analysis,
-  walkthrough,
-  scope,
-  scopeFilter,
-  checkStatus,
-  findingStatuses,
-  onSelect,
-}: {
-  readonly brief: BriefInsight;
-  readonly analysis: WorkbenchResponse["insights"]["analysis"];
-  readonly walkthrough: WorkbenchResponse["insights"]["walkthrough"];
-  /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
-  readonly scope: WorkbenchResponse["scope"];
-  /** Absent where the Scope card is read-only. */
-  readonly scopeFilter: InsightScopeFilter | undefined;
-  readonly checkStatus: CheckStatus;
-  readonly findingStatuses:
-    | Readonly<Record<string, AnalysisFindingStatus>>
-    | undefined;
-  readonly onSelect: (value: "brief" | "analysis" | "walkthrough") => void;
-}): React.JSX.Element {
-  const briefValue = brief.retained?.value;
-  const walkthroughValue = walkthrough.retained?.value;
-  return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold">Insights overview</h2>
-      {scope === undefined ? null : (
-        <ScopeGauge
-          scope={scope}
-          size="card"
-          activeBucket={scopeFilter?.activeScopeBucket}
-          onBucketSelect={scopeFilter?.onSelectScopeBucket}
-        />
-      )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <InsightOverviewCard
-          type="brief"
-          projection={brief}
-          // A Brief carries structure, not prose (ADR 0040), so its headline
-          // is the Start here lead or, failing that, the first Flow tree.
-          headline={
-            briefValue?.startHere?.lead ?? briefValue?.flow?.trees[0]?.title
-          }
-          onSelect={() => onSelect("brief")}
-        />
-        <InsightOverviewCard
-          type="walkthrough"
-          projection={walkthrough}
-          headline={
-            walkthroughValue === undefined
-              ? undefined
-              : walkthroughHeadline(walkthroughValue.chapters)
-          }
-          onSelect={() => onSelect("walkthrough")}
-        />
-        <InsightOverviewCard
-          type="analysis"
-          projection={analysis}
-          headline={
-            analysis.retained === undefined
-              ? undefined
-              : analysisHeadline({
-                  result: analysis.retained.value,
-                  findingStatuses,
-                  checkStatus,
-                })
-          }
-          onSelect={() => onSelect("analysis")}
-        />
-      </div>
-    </div>
-  );
-}
-
-function walkthroughHeadline(
-  chapters: ReadonlyArray<{
-    readonly sections: ReadonlyArray<unknown>;
-  }>,
-): string {
-  const sections = chapters.reduce(
-    (count, chapter) => count + chapter.sections.length,
-    0,
-  );
-  return `${chapters.length} ${chapters.length === 1 ? "chapter" : "chapters"} · ${sections} ${sections === 1 ? "section" : "sections"}`;
-}
-
-function InsightOverviewCard({
-  type,
-  projection,
-  headline,
-  onSelect,
-}: {
-  readonly type: InsightRunDialogType;
-  readonly projection: InsightProjection;
-  readonly headline: string | undefined;
-  readonly onSelect: () => void;
-}): React.JSX.Element {
-  const Icon = INSIGHT_ICONS[type];
-  return (
-    <button
-      type="button"
-      className="group/card flex h-full flex-col gap-2 rounded-md border p-4 text-left ui-state-transition outline-none hover:-translate-y-px hover:border-primary/40 hover:bg-accent hover:shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      onClick={onSelect}
-    >
-      <span className="flex items-center gap-2">
-        <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
-        <span className="font-medium">{INSIGHT_NOUNS[type]}</span>
-        <ChevronRight
-          aria-hidden="true"
-          className="ml-auto size-4 text-muted-foreground ui-state-transition group-hover/card:text-foreground"
-        />
-      </span>
-      {/* The status badge below already names an absent document, so an
-          empty headline keeps the card's height and says nothing twice. */}
-      <span className="line-clamp-2 min-h-10 text-sm">{headline ?? ""}</span>
-      <span className="mt-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-        <InsightStatusBadge status={projection.status} />
-        {projection.retained === undefined ? null : (
-          <>
-            {" · "}
-            <RelativeTime
-              iso={projection.retained.generatedAt}
-              prefix="retained "
-            />
-          </>
-        )}
-      </span>
-    </button>
   );
 }
 
