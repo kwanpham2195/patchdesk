@@ -1,5 +1,6 @@
 import { expect, test } from "playwright/test";
 import {
+  chooseDiffOptions,
   closeServer,
   openDiff,
   serveRenderer,
@@ -68,6 +69,54 @@ test("Patchdesk mounts no shadcn Sidebar, and the diff fills the column its neig
     );
 
     expect(metrics.overflow).toBeLessThanOrEqual(1);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("split view falls back to unified while the diff pane is narrow and returns when it widens", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_600, height: 900 });
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    await chooseDiffOptions(page, { split: true });
+
+    // Pierre draws each diff inside a shadow root; the left edges of its code
+    // columns show whether the reader sees one column or two side by side.
+    const codeColumnLefts = () =>
+      page.evaluate(() => {
+        const pre = document
+          .querySelector("diffs-container")
+          ?.shadowRoot?.querySelector("pre");
+        return Array.from(pre?.querySelectorAll("[data-code]") ?? []).map(
+          (column) => Math.round(column.getBoundingClientRect().left),
+        );
+      });
+    const expectColumns = (count: number) =>
+      expect
+        .poll(async () => new Set(await codeColumnLefts()).size)
+        .toBe(count);
+
+    await expect(diff).toHaveAttribute("data-diff-style", "split");
+    await expectColumns(2);
+
+    // At 1180px the navigator and visited column sit beside the diff, which
+    // leaves it too narrow for two readable code columns.
+    await page.setViewportSize({ width: 1_180, height: 900 });
+    await expect(diff).toHaveAttribute("data-diff-style", "unified");
+    await expectColumns(1);
+    await page.getByRole("button", { name: "View options" }).click();
+    const splitSwitch = page.getByRole("switch", { name: "Split view" });
+    await expect(splitSwitch).toBeChecked();
+    await expect(splitSwitch).toBeDisabled();
+    await page.keyboard.press("Escape");
+
+    await page.setViewportSize({ width: 1_600, height: 900 });
+    await expect(diff).toHaveAttribute("data-diff-style", "split");
+    await expectColumns(2);
   } finally {
     await closeServer(server);
   }
