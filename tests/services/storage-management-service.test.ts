@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
 import {
   createReviewId,
   createReviewSessionId,
@@ -168,6 +169,7 @@ async function fixture(
         : ok(options.review);
     },
   );
+  const realArtifacts = new ReviewArtifactStorage(paths, () => at);
   const dependencies = {
     profiles: {
       async load() {
@@ -217,6 +219,15 @@ async function fixture(
       },
       async cacheBytes() {
         return ok(0);
+      },
+      async sessionBytes(
+        profile: WorkspaceProfileId,
+        sessionIds: ReadonlyArray<ReviewSessionId>,
+      ) {
+        return await realArtifacts.sessionBytes(profile, sessionIds);
+      },
+      async logsBytes() {
+        return await realArtifacts.logsBytes();
       },
       async removeSession(
         profile: WorkspaceProfileId,
@@ -327,6 +338,33 @@ describe("StorageManagementService", () => {
       value.service.discard({ profileId, sessionId }),
     ).resolves.toEqual({ _tag: "err", error: { _tag: "SessionProtected" } });
   });
+
+  it.each([
+    ["an idle session", undefined, 1_000],
+    [
+      "the current session of an open Review",
+      { currentSessionId: sessionId, status: { _tag: "Open" } },
+      0,
+    ],
+  ] as const)(
+    "reports the bytes Clear local review data frees for %s, and the log bytes",
+    async (_label, review, localReviewDataBytes) => {
+      const value = await fixture({ review });
+      const sessionDirectory = value.paths.sessionDirectory(
+        profileId,
+        sessionId,
+      );
+      await mkdir(sessionDirectory, { recursive: true });
+      await writeFile(join(sessionDirectory, "patch.diff"), "x".repeat(1_000));
+      await mkdir(value.paths.logsDirectory(), { recursive: true });
+      await writeFile(value.paths.logFile(), "y".repeat(300));
+
+      await expect(value.service.list(profileId)).resolves.toMatchObject({
+        _tag: "ok",
+        value: { localReviewDataBytes, logsBytes: 300 },
+      });
+    },
+  );
 
   it("protects an active preparation journal before touching durable state", async () => {
     const value = await fixture();

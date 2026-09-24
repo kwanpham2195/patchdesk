@@ -63,7 +63,7 @@ export type ReviewWorkbenchSeam = Pick<
 /** The storage operations the cleanup routes and the retention sweep call. */
 export type StorageManagementSeam = Pick<
   StorageManagementService,
-  "clearCache" | "clearLocalData" | "sweepRetained"
+  "list" | "clearCache" | "clearLocalData" | "sweepRetained"
 >;
 
 export const localApiConfigurationSchema = object({

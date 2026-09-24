@@ -17,6 +17,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
+import { Spinner } from "../components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -178,8 +179,8 @@ function isConfiguredAccountUnauthenticated(
  * offered values are exactly the values that authenticate (see the
  * "Reviewing as" design in the workspace-settings guided-setup spec). Manual
  * entry — the enterprise-host escape hatch — stays available behind a
- * disclosure in the two authenticated states, and directly (unblocked, not
- * gated) whenever the probe itself is still loading or failed to parse.
+ * disclosure in the two authenticated states and while the probe is loading,
+ * and directly (unblocked, not gated) when the probe failed.
  */
 export function ReviewingAsPanel({
   state,
@@ -202,48 +203,45 @@ export function ReviewingAsPanel({
     isConfiguredAccountUnauthenticated(configuredAccounts, account);
   return (
     <div className="flex flex-col gap-4">
-      {view.kind === "checking" ? (
-        <p className="text-sm text-muted-foreground">
-          Checking GitHub authentication…
-        </p>
-      ) : view.kind === "error" ? (
-        <Alert variant="destructive">
-          <AlertTitle>GitHub authentication unavailable</AlertTitle>
-          <AlertDescription>
-            Could not check GitHub authentication.
-          </AlertDescription>
-        </Alert>
-      ) : view.kind === "failed" ? (
-        <Alert variant="destructive">
-          <AlertTitle>GitHub authentication required</AlertTitle>
-          <AlertDescription>
-            {view.env.gh !== "ready" ? (
-              "Install the GitHub CLI (gh), then re-check."
-            ) : (
-              <>
-                Not authenticated. Run <code>gh auth login</code>, then
-                re-check.
-              </>
+      <div className="flex flex-col gap-3">
+        {view.kind === "checking" ? (
+          <CheckingAccount account={account} />
+        ) : view.kind === "error" ? (
+          <Alert variant="destructive">
+            <AlertTitle>GitHub authentication unavailable</AlertTitle>
+            <AlertDescription>
+              Could not check GitHub authentication.
+            </AlertDescription>
+          </Alert>
+        ) : view.kind === "failed" ? (
+          <Alert variant="destructive">
+            <AlertTitle>GitHub authentication required</AlertTitle>
+            <AlertDescription>
+              {view.env.gh !== "ready" ? (
+                "Install the GitHub CLI (gh), then re-check."
+              ) : (
+                <>
+                  Not authenticated. Run <code>gh auth login</code>, then
+                  re-check.
+                </>
+              )}
+            </AlertDescription>
+          </Alert>
+        ) : view.kind === "single" ? (
+          <>
+            <p className="text-sm">
+              Reviewing as <strong>{view.account.login}</strong> on{" "}
+              <em>{view.account.host}</em>.
+            </p>
+            {/* Adopting this account saves the workspace like any other choice,
+                so the statement carries the same status the Select does. A
+                failure is left to the manual fields, which the disclosure below
+                reveals with the rejected value and this same message. */}
+            {account.accountStatus.state === "failed" ? null : (
+              <FieldSaveStatus status={account.accountStatus} />
             )}
-          </AlertDescription>
-        </Alert>
-      ) : view.kind === "single" ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm">
-            Reviewing as <strong>{view.account.login}</strong> on{" "}
-            <em>{view.account.host}</em>.
-          </p>
-          {/* Adopting this account saves the workspace like any other choice,
-              so the statement carries the same status the Select does. A
-              failure is left to the manual fields, which the disclosure below
-              reveals with the rejected value and this same message. */}
-          {account.accountStatus.state === "failed" ? null : (
-            <FieldSaveStatus status={account.accountStatus} />
-          )}
-          <AccountDisclosure account={account} />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
+          </>
+        ) : (
           <AccountSelect
             accounts={view.accounts}
             selectedKey={selectedAccountKey(view.accounts, account)}
@@ -252,9 +250,13 @@ export function ReviewingAsPanel({
               account.onSelectAccount(chosen.login, chosen.host)
             }
           />
+        )}
+        {/* One position for every state that offers it, so a disclosure opened
+            while `gh` is still being asked stays open once it answers. */}
+        {view.kind === "error" || view.kind === "failed" ? null : (
           <AccountDisclosure account={account} />
-        </div>
-      )}
+        )}
+      </div>
       {configuredAccountUnauthenticated ? (
         <Alert variant="destructive">
           <AlertTitle>Configured account not authenticated</AlertTitle>
@@ -265,9 +267,7 @@ export function ReviewingAsPanel({
           </AlertDescription>
         </Alert>
       ) : null}
-      {view.kind === "checking" ||
-      view.kind === "error" ||
-      view.kind === "failed" ? (
+      {view.kind === "error" || view.kind === "failed" ? (
         <ManualAccountFields account={account} />
       ) : null}
       <Button
@@ -338,6 +338,27 @@ export function AccountSelect({
         </SelectContent>
       </Select>
       {status === undefined ? null : <FieldSaveStatus status={status} />}
+    </Field>
+  );
+}
+
+/** The configured account, read-only while `gh` is asked, in the same row shape the account Select takes once it answers. */
+function CheckingAccount({
+  account,
+}: {
+  readonly account: AccountEditor;
+}): React.JSX.Element {
+  return (
+    <Field>
+      <FieldLabel>Account</FieldLabel>
+      <div className="flex h-8 w-full items-center justify-between gap-2 rounded-lg bg-muted px-2.5 text-sm text-muted-foreground">
+        <span className="truncate">
+          {account.ghAccount === ""
+            ? "Checking GitHub authentication…"
+            : `${account.ghAccount} · ${account.githubHost}`}
+        </span>
+        <Spinner aria-label="Checking GitHub authentication" />
+      </div>
     </Field>
   );
 }

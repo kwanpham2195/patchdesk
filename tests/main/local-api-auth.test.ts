@@ -418,6 +418,7 @@ describe("local API current Review capability boundary", () => {
       };
     const api = await start({
       storageManagement: {
+        list: async () => err({ _tag: "StorageUnavailable" }),
         clearCache: record("clearCache"),
         clearLocalData: record("clearLocalData"),
         sweepRetained: record("sweepRetained"),

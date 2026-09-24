@@ -8,7 +8,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "../components/ui/card";
 
 // Not `strictObject`: the redacted local-activity feed may gain fields over
@@ -85,7 +84,6 @@ export function ReviewActivityCard({
   return (
     <Card data-testid="review-activity-card">
       <CardHeader>
-        <CardTitle>Review activity</CardTitle>
         <CardDescription>
           Local activity for review and walkthrough runs. Prompts and provider
           output are never shown.

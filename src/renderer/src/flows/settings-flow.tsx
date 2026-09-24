@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import * as v from "valibot";
 import { requestJson } from "../api-client";
 import {
   DIFF_DARK_THEMES,
@@ -22,15 +23,12 @@ import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldSet,
-} from "../components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
+import { useApiProbe } from "../hooks/use-api-probe";
 import { NotificationsCard } from "./settings-notifications-card";
 import {
   Select,
@@ -71,6 +69,43 @@ type SettingsFlowProps = {
     profileId: string,
   ) => Promise<ProfileSwitchResult>;
 };
+
+type StorageRow = {
+  readonly title: string;
+  readonly description: string;
+  readonly bytes: number | undefined;
+  readonly action?: {
+    readonly label: string;
+    readonly testId?: string;
+    readonly onClick: () => void;
+  };
+};
+
+const storageUsageSchema = v.object({
+  cacheBytes: v.number(),
+  localReviewDataBytes: v.number(),
+  logsBytes: v.number(),
+});
+
+function parseStorageUsage(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the boundary parser for the usage response, handed the raw JSON body.
+  value: unknown,
+): v.InferOutput<typeof storageUsageSchema> | undefined {
+  const parsed = v.safeParse(storageUsageSchema, value);
+  return parsed.success ? parsed.output : undefined;
+}
+
+/** Decimal units, as Finder reports sizes: one decimal below 10, whole numbers above. */
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${value.toFixed(unit === 0 || value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
 
 /** Renders one focused Settings section inside the global Settings overlay. */
 export function SettingsFlow({
@@ -137,6 +172,14 @@ function DataSection({
   });
   const cleanupAvailable = dashboard?.profile.id !== undefined;
   const cleanupRequestId = useRef(0);
+  const [cleanupsCompleted, setCleanupsCompleted] = useState(0);
+  const usage = useApiProbe(
+    {
+      path: `/v1/storage/usage?profileId=${encodeURIComponent(dashboard?.profile.id ?? "")}`,
+      restartKey: cleanupsCompleted,
+    },
+    parseStorageUsage,
+  );
 
   const runCleanup = async (): Promise<void> => {
     const action = cleanup.action;
@@ -161,6 +204,7 @@ function DataSection({
         },
       );
       await onWorkspaceReload();
+      setCleanupsCompleted((count) => count + 1);
       if (cleanupRequestId.current !== requestId) return;
       setCleanup((current) =>
         current.requestId === requestId
@@ -181,11 +225,45 @@ function DataSection({
     }
   };
 
+  const choose = (action: "cache" | "local"): void => {
+    setCleanup((current) => ({
+      requestId: current.requestId,
+      action,
+      pending: false,
+    }));
+  };
+  const rows: ReadonlyArray<StorageRow> = [
+    {
+      title: "Cache",
+      description: "Rebuildable pull request checkouts. Saved reviews stay.",
+      bytes: usage.kind === "loaded" ? usage.value.cacheBytes : undefined,
+      action: { label: "Clear cache", onClick: () => choose("cache") },
+    },
+    {
+      title: "Local review data",
+      description:
+        "Completed and failed local reviews. An active review stays.",
+      bytes:
+        usage.kind === "loaded" ? usage.value.localReviewDataBytes : undefined,
+      action: {
+        label: "Clear local review data",
+        testId: "clear-local-data-button",
+        onClick: () => choose("local"),
+      },
+    },
+    {
+      title: "Logs",
+      description: "App activity shown in Diagnostics.",
+      bytes: usage.kind === "loaded" ? usage.value.logsBytes : undefined,
+    },
+  ];
+
   return (
     <>
       <Card data-testid="local-review-data-card">
         <CardHeader>
-          <CardTitle>Local review data</CardTitle>
+          <CardTitle>Storage</CardTitle>
+          <CardDescription>Space Patchdesk uses on this Mac.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {cleanupAvailable ? null : (
@@ -193,35 +271,38 @@ function DataSection({
               <AlertTitle>No active workspace</AlertTitle>
             </Alert>
           )}
-          <div className="flex flex-col gap-2">
-            <Button
-              variant="outline"
-              disabled={!cleanupAvailable}
-              onClick={() => {
-                setCleanup((current) => ({
-                  requestId: current.requestId,
-                  action: "cache",
-                  pending: false,
-                }));
-              }}
-            >
-              Clear cache
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!cleanupAvailable}
-              data-testid="clear-local-data-button"
-              onClick={() => {
-                setCleanup((current) => ({
-                  requestId: current.requestId,
-                  action: "local",
-                  pending: false,
-                }));
-              }}
-            >
-              Clear local review data
-            </Button>
-          </div>
+          <ul className="flex flex-col divide-y">
+            {rows.map((row) => (
+              <li
+                key={row.title}
+                className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <p className="font-medium">
+                    {row.title}
+                    {row.bytes === undefined ? null : (
+                      <span className="font-normal text-muted-foreground">
+                        {" "}
+                        · {formatBytes(row.bytes)}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-muted-foreground">{row.description}</p>
+                </div>
+                {row.action === undefined ? null : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!cleanupAvailable}
+                    data-testid={row.action.testId}
+                    onClick={row.action.onClick}
+                  >
+                    {row.action.label}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
           {cleanup.error === undefined ? null : (
             <Alert variant="destructive">
               <AlertTitle>Cleanup failed</AlertTitle>
@@ -269,42 +350,21 @@ function GeneralSection({
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <Field>
-              <FieldLabel className="text-sm font-medium" htmlFor="appearance">
-                Theme
-              </FieldLabel>
-              <Select
-                value={appearance}
-                items={[
-                  { label: "System", value: "system" },
-                  { label: "Light", value: "light" },
-                  { label: "Dark", value: "dark" },
-                ]}
-                onValueChange={(value) => {
-                  if (
-                    value === "system" ||
-                    value === "light" ||
-                    value === "dark"
-                  )
-                    onAppearanceChange(value);
-                }}
-              >
-                <SelectTrigger
-                  id="appearance"
-                  className="h-12"
-                  aria-label="Appearance"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="system">System</SelectItem>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
+            <SelectRow
+              id="appearance"
+              label="Theme"
+              name="Appearance"
+              value={appearance}
+              options={[
+                { label: "System", value: "system" },
+                { label: "Light", value: "light" },
+                { label: "Dark", value: "dark" },
+              ]}
+              onChange={(value) => {
+                if (value === "system" || value === "light" || value === "dark")
+                  onAppearanceChange(value);
+              }}
+            />
           </FieldGroup>
         </CardContent>
       </Card>
@@ -313,98 +373,87 @@ function GeneralSection({
           <CardTitle>Diff theme</CardTitle>
         </CardHeader>
         <CardContent>
-          <FieldSet>
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel
-                  className="text-sm font-medium"
-                  htmlFor="light-diff-theme"
-                >
-                  Light appearance
-                </FieldLabel>
-                <Select
-                  value={diffThemePreferences.light}
-                  items={DIFF_LIGHT_THEMES.map((theme) => ({
-                    label: theme.label,
-                    value: theme.id,
-                  }))}
-                  onValueChange={(value) => {
-                    if (
-                      value !== null &&
-                      DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
-                    )
-                      onDiffThemeChange({
-                        ...diffThemePreferences,
-                        light: value,
-                      });
-                  }}
-                >
-                  <SelectTrigger
-                    id="light-diff-theme"
-                    className="h-12"
-                    aria-label="Light diff theme"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {DIFF_LIGHT_THEMES.map((theme) => (
-                        <SelectItem key={theme.id} value={theme.id}>
-                          {theme.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel
-                  className="text-sm font-medium"
-                  htmlFor="dark-diff-theme"
-                >
-                  Dark appearance
-                </FieldLabel>
-                <Select
-                  value={diffThemePreferences.dark}
-                  items={DIFF_DARK_THEMES.map((theme) => ({
-                    label: theme.label,
-                    value: theme.id,
-                  }))}
-                  onValueChange={(value) => {
-                    if (
-                      value !== null &&
-                      DIFF_DARK_THEMES.some((theme) => theme.id === value)
-                    )
-                      onDiffThemeChange({
-                        ...diffThemePreferences,
-                        dark: value,
-                      });
-                  }}
-                >
-                  <SelectTrigger
-                    id="dark-diff-theme"
-                    className="h-12"
-                    aria-label="Dark diff theme"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {DIFF_DARK_THEMES.map((theme) => (
-                        <SelectItem key={theme.id} value={theme.id}>
-                          {theme.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-            </FieldGroup>
-          </FieldSet>
+          <FieldGroup>
+            <SelectRow
+              id="light-diff-theme"
+              label="Light appearance"
+              name="Light diff theme"
+              value={diffThemePreferences.light}
+              options={DIFF_LIGHT_THEMES.map((theme) => ({
+                label: theme.label,
+                value: theme.id,
+              }))}
+              onChange={(value) => {
+                if (DIFF_LIGHT_THEMES.some((theme) => theme.id === value))
+                  onDiffThemeChange({ ...diffThemePreferences, light: value });
+              }}
+            />
+            <SelectRow
+              id="dark-diff-theme"
+              label="Dark appearance"
+              name="Dark diff theme"
+              value={diffThemePreferences.dark}
+              options={DIFF_DARK_THEMES.map((theme) => ({
+                label: theme.label,
+                value: theme.id,
+              }))}
+              onChange={(value) => {
+                if (DIFF_DARK_THEMES.some((theme) => theme.id === value))
+                  onDiffThemeChange({ ...diffThemePreferences, dark: value });
+              }}
+            />
+          </FieldGroup>
         </CardContent>
       </Card>
       <NotificationsCard />
     </div>
+  );
+}
+
+/** One labelled General setting with its Select on the right, at the width every Settings select shares. */
+function SelectRow({
+  id,
+  label,
+  name,
+  value,
+  options,
+  onChange,
+}: {
+  readonly id: string;
+  readonly label: string;
+  /** The Select's accessible name, when it differs from the visible label. */
+  readonly name: string;
+  readonly value: string;
+  readonly options: ReadonlyArray<{
+    readonly label: string;
+    readonly value: string;
+  }>;
+  readonly onChange: (value: string) => void;
+}): React.JSX.Element {
+  return (
+    <Field orientation="horizontal">
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Select
+        value={value}
+        items={options}
+        onValueChange={(next) => {
+          if (next !== null) onChange(next);
+        }}
+      >
+        <SelectTrigger id={id} className="w-56" aria-label={name}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </Field>
   );
 }
 

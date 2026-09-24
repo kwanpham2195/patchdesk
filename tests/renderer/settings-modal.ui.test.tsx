@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -74,7 +80,7 @@ describe("SettingsModal", () => {
     renderModal(vi.fn());
 
     const enabled = await screen.findByRole("switch", {
-      name: "Notifications",
+      name: "Send notifications",
     });
     await waitFor(() =>
       expect(enabled.getAttribute("aria-checked")).toBe("true"),
@@ -155,6 +161,31 @@ describe("SettingsModal", () => {
       }),
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("shows what each clear frees and the log size, and measures again after a clear", async () => {
+    let usage = {
+      cacheBytes: 4_800_000,
+      localReviewDataBytes: 14_000_000,
+      logsBytes: 2_100_000,
+    };
+    installDesktopApi({ storageUsage: () => usage });
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    const storage = within(screen.getByTestId("local-review-data-card"));
+    expect(await storage.findByText("· 4.8 MB")).toBeTruthy();
+    expect(storage.getByText("· 14 MB")).toBeTruthy();
+    expect(storage.getByText("· 2.1 MB")).toBeTruthy();
+
+    usage = { ...usage, localReviewDataBytes: 0 };
+    await user.click(
+      screen.getByRole("button", { name: "Clear local review data" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Clear local data" }));
+
+    expect(await storage.findByText("· 0 B")).toBeTruthy();
   });
 
   it("targets the current initialSection on every open, not only the first", async () => {
@@ -352,9 +383,22 @@ function renderModal(
 function installDesktopApi(
   options: {
     readonly clearLocalDataFails?: boolean;
+    readonly storageUsage?: () => {
+      readonly cacheBytes: number;
+      readonly localReviewDataBytes: number;
+      readonly logsBytes: number;
+    };
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble({
+    "/v1/storage/usage": () =>
+      success(
+        options.storageUsage?.() ?? {
+          cacheBytes: 0,
+          localReviewDataBytes: 0,
+          logsBytes: 0,
+        },
+      ),
     "/v1/environment": () => success({}),
     // `lib/logger.ts` flushes the renderer log queue through the bridge.
     "/v1/logs": () => success({ entries: [] }),

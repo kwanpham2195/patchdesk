@@ -278,11 +278,11 @@ describe("Reviewing as panel", () => {
     );
   });
 
-  it("falls back to manual account/host fields directly when the environment check does not parse", () => {
+  it("falls back to manual account/host fields directly when the environment check does not parse", async () => {
     installDesktopApi(() => ({}));
     renderSettings();
 
-    expect(screen.getByLabelText("GitHub account")).toBeTruthy();
+    expect(await screen.findByLabelText("GitHub account")).toBeTruthy();
     expect(screen.getByLabelText("GitHub host")).toBeTruthy();
   });
 

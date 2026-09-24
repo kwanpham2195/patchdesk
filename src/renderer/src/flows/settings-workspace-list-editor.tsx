@@ -64,56 +64,58 @@ export function ProfileListEditor({
       {description === undefined ? null : (
         <FieldDescription>{description}</FieldDescription>
       )}
-      <div className="flex flex-col gap-2 rounded-lg border p-2">
-        {entries.map((entry, index) => (
-          <div key={entry.id} className="flex flex-col gap-1.5">
-            <div className="flex min-w-0 items-center gap-2">
-              <Input
-                aria-label={`${itemLabel} ${index + 1}`}
-                value={entry.value}
-                placeholder={placeholder}
-                onChange={(event) =>
-                  onChange(field, entry.id, event.target.value)
-                }
-                onBlur={() => onCommit(field)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") onCommit(field);
-                }}
-              />
-              {onChoose === undefined ? null : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onChoose(entry.id)}
-                >
-                  <FolderOpen data-icon="inline-start" />
-                  Choose folder
-                </Button>
-              )}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="outline"
-                      aria-label={`Remove ${singular} ${index + 1}`}
-                      onClick={() => onRemove(field, entry.id)}
-                    />
+      {entries.length === 0 ? null : (
+        <div className="flex flex-col gap-2 rounded-lg border p-2">
+          {entries.map((entry, index) => (
+            <div key={entry.id} className="flex flex-col gap-1.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <Input
+                  aria-label={`${itemLabel} ${index + 1}`}
+                  value={entry.value}
+                  placeholder={placeholder}
+                  onChange={(event) =>
+                    onChange(field, entry.id, event.target.value)
                   }
-                >
-                  <X />
-                </TooltipTrigger>
-                <TooltipContent>{`Remove ${singular}`}</TooltipContent>
-              </Tooltip>
+                  onBlur={() => onCommit(field)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") onCommit(field);
+                  }}
+                />
+                {onChoose === undefined ? null : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onChoose(entry.id)}
+                  >
+                    <FolderOpen data-icon="inline-start" />
+                    Choose folder
+                  </Button>
+                )}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label={`Remove ${singular} ${index + 1}`}
+                        onClick={() => onRemove(field, entry.id)}
+                      />
+                    }
+                  >
+                    <X />
+                  </TooltipTrigger>
+                  <TooltipContent>{`Remove ${singular}`}</TooltipContent>
+                </Tooltip>
+              </div>
+              {renderStatus === undefined || entry.value.trim() === ""
+                ? null
+                : renderStatus(entry.value)}
             </div>
-            {renderStatus === undefined || entry.value.trim() === ""
-              ? null
-              : renderStatus(entry.value)}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
       <FieldSaveStatus status={status} />
       <Button
         type="button"

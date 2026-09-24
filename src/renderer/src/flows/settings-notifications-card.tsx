@@ -52,7 +52,7 @@ export function NotificationsCard(): React.JSX.Element {
           >
             <FieldContent>
               <FieldLabel htmlFor="notifications-enabled">
-                Notifications
+                Send notifications
               </FieldLabel>
               <FieldDescription>
                 Insight completion and pending GitHub writes.
@@ -91,11 +91,9 @@ export function NotificationsCard(): React.JSX.Element {
             orientation="horizontal"
             data-disabled={settings === undefined || !settings.enabled}
           >
-            <FieldContent>
-              <FieldLabel htmlFor="notifications-watch-interval">
-                Check watched pull requests
-              </FieldLabel>
-            </FieldContent>
+            <FieldLabel htmlFor="notifications-watch-interval">
+              Check watched pull requests
+            </FieldLabel>
             <Select
               value={String(settings?.intervalMinutes ?? 3)}
               items={WATCH_INTERVAL_MINUTES.map((minutes) => ({
@@ -113,7 +111,7 @@ export function NotificationsCard(): React.JSX.Element {
             >
               <SelectTrigger
                 id="notifications-watch-interval"
-                className="w-40"
+                className="w-56"
                 aria-label="Watched pull request check interval"
               >
                 <SelectValue />
