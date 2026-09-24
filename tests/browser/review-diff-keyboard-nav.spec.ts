@@ -62,7 +62,7 @@ test("`.` and `,` jump between files, stopping (not wrapping) at either end", as
   }
 });
 
-test("the fixed panel header follows `.` keyboard file navigation, not just the last click", async ({
+test("the Browse tree highlight follows `.` keyboard file navigation, not just the last click", async ({
   page,
 }) => {
   const server = await serveRenderer();
@@ -81,20 +81,16 @@ test("the fixed panel header follows `.` keyboard file navigation, not just the 
     await diffViewport.focus();
     await expect(diffViewport).toBeFocused();
 
-    // This fixture's DiffWorkbench mount never sets `diffTitle`, so the
-    // fixed header falls through to activePath/selectedPath -- the exact
-    // path this regression covers. `selectFile` (the click path) is never
-    // invoked here, only the `.` keyboard jump, so a header still reading
-    // `selectedPath` would stay frozen on src/a.ts instead of following the
-    // jump to src/b.ts.
-    const header = page.locator("[data-diff-workbench-header-path]");
-    await expect(header).toHaveText("src/a.ts");
+    // Only the `.` keyboard jump runs here, never `selectFile`, so a tree
+    // highlight still reading `selectedPath` would stay frozen on src/a.ts.
+    const tree = page.locator("file-tree-container");
+    await expect(tree).toHaveAttribute("data-active-path", "src/a.ts");
 
     await page.keyboard.press(".");
     await expect
       .poll(() => headerOverlapsViewport(page, diffViewport, "src/b.ts"))
       .toBe(true);
-    await expect(header).toHaveText("src/b.ts");
+    await expect(tree).toHaveAttribute("data-active-path", "src/b.ts");
   } finally {
     await closeServer(server);
   }
@@ -109,7 +105,7 @@ test("`.` reaches a file living in the final viewport-height of content, which t
   // scroll far enough to bring that top to the viewport top. A selection
   // rule that only accepts `top <= scrollTop` can therefore never select
   // it, by keyboard jump or by scrolling to the very bottom; the file tree
-  // and panel header stay stuck on the previous file permanently. See
+  // highlight stays stuck on the previous file permanently. See
   // review-diff-active-file.ts for the fix (eligibility relaxes to plain
   // visibility for files that are unreachable by construction).
   const server = await serveRenderer();
@@ -121,11 +117,11 @@ test("`.` reaches a file living in the final viewport-height of content, which t
     await diffViewport.focus();
     await expect(diffViewport).toBeFocused();
 
-    const header = page.locator("[data-diff-workbench-header-path]");
-    await expect(header).toHaveText("src/a.ts");
+    const tree = page.locator("file-tree-container");
+    await expect(tree).toHaveAttribute("data-active-path", "src/a.ts");
 
     await page.keyboard.press(".");
-    await expect(header).toHaveText("src/b.ts");
+    await expect(tree).toHaveAttribute("data-active-path", "src/b.ts");
   } finally {
     await closeServer(server);
   }

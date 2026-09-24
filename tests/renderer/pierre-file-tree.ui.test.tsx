@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -106,5 +106,26 @@ describe("PierreFileTree", () => {
         '[data-item-path="src/b.ts"] [data-item-section="decoration"] > span',
       ),
     ).toBeNull();
+  });
+
+  it("titles the tree with the full path of the hovered row", () => {
+    const nested: PierreFileTreeItem = {
+      ...fileA,
+      path: "docs/product-description/review-workbench/analysis.md",
+    };
+    const { container } = render(
+      <PierreFileTree files={[nested, fileB]} onSelect={() => {}} />,
+    );
+    const tree = treeContainer(container);
+    const row = tree.shadowRoot?.querySelector(
+      '[data-item-path="docs/product-description/review-workbench/"]',
+    );
+    if (row == null) throw new Error("Expected the flattened folder row");
+
+    fireEvent.pointerOver(row, { composed: true });
+
+    expect(tree.getAttribute("title")).toBe(
+      "docs/product-description/review-workbench",
+    );
   });
 });

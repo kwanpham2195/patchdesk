@@ -45,6 +45,24 @@ export function escapeCssAttributeValue(value: string): string {
  */
 export const GIT_STATUS_LABEL_TREE_STYLE = `[data-item-git-status] > [data-item-section="content"] { color: var(--trees-fg); }`;
 
+/** In a PR diff every folder contains a change, so the library's folder dot carries nothing. */
+export const FOLDER_GIT_DOT_TREE_STYLE = `[data-item-contains-git-change="true"]:not([data-item-git-status]) > [data-item-section="git"] > * { display: none; }`;
+
+/**
+ * Keeps the last segment of a flattened folder row whole and shrinks the
+ * leading segments first, farthest from the end first.
+ *
+ * The library truncates every segment of `a / b / c` equally, which hides the
+ * folder name that the files below it belong to.
+ */
+export const FLATTENED_PATH_TREE_STYLE = [
+  `[data-item-flattened-subitems] { display: flex; min-width: 0; max-width: 100%; }`,
+  `[data-item-flattened-subitem] { min-width: 1.5ch; flex-shrink: 1; }`,
+  `[data-item-flattened-subitem]:nth-last-child(3) { flex-shrink: 10; }`,
+  `[data-item-flattened-subitem]:nth-last-child(n + 4) { flex-shrink: 100; }`,
+  `[data-item-flattened-subitem]:last-child { min-width: auto; flex-shrink: 0; }`,
+].join(" ");
+
 /**
  * Builds the shadow-root CSS rule that highlights the active file's row the
  * same way @pierre/trees highlights a selected row (same `--trees-selected-*`

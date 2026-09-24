@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Diff shows each file path once, in its file header; the "Review snapshot · GitHub writes require confirmation" line is gone. The toolbar shows a count such as **3 of 15 viewed** beside **Mark all viewed**, and the **All files** tooltip lists the file, change, and comment keys. In **Browse**, joined folder rows keep their last folder whole, every row shows its full path on hover, and folder rows no longer carry a change dot. #146
+
 - The Analysis **Needs attention** card and the verdict card now show progress as **X of Y handled**, counting Findings added to the review, published, or dismissed, in place of "N items need attention". An added Finding reads **Added** or **Published**; the "actionable" and "pending review" labels are gone. A dismissed Finding collapses to one line with its reason and expands on click or Enter, and **Regenerate** is a secondary button. #147
 
 - A pull request with no CI now reads **No checks** on the Review header, in the Pull requests **CI** column, and in the inspector, instead of **Unknown**. **Unknown** now means Patchdesk could not read the checks. #355

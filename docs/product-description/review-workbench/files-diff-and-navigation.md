@@ -41,13 +41,15 @@ The first resolvable file becomes active when no saved active file is valid. Res
 
 Scrolling, selecting a file, switching one Markdown file between Diff and Preview, changing navigator sections, resizing the navigator, changing the file display mode, changing any View option, marking a file Viewed, or selecting a commit changes local view state only. It does not write GitHub or change the Review revision. Preview mode belongs to that open Diff and is not saved as a preference.
 
-The diff toolbar holds, from left to right: the All files and Selected buttons, the Diff and Preview switch when the selected file can be previewed, the Scope picker, View options, the Context control, and Mark all viewed. These two buttons set the file display mode. All files draws every file of the displayed patch in one scrolling pane; Selected draws only the selected file, and stays disabled until a file is selected. The default is All files. The choice is saved per profile together with the View options, so the next Review opens the way the last one was left; a profile that last used Selected opens every Review in Selected.
+The diff toolbar holds, from left to right: the All files and Selected buttons, the Diff and Preview switch when the selected file can be previewed, the Scope picker, View options, the Context control, a count such as "3 of 15 viewed", and Mark all viewed. The All files and Selected buttons set the file display mode. All files draws every file of the displayed patch in one scrolling pane; Selected draws only the selected file, and stays disabled until a file is selected. The default is All files. The choice is saved per profile together with the View options, so the next Review opens the way the last one was left; a profile that last used Selected opens every Review in Selected.
 
-File, hunk, and unresolved-comment keyboard commands work only while All files is chosen, because the Selected pane holds one file and the next target may sit in a file that is not drawn. Pressing one in Selected moves nothing and says "Keyboard navigation works in All files."
+File, hunk, and unresolved-comment keyboard commands work only while All files is chosen, because the Selected pane holds one file and the next target may sit in a file that is not drawn. Pressing one in Selected moves nothing and says "Keyboard navigation works in All files." The All files tooltip lists the keys: `,` and `.` for the previous and next file, `[` and `]` for the previous and next change, and `{` and `}` for the previous and next comment.
+
+Each file's path appears once, in its sticky file header; the bar above the toolbar names only a selected commit. In Browse, a folder row that joins several folders, such as `docs / product-description / review-workbench`, keeps its last folder whole and shortens the leading folders first. Hovering any Browse row shows its full path. Folder rows carry no change marker, since every folder in a pull request diff holds a change; file rows keep their status letter.
 
 One View options control holds every way the diff is drawn: split view, wrapped lines, line numbers, and backgrounds. Each is a switch that states whether the option is on. A change applies to the diff at once and is saved per profile, so the next Review opens the way the last one was left.
 
-Each file header has a Viewed checkbox that collapses the file; Mark all viewed collapses every file and then reads Show all. Viewed state is local to the open Diff and is not saved.
+Each file header has a Viewed checkbox that collapses the file, and the toolbar count goes up by one; Mark all viewed collapses every file and then reads Show all. Viewed state is local to the open Diff and is not saved.
 
 ### Begin an action
 

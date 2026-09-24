@@ -31,15 +31,11 @@ function browsedPaths(): ReadonlyArray<string> {
   return [...tree].map((row) => row.getAttribute("data-item-path") ?? "");
 }
 
-/** What the pane header, the Browse tree and the diff pane each name. */
+/** What the Browse tree and the diff pane each name. */
 function namedFile() {
   const attribute = (selector: string, name: string): string | undefined =>
     document.querySelector(selector)?.getAttribute(name) ?? undefined;
   return {
-    header: attribute(
-      "[data-diff-workbench-header-path]",
-      "data-diff-workbench-header-path",
-    ),
     tree: attribute("[data-active-path]", "data-active-path"),
     pane:
       screen
@@ -143,7 +139,6 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     await openScopeMenu(user);
     await user.click(screen.getByRole("menuitemradio", { name: /Docs/ }));
     expect(namedFile()).toEqual({
-      header: "docs/guide.md",
       tree: "docs/guide.md",
       pane: "docs/guide.md",
     });
@@ -154,7 +149,6 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     await user.click(screen.getByRole("tab", { name: /^Threads/ }));
     await user.click(screen.getByRole("tab", { name: /^Browse/ }));
     expect(namedFile()).toEqual({
-      header: "docs/guide.md",
       tree: "docs/guide.md",
       pane: "docs/guide.md",
     });
@@ -164,7 +158,6 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
       screen.getByRole("menuitemradio", { name: "Clear scope" }),
     );
     expect(namedFile()).toEqual({
-      header: "docs/guide.md",
       tree: "docs/guide.md",
       pane: "docs/guide.md",
     });

@@ -17,7 +17,13 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ReviewDiffOptionsPopover } from "./review-diff-options-popover";
 import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
@@ -102,6 +108,30 @@ function ReviewDiffScopePicker({
   );
 }
 
+/** The diff navigation keys, which only act in All files mode. */
+const NAVIGATION_KEYS = [
+  { keys: [",", "."], label: "Previous / next file" },
+  { keys: ["[", "]"], label: "Previous / next change" },
+  { keys: ["{", "}"], label: "Previous / next comment" },
+] as const;
+
+function NavigationKeysTooltip(): React.JSX.Element {
+  return (
+    <TooltipContent className="flex-col items-stretch gap-1">
+      {NAVIGATION_KEYS.map(({ keys, label }) => (
+        <span key={label} className="flex items-center justify-between gap-3">
+          {label}
+          <span className="flex gap-1">
+            {keys.map((key) => (
+              <Kbd key={key}>{key}</Kbd>
+            ))}
+          </span>
+        </span>
+      ))}
+    </TooltipContent>
+  );
+}
+
 /** Drives the Diff/Preview switch for the file currently on screen. */
 export type MarkdownPreviewControl = {
   readonly path: string;
@@ -176,6 +206,11 @@ export function ReviewDiffToolbar({
   // A showing preview replaces the CodeView, so every control that describes
   // one is suppressed; the Scope picker stays because it also filters Browse.
   const previewing = markdownPreview?.active === true;
+  // Viewed and collapsed are one state; counting against `files` ignores paths a Scope filter hid.
+  const viewedCount = files.filter((file) =>
+    collapsedPaths.has(file.name),
+  ).length;
+  const allViewed = viewedCount === files.length && files.length > 0;
   return (
     <div
       data-review-diff-toolbar
@@ -186,14 +221,23 @@ export function ReviewDiffToolbar({
           <ButtonGroup
             className={`items-center ${virtualized ? "flex" : "hidden"}`}
           >
-            <Button
-              variant={preferences.fileMode === "all" ? "secondary" : "ghost"}
-              size="xs"
-              aria-pressed={preferences.fileMode === "all"}
-              onClick={() => onPreferencesChange({ fileMode: "all" })}
-            >
-              <Files /> All files
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={
+                      preferences.fileMode === "all" ? "secondary" : "ghost"
+                    }
+                    size="xs"
+                    aria-pressed={preferences.fileMode === "all"}
+                    onClick={() => onPreferencesChange({ fileMode: "all" })}
+                  />
+                }
+              >
+                <Files /> All files
+              </TooltipTrigger>
+              <NavigationKeysTooltip />
+            </Tooltip>
             <Button
               variant={
                 preferences.fileMode === "selected" ? "secondary" : "ghost"
@@ -236,22 +280,25 @@ export function ReviewDiffToolbar({
           </Button>
         )}
         {previewing ? null : (
+          <span
+            role="status"
+            className={cn(
+              "px-1 text-xs text-muted-foreground tabular-nums",
+              virtualized ? undefined : "hidden",
+            )}
+          >
+            {viewedCount} of {files.length} viewed
+          </span>
+        )}
+        {previewing ? null : (
           <Button
             className={virtualized ? undefined : "hidden"}
             variant="ghost"
             size="xs"
-            aria-pressed={
-              collapsedPaths.size === files.length && files.length > 0
-            }
-            onClick={() =>
-              onSetAllCollapsed(
-                !(collapsedPaths.size === files.length && files.length > 0),
-              )
-            }
+            aria-pressed={allViewed}
+            onClick={() => onSetAllCollapsed(!allViewed)}
           >
-            {collapsedPaths.size === files.length && files.length > 0
-              ? "Show all"
-              : "Mark all viewed"}
+            {allViewed ? "Show all" : "Mark all viewed"}
           </Button>
         )}
       </div>
