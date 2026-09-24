@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,7 +20,10 @@ import {
   parseReviewId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
-import { setAnalysisVerificationStep } from "../../src/domain/insight-record";
+import {
+  beginInsightRun,
+  setAnalysisVerificationStep,
+} from "../../src/domain/insight-record";
 
 const currentRecord = {
   schemaVersion: 2 as const,
@@ -255,5 +265,76 @@ describe("InsightStore Analysis Verification ticks", () => {
       _tag: "err",
       error: { reason: "invalid_stored_value" },
     });
+  });
+});
+
+describe("InsightStore mutate over a stored record it cannot use", () => {
+  let root: string | undefined;
+  afterEach(async () => {
+    if (root !== undefined) await rm(root, { recursive: true, force: true });
+    root = undefined;
+  });
+  const profile = parseWorkspaceProfileId("acme");
+  const review = parseReviewId(currentRecord.reviewId);
+  const at = parseIsoTimestamp("2026-08-01T00:02:00.000Z");
+  if (profile._tag === "err" || review._tag === "err" || at._tag === "err")
+    throw new Error("invalid fixture ids");
+  const parsed = parseInsightRecord(currentRecord);
+  if (parsed._tag === "err" || parsed.value.retained === undefined)
+    throw new Error("invalid fixture record");
+  const { runId, revision } = parsed.value.retained;
+  const startRun = (store: InsightStore) =>
+    store.mutate({
+      profileId: profile.value,
+      reviewId: review.value,
+      type: "walkthrough",
+      now: at.value,
+      operation: (record) =>
+        beginInsightRun(record, {
+          id: runId,
+          revision,
+          provider: "pi",
+          model: "model",
+          reasoning: "medium",
+          startedAt: at.value,
+        }),
+    });
+
+  it.each([
+    ["unparseable JSON", "{"],
+    ["a value that fails the schema", JSON.stringify({ schemaVersion: 1 })],
+  ])("overwrites and heals a record holding %s", async (_label, contents) => {
+    root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
+    const paths = PatchdeskPaths.forTest(root);
+    const store = new InsightStore(paths);
+    const file = paths.insightFile(profile.value, review.value, "walkthrough");
+    await mkdir(join(file, ".."), { recursive: true });
+    await writeFile(file, contents, "utf8");
+
+    expect(await startRun(store)).toMatchObject({
+      _tag: "ok",
+      value: { activeRun: { id: runId, status: "queued" } },
+    });
+    expect(
+      await store.load(profile.value, review.value, "walkthrough"),
+    ).toMatchObject({
+      _tag: "ok",
+      value: { activeRun: { id: runId, status: "queued" } },
+    });
+  });
+
+  it("fails closed without writing when the record cannot be read", async () => {
+    root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
+    const paths = PatchdeskPaths.forTest(root);
+    const store = new InsightStore(paths);
+    const file = paths.insightFile(profile.value, review.value, "walkthrough");
+    // A directory at the record path makes the read an I/O error rather than an absent file.
+    await mkdir(file, { recursive: true });
+
+    expect(await startRun(store)).toMatchObject({
+      _tag: "err",
+      error: { reason: "io" },
+    });
+    expect(await readdir(file)).toEqual([]);
   });
 });

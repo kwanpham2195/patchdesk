@@ -238,10 +238,13 @@ export class InsightStore {
         input.reviewId,
         input.type,
       );
+      // ADR 0019: an invalid record reads as absent so this write overwrites and heals it; I/O failures still fail closed.
       const current =
         loaded._tag === "ok"
           ? loaded.value
-          : loaded.error.reason === "not_found"
+          : loaded.error.reason === "not_found" ||
+              loaded.error.reason === "invalid_json" ||
+              loaded.error.reason === "invalid_stored_value"
             ? {
                 schemaVersion: 2 as const,
                 reviewId: input.reviewId,
