@@ -889,6 +889,38 @@ describe("ReviewPreparationJournal", () => {
     await expect(access(subject.journalFile)).rejects.toThrow();
   });
 
+  it("recover() locks and asks the store with the ids parsed from an on-disk committing journal", async () => {
+    const subject = await fixture();
+    await writePersistedJournal(subject.journalFile, {
+      profileId: subject.profileId,
+      sessionId: subject.sessionId,
+      targets: [],
+      state: "committing",
+    });
+    const gate = new InstrumentedGate();
+    const loads: Array<readonly [string, string]> = [];
+    const persisted = persistedSession(subject);
+    const sessions: SessionLoader = {
+      load: async (profileId, sessionId) => {
+        loads.push([profileId, sessionId]);
+        return ok(persisted);
+      },
+    };
+
+    await expect(
+      ReviewPreparationJournal.recover(
+        subject.paths,
+        worktrees(subject.paths),
+        sessions,
+        gate,
+      ),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
+
+    expect(gate.calls).toEqual([subject.profileId]);
+    expect(loads).toEqual([[subject.profileId, subject.sessionId]]);
+    await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
   it("recover() takes the profile lock before deleting an unreadable journal, when given a gate", async () => {
     const subject = await fixture();
     await mkdir(subject.sessionDirectory, { recursive: true });

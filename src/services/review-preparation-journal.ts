@@ -71,8 +71,8 @@ type ValidatedDeletionSet = {
  */
 type JournalContent = {
   readonly schemaVersion: 1;
-  readonly profileId: string;
-  readonly sessionId: string;
+  readonly profileId: WorkspaceProfileId;
+  readonly sessionId: ReviewSessionId;
   readonly state: "preparing" | "committing";
   readonly targets: ReadonlyArray<string>;
   readonly worktree?: JournalWorktree;
@@ -116,14 +116,17 @@ function toJournalWorktree(
     : { path: worktree.path, repositoryPath: worktree.repositoryPath };
 }
 
-/** Project a schema-validated journal payload onto the narrower `JournalContent` shape. */
+/** Project a schema-validated journal payload onto `JournalContent`; undefined when either id fails to parse. */
 function toJournalContent(
   parsed: v.InferOutput<typeof journalContentSchema>,
-): JournalContent {
+): JournalContent | undefined {
+  const profileId = parseWorkspaceProfileId(parsed.profileId);
+  const sessionId = parseReviewSessionId(parsed.sessionId);
+  if (profileId._tag === "err" || sessionId._tag === "err") return undefined;
   return {
     schemaVersion: 1,
-    profileId: parsed.profileId,
-    sessionId: parsed.sessionId,
+    profileId: profileId.value,
+    sessionId: sessionId.value,
     state: parsed.state,
     targets: parsed.targets,
     ...definedProps({ worktree: toJournalWorktree(parsed.worktree) }),
@@ -176,18 +179,11 @@ export class ReviewPreparationJournal {
   }
 
   get profileId(): WorkspaceProfileId {
-    // SAFETY: `this.content.profileId` is set once, here in `begin()`, directly
-    // from its typed `profileId: WorkspaceProfileId` parameter, and never
-    // reassigned afterward. `recover()` builds journals from unvalidated file
-    // content with plain-string ids, but those instances stay private to
-    // `recoverOne` and never reach a caller of this getter.
-    return this.content.profileId as WorkspaceProfileId;
+    return this.content.profileId;
   }
 
   get sessionId(): ReviewSessionId {
-    // SAFETY: mirrors `profileId` above — set once in `begin()` from a typed
-    // `sessionId: ReviewSessionId` parameter and never reassigned.
-    return this.content.sessionId as ReviewSessionId;
+    return this.content.sessionId;
   }
 
   /** Read the active operation for one session without exposing journal paths. */
@@ -214,10 +210,7 @@ export class ReviewPreparationJournal {
         : err({ _tag: "PreparationJournalFailed" });
     }
     const parsed = v.safeParse(journalContentSchema, stored.value);
-    const content = parsed.success
-      ? toJournalContent(parsed.output)
-      : undefined;
-    if (content === undefined) {
+    if (!parsed.success) {
       await recordJournalDiagnostic(
         diagnostics,
         profileId,
@@ -226,20 +219,17 @@ export class ReviewPreparationJournal {
       );
       return err({ _tag: "PreparationJournalFailed" });
     }
-    const parsedProfile = parseWorkspaceProfileId(content.profileId);
-    const parsedSession = parseReviewSessionId(content.sessionId);
-    if (parsedProfile._tag === "err" || parsedSession._tag === "err") {
-      return err({ _tag: "PreparationJournalFailed" });
-    }
+    const content = toJournalContent(parsed.output);
     if (
-      parsedProfile.value !== profileId ||
-      parsedSession.value !== sessionId
+      content === undefined ||
+      content.profileId !== profileId ||
+      content.sessionId !== sessionId
     ) {
       return err({ _tag: "PreparationJournalFailed" });
     }
     return ok({
-      profileId: parsedProfile.value,
-      sessionId: parsedSession.value,
+      profileId: content.profileId,
+      sessionId: content.sessionId,
       phase: content.state,
     });
   }
@@ -502,10 +492,7 @@ export class ReviewPreparationJournal {
       stored._tag === "ok"
         ? v.safeParse(journalContentSchema, stored.value)
         : undefined;
-    const content = parsed?.success
-      ? toJournalContent(parsed.output)
-      : undefined;
-    if (content === undefined) {
+    if (parsed === undefined || !parsed.success) {
       if (filePresent) {
         // Derive the profile id from the path itself — the file's own
         // content is exactly what could not be parsed — so this delete can
@@ -530,6 +517,9 @@ export class ReviewPreparationJournal {
       );
       return { recovered: 0, failed: 1 };
     }
+    const content = toJournalContent(parsed.output);
+    // Ids that do not parse cannot name a safe deletion set, so the journal stays for the next sweep.
+    if (content === undefined) return { recovered: 0, failed: 1 };
     const journal = new ReviewPreparationJournal(paths, filePath, content);
     const process = async (): Promise<boolean> => {
       const deletion = await journal.validatedDeletionSet();
@@ -559,21 +549,15 @@ export class ReviewPreparationJournal {
       const cleaned = await journal.cleanup(worktrees);
       return cleaned._tag === "ok";
     };
-    const profileId = parseWorkspaceProfileId(content.profileId);
     const success =
-      lifecycleGate !== undefined && profileId._tag === "ok"
-        ? await lifecycleGate.withProfileLock(profileId.value, process)
+      lifecycleGate !== undefined
+        ? await lifecycleGate.withProfileLock(content.profileId, process)
         : await process();
     if (!success) {
-      const parsedSessionId = parseReviewSessionId(content.sessionId);
-      if (
-        diagnostics !== undefined &&
-        profileId._tag === "ok" &&
-        parsedSessionId._tag === "ok"
-      ) {
+      if (diagnostics !== undefined) {
         await diagnostics.record({
-          profileId: profileId.value,
-          sessionId: parsedSessionId.value,
+          profileId: content.profileId,
+          sessionId: content.sessionId,
           category: "preparation",
           phase: "journal-recovery",
           retryable: true,
@@ -656,19 +640,9 @@ export class ReviewPreparationJournal {
   private async validatedDeletionSet(): Promise<
     ValidatedDeletionSet | undefined
   > {
-    const profileId = parseWorkspaceProfileId(this.content.profileId);
-    const sessionId = parseReviewSessionId(this.content.sessionId);
-    if (profileId._tag === "err" || sessionId._tag === "err") return undefined;
-
-    const sessionDirectory = this.paths.sessionDirectory(
-      profileId.value,
-      sessionId.value,
-    );
-    const expectedJournalFile = journalFile(
-      this.paths,
-      profileId.value,
-      sessionId.value,
-    );
+    const { profileId, sessionId } = this.content;
+    const sessionDirectory = this.paths.sessionDirectory(profileId, sessionId);
+    const expectedJournalFile = journalFile(this.paths, profileId, sessionId);
     if (this.filePath !== expectedJournalFile) return undefined;
 
     if (
@@ -683,10 +657,10 @@ export class ReviewPreparationJournal {
       return undefined;
 
     const allowedTargets = new Set([
-      this.paths.patchFile(profileId.value, sessionId.value),
-      this.paths.preparedContextFile(profileId.value, sessionId.value),
-      this.paths.preparedReviewInputFile(profileId.value, sessionId.value),
-      this.paths.preparedDebugFile(profileId.value, sessionId.value),
+      this.paths.patchFile(profileId, sessionId),
+      this.paths.preparedContextFile(profileId, sessionId),
+      this.paths.preparedReviewInputFile(profileId, sessionId),
+      this.paths.preparedDebugFile(profileId, sessionId),
     ]);
     for (const target of this.content.targets) {
       if (
@@ -699,7 +673,7 @@ export class ReviewPreparationJournal {
     if (
       this.content.worktree !== undefined &&
       (this.content.worktree.path !==
-        this.paths.worktreeDirectory(profileId.value, sessionId.value) ||
+        this.paths.worktreeDirectory(profileId, sessionId) ||
         !(await isSafeOwnedPath(
           this.paths.cacheDirectory(),
           this.content.worktree.path,
@@ -708,8 +682,8 @@ export class ReviewPreparationJournal {
       return undefined;
     }
     return {
-      profileId: profileId.value,
-      sessionId: sessionId.value,
+      profileId,
+      sessionId,
       journalFile: expectedJournalFile,
       targets: this.content.targets,
       ...definedProps({ worktree: this.content.worktree }),
