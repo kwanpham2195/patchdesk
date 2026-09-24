@@ -24,7 +24,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="MIT license"></a>
 </p>
 
-![Patchdesk Insights overview with Brief, Walkthrough, and Analysis](docs/assets/insights-overview.png)
+![Patchdesk Insights with Brief, Walkthrough, and Analysis](docs/assets/insights.png)
 
 <p align="center"><em>Start with the shape of the change, follow its implementation, then review the evidence.</em></p>
 
