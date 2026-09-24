@@ -270,25 +270,28 @@ describe("AnalysisReader", () => {
     expect(screen.queryByRole("button", { name: /Files/i })).toBeNull();
   });
 
-  it("shows receipt-derived pending and published states without another add action", () => {
-    const { rerender } = render(
-      <AnalysisReader
-        result={result}
-        findingStatuses={{ "finding-1": "pending_review" }}
-      />,
-    );
-    expect(screen.getByText("Added")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
+  it.each([
+    { state: "pending_review", label: "Added" },
+    { state: "published", label: "Published" },
+  ] as const)(
+    "offers neither Add nor Dismiss on a $label Finding",
+    ({ state, label }) => {
+      render(
+        <AnalysisReader
+          result={result}
+          findingStatuses={{ "finding-1": state }}
+          onAddFinding={vi.fn(async () => undefined)}
+          onDismissFinding={vi.fn(async () => undefined)}
+        />,
+      );
 
-    rerender(
-      <AnalysisReader
-        result={result}
-        findingStatuses={{ "finding-1": "published" }}
-      />,
-    );
-    expect(screen.getByText("Published")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
-  });
+      expect(screen.getByText(label)).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: "Add to review" }),
+      ).toBeNull();
+      expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    },
+  );
 
   it("marks only the Finding whose published thread waits on the viewer's reply", () => {
     const { rerender } = render(

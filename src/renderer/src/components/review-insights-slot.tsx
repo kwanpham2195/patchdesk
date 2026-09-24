@@ -307,7 +307,6 @@ export function InsightsSlot({
       openRunDialog("run", "walkthrough");
     },
     runEnabled,
-    ...definedProps({ runDisabledReasonId }),
   });
   const walkthroughFocusActive =
     selectedInsight === "walkthrough" && walkthroughFocused;
@@ -386,6 +385,8 @@ export function InsightsSlot({
                     )}
                   </Button>
                 ) : analysisFirstRunActive ||
+                  // A merged or closed Review keeps only the reason line below.
+                  runDisabledReasonId !== undefined ||
                   selectedIsOutdated ||
                   selectedProjection?.status === "failed" ||
                   selectedProjection?.retained === undefined ? null : (
@@ -394,7 +395,6 @@ export function InsightsSlot({
                     variant="secondary"
                     onClick={() => openRunDialog("regenerate")}
                     disabled={!runEnabled}
-                    aria-describedby={runDisabledReasonId}
                   >
                     Regenerate
                   </Button>

@@ -129,16 +129,15 @@ export function BriefReader({
   scope,
   onRegenerate,
   regenerateDisabled = false,
-  regenerateDescribedBy,
   walkthroughStatus,
   onOpenWalkthrough,
 }: {
   readonly retained: RetainedBrief;
   /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
   readonly scope?: ChangeScope;
-  readonly onRegenerate: () => void;
+  /** Absent on a merged or closed Review, where no run can start. */
+  readonly onRegenerate?: () => void;
   readonly regenerateDisabled?: boolean;
-  readonly regenerateDescribedBy?: string;
   /** The workbench's Walkthrough status; decides whether the card offers to open one or to generate one. */
   readonly walkthroughStatus: BriefInsight["status"];
   readonly onOpenWalkthrough: () => void;
@@ -195,16 +194,17 @@ export function BriefReader({
               {briefCitationStatusLine(brief)}
             </ProvenanceRow>
           </dl>
-          <Button
-            size="sm"
-            variant="outline"
-            className="self-start"
-            onClick={onRegenerate}
-            disabled={regenerateDisabled}
-            aria-describedby={regenerateDescribedBy}
-          >
-            Regenerate
-          </Button>
+          {onRegenerate === undefined ? null : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start"
+              onClick={onRegenerate}
+              disabled={regenerateDisabled}
+            >
+              Regenerate
+            </Button>
+          )}
         </section>
       </div>
     </div>
