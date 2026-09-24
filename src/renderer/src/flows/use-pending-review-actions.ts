@@ -246,6 +246,7 @@ export function usePendingReviewActions({
           );
         }
         setFinishDialogError(undefined);
+        setGoneNotice(undefined);
         if (command._tag === "Submit" && projection.state === "none") {
           void observeConfirmedReviewWrite().catch(() => {
             // This read-only observer never retries the confirmed GitHub write.

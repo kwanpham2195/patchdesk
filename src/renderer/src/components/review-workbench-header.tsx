@@ -276,7 +276,11 @@ function PendingReviewNotice({
   const projection = pendingReview?.projection;
   // A Finish that found its pending review gone on GitHub reports it here,
   // since the Finish dialog closes with the review.
-  if (pendingReview?.goneNotice !== undefined)
+  // A later recovery or unavailable state outranks an earlier Finish outcome.
+  if (
+    pendingReview?.goneNotice !== undefined &&
+    (projection?.state === "none" || projection?.state === "pending")
+  )
     return (
       <div
         role="status"

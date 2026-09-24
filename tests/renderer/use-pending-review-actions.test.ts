@@ -332,6 +332,34 @@ describe("usePendingReviewActions commands", () => {
     expect(panelOf(result).goneNotice).toBeUndefined();
   });
 
+  it("clears the gone notice when a later pending-review command succeeds", async () => {
+    installPendingDouble({
+      commandFailure: () =>
+        failure(
+          { error: "pending_review_gone", pendingReview: { state: "none" } },
+          409,
+        ),
+      load: () => projection({ pendingReview: pending("none") as never }),
+    });
+    const { result } = renderPendingReview(
+      projection({ pendingReview: pending("pending") as never }),
+    );
+    await act(async () => {
+      await panelOf(result).onSubmit("COMMENT", "");
+    });
+    expect(panelOf(result).goneNotice).toBeDefined();
+    restore?.();
+    installPendingDouble({
+      command: () => ({ pendingReview: pending("pending") }),
+    });
+
+    await act(async () => {
+      await composerOf(result).onStartReview(anchor, "Next comment");
+    });
+
+    expect(panelOf(result).goneNotice).toBeUndefined();
+  });
+
   it("opens Finish without the error of an earlier failed Finish", async () => {
     installPendingDouble({
       commandFailure: () => failure({ error: "github_rejected" }, 422),

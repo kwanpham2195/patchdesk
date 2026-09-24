@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
-import { projection } from "./review-workbench-fixtures";
+import { pending, projection } from "./review-workbench-fixtures";
+import { ReviewWorkbenchHeader } from "../../src/renderer/src/components/review-workbench-header";
 import { revisionFreshnessLabel } from "../../src/renderer/src/rail-freshness";
 
 function mount(workbench: WorkbenchResponse): HTMLElement {
@@ -158,4 +159,58 @@ describe("ReviewWorkbenchHeader layout", () => {
     });
     expect(chip.textContent).toBe("Merge · Blocked · Draft +1");
   });
+});
+
+describe("ReviewWorkbenchHeader pending-review notice", () => {
+  function renderWithGoneNotice(
+    state: "none" | "pending" | "recovery_required" | "unavailable",
+  ) {
+    const model = projection({ pendingReview: pending(state) as never });
+    render(
+      <ReviewWorkbenchHeader
+        model={model}
+        actions={{
+          detectUpdates: async () => undefined,
+          refresh: async () => undefined,
+          // SAFETY: the header never loads a diff.
+          loadCommitDiff: async () => ({}) as never,
+          // SAFETY: the header never loads a diff.
+          loadSinceReviewDiff: async () => ({}) as never,
+          reportNavigationState: () => undefined,
+          pendingReview: {
+            projection: model.pendingReview,
+            busy: false,
+            finishDialogOpen: false,
+            onOpenFinishDialog: () => undefined,
+            onCloseFinishDialog: () => undefined,
+            onSubmit: async () => undefined,
+            onDiscard: async () => undefined,
+            onCheckGitHubAgain: async () => undefined,
+            goneNotice: "gone",
+          },
+        }}
+        title="Canonical workbench"
+        repository="acme/widgets"
+        checksLabel="Passing"
+        freshnessLabel="Up to date"
+        mergeStatus="Ready"
+        hasUpdates={false}
+        terminal={false}
+        externalPullRequest={undefined}
+        openOverview={() => undefined}
+        setSummaryDialogOpen={() => undefined}
+      />,
+    );
+  }
+
+  it.each(["recovery_required", "unavailable"] as const)(
+    "offers Check GitHub again over an earlier gone notice once the pending review is %s",
+    (state) => {
+      renderWithGoneNotice(state);
+
+      expect(
+        screen.getByRole("button", { name: "Check GitHub again" }),
+      ).toBeTruthy();
+    },
+  );
 });

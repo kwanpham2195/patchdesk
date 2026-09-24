@@ -815,11 +815,11 @@ export class ReviewObservationService {
 }
 
 /**
- * A pending thread cannot reappear once GitHub confirms the pending review that
- * held it is gone (deleted or submitted), so its receipt would otherwise
- * withhold every projection until the journal's age ceiling. A read of the
- * same pending review without the thread is ordinary read lag and settles
- * nothing.
+ * A pending thread cannot reappear once GitHub confirms the viewer has no
+ * pending review, or a pending review other than the recorded one that lacks
+ * the thread, so its receipt would otherwise withhold every projection until
+ * the journal's age ceiling. A failed read, or the recorded pending review
+ * read without the thread (read lag), settles nothing.
  */
 function pendingThreadGone(
   stored: PendingReviewState | undefined,
