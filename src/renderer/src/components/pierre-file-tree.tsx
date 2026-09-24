@@ -11,6 +11,8 @@ import {
 import {
   buildActivePathTreeStyle,
   escapeCssAttributeValue,
+  FLATTENED_PATH_TREE_STYLE,
+  FOLDER_GIT_DOT_TREE_STYLE,
   GIT_STATUS_LABEL_TREE_STYLE,
 } from "./pierre-file-tree-active-style";
 
@@ -91,6 +93,17 @@ function buildFindingToneTreeStyle(
     .join(" ");
 }
 
+/** The full path of the tree row under the pointer; folder paths drop their trailing slash. */
+function hoveredRowPath(event: React.PointerEvent<HTMLElement>) {
+  const row = event.nativeEvent
+    .composedPath()
+    .find(
+      (target): target is Element =>
+        target instanceof Element && target.hasAttribute("data-item-path"),
+    );
+  return row?.getAttribute("data-item-path")?.replace(/\/$/, "");
+}
+
 function PierreFileTreeModel({
   files,
   selectedPath,
@@ -99,6 +112,7 @@ function PierreFileTreeModel({
 }: PierreFileTreeProps): React.JSX.Element {
   const activePathStyleRef = useRef<HTMLStyleElement | null>(null);
   const findingToneStyleRef = useRef<HTMLStyleElement | null>(null);
+  const [hoveredPath, setHoveredPath] = useState<string | undefined>();
   const [appearance, setAppearance] = useState<"light" | "dark">(() =>
     document.documentElement.dataset.appearance === "light" ? "light" : "dark",
   );
@@ -118,7 +132,11 @@ function PierreFileTreeModel({
     search: files.length >= 500,
     // Carried as an option, not as our own shadow-root <style>, because the
     // library injects it before first paint and layers it above its own rules.
-    unsafeCSS: GIT_STATUS_LABEL_TREE_STYLE,
+    unsafeCSS: [
+      GIT_STATUS_LABEL_TREE_STYLE,
+      FOLDER_GIT_DOT_TREE_STYLE,
+      FLATTENED_PATH_TREE_STYLE,
+    ].join(" "),
     onSelectionChange: (paths) => {
       const path = paths[0];
       if (path !== undefined) onSelect(path);
@@ -197,6 +215,9 @@ function PierreFileTreeModel({
       aria-label="Changed files"
       data-active-path={activePath}
       data-theme={appearance}
+      // The library renders rows with no title, and a host title shows for anything inside its shadow root.
+      title={hoveredPath}
+      onPointerOver={(event) => setHoveredPath(hoveredRowPath(event))}
       style={
         // SAFETY: every "--trees-*-override" below is a custom property;
         // CSSProperties doesn't declare custom-property keys, but any

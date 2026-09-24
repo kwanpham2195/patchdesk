@@ -139,7 +139,31 @@ describe("diff workbench", () => {
     );
     expect(screen.queryByLabelText("Search changed files")).toBeNull();
     expect(screen.queryByRole("tab", { name: "Findings" })).toBeNull();
-    expect(screen.getByText("src/b.ts", { selector: "p" })).toBeTruthy();
+    expect(
+      screen
+        .getByRole("region", { name: "Review diff" })
+        .getAttribute("data-selected-path"),
+    ).toBe("src/b.ts");
+  });
+
+  it("counts a file marked viewed in the toolbar", async () => {
+    // File headers come from Pierre's CodeView, which needs the stub.
+    const restoreStyleSheet = stubPierreStyleSheet();
+    try {
+      const user = userEvent.setup({
+        pointerEventsCheck: PointerEventsCheckLevel.Never,
+      });
+      render(<DiffWorkbench patch={patch} />);
+      expect(screen.getByRole("status").textContent).toBe("0 of 2 viewed");
+
+      await user.click(
+        screen.getByRole("checkbox", { name: "Mark file src/a.ts as viewed" }),
+      );
+
+      expect(screen.getByRole("status").textContent).toBe("1 of 2 viewed");
+    } finally {
+      restoreStyleSheet();
+    }
   });
 
   it("keeps normal PR context out of the standalone diff surface", () => {

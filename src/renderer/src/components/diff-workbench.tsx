@@ -123,13 +123,6 @@ export function DiffWorkbench({
   const [activePath, setActivePath] = useState<string | undefined>(
     files[0]?.newPath,
   );
-  // Keyboard nav (`,` `.` `[` `]` `{` `}` in review-diff-view) moves
-  // activePath without changing selectedPath, so the fixed panel header
-  // must prefer activePath to stay in sync with the file on screen. Hoisted
-  // to a single value (rather than repeating the expression at both the
-  // test-hook attribute and the displayed text) so the two can never
-  // silently disagree.
-  const headerPath = diffTitle ?? activePath ?? selectedPath;
   const [previousMappedPath, setPreviousMappedPath] = useState<
     string | undefined
   >(undefined);
@@ -159,8 +152,7 @@ export function DiffWorkbench({
     [onPreferencesChange],
   );
   // Keyboard nav and scrolling move the file on screen without changing the
-  // selection, so the header's path and the pane's path are reported through
-  // this one callback.
+  // selection, so the tree highlight and the pane's path follow this callback.
   const reportActiveFile = useCallback(
     (path: string): void => {
       setActivePath(path);
@@ -223,18 +215,17 @@ export function DiffWorkbench({
           <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
             <div className="flex min-w-0 items-center gap-3">
               {leadingAction}
-              <div className="min-w-0">
-                <p
-                  className="truncate text-sm font-medium"
-                  data-diff-workbench-header-path={headerPath}
-                >
-                  {headerPath ?? "No file selected"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {diffSubtitle ??
-                    "Review snapshot · GitHub writes require confirmation"}
-                </p>
-              </div>
+              {/* Each file block's sticky header names its file, so only a commit title belongs here. */}
+              {diffTitle === undefined ? null : (
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{diffTitle}</p>
+                  {diffSubtitle === undefined ? null : (
+                    <p className="text-xs text-muted-foreground">
+                      {diffSubtitle}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex shrink-0 gap-2">
               {copyValue === undefined ? null : (
@@ -302,7 +293,7 @@ export function DiffWorkbench({
             onMarkdownPreviewChange={(active) => {
               if (selectedPath === undefined) return;
               setMarkdownPreview(selectedPath, active);
-              // In `all` file mode the header follows activePath, which
+              // In `all` file mode the tree highlight follows activePath, which
               // scrolling may have moved off the selection. The pane draws the
               // selected file, so the two have to be pulled back together.
               if (active) reportActiveFile(selectedPath);
