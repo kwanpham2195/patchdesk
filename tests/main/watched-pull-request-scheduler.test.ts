@@ -97,6 +97,9 @@ async function harness() {
   const logs: LogEntryInput[] = [];
   const coordinator = new ReviewOperationCoordinator();
   let notificationsOn = true;
+  let settingsRead: Promise<void> = Promise.resolve();
+  // Counted synchronously as a tick starts, before any storage or GitHub I/O.
+  let ticksStarted = 0;
   const service = new WatchedPullRequestService({
     profiles: { load: async () => ok(profile) },
     store,
@@ -111,12 +114,15 @@ async function harness() {
       watched: service,
       coordinator,
       intervalMinutes: 3,
-      settings: async () =>
-        ok({
+      settings: async () => {
+        ticksStarted += 1;
+        await settingsRead;
+        return ok({
           enabled: notificationsOn,
           preparationAndMerge: false,
           intervalMinutes: 3,
-        }),
+        } as const);
+      },
       enabled: true,
       logs: { write: (entry) => logs.push(entry) },
     });
@@ -137,8 +143,20 @@ async function harness() {
     setRemote: (next: FakeGitHubAdapterValues["watchedPullRequests"]) => {
       remote = next;
     },
+    ticksStarted: () => ticksStarted,
     turnNotificationsOff: () => {
       notificationsOn = false;
+    },
+    /** Holds the next tick in flight until the returned release is called. */
+    holdNextTick: () => {
+      let release = (): void => undefined;
+      settingsRead = new Promise((resolve) => {
+        release = () => {
+          settingsRead = Promise.resolve();
+          resolve();
+        };
+      });
+      return () => release();
     },
   };
 }
@@ -257,5 +275,41 @@ describe("watched pull request scheduler", () => {
       _tag: "ok",
       value: [],
     });
+  });
+
+  it("waits the new interval from the moment it changes", async () => {
+    const fixture = await harness();
+    const scheduler = fixture.start();
+    await fixture.ticks(1);
+    vi.advanceTimersByTime(2 * 60_000);
+    scheduler.reschedule(5);
+    // The old three-minute tick, one minute after the change, no longer fires.
+    vi.advanceTimersByTime(5 * 60_000 - 1);
+    expect(fixture.ticksStarted()).toBe(1);
+    vi.advanceTimersByTime(1);
+    expect(fixture.ticksStarted()).toBe(2);
+    await fixture.ticks(2);
+    await scheduler.stop();
+
+    expect(fixture.github.calls.readWatchedPullRequests).toHaveLength(2);
+  });
+
+  it("finishes a tick in flight once when the interval changes during it", async () => {
+    const fixture = await harness();
+    const release = fixture.holdNextTick();
+    const scheduler = fixture.start();
+    scheduler.reschedule(1);
+    // The new interval elapses while the first tick is still running.
+    vi.advanceTimersByTime(60_000);
+    expect(fixture.ticksStarted()).toBe(1);
+    release();
+    await fixture.ticks(1);
+    expect(fixture.github.calls.readWatchedPullRequests).toHaveLength(1);
+    vi.advanceTimersByTime(60_000);
+    expect(fixture.ticksStarted()).toBe(2);
+    await fixture.ticks(2);
+    await scheduler.stop();
+
+    expect(fixture.github.calls.readWatchedPullRequests).toHaveLength(2);
   });
 });

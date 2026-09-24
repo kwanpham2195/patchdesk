@@ -4,6 +4,13 @@
 > cheaper timer is still a timer" rejection and its "Notifying is GitHub's
 > job" consequence. Amends ADR 0044 with one event kind. ADR 0032's rule for
 > the Pull requests screen and the Review workbench is unchanged.
+>
+> **Update 2026-09-24 (issue #365).** Supersedes "the interval is read at
+> start, so a change applies at the next launch" under "When it runs". A saved
+> interval change now reschedules the next tick for one new interval after the
+> moment of change. A tick already running finishes and is not repeated. A save
+> that leaves the interval unchanged, such as turning notifications off or on,
+> does not move the next tick.
 
 A reviewer who requested changes waits for the author's fix, and an author
 waits for a decision or a CI result. Patchdesk refreshes only when asked (ADR
