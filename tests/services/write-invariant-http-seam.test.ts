@@ -114,6 +114,9 @@ function pendingReviewOverHttp(trace: Trace) {
     // pull request read is the fixture's own, as in `write-invariant-harness`.
     {
       getPullRequest: async () => ok(values.snapshot.pullRequest),
+      // Finish reads the pending review first; here it still exists.
+      resolveAuthenticatedAccount: async () => ok({ account: "fixture" }),
+      getViewerPendingReview: async () => ok(pendingOwner()),
       submitPendingReview: github.submitPendingReview.bind(github),
       addPendingReviewThread: github.addPendingReviewThread.bind(github),
     } as never,

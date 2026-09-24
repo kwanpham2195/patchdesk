@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed **Finish review** locking the Review when its pending review had been deleted on GitHub. Submit review now checks GitHub first; when the pending review is gone it sends nothing, returns the added Findings to **Add to review**, and says the pending review no longer exists. #419
+
 - Fixed Analysis Findings staying **Added**, with **Finish review** still shown, after their pending review was deleted on GitHub. Refresh now returns those Findings to **Add to review** and the header to **Start a review** once GitHub confirms the pending review is gone; a failed or incomplete GitHub read changes nothing. #419
 
 - Fixed **Add all to review** continuing after the Review changed mid-batch. When the session, reviewed head, patch, or Analysis run changes, the batch stops, the Finding being written is not counted as added, nothing after it is written, and the Findings card reads "Review changed: added 1 of 3" beside the button. #418

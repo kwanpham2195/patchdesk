@@ -6,6 +6,7 @@ import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
 import {
   ReviewPreconditionError,
   contextualMessage,
+  isApiErrorCode,
   isOutcomeUnknownRetry,
   requestJson,
   untrustedWriteResponseError,
@@ -250,6 +251,8 @@ export function usePendingReviewActions({
           }
         }
       } catch (cause) {
+        if (isApiErrorCode(cause, "pending_review_gone"))
+          applyPendingReviewProjection(cause.responseBody);
         if (isOutcomeUnknownRetry(cause)) {
           const projected = applyPendingReviewProjection(cause.responseBody);
           if (projected === undefined && !recoveryRequired) {
@@ -280,6 +283,20 @@ export function usePendingReviewActions({
     ],
   );
 
+  const reloadWorkbench = useCallback(async (): Promise<void> => {
+    const loaded = await requestJson("/v1/reviews/load", {
+      method: "POST",
+      body: {
+        profileId: workbench.session.key.profileId,
+        reviewId: workbench.review.id,
+      },
+    });
+    const next = parseWorkbenchResponse(loaded);
+    if (next === undefined)
+      throw untrustedWriteResponseError("invalid-review-load-response");
+    onWorkbenchReplace(next);
+  }, [onWorkbenchReplace, workbench]);
+
   const checkGitHubAgain = useCallback(async (): Promise<void> => {
     setPendingReviewBusy(true);
     setFinishDialogError(undefined);
@@ -297,17 +314,7 @@ export function usePendingReviewActions({
           "Patchdesk found the pending review, but it cannot identify the exact Finding comment. Inspect or discard the pending review on GitHub, then check again.",
         );
       } else {
-        const loaded = await requestJson("/v1/reviews/load", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-          },
-        });
-        const next = parseWorkbenchResponse(loaded);
-        if (next === undefined)
-          throw untrustedWriteResponseError("invalid-review-load-response");
-        onWorkbenchReplace(next);
+        await reloadWorkbench();
         setFinishDialogError(undefined);
       }
     } catch (cause) {
@@ -317,7 +324,7 @@ export function usePendingReviewActions({
     } finally {
       setPendingReviewBusy(false);
     }
-  }, [applyPendingReviewProjection, onWorkbenchReplace, workbench]);
+  }, [applyPendingReviewProjection, reloadWorkbench, workbench]);
 
   const onOpenFinishDialog = useCallback((): void => {
     setFinishDialogInitialSummary(undefined);
@@ -372,6 +379,14 @@ export function usePendingReviewActions({
         setFinishDialogOpen(false);
       } catch (cause) {
         setFinishDialogError(contextualMessage(cause, FINISH_REVIEW_MESSAGES));
+        if (isApiErrorCode(cause, "pending_review_gone")) {
+          // The main process already released the gone review's Findings;
+          // reload so the header and Analysis show what GitHub holds.
+          setFinishDialogOpen(false);
+          await reloadWorkbench().catch(() => {
+            // The stored projection in the failure body already hid Finish.
+          });
+        }
       }
     },
     onDiscard: async (): Promise<void> => {

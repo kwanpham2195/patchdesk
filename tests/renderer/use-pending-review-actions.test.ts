@@ -253,6 +253,31 @@ describe("usePendingReviewActions commands", () => {
     expect(appendRecentWrites).not.toHaveBeenCalled();
   });
 
+  it("closes Finish and reloads the Review when GitHub no longer has its pending review", async () => {
+    const reloaded = projection({ pendingReview: pending("none") as never });
+    installPendingDouble({
+      commandFailure: () =>
+        failure(
+          { error: "pending_review_gone", pendingReview: { state: "none" } },
+          409,
+        ),
+      load: () => reloaded,
+    });
+    const { result, patch, replace } = renderPendingReview(
+      projection({ pendingReview: pending("pending") as never }),
+    );
+    act(() => panelOf(result).onOpenFinishDialog());
+
+    await act(async () => {
+      await panelOf(result).onSubmit("COMMENT", "");
+    });
+
+    expect(patch).toHaveBeenCalledWith({ pendingReview: { state: "none" } });
+    expect(replace).toHaveBeenCalledWith(reloaded);
+    expect(panelOf(result).finishDialogOpen).toBe(false);
+    expect(panelOf(result).recoveryError).toBeDefined();
+  });
+
   it("refuses a command without a verifiable diff and sends nothing", async () => {
     const request = installPendingDouble({});
     const current = projection({ pendingReview: pending("none") as never });

@@ -158,6 +158,15 @@ function session(
     ? withPendingReview
     : { ...withPendingReview, findingReviewReceipts };
 }
+/** Finish reads the pending review before submitting; this one still exists. */
+function stillPendingOnGitHub() {
+  return {
+    getViewerPendingReview: vi.fn(async () =>
+      ok({ _tag: "Pending", review: pending() }),
+    ),
+  };
+}
+
 function fixture(
   state?: PendingReviewState,
   // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- each test overrides a differently-shaped github mock method (varying Result payloads); there is no single concrete value type across every possible override.
@@ -734,7 +743,10 @@ describe("PendingReviewService", () => {
 
   it("submits and discards only after intent and durable None receipts", async () => {
     for (const command of ["submit", "discard"] as const) {
-      const value = fixture({ _tag: "Pending", review: pending() });
+      const value = fixture(
+        { _tag: "Pending", review: pending() },
+        stillPendingOnGitHub(),
+      );
       const result =
         command === "submit"
           ? value.service.submit({
@@ -768,6 +780,7 @@ describe("PendingReviewService", () => {
     const value = fixture(
       { _tag: "Pending", review: pending() },
       {
+        ...stillPendingOnGitHub(),
         submitPendingReview: vi.fn(async () =>
           err({ category: "unavailable" }),
         ),
@@ -793,7 +806,10 @@ describe("PendingReviewService", () => {
   it("posts one recovery event when a refused submit cannot save its rejection", async () => {
     const value = fixture(
       { _tag: "Pending", review: pending() },
-      { submitPendingReview: vi.fn(async () => err({ category: "rejected" })) },
+      {
+        ...stillPendingOnGitHub(),
+        submitPendingReview: vi.fn(async () => err({ category: "rejected" })),
+      },
     );
     const persistIntent = value.store.save.getMockImplementation();
     if (persistIntent === undefined) throw new Error("fixture save missing");

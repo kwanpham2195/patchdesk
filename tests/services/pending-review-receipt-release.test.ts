@@ -11,6 +11,7 @@ import { ReviewSessionStore } from "../../src/adapters/storage/review-session-st
 import { projectAnalysisReviewActions } from "../../src/domain/analysis-review-actions";
 import type { GitHubComments } from "../../src/domain/github-context";
 import {
+  createPendingReviewRequestId,
   parseContentHash,
   parseFindingId,
   parseGitHubLogin,
@@ -129,30 +130,33 @@ async function pendingReviewFixture(
     | { readonly read: PendingReviewRead }
     | { readonly failure: GitHubReadFailure },
   coordinator = new ReviewOperationCoordinator(),
+  initial: ReviewSession = addedSession,
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-receipt-release-"));
   roots.push(root);
   const sessions = new ReviewSessionStore(PatchdeskPaths.forTest(root));
-  must(await sessions.save(addedSession));
+  must(await sessions.save(initial));
   const github = new FakeGitHubAdapter({
     authenticatedAccount: { host: "github.com", account: "fixture" },
     viewerPendingReview:
       "read" in viewerRead
         ? { account: viewer, read: viewerRead.read }
         : viewerRead,
+    pullRequest: values.snapshot.pullRequest,
+    comments: noThreads,
+    pendingReviewSubmission: { reviewId: "9002" },
   });
   const logs: LogEntryInput[] = [];
+  const current = async () => ({
+    profile,
+    review,
+    session: must(await sessions.load(profileId, initial.id)),
+  });
   const service = new PendingReviewService(
     {
-      requireFresh: async () => {
-        throw new Error("reconcile never takes the write gate");
-      },
-      requireCurrentSession: async () =>
-        ok({
-          profile,
-          review,
-          session: must(await sessions.load(profileId, addedSession.id)),
-        }),
+      // SAFETY: Finish reads only the profile and session of a fresh Review.
+      requireFresh: async () => ok((await current()) as never),
+      requireCurrentSession: async () => ok(await current()),
     },
     sessions,
     github,
@@ -163,8 +167,8 @@ async function pendingReviewFixture(
     { write: (entry) => logs.push(entry) },
   );
   const stored = async (): Promise<ReviewSession> =>
-    must(await sessions.load(profileId, addedSession.id));
-  return { service, stored, logs };
+    must(await sessions.load(profileId, initial.id));
+  return { service, stored, logs, github };
 }
 
 /** What the workbench shows for the Finding and the Analysis Finish review action. */
@@ -379,5 +383,104 @@ describe("Refresh releases Finding receipts of a pending review deleted on GitHu
     coordinator.release(key);
     await expect(refreshed).resolves.toMatchObject({ _tag: "ok" });
     expect((await stored()).findingReviewReceipts).toBeUndefined();
+  });
+});
+
+describe("Refresh leaves receipts alone while a write is unsettled", () => {
+  it.each(["WriteInFlight", "OutcomeUnknown"] as const)(
+    "keeps the Finding Added while the stored state is %s",
+    async (tag) => {
+      const unsettled: ReviewSession = {
+        ...addedSession,
+        pendingReview: {
+          _tag: tag,
+          review: viewerPendingReview(recordedNodeId),
+          operation: {
+            _tag: "AddThread",
+            requestId: createPendingReviewRequestId(now),
+            reviewId: recordedNodeId,
+            body: "Another comment",
+            anchor: {
+              path: must(parseRepoRelativePath("src/b.ts")),
+              startLine: 2,
+              line: 2,
+              side: "new",
+            },
+          },
+          startedAt: now,
+        },
+      };
+      const { service, stored, logs } = await pendingReviewFixture(
+        { read: { _tag: "None" } },
+        new ReviewOperationCoordinator(),
+        unsettled,
+      );
+
+      await service.reconcileWithinReviewLock({
+        profileId,
+        reviewId: review.id,
+        evidence: { comments: noThreads },
+      });
+
+      expect((await stored()).findingReviewReceipts).toEqual([addedReceipt]);
+      expect(logs).toEqual([]);
+    },
+  );
+});
+
+describe("Finish review on a pending review deleted on GitHub (#419)", () => {
+  const finish = (service: PendingReviewService) =>
+    service.submit({
+      profileId,
+      reviewId: review.id,
+      expected: { sessionId: addedSession.id, headSha, patchHash },
+      event: "COMMENT",
+      summaryBody: "",
+    });
+
+  it("sends no write and releases the Finding when GitHub has no pending review", async () => {
+    const { service, stored, logs, github } = await pendingReviewFixture({
+      read: { _tag: "None" },
+    });
+
+    const result = await finish(service);
+
+    expect(result).toEqual({ _tag: "err", error: "pending_review_gone" });
+    expect(github.calls.submitPendingReview).toEqual([]);
+    const session = await stored();
+    expect(session.pendingReview).toEqual({ _tag: "None" });
+    expect(workbench(session, { _tag: "None" })).toEqual({
+      finding: { state: "actionable" },
+      analysisFinishReview: false,
+      header: "none",
+    });
+    expect(logs).toMatchObject([
+      { meta: { pendingReviewNodeIds: [recordedNodeId], cleared: 1 } },
+    ]);
+  });
+
+  it.each([
+    {
+      name: "the pending-review read fails",
+      viewerRead: {
+        failure: { _tag: "GitHubReadFailed", operation: "get_pending_review" },
+      } as const,
+    },
+    {
+      name: "the pending review still exists",
+      viewerRead: {
+        read: { _tag: "Pending", review: viewerPendingReview(recordedNodeId) },
+      } as const,
+    },
+  ])("submits as before when $name", async ({ viewerRead }) => {
+    const { service, stored, github } = await pendingReviewFixture(viewerRead);
+
+    const result = await finish(service);
+
+    expect(result).toMatchObject({ _tag: "ok" });
+    expect(github.calls.submitPendingReview).toMatchObject([
+      { reviewId: "9001", event: "COMMENT" },
+    ]);
+    expect((await stored()).pendingReview).toEqual({ _tag: "None" });
   });
 });

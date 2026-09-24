@@ -50,7 +50,7 @@ import type {
   GitHubComments,
   GitHubPublishedFeedback,
 } from "../domain/github-context";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+import { journalEntriesFor } from "./pending-review-journal";
 import {
   hasFindingReceipt,
   nextFindingReceipts,
@@ -103,11 +103,19 @@ export type PendingReviewServiceFailure =
   | "outcome_unknown"
   | "review_write_in_progress"
   | "no_pending_review"
+  | "pending_review_gone"
   | "pending_review_locked";
 
 export type PendingReviewCommandResult = {
   readonly session: ReviewSession;
   readonly state: PendingReviewState;
+};
+
+/** A reconciled Review; `unavailable` means GitHub was not read, never None. */
+type PendingReviewReconciled = {
+  readonly session: ReviewSession;
+  readonly state: PendingReviewState;
+  readonly unavailable: boolean;
 };
 
 /** The one thread a Start or AddThread meant to create, as the write sent it. */
@@ -161,7 +169,13 @@ export type PendingReviewProjection =
     };
 
 type Gateway = GitHubPendingReviewGateway &
-  Pick<GitHubReader, "getPullRequest" | "resolveAuthenticatedAccount"> &
+  Pick<
+    GitHubReader,
+    | "getPullRequest"
+    | "resolveAuthenticatedAccount"
+    | "getPullRequestComments"
+    | "getPullRequestPublishedFeedback"
+  > &
   Pick<GitHubReviewWriter, "submitPendingReview">;
 /**
  * Owns the viewer's GitHub pending review lifecycle: reconcile (import at
@@ -245,16 +259,7 @@ export class PendingReviewService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly recover?: boolean;
-  }): Promise<
-    Result<
-      {
-        readonly session: ReviewSession;
-        readonly state: PendingReviewState;
-        readonly unavailable: boolean;
-      },
-      PendingReviewServiceFailure
-    >
-  > {
+  }): Promise<Result<PendingReviewReconciled, PendingReviewServiceFailure>> {
     return this.writeCoordinator.withReviewLock(
       input.profileId,
       input.reviewId,
@@ -267,16 +272,7 @@ export class PendingReviewService {
     readonly reviewId: ReviewId;
     readonly recover?: boolean;
     readonly evidence?: FindingReceiptEvidence;
-  }): Promise<
-    Result<
-      {
-        readonly session: ReviewSession;
-        readonly state: PendingReviewState;
-        readonly unavailable: boolean;
-      },
-      PendingReviewServiceFailure
-    >
-  > {
+  }): Promise<Result<PendingReviewReconciled, PendingReviewServiceFailure>> {
     const current = await this.gate.requireCurrentSession(
       input.profileId,
       input.reviewId,
@@ -382,16 +378,7 @@ export class PendingReviewService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly evidence: FindingReceiptEvidence;
-  }): Promise<
-    Result<
-      {
-        readonly session: ReviewSession;
-        readonly state: PendingReviewState;
-        readonly unavailable: boolean;
-      },
-      PendingReviewServiceFailure
-    >
-  > {
+  }): Promise<Result<PendingReviewReconciled, PendingReviewServiceFailure>> {
     return this.reconcileUnlocked(input);
   }
 
@@ -526,6 +513,8 @@ export class PendingReviewService {
         if (session.pendingReview === undefined) return err("unavailable");
         const state = session.pendingReview;
         if (state._tag !== "Pending") return err("no_pending_review");
+        if (await this.settleGonePendingReview(input, profile, session, state))
+          return err("pending_review_gone");
         const operation: PendingReviewOperation = {
           _tag: "Submit",
           requestId: createPendingReviewRequestId(this.now()),
@@ -554,6 +543,63 @@ export class PendingReviewService {
           },
         );
       },
+    );
+  }
+
+  /**
+   * Submitting a pending review deleted on GitHub answers 404, which is
+   * outcome-unknown and would lock the Review for good (#419). When GitHub
+   * confirms the recorded review is gone, reconcile to what it holds and
+   * release its Finding receipts instead of sending the write. The pending
+   * review is read before the thread evidence, so a deletion between the two
+   * reads cannot make a receipt's thread look published.
+   */
+  private async settleGonePendingReview(
+    input: Pick<SubmitPendingReviewInput, "profileId" | "reviewId">,
+    profile: WorkspaceProfileConfig,
+    session: ReviewSession,
+    recorded: Extract<PendingReviewState, { readonly _tag: "Pending" }>,
+  ): Promise<boolean> {
+    const pr = sessionPr(session);
+    const account = await this.github.resolveAuthenticatedAccount(profile);
+    if (account._tag === "err") return false;
+    const login = parseGitHubLogin(account.value.account);
+    if (login._tag === "err") return false;
+    const read = await this.github.getViewerPendingReview({
+      profile,
+      pr,
+      account: login.value,
+    });
+    if (
+      read._tag === "err" ||
+      read.value._tag === "Unavailable" ||
+      (read.value._tag === "Pending" &&
+        read.value.review.nodeId === recorded.review.nodeId)
+    )
+      return false;
+    const [comments, publishedFeedback] = await Promise.all([
+      this.github.getPullRequestComments({ profile, pr }),
+      this.github.getPullRequestPublishedFeedback?.({ profile, pr }),
+    ]);
+    const evidence =
+      comments._tag === "err" || publishedFeedback?._tag === "err"
+        ? undefined
+        : publishedFeedback === undefined
+          ? { comments: comments.value }
+          : {
+              comments: comments.value,
+              publishedFeedback: publishedFeedback.value,
+            };
+    const reconciled = await this.reconcileUnlocked(
+      evidence === undefined ? input : { ...input, evidence },
+    );
+    return (
+      reconciled._tag === "ok" &&
+      !reconciled.value.unavailable &&
+      !(
+        reconciled.value.state._tag === "Pending" &&
+        reconciled.value.state.review.nodeId === recorded.review.nodeId
+      )
     );
   }
 
@@ -936,41 +982,4 @@ function mapGateFailure(reason: string): PendingReviewServiceFailure {
   if (reason === "terminal" || reason === "stale") return "permission_denied";
   if (reason === "not_fresh") return "not_fresh";
   return "unavailable";
-}
-
-/**
- * The typed own-write journal entries one confirmed pending-review write
- * proves. Start/AddThread journal the thread the adapter reports it created
- * (`createdThreadId`, never guessed locally) as `PendingThread`, which an
- * observation satisfies by finding it. A confirmed Discard that resolved to
- * `None` journals each thread the pre-operation Pending draft held as
- * `DiscardedThread`, satisfied by its absence, mirroring the renderer's
- * `threadIdsOf()` derivation. Submit is intentionally not journaled: no
- * `RecentReviewWrite` variant represents "pending threads became a published
- * review".
- */
-function journalEntriesFor(
-  operation: PendingReviewOperation,
-  priorState: PendingReviewState,
-  written: PendingReviewThreadWrite | ViewerPendingReview | undefined,
-  confirmed: PendingReviewState,
-): ReadonlyArray<RecentReviewWrite> {
-  if (
-    (operation._tag === "Start" || operation._tag === "AddThread") &&
-    written !== undefined &&
-    "createdThreadId" in written
-  ) {
-    return [{ _tag: "PendingThread", threadId: written.createdThreadId }];
-  }
-  if (
-    operation._tag === "Discard" &&
-    confirmed._tag === "None" &&
-    priorState._tag === "Pending"
-  ) {
-    return priorState.review.comments.map((comment) => ({
-      _tag: "DiscardedThread" as const,
-      threadId: comment.threadId,
-    }));
-  }
-  return [];
 }

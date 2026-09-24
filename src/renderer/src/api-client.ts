@@ -22,6 +22,7 @@ export type ApiFailureKind =
   | "ambiguous_write"
   | "outcome_unknown"
   | "no_pending_review"
+  | "pending_review_gone"
   | "pending_review_locked"
   | "review_write_in_progress"
   | "merge_in_progress"
@@ -46,7 +47,10 @@ export class PatchdeskApiError extends Error {
 }
 
 /** Whether an API failure carries one exact server error code. */
-export function isApiErrorCode(cause: unknown, code: string): boolean {
+export function isApiErrorCode(
+  cause: unknown,
+  code: string,
+): cause is PatchdeskApiError {
   return (
     cause instanceof PatchdeskApiError && errorCode(cause.responseBody) === code
   );
@@ -291,6 +295,7 @@ function failureKind(status: number, code: string | undefined): ApiFailureKind {
     return "github_rejected";
   if (code === "pending_review" || code === "pending_review_exists")
     return "pending_review";
+  if (code === "pending_review_gone") return "pending_review_gone";
   if (code?.includes("storage") === true) return "storage";
   if (code?.includes("ambiguous") === true) return "ambiguous_write";
   if (code?.includes("forbidden") === true) return "forbidden";
@@ -336,6 +341,8 @@ function safeMessage(kind: ApiFailureKind): string {
       return unconfirmedWriteCopy("pending review write");
     case "no_pending_review":
       return "The pending review no longer exists. Refresh to see the current state.";
+    case "pending_review_gone":
+      return "This pending review no longer exists on GitHub. It was deleted or submitted there, so nothing was sent.";
     case "pending_review_locked":
       return "The pending review write is still being reconciled. Check GitHub again.";
     case "review_write_in_progress":

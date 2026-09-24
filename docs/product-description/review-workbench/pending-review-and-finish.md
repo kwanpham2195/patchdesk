@@ -36,6 +36,8 @@ Closing Finish review records nothing and preserves the pending review on GitHub
 
 If the maintainer deletes the pending review on GitHub, Refresh brings the Review back in line. When GitHub answers that this viewer has no pending review with the recorded id on the pull request, the header returns to Start a review and the Analysis Findings added to that review lose Added and can be added again. A Finding whose comment GitHub now shows as published, because the review was submitted outside Patchdesk, stays non-actionable. A GitHub read that fails, is rate-limited, or returns incomplete comment evidence leaves the Findings Added. Patchdesk logs each release with the pending review id.
 
+Submit review in Finish review first reads the viewer's pending review on GitHub. If GitHub answers that the recorded pending review is gone, Patchdesk sends no submission, releases the Findings as Refresh does, closes the dialog, and shows "This pending review no longer exists on GitHub" under the header, where Finish review is replaced by Start a review. If that read fails, Submit review sends the submission as before.
+
 ### Begin an action
 
 Start and Add include expected session ID, head SHA, patch hash, anchor, and body. Add also includes the exact pending-review node ID. Submit includes the same represented revision plus decision and modal summary.
