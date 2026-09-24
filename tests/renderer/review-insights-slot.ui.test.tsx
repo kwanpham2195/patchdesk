@@ -240,6 +240,51 @@ describe("InsightsSlot on a merged Review", () => {
     },
   );
 
+  it.each([
+    { status: "open", offersMark: true },
+    { status: "closed", offersMark: false },
+    { status: "merged", offersMark: false },
+  ] as const)(
+    "offers Mark section reviewed on a Walkthrough of a $status Review: $offersMark",
+    ({ status, offersMark }) => {
+      const workbench = withWalkthrough();
+      renderInsights(
+        { ...workbench, review: { ...workbench.review, status } },
+        "walkthrough",
+      );
+
+      expect(
+        screen.queryByRole("button", { name: "Mark section reviewed" }) !==
+          null,
+      ).toBe(offersMark);
+    },
+  );
+
+  it("keeps a stored reviewed marker visible and unchangeable on a closed Review", () => {
+    const workbench = withWalkthrough();
+    renderInsights(
+      {
+        ...workbench,
+        review: { ...workbench.review, status: "closed" },
+        insights: {
+          ...workbench.insights,
+          walkthrough: {
+            ...workbench.insights.walkthrough,
+            progress: {
+              reviewedSectionIds: ["section-1"],
+              supportReviewed: false,
+            },
+          },
+        },
+      },
+      "walkthrough",
+    );
+
+    const marker = screen.getByRole("button", { name: "Section reviewed" });
+    expect(marker.getAttribute("aria-pressed")).toBe("true");
+    expect(marker.hasAttribute("disabled")).toBe(true);
+  });
+
   it("hides the Analysis Regenerate on a closed Review and keeps the terminal reason", () => {
     const workbench = withAnalysis("actionable");
     renderInsights(

@@ -14,7 +14,7 @@
 
 - Fixed a disabled switch or checkbox looking enabled, such as **Split view** in **View options** when the pane is too narrow. It now draws faded with a not-allowed cursor. #348
 
-- A merged or closed Review no longer offers **Regenerate** on a saved Insight, or **Add to review**, **Add suggestion to review**, or **Dismiss** on an Analysis Finding, all of which it refused; the line explaining that Insights cannot be generated stays. A Finding already **Added** or **Published** no longer offers **Dismiss**. #348
+- A merged or closed Review no longer offers **Regenerate** on a saved Insight, or **Add to review**, **Add suggestion to review**, or **Dismiss** on an Analysis Finding, or **Mark section reviewed** or **Mark Support reviewed** in a Walkthrough, all of which it refused; reviewed markers saved earlier stay visible; the line explaining that Insights cannot be generated stays. A Finding already **Added** or **Published** no longer offers **Dismiss**. #348
 
 - Fixed an Insight run failing to start when its saved Brief, Walkthrough, or Analysis record was unreadable. The run now replaces the record, as ADR 0019 describes; a disk read error still stops it. #348
 

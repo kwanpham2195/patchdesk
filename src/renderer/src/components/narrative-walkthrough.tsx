@@ -80,8 +80,9 @@ type NarrativeWalkthroughModel = {
 };
 
 export type NarrativeWalkthroughActions = {
-  readonly onMarkSectionReviewed: (sectionId: string) => void;
-  readonly onMarkSupportReviewed: () => void;
+  /** Absent on a merged or closed Review: reviewed marks stay visible but cannot change. */
+  readonly onMarkSectionReviewed?: (sectionId: string) => void;
+  readonly onMarkSupportReviewed?: () => void;
   readonly onSelectSection: (sectionId: string) => void;
 };
 
@@ -432,19 +433,23 @@ export function NarrativeWalkthrough({
                     </li>
                   ))}
                 </ul>
-                <Button
-                  type="button"
-                  variant={supportReviewed ? "secondary" : "outline"}
-                  size="sm"
-                  className="mt-3 w-full"
-                  aria-pressed={supportReviewed}
-                  onClick={actions.onMarkSupportReviewed}
-                >
-                  <Square />
-                  {supportReviewed
-                    ? "Support reviewed"
-                    : "Mark Support reviewed"}
-                </Button>
+                {actions.onMarkSupportReviewed === undefined &&
+                !supportReviewed ? null : (
+                  <Button
+                    type="button"
+                    variant={supportReviewed ? "secondary" : "outline"}
+                    size="sm"
+                    className="mt-3 w-full"
+                    aria-pressed={supportReviewed}
+                    onClick={actions.onMarkSupportReviewed}
+                    disabled={actions.onMarkSupportReviewed === undefined}
+                  >
+                    <Square />
+                    {supportReviewed
+                      ? "Support reviewed"
+                      : "Mark Support reviewed"}
+                  </Button>
+                )}
               </CollapsibleContent>
             </Collapsible>
           </aside>
@@ -547,7 +552,9 @@ export function NarrativeWalkthrough({
                 />
               ))
             )}
-            {sections.length === 0 ? null : (
+            {sections.length === 0 ||
+            (actions.onMarkSectionReviewed === undefined &&
+              !reviewedSet.has(activeSection.id)) ? null : (
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
@@ -555,9 +562,12 @@ export function NarrativeWalkthrough({
                     reviewedSet.has(activeSection.id) ? "secondary" : "outline"
                   }
                   onClick={() =>
-                    actions.onMarkSectionReviewed(activeSection.id)
+                    actions.onMarkSectionReviewed?.(activeSection.id)
                   }
-                  disabled={reviewedSet.has(activeSection.id)}
+                  disabled={
+                    actions.onMarkSectionReviewed === undefined ||
+                    reviewedSet.has(activeSection.id)
+                  }
                   aria-pressed={reviewedSet.has(activeSection.id)}
                 >
                   <CheckCircle2 />

@@ -47,7 +47,7 @@ Reading, scrolling, changing diff layout or wrapping, opening Support, switching
 
 For multiple sections, Previous section and Next section move one section and disable at the first and last boundaries. The chapter rail can jump directly to a section. The Left arrow and `k` move to the previous section; the Right arrow and `j` move to the next, matching the Vim convention. These keys act only when no text field, select, or combobox has focus. One-section and zero-section Walkthroughs omit the movement buttons.
 
-Mark section reviewed records the current section's stable identity. Mark Support reviewed, inside the Support disclosure, records the Support group.
+Mark section reviewed records the current section's stable identity. Mark Support reviewed, inside the Support disclosure, records the Support group. Both are offered only while the Review is open.
 
 Focus section hides the Insight tab strip, the shared header, and the chapter rail, and leaves a single reading column. The same button, now named Exit focus, returns to the docked layout. The layout change fades out and back in.
 
@@ -69,7 +69,7 @@ After movement, focus moves to the selected section heading and progress reflect
 
 Escape in the focused layout returns to the docked layout and puts focus on the Focus section button. Escape in the docked layout moves focus to the current section heading. Escape never leaves the Walkthrough.
 
-A reviewed section shows "Section reviewed" on a disabled button and a "done" badge in the rail. Support shows "Support reviewed"; that button stays enabled and choosing it again saves the same state. If a save fails, the reader shows "Walkthrough progress could not be saved." above the Walkthrough while the marker stays on screen.
+A reviewed section shows "Section reviewed" on a disabled button and a "done" badge in the rail. Support shows "Support reviewed"; that button stays enabled and choosing it again saves the same state. On a merged or closed Review, markers saved earlier still show, with both buttons disabled; an unreviewed section or Support shows no mark button. Moving between sections there changes only the screen and saves nothing. If a save fails, the reader shows "Walkthrough progress could not be saved." above the Walkthrough while the marker stays on screen.
 
 Reviewed indicators are projected for the exact Walkthrough revision. They do not submit a GitHub review, mark files viewed on GitHub, or change pending-review state.
 

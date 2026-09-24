@@ -13,8 +13,9 @@ type WalkthroughProgress = NonNullable<
 export type WalkthroughProgressControls = {
   readonly progress: WalkthroughProgress;
   readonly saveFailed: boolean;
-  readonly markSectionReviewed: (sectionId: string) => void;
-  readonly markSupportReviewed: () => void;
+  /** Absent on a merged or closed Review, whose progress the server refuses to change. */
+  readonly markSectionReviewed?: (sectionId: string) => void;
+  readonly markSupportReviewed?: () => void;
   readonly selectSection: (sectionId: string) => void;
 };
 
@@ -30,11 +31,13 @@ const NO_PROGRESS: WalkthroughProgress = {
 export function useWalkthroughProgress({
   profileId,
   reviewId,
+  reviewOpen,
   walkthrough,
   onWorkbenchPatch,
 }: {
   readonly profileId: string;
   readonly reviewId: string;
+  readonly reviewOpen: boolean;
   readonly walkthrough: WorkbenchResponse["insights"]["walkthrough"];
   /** Receives the saved progress so a remounted Insights slot starts from it. */
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
@@ -54,7 +57,8 @@ export function useWalkthroughProgress({
 
   const save = (progress: WalkthroughProgress): void => {
     setState((current) => ({ ...current, progress }));
-    if (runId === undefined) return;
+    // A merged or closed Review still moves between sections, but only on screen.
+    if (runId === undefined || !reviewOpen) return;
     const request = ++generation.current;
     void requestJson("/v1/reviews/insights/walkthrough/progress", {
       method: "POST",
@@ -80,6 +84,10 @@ export function useWalkthroughProgress({
   };
 
   const { progress } = state;
+  const selectSection = (sectionId: string): void =>
+    save({ ...progress, currentSectionId: sectionId });
+  if (!reviewOpen)
+    return { progress, saveFailed: state.saveFailed, selectSection };
   return {
     progress,
     saveFailed: state.saveFailed,
@@ -91,7 +99,6 @@ export function useWalkthroughProgress({
           : [...progress.reviewedSectionIds, sectionId],
       }),
     markSupportReviewed: () => save({ ...progress, supportReviewed: true }),
-    selectSection: (sectionId) =>
-      save({ ...progress, currentSectionId: sectionId }),
+    selectSection,
   };
 }
