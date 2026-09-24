@@ -175,16 +175,20 @@ function pullRequestExternalRef(
 function createCommitCommentAuthoring(
   base: LocalCommentAuthoring | undefined,
   fullPatch: string,
+  headSideOnly: boolean,
 ): LocalCommentAuthoring | undefined {
   if (base?.enabled !== true) return undefined;
   const files = parseUnifiedPatch(fullPatch);
+  // The since-review diff's old side is the reviewed commit, whose line numbers mean different code on the pull request base.
   const map = (location: LocalCommentLocation) =>
-    mapFindingLocation(files, {
-      file: location.path,
-      lineStart: location.startLine,
-      lineEnd: location.line,
-      diffSide: location.side,
-    });
+    headSideOnly && location.side !== "new"
+      ? { mappingStatus: "unmapped" as const }
+      : mapFindingLocation(files, {
+          file: location.path,
+          lineStart: location.startLine,
+          lineEnd: location.line,
+          diffSide: location.side,
+        });
   return {
     enabled: true,
     canAuthor: (location) => map(location).mappingStatus === "mapped",
@@ -493,8 +497,14 @@ export function ReviewWorkbench({
         : createCommitCommentAuthoring(
             actions.localCommentAuthoring,
             model.fullPatch,
+            selectedCommitSha === undefined,
           ),
-    [actions.localCommentAuthoring, model.fullPatch, narrowedDiff],
+    [
+      actions.localCommentAuthoring,
+      model.fullPatch,
+      narrowedDiff,
+      selectedCommitSha,
+    ],
   );
   const commitDiff =
     commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
