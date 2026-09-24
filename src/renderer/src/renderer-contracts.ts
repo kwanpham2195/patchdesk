@@ -172,7 +172,6 @@ export type InboxResponse = v.InferOutput<typeof inboxResponseSchema>;
 export type InboxRow = InboxResponse["inbox"]["rows"][number];
 
 /** Parses the local API's JSON-safe inbox projection before renderer state owns it. */
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
 export function parseInboxResponse(input: unknown): InboxResponse | undefined {
   const parsed = v.safeParse(inboxResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
@@ -226,7 +225,6 @@ export type GithubAuthAccount =
 
 /** Parses the local API's local-tool/auth environment check. */
 export function parseEnvironmentCheckResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): EnvironmentCheckResponse | undefined {
   const parsed = v.safeParse(environmentCheckResponseSchema, input);
@@ -240,10 +238,7 @@ const createdProfileSchema = v.object({
 });
 
 /** Parses the id `POST /v1/profiles` reports for the workspace it created. */
-export function parseCreatedProfileId(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
-  input: unknown,
-): string | undefined {
+export function parseCreatedProfileId(input: unknown): string | undefined {
   const parsed = v.safeParse(createdProfileSchema, input);
   return parsed.success ? parsed.output.id : undefined;
 }
@@ -287,7 +282,6 @@ export type RepositoryLabelListResponse = v.InferOutput<
 
 /** Parses the local API's repository label listing before a label picker owns it. */
 export function parseRepositoryLabelListResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): RepositoryLabelListResponse | undefined {
   const parsed = v.safeParse(repositoryLabelListResponseSchema, input);
@@ -792,7 +786,6 @@ export type DirectSummaryReviewProjection = v.InferOutput<
   typeof directSummaryReviewProjectionSchema
 >;
 export function parseDirectSummaryReviewResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): DirectSummaryReviewProjection | undefined {
   const parsed = v.safeParse(directSummaryReviewResponseSchema, input);
@@ -873,7 +866,6 @@ export type PendingReviewProjection = v.InferOutput<
   typeof pendingReviewProjectionSchema
 >;
 export function parsePendingReviewProjection(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): PendingReviewProjection | undefined {
   const parsed = v.safeParse(pendingReviewProjectionSchema, input);
@@ -910,7 +902,6 @@ const insightRunResponseSchema = v.strictObject({
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
 export function parseInsightRunResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): InsightRunResponse | undefined {
   const parsed = v.safeParse(insightRunResponseSchema, input);
@@ -919,7 +910,6 @@ export function parseInsightRunResponse(
 
 /** Reject malformed local API review projections before they influence renderer state. */
 export function parseWorkbenchResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): WorkbenchResponse | undefined {
   const parsed = v.safeParse(workbenchProjectionSchema, input);
@@ -972,7 +962,6 @@ export type SidebarReviewRow = SidebarReviewsResponse["rows"][number];
 
 /** Parses the visited pull requests the sidebar column lists. */
 export function parseSidebarReviewsResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): SidebarReviewsResponse | undefined {
   const parsed = v.safeParse(sidebarReviewsResponseSchema, input);

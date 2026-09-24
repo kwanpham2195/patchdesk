@@ -104,7 +104,6 @@ export class ViewedFilesStore {
 }
 
 function parseViewedPaths(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the stored JSON value is parsed here, at the file boundary.
   input: unknown,
 ): ReadonlyArray<RepoRelativePath> | undefined {
   const raw = v.safeParse(viewedFilesSchema, input);

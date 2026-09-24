@@ -30,7 +30,6 @@ const mergeReceiptSchema = v.strictObject({
 export type MergeReceipt = v.InferOutput<typeof mergeReceiptSchema>;
 
 /** Rejects malformed merge confirmation before terminal renderer state changes. */
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the JSON I/O boundary parser; no earlier parser can establish the receipt shape.
 export function parseMergeReceipt(input: unknown): MergeReceipt | undefined {
   const parsed = v.safeParse(mergeReceiptSchema, input);
   return parsed.success ? parsed.output : undefined;

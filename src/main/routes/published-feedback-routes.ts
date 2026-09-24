@@ -90,7 +90,6 @@ async function publishedFeedbackResponse(
   context: Context,
   service: PublishedFeedbackService,
   action: "edit" | "delete" | "dismiss",
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser and immediately runs the owned strict schema.
   body: unknown,
 ): Promise<Response> {
   const result =
@@ -115,7 +114,6 @@ async function publishedFeedbackResponse(
 
 async function parsePublishedEdit(
   service: PublishedFeedbackService,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser and immediately runs the owned strict schema.
   body: unknown,
 ): Promise<
   Result<PublishedFeedbackReceipt, "invalid_input" | PublishedFeedbackFailure>
@@ -134,7 +132,6 @@ async function parsePublishedEdit(
 
 async function parsePublishedDelete(
   service: PublishedFeedbackService,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser and immediately runs the owned strict schema.
   body: unknown,
 ): Promise<
   Result<PublishedFeedbackReceipt, "invalid_input" | PublishedFeedbackFailure>
@@ -153,7 +150,6 @@ async function parsePublishedDelete(
 
 async function parsePublishedDismiss(
   service: PublishedFeedbackService,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser and immediately runs the owned strict schema.
   body: unknown,
 ): Promise<
   Result<PublishedFeedbackReceipt, "invalid_input" | PublishedFeedbackFailure>

@@ -185,7 +185,6 @@ export class MaintainerInboxCacheStore {
 
 /** Parse durable cache values before they become row data in a maintainer-facing API. */
 export function parseMaintainerInboxCache(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON cache I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<MaintainerInboxCache, StorageFailure> {
   const raw = v.safeParse(cacheSchema, input);

@@ -31,7 +31,6 @@ const modelCatalogSchema = v.strictObject({
 export type ModelCatalog = v.InferOutput<typeof modelCatalogSchema>;
 
 /** Reject malformed Pi model catalog responses; renderer keeps the strict shape only. */
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
 export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
   const parsed = v.safeParse(modelCatalogSchema, input);
   return parsed.success ? parsed.output : undefined;
@@ -86,7 +85,6 @@ export type InsightProviderCatalog = v.InferOutput<
 
 /** Rejects malformed passive or activated Insight provider catalogs. */
 export function parseInsightProviderCatalog(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): InsightProviderCatalog | undefined {
   const parsed = v.safeParse(insightProviderCatalogSchema, input);
