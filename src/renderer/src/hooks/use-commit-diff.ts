@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { CommitDiffResponse } from "../renderer-contracts";
+import type { CommitDiffResponse } from "../review-diff-contracts";
 import { useLatestCommitted } from "./use-latest-committed";
 
 export type CommitDiffState =

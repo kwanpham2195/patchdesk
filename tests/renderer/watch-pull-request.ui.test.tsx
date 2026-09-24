@@ -314,6 +314,7 @@ describe("Watch toggle surfaces", () => {
             detectUpdates: vi.fn(),
             refresh: vi.fn(),
             loadCommitDiff: vi.fn(),
+            loadSinceReviewDiff: vi.fn(),
             reportNavigationState: vi.fn(),
           }}
           title="Canonical workbench"

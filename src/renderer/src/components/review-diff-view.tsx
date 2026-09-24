@@ -35,6 +35,7 @@ import {
   ReviewDiffToolbar,
   type MarkdownPreviewControl,
   type ScopeFilterControl,
+  type SinceReviewControl,
 } from "./review-diff-toolbar";
 import { useReviewDiffRegionName } from "../hooks/use-review-diff-region-name";
 import {
@@ -251,6 +252,7 @@ type ReviewDiffViewProps = {
   readonly scopeFilter?: ScopeFilterControl | undefined;
   /** Drawn first in the toolbar, such as the review navigator toggle. */
   readonly toolbarLeadingAction?: React.ReactNode;
+  readonly sinceReview?: SinceReviewControl | undefined;
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
@@ -279,6 +281,7 @@ function ReviewDiffSurface({
   bodyContext = EMPTY_BODY_CONTEXT,
   scopeFilter,
   toolbarLeadingAction,
+  sinceReview,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const { appearance, themePreferences } = useDiffAppearanceTheme();
@@ -438,6 +441,7 @@ function ReviewDiffSurface({
       beginAuthoring={beginAuthoring}
       scopeFilter={scopeFilter}
       toolbarLeadingAction={toolbarLeadingAction}
+      sinceReview={sinceReview}
     />
   );
 }
@@ -496,6 +500,7 @@ type ReviewDiffRenderSiteProps = {
   readonly beginAuthoring: (selection: CodeViewLineSelection | null) => void;
   readonly scopeFilter: ScopeFilterControl | undefined;
   readonly toolbarLeadingAction: React.ReactNode;
+  readonly sinceReview: SinceReviewControl | undefined;
 };
 
 function ReviewDiffRenderSite({
@@ -539,6 +544,7 @@ function ReviewDiffRenderSite({
   beginAuthoring,
   scopeFilter,
   toolbarLeadingAction,
+  sinceReview,
 }: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
     () => ({
@@ -661,6 +667,7 @@ function ReviewDiffRenderSite({
         scopeFilter={scopeFilter}
         markdownPreview={markdownPreview}
         leadingAction={toolbarLeadingAction}
+        sinceReview={sinceReview}
       />
       {!browserSupportsPierre &&
       localComposerAnnotation?.localComposer !== undefined ? (

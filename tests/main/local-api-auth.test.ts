@@ -277,6 +277,7 @@ describe("local API current Review capability boundary", () => {
       "v1/reviews/detect-updates",
       "v1/reviews/refresh",
       "v1/reviews/commit-diff",
+      "v1/reviews/since-review-diff",
       "v1/reviews/inline-conversations/command",
       "v1/reviews/pending-review/command",
       "v1/reviews/pending-review/finding-suggestion",

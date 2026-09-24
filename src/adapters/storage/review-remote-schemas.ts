@@ -233,6 +233,7 @@ export const publishedFeedbackSchema = v.strictObject({
         "DISMISSED",
       ]),
       submittedAt: v.string(),
+      commitId: v.optional(v.string()),
       canDismiss: v.boolean(),
       imageRewrites: imageRewritesSchema,
     }),
@@ -269,6 +270,7 @@ const conversationReviewSchema = v.strictObject({
     "DISMISSED",
   ]),
   submittedAt: v.string(),
+  commitId: v.optional(v.string()),
   canDismiss: v.boolean(),
   imageRewrites: imageRewritesSchema,
 });

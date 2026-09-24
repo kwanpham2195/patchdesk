@@ -1,5 +1,5 @@
 import { definedProps } from "../../../domain/defined-props";
-import { parseUnifiedPatch } from "../../../domain/patch";
+import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { parseGitHubThreadId } from "../../../domain/ids";
 import {
   projectReadOnlyConversationAnnotations,
@@ -131,4 +131,22 @@ export function buildAnnotations(
     ),
     ...conversationThreadEntries,
   ];
+}
+
+/** Keeps the annotations whose head-side lines appear in a narrower patch; old-side numbers belong to the pull request base, so they cannot be placed. */
+export function annotationsInPatch(
+  annotations: ReadonlyArray<ReviewInlineAnnotation>,
+  patch: string,
+): ReadonlyArray<ReviewInlineAnnotation> {
+  const files = parseUnifiedPatch(patch);
+  return annotations.filter(
+    (annotation) =>
+      annotation.side === "new" &&
+      mapFindingLocation(files, {
+        file: annotation.path,
+        lineStart: annotation.start,
+        lineEnd: annotation.end,
+        diffSide: "new",
+      }).mappingStatus === "mapped",
+  );
 }

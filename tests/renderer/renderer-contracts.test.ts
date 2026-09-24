@@ -4,8 +4,8 @@ import {
   parseInsightProviderCatalog,
   parseModelCatalog,
 } from "../../src/renderer/src/insight-catalog-contracts";
+import { parseCommitDiffResponse } from "../../src/renderer/src/review-diff-contracts";
 import {
-  parseCommitDiffResponse,
   parseInboxResponse,
   parseInsightRunResponse,
   parseMergeReceipt,

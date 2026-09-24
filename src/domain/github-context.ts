@@ -254,6 +254,8 @@ export type PublishedReview = {
   readonly body: string;
   readonly event: "APPROVED" | "COMMENTED" | "CHANGES_REQUESTED" | "DISMISSED";
   readonly submittedAt: IsoTimestamp;
+  /** The head commit the review was submitted against; "Since your review" diffs from it. */
+  readonly commitId?: GitSha;
   readonly canDismiss: boolean;
   /** A review summary renders Markdown too; see `GitHubImageRewrites`. */
   readonly imageRewrites?: GitHubImageRewrites;

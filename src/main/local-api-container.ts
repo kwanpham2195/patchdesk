@@ -425,6 +425,7 @@ export async function buildLocalApiContainer(
     remoteReviews,
     sessions,
     readOnlyGit,
+    profiles,
   );
   const sidebarListing = new SidebarListingService({ reviews, diagnostics });
   const reviewDiffSources = new ReviewDiffSourceService(

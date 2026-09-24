@@ -1,5 +1,11 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { ChevronDown, ChevronsUpDown, FileCode2, Files } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronsUpDown,
+  FileCode2,
+  Files,
+  History,
+} from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import type {
@@ -134,6 +140,15 @@ function NavigationKeysTooltip(): React.JSX.Element {
   );
 }
 
+/** Switches the diff to the changes since the viewer's last submitted review. */
+export type SinceReviewControl = {
+  readonly active: boolean;
+  /** Set when the option cannot be used; drawn beside the disabled button. */
+  readonly disabledReason: string | undefined;
+  readonly loading: boolean;
+  readonly onChange: (active: boolean) => void;
+};
+
 /** Drives the Diff/Preview switch for the file currently on screen. */
 export type MarkdownPreviewControl = {
   readonly path: string;
@@ -184,6 +199,7 @@ export function ReviewDiffToolbar({
   scopeFilter,
   markdownPreview,
   leadingAction,
+  sinceReview,
 }: {
   readonly virtualized: boolean;
   readonly preferences: Pick<
@@ -207,6 +223,8 @@ export function ReviewDiffToolbar({
   readonly markdownPreview?: MarkdownPreviewControl | undefined;
   /** Drawn before every other control, such as the review navigator toggle. */
   readonly leadingAction?: React.ReactNode;
+  /** Absent when the viewer has no submitted review on this pull request. */
+  readonly sinceReview?: SinceReviewControl | undefined;
 }): React.JSX.Element {
   // A showing preview replaces the CodeView, so every control that describes
   // one is suppressed; the Scope picker stays because it also filters Browse.
@@ -216,6 +234,11 @@ export function ReviewDiffToolbar({
     collapsedPaths.has(file.name),
   ).length;
   const allViewed = viewedCount === files.length && files.length > 0;
+  const sinceReviewActive = sinceReview?.active === true;
+  const selectFileMode = (fileMode: "all" | "selected"): void => {
+    if (sinceReviewActive) sinceReview?.onChange(false);
+    onPreferencesChange({ fileMode });
+  };
   return (
     <div
       data-review-diff-toolbar
@@ -232,11 +255,15 @@ export function ReviewDiffToolbar({
                 render={
                   <Button
                     variant={
-                      preferences.fileMode === "all" ? "secondary" : "ghost"
+                      preferences.fileMode === "all" && !sinceReviewActive
+                        ? "secondary"
+                        : "ghost"
                     }
                     size="xs"
-                    aria-pressed={preferences.fileMode === "all"}
-                    onClick={() => onPreferencesChange({ fileMode: "all" })}
+                    aria-pressed={
+                      preferences.fileMode === "all" && !sinceReviewActive
+                    }
+                    onClick={() => selectFileMode("all")}
                   />
                 }
               >
@@ -246,16 +273,47 @@ export function ReviewDiffToolbar({
             </Tooltip>
             <Button
               variant={
-                preferences.fileMode === "selected" ? "secondary" : "ghost"
+                preferences.fileMode === "selected" && !sinceReviewActive
+                  ? "secondary"
+                  : "ghost"
               }
               size="xs"
-              aria-pressed={preferences.fileMode === "selected"}
+              aria-pressed={
+                preferences.fileMode === "selected" && !sinceReviewActive
+              }
               disabled={selectedPath === undefined}
-              onClick={() => onPreferencesChange({ fileMode: "selected" })}
+              onClick={() => selectFileMode("selected")}
             >
               <FileCode2 /> Selected
             </Button>
+            {sinceReview === undefined ? null : (
+              <Button
+                variant={sinceReviewActive ? "secondary" : "ghost"}
+                size="xs"
+                aria-pressed={sinceReviewActive}
+                disabled={sinceReview.disabledReason !== undefined}
+                onClick={() => {
+                  if (!sinceReviewActive) {
+                    onPreferencesChange({ fileMode: "all" });
+                    sinceReview.onChange(true);
+                  }
+                }}
+              >
+                {sinceReview.loading ? <Spinner /> : <History />} Since your
+                review
+              </Button>
+            )}
           </ButtonGroup>
+        )}
+        {previewing || sinceReview?.disabledReason === undefined ? null : (
+          <span
+            className={cn(
+              "px-1 text-xs text-muted-foreground",
+              virtualized ? undefined : "hidden",
+            )}
+          >
+            {sinceReview.disabledReason}
+          </span>
         )}
         {markdownPreview === undefined ? null : (
           <MarkdownPreviewModeSwitch preview={markdownPreview} />

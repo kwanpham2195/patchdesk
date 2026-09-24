@@ -192,6 +192,10 @@ export function workbenchController(
       commits: {
         list: track.stub("commits.list", ok([])),
         diff: track.stub("commits.diff", err({ reason: "not_found" })),
+        diffSinceReview: track.stub(
+          "commits.diffSinceReview",
+          err({ reason: "not_found" }),
+        ),
       },
     } as never,
   );

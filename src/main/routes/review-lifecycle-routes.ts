@@ -205,6 +205,15 @@ export function registerReviewLifecycleRoutes(
       ? response(context, await reviewWorkbench.commitDiff(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
+  app.post("/v1/reviews/since-review-diff", async (context) => {
+    const parsed = safeParse(
+      reviewSinceReviewDiffSchema,
+      await jsonBody(context),
+    );
+    return parsed.success
+      ? response(context, await reviewWorkbench.sinceReviewDiff(parsed.output))
+      : context.json({ error: "invalid_input" }, 400);
+  });
   app.post("/v1/reviews/diff-file", async (context) =>
     response(context, await reviewDiffSources.load(await jsonBody(context))),
   );
@@ -282,6 +291,10 @@ const reviewCommitDiffSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
   commitSha: pipe(string(), minLength(7)),
+});
+const reviewSinceReviewDiffSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
 });
 /** Mirrors the renderer's merge payload in `use-review-merge-action.ts`; a new field changes both. */
 const mergeCommandSchema = strictObject({

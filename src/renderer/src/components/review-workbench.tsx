@@ -35,6 +35,7 @@ import {
   type ReviewNavigatorSection,
 } from "./review-navigator";
 import {
+  annotationsInPatch,
   buildAnnotations,
   buildConversationAnnotations,
   buildPendingReviewAnnotations,
@@ -61,6 +62,7 @@ import {
 } from "./review-workbench-overview";
 import { ReviewNavigatorResizeHandle } from "./review-navigator-resize-handle";
 import { useCommitDiff } from "../hooks/use-commit-diff";
+import { useSinceReviewMode } from "../hooks/use-since-review-mode";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
 import type { ViewedFilesControls } from "../hooks/use-viewed-files";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
@@ -474,15 +476,25 @@ export function ReviewWorkbench({
       ? commitDiffOptions
       : { ...commitDiffOptions, selectedSha: selectedCommitSha },
   );
+  const sinceReview = useSinceReviewMode({
+    model,
+    commitSliceActive: selectedCommitSha !== undefined,
+    loadSinceReviewDiff: actions.loadSinceReviewDiff,
+  });
+  const sincePatch =
+    sinceReview.state._tag === "Ready" ? sinceReview.state.patch : undefined;
+  // A commit slice and the since-review diff both show a narrower patch than the Review, so comments map back onto the full patch.
+  const narrowedDiff =
+    selectedCommitSha !== undefined || sincePatch !== undefined;
   const commitCommentAuthoring = useMemo(
     () =>
-      selectedCommitSha === undefined || model.fullPatch === undefined
+      !narrowedDiff || model.fullPatch === undefined
         ? undefined
         : createCommitCommentAuthoring(
             actions.localCommentAuthoring,
             model.fullPatch,
           ),
-    [actions.localCommentAuthoring, model.fullPatch, selectedCommitSha],
+    [actions.localCommentAuthoring, model.fullPatch, narrowedDiff],
   );
   const commitDiff =
     commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
@@ -536,8 +548,29 @@ export function ReviewWorkbench({
     () => buildAnnotations(findings, conversationThreadEntries),
     [conversationThreadEntries, findings],
   );
+  const sinceAnnotations = useMemo(
+    () =>
+      sincePatch === undefined
+        ? undefined
+        : annotationsInPatch(annotations, sincePatch),
+    [annotations, sincePatch],
+  );
+  const sincePaths = useMemo(
+    () =>
+      sincePatch === undefined
+        ? undefined
+        : new Set(parseUnifiedPatch(sincePatch).map((file) => file.newPath)),
+    [sincePatch],
+  );
+  // The full Review's selection drives the since-review diff only while that file is still in it.
+  const diffSelectedPath =
+    selectedPath === undefined ||
+    selectedCommitSha !== undefined ||
+    sincePaths?.has(selectedPath) === false
+      ? undefined
+      : selectedPath;
   const commitDiffError = commitDiffState._tag === "Failed";
-  const displayedPatch = commitDiff?.patch ?? model.fullPatch;
+  const displayedPatch = commitDiff?.patch ?? sincePatch ?? model.fullPatch;
   const externalPullRequest = pullRequestExternalRef(model);
   const overviewRevision = buildOverviewRevision(model);
   const overview = buildOverview({
@@ -660,7 +693,7 @@ export function ReviewWorkbench({
               >
                 {navigatorVisible ? (
                   <ReviewNavigator
-                    patch={model.fullPatch}
+                    patch={sincePatch ?? model.fullPatch}
                     commits={model.commits}
                     conversationThreadEntries={conversationThreadEntries}
                     findingCountsByPath={findingCountsByPath}
@@ -725,22 +758,25 @@ export function ReviewWorkbench({
                     <>
                       <DiffWorkbench
                         key={
-                          selectedCommitSha ?? model.revision.reviewedHeadSha
+                          selectedCommitSha ??
+                          (sincePatch === undefined
+                            ? model.revision.reviewedHeadSha
+                            : `since-${sinceReview.baseSha}`)
                         }
                         patch={displayedPatch}
-                        {...(selectedCommitSha === undefined
-                          ? {
+                        {...definedProps({ sinceReview: sinceReview.control })}
+                        {...(narrowedDiff
+                          ? {}
+                          : {
                               sourceSession: {
                                 profileId: model.session.key.profileId,
                                 sessionId: model.session.id,
                               },
-                            }
-                          : {})}
-                        {...(selectedPath === undefined ||
-                        selectedCommitSha !== undefined
+                            })}
+                        {...(diffSelectedPath === undefined
                           ? {}
                           : {
-                              controlledSelectedPath: selectedPath,
+                              controlledSelectedPath: diffSelectedPath,
                               onSelectedPathChange: (path: string) => {
                                 commitWorkbenchPosition({
                                   activeTab: "diff",
@@ -758,7 +794,7 @@ export function ReviewWorkbench({
                           : {})}
                         {...(selectedCommitSha === undefined
                           ? {
-                              annotations,
+                              annotations: sinceAnnotations ?? annotations,
                               findingCountsByPath,
                               onOpenFindingInAnalysis: openFindingInAnalysis,
                             }
@@ -767,16 +803,13 @@ export function ReviewWorkbench({
                           ? {}
                           : { selectedRange })}
                         {...definedProps({
-                          viewedFiles:
-                            selectedCommitSha === undefined
-                              ? viewedFiles
-                              : undefined,
+                          viewedFiles: narrowedDiff ? undefined : viewedFiles,
                         })}
                         {...(scopeFilteredPaths === undefined
                           ? {}
                           : { visiblePaths: scopeFilteredPaths })}
                         {...(scopeFilter === undefined ? {} : { scopeFilter })}
-                        {...(selectedCommitSha === undefined
+                        {...(!narrowedDiff
                           ? actions.localCommentAuthoring === undefined
                             ? {}
                             : {
@@ -851,6 +884,11 @@ export function ReviewWorkbench({
                   {commitDiffError ? (
                     <InlineError className="border-t px-4 py-2">
                       This commit diff could not be loaded.
+                    </InlineError>
+                  ) : null}
+                  {sinceReview.state._tag === "Failed" ? (
+                    <InlineError className="border-t px-4 py-2">
+                      The diff since your review could not be loaded.
                     </InlineError>
                   ) : null}
                 </ReviewDiffPane>

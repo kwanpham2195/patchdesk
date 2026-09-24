@@ -178,6 +178,17 @@ export const lockRows: ReadonlyArray<LockRow> = [
     },
   },
   {
+    // Pinned unlocked for the same reason as `commitDiff`: it runs the same
+    // represented-head checks before diffing immutable commit objects.
+    name: "ReviewWorkbenchController.sinceReviewDiff",
+    kind: "reads",
+    unlockedPrefix: ["commits.diffSinceReview"],
+    build: (coordinator, track) => {
+      const controller = workbenchController(coordinator, track);
+      return () => controller.sinceReviewDiff({ profileId, reviewId });
+    },
+  },
+  {
     name: "ReviewRefreshService.refresh",
     kind: "queues",
     build: (coordinator, track) => {

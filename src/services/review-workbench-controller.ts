@@ -639,6 +639,35 @@ export class ReviewWorkbenchController {
       : result;
   }
 
+  async sinceReviewDiff(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `sinceReviewDiff` re-parses every domain value itself.
+    input: unknown,
+  ): Promise<Result<unknown, ReviewWorkbenchFailure>> {
+    const profileId = parseWorkspaceProfileId(
+      readObjectField(input, "profileId"),
+    );
+    const reviewId = parseReviewId(readObjectField(input, "reviewId"));
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return err({ reason: "invalid_input" });
+    const result = await this.lifecycle.commits.diffSinceReview({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+    });
+    if (result._tag === "ok") return result;
+    // The renderer offers the option only for a reachable baseline, so a refusal here means the snapshot moved under it.
+    const reason = result.error.reason;
+    return err({
+      reason:
+        reason === "not_found"
+          ? "not_found"
+          : reason === "stale_head" ||
+              reason === "no_review" ||
+              reason === "unreachable_review"
+            ? "head_changed"
+            : "storage",
+    });
+  }
+
   async detectUpdates(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;

@@ -4,6 +4,7 @@ import {
   parseUnifiedPatch,
   type FindingLocationInput,
 } from "../../../domain/patch";
+import { definedProps } from "../../../domain/defined-props";
 import { filterUnifiedPatchFiles } from "../../../domain/unified-patch";
 import { DiffWorkerPoolProvider } from "./diff-worker-pool";
 import { PierreFileTree } from "./pierre-file-tree";
@@ -15,7 +16,10 @@ import {
   type ReviewInlineAnnotation,
   type SelectedDiffRange,
 } from "./review-diff-view";
-import type { ScopeFilterControl } from "./review-diff-toolbar";
+import type {
+  ScopeFilterControl,
+  SinceReviewControl,
+} from "./review-diff-toolbar";
 import type { PullRequestBodyContext } from "./pull-request-description";
 import { parseReviewDiff } from "@/review-diff-data";
 import type { FileFindingCount } from "@/review-finding-counts";
@@ -65,6 +69,7 @@ export function DiffWorkbench({
   visiblePaths,
   scopeFilter,
   viewedFiles,
+  sinceReview,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -101,6 +106,7 @@ export function DiffWorkbench({
   readonly scopeFilter?: ScopeFilterControl;
   /** Saved Viewed marks; without it Viewed lasts only while this Diff is open. */
   readonly viewedFiles?: ViewedFilesControls;
+  readonly sinceReview?: SinceReviewControl;
 }): React.JSX.Element {
   // Narrowing the patch itself, not just its parsed metadata: the pane falls
   // back to rendering the patch text where Pierre's CodeView is unavailable.
@@ -250,6 +256,7 @@ export function DiffWorkbench({
           <ReviewDiffView
             patch={visiblePatch}
             scopeFilter={scopeFilter}
+            sinceReview={sinceReview}
             parsedFiles={parsedDiff.files}
             fileStatsByPath={parsedDiff.statsByPath}
             {...(selectedPath === undefined ? {} : { selectedPath })}
@@ -270,25 +277,17 @@ export function DiffWorkbench({
               // selected file, so the two have to be pulled back together.
               if (active) reportActiveFile(selectedPath);
             }}
-            {...(sourceSession === undefined ? {} : { sourceSession })}
-            {...(localCommentAuthoring === undefined
-              ? {}
-              : { localCommentAuthoring })}
-            {...(pendingReviewComposer === undefined
-              ? {}
-              : { pendingReviewComposer })}
-            {...(conversationActions === undefined
-              ? {}
-              : { conversationActions })}
-            {...(bodyContext === undefined ? {} : { bodyContext })}
-            {...(annotations === undefined ? {} : { annotations })}
-            {...(findingCountsByPath === undefined
-              ? {}
-              : { findingCountsByPath })}
-            {...(onOpenFindingInAnalysis === undefined
-              ? {}
-              : { onOpenFindingInAnalysis })}
-            {...(selectedRange === undefined ? {} : { selectedRange })}
+            {...definedProps({
+              sourceSession,
+              localCommentAuthoring,
+              pendingReviewComposer,
+              conversationActions,
+              bodyContext,
+              annotations,
+              findingCountsByPath,
+              onOpenFindingInAnalysis,
+              selectedRange,
+            })}
             toolbarLeadingAction={
               <>
                 {leadingAction}
