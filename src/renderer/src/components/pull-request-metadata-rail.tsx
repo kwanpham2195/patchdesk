@@ -6,7 +6,7 @@ import type {
   PullRequestAssigneePermission,
 } from "../../../domain/github-context";
 import { definedProps } from "../../../domain/defined-props";
-import type { ReviewVerdictState } from "../../../domain/review-verdicts";
+import { REVIEW_VERDICT_LABELS } from "../review-verdict-labels";
 import { PatchdeskApiError, contextualMessage } from "../api-client";
 import {
   forbiddenCopy,
@@ -136,20 +136,6 @@ function avatarDataUriByLoginFrom(
   return byLogin;
 }
 
-/** Human copy for a submitted review verdict, matching the wording `conversation.tsx`'s `ReviewSummaryEntry` already uses for the same four states. */
-function reviewVerdictLabel(verdict: ReviewVerdictState): string {
-  switch (verdict) {
-    case "approved":
-      return "Approved";
-    case "changes_requested":
-      return "Changes requested";
-    case "commented":
-      return "Commented";
-    case "dismissed":
-      return "Dismissed";
-  }
-}
-
 /**
  * One reviewer row: an initials badge, the login, and either the person's
  * latest submitted verdict or, for a requested-but-unanswered reviewer, an
@@ -186,7 +172,7 @@ function ReviewerListRow({
           <span className="flex shrink-0 items-center gap-1">
             <Badge variant="outline" className="gap-1 text-[10px]">
               <ReviewVerdictIcon verdict={reviewer.verdict} />
-              {reviewVerdictLabel(reviewer.verdict)}
+              {REVIEW_VERDICT_LABELS[reviewer.verdict]}
             </Badge>
             {reviewer.outdated ? (
               <Badge

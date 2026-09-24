@@ -1,4 +1,12 @@
 import { useMemo } from "react";
+import {
+  CircleCheck,
+  CircleDot,
+  CircleQuestionMark,
+  Clock3,
+  History,
+  type LucideIcon,
+} from "lucide-react";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import {
   projectConversationThreadRows,
@@ -9,6 +17,7 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import { parseReviewDiff } from "../review-diff-data";
 import type { FileFindingCount } from "../review-finding-counts";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
+import { NeedsReplyBadge } from "./needs-reply-badge";
 import { RelativeTime } from "./relative-time";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -240,13 +249,14 @@ export function ReviewNavigator({
                       <span className="min-w-0 truncate font-medium">
                         {row.author}
                       </span>
-                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                      <Badge variant={badge.variant}>
+                        <badge.Icon aria-hidden="true" />
+                        {badge.label}
+                      </Badge>
                     </span>
                     {row.needsReply || row.newCount > 0 ? (
                       <span className="flex items-center gap-1">
-                        {row.needsReply ? (
-                          <Badge variant="warning">Needs your reply</Badge>
-                        ) : null}
+                        {row.needsReply ? <NeedsReplyBadge /> : null}
                         {row.newCount > 0 ? (
                           <Badge
                             variant="outline"
@@ -281,6 +291,7 @@ export function ReviewNavigator({
 type ThreadStateBadge = {
   readonly label: string;
   readonly variant: "default" | "secondary" | "outline" | "warning";
+  readonly Icon: LucideIcon;
 };
 
 /**
@@ -306,14 +317,14 @@ function threadRowStateBadge(
 ): ThreadStateBadge {
   switch (state) {
     case "open":
-      return { label: "Open", variant: "default" };
+      return { label: "Open", variant: "default", Icon: CircleDot };
     case "resolved":
-      return { label: "Resolved", variant: "secondary" };
+      return { label: "Resolved", variant: "secondary", Icon: CircleCheck };
     case "outdated":
-      return { label: "Outdated", variant: "outline" };
+      return { label: "Outdated", variant: "outline", Icon: History };
     case "unknown":
-      return { label: "Unknown", variant: "outline" };
+      return { label: "Unknown", variant: "outline", Icon: CircleQuestionMark };
     case "pending":
-      return { label: "Pending", variant: "warning" };
+      return { label: "Pending", variant: "warning", Icon: Clock3 };
   }
 }
