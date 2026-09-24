@@ -351,7 +351,7 @@ export function NarrativeWalkthrough({
                                   className={cn(
                                     "h-auto min-h-7 min-w-0 w-full justify-start gap-2 rounded-md px-2 py-1 text-left text-xs leading-4",
                                     active &&
-                                      "border-l-2 border-primary bg-muted pl-[6px] font-semibold text-foreground",
+                                      "border-l-2 border-transparent border-l-primary bg-muted pl-[6px] font-semibold text-foreground",
                                   )}
                                   aria-current={active ? "true" : undefined}
                                   title={section.title}

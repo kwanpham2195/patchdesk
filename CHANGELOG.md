@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Coloured borders now show where they were meant to. The selected pull request row and the active Walkthrough chapter carry a purple left bar, Brief **Start here** has a purple edge, PR overview blocker cards and the **Merge** and **Checks** chips are edged in their status colour, and text fields and selects use the input border. Ghost buttons, such as the titlebar icons, **Regenerate**, **View evidence**, and the Diff toolbar controls, no longer draw an outline. #348
+
 - Insights can now be generated in Vietnamese. The Insight run dialog has a **Language** select (English or Vietnamese) beside **Reasoning**; it defaults to English and remembers the last choice for each Insight type, like the model. A Vietnamese run writes Brief notes and **Start here**, Walkthrough chapters and prose, and Analysis summaries and Findings in plain Vietnamese, keeping paths, identifiers, and Flow steps as written, and the header meta line names the language, as in "Generated 7h · Vietnamese". English runs send the same prompt as before, and results generated earlier read as English. #411
 
 - Insight states now read as icons. On the Brief / Walkthrough / Analysis tabs a current result shows no mark, Running a spinner, Outdated an amber clock, and Failed a red circle-x, with the word on hover; an Insight not run yet shows a dimmer tab name. PR overview **Review status** and the Pull requests inspector chips show the same icon beside the word, a current result shows only a green check, and **Not generated** now reads **Not run** everywhere. Loading spinners are now a thin ring with a faint track. #348

@@ -73,7 +73,7 @@ export function InboxRowItem({
         if (!opening) onAction();
       }}
       className={cn(
-        "block w-full content-auto border-l-2 border-transparent px-3 py-2 text-left transition-colors [contain-intrinsic-size:auto_60px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        "block w-full content-auto border-l-2 border-l-transparent px-3 py-2 text-left transition-colors [contain-intrinsic-size:auto_60px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         selected && "border-l-primary bg-primary/8",
         opening && "opacity-60",
       )}

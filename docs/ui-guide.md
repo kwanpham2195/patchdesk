@@ -12,6 +12,7 @@ The working area sits on a rounded, hairline-bordered panel painted `--backgroun
 Side columns and cards sit on `--card`: the Review details column on Pull requests and the metadata column on Conversation are both `bg-card`. The Visited pull requests column is the exception: it sits on `--shell`, so it reads as window chrome for navigation.
 A box that has to stand out inside a card column, such as the status block at the top of Review details, steps up once more to `--muted`.
 Do not skip a layer, and do not invent a fourth shade.
+Every border defaults to `--border` through a rule in `@layer base`, so a `border-<colour>` utility on an element overrides it; `border-transparent` hides every side, so use a side colour such as `border-l-transparent` when a sibling rule like `divide-y` draws the others.
 
 ## Tabs
 
