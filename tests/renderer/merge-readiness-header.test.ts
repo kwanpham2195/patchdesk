@@ -170,10 +170,22 @@ describe("firstMergeBlockerLabel", () => {
       label: "Draft",
     },
     {
-      name: "a GitHub display reason ahead of the raw blockers it replaces",
-      blockers: ["draft", "conflicting"],
+      name: "a GitHub display reason ahead of the raw blocker it restates",
+      blockers: ["merge_blocked"],
+      reasons: [reason("behind")],
+      label: "Behind base",
+    },
+    {
+      name: "a draft ahead of GitHub's review reason",
+      blockers: ["draft", "github_review"],
+      reasons: [reason("review_required")],
+      label: "Draft",
+    },
+    {
+      name: "an outdated head ahead of every other cause",
+      blockers: ["stale_head", "draft", "conflicting"],
       reasons: [reason("conflicts")],
-      label: "Conflicts",
+      label: "Outdated",
     },
     {
       name: "review required reason",

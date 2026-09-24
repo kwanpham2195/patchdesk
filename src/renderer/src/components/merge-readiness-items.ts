@@ -13,10 +13,48 @@ export function mergeReadinessItems(
   blockers: readonly string[],
   mergeReasons: ReadonlyArray<MergeDisplayReason>,
 ): ReadonlyArray<MergeReadinessItem> {
-  // GitHub's display reasons are the more specific evidence, so they replace the raw blocker codes whenever any exist.
-  return mergeReasons.length > 0
-    ? mergeReasons.map((reason) => ({ kind: "reason", reason }))
-    : blockers.map((blocker) => ({ kind: "blocker", blocker }));
+  // A stale, closed, or draft pull request cannot merge whatever GitHub's rules say, so those lead.
+  const leading = blockers.filter((blocker) => leadingBlockers.has(blocker));
+  const reasonCodes = new Set(mergeReasons.map((reason) => reason.code));
+  const remaining = blockers.filter(
+    (blocker) =>
+      !leadingBlockers.has(blocker) &&
+      !blockerRestatesReason(blocker, reasonCodes),
+  );
+  return [
+    ...leading.map((blocker) => ({ kind: "blocker" as const, blocker })),
+    ...mergeReasons.map((reason) => ({ kind: "reason" as const, reason })),
+    ...remaining.map((blocker) => ({ kind: "blocker" as const, blocker })),
+  ];
+}
+
+const leadingBlockers: ReadonlySet<string> = new Set([
+  "stale_head",
+  "closed",
+  "draft",
+]);
+
+function blockerRestatesReason(
+  blocker: string,
+  reasonCodes: ReadonlySet<MergeDisplayReason["code"]>,
+): boolean {
+  switch (blocker) {
+    case "conflicting":
+      return reasonCodes.has("conflicts");
+    case "required_check":
+    case "failing_check":
+      return reasonCodes.has("checks");
+    case "github_review":
+      return (
+        reasonCodes.has("review_required") ||
+        reasonCodes.has("changes_requested")
+      );
+    // Any GitHub reason is the specific explanation of GitHub's generic block.
+    case "merge_blocked":
+      return reasonCodes.size > 0;
+    default:
+      return false;
+  }
 }
 
 /** The short name of the first listed blocker, or undefined when it names no specific cause. */
