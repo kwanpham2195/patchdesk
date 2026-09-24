@@ -35,8 +35,6 @@ export function AnalysisFixture(): React.ReactNode {
         workbench,
         patchFiles,
         selectedInsight: "analysis",
-        profileId: "fixture",
-        reviewId: "fixture-review",
         addFinding: async () => undefined,
         dismissFinding: async () => undefined,
         analysisVerification: {
@@ -49,6 +47,13 @@ export function AnalysisFixture(): React.ReactNode {
               else next.delete(index);
               return next;
             }),
+        },
+        walkthroughProgress: {
+          progress: { reviewedSectionIds: [], supportReviewed: false },
+          saveFailed: false,
+          markSectionReviewed: () => undefined,
+          markSupportReviewed: () => undefined,
+          selectSection: () => undefined,
         },
         walkthroughFocused: false,
         setWalkthroughFocused: () => undefined,

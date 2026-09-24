@@ -28,6 +28,7 @@ import { useWalkthroughFocusTransition } from "../hooks/use-walkthrough-focus-tr
 import type { InsightRunConfiguration } from "../hooks/use-insight-configuration";
 import { useInsightRunControls } from "../hooks/use-insight-run-controls";
 import { useAnalysisVerification } from "../hooks/use-analysis-verification";
+import { useWalkthroughProgress } from "../hooks/use-walkthrough-progress";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
@@ -246,6 +247,12 @@ export function InsightsSlot({
     analysis: workbench.insights.analysis,
     onWorkbenchPatch,
   });
+  const walkthroughProgress = useWalkthroughProgress({
+    profileId,
+    reviewId,
+    walkthrough: workbench.insights.walkthrough,
+    onWorkbenchPatch,
+  });
   const brief = workbench.insights.brief ?? NOT_GENERATED_BRIEF;
   const projections = {
     analysis: workbench.insights.analysis,
@@ -284,8 +291,6 @@ export function InsightsSlot({
     workbench,
     patchFiles,
     selectedInsight,
-    profileId,
-    reviewId,
     ...definedProps({
       onFinishWithAnalysisSummary,
       addFinding: onAddFinding,
@@ -293,6 +298,7 @@ export function InsightsSlot({
     }),
     dismissFinding,
     analysisVerification,
+    walkthroughProgress,
     walkthroughFocused,
     setWalkthroughFocused: requestWalkthroughFocusChange,
     onRegenerateBrief: () => openRunDialog("regenerate"),
@@ -361,44 +367,21 @@ export function InsightsSlot({
                 }
               />
               <div className="flex flex-wrap items-center gap-2">
-                {selectedRunning?.busy ||
-                selectedProjection?.status === "running" ? (
-                  <Button
-                    size="icon-sm"
-                    variant="outline"
-                    onClick={selectedRunning?.cancel}
-                    disabled={
-                      selectedRunning === undefined ||
-                      selectedRunning.starting ||
-                      selectedRunning.cancelling
-                    }
-                    aria-label={
-                      selectedRunning?.cancelling
-                        ? `Cancelling ${selectedInsightName}…`
-                        : `Cancel ${selectedInsightName}`
-                    }
-                  >
-                    {selectedRunning?.cancelling ? (
-                      <Spinner aria-hidden="true" />
-                    ) : (
-                      <XIcon aria-hidden="true" />
-                    )}
-                  </Button>
-                ) : analysisFirstRunActive ||
-                  // A merged or closed Review keeps only the reason line below.
-                  runDisabledReasonId !== undefined ||
-                  selectedIsOutdated ||
-                  selectedProjection?.status === "failed" ||
-                  selectedProjection?.retained === undefined ? null : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => openRunDialog("regenerate")}
-                    disabled={!runEnabled}
-                  >
-                    Regenerate
-                  </Button>
-                )}
+                <InsightHeaderAction
+                  running={selectedRunning}
+                  projectionRunning={selectedProjection?.status === "running"}
+                  insightName={selectedInsightName}
+                  hideRegenerate={
+                    analysisFirstRunActive ||
+                    // A merged or closed Review keeps only the reason line below.
+                    runDisabledReasonId !== undefined ||
+                    selectedIsOutdated ||
+                    selectedProjection?.status === "failed" ||
+                    selectedProjection?.retained === undefined
+                  }
+                  runEnabled={runEnabled}
+                  onRegenerate={() => openRunDialog("regenerate")}
+                />
               </div>
             </header>
           )}
@@ -557,5 +540,58 @@ function InsightRunControls({
       pending={runPending}
       {...definedProps({ errorMessage: runErrorMessage })}
     />
+  );
+}
+
+/** Cancels the selected Insight's run while it runs, or offers Regenerate for its retained result. */
+function InsightHeaderAction({
+  running,
+  projectionRunning,
+  insightName,
+  hideRegenerate,
+  runEnabled,
+  onRegenerate,
+}: {
+  readonly running:
+    | ReturnType<typeof useInsightRunControls>["analysisRun"]
+    | undefined;
+  readonly projectionRunning: boolean;
+  readonly insightName: string;
+  readonly hideRegenerate: boolean;
+  readonly runEnabled: boolean;
+  readonly onRegenerate: () => void;
+}): React.JSX.Element | null {
+  if (running?.busy || projectionRunning)
+    return (
+      <Button
+        size="icon-sm"
+        variant="outline"
+        onClick={running?.cancel}
+        disabled={
+          running === undefined || running.starting || running.cancelling
+        }
+        aria-label={
+          running?.cancelling
+            ? `Cancelling ${insightName}…`
+            : `Cancel ${insightName}`
+        }
+      >
+        {running?.cancelling ? (
+          <Spinner aria-hidden="true" />
+        ) : (
+          <XIcon aria-hidden="true" />
+        )}
+      </Button>
+    );
+  if (hideRegenerate) return null;
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={onRegenerate}
+      disabled={!runEnabled}
+    >
+      Regenerate
+    </Button>
   );
 }

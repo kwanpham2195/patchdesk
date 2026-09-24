@@ -9,14 +9,13 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
+import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
 
 type InsightReaderBuilderInput = {
   readonly workbench: WorkbenchResponse;
   /** `workbench.fullPatch` already parsed, so a render does not reparse megabytes of diff text. */
   readonly patchFiles: ReadonlyArray<ParsedPatchFile>;
   readonly selectedInsight: InsightRunDialogType;
-  readonly profileId: string;
-  readonly reviewId: string;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
   readonly addFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly dismissFinding: (
@@ -24,6 +23,7 @@ type InsightReaderBuilderInput = {
     reason: string,
   ) => Promise<void>;
   readonly analysisVerification: AnalysisVerificationControls;
+  readonly walkthroughProgress: WalkthroughProgressControls;
   readonly walkthroughFocused: boolean;
   readonly setWalkthroughFocused: (focused: boolean) => void;
   /** Opens the run dialog from the Brief's own Provenance card. */
@@ -73,12 +73,11 @@ export function buildInsightReaders({
   workbench,
   patchFiles,
   selectedInsight,
-  profileId,
-  reviewId,
   onFinishWithAnalysisSummary,
   addFinding,
   dismissFinding,
   analysisVerification,
+  walkthroughProgress,
   onOpenFindingInDiff,
   walkthroughFocused,
   setWalkthroughFocused,
@@ -192,13 +191,9 @@ export function buildInsightReaders({
           sessionId: workbench.session.id,
           runId: workbench.insights.walkthrough.retained.runId,
           headSha: workbench.revision.reviewedHeadSha,
-          progress: workbench.insights.walkthrough.progress,
         })}
         walkthrough={workbench.insights.walkthrough.retained.value}
-        initialProgress={workbench.insights.walkthrough.progress}
-        profileId={profileId}
-        reviewId={reviewId}
-        runId={workbench.insights.walkthrough.retained.runId}
+        controls={walkthroughProgress}
         {...(workbench.insights.walkthrough.status === "current" &&
         workbench.fullPatch !== undefined
           ? { rawPatch: workbench.fullPatch }
