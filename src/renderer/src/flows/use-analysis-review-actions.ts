@@ -32,10 +32,13 @@ export type AnalysisReviewActionsInput = {
   readonly runDirectCommand: RunDirectCommand;
 };
 
+/** `review_changed`: the session, head, patch, or Analysis run changed during the write, so the add is unconfirmed. */
+export type FindingAddResult = "added" | "review_changed";
+
 export type AnalysisReviewActionsResult = {
   readonly addFindingToPendingReview: (
     finding: AnalysisFinding,
-  ) => Promise<void>;
+  ) => Promise<FindingAddResult>;
 };
 
 const pendingReviewCommandResponseSchema = v.strictObject({
@@ -220,7 +223,7 @@ export function useAnalysisReviewActions({
   }, [workbench]);
 
   const addFindingToPendingReview = useCallback(
-    async (finding: AnalysisFinding): Promise<void> => {
+    async (finding: AnalysisFinding): Promise<FindingAddResult> => {
       const currentWorkbench = latestWorkbenchRef.current;
       const runId = currentWorkbench.insights.analysis.retained?.runId;
       const patchHash = currentWorkbench.revision.patchHash;
@@ -454,8 +457,8 @@ export function useAnalysisReviewActions({
           requestJson(request.path, { method: "POST", body: request.body }),
         );
         if (!sameWorkbenchScope(latestWorkbenchRef.current, currentWorkbench))
-          return;
-        if (applyConfirmedProjection(value)) return;
+          return "review_changed";
+        if (applyConfirmedProjection(value)) return "added";
         if (
           isStalePendingResponse(
             value,
@@ -465,9 +468,9 @@ export function useAnalysisReviewActions({
           retainedNewerProjection = true;
       } catch (cause) {
         if (!sameWorkbenchScope(latestWorkbenchRef.current, currentWorkbench))
-          return;
+          return "review_changed";
         if (!isOutcomeUnknownRetry(cause)) throw cause;
-        if (applyConfirmedProjection(cause.responseBody, true)) return;
+        if (applyConfirmedProjection(cause.responseBody, true)) return "added";
         if (
           isStalePendingResponse(
             cause.responseBody,

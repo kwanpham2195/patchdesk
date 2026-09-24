@@ -9,7 +9,10 @@ import {
   ReviewPreconditionError,
 } from "../../src/renderer/src/api-client";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { useAnalysisReviewActions } from "../../src/renderer/src/flows/use-analysis-review-actions";
+import {
+  useAnalysisReviewActions,
+  type FindingAddResult,
+} from "../../src/renderer/src/flows/use-analysis-review-actions";
 import type { RunDirectCommand } from "../../src/renderer/src/flows/use-review-observation";
 import {
   failure,
@@ -119,8 +122,8 @@ describe("useAnalysisReviewActions", () => {
     restore = double.restore;
     const { result, onWorkbenchReplace } = renderActions(initial);
 
-    let firstRequest!: Promise<void>;
-    let secondRequest!: Promise<void>;
+    let firstRequest!: Promise<FindingAddResult>;
+    let secondRequest!: Promise<FindingAddResult>;
     act(() => {
       firstRequest = result.current.addFindingToPendingReview(first);
       secondRequest = result.current.addFindingToPendingReview(second);
@@ -245,14 +248,14 @@ describe("useAnalysisReviewActions", () => {
       );
       const finding = analysisResult.findings[0];
       if (finding === undefined) throw new Error("missing Finding fixture");
-      let request: Promise<void> | undefined;
+      let request: Promise<FindingAddResult> | undefined;
       act(() => {
         request = rendered.result.current.addFindingToPendingReview(finding);
       });
       rendered.rerender({ workbench: next });
       await act(async () => release(response));
       if (request === undefined) throw new Error("missing Finding request");
-      await expect(request).resolves.toBeUndefined();
+      await expect(request).resolves.toBe("review_changed");
       expect(onWorkbenchReplace).not.toHaveBeenCalled();
     },
   );
@@ -309,7 +312,7 @@ describe("useAnalysisReviewActions", () => {
       await act(async () => {
         await expect(
           rendered.result.current.addFindingToPendingReview(finding),
-        ).resolves.toBeUndefined();
+        ).resolves.toBe("added");
       });
 
       expect(double.request).toHaveBeenCalledWith(
@@ -598,7 +601,7 @@ describe("useAnalysisReviewActions", () => {
     const finding = analysisResult.findings[0];
     if (finding === undefined) throw new Error("missing Finding fixture");
 
-    let submitted!: Promise<void>;
+    let submitted!: Promise<FindingAddResult>;
     act(() => {
       submitted = result.current.addFindingToPendingReview(finding);
     });

@@ -3,7 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { contextualMessage } from "../api-client";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { FINDING_ACTION_MESSAGES } from "../review-copy";
-import type { AnalysisFinding } from "./use-analysis-review-actions";
+import type {
+  AnalysisFinding,
+  FindingAddResult,
+} from "./use-analysis-review-actions";
 
 type AddAllFindingsProgress = {
   /** Findings whose write has settled in this batch. */
@@ -17,6 +20,11 @@ type AddAllFindingsProgress = {
 export type AddAllFindingsOutcome =
   | { readonly _tag: "completed" }
   | { readonly _tag: "stopped"; readonly added: number }
+  | {
+      readonly _tag: "review_changed";
+      readonly added: number;
+      readonly total: number;
+    }
   | {
       readonly _tag: "failed";
       readonly findingId: string;
@@ -33,17 +41,18 @@ export type AddAllFindingsControls = {
 
 export type AddAllFindingsInput = {
   /** The single-Finding Add path; each call records its own intent before its write. */
-  readonly addFinding: (finding: AnalysisFinding) => Promise<void>;
-  readonly analysisRunId: string | undefined;
+  readonly addFinding: (finding: AnalysisFinding) => Promise<FindingAddResult>;
+  /** Changes when the session, reviewed head, patch, or Analysis run changes. */
+  readonly reviewScope: string;
 };
 
 /**
  * Adds Findings one at a time through the single-Finding path and stops at the
- * first failure, on Stop, or when the Analysis run changes; nothing is rolled back.
+ * first failure, on Stop, or when the Review changes; nothing is rolled back.
  */
 export function useAddAllFindings({
   addFinding,
-  analysisRunId,
+  reviewScope,
 }: AddAllFindingsInput): AddAllFindingsControls {
   const [progress, setProgress] = useState<AddAllFindingsProgress | undefined>(
     undefined,
@@ -51,7 +60,7 @@ export function useAddAllFindings({
   const runningRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const mountedRef = useRef(true);
-  const runIdRef = useLatestCommitted(analysisRunId);
+  const reviewScopeRef = useLatestCommitted(reviewScope);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -66,15 +75,13 @@ export function useAddAllFindings({
       if (runningRef.current) return { _tag: "stopped", added: 0 };
       runningRef.current = true;
       stopRequestedRef.current = false;
-      const startRunId = runIdRef.current;
+      const startScope = reviewScopeRef.current;
       let added = 0;
       try {
         for (const finding of findings) {
-          if (
-            stopRequestedRef.current ||
-            !mountedRef.current ||
-            runIdRef.current !== startRunId
-          )
+          if (reviewScopeRef.current !== startScope)
+            return { _tag: "review_changed", added, total: findings.length };
+          if (stopRequestedRef.current || !mountedRef.current)
             return { _tag: "stopped", added };
           setProgress({
             done: added,
@@ -82,9 +89,10 @@ export function useAddAllFindings({
             currentFindingId: finding.id,
             stopping: false,
           });
+          let result: FindingAddResult;
           try {
             // oxlint-disable-next-line react-doctor/async-await-in-loop -- the batch is sequential by contract: each write must settle before the next starts.
-            await addFinding(finding);
+            result = await addFinding(finding);
           } catch (cause) {
             return {
               _tag: "failed",
@@ -92,6 +100,8 @@ export function useAddAllFindings({
               message: contextualMessage(cause, FINDING_ACTION_MESSAGES),
             };
           }
+          if (result === "review_changed")
+            return { _tag: "review_changed", added, total: findings.length };
           added += 1;
         }
         return { _tag: "completed" };
@@ -100,7 +110,7 @@ export function useAddAllFindings({
         if (mountedRef.current) setProgress(undefined);
       }
     },
-    [addFinding, runIdRef],
+    [addFinding, reviewScopeRef],
   );
 
   const stop = useCallback((): void => {
