@@ -10,17 +10,12 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
-import {
-  parseContentHash,
-  parseGitSha,
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import {
   InsightsSlot,
   TERMINAL_REVIEW_INSIGHT_REASON,
@@ -40,6 +35,7 @@ import {
   projection,
   providerCatalog,
   withAnalysis,
+  withWalkthrough,
 } from "./review-workbench-fixtures";
 
 type Deferred<T> = {
@@ -83,70 +79,6 @@ function renderInsights(
       onReprepare={async () => workbench}
     />,
   );
-}
-
-function valueOf<T>(result: Result<T, unknown>): T {
-  if (result._tag === "err") throw new Error("Invalid walkthrough fixture");
-  return result.value;
-}
-
-function walkthroughProjection() {
-  const walkthrough = {
-    snapshot: {
-      profileId: valueOf(parseWorkspaceProfileId("profile")),
-      sessionId: valueOf(
-        parseReviewSessionId(
-          "github.com__octo-org__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
-        ),
-      ),
-      headSha: valueOf(parseGitSha("2222222222222222222222222222222222222222")),
-      patchHash: valueOf(
-        parseContentHash(
-          "0000000000000000000000000000000000000000000000000000000000000000",
-        ),
-      ),
-    },
-    citationStatus: "verified" as const,
-    title: "Fixture walkthrough",
-    focus: "Read the fixture walkthrough.",
-    chapters: [
-      {
-        id: "chapter-1",
-        title: "Fixture chapter",
-        sections: [
-          {
-            id: "section-1",
-            title: "Fixture section",
-            prose: "The retained walkthrough is ready to read.",
-            hunkIds: [],
-            hunks: [],
-          },
-        ],
-      },
-    ],
-    support: {
-      id: "support" as const,
-      title: "Support" as const,
-      hunkIds: [],
-      hunks: [],
-    },
-  };
-  return projection({
-    insights: {
-      analysis: { status: "not_generated" },
-      walkthrough: {
-        status: "current",
-        artifactStatus: "verified",
-        retained: {
-          runId: "walkthrough-1",
-          sessionId: "session-a",
-          headSha: "2222222222222222222222222222222222222222",
-          generatedAt: "2026-08-01T00:00:00.000Z",
-          value: walkthrough,
-        },
-      },
-    },
-  });
 }
 
 describe("InsightsSlot reading order", () => {
@@ -350,7 +282,7 @@ describe("InsightsSlot run requests", () => {
       return frames.length;
     });
     const user = userEvent.setup();
-    renderInsights(walkthroughProjection(), "walkthrough");
+    renderInsights(withWalkthrough(), "walkthrough");
 
     const transition = screen.getByRole("region", {
       name: "Review insights",
@@ -560,3 +492,50 @@ describe("InsightsSlot Verification ticks", () => {
     ).toBe("true");
   });
 });
+
+describe("InsightsSlot Walkthrough progress", () => {
+  it("keeps a reviewed section after switching to Brief and back", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+      "/v1/reviews/insights/walkthrough/progress": () =>
+        success({ status: "saved" }),
+    });
+    const user = userEvent.setup();
+    render(<PatchedInsights initial={withWalkthrough()} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Mark section reviewed" }),
+    );
+    await user.click(screen.getByRole("tab", { name: /^Brief/ }));
+    await user.click(screen.getByRole("tab", { name: /^Walkthrough/ }));
+
+    const marker = await screen.findByRole("button", {
+      name: "Section reviewed",
+    });
+    expect(marker.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+/** Applies workbench patches the way the app shell does, so a remounted reader sees them. */
+function PatchedInsights({
+  initial,
+}: {
+  readonly initial: WorkbenchResponse;
+}): React.JSX.Element {
+  const [workbench, setWorkbench] = useState(initial);
+  return (
+    <InsightsSlot
+      workbench={workbench}
+      initialDetail="walkthrough"
+      onWorkbenchReplace={() => undefined}
+      onWorkbenchPatch={({ insights, ...rest }) =>
+        setWorkbench((current) => ({
+          ...current,
+          ...rest,
+          insights: { ...current.insights, ...insights },
+        }))
+      }
+      onReprepare={async () => workbench}
+    />
+  );
+}

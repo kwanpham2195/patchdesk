@@ -1,91 +1,36 @@
-import { useState } from "react";
-
-import { requestJson } from "../api-client";
 import { NarrativeWalkthrough } from "./narrative-walkthrough";
 import { InlineError } from "./ui/inline-error";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
 
 type WalkthroughProgressReaderProps = Omit<
   React.ComponentProps<typeof NarrativeWalkthrough>,
   "reviewedSectionIds" | "supportReviewed" | "currentSectionId" | "actions"
 > & {
-  readonly initialProgress: WorkbenchResponse["insights"]["walkthrough"]["progress"];
-  readonly profileId: string;
-  readonly reviewId: string;
-  readonly runId: string | undefined;
+  readonly controls: WalkthroughProgressControls;
 };
 export function WalkthroughProgressReader({
-  initialProgress,
-  profileId,
-  reviewId,
-  runId,
+  controls,
   ...props
 }: WalkthroughProgressReaderProps): React.JSX.Element {
-  const [reviewedSectionIds, setReviewedSectionIds] = useState<
-    ReadonlyArray<string>
-  >(initialProgress?.reviewedSectionIds ?? []);
-  const [supportReviewed, setSupportReviewed] = useState(
-    initialProgress?.supportReviewed ?? false,
-  );
-  const [currentSectionId, setCurrentSectionId] = useState<string | undefined>(
-    initialProgress?.currentSectionId,
-  );
-  const [progressError, setProgressError] = useState(false);
-  const save = (progress: {
-    readonly reviewedSectionIds: ReadonlyArray<string>;
-    readonly supportReviewed: boolean;
-    readonly currentSectionId?: string;
-  }): void => {
-    if (runId === undefined) return;
-    void requestJson("/v1/reviews/insights/walkthrough/progress", {
-      method: "POST",
-      body: { profileId, reviewId, runId, ...progress },
-    })
-      .then(() => setProgressError(false))
-      .catch(() => setProgressError(true));
-  };
+  const { progress } = controls;
   return (
     <>
-      {progressError ? (
+      {controls.saveFailed ? (
         <InlineError className="py-2">
           Walkthrough progress could not be saved.
         </InlineError>
       ) : null}
       <NarrativeWalkthrough
         {...props}
-        reviewedSectionIds={reviewedSectionIds}
-        supportReviewed={supportReviewed}
-        {...(currentSectionId === undefined ? {} : { currentSectionId })}
+        reviewedSectionIds={progress.reviewedSectionIds}
+        supportReviewed={progress.supportReviewed}
+        {...(progress.currentSectionId === undefined
+          ? {}
+          : { currentSectionId: progress.currentSectionId })}
         actions={{
-          onMarkSectionReviewed: (sectionId) => {
-            const next = reviewedSectionIds.includes(sectionId)
-              ? reviewedSectionIds
-              : [...reviewedSectionIds, sectionId];
-            setReviewedSectionIds(next);
-            const saved = { reviewedSectionIds: next, supportReviewed };
-            save(
-              currentSectionId === undefined
-                ? saved
-                : { ...saved, currentSectionId },
-            );
-          },
-          onMarkSupportReviewed: () => {
-            setSupportReviewed(true);
-            const saved = { reviewedSectionIds, supportReviewed: true };
-            save(
-              currentSectionId === undefined
-                ? saved
-                : { ...saved, currentSectionId },
-            );
-          },
-          onSelectSection: (sectionId) => {
-            setCurrentSectionId(sectionId);
-            save({
-              reviewedSectionIds,
-              supportReviewed,
-              currentSectionId: sectionId,
-            });
-          },
+          onMarkSectionReviewed: controls.markSectionReviewed,
+          onMarkSupportReviewed: controls.markSupportReviewed,
+          onSelectSection: controls.selectSection,
         }}
       />
     </>
