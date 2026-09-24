@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the Diff's single-key shortcuts taking over the **Browse** search field, which appears for pull requests with 500 or more files. Typing `n`, `p`, `v`, `,`, `.`, `[`, `]`, `{`, or `}` there now enters the letter instead of moving through the Diff or toggling **Viewed**. #357
+
 - Fixed **Mark all viewed** and **Show all** clearing the **Viewed** marks on files the **Scope** picker hides. They now change only the files the Scope picker shows. #146
 
 - Inline comments in a single commit's diff are available only on the head commit's new lines; an older commit's header says "Comments are available on the latest commit or All files." Before, a line that later commits moved could post its comment on a different line of the head. #359
