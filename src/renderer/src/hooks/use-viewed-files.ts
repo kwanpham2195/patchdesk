@@ -16,6 +16,13 @@ const savedViewedFilesSchema = v.strictObject({
   paths: v.array(v.pipe(v.string(), v.minLength(1))),
 });
 
+type SaveQueue = {
+  readonly sessionId: string;
+  stored: ReadonlySet<string>;
+  inFlight: boolean;
+  queued: ReadonlySet<string> | undefined;
+};
+
 type ViewedFilesState = {
   readonly sessionId: string;
   readonly paths: ReadonlySet<string>;
@@ -50,20 +57,16 @@ export function useViewedFiles({
   if (state.sessionId !== sessionId)
     setState({ sessionId, paths: new Set(savedPaths), saveFailed: false });
   const latest = useLatestCommitted({ sessionId, onWorkbenchPatch });
-  const save = useRef<{
-    sessionId: string;
-    stored: ReadonlySet<string>;
-    inFlight: boolean;
-    queued: ReadonlySet<string> | undefined;
-  }>({
+  const save = useRef<SaveQueue>({
     sessionId,
     stored: new Set(savedPaths),
     inFlight: false,
     queued: undefined,
   });
 
-  const send = (): void => {
-    const current = save.current;
+  // Each session owns its queue, so a switched-away Review's late answer cannot send the next Review's marks.
+  const send = (current: SaveQueue): void => {
+    if (save.current !== current) return;
     const paths = current.queued;
     if (paths === undefined) return;
     current.queued = undefined;
@@ -90,7 +93,7 @@ export function useViewedFiles({
       })
       .finally(() => {
         current.inFlight = false;
-        send();
+        send(current);
       });
   };
 
@@ -104,7 +107,7 @@ export function useViewedFiles({
       };
     setState({ sessionId, paths, saveFailed: false });
     save.current.queued = paths;
-    if (!save.current.inFlight) send();
+    if (!save.current.inFlight) send(save.current);
   };
 
   return { paths: state.paths, saveFailed: state.saveFailed, setPaths };

@@ -22,6 +22,11 @@ afterEach(() => {
 const viewedFilesPath = "/v1/reviews/viewed-files";
 
 const savedBody = v.object({ paths: v.array(v.string()) });
+const sentBody = v.object({
+  reviewId: v.string(),
+  sessionId: v.string(),
+  paths: v.array(v.string()),
+});
 const sentRequest = v.object({ body: savedBody });
 
 /** Answers each save with the set it was sent, as the route does. */
@@ -55,6 +60,12 @@ function renderViewedFiles(
         onWorkbenchPatch: (patch) => patches.push(patch),
       }),
     { initialProps: props },
+  );
+}
+
+function sentBodies(): ReadonlyArray<v.InferOutput<typeof sentBody>> {
+  return (desktop?.request.mock.calls ?? []).map(([input]) =>
+    v.parse(sentBody, v.parse(v.object({ body: v.unknown() }), input).body),
   );
 }
 
@@ -137,6 +148,48 @@ describe("useViewedFiles", () => {
       "src/a.ts",
       "src/b.ts",
       "src/c.ts",
+    ]);
+  });
+
+  it("keeps a switched-away Review's late save from sending the next Review's marks", async () => {
+    const held: Array<() => void> = [];
+    desktop = installDesktopDouble({
+      [viewedFilesPath]: (input) =>
+        new Promise((resolve) => {
+          held.push(() => resolve(echo(input)));
+        }),
+    });
+    const { result, rerender } = renderHook(
+      (current: { readonly reviewId: string; readonly sessionId: string }) =>
+        useViewedFiles({
+          profileId: "profile",
+          reviewId: current.reviewId,
+          sessionId: current.sessionId,
+          savedPaths: [],
+          onWorkbenchPatch: () => undefined,
+        }),
+      { initialProps: { reviewId: "review-a", sessionId: "session-a" } },
+    );
+
+    act(() => result.current.setPaths(new Set(["src/a.ts"])));
+    rerender({ reviewId: "review-b", sessionId: "session-b" });
+    act(() => result.current.setPaths(new Set(["src/b.ts"])));
+    act(() => result.current.setPaths(new Set(["src/b.ts", "src/c.ts"])));
+    await waitFor(() => expect(held).toHaveLength(2));
+    // Review A's save answers while Review B's first save is still open.
+    await act(async () => held[0]?.());
+    await act(async () => held[1]?.());
+    await waitFor(() => expect(held).toHaveLength(3));
+    await act(async () => held[2]?.());
+
+    expect(sentBodies()).toEqual([
+      { reviewId: "review-a", sessionId: "session-a", paths: ["src/a.ts"] },
+      { reviewId: "review-b", sessionId: "session-b", paths: ["src/b.ts"] },
+      {
+        reviewId: "review-b",
+        sessionId: "session-b",
+        paths: ["src/b.ts", "src/c.ts"],
+      },
     ]);
   });
 
