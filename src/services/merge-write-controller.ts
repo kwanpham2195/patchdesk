@@ -207,8 +207,10 @@ export class MergeWriteController {
         acknowledgedWarningCodes: acknowledgedWarningCodes,
       });
       if (merged._tag === "err") {
-        if (merged.error._tag === "GitHubMergeOutcomeUnknown")
+        if (merged.error._tag === "GitHubMergeOutcomeUnknown") {
+          this.notifyNeedsRecovery(requested.value);
           return err({ reason: "merge_outcome_unknown" });
+        }
         const rejected = rejectMergeOperation(
           unknown.value,
           mergeReason(merged.error._tag),
@@ -225,8 +227,10 @@ export class MergeWriteController {
       if (
         confirmed._tag === "err" ||
         (await this.operations.confirm(confirmed.value))._tag === "err"
-      )
+      ) {
+        this.notifyNeedsRecovery(requested.value);
         return err({ reason: "merge_outcome_unknown" });
+      }
       const terminalReview = await this.recordMergedReview(
         confirmed.value,
         gated.value.review,
@@ -240,6 +244,15 @@ export class MergeWriteController {
     } finally {
       this.writeCoordinator.release(key);
     }
+  }
+
+  // Only this call's own operation notifies; `MergeOperationExists` is an older lock that already did.
+  private notifyNeedsRecovery(operation: MergeOperation): void {
+    postDesktopNotification(this.notifier, {
+      _tag: "WriteNeedsRecovery",
+      reviewId: operation.reviewId,
+      pullRequest: operation.pr,
+    });
   }
 
   /**

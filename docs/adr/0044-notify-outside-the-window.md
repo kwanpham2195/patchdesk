@@ -17,10 +17,13 @@ Patchdesk posts a macOS notification for four events it already knows about:
 - An Insight run settles as completed or failed. A cancelled run is the
   maintainer's own doing and a superseded run was replaced, so neither posts.
   The event is raised only after the terminal record is persisted.
-- A pull request metadata write or a direct conversation write leaves its own
-  operation outcome-unknown. A write refused because an earlier operation
-  already holds the lock posts nothing, and neither does one that GitHub
-  rejected or that was confirmed and removed.
+- A pull request metadata write, a direct conversation write, a pending
+  review write (including the **Finish review** submit), a direct summary
+  review, or a merge leaves its own operation outcome-unknown. A write refused
+  because an earlier operation already holds the lock posts nothing, and
+  neither does one that GitHub rejected or that was confirmed and removed. A
+  merge GitHub confirmed whose later local bookkeeping fails is merged, not
+  unknown, and posts "merge completed" instead.
 - Review preparation creates a new session. A resumed session posts nothing.
   Refresh that adopts a new head also runs preparation, so it posts "Review
   ready" too, behind the same off-by-default toggle.
@@ -69,9 +72,9 @@ opens a pasted reference; a Review click is `{ kind: "review" }`.
 
 ## Consequences
 
-- A merge or Finish review write left outcome-unknown does not notify yet;
-  only the metadata and conversation writes named above do. Follow-up #266
-  adds those two.
+- Merge and Finish review writes left outcome-unknown notify too
+  (2026-09-24, #266); until then only the metadata and conversation writes
+  did.
 - An Insight click for the Review already on screen remounts that workbench
   on the Insight, unless a draft or pending write holds it, in which case the
   window is only focused. The workbench has no in-place seam that selects a

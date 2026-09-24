@@ -41,6 +41,10 @@ import {
   type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 import type { PullRequestRef } from "../domain/pull-request";
 import type {
   GitHubComments,
@@ -174,6 +178,7 @@ export class PendingReviewService {
     private readonly now: () => IsoTimestamp,
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly recentWrites: ConfirmedWriteJournal,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   /**
@@ -617,7 +622,9 @@ export class PendingReviewService {
       );
       if (resolved._tag === "Landed") written = ok(resolved.write);
       if (resolved._tag === "Uncertain")
-        return err(await this.lockOutcomeUnknown(session, begun.value));
+        return err(
+          await this.lockOutcomeUnknown(reviewId, session, begun.value),
+        );
       if (resolved._tag === "Refused") {
         // GitHub holds a pending review that is not this write's: the write
         // did not land. Record the owner the read proved so the Review stops
@@ -636,7 +643,9 @@ export class PendingReviewService {
       if (written.error.category === "unavailable") {
         // Timeout, lost response, or unconfirmable outcome: lock and require
         // read-side reconciliation; never retry automatically.
-        return err(await this.lockOutcomeUnknown(session, begun.value));
+        return err(
+          await this.lockOutcomeUnknown(reviewId, session, begun.value),
+        );
       }
       // GitHub flatly refused the request rather than leaving the outcome
       // ambiguous, so this locks and rejects the same as any other refusal;
@@ -667,10 +676,10 @@ export class PendingReviewService {
       confirmed.value,
     );
     if (receipts === undefined)
-      return err(await this.lockOutcomeUnknown(session, begun.value));
+      return err(await this.lockOutcomeUnknown(reviewId, session, begun.value));
     // A confirmed receipt must be durable before success is reported.
     if (!(await this.persist(session, confirmed.value, receipts)))
-      return err(await this.lockOutcomeUnknown(session, begun.value));
+      return err(await this.lockOutcomeUnknown(reviewId, session, begun.value));
     for (const entry of journalEntriesFor(
       operation,
       state,
@@ -705,11 +714,18 @@ export class PendingReviewService {
 
   /** Keep the intent and lock the Review for read-side recovery (ADR 0035). */
   private async lockOutcomeUnknown(
+    reviewId: ReviewId,
     session: ReviewSession,
     begun: PendingReviewState,
   ): Promise<PendingReviewServiceFailure> {
     const unknown = markPendingReviewOutcomeUnknown(begun);
     if (unknown._tag === "ok") await this.persist(session, unknown.value);
+    // The persisted in-flight intent already locks the Review, so notify even if this save failed.
+    postDesktopNotification(this.notifier, {
+      _tag: "WriteNeedsRecovery",
+      reviewId,
+      pullRequest: sessionPr(session),
+    });
     return "outcome_unknown";
   }
 

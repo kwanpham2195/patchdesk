@@ -56,7 +56,7 @@ Settings itself holds nothing back: its sections save their own values, so closi
 
 ### Desktop notifications
 
-Patchdesk posts a macOS notification when a Brief, Walkthrough, or Analysis finishes or fails, and when a GitHub write leaves the Review waiting for **Check GitHub again**. With **Review ready and merge completed** switched on in Settings → General → Notifications, it also posts one when a Review finishes preparing and when a merge completes. A cancelled or superseded Insight run posts nothing. The notification names the pull request as `owner/repo#number`.
+Patchdesk posts a macOS notification when a Brief, Walkthrough, or Analysis finishes or fails, and when a GitHub write, including a merge or a **Finish review** submission, leaves the Review waiting for **Check GitHub again**. With **Review ready and merge completed** switched on in Settings → General → Notifications, it also posts one when a Review finishes preparing and when a merge completes. A cancelled or superseded Insight run posts nothing. The notification names the pull request as `owner/repo#number`.
 
 No notification is posted for the Review the focused window is showing, for a Review that finishes preparing while the window is focused, or while **Notifications** is off. Refresh that adopts a new head prepares the Review again, so it can post **Review ready** too. Clicking a notification brings the window forward and navigates to its Review with the same guards as any navigation; an Insight notification lands on the Insights tab with that Insight selected.
 

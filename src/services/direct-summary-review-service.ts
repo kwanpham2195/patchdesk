@@ -25,6 +25,10 @@ import {
   type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 
 /**
  * Serializes every durable mutation for one profile/session, including draft
@@ -78,6 +82,7 @@ export class DirectSummaryReviewService {
     private readonly now: () => IsoTimestamp,
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly recentWrites: ConfirmedWriteJournal,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async submit(input: {
@@ -190,7 +195,7 @@ export class DirectSummaryReviewService {
       });
       if (written._tag === "err") {
         if (written.error.category === "unavailable") {
-          await this.persist(fresh.value.session, {
+          await this.lockOutcomeUnknown(input.reviewId, fresh.value.session, {
             _tag: "OutcomeUnknown",
             operation,
             resolution: "check_required",
@@ -215,7 +220,7 @@ export class DirectSummaryReviewService {
         receipt: written.value,
       };
       if (!(await this.persist(fresh.value.session, confirmed))) {
-        await this.persist(fresh.value.session, {
+        await this.lockOutcomeUnknown(input.reviewId, fresh.value.session, {
           _tag: "OutcomeUnknown",
           operation,
           resolution: "check_required",
@@ -336,6 +341,20 @@ export class DirectSummaryReviewService {
     state: DirectSummaryReviewState,
   ): Promise<boolean> {
     return this.save(session, state);
+  }
+
+  // The persisted in-flight intent already locks the Review, so notify even if this save failed.
+  private async lockOutcomeUnknown(
+    reviewId: ReviewId,
+    session: ReviewSession,
+    state: DirectSummaryReviewState,
+  ): Promise<void> {
+    await this.persist(session, state);
+    postDesktopNotification(this.notifier, {
+      _tag: "WriteNeedsRecovery",
+      reviewId,
+      pullRequest: sessionPr(session),
+    });
   }
 
   private async clear(session: ReviewSession): Promise<boolean> {

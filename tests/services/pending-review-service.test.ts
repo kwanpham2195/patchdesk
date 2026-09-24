@@ -19,6 +19,7 @@ import {
   projectPendingReview,
 } from "../../src/services/pending-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
@@ -199,6 +200,7 @@ function fixture(
   };
   const coordinator = new ReviewOperationCoordinator();
   const recentWrites = confirmedWriteJournal();
+  const notifications: DesktopNotificationEvent[] = [];
   return {
     service: new PendingReviewService(
       // SAFETY: this fixture mock implements only the Pick<...> subset the
@@ -213,7 +215,9 @@ function fixture(
       () => now,
       coordinator,
       recentWrites,
+      { notify: (event) => notifications.push(event) },
     ),
+    notifications,
     store,
     gate,
     github,
@@ -758,6 +762,32 @@ describe("PendingReviewService", () => {
       });
       expect(value.saves[1]).toMatchObject({ pendingReview: { _tag: "None" } });
     }
+  });
+
+  it("posts one recovery event when a submit is left outcome-unknown", async () => {
+    const value = fixture(
+      { _tag: "Pending", review: pending() },
+      {
+        submitPendingReview: vi.fn(async () =>
+          err({ category: "unavailable" }),
+        ),
+      },
+    );
+    await expect(
+      value.service.submit({
+        profileId,
+        reviewId,
+        expected,
+        event: "COMMENT",
+        summaryBody: "summary",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(value.current()).toMatchObject({
+      pendingReview: { _tag: "OutcomeUnknown" },
+    });
+    expect(value.notifications).toMatchObject([
+      { _tag: "WriteNeedsRecovery", reviewId, pullRequest: { number: 42 } },
+    ]);
   });
 
   it("rejects a command while another review operation owns the shared lock", async () => {
