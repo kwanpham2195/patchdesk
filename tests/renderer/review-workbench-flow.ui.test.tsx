@@ -116,14 +116,14 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     );
     mount(
       projection({
-        mergeReadiness: { _tag: "Blocked", blockers: [], warnings: [] },
+        mergeReadiness: { _tag: "Blocked", blockers: ["draft"], warnings: [] },
       }),
     );
     const checks = screen.getByRole("button", {
       name: "Open PR overview: checks passing",
     });
     const merge = screen.getByRole("button", {
-      name: "Open PR overview: merge blocked",
+      name: "Open PR overview: merge blocked · draft",
     });
     expect(screen.queryByRole("button", { name: "PR overview" })).toBeNull();
 

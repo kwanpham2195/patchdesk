@@ -15,6 +15,7 @@ import {
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
+import { firstMergeBlockerLabel } from "./merge-readiness-items";
 import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
 import { WatchPullRequestButton } from "./watch-pull-request-button";
@@ -52,6 +53,15 @@ export function ReviewWorkbenchHeader({
   readonly openOverview: (section?: OverviewFocusSection) => void;
   readonly setSummaryDialogOpen: (open: boolean) => void;
 }): React.JSX.Element {
+  const mergeText = mergeLabel(
+    mergeStatus,
+    mergeStatus === "Blocked"
+      ? firstMergeBlockerLabel(
+          model.mergeReadiness.blockers,
+          model.mergeReasons ?? [],
+        )
+      : undefined,
+  );
   return (
     <header
       data-review-workbench-toolbar
@@ -99,10 +109,10 @@ export function ReviewWorkbenchHeader({
               mergePillColor(mergeStatus),
             )}
             onClick={() => openOverview("merge_readiness")}
-            aria-label={`Open PR overview: merge ${mergeLabel(mergeStatus).toLowerCase()}`}
+            aria-label={`Open PR overview: merge ${mergeText.toLowerCase()}`}
           >
             {mergeIcon(mergeStatus)}
-            Merge · {mergeLabel(mergeStatus)}
+            Merge · {mergeText}
           </Button>
           <Button
             variant="outline"
@@ -337,7 +347,7 @@ function mergeIcon(tag: string): React.JSX.Element {
       return <AlertTriangle className="size-3" />;
   }
 }
-function mergeLabel(tag: string): string {
+function mergeLabel(tag: string, firstBlocker: string | undefined): string {
   switch (tag) {
     case "Merged":
       return "Merged";
@@ -348,7 +358,9 @@ function mergeLabel(tag: string): string {
     case "NeedsAcknowledgement":
       return "Warnings";
     case "Blocked":
-      return "Blocked";
+      return firstBlocker === undefined
+        ? "Blocked"
+        : `Blocked · ${firstBlocker}`;
     default:
       return tag;
   }
