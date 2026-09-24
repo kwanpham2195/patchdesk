@@ -630,12 +630,12 @@ export class PendingReviewService {
         // did not land. Record the owner the read proved so the Review stops
         // claiming there is none, and name the collision in the failure.
         const rejected = rejectPendingReviewWrite(begun.value);
-        if (rejected._tag === "ok") {
-          await this.persist(
+        if (rejected._tag === "ok")
+          await this.persistRejection(
+            reviewId,
             session,
             adoptObservedPendingReview(rejected.value, resolved.observed),
           );
-        }
         return err("pending_review");
       }
     }
@@ -652,7 +652,8 @@ export class PendingReviewService {
       // only the reported failure code differs, so the maintainer sees an
       // accurate "rate-limited" message instead of a generic rejection.
       const rejected = rejectPendingReviewWrite(begun.value);
-      if (rejected._tag === "ok") await this.persist(session, rejected.value);
+      if (rejected._tag === "ok")
+        await this.persistRejection(reviewId, session, rejected.value);
       if (written.error.category === "rate_limited") return err("rate_limited");
       if (written.error.category === "forbidden") return err("forbidden");
       if (written.error.category === "pending_review")
@@ -728,6 +729,20 @@ export class PendingReviewService {
       pullRequest: sessionPr(session),
     });
     return "outcome_unknown";
+  }
+
+  // A failed save leaves WriteInFlight on disk, which locks the Review until recovery.
+  private async persistRejection(
+    reviewId: ReviewId,
+    session: ReviewSession,
+    rejected: PendingReviewState,
+  ): Promise<void> {
+    if (await this.persist(session, rejected)) return;
+    postDesktopNotification(this.notifier, {
+      _tag: "WriteNeedsRecovery",
+      reviewId,
+      pullRequest: sessionPr(session),
+    });
   }
 
   /**

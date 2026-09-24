@@ -202,7 +202,13 @@ export class DirectSummaryReviewService {
           });
           return err("outcome_unknown");
         }
-        await this.clear(fresh.value.session);
+        // A failed clear leaves WriteInFlight on disk, which locks the Review until recovery.
+        if (!(await this.clear(fresh.value.session)))
+          postDesktopNotification(this.notifier, {
+            _tag: "WriteNeedsRecovery",
+            reviewId: input.reviewId,
+            pullRequest: pr,
+          });
         return err(
           written.error.category === "auth"
             ? "permission_denied"

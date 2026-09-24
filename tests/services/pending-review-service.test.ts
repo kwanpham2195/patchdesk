@@ -790,6 +790,35 @@ describe("PendingReviewService", () => {
     ]);
   });
 
+  it("posts one recovery event when a refused submit cannot save its rejection", async () => {
+    const value = fixture(
+      { _tag: "Pending", review: pending() },
+      { submitPendingReview: vi.fn(async () => err({ category: "rejected" })) },
+    );
+    const persistIntent = value.store.save.getMockImplementation();
+    if (persistIntent === undefined) throw new Error("fixture save missing");
+    value.store.save
+      .mockImplementationOnce(persistIntent)
+      .mockImplementationOnce(async () =>
+        err({ _tag: "StorageFailure", operation: "write", reason: "io" }),
+      );
+    await expect(
+      value.service.submit({
+        profileId,
+        reviewId,
+        expected,
+        event: "COMMENT",
+        summaryBody: "summary",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "rejected" });
+    expect(value.current()).toMatchObject({
+      pendingReview: { _tag: "WriteInFlight" },
+    });
+    expect(value.notifications).toMatchObject([
+      { _tag: "WriteNeedsRecovery", reviewId, pullRequest: { number: 42 } },
+    ]);
+  });
+
   it("rejects a command while another review operation owns the shared lock", async () => {
     const value = fixture({ _tag: "None" });
     const key = `${profileId}:${reviewId}`;
