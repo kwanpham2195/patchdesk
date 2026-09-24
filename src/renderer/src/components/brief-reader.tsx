@@ -26,6 +26,7 @@ import {
   type BriefStartHere,
 } from "../brief-contracts";
 import type { ChangeScope } from "../../../domain/change-scope";
+import { definedProps } from "../../../domain/defined-props";
 import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
 import { ReachBlock } from "./brief-reach-block";
 import { GeneratedMarkdownInline } from "./generated-markdown";
@@ -140,7 +141,8 @@ export function BriefReader({
   readonly regenerateDisabled?: boolean;
   /** The workbench's Walkthrough status; decides whether the card offers to open one or to generate one. */
   readonly walkthroughStatus: BriefInsight["status"];
-  readonly onOpenWalkthrough: () => void;
+  /** Absent on a merged or closed Review with no current Walkthrough, where the only offer would be a run the service refuses. */
+  readonly onOpenWalkthrough?: () => void;
 }): React.JSX.Element {
   const brief = retained.value;
   return (
@@ -168,7 +170,7 @@ export function BriefReader({
           <StartHereCard
             startHere={brief.startHere}
             walkthroughStatus={walkthroughStatus}
-            onOpenWalkthrough={onOpenWalkthrough}
+            {...definedProps({ onOpenWalkthrough })}
           />
         )}
         {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
@@ -223,7 +225,7 @@ function StartHereCard({
 }: {
   readonly startHere: BriefStartHere;
   readonly walkthroughStatus: BriefInsight["status"];
-  readonly onOpenWalkthrough: () => void;
+  readonly onOpenWalkthrough?: () => void;
 }): React.JSX.Element {
   return (
     <section
@@ -249,16 +251,18 @@ function StartHereCard({
           </li>
         ))}
       </ol>
-      <Button
-        size="sm"
-        variant="outline"
-        className="self-start"
-        onClick={onOpenWalkthrough}
-      >
-        {walkthroughStatus === "current"
-          ? "Open walkthrough"
-          : "Generate walkthrough"}
-      </Button>
+      {onOpenWalkthrough === undefined ? null : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="self-start"
+          onClick={onOpenWalkthrough}
+        >
+          {walkthroughStatus === "current"
+            ? "Open walkthrough"
+            : "Generate walkthrough"}
+        </Button>
+      )}
     </section>
   );
 }

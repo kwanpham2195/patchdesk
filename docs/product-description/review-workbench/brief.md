@@ -70,9 +70,9 @@ Flow draws up to three diff-styled views, one per kind — call_tree with real f
 
 Shape groups files by directory and collapses a directory after twelve files into a counted remainder. Evidence uses its shortest meaningful identifier while preserving full paths in titles. Reach states how counts were produced.
 
-Start here gives a lead sentence and an ordered list of files, each with an optional reason. Its button reads Open walkthrough when a current Walkthrough exists for this revision and Generate walkthrough otherwise.
+Start here gives a lead sentence and an ordered list of files, each with an optional reason. Its button reads Open walkthrough when a current Walkthrough exists for this revision and Generate walkthrough otherwise; a merged or closed Review draws only Open walkthrough.
 
-A failed run shows one warning block that names the failure category, such as a timeout, a rate limit, or a result the app could not read. Most failures offer **Try again**. When the represented Review's local files are missing or no longer match its revision, the warning offers **Re-prepare Review** instead; this rebuilds the same Review through the durable refresh lifecycle, then opens the run dialog for explicit confirmation, and never runs automatically when the Review opens. When a retained Brief exists the warning says its evidence is still readable and the Brief stays below. A failed Codex run keeps its bounded command trace below the action; long commands stay on one truncated row with the duration visible and retain their full text on hover. A Brief retained for an earlier revision shows "Brief is outdated" with both revisions and Run for latest revision.
+A failed run shows one warning block that names the failure category, such as a timeout, a rate limit, or a result the app could not read. Most failures offer **Try again**. When the represented Review's local files are missing or no longer match its revision, the warning offers **Re-prepare Review** instead; this rebuilds the same Review through the durable refresh lifecycle, then opens the run dialog for explicit confirmation, and never runs automatically when the Review opens. When a retained Brief exists the warning says its evidence is still readable and the Brief stays below. A failed Codex run keeps its bounded command trace below the action; long commands stay on one truncated row with the duration visible and retain their full text on hover. A Brief retained for an earlier revision shows "Brief is outdated" with both revisions and Run for latest revision. A merged or closed Review draws neither Try again, Re-prepare Review, nor Run for latest revision.
 
 ## Variants
 
@@ -132,14 +132,14 @@ A failed run shows one warning block that names the failure category, such as a 
 - A current Brief shows Regenerate both beside the tab strip and in the Provenance card. An outdated or failed Brief hides the tab strip button, while the Provenance card's button stays. A merged or closed Review hides both.
 - The Scope card in the side column cannot filter the Diff; its rows are plain text.
 - Generate walkthrough is offered only when no current Walkthrough stands for the revision; otherwise Open walkthrough is shown.
-- On a merged or closed Review, Generate brief and Regenerate are not drawn, while Try again, Run for latest revision, and Start here's Generate walkthrough still open the run dialog.
+- On a merged or closed Review, no control that opens the run dialog is drawn: Generate brief, Regenerate, Try again, Re-prepare Review, Run for latest revision, and Start here's Generate walkthrough are all hidden.
 - A status-read failure retains the run identity so polling can resume.
 
 ## Open questions and verification
 
 - The 2026-09-14 live pass confirmed landing on Brief, the empty state, the disabled Generate brief on merged Reviews and the enabled one on an open Review, and the run dialog's Provider (API key, Codex CLI account), Model, and Reasoning controls, and Cancel. No retained Brief existed in the live workspace, so the reader layout, Provenance card, and both Regenerate buttons were checked from source only.
 - Fixed: a merged or closed Review draws neither Generate brief nor Regenerate and no longer shows a reason line, since no disabled control remains to explain. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
-- Suspected defect: Try again, Run for latest revision, and Start here's Generate walkthrough are not disabled on a merged or closed Review, while the service rejects a run for such a Review. What the maintainer sees after Start run there is unconfirmed. See [B-19](../bug-triage.md#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review).
+- Fixed: Try again, Run for latest revision, and Start here's Generate walkthrough are no longer drawn on a merged or closed Review. See [B-19](../bug-triage.md#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review).
 - The raw machine timestamp in the running state, one of the slips in [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips), is fixed: the panel draws a relative time and no longer says partial results are not shown. The new wording is not yet live-verified.
 - Confirm the visible distinction between Cancel requested, cancelled, failed, and timed out runs.
 - Confirm whether switching to another Insight reader while Brief runs keeps its progress discoverable.

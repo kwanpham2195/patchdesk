@@ -215,6 +215,70 @@ describe("InsightsSlot on a merged Review", () => {
   });
 
   it.each([
+    { status: "open", offersRun: true },
+    { status: "closed", offersRun: false },
+    { status: "merged", offersRun: false },
+  ] as const)(
+    "offers Try again and Start here's Generate walkthrough on a $status Review: $offersRun",
+    async ({ status, offersRun }) => {
+      const user = userEvent.setup();
+      const retainedBrief = briefInsight().retained;
+      if (retainedBrief === undefined)
+        throw new Error("Brief fixture lost its retained result");
+      renderInsights(
+        projection({
+          review: { id: "review-42", status },
+          insights: {
+            analysis: { status: "failed" },
+            walkthrough: { status: "not_generated" },
+            brief: briefInsight({
+              retained: {
+                ...retainedBrief,
+                value: {
+                  ...retainedBrief.value,
+                  startHere: {
+                    lead: "Read the writer first.",
+                    order: [{ path: "src/a.ts" }],
+                  },
+                },
+              },
+            }),
+          },
+        }),
+      );
+
+      expect(
+        screen.queryByRole("button", { name: "Generate walkthrough" }) !== null,
+      ).toBe(offersRun);
+      await user.click(screen.getByRole("tab", { name: /^Analysis/ }));
+      expect(screen.queryByRole("button", { name: "Try again" }) !== null).toBe(
+        offersRun,
+      );
+    },
+  );
+
+  it.each(["open", "closed"] as const)(
+    "offers Run for latest revision on an outdated Brief of a %s Review only when open",
+    (status) => {
+      renderInsights(
+        projection({
+          review: { id: "review-42", status },
+          insights: {
+            analysis: { status: "not_generated" },
+            walkthrough: { status: "not_generated" },
+            brief: briefInsight({ status: "outdated" }),
+          },
+        }),
+      );
+
+      expect(
+        screen.queryByRole("button", { name: "Run for latest revision" }) !==
+          null,
+      ).toBe(status === "open");
+    },
+  );
+
+  it.each([
     { status: "open", offersActions: true },
     { status: "closed", offersActions: false },
     { status: "merged", offersActions: false },

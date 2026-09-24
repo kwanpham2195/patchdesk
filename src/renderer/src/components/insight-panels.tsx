@@ -218,7 +218,8 @@ export function InsightFailed({
   activity,
 }: {
   readonly projection: InsightProjection;
-  readonly onRetry: () => void;
+  /** Absent on a merged or closed Review, where the service refuses a run, so neither Try again nor Re-prepare Review is drawn. */
+  readonly onRetry?: () => void;
   readonly onReprepare: () => Promise<WorkbenchResponse>;
   readonly retainedDescription?: string;
   /** The trace the run left, so a timed-out run still shows what it was doing. */
@@ -238,7 +239,7 @@ export function InsightFailed({
     setReprepareFailed(false);
     try {
       await onReprepare();
-      onRetry();
+      onRetry?.();
     } catch {
       setReprepareFailed(true);
     } finally {
@@ -262,19 +263,21 @@ export function InsightFailed({
         )}
         {reprepareFailed ? <p>The Review could not be re-prepared.</p> : null}
       </AlertDescription>
-      <Button
-        size="sm"
-        disabled={repreparing}
-        onClick={
-          reviewWorktreeUnavailable ? () => void runReprepare() : onRetry
-        }
-      >
-        {reviewWorktreeUnavailable
-          ? repreparing
-            ? "Re-preparing Review…"
-            : "Re-prepare Review"
-          : "Try again"}
-      </Button>
+      {onRetry === undefined ? null : (
+        <Button
+          size="sm"
+          disabled={repreparing}
+          onClick={
+            reviewWorktreeUnavailable ? () => void runReprepare() : onRetry
+          }
+        >
+          {reviewWorktreeUnavailable
+            ? repreparing
+              ? "Re-preparing Review…"
+              : "Re-prepare Review"
+            : "Try again"}
+        </Button>
+      )}
       {activity === undefined ? null : (
         <div className="min-w-0 basis-full">
           <InsightActivityTrace activity={activity} />
@@ -314,7 +317,8 @@ export function InsightOutdated({
   currentRevision,
 }: {
   readonly type: InsightRunDialogType;
-  readonly onRetry: () => void;
+  /** Absent on a merged or closed Review, where the service refuses a run. */
+  readonly onRetry?: () => void;
   readonly retainedRevision?: string;
   readonly currentRevision: string;
 }): React.JSX.Element {
@@ -330,11 +334,13 @@ export function InsightOutdated({
           {currentRevision.slice(0, 8)}. Rerun to navigate current code.
         </EmptyDescription>
       </EmptyHeader>
-      <EmptyContent>
-        <Button size="sm" onClick={onRetry}>
-          Run for latest revision
-        </Button>
-      </EmptyContent>
+      {onRetry === undefined ? null : (
+        <EmptyContent>
+          <Button size="sm" onClick={onRetry}>
+            Run for latest revision
+          </Button>
+        </EmptyContent>
+      )}
     </Empty>
   );
 }
