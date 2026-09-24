@@ -150,7 +150,7 @@ describe("GitHubAdapter merge policy", () => {
       value: expect.objectContaining({
         headSha,
         complete: true,
-        checks: { overall: "unknown", checks: [] },
+        checks: { overall: "none", checks: [] },
       }),
     });
   });
