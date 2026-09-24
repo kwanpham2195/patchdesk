@@ -177,19 +177,26 @@ function AppContent({
     workbench,
   });
   const {
+    diagnosticsOpen,
+    diagnosticsOpener,
+    openDiagnostics: openDiagnosticsOverlay,
+    closeDiagnostics,
+  } = useDiagnosticsOverlay(navigationState);
+  const {
     openSettings,
     settingsOpen,
     setSettingsOpen,
     settingsOpener,
     setSettingsOpener,
     settingsSection,
-  } = useSettingsOverlay({ fixtureMode, navigationState });
-  const {
-    diagnosticsOpen,
-    diagnosticsOpener,
-    openDiagnostics,
-    closeDiagnostics,
-  } = useDiagnosticsOverlay(navigationState);
+  } = useSettingsOverlay({ fixtureMode, navigationState, diagnosticsOpen });
+  // Settings refuses to open over Diagnostics inside its hook; the hooks' state would be circular, so the reverse refusal lives here.
+  const openDiagnostics = useCallback(
+    (opener?: HTMLElement): void => {
+      if (!settingsOpen) openDiagnosticsOverlay(opener);
+    },
+    [openDiagnosticsOverlay, settingsOpen],
+  );
   const {
     appearance,
     diffThemePreferences,

@@ -69,6 +69,34 @@ describe("Diagnostics overlay in the app", () => {
     await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
+  it("stays closed while Settings is open", async () => {
+    const desktop = installApp();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Pull requests" });
+    act(() => desktop.sendMenuAction("openSettings"));
+    await screen.findByRole("dialog", { name: "Settings" });
+
+    act(() => desktop.sendMenuAction("openDiagnostics"));
+
+    expect(screen.queryByRole("dialog", { name: "Diagnostics" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
+  });
+
+  it("keeps Settings closed while Diagnostics is open, from the menu or ⌘,", async () => {
+    const desktop = installApp();
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Pull requests" });
+    act(() => desktop.sendMenuAction("openDiagnostics"));
+    await screen.findByRole("dialog", { name: "Diagnostics" });
+
+    act(() => desktop.sendMenuAction("openSettings"));
+    await user.keyboard("{Meta>},{/Meta}");
+
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Diagnostics" })).toBeTruthy();
+  });
+
   it("reopens a Settings restore saved on the old Logs section on General", async () => {
     saveSettingsRestore("logs");
     installApp();

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Settings and **Diagnostics** opening on top of each other. Each now stays closed while the other is open, whether asked for from the Help menu, ⌘,, or ⌘K. #348
+
 - Fixed ⌘K opening **Navigate** while typing in the **Browse** search field, which appears for pull requests with 500 or more files. #348
 
 - Fixed a disabled switch or checkbox looking enabled, such as **Split view** in **View options** when the pane is too narrow. It now draws faded with a not-allowed cursor. #348
