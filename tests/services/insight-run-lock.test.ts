@@ -54,6 +54,7 @@ describe("Insight terminal persistence lock", () => {
       type: "analysis",
       model: "model",
       reasoning: "medium",
+      language: "en",
     });
     if (started._tag === "err") throw new Error("expected an active run");
 

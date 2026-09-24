@@ -1,7 +1,10 @@
-import type {
-  InsightProvider,
-  InsightReasoning,
+import {
+  INSIGHT_LANGUAGES,
+  type InsightLanguage,
+  type InsightProvider,
+  type InsightReasoning,
 } from "../../../domain/insight-provider";
+import { INSIGHT_LANGUAGE_LABELS } from "../insight-contracts";
 
 import { ModelCombobox, type ModelComboboxOption } from "./model-combobox";
 import { Button } from "./ui/button";
@@ -50,6 +53,7 @@ export function InsightRunDialog({
   models,
   model,
   reasoning,
+  language,
   codexActivationPending,
   codexActivationError,
   pending,
@@ -60,6 +64,7 @@ export function InsightRunDialog({
   onRefreshCodexModels,
   onModelChange,
   onReasoningChange,
+  onLanguageChange,
   onConfirm,
 }: {
   readonly open: boolean;
@@ -69,6 +74,7 @@ export function InsightRunDialog({
   readonly models: ReadonlyArray<InsightModelOption>;
   readonly model: string | null;
   readonly reasoning: InsightReasoning;
+  readonly language: InsightLanguage;
   readonly codexActivationPending: boolean;
   readonly codexActivationError: boolean;
   readonly pending: boolean;
@@ -79,6 +85,7 @@ export function InsightRunDialog({
   readonly onRefreshCodexModels: () => void;
   readonly onModelChange: (model: string | null) => void;
   readonly onReasoningChange: (reasoning: InsightReasoning) => void;
+  readonly onLanguageChange: (language: InsightLanguage) => void;
   readonly onConfirm: () => void;
 }): React.JSX.Element {
   const noun = INSIGHT_NOUNS[type];
@@ -205,43 +212,82 @@ export function InsightRunDialog({
               disabled={pending}
             />
           </label>
-          <label
-            className="grid gap-1.5 text-sm font-medium"
-            htmlFor="insight-run-reasoning"
-          >
-            Reasoning
-            <Select
-              value={reasoning}
-              disabled={pending}
-              items={reasoningOptions.map((option) => ({
-                label: option,
-                value: option,
-              }))}
-              onValueChange={(value) => {
-                const nextReasoning = reasoningOptions.find(
-                  (option) => option === value,
-                );
-                if (nextReasoning !== undefined)
-                  onReasoningChange(nextReasoning);
-              }}
+          <div className="flex flex-wrap gap-4">
+            <label
+              className="grid gap-1.5 text-sm font-medium"
+              htmlFor="insight-run-reasoning"
             >
-              <SelectTrigger
-                id="insight-run-reasoning"
-                aria-label="Insight reasoning"
+              Reasoning
+              <Select
+                value={reasoning}
+                disabled={pending}
+                items={reasoningOptions.map((option) => ({
+                  label: option,
+                  value: option,
+                }))}
+                onValueChange={(value) => {
+                  const nextReasoning = reasoningOptions.find(
+                    (option) => option === value,
+                  );
+                  if (nextReasoning !== undefined)
+                    onReasoningChange(nextReasoning);
+                }}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {reasoningOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </label>
+                <SelectTrigger
+                  id="insight-run-reasoning"
+                  aria-label="Insight reasoning"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {reasoningOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </label>
+            <label
+              className="grid gap-1.5 text-sm font-medium"
+              htmlFor="insight-run-language"
+            >
+              Language
+              <Select
+                value={language}
+                disabled={pending}
+                items={INSIGHT_LANGUAGES.map((option) => ({
+                  label: INSIGHT_LANGUAGE_LABELS[option],
+                  value: option,
+                }))}
+                onValueChange={(value) => {
+                  const nextLanguage = INSIGHT_LANGUAGES.find(
+                    (option) => option === value,
+                  );
+                  if (nextLanguage !== undefined)
+                    onLanguageChange(nextLanguage);
+                }}
+              >
+                <SelectTrigger
+                  id="insight-run-language"
+                  aria-label="Insight language"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {INSIGHT_LANGUAGES.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {INSIGHT_LANGUAGE_LABELS[option]}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
           {selectedModel?.cost === undefined ? null : (
             <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
               {`List price $${selectedModel.cost.input.toFixed(2)} input / $${selectedModel.cost.output.toFixed(2)} output per million tokens; billing may differ.`}

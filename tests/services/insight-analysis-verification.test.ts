@@ -29,6 +29,7 @@ async function completedAnalysis(
     type: "analysis",
     model: "model",
     reasoning: "medium",
+    language: "en",
   });
   if (started._tag === "err") throw new Error("expected an Analysis run");
   await settled(coordinator, reviewId, started.value.runId);

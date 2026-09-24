@@ -1,12 +1,14 @@
 import * as v from "valibot";
 
-import type {
-  InsightProvider,
-  InsightReasoning,
+import {
+  INSIGHT_LANGUAGES,
+  type InsightLanguage,
+  type InsightProvider,
+  type InsightReasoning,
 } from "../../domain/insight-provider";
 import { definePreference } from "./lib/local-preference";
 
-/** Every Insight type that stores its own provider/model/reasoning choice. */
+/** Every Insight type that stores its own provider/model/reasoning/language choice. */
 export const INSIGHT_PREFERENCE_TYPES = [
   "analysis",
   "walkthrough",
@@ -17,6 +19,7 @@ export type InsightRunPreference = {
   readonly provider: InsightProvider;
   readonly model: string;
   readonly reasoning: InsightReasoning;
+  readonly language: InsightLanguage;
 };
 
 const VERSION = 1;
@@ -26,6 +29,8 @@ const storedPreferenceSchema = v.object({
   provider: v.picklist(["pi", "codex-cli-account"]),
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
+  // A choice saved before Insights had a language keeps its model and reads as English.
+  language: v.optional(v.picklist(INSIGHT_LANGUAGES), "en"),
 });
 
 // A stored record is one provider/model/reasoning choice; a field that no

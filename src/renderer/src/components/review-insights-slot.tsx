@@ -3,7 +3,10 @@ import { useMemo } from "react";
 import { definedProps } from "../../../domain/defined-props";
 import { parseUnifiedPatch, type ParsedPatchFile } from "../../../domain/patch";
 
-import type { InsightProvider } from "../../../domain/insight-provider";
+import type {
+  InsightLanguage,
+  InsightProvider,
+} from "../../../domain/insight-provider";
 import {
   INSIGHT_NOUNS,
   InsightRunDialog,
@@ -33,7 +36,10 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
-import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
+import {
+  INSIGHT_LANGUAGE_LABELS,
+  INSIGHT_PROVIDER_LABELS,
+} from "../insight-contracts";
 import { RelativeTime } from "./relative-time";
 
 function insightRequestFailureMessage(
@@ -58,7 +64,11 @@ function InsightDocumentMeta({
     | Readonly<{
         generatedAt: string;
         provenance?:
-          | Readonly<{ provider: "pi" | "codex-cli-account"; model: string }>
+          | Readonly<{
+              provider: "pi" | "codex-cli-account";
+              model: string;
+              language: InsightLanguage;
+            }>
           | undefined;
       }>
     | undefined;
@@ -69,6 +79,7 @@ function InsightDocumentMeta({
   // The Brief draws its own Provenance card, so only the other readers state the provider and model here.
   const provenance =
     selectedInsight === "brief" ? undefined : retained.provenance;
+  const language = retained.provenance?.language;
   return (
     <p className="min-w-0 truncate text-xs text-muted-foreground">
       <RelativeTime
@@ -78,6 +89,9 @@ function InsightDocumentMeta({
       {provenance === undefined
         ? null
         : ` · ${INSIGHT_PROVIDER_LABELS[provenance.provider]} · ${provenance.model}`}
+      {language === undefined || language === "en"
+        ? null
+        : ` · ${INSIGHT_LANGUAGE_LABELS[language]}`}
     </p>
   );
 }
@@ -459,6 +473,7 @@ function InsightRunControls({
     codexActivationPending,
     codexActivationError,
     reasoning,
+    language,
     runDialogType,
     runDialogAction,
   } = configuration;
@@ -474,6 +489,7 @@ function InsightRunControls({
       codexActivationPending={codexActivationPending}
       codexActivationError={codexActivationError}
       reasoning={reasoning}
+      language={language}
       onOpenChange={(open) => {
         if (!open) closeRunDialog();
       }}
@@ -497,6 +513,9 @@ function InsightRunControls({
       onRefreshCodexModels={activateCodex}
       onReasoningChange={(nextReasoning) =>
         setConfiguration({ reasoning: nextReasoning })
+      }
+      onLanguageChange={(nextLanguage) =>
+        setConfiguration({ language: nextLanguage })
       }
       onConfirm={confirmRun}
       pending={runPending}

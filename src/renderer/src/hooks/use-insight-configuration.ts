@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef } from "react";
 
 import type {
+  InsightLanguage,
   InsightProvider,
   InsightReasoning,
 } from "../../../domain/insight-provider";
@@ -30,6 +31,7 @@ export type InsightRunConfiguration = {
   readonly models: ReadonlyArray<InsightModelOption>;
   readonly model: string | null;
   readonly reasoning: InsightReasoning;
+  readonly language: InsightLanguage;
   readonly runDialogType: InsightRunDialogType | null;
   readonly runDialogAction: "run" | "retry" | "regenerate";
   readonly catalogError: boolean;
@@ -45,6 +47,7 @@ const initialInsightRunConfiguration: InsightRunConfiguration = {
   models: [],
   model: null,
   reasoning: "medium",
+  language: "en",
   runDialogType: null,
   runDialogAction: "run",
   catalogError: false,
@@ -117,6 +120,7 @@ export function useInsightConfiguration(input: {
         provider: initialPreference.provider,
         reasoning: initialPreference.reasoning,
         model: initialPreference.model,
+        language: initialPreference.language,
       });
     }
     void requestJson("/v1/insight-providers")

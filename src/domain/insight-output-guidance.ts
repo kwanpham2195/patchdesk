@@ -4,6 +4,7 @@ import {
   MAX_FLOW_NODES_PER_TREE,
   MAX_FLOW_TREES,
 } from "./brief-flow";
+import type { InsightLanguage } from "./insight-provider";
 
 export type GuidedInsightType = "analysis" | "walkthrough" | "brief";
 
@@ -16,6 +17,10 @@ const SIMPLIFIED_TECHNICAL_ENGLISH = [
   "The reader knows GitHub, pull requests, diffs, tests, and AI tooling. Never explain what those are. Never add a purpose clause that tells the reader why they would want a fact, such as 'so you can' or 'to help you'.",
 ].join(" ");
 
+// Replaces only the Simplified Technical English rule; the rest of the guidance stays English because the model reads it, the reviewer does not.
+const PLAIN_VIETNAMESE =
+  "Write all human-readable text in Vietnamese. Use plain, simple Vietnamese: short, direct sentences in the active voice, one main idea in each sentence, common words. Keep exact code identifiers, paths, commands, and API names as written; never translate them. Keep JSON keys and enum values exactly as the schema defines them. Technical terms Vietnamese developers use as-is (pull request, commit, diff, merge, test, hunk) stay in English.";
+
 const ANALYSIS_REVIEWER_FRAMING = [
   "Write for a reviewer who knows this codebase but has not read the diff. Their time is the scarce resource: give them the framing the code cannot give them, then stop.",
   "Default to short, and order every text coarse to granular, so a reader who stops early still leaves with a correct understanding.",
@@ -27,10 +32,15 @@ const ANALYSIS_REVIEWER_FRAMING = [
 ].join(" ");
 
 /** Fixed human-readable output guidance shared by every Insight provider. */
-export function insightOutputGuidance(type: GuidedInsightType): string {
+export function insightOutputGuidance(
+  type: GuidedInsightType,
+  language: InsightLanguage,
+): string {
+  const languageRule =
+    language === "vi" ? PLAIN_VIETNAMESE : SIMPLIFIED_TECHNICAL_ENGLISH;
   if (type === "analysis") {
     return [
-      SIMPLIFIED_TECHNICAL_ENGLISH,
+      languageRule,
       ANALYSIS_REVIEWER_FRAMING,
       "changeSummary states what the patch does in one to three sentences. summary states only why the verdict is what it is, in one or two sentences, and never repeats changeSummary.",
       "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea. Use a bullet outline when the reader must scan several facts, steps, effects, conditions, or findings. Do not put several independent ideas in one large paragraph.",
@@ -41,7 +51,7 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
 
   if (type === "walkthrough") {
     return [
-      SIMPLIFIED_TECHNICAL_ENGLISH,
+      languageRule,
       "Write for a reviewer who must understand how the change behaves and decide where to inspect.",
       "State what the patch does, never why it was made: never invent motivation, intent, trade-offs, or product impact, and never copy them from the pull request description.",
       "Explain the change as a short semantic walkthrough grouped by behavior. Do not narrate the patch file by file or restate code that the diff already shows.",
@@ -55,7 +65,7 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
   // One rule per line under a heading: the model applies these while it writes
   // a tree, and a single paragraph of them buried the call-tree rules.
   return [
-    SIMPLIFIED_TECHNICAL_ENGLISH,
+    languageRule,
     "",
     "WHAT A BRIEF IS",
     "Write a Brief: the structure of this change -- its flow, ownership, and where to start reading.",

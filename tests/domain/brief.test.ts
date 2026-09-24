@@ -201,27 +201,46 @@ describe("normalizeBrief", () => {
 });
 
 describe("insightOutputGuidance", () => {
+  const STE_RULE_END = "such as 'so you can' or 'to help you'.";
+  const VIETNAMESE_RULE =
+    "Write all human-readable text in Vietnamese. Use plain, simple Vietnamese: short, direct sentences in the active voice, one main idea in each sentence, common words. Keep exact code identifiers, paths, commands, and API names as written; never translate them. Keep JSON keys and enum values exactly as the schema defines them. Technical terms Vietnamese developers use as-is (pull request, commit, diff, merge, test, hunk) stay in English.";
+
+  it.each(["brief", "walkthrough", "analysis"] as const)(
+    "replaces only the Simplified Technical English rule for a Vietnamese %s",
+    (type) => {
+      const english = insightOutputGuidance(type, "en");
+      const vietnamese = insightOutputGuidance(type, "vi");
+      expect(english).toMatch(
+        /^Write all human-readable text in ASD-STE100 \/ Simplified Technical English\./,
+      );
+      expect(vietnamese.startsWith(VIETNAMESE_RULE)).toBe(true);
+      expect(vietnamese).not.toContain("ASD-STE100");
+      expect(vietnamese.slice(VIETNAMESE_RULE.length)).toBe(
+        english.slice(english.indexOf(STE_RULE_END) + STE_RULE_END.length),
+      );
+    },
+  );
   it("gives the Brief its own framing and leaves the Walkthrough unchanged", () => {
-    expect(insightOutputGuidance("brief")).toContain(
+    expect(insightOutputGuidance("brief", "en")).toContain(
       "Write a Brief: the structure of this change -- its flow, ownership, and where to start reading.",
     );
-    expect(insightOutputGuidance("brief")).toContain(
+    expect(insightOutputGuidance("brief", "en")).toContain(
       "Never invent motivation, intent, trade-offs, or product impact.",
     );
-    expect(insightOutputGuidance("brief")).not.toContain(
+    expect(insightOutputGuidance("brief", "en")).not.toContain(
       "Mark missing evidence as an assumption",
     );
-    expect(insightOutputGuidance("brief")).not.toContain("walkthrough");
-    expect(insightOutputGuidance("walkthrough")).toContain(
+    expect(insightOutputGuidance("brief", "en")).not.toContain("walkthrough");
+    expect(insightOutputGuidance("walkthrough", "en")).toContain(
       "short semantic walkthrough",
     );
-    expect(insightOutputGuidance("walkthrough")).toContain(
+    expect(insightOutputGuidance("walkthrough", "en")).toContain(
       "State what the patch does, never why it was made: never invent motivation, intent, trade-offs, or product impact, and never copy them from the pull request description.",
     );
   });
 
   it("tells the Walkthrough to write plain text, because its reader renders none", () => {
-    const guidance = insightOutputGuidance("walkthrough");
+    const guidance = insightOutputGuidance("walkthrough", "en");
     expect(guidance).toContain(
       "Use no Markdown: no bullet or heading markers, no emphasis markers, and no backticks.",
     );
@@ -230,7 +249,7 @@ describe("insightOutputGuidance", () => {
   });
 
   it("gives the Brief its own Flow rules and still forbids prose numbers", () => {
-    const guidance = insightOutputGuidance("brief");
+    const guidance = insightOutputGuidance("brief", "en");
     expect(guidance).toContain(
       "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, and component.",
     );
@@ -260,7 +279,7 @@ describe("insightOutputGuidance", () => {
   });
 
   it("groups the Brief rules under headings, one rule to a line", () => {
-    const guidance = insightOutputGuidance("brief");
+    const guidance = insightOutputGuidance("brief", "en");
     for (const heading of [
       "WHAT A BRIEF IS",
       "OWNERSHIP NOTES",
@@ -277,7 +296,7 @@ describe("insightOutputGuidance", () => {
   });
 
   it("anchors each tree kind with the diff example that shows its shape", () => {
-    const guidance = insightOutputGuidance("brief");
+    const guidance = insightOutputGuidance("brief", "en");
     expect(guidance).toContain("+    expandSkillMention");
     expect(guidance).toContain("+  if content is unchanged");
     expect(guidance).toContain("+    <RunSkillButton>");
@@ -287,7 +306,7 @@ describe("insightOutputGuidance", () => {
   });
 
   it("states each Flow limit once, in the number the schema enforces", () => {
-    const guidance = insightOutputGuidance("brief");
+    const guidance = insightOutputGuidance("brief", "en");
     expect(guidance).toContain(
       `Give at most ${MAX_FLOW_TREES} flow trees, one for each kind.`,
     );

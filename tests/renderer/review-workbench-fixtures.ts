@@ -227,6 +227,7 @@ export function briefInsight(
         provider: "pi",
         model: "fixture-model",
         reasoning: "medium",
+        language: "en",
       },
       value: briefValue,
     },

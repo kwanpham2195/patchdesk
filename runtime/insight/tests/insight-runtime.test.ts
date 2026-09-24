@@ -200,7 +200,7 @@ function canonicalIdentity() {
   return { profileId: profile.value, sessionId: session.value };
 }
 
-function briefProductionInput(patchPath: string) {
+function briefProductionInput(patchPath: string, language: "en" | "vi" = "en") {
   const { profileId, sessionId } = canonicalIdentity();
   return {
     profileId,
@@ -208,6 +208,7 @@ function briefProductionInput(patchPath: string) {
     patchPath,
     model: "faux/test",
     reasoning: "low" as const,
+    language,
   };
 }
 
@@ -773,29 +774,12 @@ describe("one-shot insight runtime", () => {
 
   it("accepts only exact app-owned production paths", () => {
     const paths = PatchdeskPaths.forTest("/tmp/patchdesk-insight-paths");
-    const parsedProfile = parseWorkspaceProfileId("profile");
-    const parsedSession = parseReviewSessionId(canonicalSessionId);
-    if (parsedProfile._tag === "err" || parsedSession._tag === "err") {
-      throw new Error("fixture identity is invalid");
-    }
+    const { profileId, sessionId } = canonicalIdentity();
     const input = {
-      profileId: parsedProfile.value,
-      sessionId: parsedSession.value,
-      contextPath: paths.preparedContextFile(
-        parsedProfile.value,
-        parsedSession.value,
-      ),
-      reviewInputPath: paths.preparedReviewInputFile(
-        parsedProfile.value,
-        parsedSession.value,
-      ),
-      patchPath: paths.patchFile(parsedProfile.value, parsedSession.value),
-      worktreePath: paths.worktreeDirectory(
-        parsedProfile.value,
-        parsedSession.value,
-      ),
-      model: "faux/test",
-      reasoning: "low" as const,
+      ...briefProductionInput(paths.patchFile(profileId, sessionId)),
+      contextPath: paths.preparedContextFile(profileId, sessionId),
+      reviewInputPath: paths.preparedReviewInputFile(profileId, sessionId),
+      worktreePath: paths.worktreeDirectory(profileId, sessionId),
     };
     expect(
       canonicalizeProductionInvocation({ type: "analysis", input }, paths),
@@ -811,52 +795,65 @@ describe("one-shot insight runtime", () => {
     ).toBeUndefined();
   });
 
-  it("builds one Brief prompt from the production invocation and returns a brief-schema result", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-brief-"));
-    try {
-      const paths = PatchdeskPaths.forTest(root);
-      const { profileId, sessionId } = canonicalIdentity();
-      const patchPath = paths.patchFile(profileId, sessionId);
-      await mkdir(paths.sessionDirectory(profileId, sessionId), {
-        recursive: true,
-      });
-      await writeFile(patchPath, briefPatch, "utf8");
-      let systemPrompt = "";
-      let briefTools: ReadonlyArray<string> = [];
-      const provider = fake([
-        (context) => {
-          systemPrompt = context.systemPrompt ?? "";
-          briefTools = (context.tools ?? []).map((tool) => tool.name);
-          return fauxAssistantMessage(
-            fauxToolCall("submit_patchdesk_result", brief),
-            { stopReason: "toolUse" },
-          );
-        },
-      ]);
-      await expect(
-        runProductionChild(
-          { type: "brief", input: briefProductionInput(patchPath) },
-          new AbortController().signal,
-          {
-            onHandle: () => undefined,
-            providers: [provider.provider],
-            paths,
+  it.each([
+    {
+      language: "en" as const,
+      rule: "ASD-STE100 / Simplified Technical English",
+    },
+    {
+      language: "vi" as const,
+      rule: "Write all human-readable text in Vietnamese.",
+    },
+  ])(
+    "builds one $language Brief prompt from the production invocation and returns a brief-schema result",
+    async ({ language, rule }) => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-brief-"));
+      try {
+        const paths = PatchdeskPaths.forTest(root);
+        const { profileId, sessionId } = canonicalIdentity();
+        const patchPath = paths.patchFile(profileId, sessionId);
+        await mkdir(paths.sessionDirectory(profileId, sessionId), {
+          recursive: true,
+        });
+        await writeFile(patchPath, briefPatch, "utf8");
+        let systemPrompt = "";
+        let briefTools: ReadonlyArray<string> = [];
+        const provider = fake([
+          (context) => {
+            systemPrompt = context.systemPrompt ?? "";
+            briefTools = (context.tools ?? []).map((tool) => tool.name);
+            return fauxAssistantMessage(
+              fauxToolCall("submit_patchdesk_result", brief),
+              { stopReason: "toolUse" },
+            );
           },
-        ),
-      ).resolves.toEqual({ ok: true, value: brief });
-      expect(briefTools).toEqual(["submit_patchdesk_result"]);
-      expect(systemPrompt).toContain("BRIEF CITATION MANIFEST");
-      expect(systemPrompt).toContain("h1 | hunk | @@ -1,2 +1,3 @@");
-      // ADR 0040: the manifest is hunks only now -- nothing cites a
-      // description or commit alias, so the prompt carries neither section.
-      expect(systemPrompt).not.toContain("PULL REQUEST DESCRIPTION");
-      expect(systemPrompt).not.toContain("COMMITS:");
-      expect(systemPrompt).not.toContain("d1 | description");
-      expect(systemPrompt).not.toContain("c1 | commit");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
+        ]);
+        await expect(
+          runProductionChild(
+            { type: "brief", input: briefProductionInput(patchPath, language) },
+            new AbortController().signal,
+            {
+              onHandle: () => undefined,
+              providers: [provider.provider],
+              paths,
+            },
+          ),
+        ).resolves.toEqual({ ok: true, value: brief });
+        expect(briefTools).toEqual(["submit_patchdesk_result"]);
+        expect(systemPrompt).toContain("BRIEF CITATION MANIFEST");
+        expect(systemPrompt).toContain(rule);
+        expect(systemPrompt).toContain("h1 | hunk | @@ -1,2 +1,3 @@");
+        // ADR 0040: the manifest is hunks only now -- nothing cites a
+        // description or commit alias, so the prompt carries neither section.
+        expect(systemPrompt).not.toContain("PULL REQUEST DESCRIPTION");
+        expect(systemPrompt).not.toContain("COMMITS:");
+        expect(systemPrompt).not.toContain("d1 | description");
+        expect(systemPrompt).not.toContain("c1 | commit");
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects a Brief result the Brief output schema does not accept", async () => {
     const provider = fake([

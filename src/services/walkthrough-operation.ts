@@ -1,6 +1,10 @@
 import * as v from "valibot";
 
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
+import {
+  INSIGHT_LANGUAGES,
+  type InsightLanguage,
+} from "../domain/insight-provider";
 import { narrativeHunkManifest } from "../domain/narrative-walkthrough";
 import { err, ok, type Result } from "../domain/result";
 import {
@@ -34,6 +38,7 @@ const walkthroughInputSchema = v.strictObject({
   patchPath: boundedIdentifier(4_096),
   model: boundedIdentifier(200),
   reasoning: reasoningSchema,
+  language: v.picklist(INSIGHT_LANGUAGES),
 });
 
 const walkthroughSectionSchema = v.strictObject({
@@ -126,6 +131,7 @@ export type WalkthroughPromptFailure =
 export async function prepareWalkthroughPrompt(input: {
   readonly contextPath: string;
   readonly patchPath: string;
+  readonly language: InsightLanguage;
 }): Promise<Result<string, WalkthroughPromptFailure>> {
   const [contextRead, patchRead] = await Promise.all([
     readBoundedArtifact(input.contextPath, MAX_WALKTHROUGH_CONTEXT_BYTES),
@@ -142,7 +148,7 @@ export async function prepareWalkthroughPrompt(input: {
   return ok(
     [
       "Generate a read-only walkthrough for the supplied immutable patch.",
-      insightOutputGuidance("walkthrough"),
+      insightOutputGuidance("walkthrough", input.language),
       "The persistent reader shows the chapters in order on a rail and their sections on one continuous reading surface.",
       "Write the top-level focus as a summary of what the patch does; keep hunk aliases and paths out of it.",
       "Cite every hunk that carries behavior. Patchdesk collects the hunks you leave uncited into a Support group the reader sees last, so leaving a mechanical or low-signal hunk uncited is how it reaches Support.",

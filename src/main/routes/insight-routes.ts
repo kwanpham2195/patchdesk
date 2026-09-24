@@ -21,6 +21,7 @@ import {
   parseReviewId,
   parseWorkspaceProfileId,
 } from "../../domain/ids";
+import { INSIGHT_LANGUAGES } from "../../domain/insight-provider";
 import type { InsightType } from "../../domain/insight-record";
 import { err } from "../../domain/result";
 import type { InsightRunCoordinator } from "../../services/insight-run-coordinator";
@@ -135,6 +136,7 @@ const insightRunSchema = strictObject({
   provider: picklist(["pi", "codex-cli-account"]),
   model: pipe(string(), minLength(1), maxLength(200)),
   reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]),
+  language: picklist(INSIGHT_LANGUAGES),
 });
 const insightCancelSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
@@ -171,6 +173,7 @@ async function insightRunResponse(
     provider: parsed.output.provider,
     model: parsed.output.model,
     reasoning: parsed.output.reasoning,
+    language: parsed.output.language,
   });
   return insightResultResponse(context, result, 202);
 }

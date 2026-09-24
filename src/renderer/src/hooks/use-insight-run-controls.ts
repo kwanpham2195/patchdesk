@@ -122,7 +122,8 @@ export function useInsightRunControls({
     initialInsight,
     selectedInsight,
   });
-  const { catalog, provider, model, reasoning, catalogError } = configuration;
+  const { catalog, provider, model, reasoning, language, catalogError } =
+    configuration;
   const dismissFinding = async (
     finding: AnalysisFinding,
     reason: string,
@@ -194,6 +195,7 @@ export function useInsightRunControls({
     setConfiguration({
       provider: preference?.provider ?? "pi",
       reasoning: preference?.reasoning ?? "medium",
+      language: preference?.language ?? "en",
       models: nextModels,
       model:
         preference !== undefined &&
@@ -211,16 +213,13 @@ export function useInsightRunControls({
   const confirmRun = (): void => {
     const dialogType = configuration.runDialogType;
     if (model === null || dialogType === null) return;
-    runs[dialogType].run(provider, model, reasoning, () => {
+    runs[dialogType].run(provider, model, reasoning, language, () => {
       closeRunDialog();
-      saveInsightRunPreference(profileId, dialogType, {
-        provider,
-        model,
-        reasoning,
-      });
+      const preference = { provider, model, reasoning, language };
+      saveInsightRunPreference(profileId, dialogType, preference);
       preferencesRef.current = {
         ...preferencesRef.current,
-        [dialogType]: { provider, model, reasoning },
+        [dialogType]: preference,
       };
     });
   };

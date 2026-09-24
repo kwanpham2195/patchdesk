@@ -17,8 +17,10 @@ import {
 } from "./ids";
 import { err, ok, type Result } from "./result";
 import {
+  INSIGHT_LANGUAGES,
   parseInsightProvider,
   parseInsightReasoning,
+  type InsightLanguage,
   type InsightProvenance,
   type InsightProvider,
   type InsightReasoning,
@@ -38,6 +40,7 @@ export type InsightRun = {
   readonly provider: InsightProvider;
   readonly model: string;
   readonly reasoning: InsightReasoning;
+  readonly language: InsightLanguage;
   readonly status: "queued" | "running" | "cancelling";
   readonly startedAt: IsoTimestamp;
 };
@@ -136,6 +139,8 @@ const retainedEnvelopeSchema = v.strictObject({
       v.maxLength(200),
     ),
     reasoning: v.unknown(),
+    // A result retained before Insights had a language was written in English.
+    language: v.optional(v.picklist(INSIGHT_LANGUAGES), "en"),
   }),
   value: v.unknown(),
 });
@@ -186,6 +191,7 @@ export function parseRetainedInsight<T>(
       provider: provider.value,
       model: envelope.output.provenance.model,
       reasoning: reasoning.value,
+      language: envelope.output.provenance.language,
     },
     value: value.value,
   });
@@ -215,6 +221,7 @@ export function beginInsightRun(
     readonly provider: InsightProvider;
     readonly model: string;
     readonly reasoning: InsightReasoning;
+    readonly language: InsightLanguage;
     readonly startedAt: IsoTimestamp;
   },
 ): Result<InsightRecord<unknown>, "already_running"> {
@@ -378,5 +385,10 @@ export function failInsightRun(
 
 /** Extracts the current run's provider provenance for retained-result persistence. */
 export function provenanceFromRun(run: InsightRun): InsightProvenance {
-  return { provider: run.provider, model: run.model, reasoning: run.reasoning };
+  return {
+    provider: run.provider,
+    model: run.model,
+    reasoning: run.reasoning,
+    language: run.language,
+  };
 }

@@ -108,6 +108,7 @@ export class CodexInsightInvoker implements InsightInvoker {
       const walkthroughPrompt = await prepareWalkthroughPrompt({
         contextPath,
         patchPath,
+        language: input.language,
       });
       if (walkthroughPrompt._tag === "err")
         return err(promptPreparationFailure(walkthroughPrompt.error));
@@ -144,6 +145,7 @@ export class CodexInsightInvoker implements InsightInvoker {
         return err({ reason: "review_worktree_unavailable" as const });
       const briefPrompt = await prepareBriefPrompt({
         patchPath: briefPatchPath,
+        language: input.language,
       });
       if (briefPrompt._tag === "err")
         return err(promptPreparationFailure(briefPrompt.error));
@@ -193,6 +195,7 @@ export class CodexInsightInvoker implements InsightInvoker {
       reviewInput,
       context,
       fullPatch,
+      language: input.language,
     });
     const prompt = buildCodexAnalysisPrompt({ analysisPrompt, policy });
     if (prompt._tag === "err")

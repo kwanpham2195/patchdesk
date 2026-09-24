@@ -238,6 +238,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
         type: "analysis",
         model: "gpt-5-codex",
         reasoning: "high",
+        language: "en",
       }),
     ),
   },

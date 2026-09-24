@@ -35,6 +35,7 @@ import {
 } from "../domain/insight-record";
 import type {
   InsightProvider,
+  InsightLanguage,
   InsightReasoning,
 } from "../domain/insight-provider";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
@@ -82,6 +83,7 @@ export type InsightInvocationInput = {
   readonly provider: InsightProvider;
   readonly model: string;
   readonly reasoning: InsightReasoning;
+  readonly language: InsightLanguage;
 };
 /**
  * Why one Insight invocation failed, in the app's own vocabulary. The set is
@@ -133,6 +135,7 @@ export type InsightCoordinatorInput = {
   readonly provider?: InsightProvider;
   readonly model: string;
   readonly reasoning: InsightReasoning;
+  readonly language: InsightLanguage;
 };
 export type InsightCoordinatorFailure =
   | "invalid_request"
@@ -329,6 +332,7 @@ export class InsightRunCoordinator {
           provider,
           model,
           reasoning: input.reasoning,
+          language: input.language,
           startedAt: timestamp.value,
         }),
     });
@@ -368,6 +372,7 @@ export class InsightRunCoordinator {
       provider,
       model,
       reasoning: input.reasoning,
+      language: input.language,
     };
     void this.executor.execute(
       invocation,

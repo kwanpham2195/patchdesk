@@ -26,7 +26,10 @@ afterEach(async () =>
 );
 
 async function fixture(
-  options: { readonly type?: "analysis" | "walkthrough" } = {},
+  options: {
+    readonly type?: "analysis" | "walkthrough" | "brief";
+    readonly language?: "en" | "vi";
+  } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-insight-"));
   roots.push(root);
@@ -96,6 +99,7 @@ async function fixture(
     provider: "codex-cli-account",
     model: "codex",
     reasoning: "medium",
+    language: options.language ?? "en",
   } as never;
   return { invoker, input, calls, worktree, reviewInput, context, patch };
 }
@@ -275,4 +279,19 @@ describe("CodexInsightInvoker", () => {
     expect(invocation.maxPromptBytes).toBe(MAX_ANALYSIS_CODEX_PROMPT_BYTES);
     expect(invocation.runTimeoutMs).toBe(EXPECTED_ANALYSIS_TIMEOUT_MS);
   });
+
+  it.each(["analysis", "walkthrough", "brief"] as const)(
+    "writes the %s prompt's language rule in the language the run chose",
+    async (type) => {
+      const value = await fixture({ type, language: "vi" });
+      await value.invoker.invoke(value.input, {
+        signal: new AbortController().signal,
+      });
+      const prompt = value.calls[0]?.[0].prompt;
+      expect(prompt).toEqual(
+        expect.stringContaining("Write all human-readable text in Vietnamese."),
+      );
+      expect(prompt).toEqual(expect.not.stringContaining("ASD-STE100"));
+    },
+  );
 });

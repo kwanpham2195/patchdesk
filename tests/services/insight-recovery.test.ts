@@ -90,6 +90,7 @@ function activeRun(
       provider: "pi",
       model: "model",
       reasoning: "medium",
+      language: "en",
       status: "queued",
       startedAt: now,
     },

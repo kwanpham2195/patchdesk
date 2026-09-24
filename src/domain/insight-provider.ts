@@ -13,8 +13,14 @@ export type InsightSelection = {
   readonly reasoning: InsightReasoning;
 };
 
-/** A provider/model/reasoning value saved as run provenance. */
-export type InsightProvenance = InsightSelection;
+/** Languages an Insight's human-readable text can be written in; English is the default. */
+export const INSIGHT_LANGUAGES = ["en", "vi"] as const;
+export type InsightLanguage = (typeof INSIGHT_LANGUAGES)[number];
+
+/** A provider/model/reasoning/language value saved as run provenance. */
+export type InsightProvenance = InsightSelection & {
+  readonly language: InsightLanguage;
+};
 
 /** Parses a bounded provider identifier from a transport or storage boundary. */
 export function parseInsightProvider(

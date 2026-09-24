@@ -53,6 +53,7 @@ const provenance = {
   provider: "pi" as const,
   model: "fixture-model",
   reasoning: "medium" as const,
+  language: "en" as const,
 };
 
 function record(): InsightRecord<unknown> {
@@ -69,6 +70,7 @@ function runInput(recordValue: InsightRecord<unknown>) {
     provider: "pi" as const,
     model: "fixture-model",
     reasoning: "medium" as const,
+    language: "en" as const,
     startedAt: now,
   };
 }
@@ -227,6 +229,7 @@ describe("InsightRecord", () => {
       provider: "pi",
       model: "fixture-model",
       reasoning: "medium",
+      language: "en",
       startedAt: now,
     });
     if (started._tag === "err") throw new Error("expected run");
@@ -427,6 +430,30 @@ describe("parseRetainedInsight", () => {
         value: "parsed",
       },
     });
+  });
+
+  it("reads a result stored before Insights had a language as English", () => {
+    const { language: _language, ...withoutLanguage } = provenance;
+    void _language;
+    const parsed = parseRetainedInsight(
+      { ...stored, provenance: withoutLanguage },
+      ok,
+    );
+    expect(parsed._tag === "ok" && parsed.value.provenance.language).toBe("en");
+  });
+
+  it("keeps a Vietnamese result's language", () => {
+    const parsed = parseRetainedInsight(
+      { ...stored, provenance: { ...provenance, language: "vi" } },
+      ok,
+    );
+    expect(parsed._tag === "ok" && parsed.value.provenance.language).toBe("vi");
+    expect(
+      parseRetainedInsight(
+        { ...stored, provenance: { ...provenance, language: "fr" } },
+        ok,
+      )._tag,
+    ).toBe("err");
   });
 
   it("rejects a value its caller's parser rejects", () => {

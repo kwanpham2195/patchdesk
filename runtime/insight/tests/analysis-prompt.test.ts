@@ -8,6 +8,7 @@ const shared = composeReviewPrompt({
   reviewInput: "# PR review input",
   context: '{"projectReviewCriteria":[]}',
   fullPatch: "diff --git a/src/a.ts b/src/a.ts",
+  language: "en",
 });
 
 /** Inspectors that always answer, so the assertions pin the prompt alone. */

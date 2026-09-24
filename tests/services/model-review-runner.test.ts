@@ -80,6 +80,7 @@ describe("model review preparation", () => {
         ...artifacts,
         worktreePath: root,
         debugPath: join(root, "debug.json"),
+        language: "en",
         gitShow: gitBlobReader({
           [`${headSha}:src/review.ts`]: "export const review = true;\n",
         }),
@@ -116,6 +117,7 @@ describe("model review preparation", () => {
         ...artifacts,
         worktreePath: root,
         debugPath: join(root, "debug.json"),
+        language: "en",
         gitShow: gitBlobReader(
           { [`${headSha}:src/review.ts`]: "IMMUTABLE_GIT_SNAPSHOT\n" },
           commands,
@@ -153,6 +155,7 @@ describe("model review preparation", () => {
         ...artifacts,
         worktreePath: root,
         debugPath: join(root, "debug.json"),
+        language: "en",
         gitShow: gitBlobReader({
           [`${headSha}:src/regular.ts`]: "export const regular = true;\n",
           [`${headSha}:src/link.ts`]: {
@@ -198,6 +201,7 @@ describe("model review preparation", () => {
         ...artifacts,
         worktreePath: root,
         debugPath: join(root, "debug.json"),
+        language: "en",
         gitShow: gitBlobReader(
           {
             [`${headSha}:.`]: "ROOT_PROTECTED_CONTENT\n",
@@ -248,6 +252,7 @@ describe("model review preparation", () => {
         ...artifacts,
         worktreePath: root,
         debugPath: join(root, "debug.json"),
+        language: "en",
         gitShow: gitBlobReader({
           [`${headSha}:src/allowed.ts`]: "export const allowed = true;\n",
           [`${headSha}:src/directory`]: {
@@ -316,6 +321,7 @@ describe("model review preparation", () => {
           patchPath,
           worktreePath: root,
           debugPath: join(root, "debug.json"),
+          language: "en",
           gitShow: async () => "",
         }),
       ).rejects.toBeInstanceOf(AnalysisPromptTooLargeError);

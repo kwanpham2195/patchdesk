@@ -10,6 +10,7 @@ import { requestJson } from "../api-client";
 import { useLatestCommitted } from "./use-latest-committed";
 import { definedProps } from "../../../domain/defined-props";
 import type {
+  InsightLanguage,
   InsightProvider,
   InsightReasoning,
 } from "../../../domain/insight-provider";
@@ -40,6 +41,7 @@ export type InsightRunController = {
     provider: InsightProvider,
     model: string,
     reasoning: InsightReasoning,
+    language: InsightLanguage,
     onAccepted?: () => void,
   ) => void;
   readonly cancel: () => void;
@@ -169,6 +171,7 @@ export function useInsightRun(input: {
       provider: InsightProvider,
       model: string,
       reasoning: InsightReasoning,
+      language: InsightLanguage,
       onAccepted?: () => void,
     ): void => {
       if (
@@ -186,7 +189,15 @@ export function useInsightRun(input: {
       setActivity(undefined);
       void requestJson(`/v1/reviews/insights/${type}/run`, {
         method: "POST",
-        body: { profileId, reviewId, type, provider, model, reasoning },
+        body: {
+          profileId,
+          reviewId,
+          type,
+          provider,
+          model,
+          reasoning,
+          language,
+        },
       })
         .then((value) => {
           const parsed = parseInsightRunResponse(value);

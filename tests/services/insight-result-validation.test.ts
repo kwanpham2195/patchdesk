@@ -103,6 +103,7 @@ describe("validateInsightResult retains only verified suggestions", () => {
       provider: "pi",
       model: "gpt-5.6-luna",
       reasoning: "medium",
+      language: "en",
     };
   });
 
