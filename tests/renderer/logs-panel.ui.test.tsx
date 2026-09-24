@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -200,6 +201,27 @@ describe("LogsPanel", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("caps a long meta object's visible text and keeps the whole text in its title", async () => {
+    vi.stubGlobal("window", window);
+    const meta = { detail: "z".repeat(400) };
+    const fullMeta = JSON.stringify(meta);
+    desktop = installDesktopDouble({
+      "/v1/logs?limit=300": () =>
+        success({
+          entries: [{ ...entry(0, "with meta"), meta }],
+          nextAfter: 0,
+        }),
+      "/v1/logs?after=0&limit=500": () => success({ entries: [] }),
+    });
+    render(<LogsPanel />);
+
+    const row = (await screen.findByText("with meta")).closest("li");
+    if (row === null) throw new Error("missing log row");
+    expect(row.textContent).toContain(fullMeta.slice(0, 240));
+    expect(row.textContent).not.toContain(fullMeta.slice(0, 241));
+    expect(within(row).getByTitle(fullMeta)).toBeTruthy();
   });
 
   it("keeps its prior cursor when a poll returns no entries", async () => {

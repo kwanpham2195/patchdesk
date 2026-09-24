@@ -275,34 +275,45 @@ export function LogsPanel(): React.JSX.Element {
             </p>
           ) : (
             <ol className="flex flex-col gap-1">
-              {visible.map((entry) => (
-                <li
-                  key={entry.seq}
-                  className="grid grid-cols-[6rem_3rem_4.5rem_7rem_minmax(0,18rem)_minmax(0,1fr)] gap-2 px-1 py-0.5"
-                >
-                  <span className="text-muted-foreground">
-                    {entry.at.slice(11, 23)}
-                  </span>
-                  <span className={cn("font-medium", levelClass(entry.level))}>
-                    {entry.level}
-                  </span>
-                  <span className="text-muted-foreground">{entry.process}</span>
-                  <span className="truncate text-muted-foreground">
-                    {entry.topic}
-                  </span>
-                  <span className="truncate" title={entry.message}>
-                    {entry.message}
-                  </span>
-                  {entry.meta === undefined ? null : (
-                    <span
-                      className="truncate text-muted-foreground"
-                      title={JSON.stringify(entry.meta)}
-                    >
-                      {JSON.stringify(entry.meta)}
+              {visible.map((entry) => {
+                const meta =
+                  entry.meta === undefined
+                    ? undefined
+                    : JSON.stringify(entry.meta);
+                return (
+                  <li
+                    key={entry.seq}
+                    className="grid grid-cols-[6rem_3rem_4.5rem_7rem_minmax(0,18rem)_minmax(0,1fr)] gap-2 px-1 py-0.5"
+                  >
+                    <span className="text-muted-foreground">
+                      {entry.at.slice(11, 23)}
                     </span>
-                  )}
-                </li>
-              ))}
+                    <span
+                      className={cn("font-medium", levelClass(entry.level))}
+                    >
+                      {entry.level}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {entry.process}
+                    </span>
+                    <span className="truncate text-muted-foreground">
+                      {entry.topic}
+                    </span>
+                    <span className="truncate" title={entry.message}>
+                      {entry.message}
+                    </span>
+                    {meta === undefined ? null : (
+                      // Capped so a large meta object is not laid out in full on every row; the title keeps it whole.
+                      <span
+                        className="truncate text-muted-foreground"
+                        title={meta}
+                      >
+                        {meta.slice(0, 240)}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </div>

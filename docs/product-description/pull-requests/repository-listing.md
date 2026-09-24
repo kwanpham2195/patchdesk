@@ -36,7 +36,7 @@ Rows show the title and number, author, labels, Draft or Merged badge inline aft
 
 ### Leave unchanged
 
-Reading a row, opening the inspector, or moving selection does not write to GitHub. Arrow keys move selection and focus; Tab does not step through every row. Closing or hiding the inspector changes only local presentation preference. The inspector toggle at the end of the filter bar shows a panel icon and a tooltip naming its action, Hide review details or Show review details. When the filter bar runs out of width, the filters wrap to a second line and the match count and inspector toggle stay on the first.
+Reading a row, opening the inspector, or moving selection does not write to GitHub. Arrow keys move selection and focus; Tab does not step through every row. Closing or hiding the inspector changes only local presentation preference. The inspector toggle at the end of the filter bar shows a panel icon and a tooltip naming its action, Hide review details or Show review details. When the filter bar runs out of width, the filters wrap to a second line and the match count and inspector toggle stay on the first. Below 1280 px the inspector is a drawer over the list instead of a column: the toggle opens it, it closes whenever the window crosses 1280 px, and opening or closing it leaves the wide-window preference unchanged.
 
 ### Begin an action
 

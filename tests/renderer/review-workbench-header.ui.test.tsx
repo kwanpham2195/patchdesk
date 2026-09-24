@@ -109,6 +109,24 @@ describe("ReviewWorkbenchHeader layout", () => {
     expect(merged.textContent).not.toContain("checked");
   });
 
+  it.each(["merged", "closed"] as const)(
+    "drops the updates notice from a %s Review GitHub has moved past",
+    (status) => {
+      const header = mount(
+        projection({
+          review: { id: "review-42", status },
+          revision: {
+            ...projection().revision,
+            currentHeadSha: "b".repeat(40),
+            freshness: "updates_available",
+          },
+        }),
+      );
+
+      expect(within(header).queryAllByRole("status")).toHaveLength(0);
+    },
+  );
+
   it("hides the Checks chip on a merged Review whose checks are unknown", () => {
     const header = mount(
       projection({

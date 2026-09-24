@@ -23,6 +23,7 @@ const successTone = "text-status-success";
 const warningTone = "text-status-warning";
 const destructiveTone = "text-destructive";
 const infoTone = "text-status-info";
+const mutedTone = "text-muted-foreground";
 
 describe("isUnconfirmedBlock", () => {
   it("is true only for a Blocked tag whose single blocker is mergeability_unknown", () => {
@@ -78,6 +79,27 @@ describe("mergeReadinessLabel and mergeReadinessTone", () => {
       name: "a plain confirmed block reads Blocked",
       tag: "Blocked",
       blockers: ["conflicting"],
+      label: "Blocked",
+      tone: destructiveTone,
+    },
+    {
+      name: "a block made only of the draft state reads Draft with the muted tone",
+      tag: "Blocked",
+      blockers: ["draft"],
+      label: "Draft",
+      tone: mutedTone,
+    },
+    {
+      name: "a block of draft and closed states reads Draft with the muted tone",
+      tag: "Blocked",
+      blockers: ["closed", "draft"],
+      label: "Draft",
+      tone: mutedTone,
+    },
+    {
+      name: "a draft alongside a real blocker reads Blocked",
+      tag: "Blocked",
+      blockers: ["draft", "conflicting"],
       label: "Blocked",
       tone: destructiveTone,
     },

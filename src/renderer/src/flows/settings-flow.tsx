@@ -81,9 +81,10 @@ type StorageRow = {
   };
 };
 
+// Without an active workspace the route reports only the app-wide logs size.
 const storageUsageSchema = v.object({
-  cacheBytes: v.number(),
-  localReviewDataBytes: v.number(),
+  cacheBytes: v.optional(v.number()),
+  localReviewDataBytes: v.optional(v.number()),
   logsBytes: v.number(),
 });
 
@@ -100,11 +101,14 @@ function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
+  const format = (amount: number, index: number): string =>
+    amount.toFixed(index === 0 || amount >= 10 ? 0 : 1);
+  // Compare the rounded figure, so 999,950 B reads 1.0 MB rather than 1000 KB.
+  while (Number(format(value, unit)) >= 1000 && unit < units.length - 1) {
     value /= 1000;
     unit += 1;
   }
-  return `${value.toFixed(unit === 0 || value >= 10 ? 0 : 1)} ${units[unit]}`;
+  return `${format(value, unit)} ${units[unit]}`;
 }
 
 /** Renders one focused Settings section inside the global Settings overlay. */
@@ -175,7 +179,10 @@ function DataSection({
   const [cleanupsCompleted, setCleanupsCompleted] = useState(0);
   const usage = useApiProbe(
     {
-      path: `/v1/storage/usage?profileId=${encodeURIComponent(dashboard?.profile.id ?? "")}`,
+      path:
+        dashboard?.profile.id === undefined
+          ? "/v1/storage/usage"
+          : `/v1/storage/usage?profileId=${encodeURIComponent(dashboard.profile.id)}`,
       restartKey: cleanupsCompleted,
     },
     parseStorageUsage,

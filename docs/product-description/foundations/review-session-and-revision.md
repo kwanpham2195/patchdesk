@@ -36,7 +36,7 @@ A session adds head SHA, base SHA, pull-request snapshot, patch path, optional c
 
 A new Review begins Remote state unavailable with reason reconciliation incomplete. It becomes Fresh only after Patchdesk adopts a represented remote snapshot for the prepared session.
 
-The workbench meta line and the PR overview Revision row name the state in plain words, followed by "checked" and the age of the represented remote snapshot: Fresh reads Up to date with GitHub, Revision changed reads Newer revision on GitHub, Remote state unavailable reads Could not reach GitHub, and a Review with no refresh yet reads Not checked with GitHub yet. A merged or closed Review is never refreshed, so both drop the state words and the checked age; the meta line ends at the reviewed short SHA.
+The workbench meta line and the PR overview Revision row name the state in plain words, followed by "checked" and the age of the represented remote snapshot: Fresh reads Up to date with GitHub, Revision changed reads Newer revision on GitHub, Remote state unavailable reads Could not reach GitHub, and a Review with no refresh yet reads Not checked with GitHub yet. A merged or closed Review is never refreshed, so both drop the state words and the checked age; the meta line ends at the reviewed short SHA and shows no Updates available notice.
 
 ### Leave unchanged
 
