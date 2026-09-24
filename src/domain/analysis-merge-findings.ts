@@ -35,17 +35,20 @@ export function projectAnalysisFindings(
   value: ReviewResult,
   record: InsightRecord<RetainedInsight<ReviewResult>>,
 ): ReviewResult {
-  const dismissed = new Set(
-    (record.dismissals ?? []).map(
-      (entry: InsightFindingDismissal) => entry.findingId,
-    ),
+  const dismissals = new Map(
+    (record.dismissals ?? []).map((entry: InsightFindingDismissal) => [
+      entry.findingId,
+      entry.reason,
+    ]),
   );
   return {
     ...value,
-    findings: value.findings.map((finding) => ({
-      ...finding,
-      disposition: dismissed.has(finding.id) ? "dismissed" : "open",
-    })),
+    findings: value.findings.map((finding) => {
+      const reason = dismissals.get(finding.id);
+      return reason === undefined
+        ? { ...finding, disposition: "open" }
+        : { ...finding, disposition: "dismissed", dismissalReason: reason };
+    }),
   };
 }
 
@@ -86,15 +89,14 @@ export function mergeGateFindings(
     return [];
   // A receipt from another run or revision proves nothing about this Finding.
   const reviewed = new Set(
-    (receipts ?? [])
-      .filter(
-        (receipt) =>
-          receipt.analysisRunId === retained.runId &&
-          receipt.sessionId === revision.sessionId &&
-          receipt.headSha === revision.headSha &&
-          receipt.patchHash === patchHash,
-      )
-      .map((receipt) => receipt.findingId),
+    (receipts ?? []).flatMap((receipt) =>
+      receipt.analysisRunId === retained.runId &&
+      receipt.sessionId === revision.sessionId &&
+      receipt.headSha === revision.headSha &&
+      receipt.patchHash === patchHash
+        ? [receipt.findingId]
+        : [],
+    ),
   );
   return projectAnalysisFindings(retained.value, record).findings.map(
     (finding) => ({ ...finding, addedToReview: reviewed.has(finding.id) }),
@@ -114,13 +116,12 @@ export function analysisMergeInput(
   findings: ReadonlyArray<MergeGateFinding>,
   policy: AnalysisMergePolicy | undefined,
 ) {
-  const openHighSeverityFindingIds = findings
-    .filter(
-      (finding) =>
-        !isAnalysisFindingHandled(finding) &&
-        (finding.severity === "P0" || finding.severity === "P1"),
-    )
-    .map((finding) => finding.id);
+  const openHighSeverityFindingIds = findings.flatMap((finding) =>
+    !isAnalysisFindingHandled(finding) &&
+    (finding.severity === "P0" || finding.severity === "P1")
+      ? [finding.id]
+      : [],
+  );
   const listed = { openHighSeverityFindingIds };
   return policy === undefined
     ? listed

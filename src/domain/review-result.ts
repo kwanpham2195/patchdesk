@@ -81,6 +81,8 @@ type ReviewFinding = ModelReviewFinding & {
   readonly mappingStatus: FindingMappingStatus;
   /** Renderer-side disposition; absent on raw validated model results. */
   readonly disposition?: FindingDisposition;
+  /** The maintainer's recorded reason, present only on a dismissed Finding. */
+  readonly dismissalReason?: string;
 };
 
 export type ReviewResult = Omit<ModelReviewResult, "findings"> & {

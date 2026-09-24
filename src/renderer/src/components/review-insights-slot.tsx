@@ -389,6 +389,7 @@ export function InsightsSlot({
                   selectedProjection?.retained === undefined ? null : (
                   <Button
                     size="sm"
+                    variant="secondary"
                     onClick={() => openRunDialog("regenerate")}
                     disabled={!runEnabled}
                     aria-describedby={runDisabledReasonId}

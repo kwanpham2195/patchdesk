@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Analysis **Needs attention** card and the verdict card now show progress as **X of Y handled**, counting Findings added to the review, published, or dismissed, in place of "N items need attention". An added Finding reads **Added** or **Published**; the "actionable" and "pending review" labels are gone. A dismissed Finding collapses to one line with its reason and expands on click or Enter, and **Regenerate** is a secondary button. #147
+
 - A pull request with no CI now reads **No checks** on the Review header, in the Pull requests **CI** column, and in the inspector, instead of **Unknown**. **Unknown** now means Patchdesk could not read the checks. #355
 
 - The Review header's **Merge** control now names why a merge is blocked, such as **Merge · Blocked · Draft** or **Merge · Blocked · Conflicts**, using the first reason **PR overview** lists under Merge readiness. #354
