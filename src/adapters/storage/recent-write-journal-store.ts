@@ -51,6 +51,9 @@ const entrySchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("PendingThread"),
     threadId: v.string(),
+    // Optional only for entries written before it existed; make it required
+    // one release after it shipped, once those have aged out.
+    pendingReviewNodeId: v.optional(v.string()),
     writtenAt: v.string(),
   }),
   v.strictObject({

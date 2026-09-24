@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGitHubThreadId } from "../../src/domain/ids";
+import {
+  parseGitHubReviewNodeId,
+  parseGitHubThreadId,
+} from "../../src/domain/ids";
 import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import {
   confirmReviewWrite,
@@ -176,6 +179,8 @@ it("rejects a persisted dismissal that uses a GraphQL node id instead of the RES
 
 const receiptThreadId = parseGitHubThreadId("PRRT_thread");
 if (receiptThreadId._tag === "err") throw new Error("invalid fixture");
+const receiptReviewNodeId = parseGitHubReviewNodeId("PRR_pending");
+if (receiptReviewNodeId._tag === "err") throw new Error("invalid fixture");
 const confirmedReceipts = {
   Comment: { _tag: "Comment", commentId: "PRRC_1", reviewId: "PRR_1" },
   ThreadState: {
@@ -183,7 +188,11 @@ const confirmedReceipts = {
     threadId: receiptThreadId.value,
     state: "resolved",
   },
-  PendingThread: { _tag: "PendingThread", threadId: receiptThreadId.value },
+  PendingThread: {
+    _tag: "PendingThread",
+    threadId: receiptThreadId.value,
+    pendingReviewNodeId: receiptReviewNodeId.value,
+  },
   DiscardedThread: { _tag: "DiscardedThread", threadId: receiptThreadId.value },
   DeletedComment: {
     _tag: "DeletedComment",
@@ -202,12 +211,15 @@ const confirmedReceipts = {
   BaseBranchChange: { _tag: "BaseBranchChange", branch: "release/1.2" },
 } satisfies Record<RecentReviewWrite["_tag"], RecentReviewWrite>;
 
-it.each(Object.entries(confirmedReceipts))(
-  "round-trips a Confirmed %s receipt",
-  (_tag, receipt) => {
-    const state = { _tag: "Confirmed", receipt };
-    const parsed = parseReviewWriteOperation({ ...stored, state });
-    expect(parsed._tag).toBe("ok");
-    if (parsed._tag === "ok") expect(parsed.value.state).toEqual(state);
-  },
-);
+it.each([
+  ...Object.entries(confirmedReceipts),
+  [
+    "PendingThread (recorded before it named its pending review)",
+    { _tag: "PendingThread", threadId: receiptThreadId.value },
+  ],
+])("round-trips a Confirmed %s receipt", (_tag, receipt) => {
+  const state = { _tag: "Confirmed", receipt };
+  const parsed = parseReviewWriteOperation({ ...stored, state });
+  expect(parsed._tag).toBe("ok");
+  if (parsed._tag === "ok") expect(parsed.value.state).toEqual(state);
+});

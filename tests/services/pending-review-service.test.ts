@@ -389,6 +389,16 @@ describe("PendingReviewService", () => {
         { findingId: finding.findingId, threadId, state: "pending" },
       ],
     });
+    expect(value.recentWrites.appendConfirmed).toHaveBeenCalledWith(
+      profileId,
+      reviewId,
+      {
+        _tag: "PendingThread",
+        threadId,
+        pendingReviewNodeId: pending().nodeId,
+      },
+      now,
+    );
   });
 
   it("does not replay an uncertain start and retains its shared lock", async () => {

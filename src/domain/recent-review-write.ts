@@ -1,6 +1,11 @@
 import * as v from "valibot";
 
-import { parseGitHubThreadId, type GitHubThreadId } from "./ids";
+import {
+  parseGitHubReviewNodeId,
+  parseGitHubThreadId,
+  type GitHubReviewNodeId,
+  type GitHubThreadId,
+} from "./ids";
 import { err, ok, type AssertNever, type Result } from "./result";
 
 /** A GitHub write made by this app that detection must exclude from remote changes. */
@@ -16,9 +21,14 @@ export type RecentReviewWrite =
       readonly state: "open" | "resolved";
     }
   | {
-      /** A pending thread this app created; satisfied once the snapshot carries it. */
+      /**
+       * A pending thread this app created; satisfied once the snapshot carries
+       * it. `pendingReviewNodeId` names the pending review it was created in,
+       * so a read of a different pending review settles it.
+       */
       readonly _tag: "PendingThread";
       readonly threadId: GitHubThreadId;
+      readonly pendingReviewNodeId?: GitHubReviewNodeId;
     }
   | {
       /** A pending thread this app discarded; satisfied once the snapshot has dropped it. */
@@ -82,6 +92,9 @@ export const recentReviewWriteRecordSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("PendingThread"),
     threadId: v.pipe(v.string(), v.minLength(1)),
+    // Optional only for entries written before it existed; make it required
+    // one release after it shipped, once those have aged out.
+    pendingReviewNodeId: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
   v.strictObject({
     _tag: v.literal("DiscardedThread"),
@@ -163,9 +176,19 @@ export function parseRecentReviewWrite(
     }
     case "PendingThread": {
       const threadId = parseGitHubThreadId(record.threadId);
-      return threadId._tag === "err"
+      if (threadId._tag === "err") return invalidRecentReviewWrite();
+      if (record.pendingReviewNodeId === undefined)
+        return ok({ _tag: "PendingThread", threadId: threadId.value });
+      const pendingReviewNodeId = parseGitHubReviewNodeId(
+        record.pendingReviewNodeId,
+      );
+      return pendingReviewNodeId._tag === "err"
         ? invalidRecentReviewWrite()
-        : ok({ _tag: "PendingThread", threadId: threadId.value });
+        : ok({
+            _tag: "PendingThread",
+            threadId: threadId.value,
+            pendingReviewNodeId: pendingReviewNodeId.value,
+          });
     }
     case "DiscardedThread": {
       const threadId = parseGitHubThreadId(record.threadId);
