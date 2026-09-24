@@ -841,6 +841,7 @@ const workbenchProjectionSchema = v.strictObject({
     refreshedAt: v.pipe(v.string(), v.isoTimestamp()),
   }),
   fullPatch: v.optional(v.string()),
+  viewedPaths: v.optional(v.array(repoRelativePathSchema)),
   scope: v.optional(changeScopeSchema),
   pullRequest: v.optional(pullRequestSummarySchema),
   commits: v.array(commitSchema),

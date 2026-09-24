@@ -13,6 +13,7 @@ import { usePendingReviewActions } from "./use-pending-review-actions";
 import { useReviewMetadataActions } from "./use-review-metadata-actions";
 import { useReviewMergeAction } from "./use-review-merge-action";
 import { useReviewWriteRecovery } from "./use-review-write-recovery";
+import { useViewedFiles } from "../hooks/use-viewed-files";
 import {
   useReviewObservation,
   type ReviewWorkbenchPatch,
@@ -139,6 +140,14 @@ export function ReviewWorkbenchFlow({
     runDirectCommand,
   });
 
+  const viewedFiles = useViewedFiles({
+    profileId: workbench.session.key.profileId,
+    reviewId: workbench.review.id,
+    sessionId: workbench.session.id,
+    savedPaths: workbench.viewedPaths,
+    onWorkbenchPatch,
+  });
+
   const workbenchActions = useWorkbenchActions({
     profileId: workbench.session.key.profileId,
     reviewId: workbench.review.id,
@@ -172,6 +181,7 @@ export function ReviewWorkbenchFlow({
           ? {}
           : { onPositionCommitted: onUiStateChange })}
         actions={workbenchActions}
+        viewedFiles={viewedFiles}
         slots={{
           insights: (
             <InsightsSlot

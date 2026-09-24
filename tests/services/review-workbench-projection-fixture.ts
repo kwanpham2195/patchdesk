@@ -190,6 +190,7 @@ export function fixture(
   const writeOperations = {
     load: vi.fn(async () => ok(undefined)),
   };
+  const viewedFiles = { load: vi.fn(async () => ok([])) };
   return {
     // SAFETY: each mock below only stubs the one method this service
     // actually calls; casting to `never` stands in for the full repository
@@ -201,11 +202,13 @@ export function fixture(
       insights as never,
       paths,
       writeOperations as never,
+      viewedFiles as never,
     ),
     profiles,
     sessions,
     reviews,
     insights,
     writeOperations,
+    viewedFiles,
   };
 }

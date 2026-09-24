@@ -194,6 +194,28 @@ export class PatchdeskPaths {
     return join(this.sessionDirectory(profileId, sessionId), "session.json");
   }
 
+  /** The files the reviewer marked Viewed in this session's Diff. */
+  viewedFilesFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(
+      this.sessionDirectory(profileId, sessionId),
+      "viewed-files.json",
+    );
+  }
+
+  /** Fixed-name sibling an unreadable viewed-files record moves to, so a session keeps at most one copy. */
+  viewedFilesQuarantineFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(
+      this.sessionDirectory(profileId, sessionId),
+      "viewed-files.quarantine.json",
+    );
+  }
+
   mergeOperationFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

@@ -14,6 +14,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import type { ReviewWriteIntentTag } from "../domain/review-write-operation";
 import {
   sessionRepresentsReview,
@@ -41,6 +42,7 @@ import {
   type ReviewId,
   type ContentHash,
   type GitHubRepoName,
+  type RepoRelativePath,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
@@ -121,6 +123,8 @@ export type ReviewWorkbenchProjection = {
     readonly refreshedAt: IsoTimestamp;
   };
   readonly fullPatch?: string;
+  /** Files marked Viewed in this session's Diff; absent when the record could not be read. */
+  readonly viewedPaths?: ReadonlyArray<RepoRelativePath>;
   /**
    * The represented patch bucketed into core/tests/generated/docs/config.
    * Absent exactly when `fullPatch` is: an all-zero gauge would claim the
@@ -221,6 +225,7 @@ export class ReviewWorkbenchProjectionService {
     private readonly insights: Pick<InsightStore, "loadTyped">,
     private readonly paths: PatchdeskPaths,
     private readonly writeOperations: Pick<ReviewWriteOperationStore, "load">,
+    private readonly viewedFiles: Pick<ViewedFilesStore, "load">,
   ) {
     this.retainedInsights = new RetainedInsightReader(
       this.sessions,
@@ -417,9 +422,10 @@ export class ReviewWorkbenchProjectionService {
     const viewerLogin = parseGitHubLogin(profile.ghAccount);
     if (viewerLogin._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
-    const [patch, storedInsights] = await Promise.all([
+    const [patch, storedInsights, viewed] = await Promise.all([
       readPatchFile(session.patchPath),
       this.retainedInsights.loadStoredInsights(session),
+      this.viewedFiles.load(session.key.profileId, session.id),
     ]);
     if (storedInsights._tag === "err") return storedInsights;
     const fullPatch = patch?.contents;
@@ -631,6 +637,7 @@ export class ReviewWorkbenchProjectionService {
           session.localCheckoutWarning,
         ),
         fullPatch,
+        viewedPaths: viewed._tag === "ok" ? viewed.value : undefined,
         scope:
           fullPatch === undefined ? undefined : changeScopeFromPatch(fullPatch),
         pullRequest,

@@ -4,6 +4,7 @@ import { LabelService } from "../../src/services/label-service";
 import { AssigneeService } from "../../src/services/assignee-service";
 import { ReviewerService } from "../../src/services/reviewer-service";
 import { MergeWriteController } from "../../src/services/merge-write-controller";
+import { ReviewViewedFilesService } from "../../src/services/review-viewed-files-service";
 import type { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ok, type Result } from "../../src/domain/result";
 import {
@@ -290,6 +291,24 @@ export const lockRows: ReadonlyArray<LockRow> = [
         checked: true,
       }),
     ),
+  },
+  {
+    name: "ReviewViewedFilesService.save",
+    kind: "queues",
+    build: (coordinator, track) => {
+      const service = new ReviewViewedFilesService(
+        { load: track.stub("reviews.load", ok(values.review)) },
+        { save: track.stub("viewedFiles.save", ok([])) },
+        coordinator,
+      );
+      return () =>
+        service.save({
+          profileId,
+          reviewId,
+          sessionId: expected.sessionId,
+          paths: [anchor.path],
+        });
+    },
   },
   {
     name: "InsightRunCoordinator.recover",

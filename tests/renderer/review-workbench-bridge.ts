@@ -26,6 +26,7 @@ const WORKBENCH_PATHS = [
   "/v1/reviews/refresh/acknowledge",
   "/v1/reviews/detect-updates",
   "/v1/reviews/diff-file",
+  "/v1/reviews/viewed-files",
   "/v1/reviews/commit-diff",
   "/v1/reviews/assignees",
   "/v1/reviews/reviewers",

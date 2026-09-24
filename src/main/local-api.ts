@@ -23,6 +23,7 @@ import { registerReviewWriteRoutes } from "./routes/review-write-routes";
 import { registerSidebarRoutes } from "./routes/sidebar-routes";
 import { registerStorageDiagnosticsRoutes } from "./routes/storage-diagnostics-routes";
 import { registerWatchedPullRequestRoutes } from "./routes/watched-pull-request-routes";
+import { registerReviewViewedFilesRoutes } from "./routes/review-viewed-files-routes";
 
 export { createReadOnlyGitExecutor } from "./local-api-stores";
 
@@ -60,6 +61,7 @@ export async function startLocalApiServer(
   registerStorageDiagnosticsRoutes(app, container);
   registerSidebarRoutes(app, container);
   registerWatchedPullRequestRoutes(app, container);
+  registerReviewViewedFilesRoutes(app, container);
 
   const { server, port } = await listenOnLoopback(app);
   const url = new URL(`http://${localhostHostname}:${port}/`);

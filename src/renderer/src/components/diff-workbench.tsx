@@ -26,6 +26,8 @@ import {
 } from "@/review-view-preferences";
 import { cn } from "@/lib/utils";
 import { useMarkdownPreviewPaths } from "@/hooks/use-markdown-preview-paths";
+import type { ViewedFilesControls } from "@/hooks/use-viewed-files";
+import { InlineError } from "@/components/ui/inline-error";
 import {
   Sheet,
   SheetContent,
@@ -62,6 +64,7 @@ export function DiffWorkbench({
   leadingAction,
   visiblePaths,
   scopeFilter,
+  viewedFiles,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -96,6 +99,8 @@ export function DiffWorkbench({
   readonly visiblePaths?: ReadonlySet<string>;
   /** Drives the toolbar Scope picker; absent where the diff cannot be filtered by bucket. */
   readonly scopeFilter?: ScopeFilterControl;
+  /** Saved Viewed marks; without it Viewed lasts only while this Diff is open. */
+  readonly viewedFiles?: ViewedFilesControls;
 }): React.JSX.Element {
   // Narrowing the patch itself, not just its parsed metadata: the pane falls
   // back to rendering the patch text where Pierre's CodeView is unavailable.
@@ -139,9 +144,11 @@ export function DiffWorkbench({
       fileMode: "all",
     });
   const preferences = controlledPreferences ?? internalPreferences;
-  const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [localCollapsedPaths, setLocalCollapsedPaths] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const collapsedPaths = viewedFiles?.paths ?? localCollapsedPaths;
+  const setCollapsedPaths = viewedFiles?.setPaths ?? setLocalCollapsedPaths;
   const { paths: markdownPreviewPaths, setPreview: setMarkdownPreview } =
     useMarkdownPreviewPaths(visiblePatch, sourceSession);
   const updatePreferences = useCallback(
@@ -275,6 +282,11 @@ export function DiffWorkbench({
               )}
             </div>
           </header>
+          {viewedFiles?.saveFailed === true ? (
+            <InlineError className="border-b px-4 py-2">
+              Viewed marks could not be saved.
+            </InlineError>
+          ) : null}
           <ReviewDiffView
             patch={visiblePatch}
             scopeFilter={scopeFilter}
