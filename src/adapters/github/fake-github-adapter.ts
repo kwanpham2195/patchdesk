@@ -74,6 +74,7 @@ export class FakeGitHubAdapter
     [];
   private readonly readWatchedPullRequestsCalls: ReadWatchedPullRequestsInput[] =
     [];
+  private readonly submitPendingReviewCalls: SubmitPendingReviewInput[] = [];
 
   /** Inputs of the calls tests assert GitHub was or was not asked for, in call order. */
   readonly calls: FakeGitHubAdapterCalls = {
@@ -82,6 +83,7 @@ export class FakeGitHubAdapter
     listRepositoryBranches: this.listRepositoryBranchesCalls,
     setPullRequestBaseBranch: this.setPullRequestBaseBranchCalls,
     readWatchedPullRequests: this.readWatchedPullRequestsCalls,
+    submitPendingReview: this.submitPendingReviewCalls,
   };
 
   async listOpenPullRequests(input: {
@@ -643,14 +645,10 @@ export class FakeGitHubAdapter
       : ok(this.values.pendingReview);
   }
 
-  async submitPendingReview(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly reviewId: string;
-    readonly event: GitHubReviewEvent;
-    readonly summaryBody: string;
-  }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
-    void input;
+  async submitPendingReview(
+    input: SubmitPendingReviewInput,
+  ): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
+    this.submitPendingReviewCalls.push(input);
     return this.values.pendingReviewSubmission === undefined
       ? err({
           _tag: "GitHubWriteFailure",
@@ -774,6 +772,15 @@ type FakeGitHubAdapterCalls = {
   readonly listRepositoryBranches: ReadonlyArray<ListRepositoryBranchesInput>;
   readonly setPullRequestBaseBranch: ReadonlyArray<SetPullRequestBaseBranchInput>;
   readonly readWatchedPullRequests: ReadonlyArray<ReadWatchedPullRequestsInput>;
+  readonly submitPendingReview: ReadonlyArray<SubmitPendingReviewInput>;
+};
+
+type SubmitPendingReviewInput = {
+  readonly profile: WorkspaceProfileConfig;
+  readonly pr: PullRequestRef;
+  readonly reviewId: string;
+  readonly event: GitHubReviewEvent;
+  readonly summaryBody: string;
 };
 
 /** Fixture values accepted by FakeGitHubAdapter. */

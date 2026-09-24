@@ -303,6 +303,7 @@ function pendingReviewFailureStatus(
     failure === "rejected" ||
     failure === "review_write_in_progress" ||
     failure === "no_pending_review" ||
+    failure === "pending_review_gone" ||
     failure === "pending_review_locked" ||
     failure === "pending_review" ||
     failure === "pending_review_exists"

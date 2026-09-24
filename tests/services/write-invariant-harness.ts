@@ -419,6 +419,9 @@ export function pendingReviewFlow(
     });
     const gateway = {
       getPullRequest: async () => ok(values.snapshot.pullRequest),
+      // Finish reads the pending review first; here it still exists.
+      resolveAuthenticatedAccount: async () => ok({ account: "fixture" }),
+      getViewerPendingReview: async () => ok(pendingOwner()),
       startPendingReviewWithThread: gatewayWrite(fixture, pendingThreadWrite),
       addPendingReviewThread: gatewayWrite(fixture, pendingThreadWrite),
       submitPendingReview: gatewayWrite(fixture, { reviewId: reviewRestId }),
