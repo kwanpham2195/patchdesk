@@ -16,7 +16,6 @@ const commitDiffResponseSchema = v.strictObject({
 export type CommitDiffResponse = v.InferOutput<typeof commitDiffResponseSchema>;
 
 export function parseCommitDiffResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): CommitDiffResponse | undefined {
   const parsed = v.safeParse(commitDiffResponseSchema, input);
@@ -35,7 +34,6 @@ export type SinceReviewDiffResponse = v.InferOutput<
 >;
 
 export function parseSinceReviewDiffResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): SinceReviewDiffResponse | undefined {
   const parsed = v.safeParse(sinceReviewDiffResponseSchema, input);

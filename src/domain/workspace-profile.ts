@@ -72,7 +72,6 @@ const workspaceProfileConfigSchema = v.strictObject({
 
 /** Parse unknown profile configuration into refined Patchdesk domain values. */
 export function parseWorkspaceProfileConfig(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the persisted workspace-profile JSON boundary parser and immediately validates the raw record.
   input: unknown,
 ): Result<WorkspaceProfileConfig, InvalidWorkspaceProfileConfig> {
   const parsed = v.safeParse(workspaceProfileConfigSchema, input);

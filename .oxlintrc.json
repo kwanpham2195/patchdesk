@@ -177,7 +177,24 @@
       }
     },
     {
-      "files": ["src/services/review-diff-source-service.ts"],
+      "files": [
+        "src/services/review-diff-source-service.ts",
+        "src/domain/ids.ts",
+        "src/renderer/src/renderer-contracts.ts",
+        "src/renderer/src/review-diff-contracts.ts",
+        "src/renderer/src/json-guards.ts",
+        "src/renderer/src/insight-catalog-contracts.ts",
+        "src/renderer/src/workspace-root-discovery-contract.ts",
+        "src/renderer/src/review-write-receipts.ts",
+        "src/adapters/storage/review-session-store.ts",
+        "src/adapters/storage/viewed-files-store.ts",
+        "src/adapters/storage/maintainer-inbox-cache-store.ts",
+        "src/main/routes/insight-routes.ts",
+        "src/main/routes/published-feedback-routes.ts",
+        "src/main/routes/pending-review-routes.ts",
+        "src/main/routes/pending-review-command.ts",
+        "src/main/routes/review-write-routes.ts"
+      ],
       "rules": {
         "anti-slop/no-unknown-parameters": "off"
       }

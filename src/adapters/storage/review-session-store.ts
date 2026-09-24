@@ -94,7 +94,6 @@ export class ReviewSessionStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
   async save(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the very first statement below runs parseStoredReviewSession, the actual I/O boundary parser for this shape; there is no earlier boundary to move it to.
     session: unknown,
     expectedUpdatedAt?: ReviewSession["updatedAt"],
   ): Promise<Result<void, StorageFailure>> {
@@ -232,7 +231,6 @@ function buildFindingReviewContext(
 
 /** Parses one current schema-6 session and rejects all removed authority fields. */
 export function parseStoredReviewSession(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for stored sessions; there is no earlier boundary to run it at.
   input: unknown,
 ): Result<ReviewSession, StorageFailure> {
   const raw = v.safeParse(reviewSessionSchema, input);

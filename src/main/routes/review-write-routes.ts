@@ -433,7 +433,6 @@ const inlineConversationBodySchema = strictObject({
 async function labelResponse(
   context: Context,
   service: LabelService,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   const parsed = safeParse(labelCommandSchema, body);

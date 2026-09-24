@@ -153,7 +153,6 @@ async function insightRunResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
   type: InsightType,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)
@@ -180,7 +179,6 @@ async function insightCancelResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
   type: InsightType,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)
@@ -227,7 +225,6 @@ function insightResultResponse(
 async function insightWalkthroughProgressResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (
@@ -279,7 +276,6 @@ async function insightWalkthroughProgressResponse(
 async function analysisVerificationResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (coordinator?.updateAnalysisVerification === undefined)
@@ -319,7 +315,6 @@ async function insightFindingResponse(
   coordinator: InsightCoordinatorSeam | undefined,
   action: "dismiss",
   findingIdInput: string,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)

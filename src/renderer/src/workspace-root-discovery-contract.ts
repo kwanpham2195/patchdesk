@@ -30,7 +30,6 @@ export type WorkspaceRootDiscovery = v.InferOutput<
 
 /** Parses `GET /v1/watchlist/suggestions` per-root discovery outcomes. */
 export function parseWorkspaceRootDiscoveries(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): ReadonlyArray<WorkspaceRootDiscovery> | undefined {
   const parsed = v.safeParse(v.array(workspaceRootDiscoverySchema), input);

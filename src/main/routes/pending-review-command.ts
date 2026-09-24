@@ -162,7 +162,6 @@ type FindingSuggestionCommandRequest = {
 };
 
 export function parseFindingSuggestionCommand(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema parsing on the raw body immediately.
   body: unknown,
 ): FindingSuggestionCommandRequest | undefined {
   const parsed = safeParse(findingSuggestionCommandSchema, body);
@@ -195,10 +194,7 @@ export function parseFindingSuggestionCommand(
   };
 }
 
-export function parseDirectSummaryCommand(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema parsing on the raw body immediately.
-  body: unknown,
-):
+export function parseDirectSummaryCommand(body: unknown):
   | {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;
@@ -225,10 +221,7 @@ export function parseDirectSummaryCommand(
       };
 }
 
-export function parsePendingReviewCommand(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema parsing on the raw body immediately.
-  body: unknown,
-):
+export function parsePendingReviewCommand(body: unknown):
   | {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;

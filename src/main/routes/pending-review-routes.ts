@@ -81,7 +81,6 @@ async function pendingReviewCommandResponse(
   context: Context,
   service: PendingReviewService | undefined,
   sessions: ReviewSessionStore,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (service === undefined)
@@ -164,7 +163,6 @@ async function findingSuggestionResponse(
   insights: InsightCoordinatorSeam | undefined,
   service: PendingReviewService | undefined,
   sessions: ReviewSessionStore,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (insights === undefined || service === undefined)
@@ -322,7 +320,6 @@ function pendingReviewFailureStatus(
 async function directSummarySubmitResponse(
   context: Context,
   service: DirectSummaryReviewService | undefined,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
   body: unknown,
 ): Promise<Response> {
   if (service === undefined)
