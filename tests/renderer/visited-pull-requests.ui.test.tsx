@@ -13,6 +13,7 @@ import {
   visitedRowLabels,
   visitedTerminalMarker,
 } from "../../src/renderer/src/components/visited-pull-requests";
+import { useVisitedPullRequestRows } from "../../src/renderer/src/hooks/use-visited-pull-request-rows";
 import { formatExactTime } from "../../src/renderer/src/lib/relative-time";
 import {
   installDesktopDouble,
@@ -135,13 +136,26 @@ function renderColumn(options: {
     "/v1/sidebar/reviews": () => success({ rows: options.rows, unreadable: 0 }),
   });
   render(
-    <VisitedPullRequests
-      profileId="profile-1"
+    <LoadedColumn
       destination={options.destination ?? { kind: "dashboard" }}
       onNavigate={options.onNavigate ?? (() => undefined)}
-      reloadKey={0}
-      workspaceLabel="Personal"
     />,
+  );
+}
+
+/** The column as `AppShell` mounts it, fed by the hook that loads its rows. */
+function LoadedColumn(props: {
+  readonly destination: AppDestination;
+  readonly onNavigate: (destination: AppDestination) => void;
+}): React.JSX.Element {
+  const state = useVisitedPullRequestRows("profile-1", 0);
+  return (
+    <VisitedPullRequests
+      state={state}
+      destination={props.destination}
+      onNavigate={props.onNavigate}
+      workspaceLabel="Personal"
+    />
   );
 }
 

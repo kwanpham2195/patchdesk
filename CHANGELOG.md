@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Navigate** (⌘K) now finds a pull request by number or title. Typing `345` or `#345` offers **Open #345 in** the Selected repository, and title words list matching pull requests from the Visited column with their `owner/repo#number`. Both open the same way as a Pull requests row. #353
+
 - Conversation comment and review times now read as an age, such as "3 d ago", instead of a raw timestamp. Commit rows in the Diff's **Commits** tab and the selected commit's header use the same age wording, and all of them show the exact date and time on hover. #148
 
 - The **GitHub writes are paused** notification now also covers a merge or a **Finish review** submission whose outcome Patchdesk could not confirm. It follows the same rules as the other write notifications: nothing while Patchdesk is focused on that Review or while **Notifications** is off. #266

@@ -6,7 +6,7 @@ Patchdesk has two primary destinations: the Pull requests screen and a Review wo
 
 ## The simple case
 
-The app opens on the last saved destination. The maintainer selects a pull request and enters its Review workbench, then uses the Back control or Navigate to return to Pull requests. A row in the Visited pull requests column moves straight from one Review workbench to another without passing through Pull requests. The document title and titlebar name the current destination. From either destination, entering a GitHub pull-request URL or compact `owner/repository#number` reference in Navigate adds one action to open that pull request.
+The app opens on the last saved destination. The maintainer selects a pull request and enters its Review workbench, then uses the Back control or Navigate to return to Pull requests. A row in the Visited pull requests column moves straight from one Review workbench to another without passing through Pull requests. The document title and titlebar name the current destination. From either destination, entering a GitHub pull-request URL or compact `owner/repository#number` reference in Navigate adds one action to open that pull request. A bare `345` or `#345` adds `Open #345 in owner/repository` for the Selected repository, and other text lists each Visited pull request whose title contains it, ignoring case, with its `owner/repository#number`.
 
 Settings opens from the titlebar, Navigate, ⌘,, or the native application menu. It defaults to General unless the caller targets a section. Closing it reveals the same destination and returns focus to the control that opened it.
 
@@ -43,13 +43,13 @@ When Settings opens, it remembers an opener for focus return. A caller can targe
 
 Choosing the current destination again does nothing. Closing a clean Settings overlay keeps the underlying destination, clears the session-only Settings restore marker, and returns focus to the opener.
 
-Closing Navigate without choosing a command records no destination change. Text that is not a pull-request reference adds no pull-request action. Opening a Settings section, reading it, and closing it does not change the underlying Review or Pull requests state.
+Closing Navigate without choosing a command records no destination change. Text that is not a pull-request reference and matches no Visited title adds no pull-request action. A bare number with no Selected repository, such as during first-run setup, adds none. Opening a Settings section, reading it, and closing it does not change the underlying Review or Pull requests state.
 
 ### Begin an action
 
 Opening a Review stores its validated workbench projection and changes the destination to that Review's workbench key. The Review code loads only after Patchdesk has a canonical Review projection.
 
-Back, Navigate, a Visited pull requests row, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen. The same reference also adds `Watch owner/repository#number`, or `Unwatch` when Patchdesk already watches it, under Pull requests; [Repository listing](../pull-requests/repository-listing.md) owns what watching does.
+Back, Navigate, a Visited pull requests row, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen. A bare-number action and a Visited title match open through the same path. Matching uses the Selected repository and the Visited rows already loaded for the column, so typing sends no request. The same reference also adds `Watch owner/repository#number`, or `Unwatch` when Patchdesk already watches it, under Pull requests; [Repository listing](../pull-requests/repository-listing.md) owns what watching does.
 
 Opening Settings is refused when navigation state is not clear. ⌘K and the titlebar Settings control are also disabled or ignored. The native close path reads the same navigation state from the renderer.
 
