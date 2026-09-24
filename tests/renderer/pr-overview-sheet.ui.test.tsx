@@ -219,6 +219,35 @@ describe("pr overview sheet merge readiness", () => {
     );
   });
 
+  it("lists a draft before GitHub's reasons and Patchdesk's own blockers after them", () => {
+    renderOverview(
+      baseOverview({
+        mergeReadiness: {
+          _tag: "Blocked",
+          blockers: ["draft", "conflicting", "analysis_finding"],
+          warnings: [],
+        },
+        mergeReasons: [
+          reason({ code: "conflicts", message: "Conflicts reason." }),
+          reason({ code: "review_required", message: "Review reason." }),
+        ],
+      }),
+    );
+    const cards = [
+      ...document.querySelectorAll(
+        "[data-blocker], [data-reason-availability]",
+      ),
+    ].map(
+      (card) => card.getAttribute("data-blocker") ?? card.textContent?.trim(),
+    );
+    expect(cards).toEqual([
+      "draft",
+      expect.stringContaining("Conflicts reason."),
+      expect.stringContaining("Review reason."),
+      "analysis_finding",
+    ]);
+  });
+
   // What the header says is the rule `merge-readiness-header.test.ts` owns,
   // for all five readiness states. The one thing that test cannot see is
   // whether this sheet still asks the rule, so this smoke test compares the
