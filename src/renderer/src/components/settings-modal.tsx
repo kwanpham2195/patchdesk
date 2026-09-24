@@ -18,7 +18,6 @@ import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { cn } from "../lib/utils";
 import type {
   ProfileSwitchResult,
   ProfileSwitchState,
@@ -80,16 +79,8 @@ export function SettingsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className={cn(
-          "flex w-[min(96vw,1200px)] max-w-[min(96vw,1200px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1200px)]",
-          // Sections that can outgrow the viewport need a definite height so the scroll region scrolls instead of painting over the footer.
-          section === "general" ||
-            section === "workspace" ||
-            section === "data" ||
-            section === "logs"
-            ? "h-[min(90vh,960px)] max-h-[90vh]"
-            : "max-h-[90vh]",
-        )}
+        // A definite height lets the scroll region scroll instead of painting over the footer.
+        className="flex h-[min(90vh,960px)] max-h-[90vh] w-[min(96vw,1200px)] max-w-[min(96vw,1200px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1200px)]"
         aria-describedby="settings-description"
       >
         <DialogHeader className="border-b px-10 py-8">
@@ -121,8 +112,7 @@ export function SettingsModal({
             if (
               value === "general" ||
               value === "workspace" ||
-              value === "data" ||
-              value === "logs"
+              value === "data"
             ) {
               setSection(value);
               onSectionChange?.(value);
@@ -139,7 +129,6 @@ export function SettingsModal({
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="workspace">Workspace</TabsTrigger>
             <TabsTrigger value="data">Data &amp; recovery</TabsTrigger>
-            <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>
           <div
             role="region"

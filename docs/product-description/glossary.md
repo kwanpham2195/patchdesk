@@ -12,7 +12,9 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Visited pull requests column.** The persistent column left of the main content on the Pull requests screen, on every Review workbench, and beside workspace setup. It lists up to 20 pull requests the maintainer has opened in the active workspace, most recently opened first, read from local Review records with no GitHub request. Each entry is a Visited row: a click, Enter, or Space opens that Review workbench with no select step, and the row of the Review already on screen is highlighted and does nothing. The titlebar's first control collapses and expands the column; that choice is one setting on this machine, shared by every workspace.
 
-**Settings.** A global overlay above the current screen. It has General, Workspace, Review, Data & recovery, and Logs sections and returns focus to the control that opened it when it closes normally.
+**Settings.** A global overlay above the current screen. It has General, Workspace, and Data & recovery sections and returns focus to the control that opened it when it closes normally.
+
+**Diagnostics.** A global overlay opened from Help → Diagnostics… or the ⌘K palette. It has Logs and Review activity sections and returns focus to the control that held it when it closes.
 
 **Local API.** The authenticated loopback boundary between Patchdesk's sandboxed window and its main process. The maintainer does not call it directly; visible actions in the window use it to read local state, run tools, and request GitHub operations.
 

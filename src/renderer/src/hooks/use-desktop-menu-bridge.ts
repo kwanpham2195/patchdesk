@@ -8,7 +8,7 @@ import { useDesktopMenuActions } from "./use-desktop-menu-actions";
  * Everything the renderer says to, and hears from, the desktop shell: the
  * navigation state the main process needs before it may close a window, the
  * destination it needs before it may post a notification, and the native
- * menu's own two actions.
+ * menu's own actions.
  *
  * Both are one-way bridges over the same IPC channel, and both are off in
  * fixture mode, where there is no main process to talk to.
@@ -18,6 +18,7 @@ export function useDesktopMenuBridge({
   destination,
   navigationState,
   openSettings,
+  openDiagnostics,
   refreshDashboard,
 }: {
   readonly fixtureMode: boolean;
@@ -27,6 +28,7 @@ export function useDesktopMenuBridge({
     opener?: HTMLElement,
     section?: SettingsSection,
   ) => void;
+  readonly openDiagnostics: () => void;
   readonly refreshDashboard: () => Promise<void>;
 }): void {
   useEffect(() => {
@@ -42,5 +44,10 @@ export function useDesktopMenuBridge({
       .request({ operation: "setNavigationDestination", destination })
       .catch(() => undefined);
   }, [fixtureMode, destination]);
-  useDesktopMenuActions(!fixtureMode, openSettings, refreshDashboard);
+  useDesktopMenuActions(
+    !fixtureMode,
+    openSettings,
+    openDiagnostics,
+    refreshDashboard,
+  );
 }

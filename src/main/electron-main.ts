@@ -470,6 +470,8 @@ function registerDesktopEvents(): void {
           !app.isPackaged,
           {
             openSettings: () => raiseWindowAndSendMenuAction("openSettings"),
+            openDiagnostics: () =>
+              raiseWindowAndSendMenuAction("openDiagnostics"),
             refresh: () => raiseWindowAndSendMenuAction("refresh"),
           },
         ),

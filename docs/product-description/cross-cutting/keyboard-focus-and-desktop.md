@@ -32,7 +32,7 @@ Tab order follows the window from the top: Skip to content, the column's collaps
 
 The collapse toggle's accessible name is `Collapse the pull requests you have opened` while the column shows and `Expand the pull requests you have opened` while it is hidden, it reports whether the column is expanded, and it shows the same wording as a hover tooltip. Collapsing hides the column entirely. The choice survives renderer reload and relaunch and applies to every workspace.
 
-Settings is a global overlay with General, Workspace, Review, Data & recovery, and Logs sections. The opener is remembered for normal focus return. Within a Review workbench, the selected top-level tab, navigator section, and file position restore under that Review's identity.
+Settings is a global overlay with General, Workspace, and Data & recovery sections. Diagnostics is a second global overlay with Logs and Review activity sections, opened from the native Help menu's Diagnostics… item or the Diagnostics command in ⌘K. Each overlay remembers its opener for normal focus return, and neither opens while a Review draft is unsaved or a GitHub write is pending. Within a Review workbench, the selected top-level tab, navigator section, and file position restore under that Review's identity.
 
 ### Leave unchanged
 

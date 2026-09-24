@@ -59,6 +59,7 @@ export function AppShell({
   navigationBlocked = false,
   onNavigate,
   onOpenSettings,
+  onOpenDiagnostics,
   profiles,
   activeProfileId,
   profileSwitchState,
@@ -75,6 +76,7 @@ export function AppShell({
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
+  readonly onOpenDiagnostics: (opener?: HTMLElement) => void;
   readonly profiles?: ReadonlyArray<ProfileEntry>;
   readonly activeProfileId?: string;
   readonly profileSwitchState?: ProfileSwitchState;
@@ -337,6 +339,7 @@ export function AppShell({
         onQueryChange={setCommandQuery}
         onNavigate={onNavigate}
         onOpenSettings={onOpenSettings}
+        onOpenDiagnostics={onOpenDiagnostics}
         {...(onInboxStateChange === undefined ? {} : { onInboxStateChange })}
         {...(onInboxPresetChange === undefined ? {} : { onInboxPresetChange })}
         {...(onOpenPullRequest === undefined ? {} : { onOpenPullRequest })}

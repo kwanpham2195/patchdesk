@@ -1,16 +1,9 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
 import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
 import {
   failure,
@@ -126,6 +119,7 @@ describe("SettingsModal", () => {
       screen.getByRole("region", { name: "Settings content" }),
     ).toBeTruthy();
     expect(screen.queryByText("Saved reviews")).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Logs" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Repositories" })).toBeNull();
 
     await user.click(screen.getByRole("tab", { name: "Workspace" }));
@@ -138,6 +132,7 @@ describe("SettingsModal", () => {
       screen.getByRole("button", { name: "Clear local review data" }),
     ).toBeTruthy();
     expect(screen.queryByText(/quarantine/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Load activity" })).toBeNull();
 
     await user.click(
       screen.getByRole("button", { name: "Clear local review data" }),
@@ -181,15 +176,17 @@ describe("SettingsModal", () => {
         onDiffThemeChange={() => undefined}
         profiles={[profile]}
         onWorkspaceReload={async () => undefined}
-        initialSection="logs"
+        initialSection="data"
         onSectionChange={() => undefined}
       />,
     );
 
     expect(
-      screen.getByRole("tab", { name: "Logs" }).getAttribute("aria-selected"),
+      screen
+        .getByRole("tab", { name: "Data & recovery" })
+        .getAttribute("aria-selected"),
     ).toBe("true");
-    expect(screen.getByTestId("settings-section-logs")).toBeTruthy();
+    expect(screen.getByTestId("settings-section-data")).toBeTruthy();
 
     // Close, then reopen the same mounted instance targeting a different
     // section: a later, distinct openSettings() call must still land on the
@@ -240,8 +237,8 @@ describe("SettingsModal", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Logs" }));
-    expect(onSectionChange).toHaveBeenCalledWith("logs");
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+    expect(onSectionChange).toHaveBeenCalledWith("data");
   });
 
   it("keeps a failed cleanup confirmation open with retry context", async () => {
@@ -264,55 +261,6 @@ describe("SettingsModal", () => {
     expect(
       screen.getByRole("button", { name: "Clear local data" }),
     ).toBeTruthy();
-  });
-
-  it("shows successful empty Review activity only after loading the active profile", async () => {
-    const desktopApi = installDesktopApi({ activity: { events: [] } });
-    const user = userEvent.setup();
-
-    renderModal();
-    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
-
-    const activityCard = screen.getByTestId("review-activity-card");
-    expect(within(activityCard).queryByRole("status")).toBeNull();
-
-    await user.click(
-      within(activityCard).getByRole("button", { name: "Load activity" }),
-    );
-
-    await waitFor(() =>
-      expect(desktopApi.request).toHaveBeenCalledWith({
-        path: "/v1/diagnostics?profileId=acme",
-      }),
-    );
-    expect(within(activityCard).getAllByRole("status")).toHaveLength(1);
-    expect(
-      within(activityCard).queryByRole("list", {
-        name: "Review activity log",
-      }),
-    ).toBeNull();
-    expect(within(activityCard).queryAllByRole("listitem")).toHaveLength(0);
-  });
-
-  it("keeps a failed Review activity load distinct from a successful empty result", async () => {
-    installDesktopApi({ activityFails: true });
-    const user = userEvent.setup();
-
-    renderModal();
-    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
-
-    const activityCard = screen.getByTestId("review-activity-card");
-    await user.click(
-      within(activityCard).getByRole("button", { name: "Load activity" }),
-    );
-
-    expect(await within(activityCard).findByRole("alert")).toBeTruthy();
-    expect(within(activityCard).queryByRole("status")).toBeNull();
-    expect(
-      within(activityCard).queryByRole("list", {
-        name: "Review activity log",
-      }),
-    ).toBeNull();
   });
 
   it("does not offer cleanup that has no active profile to target", async () => {
@@ -403,23 +351,15 @@ function renderModal(
 
 function installDesktopApi(
   options: {
-    readonly activity?: RawJsonValue;
-    readonly activityFails?: boolean;
     readonly clearLocalDataFails?: boolean;
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble({
     "/v1/environment": () => success({}),
-    // The modal's Logs tab polls, and `lib/logger.ts` flushes the renderer
-    // log queue through the same bridge; both are answered here so neither
-    // is mistaken for a settings request.
+    // `lib/logger.ts` flushes the renderer log queue through the bridge.
     "/v1/logs": () => success({ entries: [] }),
     "/v1/watchlist/suggestions": () =>
       success([{ root: "/workspace/acme", state: "ready", repositories: [] }]),
-    "/v1/diagnostics": () =>
-      options.activityFails === true
-        ? failure({ error: "diagnostics_unavailable" })
-        : success(options.activity ?? { events: [] }),
     "/v1/profiles": () => success({}),
     "/v1/settings": (input) =>
       success(

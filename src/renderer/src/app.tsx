@@ -13,6 +13,7 @@ import { Button } from "./components/ui/button";
 import { Card, CardContent } from "./components/ui/card";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
+import { DiagnosticsModal } from "./components/diagnostics-modal";
 import { SettingsModal } from "./components/settings-modal";
 import type { DashboardScreenState } from "./renderer-models";
 import {
@@ -34,6 +35,7 @@ import {
   type NavigationState,
 } from "./hooks/use-app-navigation";
 import { useDesktopMenuBridge } from "./hooks/use-desktop-menu-bridge";
+import { useDiagnosticsOverlay } from "./hooks/use-diagnostics-overlay";
 import { useDesktopNotificationClicks } from "./hooks/use-desktop-notifications";
 import { useGlobalPreferences } from "./hooks/use-global-preferences";
 import {
@@ -183,6 +185,12 @@ function AppContent({
     settingsSection,
   } = useSettingsOverlay({ fixtureMode, navigationState });
   const {
+    diagnosticsOpen,
+    diagnosticsOpener,
+    openDiagnostics,
+    closeDiagnostics,
+  } = useDiagnosticsOverlay(navigationState);
+  const {
     appearance,
     diffThemePreferences,
     preferenceError,
@@ -299,6 +307,7 @@ function AppContent({
     destination,
     navigationState,
     openSettings,
+    openDiagnostics,
     refreshDashboard,
   });
 
@@ -315,6 +324,7 @@ function AppContent({
           navigationBlocked={navigationState !== "clear"}
           onNavigate={navigate}
           onOpenSettings={openSettings}
+          onOpenDiagnostics={openDiagnostics}
           profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
           activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
           profileSwitchState={profileSwitchState}
@@ -365,6 +375,14 @@ function AppContent({
         }}
         preferenceError={preferenceError}
         onRetryPreferences={retryPreferences}
+      />
+      <DiagnosticsModal
+        open={diagnosticsOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDiagnostics();
+        }}
+        opener={diagnosticsOpener}
+        profileId={dashboard?.profile.id}
       />
       <AlertDialog
         open={pendingDestination !== undefined}
