@@ -16,7 +16,7 @@ import {
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
-import { firstMergeBlockerLabel } from "./merge-readiness-items";
+import { blockedMergeChip, mergeBlockerLabels } from "./merge-readiness-items";
 import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
 import { WatchPullRequestButton } from "./watch-pull-request-button";
@@ -56,15 +56,20 @@ export function ReviewWorkbenchHeader({
 }): React.JSX.Element {
   const checksText =
     model.checks.overall === "none" ? checksLabel : `Checks · ${checksLabel}`;
-  const mergeText = mergeLabel(
-    mergeStatus,
+  const blockedChip =
     mergeStatus === "Blocked"
-      ? firstMergeBlockerLabel(
-          model.mergeReadiness.blockers,
-          model.mergeReasons ?? [],
+      ? blockedMergeChip(
+          mergeBlockerLabels(
+            model.mergeReadiness.blockers,
+            model.mergeReasons ?? [],
+          ),
         )
-      : undefined,
-  );
+      : undefined;
+  const mergeText = blockedChip?.text ?? mergeLabel(mergeStatus);
+  const mergeAccessibleName =
+    blockedChip?.accessibleName ?? mergeText.toLowerCase();
+  // GitHub stops reporting checks once a pull request is merged or closed, so an unknown result there is expected, not a warning.
+  const showChecksChip = !(terminal && model.checks.overall === "unknown");
   return (
     <header
       data-review-workbench-toolbar
@@ -93,19 +98,21 @@ export function ReviewWorkbenchHeader({
               <ScopeGauge scope={model.scope} size="mini" />
             </span>
           )}
-          <Button
-            variant="outline"
-            size="xs"
-            className={cn(
-              "hover:bg-status-success/20 hover:text-status-success",
-              checksPillColor(model.checks.overall),
-            )}
-            onClick={() => openOverview("checks")}
-            aria-label={`Open PR overview: ${checksText.replace(" · ", " ").toLowerCase()}`}
-          >
-            {checksIcon(model.checks.overall)}
-            {checksText}
-          </Button>
+          {showChecksChip ? (
+            <Button
+              variant="outline"
+              size="xs"
+              className={cn(
+                "hover:bg-status-success/20 hover:text-status-success",
+                checksPillColor(model.checks.overall),
+              )}
+              onClick={() => openOverview("checks")}
+              aria-label={`Open PR overview: ${checksText.replace(" · ", " ").toLowerCase()}`}
+            >
+              {checksIcon(model.checks.overall)}
+              {checksText}
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             size="xs"
@@ -114,7 +121,7 @@ export function ReviewWorkbenchHeader({
               mergePillColor(mergeStatus),
             )}
             onClick={() => openOverview("merge_readiness")}
-            aria-label={`Open PR overview: merge ${mergeText.toLowerCase()}`}
+            aria-label={`Open PR overview: merge ${mergeAccessibleName}`}
           >
             {mergeIcon(mergeStatus)}
             Merge · {mergeText}
@@ -174,8 +181,18 @@ export function ReviewWorkbenchHeader({
         >
           {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
           {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
-          {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·{" "}
-          <RelativeTime iso={model.revision.refreshedAt} prefix="checked " />
+          {model.revision.reviewedHeadSha.slice(0, 8)}
+          {/* A merged or closed Review is never refreshed, so its freshness would only age. */}
+          {terminal ? null : (
+            <>
+              {" "}
+              · {freshnessLabel} ·{" "}
+              <RelativeTime
+                iso={model.revision.refreshedAt}
+                prefix="checked "
+              />
+            </>
+          )}
           {hasUpdates ? (
             <span
               className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-status-warning/50 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning"
@@ -352,7 +369,7 @@ function mergeIcon(tag: string): React.JSX.Element {
       return <AlertTriangle className="size-3" />;
   }
 }
-function mergeLabel(tag: string, firstBlocker: string | undefined): string {
+function mergeLabel(tag: string): string {
   switch (tag) {
     case "Merged":
       return "Merged";
@@ -362,10 +379,6 @@ function mergeLabel(tag: string, firstBlocker: string | undefined): string {
       return "Ready";
     case "NeedsAcknowledgement":
       return "Warnings";
-    case "Blocked":
-      return firstBlocker === undefined
-        ? "Blocked"
-        : `Blocked · ${firstBlocker}`;
     default:
       return tag;
   }

@@ -6,6 +6,7 @@ import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contract
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
+import { revisionFreshnessLabel } from "../../src/renderer/src/rail-freshness";
 
 function mount(workbench: WorkbenchResponse): HTMLElement {
   bridge(async () => ({ updatesAvailable: false }));
@@ -92,5 +93,51 @@ describe("ReviewWorkbenchHeader layout", () => {
     expect(
       within(header).queryByRole("button", { name: "Refresh GitHub state" }),
     ).toBeNull();
+  });
+
+  it("drops the freshness words from a merged Review's revision line", () => {
+    const freshness = revisionFreshnessLabel("fresh");
+    const open = mount(projection());
+    expect(open.textContent).toContain(freshness);
+    cleanup();
+
+    const merged = mount(
+      projection({ review: { id: "review-42", status: "merged" } }),
+    );
+    expect(merged.textContent).toContain("a".repeat(8));
+    expect(merged.textContent).not.toContain(freshness);
+    expect(merged.textContent).not.toContain("checked");
+  });
+
+  it("hides the Checks chip on a merged Review whose checks are unknown", () => {
+    const header = mount(
+      projection({
+        review: { id: "review-42", status: "merged" },
+        checks: { overall: "unknown", checks: [] },
+      }),
+    );
+
+    expect(
+      within(header).queryByRole("button", {
+        name: /^Open PR overview: checks/,
+      }),
+    ).toBeNull();
+  });
+
+  it("names the first merge blocker, counts the rest, and lists them all in the accessible name", () => {
+    const header = mount(
+      projection({
+        mergeReadiness: {
+          _tag: "Blocked",
+          blockers: ["draft", "conflicting"],
+          warnings: [],
+        },
+      }),
+    );
+
+    const chip = within(header).getByRole("button", {
+      name: "Open PR overview: merge blocked: draft, conflicts",
+    });
+    expect(chip.textContent).toBe("Merge · Blocked · Draft +1");
   });
 });

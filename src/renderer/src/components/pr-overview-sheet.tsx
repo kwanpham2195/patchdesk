@@ -5,6 +5,8 @@ import {
   ChevronDown,
   ExternalLink,
   GitMerge,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
   Info,
   XCircle,
 } from "lucide-react";
@@ -203,11 +205,15 @@ export function CanonicalReviewOverviewSheet({
           <OverviewRow
             title="Revision"
             defaultOpen
-            trailing={
-              freshness === undefined
-                ? "Unavailable"
-                : revisionFreshnessLabel(freshness)
-            }
+            // A merged or closed Review is never refreshed, so its freshness would only age.
+            {...(terminal
+              ? {}
+              : {
+                  trailing:
+                    freshness === undefined
+                      ? "Unavailable"
+                      : revisionFreshnessLabel(freshness),
+                })}
             trailingTone={revisionFreshnessTone(freshness)}
           >
             <RevisionDetails overview={overview} />
@@ -259,22 +265,41 @@ export function CanonicalReviewOverviewSheet({
             defaultOpen
             triggerRef={readinessTriggerRef}
             icon={<GitMerge className="size-3.5" />}
-            trailing={mergeReadinessLabel(
-              overview.mergeReadiness._tag,
-              overview.mergeReadiness.blockers,
-            )}
-            trailingTone={mergeReadinessTone(
-              overview.mergeReadiness._tag,
-              overview.mergeReadiness.blockers,
-            )}
+            trailing={
+              overview.terminalState === undefined
+                ? mergeReadinessLabel(
+                    overview.mergeReadiness._tag,
+                    overview.mergeReadiness.blockers,
+                  )
+                : overview.terminalState === "merged"
+                  ? "Merged"
+                  : "Closed"
+            }
+            trailingTone={
+              overview.terminalState === undefined
+                ? mergeReadinessTone(
+                    overview.mergeReadiness._tag,
+                    overview.mergeReadiness.blockers,
+                  )
+                : overview.terminalState === "merged"
+                  ? successTone
+                  : mutedTone
+            }
           >
-            <MergeReadinessDetail
-              overview={overview}
-              {...(onReviewFindings === undefined
-                ? {}
-                : { onReviewFindings: requestReviewFindings })}
-            />
-            {onSetDraftState === undefined ? null : (
+            {/* Blockers and warnings describe a merge that can no longer happen once the pull request is merged or closed. */}
+            {terminal ? (
+              <p className="text-sm text-muted-foreground">
+                Merge readiness no longer applies.
+              </p>
+            ) : (
+              <MergeReadinessDetail
+                overview={overview}
+                {...(onReviewFindings === undefined
+                  ? {}
+                  : { onReviewFindings: requestReviewFindings })}
+              />
+            )}
+            {onSetDraftState === undefined || terminal ? null : (
               <div className="mt-3 border-t pt-3">
                 <DraftStateCommand
                   isDraft={overview.isDraft}
@@ -336,6 +361,8 @@ const destructiveCard =
   "border-destructive/30 bg-destructive/10 text-destructive";
 const warningCard =
   "border-status-warning/30 bg-status-warning/10 text-status-warning";
+// A draft or closed pull request is a state the author chose, not a failed rule, so it reads neutral.
+const stateCard = "border-border bg-muted/40 text-foreground";
 const successCard =
   "border-status-success/30 bg-status-success/10 text-status-success";
 // Not-yet-confirmed evidence (a "partial" reason, or the mergeability_unknown
@@ -394,9 +421,11 @@ function RevisionDetails({
           </p>
         </>
       )}
-      <p className="text-xs text-muted-foreground">
-        Checked <RelativeTime iso={revision.refreshedAt} />
-      </p>
+      {overview.terminalState === undefined ? (
+        <p className="text-xs text-muted-foreground">
+          Checked <RelativeTime iso={revision.refreshedAt} />
+        </p>
+      ) : null}
       {counts.length === 0 ? null : (
         <p className="text-xs text-muted-foreground">{counts.join(" · ")}</p>
       )}
@@ -500,18 +529,17 @@ function MergeReadinessDetail({
       {items.map((item, index) => {
         if (item.kind === "blocker") {
           const blocker = item.blocker;
-          const isUnknown = blocker === "mergeability_unknown";
-          const BlockerIcon = isUnknown ? Info : XCircle;
+          const tone = blockerCardTone(blocker);
           return (
             <p
               key={`blocker-${blocker}`}
               data-blocker={blocker}
               className={cn(
                 "flex items-start gap-2 rounded-md border px-3 py-2",
-                isUnknown ? infoCard : destructiveCard,
+                tone.card,
               )}
             >
-              <BlockerIcon
+              <tone.Icon
                 className="mt-0.5 size-4 shrink-0"
                 aria-hidden="true"
               />
@@ -740,6 +768,24 @@ function reasonSourceLabel(source: MergeDisplayReason["source"]): string {
       return "Ruleset configuration";
     case "checks":
       return "Checks";
+  }
+}
+
+type BlockerCardTone = {
+  readonly card: string;
+  readonly Icon: typeof XCircle;
+};
+
+function blockerCardTone(blocker: string): BlockerCardTone {
+  switch (blocker) {
+    case "mergeability_unknown":
+      return { card: infoCard, Icon: Info };
+    case "draft":
+      return { card: stateCard, Icon: GitPullRequestDraft };
+    case "closed":
+      return { card: stateCard, Icon: GitPullRequestClosed };
+    default:
+      return { card: destructiveCard, Icon: XCircle };
   }
 }
 

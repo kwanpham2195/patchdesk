@@ -86,6 +86,7 @@ export type AnalysisReaderProps = {
   /** Findings whose published thread waits on the viewer's reply. */
   readonly needsReplyFindingIds?: ReadonlySet<string>;
   readonly evidencePatch?: string;
+  /** Absent when the CI result is not worth a badge, such as unknown checks on a merged pull request. */
   readonly checkStatus?: CheckStatus;
   readonly canFinishWithAnalysisSummary?: boolean;
   readonly onFinishWithAnalysisSummary?: () => void;
@@ -107,7 +108,7 @@ export function AnalysisReader({
   findingStatuses,
   needsReplyFindingIds,
   evidencePatch,
-  checkStatus = "unknown",
+  checkStatus,
   canFinishWithAnalysisSummary = false,
   onFinishWithAnalysisSummary,
   onOpenFindingInDiff,
@@ -237,8 +238,8 @@ export function AnalysisReader({
       <AnalysisVerdictCard
         result={result}
         badge={hasNoGeneratedFindings ? "No findings" : handledProgress}
-        checkStatus={checkStatus}
         {...definedProps({
+          checkStatus,
           onFinishWithAnalysisSummary: canFinishWithAnalysisSummary
             ? onFinishWithAnalysisSummary
             : undefined,
@@ -392,7 +393,7 @@ function AnalysisVerdictCard({
 }: {
   readonly result: AnalysisResult;
   readonly badge: string;
-  readonly checkStatus: CheckStatus;
+  readonly checkStatus?: CheckStatus;
   readonly onFinishWithAnalysisSummary?: () => void;
 }): React.JSX.Element {
   const recommendation = recommendationFor(result.verdict);
@@ -404,11 +405,13 @@ function AnalysisVerdictCard({
             {analysisVerdictLabel(result.verdict)}
           </Badge>
           <Badge variant="outline">{badge}</Badge>
-          <Badge
-            variant={checkStatus === "failing" ? "destructive" : "outline"}
-          >
-            CI · {checkStatusLabel(checkStatus)}
-          </Badge>
+          {checkStatus === undefined ? null : (
+            <Badge
+              variant={checkStatus === "failing" ? "destructive" : "outline"}
+            >
+              CI · {checkStatusLabel(checkStatus)}
+            </Badge>
+          )}
         </div>
         <h2 className="text-lg font-semibold">{recommendation.heading}</h2>
         <CardDescription className="max-w-4xl">

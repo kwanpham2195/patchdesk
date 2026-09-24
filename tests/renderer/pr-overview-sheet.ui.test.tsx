@@ -398,6 +398,35 @@ describe("pr overview sheet merge readiness", () => {
   });
 });
 
+describe("pr overview sheet on a merged Review", () => {
+  it("reads Merged and lists no blockers, draft toggle, or merge controls", () => {
+    render(
+      <CanonicalReviewOverviewSheet
+        open
+        onOpenChange={() => undefined}
+        overview={baseOverview({
+          terminalState: "merged",
+          mergeReadiness: {
+            _tag: "Blocked",
+            blockers: ["conflicting"],
+            warnings: [],
+          },
+        })}
+        onSetDraftState={async () => undefined}
+      />,
+    );
+    const row = screen.getByRole("button", { name: "Merge readiness" });
+    expect(row.parentElement?.parentElement?.textContent).toContain("Merged");
+    expect(
+      screen.queryByText(mergeReadinessLabel("Blocked", ["conflicting"])),
+    ).toBeNull();
+    expect(document.querySelector("[data-blocker]")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Convert to draft" }),
+    ).toBeNull();
+  });
+});
+
 describe("pr overview sheet draft toggle", () => {
   it("keeps the toggle usable and shows a local error after rejection", async () => {
     const user = userEvent.setup();
