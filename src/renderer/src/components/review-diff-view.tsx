@@ -576,10 +576,14 @@ function ReviewDiffRenderSite({
     ],
   );
   const codeViewKey = preferences.fileMode;
+  // `files` is only what the Scope filter shows; marks on hidden files are saved per session and must survive.
   const setAllCollapsed = (collapsed: boolean): void => {
-    onCollapsedPathsChange(
-      collapsed ? new Set(files.map((file) => file.name)) : new Set(),
-    );
+    const next = new Set(collapsedPaths);
+    for (const file of files) {
+      if (collapsed) next.add(file.name);
+      else next.delete(file.name);
+    }
+    onCollapsedPathsChange(next);
   };
   const toggleFile = useCallback(
     (path: string): void => {

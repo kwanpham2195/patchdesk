@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import "./pierre-highlighter-mock";
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -162,6 +168,51 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
       pane: "docs/guide.md",
     });
     expect(browsedPaths()).toContain("docs/guide.md");
+  });
+
+  it("keeps a hidden file's Viewed mark through Mark all viewed and Show all", async () => {
+    const saved: Array<ReadonlyArray<string>> = [];
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/viewed-files") {
+        // SAFETY: the viewed-files save always posts a `paths` array.
+        const { paths } = input.body as { readonly paths: Array<string> };
+        saved.push(paths);
+        return { paths };
+      }
+      throw new Error(input.path);
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={scopedProjection({ viewedPaths: ["docs/guide.md"] })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await openScopeMenu(user);
+    await user.click(screen.getByRole("menuitemradio", { name: /Core/ }));
+
+    await user.click(screen.getByRole("button", { name: "Mark all viewed" }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect([...(saved[0] ?? [])].sort()).toEqual(["docs/guide.md", "src/a.ts"]);
+
+    await user.click(screen.getByRole("button", { name: "Show all" }));
+    await waitFor(() => expect(saved).toHaveLength(2));
+    expect(saved[1]).toEqual(["docs/guide.md"]);
+
+    await openScopeMenu(user);
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "Clear scope" }),
+    );
+    expect(
+      within(screen.getByRole("region", { name: "Review diff" })).getByRole(
+        "status",
+      ).textContent,
+    ).toBe("1 of 2 viewed");
   });
 
   it("clears the Scope filter when a commit is selected", async () => {
