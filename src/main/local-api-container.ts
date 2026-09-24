@@ -461,6 +461,7 @@ export async function buildLocalApiContainer(
           { reviews, insights },
           reviewOperations,
           configuration.desktopNotifier,
+          logs,
         );
 
   return {

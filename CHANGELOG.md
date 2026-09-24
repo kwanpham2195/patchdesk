@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a merge GitHub confirmed being reported as **Merge not confirmed** when Patchdesk then failed to save the merged Review or clear its merge record. The Review now shows Merged, the merge-completed notification is posted, and the failed local step is logged and finished by startup recovery. #349
+
 - Saved Analysis **Verification** ticks. A ticked step now stays ticked after switching Insight tabs, leaving the Review, or restarting Patchdesk, and a regenerated Analysis starts unticked. The "Ticks are not saved" note is gone. #352
 
 - Removed the **Request Brief**, **Request Analysis**, and **Request Walkthrough** buttons from the Pull requests inspector. Its Insight chips stay as a read-only readiness line, and Insights run from the Review where their results are read. The inspector toggle at the end of the filter bar now shows a panel icon and a tooltip. #351
