@@ -2,7 +2,7 @@
 
 ## Summary
 
-The Diagnostics overlay holds two observability surfaces: the app-wide Logs section and the profile-scoped Review activity section. The maintainer opens it from Help → Diagnostics… or the Diagnostics command in ⌘K; it opens above the current screen, starts on Logs, and Escape or Close returns focus to the control that held it. Logs are a live main-process and renderer tail with filters and pause; Review activity is a bounded, redacted record of Review and Insight lifecycle milestones. Neither surface displays raw credentials; Review activity also omits prompts, provider output, and sensitive paths.
+The Diagnostics overlay holds two observability surfaces: the app-wide Logs section and the profile-scoped Review activity section. The maintainer opens it from Help → Diagnostics… or the Diagnostics command in ⌘K; it opens above the current screen, starts on Logs, and Escape or Close returns focus to the control that held it. It does not open while Settings is open, and Settings does not open over it. Logs are a live main-process and renderer tail with filters and pause; Review activity is a bounded, redacted record of Review and Insight lifecycle milestones. Neither surface displays raw credentials; Review activity also omits prompts, provider output, and sensitive paths.
 
 ## The simple case
 

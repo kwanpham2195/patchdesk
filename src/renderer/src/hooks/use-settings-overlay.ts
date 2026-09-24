@@ -13,8 +13,9 @@ import type { NavigationState } from "./use-app-navigation";
  * The Settings overlay: whether it is open, which section it shows, and the
  * element focus returns to when it closes.
  *
- * The overlay refuses to open while navigation is blocked, which is why the
- * hook takes `navigationState` rather than reading it back from the screen.
+ * The overlay refuses to open while navigation is blocked or Diagnostics is
+ * open, which is why the hook takes both rather than reading them back from
+ * the screen.
  */
 export type SettingsOverlay = {
   readonly settingsOpen: boolean;
@@ -31,9 +32,11 @@ export type SettingsOverlay = {
 export function useSettingsOverlay({
   fixtureMode,
   navigationState,
+  diagnosticsOpen,
 }: {
   readonly fixtureMode: boolean;
   readonly navigationState: NavigationState;
+  readonly diagnosticsOpen: boolean;
 }): SettingsOverlay {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsOpener, setSettingsOpener] = useState<
@@ -54,7 +57,7 @@ export function useSettingsOverlay({
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key === ",") {
         event.preventDefault();
-        if (navigationState === "clear") {
+        if (navigationState === "clear" && !diagnosticsOpen) {
           setSettingsOpener(
             document.activeElement instanceof HTMLElement
               ? document.activeElement
@@ -66,10 +69,10 @@ export function useSettingsOverlay({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fixtureMode, navigationState]);
+  }, [fixtureMode, navigationState, diagnosticsOpen]);
   const openSettings = useCallback(
     (opener?: HTMLElement, section?: SettingsSection): void => {
-      if (navigationState !== "clear") return;
+      if (navigationState !== "clear" || diagnosticsOpen) return;
       const fallback =
         document.querySelector<HTMLElement>("[data-settings-opener]") ??
         document.querySelector<HTMLElement>("#main-content");
@@ -77,7 +80,7 @@ export function useSettingsOverlay({
       setSettingsSection(section ?? "general");
       setSettingsOpen(true);
     },
-    [navigationState],
+    [navigationState, diagnosticsOpen],
   );
   return {
     openSettings,
