@@ -1,5 +1,5 @@
 import { XIcon } from "lucide-react";
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 import { definedProps } from "../../../domain/defined-props";
 import { parseUnifiedPatch, type ParsedPatchFile } from "../../../domain/patch";
 
@@ -48,11 +48,11 @@ function insightRequestFailureMessage(
     return `${insightName} status refresh failed; still running.`;
   return undefined;
 }
-function InsightDocumentIdentity({
+/** The selected document's retained time, provider, and model, drawn muted at the right end of the tab strip. */
+function InsightDocumentMeta({
   retained,
   selectedInsight,
   selectedIsOutdated,
-  walkthroughTitle,
 }: {
   readonly retained:
     | Readonly<{
@@ -64,39 +64,23 @@ function InsightDocumentIdentity({
     | undefined;
   readonly selectedInsight: InsightRunDialogType;
   readonly selectedIsOutdated: boolean;
-  readonly walkthroughTitle: string | undefined;
-}): React.JSX.Element {
-  // The Brief draws its own Provenance card, so only the other readers state
-  // the provider and model here; the revision itself is named once, in the
-  // workbench header.
+}): React.JSX.Element | null {
+  if (retained === undefined) return null;
+  // The Brief draws its own Provenance card, so only the other readers state the provider and model here.
   const provenance =
-    selectedInsight === "brief" ? undefined : retained?.provenance;
-  // The selected tab already names the Insight, so the only heading worth
-  // drawing is a Walkthrough document's own title.
-  const heading =
-    selectedInsight === "walkthrough" ? walkthroughTitle : undefined;
+    selectedInsight === "brief" ? undefined : retained.provenance;
   return (
-    <div className="min-w-0">
-      {heading === undefined ? null : (
-        <h2 className="truncate text-lg font-semibold">{heading}</h2>
-      )}
-      {retained === undefined ? null : (
-        <p className="truncate text-sm text-muted-foreground">
-          <RelativeTime
-            iso={retained.generatedAt}
-            prefix={selectedIsOutdated ? "Outdated · generated " : "Generated "}
-          />
-          {provenance === undefined
-            ? null
-            : ` · ${INSIGHT_PROVIDER_LABELS[provenance.provider]} · ${provenance.model}`}
-        </p>
-      )}
-    </div>
+    <p className="min-w-0 truncate text-xs text-muted-foreground">
+      <RelativeTime
+        iso={retained.generatedAt}
+        prefix={selectedIsOutdated ? "Outdated · generated " : "Generated "}
+      />
+      {provenance === undefined
+        ? null
+        : ` · ${INSIGHT_PROVIDER_LABELS[provenance.provider]} · ${provenance.model}`}
+    </p>
   );
 }
-export const TERMINAL_REVIEW_INSIGHT_REASON =
-  "This Review is merged or closed; Insights cannot be generated.";
-
 function hasAvailableInsightProvider(
   configuration: InsightRunConfiguration,
 ): boolean {
@@ -106,46 +90,25 @@ function hasAvailableInsightProvider(
   );
 }
 
-/** Whether an Insight run can start, and the id of the reason it cannot when the Review is merged or closed. */
-function useInsightRunAvailability(
-  workbench: WorkbenchResponse,
-  configuration: InsightRunConfiguration,
-) {
-  const reasonId = `insight-run-reason-${useId()}`;
-  const reviewOpen = workbench.review.status === "open";
-  return {
-    runEnabled:
-      !configuration.catalogError &&
-      hasAvailableInsightProvider(configuration) &&
-      reviewOpen,
-    runDisabledReasonId: reviewOpen ? undefined : reasonId,
-  };
-}
-
 function InsightAvailabilityErrors({
-  terminalReasonId,
+  reviewOpen,
   configuration,
   requestFailureMessage,
 }: {
-  /** Set on a merged or closed Review, whose reason replaces provider errors because fixing a provider would not enable a run. */
-  readonly terminalReasonId: string | undefined;
+  /** A merged or closed Review hides every run control, so a provider error would name a fix that enables nothing. */
+  readonly reviewOpen: boolean;
   readonly configuration: InsightRunConfiguration;
   readonly requestFailureMessage: string | undefined;
 }): React.JSX.Element {
   const { catalogError, provider, models } = configuration;
   const hasAvailableProvider = hasAvailableInsightProvider(configuration);
   const unavailable =
-    terminalReasonId === undefined &&
+    reviewOpen &&
     (catalogError ||
       !hasAvailableProvider ||
       (provider === "pi" && models.length === 0));
   return (
     <>
-      {terminalReasonId === undefined ? null : (
-        <p id={terminalReasonId} className="py-2 text-sm text-muted-foreground">
-          {TERMINAL_REVIEW_INSIGHT_REASON}
-        </p>
-      )}
       {unavailable ? (
         <InlineError className="py-2">
           {catalogError || !hasAvailableProvider
@@ -268,10 +231,11 @@ export function InsightsSlot({
     walkthrough: walkthroughRun,
     brief: briefRun,
   };
-  const { runEnabled, runDisabledReasonId } = useInsightRunAvailability(
-    workbench,
-    configuration,
-  );
+  const reviewOpen = workbench.review.status === "open";
+  const runEnabled =
+    !configuration.catalogError &&
+    hasAvailableInsightProvider(configuration) &&
+    reviewOpen;
   const selectedProjection = projections[selectedInsight];
   const insightResultRef = useInsightResultEntrance({
     retainedRunIds: {
@@ -329,10 +293,10 @@ export function InsightsSlot({
     selectedProjection.retained === undefined;
   const selectedRequestFailure = selectedRunning?.requestFailure;
   const selectedInsightName = INSIGHT_NOUNS[selectedInsight];
-  const showDocumentHeader =
-    selectedRetained !== undefined ||
-    selectedRunning?.busy === true ||
-    selectedProjection?.status === "running";
+  const walkthroughTitle =
+    selectedInsight === "walkthrough" && selectedRetained !== undefined
+      ? workbench.insights.walkthrough.retained?.value.title
+      : undefined;
   const dialogRun =
     configuration.runDialogType === null
       ? undefined
@@ -354,32 +318,20 @@ export function InsightsSlot({
             workbench={workbench}
             selectedInsight={selectedInsight}
             setSelectedInsight={setSelectedInsight}
-          />
-        )}
-        <article
-          aria-label={`${selectedInsight} document`}
-          data-review-insight-document={selectedInsight}
-          className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${selectedInsight === "walkthrough" ? "overflow-hidden" : "overflow-auto"}`}
-        >
-          {walkthroughFocusActive || !showDocumentHeader ? null : (
-            <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
-              <InsightDocumentIdentity
-                retained={selectedRetained}
-                selectedInsight={selectedInsight}
-                selectedIsOutdated={selectedIsOutdated}
-                walkthroughTitle={
-                  workbench.insights.walkthrough.retained?.value.title
-                }
-              />
-              <div className="flex flex-wrap items-center gap-2">
+            trailing={
+              <div className="flex min-w-0 items-center gap-2 pb-1 empty:hidden">
+                <InsightDocumentMeta
+                  retained={selectedRetained}
+                  selectedInsight={selectedInsight}
+                  selectedIsOutdated={selectedIsOutdated}
+                />
                 <InsightHeaderAction
                   running={selectedRunning}
                   projectionRunning={selectedProjection?.status === "running"}
                   insightName={selectedInsightName}
                   hideRegenerate={
                     analysisFirstRunActive ||
-                    // A merged or closed Review keeps only the reason line below.
-                    runDisabledReasonId !== undefined ||
+                    !reviewOpen ||
                     selectedIsOutdated ||
                     selectedProjection?.status === "failed" ||
                     selectedProjection?.retained === undefined
@@ -388,10 +340,21 @@ export function InsightsSlot({
                   onRegenerate={() => openRunDialog("regenerate")}
                 />
               </div>
-            </header>
+            }
+          />
+        )}
+        <article
+          aria-label={`${selectedInsight} document`}
+          data-review-insight-document={selectedInsight}
+          className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${selectedInsight === "walkthrough" ? "overflow-hidden" : "overflow-auto"}`}
+        >
+          {walkthroughFocusActive || walkthroughTitle === undefined ? null : (
+            <h2 className="shrink-0 truncate pb-2 text-lg font-semibold">
+              {walkthroughTitle}
+            </h2>
           )}
           <InsightAvailabilityErrors
-            terminalReasonId={runDisabledReasonId}
+            reviewOpen={reviewOpen}
             configuration={configuration}
             requestFailureMessage={selectedRequestFailureMessage}
           />
@@ -431,10 +394,7 @@ export function InsightsSlot({
                 type={selectedInsight}
                 disabled={!runEnabled}
                 {...definedProps({
-                  onRun:
-                    runDisabledReasonId === undefined
-                      ? () => openRunDialog("run")
-                      : undefined,
+                  onRun: reviewOpen ? () => openRunDialog("run") : undefined,
                 })}
               />
             ) : null}

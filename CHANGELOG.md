@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Insights tab now opens with one row above the document: the Brief / Walkthrough / Analysis tabs, with the generated time, provider, model, and **Regenerate** at the row's right end. Tab states read as muted text after a small dot instead of bordered pills, and a merged or closed Review no longer repeats "Insights cannot be generated" under the header's **Merge** chip. #348
+
 - Added **Add all to review** to the Analysis **Needs attention** card. It confirms once, listing every Finding it will add, then adds them one at a time with progress and a **Stop adding** button; it stops at the first failure and keeps Findings already added. #356
 
 - A long title in the **Visited pull requests** column now scrolls to its end and back after half a second of hover or keyboard focus, so it can be read without opening the pull request. Titles that fit stay still, and nothing moves when the system asks for reduced motion. #402
