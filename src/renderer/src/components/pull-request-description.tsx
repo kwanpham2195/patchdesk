@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { ExternalLink } from "lucide-react";
 import type { Mermaid } from "mermaid";
 import * as v from "valibot";
 import type { Tokens } from "marked";
@@ -44,6 +45,40 @@ let mermaidPromise: Promise<Mermaid> | undefined;
  * survives nesting either way (`<a><span><img></span></a>`).
  */
 const InsideLinkContext = createContext(false);
+
+/**
+ * Opens the destination of a link that stood alone around one image. Such a
+ * link renders as the zoomable image instead of a link control, and the
+ * lightbox offers the destination, so the screenshot in a before/after table
+ * can be enlarged.
+ */
+const ImageLinkContext = createContext<(() => void) | undefined>(undefined);
+
+function renderPullRequestLink(
+  href: string,
+  children: React.ReactNode,
+  key: string,
+  pullRequest: PullRequestRef | undefined,
+  imageOnly: boolean,
+): React.ReactNode {
+  if (resolvePullRequestExternalUrl(href, pullRequest) === undefined)
+    return <span key={key}>{children}</span>;
+  const openLink = (): void =>
+    void openPullRequestExternalUrl(href, pullRequest);
+  if (imageOnly)
+    return (
+      <ImageLinkContext.Provider key={key} value={openLink}>
+        {children}
+      </ImageLinkContext.Provider>
+    );
+  return (
+    <Button key={key} variant="link" size="xs" onClick={openLink}>
+      <InsideLinkContext.Provider value={true}>
+        {children}
+      </InsideLinkContext.Provider>
+    </Button>
+  );
+}
 
 /**
  * What a rendered Markdown body needs beyond its own text: the pull request its
@@ -116,29 +151,22 @@ function githubMarkdownPolicy(
   images: BodyImages,
 ): MarkdownContentPolicy {
   return {
-    renderLink: ({ href, children, key }) => {
-      if (resolvePullRequestExternalUrl(href, pullRequest) === undefined)
-        return <span key={key}>{children}</span>;
-      return (
-        <Button
-          key={key}
-          variant="link"
-          size="xs"
-          onClick={() => void openPullRequestExternalUrl(href, pullRequest)}
-        >
-          <InsideLinkContext.Provider value={true}>
-            {children}
-          </InsideLinkContext.Provider>
-        </Button>
-      );
-    },
+    renderLink: ({ href, children, key, imageOnly }) =>
+      renderPullRequestLink(
+        href,
+        children,
+        key,
+        pullRequest,
+        imageOnly === true,
+      ),
     renderImage: ({ token, key, inline }) =>
       renderMarkdownImage(token, images, key, inline === true),
-    renderHtml: ({ html, closeHtml, children, key }) => (
+    renderHtml: ({ html, closeHtml, children, key, imageOnly }) => (
       <HtmlContent
         key={key}
         html={closeHtml === undefined ? html : `${html}${closeHtml}`}
         {...(children === undefined ? {} : { children })}
+        imageOnly={imageOnly === true}
         pullRequest={pullRequest}
         images={images}
       />
@@ -177,11 +205,13 @@ function renderMarkdownImage(
 function HtmlContent({
   html,
   children,
+  imageOnly,
   pullRequest,
   images,
 }: {
   readonly html: string;
   readonly children?: ReadonlyArray<React.ReactNode>;
+  readonly imageOnly: boolean;
   readonly pullRequest: PullRequestRef | undefined;
   readonly images: BodyImages;
 }): React.JSX.Element {
@@ -192,7 +222,14 @@ function HtmlContent({
   // A reassembled element parses to an empty tag pair, so its content arrives
   // already rendered from the Markdown tokens that sat between the two tags.
   if (children !== undefined && only instanceof Element) {
-    return <>{renderHtmlNode(only, pullRequest, images, "html", children)}</>;
+    return (
+      <>
+        {renderHtmlNode(only, pullRequest, images, "html", {
+          children,
+          imageOnly,
+        })}
+      </>
+    );
   }
   return <>{renderHtmlNodes(nodes, pullRequest, images, "html")}</>;
 }
@@ -208,19 +245,52 @@ function renderHtmlNodes(
   );
 }
 
+/**
+ * An element's content already rendered from the Markdown tokens between its
+ * tags, which a parsed empty tag pair cannot show, plus whether that content
+ * was one image standing alone in its paragraph or cell.
+ */
+type SubstituteContent = {
+  readonly children: ReadonlyArray<React.ReactNode>;
+  readonly imageOnly: boolean;
+};
+
+/** Mirrors the Markdown rule: an anchor alone in its parent, holding one `<img>` and nothing else. */
+function isLoneImageLink(anchor: Element): boolean {
+  const content = withoutBlankText(anchor.childNodes);
+  const siblings =
+    anchor.parentNode === null
+      ? []
+      : withoutBlankText(anchor.parentNode.childNodes);
+  return (
+    siblings.length === 1 &&
+    content.length === 1 &&
+    content[0] instanceof Element &&
+    content[0].tagName.toLowerCase() === "img"
+  );
+}
+
+function withoutBlankText(nodes: NodeListOf<ChildNode>): ReadonlyArray<Node> {
+  return Array.from(nodes).filter(
+    (node) =>
+      node.nodeType !== Node.TEXT_NODE ||
+      (node.textContent ?? "").trim() !== "",
+  );
+}
+
 function renderHtmlNode(
   node: Node,
   pullRequest: PullRequestRef | undefined,
   images: BodyImages,
   key: string,
-  substituteChildren?: ReadonlyArray<React.ReactNode>,
+  substitute?: SubstituteContent,
 ): React.ReactNode {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent;
   if (!(node instanceof Element)) return null;
 
   const tag = node.tagName.toLowerCase();
   const children =
-    substituteChildren ??
+    substitute?.children ??
     renderHtmlNodes(Array.from(node.childNodes), pullRequest, images, key);
   switch (tag) {
     case "script":
@@ -313,22 +383,13 @@ function renderHtmlNode(
     }
     case "a": {
       const href = node.getAttribute("href");
-      if (
-        href === null ||
-        resolvePullRequestExternalUrl(href, pullRequest) === undefined
-      )
-        return <span key={key}>{children}</span>;
-      return (
-        <Button
-          key={key}
-          variant="link"
-          size="xs"
-          onClick={() => void openPullRequestExternalUrl(href, pullRequest)}
-        >
-          <InsideLinkContext.Provider value={true}>
-            {children}
-          </InsideLinkContext.Provider>
-        </Button>
+      if (href === null) return <span key={key}>{children}</span>;
+      return renderPullRequestLink(
+        href,
+        children,
+        key,
+        pullRequest,
+        substitute?.imageOnly ?? isLoneImageLink(node),
       );
     }
     case "img": {
@@ -463,6 +524,7 @@ function ClickableImage({
   readonly inline: boolean;
 }): React.JSX.Element {
   const insideLink = useContext(InsideLinkContext);
+  const openLink = useContext(ImageLinkContext);
   const placeholder = useRef<HTMLSpanElement>(null);
   // Standing in for `loading="lazy"`, which cannot help a `data:` URI the
   // renderer fetches itself: nothing is requested until the image scrolls
@@ -491,7 +553,15 @@ function ClickableImage({
     return () => observer.disconnect();
   }, [visible]);
 
-  if (image._tag === "Failed") return <span>[Image: {alt}]</span>;
+  if (image._tag === "Failed") {
+    // With no image to zoom, the link it stood for is the only thing left to click.
+    if (openLink === undefined) return <span>[Image: {alt}]</span>;
+    return (
+      <Button variant="link" size="xs" onClick={openLink}>
+        [Image: {alt}]
+      </Button>
+    );
+  }
   if (image._tag === "Pending") {
     // An inline badge is a few characters tall, so the block placeholder would
     // flash a grey slab into the middle of a sentence for every one of them.
@@ -534,6 +604,17 @@ function ClickableImage({
               alt={alt}
               className="max-h-[85vh] max-w-[85vw] object-contain"
             />,
+            openLink === undefined ? undefined : (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-foreground hover:bg-accent"
+                onClick={openLink}
+              >
+                <ExternalLink />
+                Open link
+              </Button>
+            ),
           )
         }
       >
