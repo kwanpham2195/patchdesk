@@ -46,6 +46,9 @@ export function AnalysisAddAllFindings({
   readonly onFailed: (findingId: string, message: string) => void;
 }): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
+  const [reviewChanged, setReviewChanged] = useState<
+    { readonly added: number; readonly total: number } | undefined
+  >(undefined);
   const { progress } = controls;
   const findings = readingOrder.filter(
     (finding) =>
@@ -55,9 +58,18 @@ export function AnalysisAddAllFindings({
   );
   const addAll = async (): Promise<void> => {
     for (const finding of findings) onClearError(finding.id);
+    setReviewChanged(undefined);
     const outcome = await controls.addAll(findings);
     if (outcome._tag === "failed") onFailed(outcome.findingId, outcome.message);
+    if (outcome._tag === "review_changed")
+      setReviewChanged({ added: outcome.added, total: outcome.total });
   };
+  const reviewChangedNotice =
+    reviewChanged === undefined ? null : (
+      <p role="status" className="text-sm text-muted-foreground">
+        Review changed: added {reviewChanged.added} of {reviewChanged.total}
+      </p>
+    );
   if (progress !== undefined)
     return (
       <div className="flex items-center gap-2">
@@ -76,9 +88,10 @@ export function AnalysisAddAllFindings({
         </Button>
       </div>
     );
-  if (findings.length === 0) return null;
+  if (findings.length === 0) return reviewChangedNotice;
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
+      {reviewChangedNotice}
       <Button
         size="sm"
         variant="outline"

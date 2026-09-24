@@ -11,7 +11,10 @@ import {
   useAddAllFindings,
   type AddAllFindingsOutcome,
 } from "../../src/renderer/src/flows/use-add-all-findings";
-import { useAnalysisReviewActions } from "../../src/renderer/src/flows/use-analysis-review-actions";
+import {
+  useAnalysisReviewActions,
+  type FindingAddResult,
+} from "../../src/renderer/src/flows/use-analysis-review-actions";
 import type { RunDirectCommand } from "../../src/renderer/src/flows/use-review-observation";
 import {
   failure,
@@ -134,7 +137,12 @@ function renderBatch(workbench: WorkbenchResponse) {
       });
       return useAddAllFindings({
         addFinding: addFindingToPendingReview,
-        analysisRunId: props.workbench.insights.analysis.retained?.runId,
+        reviewScope: JSON.stringify([
+          props.workbench.session.id,
+          props.workbench.revision.reviewedHeadSha,
+          props.workbench.revision.patchHash,
+          props.workbench.insights.analysis.retained?.runId,
+        ]),
       });
     },
     { initialProps: { workbench } },
@@ -269,18 +277,88 @@ describe("useAddAllFindings", () => {
     expect(result.current.progress).toBeUndefined();
   });
 
-  it("stops when a new Analysis run replaces the one the batch started from", async () => {
-    const { held, confirm } = holdCommands();
-    const { result, rerender } = renderBatch(threeFindingWorkbench());
+  it.each([
+    [
+      "session",
+      { session: { ...threeFindingWorkbench().session, id: "session-b" } },
+    ],
+    [
+      "reviewed head",
+      {
+        revision: {
+          ...threeFindingWorkbench().revision,
+          reviewedHeadSha: "e".repeat(40),
+        },
+      },
+    ],
+    [
+      "patch",
+      {
+        revision: {
+          ...threeFindingWorkbench().revision,
+          patchHash: "c".repeat(64) as never,
+        },
+      },
+    ],
+    [
+      "Analysis run",
+      {
+        insights: threeFindingWorkbench("insight-analysis-2-fixture").insights,
+      },
+    ],
+  ] as const)(
+    "stops when the %s changes during a write, without counting that Finding or writing the rest",
+    async (_scope, change) => {
+      const { held, confirm } = holdCommands();
+      const { result, rerender, lastWorkbench } = renderBatch(
+        threeFindingWorkbench(),
+      );
+
+      const outcome = startBatch(result);
+      await vi.waitFor(() => expect(held).toHaveLength(1));
+      await act(async () => confirm(held[0]));
+      await vi.waitFor(() => expect(held).toHaveLength(2));
+      rerender({ workbench: { ...threeFindingWorkbench(), ...change } });
+      await act(async () => confirm(held[1]));
+      await act(async () => {});
+
+      expect(held).toHaveLength(2);
+      await expect(outcome).resolves.toEqual({
+        _tag: "review_changed",
+        added: 1,
+        total: 3,
+      });
+      expect(findingStates(lastWorkbench())["finding-2"]).not.toBe(
+        "pending_review",
+      );
+      expect(result.current.progress).toBeUndefined();
+    },
+  );
+
+  it("stops before the next write when the Review changes between writes", async () => {
+    const settle: Array<(result: FindingAddResult) => void> = [];
+    const addFinding = vi.fn(
+      () =>
+        new Promise<FindingAddResult>((resolve) => {
+          settle.push(resolve);
+        }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { readonly reviewScope: string }) =>
+        useAddAllFindings({ addFinding, reviewScope: props.reviewScope }),
+      { initialProps: { reviewScope: "session-a" } },
+    );
 
     const outcome = startBatch(result);
-    await vi.waitFor(() => expect(held).toHaveLength(1));
-    rerender({
-      workbench: threeFindingWorkbench("insight-analysis-2-fixture"),
-    });
-    await act(async () => confirm(held[0]));
+    await vi.waitFor(() => expect(settle).toHaveLength(1));
+    rerender({ reviewScope: "session-b" });
+    await act(async () => settle[0]?.("added"));
 
-    await expect(outcome).resolves.toEqual({ _tag: "stopped", added: 1 });
-    expect(held).toHaveLength(1);
+    expect(addFinding).toHaveBeenCalledTimes(1);
+    await expect(outcome).resolves.toEqual({
+      _tag: "review_changed",
+      added: 1,
+      total: 3,
+    });
   });
 });

@@ -786,6 +786,31 @@ describe("Add all to review", () => {
     ).toBeNull();
   });
 
+  it("reports a batch stopped by a Review change beside the control and offers it again", async () => {
+    const user = userEvent.setup();
+    render(
+      <AnalysisReader
+        result={threeFindingResult}
+        findingStatuses={threeFindingStatuses}
+        onAddFinding={vi.fn(async () => undefined)}
+        addAllFindings={idleBatch({
+          _tag: "review_changed",
+          added: 1,
+          total: 2,
+        })}
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Add all to review" }));
+    await user.click(screen.getByRole("button", { name: "Add all" }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toBeTruthy());
+    expect(
+      screen.getByRole("button", { name: "Add all to review" }),
+    ).toHaveProperty("disabled", false);
+  });
+
   it("disables every Finding action while a batch runs and stops it on request", async () => {
     const user = userEvent.setup();
     const stop = vi.fn();

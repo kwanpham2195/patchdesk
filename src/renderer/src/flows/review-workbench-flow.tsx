@@ -142,7 +142,12 @@ export function ReviewWorkbenchFlow({
   });
   const addAllFindings = useAddAllFindings({
     addFinding: addFindingToPendingReview,
-    analysisRunId: workbench.insights.analysis.retained?.runId,
+    reviewScope: JSON.stringify([
+      workbench.session.id,
+      workbench.revision.reviewedHeadSha,
+      workbench.revision.patchHash,
+      workbench.insights.analysis.retained?.runId,
+    ]),
   });
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
@@ -208,7 +213,10 @@ export function ReviewWorkbenchFlow({
               {...(writeRecovery.githubWritesLocked
                 ? {}
                 : {
-                    onAddFinding: addFindingToPendingReview,
+                    // A single Add ignores the result; only the batch stops on a Review change.
+                    onAddFinding: async (finding) => {
+                      await addFindingToPendingReview(finding);
+                    },
                     addAllFindings,
                     onFinishWithAnalysisSummary: openFinishDialogWithSummary,
                   })}

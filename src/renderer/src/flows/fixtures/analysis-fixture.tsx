@@ -36,6 +36,16 @@ export function AnalysisFixture(): React.ReactNode {
         patchFiles,
         selectedInsight: "analysis",
         addFinding: async () => undefined,
+        // Resolves as if the Review changed after the first write, so the stop notice is verifiable.
+        addAllFindings: {
+          progress: undefined,
+          addAll: async (findings) => ({
+            _tag: "review_changed",
+            added: Math.min(1, findings.length),
+            total: findings.length,
+          }),
+          stop: () => undefined,
+        },
         dismissFinding: async () => undefined,
         analysisVerification: {
           checkedSteps,
