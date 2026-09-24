@@ -367,7 +367,10 @@ function parsePublishedFeedback(
   const reviews: Array<GitHubPublishedFeedback["reviews"][number]> = [];
   for (const review of input.reviews) {
     const submittedAt = parseIsoTimestamp(review.submittedAt);
-    if (submittedAt._tag === "err") return invalidRead();
+    const commitId =
+      review.commitId === undefined ? undefined : parseGitSha(review.commitId);
+    if (submittedAt._tag === "err" || commitId?._tag === "err")
+      return invalidRead();
     const nodeIdField =
       review.nodeId === undefined ? {} : { nodeId: review.nodeId };
     reviews.push({
@@ -378,7 +381,10 @@ function parsePublishedFeedback(
       event: review.event,
       submittedAt: submittedAt.value,
       canDismiss: review.canDismiss,
-      ...definedProps({ imageRewrites: review.imageRewrites }),
+      ...definedProps({
+        imageRewrites: review.imageRewrites,
+        commitId: commitId?.value,
+      }),
     });
   }
   const comments: Array<GitHubPublishedFeedback["comments"][number]> = [];

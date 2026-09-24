@@ -36,7 +36,7 @@ import { confirmedWriteJournal } from "./write-invariant-harness";
  * that did work before taking the lock would show no lock acquisition and
  * would still be wrong.
  *
- * THREE READS ARE PINNED UNLOCKED, as `reads` rows that name the exact
+ * FOUR READS ARE PINNED UNLOCKED, as `reads` rows that name the exact
  * dependency trace they run while another caller holds the lock:
  *
  * - `ReviewWorkbenchController.commitDiff` calls `commits.diff`, which
@@ -48,6 +48,8 @@ import { confirmedWriteJournal } from "./write-invariant-harness";
  *   renderer's commit-diff fetch is not wrapped in `runDirectCommand`
  *   (`src/renderer/src/flows/review-workbench-commit-diff.ts`) and commands
  *   take the lock without waiting.
+ * - `ReviewWorkbenchController.sinceReviewDiff` calls `commits.diffSinceReview`,
+ *   which runs the same checks before diffing two immutable commits.
  * - `InsightRunCoordinator.observe` and `InsightRunCoordinator.addFinding` take
  *   no lock either. Both read an Insight record the store writes atomically, so
  *   there is no half-written state to observe; `addFinding` is refused before it

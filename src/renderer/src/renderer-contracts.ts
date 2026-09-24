@@ -517,7 +517,7 @@ const pullRequestSummarySchema = v.strictObject({
   deletions: v.optional(v.number()),
 });
 
-const commitSchema = v.strictObject({
+export const commitSchema = v.strictObject({
   sha: v.pipe(v.string(), v.minLength(7)),
   message: v.string(),
   author: v.string(),
@@ -680,6 +680,7 @@ const publishedReviewSchema = v.strictObject({
     "DISMISSED",
   ]),
   submittedAt: v.pipe(v.string(), v.isoTimestamp()),
+  commitId: v.optional(v.pipe(v.string(), v.minLength(7))),
   canDismiss: v.boolean(),
   imageRewrites: imageRewritesSchema,
 });
@@ -929,27 +930,6 @@ export function parseWorkbenchResponse(
   const issuePath = v.getDotPath(parsed.issues[0]) ?? "(unknown field)";
   console.error(`Invalid workbench projection: rejected at "${issuePath}"`);
   return undefined;
-}
-
-const commitDiffResponseSchema = v.strictObject({
-  commit: commitSchema,
-  position: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  total: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  patch: v.pipe(v.string(), v.maxLength(1_500_000)),
-  fileCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-});
-export type CommitDiffResponse = v.InferOutput<typeof commitDiffResponseSchema>;
-
-export function parseCommitDiffResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
-  input: unknown,
-): CommitDiffResponse | undefined {
-  const parsed = v.safeParse(commitDiffResponseSchema, input);
-  if (!parsed.success || parsed.output.position > parsed.output.total)
-    return undefined;
-  return parsed.output;
 }
 
 // `GET /v1/sidebar/reviews` is a local-API payload Patchdesk owns on both

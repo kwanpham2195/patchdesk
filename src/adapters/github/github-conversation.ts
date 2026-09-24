@@ -269,6 +269,7 @@ export class GitHubConversationReader {
         canDismiss: canDismiss && event !== "DISMISSED",
         ...definedProps({
           nodeId: review.node_id,
+          commitId: commitIdOf(review.commit_id),
           imageRewrites: imageRewritesOf(review.body_html),
         }),
       };
@@ -470,4 +471,11 @@ export class GitHubConversationReader {
     }
     return ok({ reviews, complete: parsed.output.length < 100 });
   }
+}
+
+/** A malformed or missing commit id drops only the "Since your review" baseline, never the review summary. */
+function commitIdOf(raw: string | null | undefined): GitSha | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const parsed = parseGitSha(raw);
+  return parsed._tag === "ok" ? parsed.value : undefined;
 }

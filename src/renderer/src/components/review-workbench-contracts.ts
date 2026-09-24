@@ -9,10 +9,13 @@ import type {
 import type { ReviewerPickerActions } from "./reviewer-picker";
 import type { ChangeBaseBranchActions } from "./change-base-branch-dialog";
 import type {
-  CommitDiffResponse,
   DirectSummaryReviewProjection,
   WorkbenchResponse,
 } from "../renderer-contracts";
+import type {
+  CommitDiffResponse,
+  SinceReviewDiffResponse,
+} from "../review-diff-contracts";
 import type {
   WorkbenchActiveTab,
   WorkbenchSection,
@@ -27,6 +30,7 @@ export type ReviewWorkbenchActions = {
   /** True when the last explicit refresh failed; surfaces bounded error copy. */
   readonly refreshError?: boolean;
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
+  readonly loadSinceReviewDiff: () => Promise<SinceReviewDiffResponse>;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly pendingReviewComposer?: PendingReviewComposerActions;
   readonly directSummary?: {

@@ -55,6 +55,9 @@ export function CanonicalFixtureWorkbench({
     loadCommitDiff: async () => {
       throw new Error("No commit fixture is configured");
     },
+    loadSinceReviewDiff: async () => {
+      throw new Error("No since-review fixture is configured");
+    },
     localCommentAuthoring: { enabled: true, onSave: async () => undefined },
     reportNavigationState: onNavigationStateChange,
     labels: {
