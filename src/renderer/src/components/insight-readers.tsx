@@ -8,6 +8,7 @@ import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { InsightRunDialogType } from "./insight-run-dialog";
+import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
 
 type InsightReaderBuilderInput = {
   readonly workbench: WorkbenchResponse;
@@ -22,6 +23,7 @@ type InsightReaderBuilderInput = {
     finding: AnalysisFinding,
     reason: string,
   ) => Promise<void>;
+  readonly analysisVerification: AnalysisVerificationControls;
   readonly walkthroughFocused: boolean;
   readonly setWalkthroughFocused: (focused: boolean) => void;
   /** Opens the run dialog from the Brief's own Provenance card. */
@@ -78,6 +80,7 @@ export function buildInsightReaders({
   onFinishWithAnalysisSummary,
   addFinding,
   dismissFinding,
+  analysisVerification,
   onOpenFindingInDiff,
   walkthroughFocused,
   setWalkthroughFocused,
@@ -141,6 +144,7 @@ export function buildInsightReaders({
           ? { onOpenFindingInDiff }
           : {})}
         fixPromptContext={fixPromptContext}
+        verification={analysisVerification}
         canFinishWithAnalysisSummary={
           workbench.analysisReviewActions?.canFinishWithAnalysisSummary ?? false
         }

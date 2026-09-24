@@ -279,6 +279,19 @@ export const lockRows: ReadonlyArray<LockRow> = [
     ),
   },
   {
+    name: "InsightRunCoordinator.updateAnalysisVerification",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.updateAnalysisVerification({
+        profileId,
+        reviewId,
+        runId: insightRunId,
+        stepIndex: 0,
+        checked: true,
+      }),
+    ),
+  },
+  {
     name: "InsightRunCoordinator.recover",
     kind: "queues",
     build: insightBuild((insights) =>

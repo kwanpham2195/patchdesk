@@ -25,7 +25,9 @@ import {
   dismissInsightFinding,
   requestInsightCancellation,
   sameInsightRevision,
+  setAnalysisVerificationStep,
   updateWalkthroughProgress,
+  type AnalysisVerification,
   type InsightFailureCategory,
   type InsightRevision,
   type InsightType,
@@ -637,6 +639,60 @@ export class InsightRunCoordinator {
           : "storage_unavailable",
       );
     return ok({ status: "saved" });
+  }
+
+  async updateAnalysisVerification(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly runId: InsightRunId;
+    readonly stepIndex: number;
+    readonly checked: boolean;
+  }): Promise<Result<AnalysisVerification, InsightCoordinatorFailure>> {
+    return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
+      this.updateAnalysisVerificationUnlocked(input),
+    );
+  }
+
+  private async updateAnalysisVerificationUnlocked(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly runId: InsightRunId;
+    readonly stepIndex: number;
+    readonly checked: boolean;
+  }): Promise<Result<AnalysisVerification, InsightCoordinatorFailure>> {
+    // Ticks are the reviewer's own reading progress, so a merged or closed Review keeps them editable.
+    const ownership = await this.ensureOwned(input.profileId, input.reviewId);
+    if (ownership._tag === "err") return ownership;
+    const timestamp = parseIsoTimestamp(this.now());
+    if (timestamp._tag === "err") return err("storage_unavailable");
+    const changed = await this.insights.mutate({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      type: "analysis",
+      now: timestamp.value,
+      operation: (record) => {
+        if (record.retained?.runId !== input.runId)
+          return err("not_available" as const);
+        const result = parseReviewResult(record.retained.value);
+        if (result._tag === "err") return err("not_available" as const);
+        return setAnalysisVerificationStep(
+          record,
+          {
+            index: input.stepIndex,
+            count: result.value.validationPlan.length,
+          },
+          input.checked,
+          timestamp.value,
+        );
+      },
+    });
+    if (changed._tag === "err")
+      return err(
+        changed.error === "not_available"
+          ? "not_available"
+          : "storage_unavailable",
+      );
+    return ok(changed.value.analysisVerification ?? { checkedStepIndexes: [] });
   }
 
   async addFinding(input: {

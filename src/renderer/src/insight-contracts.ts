@@ -8,6 +8,11 @@ export const INSIGHT_PROVIDER_LABELS = {
   "codex-cli-account": "Codex CLI account",
 } as const satisfies Record<InsightProvider, string>;
 
+/** Which Verification steps of a retained Analysis are ticked, as projected and as the save route answers. */
+export const analysisVerificationSchema = v.strictObject({
+  checkedStepIndexes: v.array(v.pipe(v.number(), v.integer(), v.minValue(0))),
+});
+
 /**
  * The parts of an Insight projection that are the same for every Insight type,
  * so a new type (Brief, in `brief-contracts.ts`) reuses the envelope instead of
@@ -61,6 +66,7 @@ export const insightFields = {
       currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))),
     }),
   ),
+  verification: v.optional(analysisVerificationSchema),
 } as const;
 
 /**

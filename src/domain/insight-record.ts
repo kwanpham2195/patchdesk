@@ -60,6 +60,10 @@ export type WalkthroughProgress = {
   readonly supportReviewed: boolean;
   readonly currentSectionId?: string;
 };
+/** Which Verification steps of one retained Analysis the reviewer ticked, by index into its validation plan. */
+export type AnalysisVerification = {
+  readonly checkedStepIndexes: ReadonlyArray<number>;
+};
 /** Safe, provider-independent categories suitable for durable user-facing diagnostics. */
 export type InsightFailureCategory =
   | "authentication_required"
@@ -93,6 +97,7 @@ export type InsightRecord<T> = {
   readonly retained?: T;
   readonly dismissals?: ReadonlyArray<InsightFindingDismissal>;
   readonly walkthroughProgress?: WalkthroughProgress;
+  readonly analysisVerification?: AnalysisVerification;
   readonly activeRun?: InsightRun;
   readonly replacementFailure?: InsightFailure;
   readonly updatedAt: IsoTimestamp;
@@ -264,11 +269,13 @@ export function completeInsightRun<T>(
     activeRun: _activeRun,
     replacementFailure: _replacementFailure,
     dismissals: _dismissals,
+    analysisVerification: _analysisVerification,
     ...withoutActiveRun
   } = record;
   void _activeRun;
   void _replacementFailure;
   void _dismissals;
+  void _analysisVerification;
   const next =
     record.type === "walkthrough"
       ? withoutWalkthroughProgress(withoutActiveRun)
@@ -318,6 +325,33 @@ export function updateWalkthroughProgress(
       reviewedSectionIds,
       supportReviewed: progress.supportReviewed,
       ...definedProps({ currentSectionId: progress.currentSectionId }),
+    },
+    updatedAt: at,
+  });
+}
+
+/** Ticks or unticks one Verification step of the retained Analysis, keeping indexes sorted and unique. */
+export function setAnalysisVerificationStep(
+  record: InsightRecord<unknown>,
+  step: { readonly index: number; readonly count: number },
+  checked: boolean,
+  at: IsoTimestamp,
+): Result<InsightRecord<unknown>, "not_available"> {
+  if (
+    record.type !== "analysis" ||
+    record.retained === undefined ||
+    !Number.isInteger(step.index) ||
+    step.index < 0 ||
+    step.index >= step.count
+  )
+    return err("not_available");
+  const current = new Set(record.analysisVerification?.checkedStepIndexes);
+  if (checked) current.add(step.index);
+  else current.delete(step.index);
+  return ok({
+    ...record,
+    analysisVerification: {
+      checkedStepIndexes: [...current].sort((a, b) => a - b),
     },
     updatedAt: at,
   });

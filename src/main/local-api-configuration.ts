@@ -37,7 +37,10 @@ export type InsightCoordinatorSeam = Pick<
   "start" | "cancel" | "observe" | "dismissFinding" | "resolveFindingSuggestion"
 > &
   Partial<
-    Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "addFinding">
+    Pick<
+      InsightRunCoordinator,
+      "updateWalkthroughProgress" | "updateAnalysisVerification" | "addFinding"
+    >
   >;
 
 export const localApiConfigurationSchema = object({

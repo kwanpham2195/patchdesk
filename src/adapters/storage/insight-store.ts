@@ -91,6 +91,9 @@ const walkthroughProgressSchema = v.strictObject({
   supportReviewed: v.boolean(),
   currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
+const analysisVerificationSchema = v.strictObject({
+  checkedStepIndexes: v.array(v.pipe(v.number(), v.integer(), v.minValue(0))),
+});
 const recordFields = {
   reviewId: v.pipe(v.string(), v.minLength(1)),
   type: v.picklist(["analysis", "walkthrough", "brief"]),
@@ -98,6 +101,7 @@ const recordFields = {
   retained: v.optional(v.unknown()),
   dismissals: v.optional(v.array(dismissalSchema)),
   walkthroughProgress: v.optional(walkthroughProgressSchema),
+  analysisVerification: v.optional(analysisVerificationSchema),
   replacementFailure: v.optional(failureSchema),
   updatedAt: v.pipe(v.string(), v.isoTimestamp()),
 };
@@ -163,6 +167,7 @@ export class InsightStore {
         ...definedProps({
           dismissals: loaded.value.dismissals,
           walkthroughProgress: loaded.value.walkthroughProgress,
+          analysisVerification: loaded.value.analysisVerification,
           activeRun: loaded.value.activeRun,
           replacementFailure: loaded.value.replacementFailure,
         }),
@@ -294,6 +299,9 @@ function parseCommonRecord(input: {
   readonly walkthroughProgress?:
     | v.InferOutput<typeof walkthroughProgressSchema>
     | undefined;
+  readonly analysisVerification?:
+    | v.InferOutput<typeof analysisVerificationSchema>
+    | undefined;
   readonly replacementFailure?: v.InferOutput<typeof failureSchema> | undefined;
   readonly updatedAt: string;
 }): Result<
@@ -316,6 +324,12 @@ function parseCommonRecord(input: {
       ? undefined
       : parseProgress(input.walkthroughProgress);
   if (walkthroughProgress?._tag === "err") return invalidRead();
+  const indexes = input.analysisVerification?.checkedStepIndexes;
+  if (
+    indexes !== undefined &&
+    (input.type !== "analysis" || new Set(indexes).size !== indexes.length)
+  )
+    return invalidRead();
   return ok({
     schemaVersion: 2,
     reviewId: reviewId.value,
@@ -324,6 +338,7 @@ function parseCommonRecord(input: {
     ...definedProps({
       dismissals: dismissals?.value,
       walkthroughProgress: walkthroughProgress?.value,
+      analysisVerification: input.analysisVerification,
     }),
     updatedAt: updatedAt.value,
   });
