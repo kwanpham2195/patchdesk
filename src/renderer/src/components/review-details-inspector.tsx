@@ -12,6 +12,8 @@ import {
   type InspectorReviewStatusKind,
 } from "@/inspector-review-status";
 import { LabelChip } from "./label-chip";
+import { InsightStatusIcon } from "./insight-status-icon";
+import type { InsightStatus } from "@/insight-status";
 import { CheckIcon } from "./inbox-row-item";
 import { ScopeGauge } from "./scope-gauge";
 import { WatchPullRequestButton } from "./watch-pull-request-button";
@@ -193,6 +195,14 @@ const INSIGHT_STATE_LABELS = {
   absent: "Not run",
 } as const;
 
+/** The shared status icon for each chip state; it takes the separator's place, and a Ready chip shows only its check. */
+const INSIGHT_STATE_STATUSES = {
+  ready: "current",
+  outdated: "outdated",
+  failed: "failed",
+  absent: "not_generated",
+} as const satisfies Record<keyof typeof INSIGHT_STATE_LABELS, InsightStatus>;
+
 /** Retained-but-stale evidence is still readable, so Outdated reads amber and only Failed reads red. */
 const INSIGHT_STATE_TONES = {
   ready: "secondary",
@@ -226,13 +236,13 @@ function InsightsFact({ row }: { readonly row: InboxRow }): React.JSX.Element {
                   variant={INSIGHT_STATE_TONES[state]}
                   aria-label={`${noun}: ${INSIGHT_STATE_LABELS[state]}`}
                   className={cn(
-                    "h-5 gap-1 px-1.5 text-[10px]",
+                    "h-5 gap-0.5 px-1.5 text-[10px]",
                     state === "absent" && "text-muted-foreground",
                   )}
                 >
                   {noun}
-                  <span aria-hidden="true">·</span>
-                  {INSIGHT_STATE_LABELS[state]}
+                  <InsightStatusIcon status={INSIGHT_STATE_STATUSES[state]} />
+                  {state === "ready" ? null : INSIGHT_STATE_LABELS[state]}
                 </Badge>
               </li>
             );

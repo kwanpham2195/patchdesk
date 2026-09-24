@@ -51,7 +51,9 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { INSIGHT_ICONS } from "../insight-icons";
-import type { InsightRunDialogType } from "./insight-run-dialog";
+import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
+import { INSIGHT_STATUS_LABELS } from "../insight-status";
+import { InsightStatusIcon } from "./insight-status-icon";
 import {
   ChangeBaseBranchCommand,
   type ChangeBaseBranchActions,
@@ -240,23 +242,17 @@ export function CanonicalReviewOverviewSheet({
           </OverviewRow>
           <Separator />
           <OverviewRow title="Review status" defaultOpen>
-            <StatusRow
-              icon={<InsightIcon type="brief" />}
-              title="Brief"
-              text={insightStatusLabel(overview.insights.brief.status)}
-              tone={insightTone(overview.insights.brief.status)}
+            <InsightStatusRow
+              type="brief"
+              status={overview.insights.brief.status}
             />
-            <StatusRow
-              icon={<InsightIcon type="analysis" />}
-              title="Analysis"
-              text={insightStatusLabel(overview.insights.analysis.status)}
-              tone={insightTone(overview.insights.analysis.status)}
+            <InsightStatusRow
+              type="analysis"
+              status={overview.insights.analysis.status}
             />
-            <StatusRow
-              icon={<InsightIcon type="walkthrough" />}
-              title="Walkthrough"
-              text={insightStatusLabel(overview.insights.walkthrough.status)}
-              tone={insightTone(overview.insights.walkthrough.status)}
+            <InsightStatusRow
+              type="walkthrough"
+              status={overview.insights.walkthrough.status}
             />
           </OverviewRow>
           <Separator />
@@ -433,35 +429,33 @@ function RevisionDetails({
   );
 }
 
-function InsightIcon({
+/** The Insight's own glyph stays muted so the status icon and word carry the state. */
+function InsightStatusRow({
   type,
+  status,
 }: {
   readonly type: InsightRunDialogType;
+  readonly status: ReviewInsightStatus;
 }): React.JSX.Element {
   const Icon = INSIGHT_ICONS[type];
-  return <Icon className="size-3.5" />;
-}
-
-function StatusRow({
-  icon,
-  title,
-  text,
-  tone,
-}: {
-  readonly icon: React.ReactNode;
-  readonly title: string;
-  readonly text: string;
-  readonly tone: string;
-}): React.JSX.Element {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <span className="flex min-w-0 items-center gap-2">
-        <span aria-hidden="true" className={cn("shrink-0", tone)}>
-          {icon}
-        </span>
-        <span className="truncate">{title}</span>
+        <Icon
+          aria-hidden="true"
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
+        <span className="truncate">{INSIGHT_NOUNS[type]}</span>
       </span>
-      <span className={cn("shrink-0 text-xs font-medium", tone)}>{text}</span>
+      <span
+        className={cn(
+          "flex shrink-0 items-center gap-1 text-xs font-medium",
+          insightTone(status),
+        )}
+      >
+        <InsightStatusIcon status={status} className="size-3.5" />
+        {INSIGHT_STATUS_LABELS[status]}
+      </span>
     </div>
   );
 }
@@ -853,27 +847,12 @@ function checksFreshness(
   return freshness === "updates_available" ? "stale" : freshness;
 }
 
-function insightStatusLabel(status: ReviewInsightStatus): string {
-  switch (status) {
-    case "not_generated":
-      return "Not generated";
-    case "running":
-      return "Running";
-    case "current":
-      return "Generated";
-    case "outdated":
-      return "Outdated";
-    case "failed":
-      return "Failed";
-  }
-}
-
 function insightTone(status: ReviewInsightStatus): string {
   switch (status) {
     case "current":
       return successTone;
     case "running":
-      return warningTone;
+      return mutedTone;
     case "outdated":
       return warningTone;
     case "failed":

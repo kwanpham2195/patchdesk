@@ -472,10 +472,6 @@ describe("pr overview sheet review status", () => {
       if (row === null) throw new Error(`missing ${title} row`);
       return row.textContent;
     });
-    expect(rows).toEqual([
-      "BriefGenerated",
-      "AnalysisOutdated",
-      "WalkthroughNot generated",
-    ]);
+    expect(rows).toEqual(["Brief", "AnalysisOutdated", "WalkthroughNot run"]);
   });
 });
