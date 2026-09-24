@@ -669,6 +669,7 @@ export class FakeGitHubAdapter
     void input;
     const value = this.values.viewerPendingReview;
     if (value === undefined) return missing("get_pending_review");
+    if ("failure" in value) return err(value.failure);
     // Import isolation: a foreign account never sees the viewer's pending review.
     return value.account === input.account
       ? ok(value.read)
@@ -811,10 +812,9 @@ export type FakeGitHubAdapterValues = {
   };
   readonly pendingReviewSubmission: { readonly reviewId: string };
   /** Spike-proven pending-review gateway fixtures; an absent reader is unimplemented. */
-  readonly viewerPendingReview?: {
-    readonly account: GitHubLogin;
-    readonly read: PendingReviewRead;
-  };
+  readonly viewerPendingReview?:
+    | { readonly account: GitHubLogin; readonly read: PendingReviewRead }
+    | { readonly failure: GitHubReadFailure };
   readonly pendingReviewStart?: {
     readonly write: PendingReviewThreadWrite;
     readonly failure?: GitHubWriteFailure;

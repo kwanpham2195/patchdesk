@@ -1,10 +1,12 @@
 import type {
   FindingReviewReceipt,
   FindingReviewSource,
+  PendingReviewRead,
   PendingReviewState,
   PendingReviewThreadWrite,
   ViewerPendingReview,
 } from "../domain/pending-review";
+import type { GitHubReviewNodeId } from "../domain/ids";
 import type {
   GitHubComments,
   GitHubPublishedFeedback,
@@ -93,6 +95,78 @@ export function reconcileObservedFindingReceipts(input: {
     }
   }
   return next;
+}
+
+/** Thread evidence one Refresh read, used to tell a deleted pending review from a submitted one. */
+export type FindingReceiptEvidence = {
+  readonly comments: GitHubComments;
+  readonly publishedFeedback?: GitHubPublishedFeedback;
+};
+
+export type ReleasedFindingReceipts = {
+  readonly receipts: ReadonlyArray<FindingReviewReceipt>;
+  readonly pendingReviewNodeIds: ReadonlyArray<GitHubReviewNodeId>;
+  /** Receipts removed, so their Findings can be added again. */
+  readonly cleared: number;
+  /** Receipts whose thread GitHub now shows published, so their Findings stay non-actionable. */
+  readonly published: number;
+};
+
+/**
+ * Release pending receipts whose pending review GitHub confirmed is gone: it
+ * reported no viewer pending review, or one with a different id. A receipt
+ * whose thread the evidence shows is published was submitted elsewhere and
+ * turns historical; every other one is removed. Incomplete thread evidence
+ * cannot tell a deletion from a submission, so it changes nothing.
+ */
+export function releaseGoneFindingReceipts(input: {
+  readonly receipts: ReadonlyArray<FindingReviewReceipt> | undefined;
+  readonly observed: Exclude<
+    PendingReviewRead,
+    { readonly _tag: "Unavailable" }
+  >;
+  readonly evidence: FindingReceiptEvidence;
+}): ReleasedFindingReceipts {
+  const receipts = input.receipts ?? [];
+  const liveNodeId =
+    input.observed._tag === "Pending"
+      ? input.observed.review.nodeId
+      : undefined;
+  const gone = (receipt: FindingReviewReceipt): boolean =>
+    receipt.state === "pending" && receipt.pendingReviewNodeId !== liveNodeId;
+  const evidenceComplete =
+    input.evidence.comments.complete === true &&
+    (input.evidence.publishedFeedback === undefined ||
+      input.evidence.publishedFeedback.complete === true);
+  if (!evidenceComplete || !receipts.some(gone))
+    return { receipts, pendingReviewNodeIds: [], cleared: 0, published: 0 };
+  const publishedThreadIds = new Set<string>(
+    input.evidence.comments.threads.map((thread) => thread.id),
+  );
+  for (const comment of input.evidence.publishedFeedback?.comments ?? []) {
+    publishedThreadIds.add(comment.id);
+    if (comment.nodeId !== undefined) publishedThreadIds.add(comment.nodeId);
+  }
+  const next: FindingReviewReceipt[] = [];
+  const nodeIds = new Set<GitHubReviewNodeId>();
+  let published = 0;
+  for (const receipt of receipts) {
+    if (!gone(receipt)) {
+      next.push(receipt);
+      continue;
+    }
+    nodeIds.add(receipt.pendingReviewNodeId);
+    if (publishedThreadIds.has(receipt.threadId)) {
+      next.push({ ...receipt, state: "historical" });
+      published += 1;
+    }
+  }
+  return {
+    receipts: next,
+    pendingReviewNodeIds: [...nodeIds],
+    cleared: receipts.length - next.length,
+    published,
+  };
 }
 
 export function nextFindingReceipts(

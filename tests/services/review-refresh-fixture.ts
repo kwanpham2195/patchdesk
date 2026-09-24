@@ -123,6 +123,9 @@ export type ReviewRefreshFixtureOptions = {
   /** Forces `preparation.prepare` to fail instead of returning a session. */
   readonly preparationFailure?: PrepareReviewSessionFailure;
   readonly pendingReviewReconcileResult?: PendingReviewReconcileResult;
+  /** A real pending-review owner; replaces the canned reconcile result. */
+  readonly pendingReview?: ReviewRefreshDependencies["pendingReview"];
+  readonly operationCoordinator?: ReviewOperationCoordinator;
   readonly projectionOutcome?: "success" | "failure";
   readonly avatarSyncFailure?: boolean;
   readonly now?: IsoTimestamp;
@@ -352,12 +355,13 @@ export function createReviewRefreshFixture(
         });
       },
     },
-    pendingReview: {
+    pendingReview: options.pendingReview ?? {
       reconcileWithinReviewLock: async () =>
         options.pendingReviewReconcileResult ??
         ok({ session, state: { _tag: "None" } as const, unavailable: false }),
     },
-    operationCoordinator: new ReviewOperationCoordinator(),
+    operationCoordinator:
+      options.operationCoordinator ?? new ReviewOperationCoordinator(),
     recentWrites: {
       clear: async (profileId, reviewId) => {
         calls.clearedRecentWrites.push({ profileId, reviewId });

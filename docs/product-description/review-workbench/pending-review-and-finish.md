@@ -34,6 +34,8 @@ Finish review says "The summary is sent with the review." It lists the pending l
 
 Closing Finish review records nothing and preserves the pending review on GitHub. Editing the summary or decision does not persist it outside the current dialog. Cancelling an inline composer before Start or Add leaves pending state unchanged.
 
+If the maintainer deletes the pending review on GitHub, Refresh brings the Review back in line. When GitHub answers that this viewer has no pending review with the recorded id on the pull request, the header returns to Start a review and the Analysis Findings added to that review lose Added and can be added again. A Finding whose comment GitHub now shows as published, because the review was submitted outside Patchdesk, stays non-actionable. A GitHub read that fails, is rate-limited, or returns incomplete comment evidence leaves the Findings Added. Patchdesk logs each release with the pending review id.
+
 ### Begin an action
 
 Start and Add include expected session ID, head SHA, patch hash, anchor, and body. Add also includes the exact pending-review node ID. Submit includes the same represented revision plus decision and modal summary.
