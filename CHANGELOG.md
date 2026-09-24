@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A pull request with no CI now reads **No checks** on the Review header, in the Pull requests **CI** column, and in the inspector, instead of **Unknown**. **Unknown** now means Patchdesk could not read the checks. #355
+
 - The Review header's **Merge** control now names why a merge is blocked, such as **Merge · Blocked · Draft** or **Merge · Blocked · Conflicts**, using the first reason **PR overview** lists under Merge readiness. #354
 
 - **Navigate** (⌘K) now finds a pull request by number or title. Typing `345` or `#345` offers **Open #345 in** the Selected repository, and title words list matching pull requests from the Visited column with their `owner/repo#number`. Both open the same way as a Pull requests row. #353

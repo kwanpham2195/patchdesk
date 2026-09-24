@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  CircleOff,
   ExternalLink,
   LoaderCircle,
   RefreshCw,
@@ -53,6 +54,8 @@ export function ReviewWorkbenchHeader({
   readonly openOverview: (section?: OverviewFocusSection) => void;
   readonly setSummaryDialogOpen: (open: boolean) => void;
 }): React.JSX.Element {
+  const checksText =
+    model.checks.overall === "none" ? checksLabel : `Checks · ${checksLabel}`;
   const mergeText = mergeLabel(
     mergeStatus,
     mergeStatus === "Blocked"
@@ -96,10 +99,10 @@ export function ReviewWorkbenchHeader({
               checksPillColor(model.checks.overall),
             )}
             onClick={() => openOverview("checks")}
-            aria-label={`Open PR overview: checks ${checksLabel.toLowerCase()}`}
+            aria-label={`Open PR overview: ${checksText.replace(" · ", " ").toLowerCase()}`}
           >
             {checksIcon(model.checks.overall)}
-            Checks · {checksLabel}
+            {checksText}
           </Button>
           <Button
             variant="outline"
@@ -312,6 +315,8 @@ function checksIcon(overall: string): React.JSX.Element {
       return <XCircle className="size-3" />;
     case "pending":
       return <LoaderCircle className="size-3" />;
+    case "none":
+      return <CircleOff className="size-3" />;
     default:
       return <AlertTriangle className="size-3" />;
   }

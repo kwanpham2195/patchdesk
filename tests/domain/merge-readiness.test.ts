@@ -200,6 +200,18 @@ describe("merge readiness", () => {
     ).toMatchObject({ _tag: "Blocked", blockers: ["analysis_finding"] });
   });
 
+  it.each(["none", "unknown"] as const)(
+    "lets a pull request with %s checks and an empty check list merge",
+    (overall) => {
+      const checks = { overall, checks: [] };
+      expect(evaluateMergeReadiness({ ...neutral, checks })).toMatchObject({
+        _tag: "Ready",
+        blockers: [],
+      });
+      expect(deriveCheckReasons(checks)).toEqual([]);
+    },
+  );
+
   it("treats an unclassified check as neutral and blocks only on a required check that has not passed", () => {
     const unclassified = {
       name: "unit",

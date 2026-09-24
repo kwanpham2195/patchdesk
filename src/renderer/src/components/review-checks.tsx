@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleDashed,
+  CircleOff,
   CircleX,
   ExternalLink,
   MinusCircle,
@@ -148,6 +149,13 @@ export function presentOverallCheckResult(
         kind: "other",
         label: "Skipped",
         Icon: MinusCircle,
+        treatment: "text-muted-foreground",
+      };
+    case "none":
+      return {
+        kind: "other",
+        label: "No checks",
+        Icon: CircleOff,
         treatment: "text-muted-foreground",
       };
     default:

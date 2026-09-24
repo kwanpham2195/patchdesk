@@ -1,5 +1,6 @@
 import { ArrowRight, CircleAlert } from "lucide-react";
 
+import { checkStatusLabel } from "@/analysis-headline";
 import type { InboxRow } from "@/renderer-contracts";
 import type {
   InboxDataFreshness,
@@ -66,7 +67,9 @@ export function ReviewDetailsInspector({
           <FactLabel>Checks</FactLabel>
           <dd className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px]">
             <CheckIcon overall={row.checks.overall} />
-            <span className="truncate">{row.checks.overall}</span>
+            <span className="truncate">
+              {checkStatusLabel(row.checks.overall)}
+            </span>
           </dd>
         </div>
         <Fact label="Changes" value={changeStatsText(row.changeStats)} mono />

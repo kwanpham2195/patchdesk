@@ -371,7 +371,8 @@ export function incompleteMergePolicy(
     mergeStateStatus: page.mergeStateStatus,
     reviewDecision: page.reviewDecision,
     checks: {
-      overall: overallCheckStatus(contexts),
+      // An incomplete read that found nothing has not shown the pull request has no checks.
+      overall: contexts.length === 0 ? "unknown" : overallCheckStatus(contexts),
       checks: contexts.map((check) => ({ ...check, required: "unknown" })),
     },
     complete: false,
@@ -630,7 +631,7 @@ function mapCheckConclusion(
 export function overallCheckStatus(
   checks: ReadonlyArray<CheckRunSummary>,
 ): CheckSummary["overall"] {
-  if (checks.length === 0) return "unknown";
+  if (checks.length === 0) return "none";
   if (checks.some((check) => check.status !== "completed")) return "pending";
   if (
     checks.some(

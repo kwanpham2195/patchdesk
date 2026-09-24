@@ -283,7 +283,9 @@ export function ReviewWorkbench({
           ? "In progress"
           : model.checks.overall === "skipped"
             ? "Skipped"
-            : "Unknown";
+            : model.checks.overall === "none"
+              ? "No checks"
+              : "Unknown";
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title =
     model.pullRequest?.title ?? `Pull request #${model.session.key.prNumber}`;

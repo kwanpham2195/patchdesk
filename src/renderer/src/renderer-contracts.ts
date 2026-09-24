@@ -15,6 +15,7 @@ import {
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
 import { changeScopeSchema } from "../../domain/change-scope";
+import { CHECK_OVERALL_STATES } from "../../domain/github-context";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
 import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
@@ -60,7 +61,7 @@ const checkRunSchema = v.strictObject({
 });
 
 const checkSchema = v.strictObject({
-  overall: v.picklist(["passing", "failing", "pending", "skipped", "unknown"]),
+  overall: v.picklist(CHECK_OVERALL_STATES),
   checks: v.array(checkRunSchema),
 });
 /** GitHub's aggregate review verdict; one spelling for the inbox row and the pull-request summary. */

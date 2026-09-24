@@ -115,7 +115,15 @@ export class GitHubDiffReader {
         ? statuses.output.statuses.map(toCommitStatusSummary)
         : []),
     ];
-    return ok({ overall: overallCheckStatus(summaries), checks: summaries });
+    // One failed half means an empty list cannot prove the head has no checks.
+    const bothRead = checks?.success === true && statuses?.success === true;
+    return ok({
+      overall:
+        summaries.length === 0 && !bothRead
+          ? "unknown"
+          : overallCheckStatus(summaries),
+      checks: summaries,
+    });
   }
 
   async getPullRequestDiff(

@@ -1,6 +1,10 @@
 import * as v from "valibot";
 
-import type { CheckSummary, PullRequestSummary } from "./github-context";
+import {
+  CHECK_OVERALL_STATES,
+  type CheckSummary,
+  type PullRequestSummary,
+} from "./github-context";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -160,7 +164,7 @@ const watchedPullRequestSchema = v.strictObject({
       "changes_requested",
       "unknown",
     ]),
-    checks: v.picklist(["passing", "failing", "pending", "skipped", "unknown"]),
+    checks: v.picklist(CHECK_OVERALL_STATES),
     state: v.picklist(["open", "merged", "closed"]),
   }),
   watchedAt: v.string(),
