@@ -20,6 +20,7 @@ import { ScopeGauge } from "./scope-gauge";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
+import { inboxGridStyle, type InboxColumnVisibility } from "@/inbox-columns";
 import { cn } from "@/lib/utils";
 
 /** The author's cached avatar at the row's text scale; initials until the cache warms. */
@@ -31,12 +32,14 @@ export function InboxRowItem({
   onSelect,
   onAction,
   openingState,
+  columns,
 }: {
   readonly row: InboxRow;
   readonly selected: boolean;
   readonly onSelect: () => void;
   readonly onAction: () => void;
   readonly openingState: ReviewOpeningState;
+  readonly columns: InboxColumnVisibility;
 }): React.JSX.Element {
   const key = inboxIdentityKey(row);
   const opening = openingState?.status === "opening";
@@ -68,7 +71,10 @@ export function InboxRowItem({
         opening && "opacity-60",
       )}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]">
+      <div
+        className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 min-[1280px]:grid-cols-(--inbox-columns)"
+        style={inboxGridStyle(columns)}
+      >
         <div className="flex min-w-0 items-start gap-2">
           <GitPullRequest
             className={cn("mt-0.5 size-3.5 shrink-0", pullRequestIconTone(row))}
@@ -121,11 +127,13 @@ export function InboxRowItem({
             />
           </div>
         </div>
-        <PullRequestLabelColumn
-          labels={row.labels}
-          className="hidden min-[1280px]:flex"
-          slot="pull-request-label-column"
-        />
+        {columns.labels ? (
+          <PullRequestLabelColumn
+            labels={row.labels}
+            className="hidden min-[1280px]:flex"
+            slot="pull-request-label-column"
+          />
+        ) : null}
         <span
           className="hidden min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground min-[1280px]:flex"
           title={row.author}
@@ -137,12 +145,18 @@ export function InboxRowItem({
           />
           <span className="truncate">{row.author}</span>
         </span>
-        <span className="hidden min-[1280px]:block">
-          <ChangeSize stats={row.changeStats} />
-          {row.scope === undefined ? null : (
-            <ScopeGauge scope={row.scope} size="bar" className="mt-0.5 flex" />
-          )}
-        </span>
+        {columns.changes ? (
+          <span className="hidden min-[1280px]:block">
+            <ChangeSize stats={row.changeStats} />
+            {row.scope === undefined ? null : (
+              <ScopeGauge
+                scope={row.scope}
+                size="bar"
+                className="mt-0.5 flex"
+              />
+            )}
+          </span>
+        ) : null}
         <span className="hidden min-[1280px]:block">
           <CheckIcon overall={row.checks.overall} />
         </span>

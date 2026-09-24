@@ -247,14 +247,16 @@ function VisitedRow({
           {title}
         </span>
         <span className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted-foreground">
-          {/* The age is computed once per render; nothing ticks it. The
+          {/* The age is computed once per render; nothing ticks it. "opened"
+           * keeps it apart from the state marker's "seen" age (ADR 0042). The
            * reference is the only part that clips, because the age is what
            * the row exists to tell you and it never gets its space back. A row
            * with no recorded open prints no age rather than dating a visit
            * Patchdesk never saw. */}
           <span className="flex min-w-0 items-baseline tabular-nums">
             {reference === "" ? null : (
-              <span className="min-w-0 truncate">{reference}</span>
+              // Truncation drops the separator's trailing space, so padding stands in for it.
+              <span className="min-w-0 truncate pr-1">{reference}</span>
             )}
             {row.lastOpenedAt === undefined ? null : (
               <time
@@ -262,7 +264,7 @@ function VisitedRow({
                 title={formatExactTime(row.lastOpenedAt)}
                 className="shrink-0"
               >
-                {formatCompactRelativeTime(row.lastOpenedAt)}
+                opened {formatCompactRelativeTime(row.lastOpenedAt)}
               </time>
             )}
           </span>
@@ -332,8 +334,8 @@ export function visitedTerminalMarker(
 ): VisitedTerminalMarker {
   const seen = `seen ${formatCompactRelativeTime(terminal.observedAt, now)}`;
   return terminal.state === "merged"
-    ? { label: `Merged · ${seen}`, tone: "text-status-info" }
-    : { label: `Closed · ${seen}`, tone: "text-destructive" };
+    ? { label: `merged, ${seen}`, tone: "text-status-info" }
+    : { label: `closed, ${seen}`, tone: "text-destructive" };
 }
 
 type VisitedRowLabels = {

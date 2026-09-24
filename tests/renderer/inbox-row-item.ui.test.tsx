@@ -41,6 +41,7 @@ function renderRow(value: InboxRow): void {
       onSelect={vi.fn()}
       onAction={vi.fn()}
       openingState={undefined}
+      columns={{ labels: true, changes: true }}
     />,
   );
 }
@@ -114,6 +115,7 @@ describe("InboxRowItem", () => {
         onSelect={vi.fn()}
         onAction={onAction}
         openingState={{ status: "opening" }}
+        columns={{ labels: true, changes: true }}
       />,
     );
     const option = screen.getByRole("option");
@@ -158,6 +160,7 @@ function renderActionableRow() {
       onSelect={onSelect}
       onAction={onAction}
       openingState={undefined}
+      columns={{ labels: true, changes: true }}
     />,
   );
   return { onSelect, onAction };

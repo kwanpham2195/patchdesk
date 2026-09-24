@@ -119,7 +119,15 @@ describe("App Review route loading", () => {
         "/v1/profiles": () => success([profileFixture]),
         "/v1/inbox": (input) => {
           paths.push(input.path);
-          return success(inbox([openRow()]));
+          // More rows than the smallest page size, so Rows per page is offered.
+          return success(
+            inbox(
+              Array.from({ length: 11 }, (_, index) => ({
+                ...openRow(),
+                identity: { ...repoA, number: index + 1 },
+              })),
+            ),
+          );
         },
       },
       { operations: APP_BOOT_OPERATIONS },

@@ -8,7 +8,7 @@ The Visited pull requests column lists the pull requests the maintainer has open
 
 The maintainer opens a pull request from the Pull requests screen. When its Review workbench appears, the pull request is at the top of the column under `Today`, with its title and, beneath it, its number and how long ago it was opened, such as `#119 · now`.
 
-Later, from any screen, the maintainer clicks a row and lands in that Review workbench. There is no select step: the first click opens. The row of the Review already on screen is highlighted and does nothing when clicked. A pull request that has merged or closed carries a dated marker such as `Merged · seen 3d`.
+Later, from any screen, the maintainer clicks a row and lands in that Review workbench. There is no select step: the first click opens. The row of the Review already on screen is highlighted and does nothing when clicked. A pull request that has merged or closed carries a dated marker such as `merged, seen 3d`.
 
 The column is where the maintainer resumes work. Finding work that is new to them stays the job of the [Pull requests screen](../pull-requests/repository-listing.md): a pull request appears in the column only after it has been opened once.
 
@@ -31,9 +31,9 @@ stateDiagram-v2
 
 The column has a header strip and a scrolling list. The strip shows the active workspace's label in capitals and the word `recent`. The list groups rows under `Today`, `Yesterday`, `This week`, and `Earlier`. The groups are local calendar days, not elapsed hours: a pull request opened this morning reads Today whatever the hour, Yesterday is the previous calendar day, This week covers two to six days back, and Earlier holds everything older. A heading appears only above the first row of its group, and a group with no row is not named.
 
-Each row shows the pull request's title, cut off to fit, with the full title on hover. The line beneath it shows a reference and the age of the last open. The reference is `#119` when every listed row belongs to one repository, `patchdesk#119` when the rows span repositories under one owner, and `owner/patchdesk#119` when they span owners. The rule looks at the rows on screen, not the watchlist, so a repository the maintainer has stopped watching keeps its rows. The age is compact, such as `now`, `42s`, `5m`, `4h`, or `2d`, then weeks from 28 days; hovering it shows the exact time.
+Each row shows the pull request's title, cut off to fit, with the full title on hover. The line beneath it shows a reference and the age of the last open, labelled `opened`, such as `#119 · opened 5m`. The reference is `#119` when every listed row belongs to one repository, `patchdesk#119` when the rows span repositories under one owner, and `owner/patchdesk#119` when they span owners. The rule looks at the rows on screen, not the watchlist, so a repository the maintainer has stopped watching keeps its rows. The age is compact, such as `now`, `42s`, `5m`, `4h`, or `2d`, then weeks from 28 days; hovering it shows the exact time.
 
-A merged pull request carries `Merged · seen 3d` in the informational blue, and a closed one carries `Closed · seen 12d` in red, at the right of that line. An open pull request carries no marker. The marker comes from the stored Review, never from a live GitHub read, which is why it is dated.
+A merged pull request carries `merged, seen 3d` in the informational blue, and a closed one carries `closed, seen 12d` in red, at the right of that line. The two words keep the two ages apart: `opened` is the maintainer's last open, and `seen` is when Patchdesk last saw the state. An open pull request carries no marker. The marker comes from the stored Review, never from a live GitHub read, which is why it is dated.
 
 A pull request the maintainer watches carries an eye mark on that same line, titled `Watched`, before any terminal marker. [Repository listing](../pull-requests/repository-listing.md) owns Watch and Unwatch; the column only reflects the choice.
 

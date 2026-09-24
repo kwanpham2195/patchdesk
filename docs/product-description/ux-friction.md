@@ -33,8 +33,9 @@ Low:
 - [UX-16](#ux-16-insights-opens-on-an-empty-brief-beside-an-overview-that-repeats-the-tab-strip): Insights opens on an empty Brief beside an Overview that repeats the tab strip. Fixed with [#350](https://github.com/kwanpham2195/patchdesk/issues/350).
 - [UX-17](#ux-17-the-review-details-inspector-repeats-the-workbenchs-insight-controls): The Review details inspector repeats the workbench's Insight controls. Fixed with [#351](https://github.com/kwanpham2195/patchdesk/issues/351).
 - [UX-18](#ux-18-the-review-header-changes-shape-by-pull-request-state): The Review header changes shape by pull request state. Fixed with [#361](https://github.com/kwanpham2195/patchdesk/issues/361).
+- [UX-19](#ux-19-the-pull-requests-screen-spends-space-on-empty-and-unlabeled-things): The Pull requests screen spends space on empty and unlabeled things. Fixed with [#363](https://github.com/kwanpham2195/patchdesk/issues/363).
 
-Count: 18 items, 5 medium and 13 low; 12 named follow-ups, all now fixed, 3 fixed now, and 3 rejected with evidence.
+Count: 19 items, 5 medium and 14 low; 12 named follow-ups, all now fixed, 4 fixed now, and 3 rejected with evidence.
 
 Friction the passes reported that is a defect, with the independent review's disposition, is tracked in bug-triage.md:
 
@@ -275,5 +276,17 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Disposition:** fix now, [#361](https://github.com/kwanpham2195/patchdesk/issues/361).
 - **Status:** fixed by the #361 change: chips always sit on their own row under the title, the banner is gone because the Merge chip already states the outcome and opens PR overview, the meta line reads "Up to date with GitHub · checked 7 h ago", Insight headers read "Generated 7 h ago", and the Generate button is not drawn on a merged or closed Review while the explanation stays.
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#arrive).
+
+### UX-19: The Pull requests screen spends space on empty and unlabeled things
+
+- **Screen:** Pull requests, Open filter, with the Visited column expanded, on 2026-09-24.
+- **What the maintainer does:** Reads a three-row Open list and the Visited column.
+- **What they see:** The header shows a "GitHub: Aged" chip beside "Updated 26 minutes ago". The Labels column is empty on every row but takes about 15% of the width while author names are cut to "kwanpham21…". Previous, Next, and Rows per page show under three rows. A Visited row reads "#347 · 28m" and "Merged · seen 7h": two times with nothing saying which is which.
+- **Why it hurts:** "Aged" is an internal word that needs a second line to explain it, empty columns squeeze the ones with content, and controls that cannot do anything draw the eye. Two unlabeled times for two different facts invite the wrong reading.
+- **Suggested improvement:** Show the age in the chip, hide columns and page controls that have nothing to show, and label both Visited times.
+- **Severity:** low.
+- **Disposition:** fix now, [#363](https://github.com/kwanpham2195/patchdesk/issues/363).
+- **Status:** fixed by the #363 change: the chip reads "GitHub: checked 26 min ago" and stays the Refresh control with its change dot, a column with no values on the page is hidden and Author gets the Labels width, page controls hide on a short single page, and Visited rows read "#347 · opened 28m" and "merged, seen 7h".
+- **Page:** [The repository listing](pull-requests/repository-listing.md#arrive).
 
 Drafted from the 2026-09-14 live passes at `5fe7df3b` and the independent review; source citations rechecked against application commit `737c515c`.

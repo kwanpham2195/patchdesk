@@ -13,6 +13,12 @@ import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import { ReviewDetailsInspector } from "./review-details-inspector";
 import { useInboxView } from "../hooks/use-inbox-view";
 import { formatInboxAge, type InboxFreshnessLabel } from "@/inbox-freshness";
+import {
+  inboxColumnVisibility,
+  inboxGridStyle,
+  type InboxColumnVisibility,
+} from "@/inbox-columns";
+import { formatExactTime, formatRelativeTime } from "@/lib/relative-time";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
@@ -208,6 +214,7 @@ export function MaintainerInbox({
   // is withheld here rather than threaded through and re-guarded at every
   // consumer.
   const effectiveRows = listPending ? [] : rows;
+  const columns = inboxColumnVisibility(effectiveRows);
   const {
     inspectorOpen,
     narrow,
@@ -269,7 +276,7 @@ export function MaintainerInbox({
         inspectorOpen={inspectorOpen}
         onToggleInspector={toggleInspector}
       />
-      <InboxColumnHeader />
+      <InboxColumnHeader columns={columns} />
       <ScrollArea
         className="min-h-0 flex-1 overflow-x-hidden"
         viewportClassName="overscroll-contain"
@@ -277,6 +284,7 @@ export function MaintainerInbox({
         <InboxRowsPanel
           listRef={listRef}
           rows={effectiveRows}
+          columns={columns}
           selected={selected}
           state={state}
           listPending={listPending}
@@ -288,6 +296,7 @@ export function MaintainerInbox({
           openingOperations={openingOperations}
         />
         <InboxFooter
+          rowCount={rows.length}
           pageSize={pageSize}
           hasPreviousPage={hasPreviousPage}
           hasNextPage={hasNextPage}
@@ -472,16 +481,21 @@ function emptyRowsMessage(
 }
 
 /** Column labels for the desktop grid; kept outside the rows' scroller so they stay visible. */
-function InboxColumnHeader(): React.JSX.Element {
+function InboxColumnHeader({
+  columns,
+}: {
+  readonly columns: InboxColumnVisibility;
+}): React.JSX.Element {
   return (
     <div
       aria-hidden="true"
-      className="hidden shrink-0 grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
+      className="hidden shrink-0 grid-cols-(--inbox-columns) items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
+      style={inboxGridStyle(columns)}
     >
       <span>Pull request</span>
-      <span>Labels</span>
+      {columns.labels ? <span>Labels</span> : null}
       <span>Author</span>
-      <span>Changes</span>
+      {columns.changes ? <span>Changes</span> : null}
       <span>CI</span>
       <span className="text-right">Updated</span>
     </div>
@@ -491,6 +505,7 @@ function InboxColumnHeader(): React.JSX.Element {
 function InboxRowsPanel({
   listRef,
   rows,
+  columns,
   selected,
   state,
   listPending,
@@ -503,6 +518,7 @@ function InboxRowsPanel({
 }: {
   readonly listRef: React.RefObject<HTMLDivElement | null>;
   readonly rows: ReadonlyArray<InboxRow>;
+  readonly columns: InboxColumnVisibility;
   readonly selected: InboxRow | undefined;
   readonly state: InboxStateFilter;
   readonly listPending: boolean;
@@ -552,6 +568,7 @@ function InboxRowsPanel({
                 onSelect={() => onSelectRow(row)}
                 onAction={() => onActionRow(row)}
                 openingState={openingOperations.get(key)}
+                columns={columns}
               />
             );
           })}
@@ -574,6 +591,7 @@ function InboxRowsPanel({
  * right edge; at that breakpoint and above the panel renders inline in the
  * grid instead, so the groups can spread to the true edges again. */
 function InboxFooter({
+  rowCount,
   pageSize,
   hasPreviousPage,
   hasNextPage,
@@ -582,6 +600,8 @@ function InboxFooter({
   onPreviousPage,
   onNextPage,
 }: {
+  /** Rows on the loaded page, kept from the previous page while a request is in flight. */
+  readonly rowCount: number;
   readonly pageSize: InboxPageSize;
   readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
@@ -589,78 +609,94 @@ function InboxFooter({
   readonly onPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly onPreviousPage: () => void;
   readonly onNextPage: () => void;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const previousDisabled = !hasPreviousPage || refreshStatus === "Refreshing";
   const nextDisabled = !hasNextPage || refreshStatus === "Refreshing";
+  const onePage = !hasPreviousPage && !hasNextPage;
+  // A short single page has nothing to page through; a smaller size is only worth offering once it would split the rows.
+  const showPager = !onePage || rowCount >= pageSize;
+  const showPageSize = !onePage || rowCount > Math.min(...INBOX_PAGE_SIZES);
+  if (!showPager && !showPageSize) return null;
   return (
     <footer className="flex flex-wrap items-center justify-start gap-2 px-3 py-2 min-[1280px]:justify-between">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Rows per page</span>
-        <Select
-          value={String(pageSize)}
-          items={INBOX_PAGE_SIZES.map((size) => ({
-            label: String(size),
-            value: String(size),
-          }))}
-          onValueChange={(value) => {
-            const next = inboxPageSizeFrom(value);
-            if (next !== undefined) onPageSizeChange(next);
-          }}
-        >
-          <SelectTrigger
-            size="sm"
-            className="w-[4.5rem] text-xs"
-            aria-label="Rows per page"
+      {showPageSize ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Rows per page</span>
+          <Select
+            value={String(pageSize)}
+            items={INBOX_PAGE_SIZES.map((size) => ({
+              label: String(size),
+              value: String(size),
+            }))}
+            onValueChange={(value) => {
+              const next = inboxPageSizeFrom(value);
+              if (next !== undefined) onPageSizeChange(next);
+            }}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {INBOX_PAGE_SIZES.map((size) => (
-                <SelectItem key={size} value={String(size)} className="text-xs">
-                  {size}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
+            <SelectTrigger
+              size="sm"
+              className="w-[4.5rem] text-xs"
+              aria-label="Rows per page"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {INBOX_PAGE_SIZES.map((size) => (
+                  <SelectItem
+                    key={size}
+                    value={String(size)}
+                    className="text-xs"
+                  >
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       {/* Real `<button>` elements (via `Button`), not the vendored
        * `PaginationPrevious`/`PaginationNext` anchors — those render an `<a>`
        * with `aria-disabled`, which is advisory only and stays keyboard-
        * operable and clickable when "disabled". A native `disabled` button
        * is genuinely inert. The `Pagination`/`PaginationContent`/
        * `PaginationItem` wrapper is unchanged. */}
-      <Pagination aria-label="Pull requests pages" className="mx-0 w-auto">
-        <PaginationContent>
-          <PaginationItem>
-            <Button
-              type="button"
-              variant="ghost"
-              className="gap-1 border-0 pl-1.5"
-              aria-label="Go to previous page"
-              disabled={previousDisabled}
-              onClick={onPreviousPage}
-            >
-              <ChevronLeft />
-              <span className="hidden sm:block">Previous</span>
-            </Button>
-          </PaginationItem>
-          <PaginationItem>
-            <Button
-              type="button"
-              variant="ghost"
-              className="gap-1 border-0 pr-1.5"
-              aria-label="Go to next page"
-              disabled={nextDisabled}
-              onClick={onNextPage}
-            >
-              <span className="hidden sm:block">Next</span>
-              <ChevronRight />
-            </Button>
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+      {showPager ? (
+        <Pagination
+          aria-label="Pull requests pages"
+          className="mx-0 w-auto min-[1280px]:ml-auto"
+        >
+          <PaginationContent>
+            <PaginationItem>
+              <Button
+                type="button"
+                variant="ghost"
+                className="gap-1 border-0 pl-1.5"
+                aria-label="Go to previous page"
+                disabled={previousDisabled}
+                onClick={onPreviousPage}
+              >
+                <ChevronLeft />
+                <span className="hidden sm:block">Previous</span>
+              </Button>
+            </PaginationItem>
+            <PaginationItem>
+              <Button
+                type="button"
+                variant="ghost"
+                className="gap-1 border-0 pr-1.5"
+                aria-label="Go to next page"
+                disabled={nextDisabled}
+                onClick={onNextPage}
+              >
+                <span className="hidden sm:block">Next</span>
+                <ChevronRight />
+              </Button>
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      ) : null}
     </footer>
   );
 }
@@ -770,41 +806,50 @@ function InboxFreshness({
         : stable
           ? "secondary"
           : "outline";
+  const checked =
+    status === "Refreshing" || snapshot?.refreshedAt === undefined
+      ? undefined
+      : `checked ${formatRelativeTime(snapshot.refreshedAt)}`;
+  // The age replaces the word for an ordinary read and follows it otherwise, so a cached or partial read still names what it is.
+  const text =
+    checked === undefined
+      ? status
+      : stable
+        ? checked
+        : `${status} · ${checked}`;
   return (
-    <div className="flex items-center gap-1.5">
-      <Badge
-        render={
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={status === "Refreshing"}
-            aria-label={`Refresh pull requests. GitHub: ${status}${watchedChanged ? ". A watched pull request changed" : ""}`}
-          />
-        }
-        variant={variant}
-        className={cn(
-          "h-5 max-w-full cursor-pointer px-1.5 text-[10px]",
-          "disabled:cursor-default disabled:opacity-70",
-        )}
-        title={snapshot?.refreshedAt}
-      >
-        GitHub: {status}
-        {watchedChanged ? (
-          <span
-            aria-hidden="true"
-            data-slot="watched-change-dot"
-            className="size-1.5 rounded-full bg-primary"
-          />
-        ) : null}
-      </Badge>
-      {!stable && status !== "Refreshing" && ageMs !== undefined ? (
-        <span className="text-[10px] text-muted-foreground">
-          Updated {formatInboxAge(ageMs)}
-        </span>
+    <Badge
+      render={
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={status === "Refreshing"}
+          aria-label={`Refresh pull requests. GitHub: ${text}${watchedChanged ? ". A watched pull request changed" : ""}`}
+        />
+      }
+      variant={variant}
+      className={cn(
+        "h-5 max-w-full cursor-pointer px-1.5 text-[10px]",
+        "disabled:cursor-default disabled:opacity-70",
+      )}
+      title={
+        snapshot?.refreshedAt === undefined
+          ? undefined
+          : formatExactTime(snapshot.refreshedAt)
+      }
+    >
+      GitHub: {text}
+      {watchedChanged ? (
+        <span
+          aria-hidden="true"
+          data-slot="watched-change-dot"
+          className="size-1.5 rounded-full bg-primary"
+        />
       ) : null}
-    </div>
+    </Badge>
   );
 }
+
 function inboxPageSizeFrom(value: string | null): InboxPageSize | undefined {
   return INBOX_PAGE_SIZES.find((size) => String(size) === value);
 }

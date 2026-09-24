@@ -336,6 +336,8 @@ describe("VisitedPullRequests", () => {
     // only has to carry the stamp and never redraw it (ADR 0032).
     const age = row.querySelector("time");
     expect(age?.dateTime).toBe(OPENED_AT);
+    // Named, so it is not read as the state marker's "seen" age (ADR 0042).
+    expect(age?.textContent).toMatch(/^opened /);
     const shown = age?.textContent;
 
     await act(async () => {
@@ -358,7 +360,7 @@ describe("VisitedPullRequests", () => {
     // where the age would be, and no separator is left dangling for it.
     const stamps = [...row.querySelectorAll("time")];
     expect(stamps.map((stamp) => stamp.textContent)).toEqual([
-      "Closed · seen 3d",
+      "closed, seen 3d",
     ]);
     expect(row.textContent).not.toContain("#118 · ");
   });
@@ -372,12 +374,12 @@ describe("VisitedPullRequests", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const marked = screen.getByRole("button", { name: /#300/ });
-    expect(marked.textContent).toContain("Merged · seen 3d");
+    expect(marked.textContent).toContain("merged, seen 3d");
     // The exact instant sits on hover, the way the row's own age does.
     expect(
       within(marked).getByTitle(formatExactTime(MERGED_OBSERVED_AT))
         .textContent,
-    ).toBe("Merged · seen 3d");
+    ).toBe("merged, seen 3d");
     // An open pull request gets no marker at all; absence is the design.
     const open = screen.getByRole("button", { name: /#125/ });
     expect(open.textContent).not.toContain("seen");
@@ -486,13 +488,13 @@ describe("visitedTerminalMarker", () => {
   it("dates a merged pull request with when Patchdesk saw it, in the info tone", () => {
     expect(
       visitedTerminalMarker({ state: "merged", observedAt: iso(3) }, MIDDAY),
-    ).toEqual({ label: "Merged · seen 3d", tone: "text-status-info" });
+    ).toEqual({ label: "merged, seen 3d", tone: "text-status-info" });
   });
 
   it("dates a closed pull request the same way, in the destructive tone", () => {
     expect(
       visitedTerminalMarker({ state: "closed", observedAt: iso(12) }, MIDDAY),
-    ).toEqual({ label: "Closed · seen 12d", tone: "text-destructive" });
+    ).toEqual({ label: "closed, seen 12d", tone: "text-destructive" });
   });
 });
 
