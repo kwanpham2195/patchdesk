@@ -250,7 +250,7 @@ describe("InsightsSlot on a merged Review", () => {
     return document.getElementById(id)?.textContent ?? null;
   }
 
-  it("describes each disabled Generate with the terminal reason", async () => {
+  it("draws no Generate button and keeps the terminal reason on each empty Insight", async () => {
     desktop = installDesktopDouble({
       "/v1/insight-providers": () => success(json(providerCatalog)),
     });
@@ -265,9 +265,8 @@ describe("InsightsSlot on a merged Review", () => {
       [/^Analysis/, "Generate analysis"],
     ] as const) {
       await user.click(screen.getByRole("tab", { name: tab }));
-      const generate = await screen.findByRole("button", { name: action });
-      expect(generate.getAttribute("disabled")).not.toBeNull();
-      expect(description(generate)).toBe(TERMINAL_REVIEW_INSIGHT_REASON);
+      expect(screen.getByText(TERMINAL_REVIEW_INSIGHT_REASON)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: action })).toBeNull();
     }
   });
 

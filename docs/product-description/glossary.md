@@ -64,11 +64,11 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Represented-review worktree.** Patchdesk's immutable checkout for a Review session's represented revision. It is separate from the maintainer's checkout and is available only to bounded, read-only review inspection.
 
-**Fresh.** A Review state in which the represented revision still matches GitHub's current revision. GitHub writes require Fresh evidence.
+**Fresh.** A Review state in which the represented revision still matches GitHub's current revision. GitHub writes require Fresh evidence. The workbench shows it as Up to date with GitHub.
 
-**Revision changed.** A Review state in which current GitHub evidence proves that the pull request moved beyond the represented revision. Existing content stays readable, but revision-bound writes and actions stop until the Review refreshes to a new session.
+**Revision changed.** A Review state in which current GitHub evidence proves that the pull request moved beyond the represented revision. Existing content stays readable, but revision-bound writes and actions stop until the Review refreshes to a new session. The workbench shows it as Newer revision on GitHub.
 
-**Remote state unavailable.** A Review state in which Patchdesk cannot prove current GitHub state. It can show last-known read-only content but cannot authorize a GitHub write.
+**Remote state unavailable.** A Review state in which Patchdesk cannot prove current GitHub state. It can show last-known read-only content but cannot authorize a GitHub write. The workbench shows it as Could not reach GitHub.
 
 **Terminal remote state.** A Review state in which GitHub reports the pull request merged or closed. Patchdesk keeps the Review readable and stops further Review and merge writes.
 

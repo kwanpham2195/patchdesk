@@ -53,6 +53,7 @@ import {
 import { countFindingsByPath } from "../review-finding-counts";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
 import { ReviewWorkbenchHeader } from "./review-workbench-header";
+import { revisionFreshnessLabel } from "../rail-freshness";
 import {
   buildOverview,
   buildOverviewRevision,
@@ -271,13 +272,7 @@ export function ReviewWorkbench({
       : "Closed"
     : model.mergeReadiness._tag;
   const hasUpdates = model.revision.freshness === "updates_available";
-  const freshnessLabel = hasUpdates
-    ? "Updates available"
-    : model.revision.freshness === "unavailable"
-      ? "Remote state unavailable"
-      : model.revision.freshness === "not_refreshed"
-        ? "Not refreshed"
-        : "Current";
+  const freshnessLabel = revisionFreshnessLabel(model.revision.freshness);
   const checksLabel =
     model.checks.overall === "passing"
       ? "Passing"

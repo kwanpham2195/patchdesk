@@ -80,8 +80,10 @@ function InsightDocumentIdentity({
       )}
       {retained === undefined ? null : (
         <p className="truncate text-sm text-muted-foreground">
-          {selectedIsOutdated ? "Outdated" : "Current"} ·{" "}
-          <RelativeTime iso={retained.generatedAt} prefix="retained " />
+          <RelativeTime
+            iso={retained.generatedAt}
+            prefix={selectedIsOutdated ? "Outdated · generated " : "Generated "}
+          />
           {provenance === undefined
             ? null
             : ` · ${INSIGHT_PROVIDER_LABELS[provenance.provider]} · ${provenance.model}`}
@@ -439,9 +441,13 @@ export function InsightsSlot({
             ) : retainedReader === null ? (
               <InsightEmpty
                 type={selectedInsight}
-                onRun={() => openRunDialog("run")}
                 disabled={!runEnabled}
-                {...definedProps({ describedBy: runDisabledReasonId })}
+                {...definedProps({
+                  onRun:
+                    runDisabledReasonId === undefined
+                      ? () => openRunDialog("run")
+                      : undefined,
+                })}
               />
             ) : null}
             {retainedReader === null ? null : (

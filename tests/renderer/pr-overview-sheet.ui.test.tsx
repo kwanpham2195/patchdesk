@@ -415,7 +415,7 @@ describe("pr overview sheet review status", () => {
       return row.textContent;
     });
     expect(rows).toEqual([
-      "BriefCurrent",
+      "BriefGenerated",
       "AnalysisOutdated",
       "WalkthroughNot generated",
     ]);
