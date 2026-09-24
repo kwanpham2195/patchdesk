@@ -93,6 +93,7 @@ describe("review diff Markdown preview", () => {
       expect(preview.getAttribute("data-review-diff-markdown-pane")).toBe(
         "README.md",
       );
+      expect(screen.getByRole("heading", { name: "README.md" })).toBeTruthy();
       expect(
         screen.getByRole("heading", { name: "Complete head" }),
       ).toBeTruthy();

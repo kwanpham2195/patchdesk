@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a Markdown file **Preview** showing its file path nowhere on screen. The path now heads the preview and stays in view while it scrolls. #348
+
 - Fixed a draft pull request reading "Merge · Blocked · Review" or "Merge · Blocked · Conflicts" and PR overview hiding that it is a draft. An outdated head, a closed pull request, or a draft now leads the **Merge** chip and **Merge readiness**, followed by GitHub's reasons and then Patchdesk's own blockers, such as a high-severity Finding. #348
 
 - Fixed Settings and **Diagnostics** opening on top of each other. Each now stays closed while the other is open, whether asked for from the Help menu, ⌘,, or ⌘K. #348

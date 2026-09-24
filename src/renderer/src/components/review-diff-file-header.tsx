@@ -126,6 +126,23 @@ function splitFileHeaderPath(path: string) {
   };
 }
 
+/** A file path with its directory dimmed and its basename prominent. */
+export function FileHeaderPath({
+  path,
+}: {
+  readonly path: string;
+}): React.JSX.Element {
+  const { dirPrefix, baseName } = splitFileHeaderPath(path);
+  return (
+    <>
+      {dirPrefix.length > 0 ? (
+        <span className="text-muted-foreground">{dirPrefix}</span>
+      ) : null}
+      <span className="font-medium text-foreground">{baseName}</span>
+    </>
+  );
+}
+
 /** Toggles the collapsed/viewed state for a file header; collapsed and
  * viewed are the same boolean in this app, so both the chevron and the
  * Viewed pill drive this one callback. */
@@ -147,7 +164,6 @@ export function FileHeaderRow({
   const path = file.name;
   const { Icon, className: iconClassName } = fileChangeTypeIcon(file.type);
   const badgeLabel = fileChangeTypeBadgeLabel(file.type);
-  const { dirPrefix, baseName } = splitFileHeaderPath(path);
   const title =
     file.prevName !== undefined ? `${file.prevName} → ${path}` : path;
   return (
@@ -178,10 +194,7 @@ export function FileHeaderRow({
         aria-hidden="true"
       />
       <span className="min-w-0 truncate" title={title}>
-        {dirPrefix.length > 0 ? (
-          <span className="text-muted-foreground">{dirPrefix}</span>
-        ) : null}
-        <span className="font-medium text-foreground">{baseName}</span>
+        <FileHeaderPath path={path} />
       </span>
       {badgeLabel !== undefined ? (
         <Badge
