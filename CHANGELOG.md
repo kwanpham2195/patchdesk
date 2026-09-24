@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A merged or closed Review no longer offers **Regenerate** on a saved Insight or **Dismiss** on an Analysis Finding, both of which it refused; the line explaining that Insights cannot be generated stays. A Finding already **Added** or **Published** no longer offers **Dismiss**. #348
+
 - Fixed an Insight run failing to start when its saved Brief, Walkthrough, or Analysis record was unreadable. The run now replaces the record, as ADR 0019 describes; a disk read error still stops it. #348
 
 - Fixed a review or summary write that GitHub refused leaving the Review locked with no notification when Patchdesk then failed to save the refusal. It now posts the **GitHub writes are paused** notification, as a merge already did. #348

@@ -623,7 +623,11 @@ function AnalysisFindingRow({
               onAddFinding={onAddFinding}
             />
           ) : null}
-          {disposition === "open" && onDismissFinding !== undefined ? (
+          {disposition === "open" &&
+          // Dismissing a Finding already commented on would contradict the comment.
+          reviewStatus !== "pending_review" &&
+          reviewStatus !== "published" &&
+          onDismissFinding !== undefined ? (
             <Popover
               open={dismissOpen}
               onOpenChange={(open) => {

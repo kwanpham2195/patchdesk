@@ -244,12 +244,6 @@ describe("InsightsSlot empty states", () => {
 });
 
 describe("InsightsSlot on a merged Review", () => {
-  function description(control: HTMLElement): string | null {
-    const id = control.getAttribute("aria-describedby");
-    if (id === null) throw new Error("Expected an accessible description");
-    return document.getElementById(id)?.textContent ?? null;
-  }
-
   it("draws no Generate button and keeps the terminal reason on each empty Insight", async () => {
     desktop = installDesktopDouble({
       "/v1/insight-providers": () => success(json(providerCatalog)),
@@ -270,7 +264,7 @@ describe("InsightsSlot on a merged Review", () => {
     }
   });
 
-  it("describes both Brief Regenerate controls with the terminal reason", () => {
+  it("hides both Brief Regenerate controls and keeps the terminal reason", () => {
     renderInsights(
       projection({
         review: { id: "review-42", status: "closed" },
@@ -282,12 +276,42 @@ describe("InsightsSlot on a merged Review", () => {
       }),
     );
 
-    const regenerates = screen.getAllByRole("button", { name: "Regenerate" });
-    expect(regenerates).toHaveLength(2);
-    for (const regenerate of regenerates) {
-      expect(regenerate.getAttribute("disabled")).not.toBeNull();
-      expect(description(regenerate)).toBe(TERMINAL_REVIEW_INSIGHT_REASON);
-    }
+    expect(screen.getByRole("region", { name: "Provenance" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    expect(screen.getByText(TERMINAL_REVIEW_INSIGHT_REASON)).toBeTruthy();
+  });
+
+  it.each([
+    { status: "open", offersDismiss: true },
+    { status: "closed", offersDismiss: false },
+    { status: "merged", offersDismiss: false },
+  ] as const)(
+    "offers Dismiss on a saved Analysis finding of a $status Review: $offersDismiss",
+    ({ status, offersDismiss }) => {
+      const workbench = withAnalysis("actionable");
+      renderInsights(
+        { ...workbench, review: { ...workbench.review, status } },
+        "analysis",
+      );
+
+      expect(screen.queryByRole("button", { name: "Dismiss" }) !== null).toBe(
+        offersDismiss,
+      );
+    },
+  );
+
+  it("hides the Analysis Regenerate on a closed Review and keeps the terminal reason", () => {
+    const workbench = withAnalysis("actionable");
+    renderInsights(
+      { ...workbench, review: { ...workbench.review, status: "closed" } },
+      "analysis",
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Analysis reader" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    expect(screen.getByText(TERMINAL_REVIEW_INSIGHT_REASON)).toBeTruthy();
   });
 
   it("gives no reason on an open Review with a provider", async () => {
