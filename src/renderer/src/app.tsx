@@ -57,6 +57,7 @@ import { firstInboxRequest } from "./inbox-request";
 import { parseGitHubHost } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { sameRepositoryIdentity } from "../../domain/repository-identity";
+import { definedProps } from "../../domain/defined-props";
 import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
 import { requestJson } from "./api-client";
 import { appLog } from "./lib/logger";
@@ -318,6 +319,7 @@ function AppContent({
           activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
           profileSwitchState={profileSwitchState}
           visitedReloadKey={visitedReloadKey}
+          {...definedProps({ selectedRepository: inboxRequest.repository })}
           onInboxStateChange={changeInboxState}
           onInboxPresetChange={changeInboxPreset}
           {...(parsedProfileHost._tag === "ok"

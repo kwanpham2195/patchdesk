@@ -1,7 +1,6 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { Eye } from "lucide-react";
 
-import { requestJson } from "@/api-client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   formatCompactRelativeTime,
@@ -9,75 +8,32 @@ import {
 } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
-import {
-  parseSidebarReviewsResponse,
-  type SidebarReviewRow,
-} from "@/renderer-contracts";
+import type { VisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
+import type { SidebarReviewRow } from "@/renderer-contracts";
 import type { AppDestination } from "@/routes";
 
-type ListState =
-  | { readonly kind: "idle" }
-  | { readonly kind: "loaded"; readonly rows: ReadonlyArray<SidebarReviewRow> }
-  | { readonly kind: "failed" };
-
 /**
- * The pull requests the maintainer has opened in the active workspace, listed
- * in the order `GET /v1/sidebar/reviews` returns them.
- *
- * The route reads local Review records only, so this reaches GitHub for
- * nothing. It is also not polled: the list is re-read when the workspace
- * changes or `reloadKey` moves, and never on a timer (ADR 0032).
+ * The pull requests the maintainer has opened in the active workspace, drawn
+ * from rows `useVisitedPullRequestRows` loads so the Navigate palette can
+ * search the same list.
  */
 export function VisitedPullRequests({
-  profileId,
+  state,
   destination,
   onNavigate,
-  reloadKey,
   workspaceLabel,
   host,
 }: {
-  /** Empty while a workspace switch is in flight, which draws the frame alone. */
-  readonly profileId: string;
+  readonly state: VisitedPullRequestRows;
   readonly destination: AppDestination;
   readonly onNavigate: (destination: AppDestination) => void;
-  /** Moves on every Review open, so a just-opened pull request appears without a relaunch. */
-  readonly reloadKey: number;
   /** The active workspace's label for the header strip; undefined while a switch is in flight. */
   readonly workspaceLabel: string | undefined;
   /** The workspace's GitHub host; the rows carry none, and a watched mark needs it. */
   readonly host?: string;
 }): React.JSX.Element {
-  const [state, setState] = useState<ListState>({ kind: "idle" });
   const watch = useWatchedPullRequests();
   const [activeReviewId, setActiveReviewId] = useState<string | undefined>();
-
-  useEffect(() => {
-    if (profileId === "") {
-      setState({ kind: "idle" });
-      return;
-    }
-    let active = true;
-    void (async () => {
-      try {
-        const value = await requestJson(
-          `/v1/sidebar/reviews?profileId=${encodeURIComponent(profileId)}`,
-        );
-        // A superseded request must not overwrite the one that replaced it.
-        if (!active) return;
-        const parsed = parseSidebarReviewsResponse(value);
-        setState(
-          parsed === undefined
-            ? { kind: "failed" }
-            : { kind: "loaded", rows: parsed.rows },
-        );
-      } catch {
-        if (active) setState({ kind: "failed" });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [profileId, reloadKey]);
 
   const openReviewId =
     destination.kind === "workbench" ? destination.reviewId : undefined;

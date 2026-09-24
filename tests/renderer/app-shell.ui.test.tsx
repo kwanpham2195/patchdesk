@@ -1,14 +1,27 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "../../src/renderer/src/components/app-shell";
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
+import { definedProps } from "../../src/domain/defined-props";
+import { parseGitHubHost } from "../../src/domain/ids";
+import type { PullRequestRef } from "../../src/domain/pull-request";
+import type { RepositoryIdentity } from "../../src/domain/repository-identity";
+import {
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
+
+let desktop: DesktopDouble | undefined;
 
 afterEach(() => {
   cleanup();
+  desktop?.restore();
+  desktop = undefined;
   // The visited column's collapsed state is a local preference, so it would
   // otherwise carry into the next test in this file.
   window.localStorage.clear();
@@ -293,5 +306,127 @@ describe("AppShell visited pull requests toggle", () => {
       name: "Expand the pull requests you have opened",
     });
     expect(expand.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+describe("AppShell pull-request search", () => {
+  const widgets = { host: "github.com", owner: "acme", repo: "widgets" };
+  const visitedRow = {
+    reviewId: "review-7",
+    owner: "acme",
+    repo: "gadgets",
+    number: 7,
+    title: "Throwaway PR for live checks",
+    sortedAt: "2026-09-10T10:00:00.000Z",
+  };
+
+  /** Requests other than the renderer's timed log flush, which is not the palette's doing. */
+  function apiRequestCount(): number {
+    return (desktop?.request.mock.calls ?? []).filter(
+      ([request]) => "path" in request && request.path !== "/v1/logs",
+    ).length;
+  }
+
+  /** Renders the shell with one Visited row loaded, and resolves once the row is on screen. */
+  async function renderSearchableShell(options: {
+    readonly selectedRepository?: RepositoryIdentity;
+    readonly onOpenPullRequest: (ref: PullRequestRef) => void;
+  }): Promise<void> {
+    const host = parseGitHubHost("github.com");
+    if (host._tag !== "ok") throw new Error("github.com must parse");
+    desktop = installDesktopDouble({
+      "/v1/sidebar/reviews": () =>
+        success({ rows: [visitedRow], unreadable: 0 }),
+    });
+    render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          activeProfileId="profile-1"
+          onOpenSettings={() => undefined}
+          pullRequestDefaultHost={host.value}
+          onOpenPullRequest={options.onOpenPullRequest}
+          {...definedProps({ selectedRepository: options.selectedRepository })}
+        >
+          <div>Inbox content</div>
+        </AppShell>
+      </BusyProvider>,
+    );
+    await screen.findByRole("button", { name: /Throwaway PR for live checks/ });
+  }
+
+  it.each(["345", "#345"])(
+    "opens %s in the Selected repository",
+    async (input) => {
+      const user = userEvent.setup();
+      const onOpenPullRequest = vi.fn();
+      await renderSearchableShell({
+        selectedRepository: widgets,
+        onOpenPullRequest,
+      });
+      const requestsBeforeTyping = apiRequestCount();
+
+      await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+      await user.type(
+        screen.getByRole("combobox", { name: "Search views and actions" }),
+        input,
+      );
+      expect(apiRequestCount()).toBe(requestsBeforeTyping);
+      await user.click(
+        screen.getByRole("option", { name: "Open #345 in acme/widgets" }),
+      );
+
+      expect(onOpenPullRequest).toHaveBeenCalledWith({
+        host: "github.com",
+        owner: "acme",
+        repo: "widgets",
+        number: 345,
+      });
+    },
+  );
+
+  it("offers nothing for a bare number without a Selected repository", async () => {
+    const user = userEvent.setup();
+    await renderSearchableShell({ onOpenPullRequest: () => undefined });
+
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search views and actions" }),
+      "345",
+    );
+
+    expect(screen.queryByRole("option", { name: /#345/ })).toBeNull();
+  });
+
+  it("lists a Visited pull request whose title contains the query and opens it", async () => {
+    const user = userEvent.setup();
+    const onOpenPullRequest = vi.fn();
+    await renderSearchableShell({
+      selectedRepository: widgets,
+      onOpenPullRequest,
+    });
+    const requestsBeforeTyping = apiRequestCount();
+
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search views and actions" }),
+      "THROWAWAY",
+    );
+    expect(apiRequestCount()).toBe(requestsBeforeTyping);
+    await user.click(screen.getByRole("option", { name: /acme\/gadgets#7/ }));
+
+    expect(onOpenPullRequest).toHaveBeenCalledWith({
+      host: "github.com",
+      owner: "acme",
+      repo: "gadgets",
+      number: 7,
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Navigate Patchdesk" }),
+      ).toBeNull(),
+    );
   });
 });

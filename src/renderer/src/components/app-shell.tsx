@@ -16,6 +16,8 @@ import type {
 } from "../../../domain/maintainer-inbox";
 import type { GitHubHost } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
+import type { RepositoryIdentity } from "../../../domain/repository-identity";
+import { definedProps } from "../../../domain/defined-props";
 import { AppCommandDialog } from "@/components/app-command-dialog";
 import { BrandMark } from "@/components/brand-mark";
 import { BusyIndicator } from "@/components/busy-indicator";
@@ -44,6 +46,7 @@ import {
 } from "@/visited-pull-requests-preferences";
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
+import { useVisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
 import { isTextEntryTarget } from "../text-entry-target";
 
 type ProfileEntry = {
@@ -64,6 +67,7 @@ export function AppShell({
   onInboxPresetChange,
   pullRequestDefaultHost,
   onOpenPullRequest,
+  selectedRepository,
   visitedReloadKey,
   children,
 }: {
@@ -90,6 +94,8 @@ export function AppShell({
   readonly pullRequestDefaultHost?: GitHubHost;
   /** Opens a parsed pull request through the root Review-opening owner. */
   readonly onOpenPullRequest?: (ref: PullRequestRef) => void;
+  /** The Pull requests screen's Selected repository, which a bare number typed in the palette opens in. */
+  readonly selectedRepository?: RepositoryIdentity;
   /** Re-reads the visited pull requests whenever it moves: `App` bumps it on every Review open. */
   readonly visitedReloadKey: number;
   readonly children: React.ReactNode;
@@ -104,12 +110,16 @@ export function AppShell({
   const [initialDestinationKey] = useState(() => destinationKey(destination));
   const focusedDestination = useRef(initialDestinationKey);
   const windowFullScreen = useWindowFullScreen();
+  const [visitedExpandCount, setVisitedExpandCount] = useState(0);
+  // Loaded even while the column is collapsed, because the palette searches the
+  // same rows; both keys only grow, so their sum moves whenever either does.
+  const visitedRows = useVisitedPullRequestRows(
+    activeProfileId ?? "",
+    visitedReloadKey + visitedExpandCount,
+  );
   const activeProfileLabel = profiles?.find(
     (profile) => profile.id === activeProfileId,
   )?.label;
-  const visitedToggleLabel = visitedCollapsed
-    ? "Expand the pull requests you have opened"
-    : "Collapse the pull requests you have opened";
   const backLabel = "Back to pending pull requests";
 
   useEffect(() => {
@@ -157,27 +167,15 @@ export function AppShell({
         data-window-full-screen={windowFullScreen}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={visitedToggleLabel}
-                  aria-controls="visited-pull-requests"
-                  aria-expanded={!visitedCollapsed}
-                  onClick={() => {
-                    const next = !visitedCollapsed;
-                    setVisitedCollapsed(next);
-                    saveVisitedPullRequestsCollapsed(next);
-                  }}
-                />
-              }
-            >
-              {visitedCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-            </TooltipTrigger>
-            <TooltipContent>{visitedToggleLabel}</TooltipContent>
-          </Tooltip>
+          <VisitedToggle
+            collapsed={visitedCollapsed}
+            onToggle={() => {
+              const next = !visitedCollapsed;
+              setVisitedCollapsed(next);
+              saveVisitedPullRequestsCollapsed(next);
+              if (!next) setVisitedExpandCount((count) => count + 1);
+            }}
+          />
           {destination.kind === "workbench" ? (
             <Tooltip>
               <TooltipTrigger
@@ -308,10 +306,9 @@ export function AppShell({
       <div className="app-frame min-h-0 flex-1">
         {visitedCollapsed ? null : (
           <VisitedPullRequests
-            profileId={activeProfileId ?? ""}
+            state={visitedRows}
             destination={destination}
             onNavigate={onNavigate}
-            reloadKey={visitedReloadKey}
             workspaceLabel={activeProfileLabel}
             {...(pullRequestDefaultHost === undefined
               ? {}
@@ -343,7 +340,41 @@ export function AppShell({
         {...(onInboxStateChange === undefined ? {} : { onInboxStateChange })}
         {...(onInboxPresetChange === undefined ? {} : { onInboxPresetChange })}
         {...(onOpenPullRequest === undefined ? {} : { onOpenPullRequest })}
+        {...definedProps({ selectedRepository })}
+        visitedRows={visitedRows.kind === "loaded" ? visitedRows.rows : []}
       />
     </div>
+  );
+}
+
+/** Collapses or expands the Visited pull requests column. */
+function VisitedToggle({
+  collapsed,
+  onToggle,
+}: {
+  readonly collapsed: boolean;
+  readonly onToggle: () => void;
+}): React.JSX.Element {
+  const label = collapsed
+    ? "Expand the pull requests you have opened"
+    : "Collapse the pull requests you have opened";
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-controls="visited-pull-requests"
+            aria-expanded={!collapsed}
+            onClick={onToggle}
+          />
+        }
+      >
+        {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
