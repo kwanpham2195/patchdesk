@@ -24,6 +24,8 @@ function keyEvent(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
     altKey: false,
     isComposing: false,
     keyCode: 0,
+    // An event read after dispatch reports an empty path.
+    composedPath: () => [],
     ...overrides,
   };
   // SAFETY: `shouldIgnoreReviewNavKey` only reads the fields populated
@@ -641,6 +643,31 @@ describe("shouldIgnoreReviewNavKey", () => {
   it("ignores the key when a textarea is the target", () => {
     const textarea = document.createElement("textarea");
     expect(shouldIgnoreReviewNavKey(keyEvent({ target: textarea }))).toBe(true);
+  });
+
+  it("ignores the key when a text input inside a shadow root has it", () => {
+    const host = document.createElement("div");
+    const input = document.createElement("input");
+    host.attachShadow({ mode: "open" }).append(input);
+    document.body.append(host);
+    let ignored: boolean | undefined;
+    const listener = (event: KeyboardEvent): void => {
+      ignored = shouldIgnoreReviewNavKey(event);
+    };
+    window.addEventListener("keydown", listener);
+    try {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "n",
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      expect(ignored).toBe(true);
+    } finally {
+      window.removeEventListener("keydown", listener);
+      host.remove();
+    }
   });
 
   // jsdom does not implement `HTMLElement.isContentEditable` (it stays

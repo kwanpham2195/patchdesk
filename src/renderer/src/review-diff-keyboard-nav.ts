@@ -52,7 +52,8 @@ export function shouldIgnoreReviewNavKey(event: KeyboardEvent): boolean {
   // oxlint-disable-next-line no-deprecated -- keyCode is the only signal
   // some browsers still give for the composition-ending keystroke.
   if (event.isComposing || event.keyCode === 229) return true;
-  if (isTypingTarget(event.target)) return true;
+  // A window listener sees a shadow-root field (the Browse tree's search) retargeted to its host.
+  if (isTypingTarget(event.composedPath()[0] ?? event.target)) return true;
   if (focusInsideOverlay()) return true;
   return false;
 }
