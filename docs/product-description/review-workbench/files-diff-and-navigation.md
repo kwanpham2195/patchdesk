@@ -47,7 +47,7 @@ File, hunk, and unresolved-comment keyboard commands work only while All files i
 
 Each file's path appears once, in its sticky file header; the bar above the toolbar names only a selected commit. In Browse, a folder row that joins several folders, such as `docs / product-description / review-workbench`, keeps its last folder whole and shortens the leading folders first. Hovering any Browse row shows its full path. Folder rows carry no change marker, since every folder in a pull request diff holds a change; file rows keep their status letter.
 
-One View options control holds every way the diff is drawn: split view, wrapped lines, line numbers, and backgrounds. Each is a switch that states whether the option is on. A change applies to the diff at once and is saved per profile, so the next Review opens the way the last one was left.
+One View options control holds every way the diff is drawn: split view, wrapped lines, line numbers, and backgrounds. Each is a switch that states whether the option is on. A change applies to the diff at once and is saved per profile, so the next Review opens the way the last one was left. When the Diff pane is narrower than 840 pixels, split view draws as unified without changing the saved choice: the Split view switch keeps its saved state, is disabled, and reads "Pane too narrow". Widening the pane, by enlarging the window or narrowing the navigator, restores split view.
 
 Each file header has a Viewed checkbox that collapses the file, and the toolbar count goes up by one; Mark all viewed collapses every file and then reads Show all. Viewed state is local to the open Diff and is not saved.
 

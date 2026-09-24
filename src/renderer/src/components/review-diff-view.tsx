@@ -37,6 +37,10 @@ import {
   type ScopeFilterControl,
 } from "./review-diff-toolbar";
 import { useReviewDiffRegionName } from "../hooks/use-review-diff-region-name";
+import {
+  SplitViewFallbackContext,
+  useSplitViewFallback,
+} from "../hooks/use-split-view-fallback";
 import type {
   ConversationThreadCardData,
   ReviewConversationActions,
@@ -939,13 +943,6 @@ function NonVirtualizedReviewDiff({
   );
 }
 
-/**
- * Local-only card for an inline create while the GitHub write is pending or
- * failed. It has no thread or comment id, offers no GitHub actions, and a
- * failed card only dismisses with bounded copy: a timeout may have created
- * the comment, so a direct retry could duplicate it.
- */
-
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
 
 export function ReviewDiffView(props: ReviewDiffViewProps): React.JSX.Element {
@@ -960,19 +957,23 @@ export function ReviewDiffView(props: ReviewDiffViewProps): React.JSX.Element {
   const { ref: regionRef, name: regionName } = useReviewDiffRegionName(
     props.selectedPath,
   );
+  const fallback = useSplitViewFallback(regionRef, props.preferences);
   return (
     <section
       ref={regionRef}
       aria-label={regionName}
       data-selected-path={props.selectedPath}
-      data-diff-style={props.preferences.diffStyle}
+      data-diff-style={fallback.preferences.diffStyle}
       data-file-mode={props.preferences.fileMode}
       className="relative flex min-h-0 flex-1 flex-col"
     >
-      <MemoizedReviewDiffSurface
-        {...props}
-        selectedPath={deferredSelectedPath}
-      />
+      <SplitViewFallbackContext value={fallback.savedStyleWhileNarrow}>
+        <MemoizedReviewDiffSurface
+          {...props}
+          preferences={fallback.preferences}
+          selectedPath={deferredSelectedPath}
+        />
+      </SplitViewFallbackContext>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import {
   Columns2,
   Hash,
@@ -14,6 +14,7 @@ import {
   Item,
   ItemActions,
   ItemContent,
+  ItemDescription,
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item";
@@ -25,6 +26,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { SplitViewFallbackContext } from "@/hooks/use-split-view-fallback";
 
 /** The diff view preferences the View options popover owns. */
 export type ReviewDiffViewOptions = Pick<
@@ -37,23 +39,30 @@ function ReviewDiffOptionRow({
   label,
   checked,
   onCheckedChange,
+  disabledReason,
 }: {
   readonly icon: React.JSX.Element;
   readonly label: string;
   readonly checked: boolean;
   readonly onCheckedChange: (checked: boolean) => void;
+  /** Disables the switch and says why beside it. */
+  readonly disabledReason?: string | undefined;
 }): React.JSX.Element {
   return (
     <Item size="xs">
       <ItemMedia variant="icon">{icon}</ItemMedia>
       <ItemContent>
         <ItemTitle>{label}</ItemTitle>
+        {disabledReason === undefined ? null : (
+          <ItemDescription>{disabledReason}</ItemDescription>
+        )}
       </ItemContent>
       <ItemActions>
         {/* The label names the option, so the switch carries it as its accessible name rather than repeating a "switch to X" phrasing. */}
         <Switch
           aria-label={label}
           checked={checked}
+          disabled={disabledReason !== undefined}
           onCheckedChange={onCheckedChange}
         />
       </ItemActions>
@@ -72,6 +81,9 @@ export function ReviewDiffOptionsPopover({
   ) => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  // While the pane is too narrow, the switch shows the saved style rather than the unified fallback on screen.
+  const savedStyleWhileNarrow = useContext(SplitViewFallbackContext);
+  const split = (savedStyleWhileNarrow ?? preferences.diffStyle) === "split";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -90,14 +102,19 @@ export function ReviewDiffOptionsPopover({
         <div className="grid gap-1">
           <ReviewDiffOptionRow
             icon={
-              preferences.diffStyle === "split" ? (
+              split ? (
                 <Columns2 aria-hidden="true" />
               ) : (
                 <Rows3 aria-hidden="true" />
               )
             }
             label="Split view"
-            checked={preferences.diffStyle === "split"}
+            checked={split}
+            disabledReason={
+              savedStyleWhileNarrow === undefined
+                ? undefined
+                : "Pane too narrow"
+            }
             onCheckedChange={(checked) =>
               onPreferencesChange({ diffStyle: checked ? "split" : "unified" })
             }
