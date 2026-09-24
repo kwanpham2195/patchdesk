@@ -3,15 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
-import { parseUnifiedPatch } from "../../../domain/patch";
+import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
   deriveConversationThreadEntries,
   type ConversationThreadRow,
 } from "../conversation-thread-entries";
-import {
-  fingerprintPatchAnchor,
-  patchesAgreeAtAnchor,
-} from "../../../domain/diff-anchor";
+import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -175,24 +172,29 @@ function pullRequestExternalRef(
   };
 }
 
-function createNarrowedCommentAuthoring(
+function createHeadSideCommentAuthoring(
   base: LocalCommentAuthoring | undefined,
-  shownPatch: string,
   fullPatch: string,
 ): LocalCommentAuthoring | undefined {
   if (base?.enabled !== true) return undefined;
-  // A narrowed diff's old side is never the pull request base, and its new side is the head only where both patches show the same code there.
+  const files = parseUnifiedPatch(fullPatch);
+  // This diff's new side is the pull request head, so a new-side line the full patch shows is the same GitHub coordinate; its old side is not the base.
   const fullPatchAnchor = (location: LocalCommentLocation) => {
     const path = parseRepoRelativePath(location.path);
     if (location.side !== "new" || path._tag === "err") return undefined;
-    const anchor = {
-      path: path.value,
-      startLine: location.startLine,
-      line: location.line,
-      side: location.side,
-    };
-    return patchesAgreeAtAnchor(shownPatch, fullPatch, anchor)
-      ? anchor
+    const mapped = mapFindingLocation(files, {
+      file: location.path,
+      lineStart: location.startLine,
+      lineEnd: location.line,
+      diffSide: "new",
+    });
+    return mapped.mappingStatus === "mapped" && mapped.path === location.path
+      ? {
+          path: path.value,
+          startLine: location.startLine,
+          line: location.line,
+          side: location.side,
+        }
       : undefined;
   };
   return {
@@ -466,18 +468,24 @@ export function ReviewWorkbench({
     selectedCommitSha !== undefined || sincePatch !== undefined;
   const commitDiff =
     commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
-  const narrowedPatch =
-    selectedCommitSha === undefined ? sincePatch : commitDiff?.patch;
+  // Only a diff whose new side is the represented head can anchor comments on GitHub.
+  const headSideDiff =
+    selectedCommitSha === undefined
+      ? sincePatch !== undefined
+      : selectedCommitSha === model.revision.reviewedHeadSha;
+  const commentsUnavailableInSlice =
+    selectedCommitSha !== undefined &&
+    !headSideDiff &&
+    actions.localCommentAuthoring?.enabled === true;
   const commitCommentAuthoring = useMemo(
     () =>
-      narrowedPatch === undefined || model.fullPatch === undefined
+      !headSideDiff || model.fullPatch === undefined
         ? undefined
-        : createNarrowedCommentAuthoring(
+        : createHeadSideCommentAuthoring(
             actions.localCommentAuthoring,
-            narrowedPatch,
             model.fullPatch,
           ),
-    [actions.localCommentAuthoring, model.fullPatch, narrowedPatch],
+    [actions.localCommentAuthoring, headSideDiff, model.fullPatch],
   );
   const readOnlyConversationAnnotations = useMemo(
     () =>
@@ -577,6 +585,11 @@ export function ReviewWorkbench({
               {commitDiff.position} of {commitDiff.total} ·{" "}
               {commitDiff.fileCount} files · +{commitDiff.additions}/-
               {commitDiff.deletions}
+              {commentsUnavailableInSlice ? (
+                <span role="note" className="block">
+                  Comments are available on the latest commit or All files.
+                </span>
+              ) : null}
             </>
           ),
         };

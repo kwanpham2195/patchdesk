@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- In a single commit's diff, a new inline comment can start only on a line of the commit's new version that the pull request head shows with the same code. Before, a line that later commits moved could post its comment on a different line of the head. #359
+- Inline comments in a single commit's diff are available only on the head commit's new lines; an older commit's header says "Comments are available on the latest commit or All files." Before, a line that later commits moved could post its comment on a different line of the head. #359
 
 - The Diff toolbar offers **Since your review** beside **All files** and **Selected** once you have submitted a review on an older head. It shows only the changes pushed after that review, with the same file tree, keys, and inline conversations; it is disabled with the reason when there are no new commits or a force-push removed the reviewed commit. #359
 
