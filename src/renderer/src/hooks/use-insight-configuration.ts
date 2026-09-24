@@ -17,7 +17,6 @@ import {
   type InsightProviderCatalogModel,
 } from "../insight-catalog-contracts";
 import type { InsightRunDialogType } from "../components/insight-run-dialog";
-import type { InsightSelection } from "../components/insight-panels";
 
 type InsightModelOption = {
   readonly id: string;
@@ -82,10 +81,10 @@ type InsightConfigurationController = {
 };
 export function useInsightConfiguration(input: {
   readonly profileId: string;
-  readonly initialDetail: "analysis" | "walkthrough" | undefined;
-  readonly selectedInsight: InsightSelection;
+  readonly initialInsight: InsightRunDialogType;
+  readonly selectedInsight: InsightRunDialogType;
 }): InsightConfigurationController {
-  const { profileId, initialDetail, selectedInsight } = input;
+  const { profileId, initialInsight, selectedInsight } = input;
   const [configuration, updateConfiguration] = useReducer(
     insightRunConfigurationReducer,
     initialInsightRunConfiguration,
@@ -112,8 +111,7 @@ export function useInsightConfiguration(input: {
       if (stored !== undefined) loadedPreferences[type] = stored;
     }
     preferencesRef.current = loadedPreferences;
-    // Without a deep link the panel lands on Brief, so seed from that preference.
-    const initialPreference = loadedPreferences[initialDetail ?? "brief"];
+    const initialPreference = loadedPreferences[initialInsight];
     if (initialPreference !== undefined) {
       setConfiguration({
         provider: initialPreference.provider,
@@ -169,11 +167,9 @@ export function useInsightConfiguration(input: {
     return () => {
       active = false;
     };
-  }, [profileId, initialDetail]);
+  }, [profileId, initialInsight]);
 
-  const activePreferenceType =
-    runDialogType ??
-    (selectedInsight === "overview" ? "analysis" : selectedInsight);
+  const activePreferenceType = runDialogType ?? selectedInsight;
   const changeProvider = (nextProvider: InsightProvider): void => {
     const nextModels =
       catalog?.models.filter(

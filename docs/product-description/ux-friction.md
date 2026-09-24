@@ -30,8 +30,9 @@ Low:
 - [UX-13](#ux-13-the-open-reviews-visited-row-does-nothing-on-enter): The open Review's Visited row does nothing on Enter. Rejected with evidence.
 - [UX-14](#ux-14-skip-to-content-leaves-main-content-in-the-address): Skip to content leaves `#main-content` in the address. Rejected with evidence.
 - [UX-15](#ux-15-the-merge-conflicts-notice-asks-for-a-push-patchdesk-cannot-make): The Merge conflicts notice asks for a push Patchdesk cannot make. Rejected with evidence.
+- [UX-16](#ux-16-insights-opens-on-an-empty-brief-beside-an-overview-that-repeats-the-tab-strip): Insights opens on an empty Brief beside an Overview that repeats the tab strip. Fixed with [#350](https://github.com/kwanpham2195/patchdesk/issues/350).
 
-Count: 15 items, 5 medium and 10 low; 12 named follow-ups, all now fixed, and 3 rejected with evidence.
+Count: 16 items, 5 medium and 11 low; 12 named follow-ups, all now fixed, 1 fixed now, and 3 rejected with evidence.
 
 Friction the passes reported that is a defect, with the independent review's disposition, is tracked in bug-triage.md:
 
@@ -162,7 +163,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Disposition:** named follow-up.
 - **Issue:** [#198](https://github.com/kwanpham2195/patchdesk/issues/198)
 - **Status:** fixed by `fa934380`: the pressed row is tinted and bolded. Read from source at `737c515c`, not observed live.
-- **Page:** [Insights overview](review-workbench/insights-overview.md#settle).
+- **Page:** Insights overview, a page removed with the Overview tab in #350.
 
 ### UX-10: Verification ticks are lost without warning
 
@@ -235,5 +236,17 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low.
 - **Disposition:** rejected with evidence. The live pass on #113 read the notice as clearly describing work outside Patchdesk: it says "in your own local checkout" and names both branches.
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#edge-cases).
+
+### UX-16: Insights opens on an empty Brief beside an Overview that repeats the tab strip
+
+- **Screen:** Review workbench, Insights tab, on a Review with only an Analysis (#345 on 2026-09-24).
+- **What the maintainer does:** Opens Insights to read the Analysis.
+- **What they see:** Brief's "No brief yet" empty state, and an Overview tab whose cards repeat the status badges on the tab strip and whose Scope card repeats the header gauge and the Diff toolbar Scope picker.
+- **Why it hurts:** Every open costs a click to reach the only Insight with content, and the strip has one more tab to scan.
+- **Suggested improvement:** Remove Overview and land on the first Insight with a retained result.
+- **Severity:** low.
+- **Disposition:** fix now, [#350](https://github.com/kwanpham2195/patchdesk/issues/350).
+- **Status:** fixed by the #350 change: the strip reads Brief, Walkthrough, Analysis, and Insights opens on the first of them with a retained result, or on Brief when none has one. A restored Insight still wins.
+- **Page:** [Brief](review-workbench/brief.md#arrive).
 
 Drafted from the 2026-09-14 live passes at `5fe7df3b` and the independent review; source citations rechecked against application commit `737c515c`.

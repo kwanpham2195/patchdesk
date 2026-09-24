@@ -319,13 +319,13 @@ B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issu
 
 ### B-24: Repository-marked generated files do not reach the Scope gauge
 
-- **Where the user meets it:** The Scope gauge in the pull-request list, the workbench header, and the Insights Scope card, for a repository that marks generated files as `linguist-generated` in `.gitattributes`.
+- **Where the user meets it:** The Scope gauge in the pull-request list, the workbench header, and the Brief's Scope card, for a repository that marks generated files as `linguist-generated` in `.gitattributes`.
 - **What happens / what was expected:** Those files land in Core, Docs, or another bucket by path, even though the Scope rule accepts a list of repository-marked generated paths. Either behavior is defensible: wiring the list makes a large generated diff read correctly, and leaving it keeps the gauge purely path-based and cheap to compute from the stored patch.
 - **Reproduce:** Open a pull request that changes a file marked `linguist-generated` whose path matches no generated rule, and inspect its bucket.
 - **Why (from the code):** `src/domain/change-scope.ts:52` and `:268` accept `generatedPaths`, but `src/services/review-workbench-projection.ts:561` and `src/services/maintainer-inbox-service.ts:806` call `changeScopeFromPatch` with no options.
 - **Severity:** `low`. A classification gap on repositories that mark generated files.
 - **Decision needed:** `product call`. Wire `.gitattributes` into both call sites, or remove the unused option and keep the page's statement that Patchdesk does not read `.gitattributes`.
-- **Raised by:** [Insights overview](review-workbench/insights-overview.md#open-questions-and-verification).
+- **Raised by:** Insights overview, a page removed with the Overview tab in #350.
 - **Issue:** —
 
 ## Not filed

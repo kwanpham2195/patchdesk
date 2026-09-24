@@ -2,11 +2,11 @@
 
 ## Summary
 
-Brief gives the maintainer a reading orientation for the represented Review before detailed inspection. It combines model-drawn Flow views, deterministic change shape and reach, and a suggested reading order, retained for the exact Review session. Insights opens on Brief, so it is the first reader the maintainer sees there. A retained Brief remains readable even when a new Insight run cannot start. Generating or regenerating a Brief requires an open Review.
+Brief gives the maintainer a reading orientation for the represented Review before detailed inspection. It combines model-drawn Flow views, deterministic change shape and reach, and a suggested reading order, retained for the exact Review session. Brief is the first tab in the Insight tab strip, and Insights opens on it unless only a later Insight has a retained result. A retained Brief remains readable even when a new Insight run cannot start. Generating or regenerating a Brief requires an open Review.
 
 ## The simple case
 
-The maintainer chooses Insights and lands on Brief. Patchdesk shows what changed, how the files group by directory, which hunk supports each changed step, what the change may reach, and where to start reading. If no current Brief exists, a borderless empty state centers the Brief icon, the heading "No brief yet", a one-line explanation, and the Generate brief action in the available reader space. The maintainer generates one with an available provider and model. A retained Brief can open the Walkthrough for the same revision or offer to generate one.
+The maintainer chooses Insights and lands on Brief, or chooses its tab. Patchdesk shows what changed, how the files group by directory, which hunk supports each changed step, what the change may reach, and where to start reading. If no current Brief exists, a borderless empty state centers the Brief icon, the heading "No brief yet", a one-line explanation, and the Generate brief action in the available reader space. The maintainer generates one with an available provider and model. A retained Brief can open the Walkthrough for the same revision or offer to generate one.
 
 ## The task, event by event
 
@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Brief occupies the Insights slot for the represented Review. Insights opens on it whether or not a Brief exists; [Insights overview](insights-overview.md) owns the tab strip.
+Brief occupies the Insights slot for the represented Review. The Insight tab strip reads Brief, Walkthrough, Analysis, each with its status badge. Insights opens on the first of Brief, Walkthrough, and Analysis that has a retained result, and on Brief when none has one; a restored or explicitly chosen Insight wins over that rule.
 
 A retained result is laid out in two columns on a wide window and one column on a narrow one. The main column holds up to three Flow views, one per kind, the grouped Shape tree, and four Reach rows. The side column holds the Start here card, a read-only copy of the Scope card, and the Provenance card.
 

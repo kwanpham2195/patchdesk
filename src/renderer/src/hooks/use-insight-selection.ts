@@ -1,22 +1,34 @@
 import { useContext, useEffect, useRef, useState } from "react";
 
-import type { InsightSelection } from "../components/insight-panels";
+import type { InsightRunDialogType } from "../components/insight-run-dialog";
 import {
   analysisFindingRowId,
   ReviewWorkbenchFindingNavigationContext,
 } from "../components/review-workbench-finding-navigation";
+import type { WorkbenchResponse } from "../renderer-contracts";
+
+/** The tab strip's reading order, which is also the order the default landing checks. */
+const LANDING_ORDER = [
+  "brief",
+  "walkthrough",
+  "analysis",
+] as const satisfies ReadonlyArray<InsightRunDialogType>;
 
 /** Owns which Insight reader is selected and honours a finding focus request once per token. */
 export function useInsightSelection(
-  initialDetail: InsightSelection | undefined,
+  initialDetail: InsightRunDialogType | undefined,
+  insights: WorkbenchResponse["insights"],
 ) {
-  // Insights with no saved detail land on Brief: the shape of the change comes
-  // before the judgment of it. A saved detail wins, so this only decides the
-  // very first open. Brief lands even when none has been generated, showing its
-  // Generate control rather than falling through to a ready Insight.
-  const [selectedInsight, setSelectedInsight] = useState<InsightSelection>(
-    initialDetail ?? "brief",
+  // A saved detail wins; otherwise land on the first Insight with content so
+  // the reader does not open on an empty Generate prompt (#350).
+  const [initialInsight] = useState<InsightRunDialogType>(
+    () =>
+      initialDetail ??
+      LANDING_ORDER.find((type) => insights[type]?.retained !== undefined) ??
+      "brief",
   );
+  const [selectedInsight, setSelectedInsight] =
+    useState<InsightRunDialogType>(initialInsight);
   const findingNavigation = useContext(ReviewWorkbenchFindingNavigationContext);
   const findingFocusRequest = findingNavigation?.findingFocusRequest;
   const handledFindingFocusToken = useRef<number>(0);
@@ -43,6 +55,7 @@ export function useInsightSelection(
   }, [findingFocusRequest, selectedInsight]);
 
   return {
+    initialInsight,
     selectedInsight,
     setSelectedInsight,
     openFindingInDiff: findingNavigation?.openFindingInDiff,

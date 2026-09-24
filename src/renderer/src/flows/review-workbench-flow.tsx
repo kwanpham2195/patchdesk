@@ -173,10 +173,9 @@ export function ReviewWorkbenchFlow({
           : { onPositionCommitted: onUiStateChange })}
         actions={workbenchActions}
         slots={{
-          insights: ({ activeScopeBucket, onSelectScopeBucket }) => (
+          insights: (
             <InsightsSlot
               workbench={workbench}
-              scopeFilter={{ activeScopeBucket, onSelectScopeBucket }}
               {...(initialUiState?.insightDetail === undefined
                 ? {}
                 : { initialDetail: initialUiState.insightDetail })}

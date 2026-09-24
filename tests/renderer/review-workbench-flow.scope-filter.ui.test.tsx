@@ -10,8 +10,8 @@ import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
 
 /**
- * The Scope filter `ReviewWorkbenchFlow` wires between the Insights Scope card,
- * the Browse tree, and the diff toolbar. Split from
+ * The Scope filter `ReviewWorkbenchFlow` wires between the diff toolbar and the
+ * Browse tree. Split from
  * `review-workbench-flow.ui.test.tsx` only because that file sits at the size
  * ceiling.
  */
@@ -92,43 +92,7 @@ function scopedProjection(
 }
 
 describe("ReviewWorkbenchFlow Scope filter", () => {
-  it("filters the Diff to a Scope bucket and restores it from the toolbar picker", async () => {
-    bridge(async (input) =>
-      input.path === "/v1/reviews/detect-updates"
-        ? { updatesAvailable: false }
-        : Promise.reject(new Error(input.path)),
-    );
-    render(
-      <ReviewWorkbenchFlow
-        workbench={scopedProjection()}
-        onWorkbenchReplace={vi.fn()}
-        onWorkbenchPatch={vi.fn()}
-        onNavigationStateChange={vi.fn()}
-      />,
-    );
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
-    await user.click(screen.getByRole("tab", { name: "Overview" }));
-    await user.click(screen.getByRole("button", { name: /Docs/ }));
-
-    expect(
-      screen.getByRole("tab", { name: "Diff" }).getAttribute("aria-selected"),
-    ).toBe("true");
-    expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
-
-    await openScopeMenu(user);
-    await user.click(
-      screen.getByRole("menuitemradio", { name: "Clear scope" }),
-    );
-    expect(browsedPaths()).toEqual([
-      "docs/",
-      "docs/guide.md",
-      "src/",
-      "src/a.ts",
-    ]);
-  });
-
-  it("chooses a Scope bucket from the Diff toolbar and shows it on the Scope card", async () => {
+  it("filters the Diff to a Scope bucket from the toolbar and clears it", async () => {
     bridge(async (input) =>
       input.path === "/v1/reviews/detect-updates"
         ? { updatesAvailable: false }
@@ -148,13 +112,6 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /Docs/ }));
     expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
 
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
-    await user.click(screen.getByRole("tab", { name: "Overview" }));
-    expect(
-      screen.getByRole("button", { name: /Docs/ }).getAttribute("aria-pressed"),
-    ).toBe("true");
-
-    await user.click(screen.getByRole("tab", { name: "Diff" }));
     await openScopeMenu(user);
     await user.click(
       screen.getByRole("menuitemradio", { name: "Clear scope" }),
@@ -245,9 +202,9 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
       />,
     );
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
-    await user.click(screen.getByRole("tab", { name: "Overview" }));
-    await user.click(screen.getByRole("button", { name: /Docs/ }));
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await openScopeMenu(user);
+    await user.click(screen.getByRole("menuitemradio", { name: /Docs/ }));
     expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
 
     // Opening Commits selects the first commit on its own, so the filter has

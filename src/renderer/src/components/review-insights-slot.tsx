@@ -4,7 +4,11 @@ import { definedProps } from "../../../domain/defined-props";
 import { parseUnifiedPatch, type ParsedPatchFile } from "../../../domain/patch";
 
 import type { InsightProvider } from "../../../domain/insight-provider";
-import { INSIGHT_NOUNS, InsightRunDialog } from "./insight-run-dialog";
+import {
+  INSIGHT_NOUNS,
+  InsightRunDialog,
+  type InsightRunDialogType,
+} from "./insight-run-dialog";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
@@ -14,10 +18,7 @@ import {
   InsightFailed,
   InsightNavRail,
   InsightOutdated,
-  InsightOverview,
   InsightRunning,
-  type InsightScopeFilter,
-  type InsightSelection,
 } from "./insight-panels";
 import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { buildInsightReaders } from "./insight-readers";
@@ -29,7 +30,6 @@ import { useInsightRunControls } from "../hooks/use-insight-run-controls";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
-import { analysisFindingStatuses } from "../analysis-headline";
 import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
 import { RelativeTime } from "./relative-time";
 
@@ -59,7 +59,7 @@ function InsightDocumentIdentity({
           | undefined;
       }>
     | undefined;
-  readonly selectedInsight: InsightSelection;
+  readonly selectedInsight: InsightRunDialogType;
   readonly selectedIsOutdated: boolean;
   readonly walkthroughTitle: string | undefined;
 }): React.JSX.Element {
@@ -173,7 +173,7 @@ function useParsedPatchFiles(
 function retainedInsightDescription(
   workbench: WorkbenchResponse,
   brief: BriefInsight,
-  selectedInsight: InsightSelection,
+  selectedInsight: InsightRunDialogType,
 ): string | undefined {
   if (selectedInsight === "analysis")
     return workbench.insights.analysis.retained?.value.summary;
@@ -185,10 +185,6 @@ function retainedInsightDescription(
   );
 }
 
-// InsightsSlot already sat exactly on React Doctor's 300-line component
-// limit, and the parsed-patch line below puts it one over. Splitting the slot
-// into smaller components is its own change, not this one.
-// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function InsightsSlot({
   workbench,
   initialDetail,
@@ -197,7 +193,6 @@ export function InsightsSlot({
   onReprepare,
   onAddFinding,
   onFinishWithAnalysisSummary,
-  scopeFilter,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly initialDetail?: "analysis" | "walkthrough";
@@ -206,10 +201,13 @@ export function InsightsSlot({
   readonly onReprepare: () => Promise<WorkbenchResponse>;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
-  readonly scopeFilter?: InsightScopeFilter | undefined;
 }): React.JSX.Element {
-  const { selectedInsight, setSelectedInsight, openFindingInDiff } =
-    useInsightSelection(initialDetail);
+  const {
+    initialInsight,
+    selectedInsight,
+    setSelectedInsight,
+    openFindingInDiff,
+  } = useInsightSelection(initialDetail, workbench.insights);
   const {
     walkthroughFocused,
     walkthroughFocusTransition,
@@ -234,7 +232,7 @@ export function InsightsSlot({
     workbench,
     profileId,
     reviewId,
-    initialDetail,
+    initialInsight,
     selectedInsight,
     onWorkbenchReplace,
     onWorkbenchPatch,
@@ -254,8 +252,7 @@ export function InsightsSlot({
     workbench,
     configuration,
   );
-  const selectedProjection =
-    selectedInsight === "overview" ? undefined : projections[selectedInsight];
+  const selectedProjection = projections[selectedInsight];
   const insightResultRef = useInsightResultEntrance({
     retainedRunIds: {
       analysis: workbench.insights.analysis.retained?.runId,
@@ -265,8 +262,7 @@ export function InsightsSlot({
     selectedInsight,
     selectedProjectionStatus: selectedProjection?.status,
   });
-  const selectedRunning =
-    selectedInsight === "overview" ? undefined : runs[selectedInsight];
+  const selectedRunning = runs[selectedInsight];
   const retainedDescription = retainedInsightDescription(
     workbench,
     brief,
@@ -312,8 +308,7 @@ export function InsightsSlot({
     selectedProjection?.status === "running" &&
     selectedProjection.retained === undefined;
   const selectedRequestFailure = selectedRunning?.requestFailure;
-  const selectedInsightName =
-    selectedInsight === "overview" ? "Insight" : INSIGHT_NOUNS[selectedInsight];
+  const selectedInsightName = INSIGHT_NOUNS[selectedInsight];
   const showDocumentHeader =
     selectedRetained !== undefined ||
     selectedRunning?.busy === true ||
@@ -342,139 +337,118 @@ export function InsightsSlot({
           />
         )}
         <article
-          aria-label={
-            selectedInsight === "overview"
-              ? "Insight overview"
-              : `${selectedInsight} document`
-          }
+          aria-label={`${selectedInsight} document`}
           data-review-insight-document={selectedInsight}
           className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${selectedInsight === "walkthrough" ? "overflow-hidden" : "overflow-auto"}`}
         >
-          {selectedInsight === "overview" ? (
-            <InsightOverview
-              brief={brief}
-              analysis={workbench.insights.analysis}
-              walkthrough={workbench.insights.walkthrough}
-              scope={workbench.scope}
-              scopeFilter={scopeFilter}
-              checkStatus={workbench.checks.overall}
-              findingStatuses={analysisFindingStatuses(
-                workbench.analysisReviewActions,
-              )}
-              onSelect={setSelectedInsight}
-            />
-          ) : (
-            <>
-              {walkthroughFocusActive || !showDocumentHeader ? null : (
-                <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
-                  <InsightDocumentIdentity
-                    retained={selectedRetained}
-                    selectedInsight={selectedInsight}
-                    selectedIsOutdated={selectedIsOutdated}
-                    walkthroughTitle={
-                      workbench.insights.walkthrough.retained?.value.title
-                    }
-                  />
-                  <div className="flex flex-wrap items-center gap-2">
-                    {selectedRunning?.busy ||
-                    selectedProjection?.status === "running" ? (
-                      <Button
-                        size="icon-sm"
-                        variant="outline"
-                        onClick={selectedRunning?.cancel}
-                        disabled={
-                          selectedRunning === undefined ||
-                          selectedRunning.starting ||
-                          selectedRunning.cancelling
-                        }
-                        aria-label={
-                          selectedRunning?.cancelling
-                            ? `Cancelling ${selectedInsightName}…`
-                            : `Cancel ${selectedInsightName}`
-                        }
-                      >
-                        {selectedRunning?.cancelling ? (
-                          <Spinner aria-hidden="true" />
-                        ) : (
-                          <XIcon aria-hidden="true" />
-                        )}
-                      </Button>
-                    ) : analysisFirstRunActive ||
-                      selectedIsOutdated ||
-                      selectedProjection?.status === "failed" ||
-                      selectedProjection?.retained === undefined ? null : (
-                      <Button
-                        size="sm"
-                        onClick={() => openRunDialog("regenerate")}
-                        disabled={!runEnabled}
-                        aria-describedby={runDisabledReasonId}
-                      >
-                        Regenerate
-                      </Button>
-                    )}
-                  </div>
-                </header>
-              )}
-              <InsightAvailabilityErrors
-                terminalReasonId={runDisabledReasonId}
-                configuration={configuration}
-                requestFailureMessage={selectedRequestFailureMessage}
+          {walkthroughFocusActive || !showDocumentHeader ? null : (
+            <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
+              <InsightDocumentIdentity
+                retained={selectedRetained}
+                selectedInsight={selectedInsight}
+                selectedIsOutdated={selectedIsOutdated}
+                walkthroughTitle={
+                  workbench.insights.walkthrough.retained?.value.title
+                }
               />
-              {selectedProjection?.artifactStatus === "mismatch" ? (
-                <InsightArtifactMismatch />
-              ) : null}
-              <div
-                data-review-insight-content
-                className={`flex min-h-0 flex-col gap-4 ${selectedInsight === "walkthrough" ? "flex-1 overflow-hidden" : ""}`}
-              >
+              <div className="flex flex-wrap items-center gap-2">
                 {selectedRunning?.busy ||
                 selectedProjection?.status === "running" ? (
-                  <InsightRunning
-                    type={selectedInsight}
-                    projection={selectedProjection}
-                    activity={selectedRunning?.activity}
-                  />
-                ) : selectedProjection?.status === "failed" ? (
-                  <InsightFailed
-                    projection={selectedProjection}
-                    activity={selectedRunning?.activity}
-                    onRetry={() => openRunDialog("retry")}
-                    onReprepare={onReprepare}
-                    {...definedProps({ retainedDescription })}
-                  />
-                ) : selectedIsOutdated ? (
-                  <InsightOutdated
-                    type={selectedInsight}
-                    onRetry={() => openRunDialog("retry")}
-                    {...definedProps({
-                      retainedRevision: selectedRetained?.headSha,
-                    })}
-                    currentRevision={currentRevision}
-                  />
-                ) : retainedReader === null ? (
-                  <InsightEmpty
-                    type={selectedInsight}
-                    onRun={() => openRunDialog("run")}
-                    disabled={!runEnabled}
-                    {...definedProps({ describedBy: runDisabledReasonId })}
-                  />
-                ) : null}
-                {retainedReader === null ? null : (
-                  <div
-                    ref={insightResultRef}
-                    data-insight-result
-                    className={
-                      selectedInsight === "walkthrough"
-                        ? "min-h-0 flex-1 overflow-hidden"
-                        : ""
+                  <Button
+                    size="icon-sm"
+                    variant="outline"
+                    onClick={selectedRunning?.cancel}
+                    disabled={
+                      selectedRunning === undefined ||
+                      selectedRunning.starting ||
+                      selectedRunning.cancelling
+                    }
+                    aria-label={
+                      selectedRunning?.cancelling
+                        ? `Cancelling ${selectedInsightName}…`
+                        : `Cancel ${selectedInsightName}`
                     }
                   >
-                    {retainedReader}
-                  </div>
+                    {selectedRunning?.cancelling ? (
+                      <Spinner aria-hidden="true" />
+                    ) : (
+                      <XIcon aria-hidden="true" />
+                    )}
+                  </Button>
+                ) : analysisFirstRunActive ||
+                  selectedIsOutdated ||
+                  selectedProjection?.status === "failed" ||
+                  selectedProjection?.retained === undefined ? null : (
+                  <Button
+                    size="sm"
+                    onClick={() => openRunDialog("regenerate")}
+                    disabled={!runEnabled}
+                    aria-describedby={runDisabledReasonId}
+                  >
+                    Regenerate
+                  </Button>
                 )}
               </div>
-            </>
+            </header>
           )}
+          <InsightAvailabilityErrors
+            terminalReasonId={runDisabledReasonId}
+            configuration={configuration}
+            requestFailureMessage={selectedRequestFailureMessage}
+          />
+          {selectedProjection?.artifactStatus === "mismatch" ? (
+            <InsightArtifactMismatch />
+          ) : null}
+          <div
+            data-review-insight-content
+            className={`flex min-h-0 flex-col gap-4 ${selectedInsight === "walkthrough" ? "flex-1 overflow-hidden" : ""}`}
+          >
+            {selectedRunning?.busy ||
+            selectedProjection?.status === "running" ? (
+              <InsightRunning
+                type={selectedInsight}
+                projection={selectedProjection}
+                activity={selectedRunning?.activity}
+              />
+            ) : selectedProjection?.status === "failed" ? (
+              <InsightFailed
+                projection={selectedProjection}
+                activity={selectedRunning?.activity}
+                onRetry={() => openRunDialog("retry")}
+                onReprepare={onReprepare}
+                {...definedProps({ retainedDescription })}
+              />
+            ) : selectedIsOutdated ? (
+              <InsightOutdated
+                type={selectedInsight}
+                onRetry={() => openRunDialog("retry")}
+                {...definedProps({
+                  retainedRevision: selectedRetained?.headSha,
+                })}
+                currentRevision={currentRevision}
+              />
+            ) : retainedReader === null ? (
+              <InsightEmpty
+                type={selectedInsight}
+                onRun={() => openRunDialog("run")}
+                disabled={!runEnabled}
+                {...definedProps({ describedBy: runDisabledReasonId })}
+              />
+            ) : null}
+            {retainedReader === null ? null : (
+              <div
+                ref={insightResultRef}
+                data-insight-result
+                className={
+                  selectedInsight === "walkthrough"
+                    ? "min-h-0 flex-1 overflow-hidden"
+                    : ""
+                }
+              >
+                {retainedReader}
+              </div>
+            )}
+          </div>
         </article>
       </div>
       <InsightRunControls

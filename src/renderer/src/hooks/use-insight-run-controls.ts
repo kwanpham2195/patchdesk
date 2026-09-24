@@ -17,7 +17,7 @@ import {
   useInsightConfiguration,
   type InsightRunConfiguration,
 } from "./use-insight-configuration";
-import type { InsightSelection } from "../components/insight-panels";
+import type { InsightRunDialogType } from "../components/insight-run-dialog";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 
@@ -57,7 +57,7 @@ export function useInsightRunControls({
   workbench,
   profileId,
   reviewId,
-  initialDetail,
+  initialInsight,
   selectedInsight,
   onWorkbenchReplace,
   onWorkbenchPatch,
@@ -65,8 +65,8 @@ export function useInsightRunControls({
   readonly workbench: WorkbenchResponse;
   readonly profileId: string;
   readonly reviewId: string;
-  readonly initialDetail: "analysis" | "walkthrough" | undefined;
-  readonly selectedInsight: InsightSelection;
+  readonly initialInsight: InsightRunDialogType;
+  readonly selectedInsight: InsightRunDialogType;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
 }): InsightRunControlsHook {
@@ -119,7 +119,7 @@ export function useInsightRunControls({
     cancelCodexActivation,
   } = useInsightConfiguration({
     profileId,
-    initialDetail,
+    initialInsight,
     selectedInsight,
   });
   const { catalog, provider, model, reasoning, catalogError } = configuration;
@@ -180,9 +180,8 @@ export function useInsightRunControls({
     action: "run" | "retry" | "regenerate",
     type?: InsightRunType,
   ): void => {
-    const dialogType =
-      type ?? (selectedInsight === "overview" ? undefined : selectedInsight);
-    if (dialogType === undefined || catalogError) return;
+    const dialogType = type ?? selectedInsight;
+    if (catalogError) return;
     const preference = preferencesRef.current[dialogType];
     const nextModels =
       catalog?.models.filter(

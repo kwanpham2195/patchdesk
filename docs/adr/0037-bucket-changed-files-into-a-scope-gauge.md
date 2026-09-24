@@ -2,6 +2,12 @@
 
 > **Status: Accepted.** Companion to ADR 0036, which adds the Brief. The gauge
 > is independent of it: it needs no model run and is always on.
+>
+> **Superseded in part, 2026-09-24 (#350).** The Insights Overview tab and its
+> Scope card are removed, and with them the card's bucket rows that filtered
+> the Diff. The gauge now lives in the workbench header chip, the Brief's side
+> column, and the Pull requests row; the Diff toolbar Scope picker is the only
+> way to apply a Scope filter.
 
 "+1,240 / -318" tells a maintainer how big a pull request is, not what kind of
 big. A thousand of those lines being a regenerated lockfile is a different

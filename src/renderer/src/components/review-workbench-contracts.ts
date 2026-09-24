@@ -1,4 +1,3 @@
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import type { GitHubReviewEvent } from "../../../domain/pending-review";
 import type { AssigneesSectionActions } from "./assignee-picker";
 import type { LabelPickerActions } from "./label-picker";
@@ -93,11 +92,7 @@ export type ReviewWorkbenchActions = {
 };
 
 export type ReviewWorkbenchSlots = {
-  /** Called with what the Insights slot needs to draw and drive the Scope card's filter. */
-  readonly insights: (context: {
-    readonly activeScopeBucket: ChangeScopeBucket | undefined;
-    readonly onSelectScopeBucket: (bucket: ChangeScopeBucket) => void;
-  }) => React.ReactNode;
+  readonly insights: React.ReactNode;
   readonly conversation: React.ReactNode;
   readonly mergeAction: React.ReactNode;
 };

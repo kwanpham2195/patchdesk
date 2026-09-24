@@ -131,7 +131,7 @@ A Finding that no longer maps to the represented diff, or an Add while the pendi
 - A Finding outside the represented diff has no Add to review action and no Diff link.
 - Lower severity appears only when the Analysis has both P0 or P1 and P2 or P3 Findings.
 - Opening a P2 or P3 Finding from a Finding card opens Lower severity even when the maintainer had closed it.
-- The needs-attention count uses the same handled rule as merge readiness, so the verdict card, the Overview card, and the readiness card agree.
+- The needs-attention count uses the same handled rule as merge readiness, so the verdict card and the readiness card agree.
 - Verification ticks reset when the maintainer leaves the Analysis reader, and the card's own description says so before any tick is made.
 - Two concurrent adds that settle in reverse order preserve both confirmed Findings.
 - A stale lower receipt missing its target cannot overwrite a newer pending-review projection.

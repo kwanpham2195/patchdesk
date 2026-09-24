@@ -10,6 +10,11 @@ import {
   type FindingFocusRequest,
 } from "../../src/renderer/src/components/review-workbench-finding-navigation";
 import { useInsightSelection } from "../../src/renderer/src/hooks/use-insight-selection";
+import {
+  briefInsight,
+  projection,
+  withAnalysis,
+} from "./review-workbench-fixtures";
 
 afterEach(() => {
   cleanup();
@@ -18,16 +23,38 @@ afterEach(() => {
 });
 
 describe("useInsightSelection", () => {
-  it("lands on Brief when no saved detail is restored", () => {
-    const { result } = renderHook(() => useInsightSelection(undefined));
+  const analysisOnly = withAnalysis("actionable").insights;
+  it.each([
+    {
+      name: "lands on Brief when no Insight has a result",
+      initialDetail: undefined,
+      insights: projection().insights,
+      expected: "brief",
+    },
+    {
+      name: "lands on Analysis when it is the only Insight with a result",
+      initialDetail: undefined,
+      insights: analysisOnly,
+      expected: "analysis",
+    },
+    {
+      name: "lands on Brief when Brief and Analysis both have results",
+      initialDetail: undefined,
+      insights: { ...analysisOnly, brief: briefInsight() },
+      expected: "brief",
+    },
+    {
+      name: "lets a restored detail win over an Insight with a result",
+      initialDetail: "walkthrough",
+      insights: analysisOnly,
+      expected: "walkthrough",
+    },
+  ] as const)("$name", ({ initialDetail, insights, expected }) => {
+    const { result } = renderHook(() =>
+      useInsightSelection(initialDetail, insights),
+    );
 
-    expect(result.current.selectedInsight).toBe("brief");
-  });
-
-  it("lets a saved detail win over the Brief default", () => {
-    const { result } = renderHook(() => useInsightSelection("analysis"));
-
-    expect(result.current.selectedInsight).toBe("analysis");
+    expect(result.current.selectedInsight).toBe(expected);
   });
 
   it("focuses each new finding request once and leaves the same request dismissed", () => {
@@ -55,7 +82,7 @@ describe("useInsightSelection", () => {
       </ReviewWorkbenchFindingNavigationContext.Provider>
     );
     const { result, rerender } = renderHook(
-      () => useInsightSelection(undefined),
+      () => useInsightSelection(undefined, projection().insights),
       { wrapper },
     );
     const first = addFindingRow("first");

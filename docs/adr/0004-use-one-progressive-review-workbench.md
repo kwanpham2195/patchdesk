@@ -2,6 +2,8 @@
 
 > **Status: Superseded.** The current Review workbench remains progressive, but the ADR "Use GitHub pending reviews for Review drafting" removes the local draft dock and obsolete Findings navigation described below.
 
+> **Superseded in part, 2026-09-24 (#350).** Insights no longer opens to an overview. The Overview tab is removed; each Insight tab carries its own status badge, and Insights opens on the first of Brief, Walkthrough, and Analysis that has a retained result, or on Brief when none has one.
+
 Patchdesk uses one persistent review workbench across review preparation, insight generation, drafting, publication, and merge. **Files** is the default surface. A current analysis result enriches Files with findings and evidence rather than opening a completed-review destination.
 
 The primary surfaces are **Files** and **Insights**. Insights is the extensible home for Analysis, Walkthrough, and future revision-bound ways to understand the change. Pull request overview, checks, discussion, review draft, and merge readiness remain supporting panels in the same workbench. Patchdesk does not expose prepared, completed, manual, model, or read-only workbench modes.
