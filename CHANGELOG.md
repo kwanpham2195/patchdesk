@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the header and Analysis Findings still showing **Finish review** and **Added** until a reload after the background update check found the pending review deleted on GitHub. They now follow GitHub on the next check. The notice that a Finish sent nothing now appears only for that result, also names a different pending review found on GitHub, and clears when Finish review reopens or a Refresh completes; reopening Finish review no longer shows an earlier error. #419
+
 - Fixed **Finish review** locking the Review when its pending review had been deleted on GitHub. Submit review now checks GitHub first; when the pending review is gone it sends nothing, returns the added Findings to **Add to review**, and says the pending review no longer exists. #419
 
 - Fixed Analysis Findings staying **Added**, with **Finish review** still shown, after their pending review was deleted on GitHub. Refresh now returns those Findings to **Add to review** and the header to **Start a review** once GitHub confirms the pending review is gone; a failed or incomplete GitHub read changes nothing. #419

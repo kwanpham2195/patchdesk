@@ -122,6 +122,7 @@ export function ReviewWorkbenchFlow({
       runDirectCommand,
       appendRecentWrites,
       observeConfirmedReviewWrite,
+      refreshing,
     });
   const { directSummary } = useDirectSummaryActions({
     workbench,

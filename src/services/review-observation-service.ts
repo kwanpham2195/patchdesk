@@ -585,10 +585,14 @@ export class ReviewObservationService {
     }
     // Best effort: drop own-write journal entries this exact candidate
     // already represents; a prune failure must not fail this observation.
+    const threadGone = pendingThreadGone(
+      session.pendingReview,
+      observedPending,
+    );
     await this.dependencies.recentWrites.prune(
       input.profileId,
       input.reviewId,
-      (entry) => containsRecentWrites(candidate, [entry]),
+      (entry) => containsRecentWrites(candidate, [entry], threadGone),
     );
 
     // A successful snapshot transition does not itself prove GitHub has made
@@ -596,7 +600,7 @@ export class ReviewObservationService {
     // until this exact durable candidate carries every receipt.
     if (
       this.dependencies.project === undefined ||
-      !containsRecentWrites(candidate, input.recentWrites ?? [])
+      !containsRecentWrites(candidate, input.recentWrites ?? [], threadGone)
     ) {
       return ok({ _tag: "Reconciled", detectedAt });
     }
@@ -810,9 +814,33 @@ export class ReviewObservationService {
   }
 }
 
+/**
+ * A pending thread cannot reappear once GitHub confirms the pending review that
+ * held it is gone (deleted or submitted), so its receipt would otherwise
+ * withhold every projection until the journal's age ceiling. A read of the
+ * same pending review without the thread is ordinary read lag and settles
+ * nothing.
+ */
+function pendingThreadGone(
+  stored: PendingReviewState | undefined,
+  observed: { readonly read: PendingReviewRead; readonly available: boolean },
+): (threadId: string) => boolean {
+  const read = observed.read;
+  if (!observed.available || read._tag === "Unavailable") return () => false;
+  if (read._tag === "None") return () => true;
+  const storedNodeId =
+    stored === undefined || stored._tag === "None"
+      ? undefined
+      : stored.review?.nodeId;
+  if (read.review.nodeId === storedNodeId) return () => false;
+  return (threadId) =>
+    !read.review.comments.some((comment) => comment.threadId === threadId);
+}
+
 function containsRecentWrites(
   snapshot: ReviewRemoteSnapshot,
   writes: ReadonlyArray<RecentReviewWrite>,
+  pendingThreadIsGone: (threadId: string) => boolean,
 ): boolean {
   return writes.every((write): boolean => {
     switch (write._tag) {
@@ -847,8 +875,10 @@ function containsRecentWrites(
         );
       }
       case "PendingThread":
-        return snapshot.comments.threads.some(
-          (thread) => thread.id === write.threadId,
+        return (
+          snapshot.comments.threads.some(
+            (thread) => thread.id === write.threadId,
+          ) || pendingThreadIsGone(write.threadId)
         );
       case "DiscardedThread":
         // A discard is proven by absence: the thread the draft held is gone.

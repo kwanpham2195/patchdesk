@@ -91,7 +91,7 @@ function installPendingDouble(answers: {
   return double.request;
 }
 
-function renderPendingReview(workbench: WorkbenchResponse) {
+function renderPendingReview(workbench: WorkbenchResponse, refreshing = false) {
   const replace = vi.fn();
   const patch = vi.fn<(value: ReviewWorkbenchPatch) => void>();
   const appendRecentWrites = vi.fn();
@@ -104,7 +104,10 @@ function renderPendingReview(workbench: WorkbenchResponse) {
     return await operation();
   };
   const rendered = renderHook(
-    (props: { readonly workbench: WorkbenchResponse }) =>
+    (props: {
+      readonly workbench: WorkbenchResponse;
+      readonly refreshing: boolean;
+    }) =>
       usePendingReviewActions({
         workbench: props.workbench,
         onWorkbenchReplace: replace,
@@ -112,8 +115,9 @@ function renderPendingReview(workbench: WorkbenchResponse) {
         runDirectCommand,
         appendRecentWrites,
         observeConfirmedReviewWrite,
+        refreshing: props.refreshing,
       }),
-    { initialProps: { workbench } },
+    { initialProps: { workbench, refreshing } },
   );
   return {
     ...rendered,
@@ -275,7 +279,77 @@ describe("usePendingReviewActions commands", () => {
     expect(patch).toHaveBeenCalledWith({ pendingReview: { state: "none" } });
     expect(replace).toHaveBeenCalledWith(reloaded);
     expect(panelOf(result).finishDialogOpen).toBe(false);
-    expect(panelOf(result).recoveryError).toBeDefined();
+    expect(panelOf(result).goneNotice).toBeDefined();
+    expect(panelOf(result).recoveryError).toBeUndefined();
+  });
+
+  it("reports a gone Finish when GitHub now holds a different pending review", async () => {
+    const replaced = pending("pending");
+    installPendingDouble({
+      commandFailure: () =>
+        failure(
+          // SAFETY: the fixture projection is JSON data.
+          { error: "pending_review_gone", pendingReview: replaced as never },
+          409,
+        ),
+      load: () => projection({ pendingReview: replaced as never }),
+    });
+    const { result } = renderPendingReview(
+      projection({ pendingReview: pending("pending") as never }),
+    );
+    act(() => panelOf(result).onOpenFinishDialog());
+
+    await act(async () => {
+      await panelOf(result).onSubmit("COMMENT", "");
+    });
+
+    expect(panelOf(result).finishDialogOpen).toBe(false);
+    expect(panelOf(result).goneNotice).toBeDefined();
+  });
+
+  it("clears the gone notice when a Refresh completes", async () => {
+    installPendingDouble({
+      commandFailure: () =>
+        failure(
+          { error: "pending_review_gone", pendingReview: { state: "none" } },
+          409,
+        ),
+      load: () => projection({ pendingReview: pending("none") as never }),
+    });
+    const workbench = projection({
+      pendingReview: pending("pending") as never,
+    });
+    const { result, rerender } = renderPendingReview(workbench);
+    await act(async () => {
+      await panelOf(result).onSubmit("COMMENT", "");
+    });
+    expect(panelOf(result).goneNotice).toBeDefined();
+
+    rerender({ workbench, refreshing: true });
+    expect(panelOf(result).goneNotice).toBeDefined();
+    rerender({ workbench, refreshing: false });
+
+    expect(panelOf(result).goneNotice).toBeUndefined();
+  });
+
+  it("opens Finish without the error of an earlier failed Finish", async () => {
+    installPendingDouble({
+      commandFailure: () => failure({ error: "github_rejected" }, 422),
+    });
+    const { result } = renderPendingReview(
+      projection({ pendingReview: pending("pending") as never }),
+    );
+    act(() => panelOf(result).onOpenFinishDialog());
+    await act(async () => {
+      await panelOf(result).onSubmit("COMMENT", "");
+    });
+    expect(panelOf(result).finishDialogError).toBeDefined();
+    expect(panelOf(result).goneNotice).toBeUndefined();
+    act(() => panelOf(result).onCloseFinishDialog());
+
+    act(() => panelOf(result).onOpenFinishDialog());
+
+    expect(panelOf(result).finishDialogError).toBeUndefined();
   });
 
   it("refuses a command without a verifiable diff and sends nothing", async () => {
@@ -418,6 +492,7 @@ describe("usePendingReviewActions recovery", () => {
     });
     rerender({
       workbench: projection({ pendingReview: newerOwner as never }),
+      refreshing: false,
     });
     await act(async () => {
       release({ pendingReview: {} });

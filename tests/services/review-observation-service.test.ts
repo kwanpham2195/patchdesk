@@ -478,6 +478,29 @@ describe("ReviewObservationService", () => {
     ).resolves.toEqual({ _tag: "ok", value: [] });
   });
 
+  it("projects and prunes a pending-thread receipt once GitHub reports no pending review", async () => {
+    // The pending review holding the thread was deleted on GitHub, so the
+    // thread can never appear; the receipt used to withhold every projection.
+    const value = await fixture({ project: true });
+    await value.recentWrites.append(
+      profileId,
+      value.review.id,
+      { _tag: "PendingThread", threadId: discardedThreadId },
+      justWrittenAt(),
+    );
+    const observed = await value.observation.observe({
+      profileId,
+      reviewId: value.review.id,
+    });
+    expect(observed).toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Reconciled", projection: { state: "review" } },
+    });
+    await expect(
+      value.recentWrites.load(profileId, value.review.id),
+    ).resolves.toEqual({ _tag: "ok", value: [] });
+  });
+
   it("keeps a discarded-thread receipt while the snapshot still carries the thread", async () => {
     const value = await fixture({
       project: true,
