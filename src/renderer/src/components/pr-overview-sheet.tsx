@@ -30,7 +30,15 @@ import {
   type MergeCommandResult,
   type MergeMethod,
 } from "./compact-merge-command";
-import { mergeReadinessItems } from "./merge-readiness-items";
+import {
+  destructiveTone,
+  mergeReadinessItems,
+  mergeReadinessLabel,
+  mergeReadinessTone,
+  mutedTone,
+  successTone,
+  warningTone,
+} from "./merge-readiness-items";
 import { RelativeTime } from "./relative-time";
 import { ReviewChecks, presentOverallCheckResult } from "./review-checks";
 import { Button } from "@/components/ui/button";
@@ -348,11 +356,6 @@ type RevisionFreshness = NonNullable<
   CanonicalReviewOverview["revision"]
 >["freshness"];
 
-const successTone = "text-status-success";
-const warningTone = "text-status-warning";
-const destructiveTone = "text-destructive";
-const mutedTone = "text-muted-foreground";
-const infoTone = "text-status-info";
 const destructiveCard =
   "border-destructive/30 bg-destructive/10 text-destructive";
 const warningCard =
@@ -859,72 +862,5 @@ function insightTone(status: ReviewInsightStatus): string {
       return destructiveTone;
     case "not_generated":
       return mutedTone;
-  }
-}
-
-// A "Blocked" tag whose only blocker is mergeability_unknown is not a
-// confirmed block — it's Patchdesk saying it does not yet know GitHub's
-// merge status. The header must not contradict the neutral info treatment
-// the body already gives that case (see the infoCard comment above and
-// ADR 0027, "Unknown is not failure"). Any additional blocker alongside it
-// is a real, confirmed block, so it keeps the destructive treatment.
-// oxlint-disable-next-line react/only-export-components -- Shared readiness rule, tested as a function in tests/renderer/merge-readiness-header.test.ts.
-export function isUnconfirmedBlock(
-  tag: WorkbenchResponse["mergeReadiness"]["_tag"],
-  blockers: readonly string[],
-): boolean {
-  return (
-    tag === "Blocked" &&
-    blockers.length === 1 &&
-    blockers[0] === "mergeability_unknown"
-  );
-}
-
-// A draft is the author's choice to hold the merge, not a problem to fix, so a
-// block made only of draft and closed states is not given the destructive tone.
-function isDraftOnlyBlock(
-  tag: WorkbenchResponse["mergeReadiness"]["_tag"],
-  blockers: readonly string[],
-): boolean {
-  return (
-    tag === "Blocked" &&
-    blockers.includes("draft") &&
-    blockers.every((blocker) => blocker === "draft" || blocker === "closed")
-  );
-}
-
-/** What the Merge readiness header reads for one readiness tag. */
-// oxlint-disable-next-line react/only-export-components -- Shared readiness rule, tested as a function in tests/renderer/merge-readiness-header.test.ts.
-export function mergeReadinessLabel(
-  tag: WorkbenchResponse["mergeReadiness"]["_tag"],
-  blockers: readonly string[],
-): string {
-  if (isUnconfirmedBlock(tag, blockers)) return "Unknown";
-  if (isDraftOnlyBlock(tag, blockers)) return "Draft";
-  switch (tag) {
-    case "Ready":
-      return "Ready to merge";
-    case "NeedsAcknowledgement":
-      return "Warnings";
-    case "Blocked":
-      return "Blocked";
-  }
-}
-
-/** The semantic tone token the Merge readiness header is rendered in. */
-// oxlint-disable-next-line react/only-export-components -- Shared readiness rule, tested as a function in tests/renderer/merge-readiness-header.test.ts.
-export function mergeReadinessTone(
-  tag: WorkbenchResponse["mergeReadiness"]["_tag"],
-  blockers: readonly string[],
-): string {
-  if (isUnconfirmedBlock(tag, blockers)) return infoTone;
-  if (isDraftOnlyBlock(tag, blockers)) return mutedTone;
-  switch (tag) {
-    case "Ready":
-      return successTone;
-    case "NeedsAcknowledgement":
-      return warningTone;
-    case "Blocked":
-      return destructiveTone;
   }
 }

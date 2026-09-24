@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  blockedMergeChip,
   isUnconfirmedBlock,
+  mergeBlockerLabels,
   mergeReadinessLabel,
   mergeReadinessTone,
-} from "../../src/renderer/src/components/pr-overview-sheet";
-import {
-  blockedMergeChip,
-  mergeBlockerLabels,
 } from "../../src/renderer/src/components/merge-readiness-items";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { MergeDisplayReason } from "../../src/domain/github-context";

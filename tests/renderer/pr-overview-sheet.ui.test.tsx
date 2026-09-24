@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CanonicalReviewOverviewSheet,
-  mergeReadinessLabel,
   type CanonicalReviewOverview,
 } from "../../src/renderer/src/components/pr-overview-sheet";
+import { mergeReadinessLabel } from "../../src/renderer/src/components/merge-readiness-items";
 import type { MergeDisplayReason } from "../../src/domain/github-context";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 

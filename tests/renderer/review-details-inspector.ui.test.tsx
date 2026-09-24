@@ -161,4 +161,50 @@ describe("ReviewDetailsInspector", () => {
         .map((item) => item.textContent),
     ).toEqual(["Core11", "Config1"]);
   });
+
+  it.each<{
+    readonly name: string;
+    readonly overrides: Partial<InboxRow>;
+    readonly mergeName: string;
+  }>([
+    {
+      name: "a clean, approved row reads ready to merge",
+      overrides: {
+        mergeability: "mergeable",
+        checks: { overall: "passing", checks: [] },
+        reviewState: "approved",
+      },
+      mergeName: "Merge: ready to merge",
+    },
+    {
+      name: "a draft with conflicts names every cause",
+      overrides: {
+        isDraft: true,
+        mergeability: "conflicting",
+        checks: { overall: "failing", checks: [] },
+      },
+      mergeName: "Merge: blocked: draft, conflicts, checks",
+    },
+    {
+      name: "a row GitHub has not classified reads unknown",
+      overrides: { mergeability: "unknown" },
+      mergeName: "Merge: unknown",
+    },
+  ])("shows the Merge fact: $name", ({ overrides, mergeName }) => {
+    render(
+      <MaintainerInbox
+        profileId="inspector-merge"
+        profileLabel="P"
+        rows={[{ ...row, ...overrides }]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const inspector = screen.getByRole("complementary", {
+      name: "Review details",
+    });
+    expect(within(inspector).getByLabelText(mergeName)).toBeTruthy();
+  });
 });
