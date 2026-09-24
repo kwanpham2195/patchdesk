@@ -78,8 +78,22 @@ export type ReviewDiffNavigationStatus =
       readonly message: string;
     }
   | {
-      readonly kind: "file" | "hunk" | "comment";
+      readonly kind: "unviewed";
+      readonly state: "empty";
+      readonly total: 0;
+      readonly message: string;
+    }
+  | {
+      readonly kind: "file" | "hunk" | "comment" | "unviewed" | "viewed";
       readonly state: "unavailable";
+      readonly message: string;
+    }
+  | {
+      readonly kind: "unviewed";
+      readonly state: "target" | "wrapped";
+      readonly position: number;
+      readonly total: number;
+      readonly path: string;
       readonly message: string;
     }
   | {
@@ -216,6 +230,59 @@ export function adjacentFilePath(
   const nextIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
   if (nextIndex < 0 || nextIndex >= order.length) return undefined;
   return order[nextIndex];
+}
+
+/**
+ * The next or previous file in `order` that is not in `viewed`, searching
+ * from `current` and wrapping past either end. `wrapped` is true when the
+ * search passed an end; `undefined` means every file is viewed.
+ */
+export function adjacentUnviewedFilePath(
+  order: ReadonlyArray<string>,
+  viewed: ReadonlySet<string>,
+  current: string | undefined,
+  direction: ReviewNavDirection,
+): { readonly path: string; readonly wrapped: boolean } | undefined {
+  const unviewed = order.filter((path) => !viewed.has(path));
+  const wrappedPath = direction === "next" ? unviewed[0] : unviewed.at(-1);
+  if (wrappedPath === undefined) return undefined;
+  const currentIndex = current === undefined ? -1 : order.indexOf(current);
+  const ahead =
+    direction === "next"
+      ? order.slice(currentIndex + 1)
+      : order.slice(0, Math.max(currentIndex, 0)).reverse();
+  const path = ahead.find((candidate) => !viewed.has(candidate));
+  if (path !== undefined) return { path, wrapped: false };
+  return { path: wrappedPath, wrapped: true };
+}
+
+/** Builds the structured outcome for one unviewed-file keypress. */
+export function unviewedFileNavigationStatus(
+  order: ReadonlyArray<string>,
+  viewed: ReadonlySet<string>,
+  target: { readonly path: string; readonly wrapped: boolean } | undefined,
+  direction: ReviewNavDirection,
+): ReviewDiffNavigationStatus {
+  if (target === undefined)
+    return {
+      kind: "unviewed",
+      state: "empty",
+      total: 0,
+      message: "Every file is viewed.",
+    };
+  const unviewed = order.filter((path) => !viewed.has(path));
+  const position = unviewed.indexOf(target.path) + 1;
+  const landed = `Unviewed file ${position} of ${unviewed.length}: ${target.path}.`;
+  return {
+    kind: "unviewed",
+    state: target.wrapped ? "wrapped" : "target",
+    position,
+    total: unviewed.length,
+    path: target.path,
+    message: target.wrapped
+      ? `Wrapped to the ${direction === "next" ? "first" : "last"} unviewed file. ${landed}`
+      : landed,
+  };
 }
 
 /** Which column a hunk's scroll anchor line lives in -- mirrors

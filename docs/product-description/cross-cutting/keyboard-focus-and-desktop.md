@@ -44,6 +44,8 @@ Selecting the current destination again does nothing. Keyboard focus moving amon
 
 Mouse clicks, keyboard commands, and supported native menu items call the same destination and action owners as visible buttons. A Visited pull requests row opens its Review on a click, Enter, or Space and requests that destination through the same guard as Back and Navigate. Pull requests rows support keyboard selection and Enter activation; Review navigation supports keyboard movement through its file and section controls.
 
+In the Diff with All files chosen, single keys move and mark files: `,` and `.` for the previous and next file, `[` and `]` for the previous and next change, `{` and `}` for the previous and next comment, `p` and `n` for the previous and next file not yet marked Viewed, and `v` to toggle Viewed on the current file, the one highlighted in Browse. They do nothing while a text field has focus or while ⌘, Ctrl, or Option is held.
+
 Opening Settings writes a session-only section marker for reload restoration. Changing workbench position saves the position for the current Review. These view preferences do not change represented revision, freshness, or write authority.
 
 ### While the action runs

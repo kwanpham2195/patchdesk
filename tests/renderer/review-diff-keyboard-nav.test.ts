@@ -5,6 +5,7 @@ import {
   adjacentCommentAnchor,
   adjacentFilePath,
   adjacentHunkAnchor,
+  adjacentUnviewedFilePath,
   buildCommentOrder,
   commentNavAnnouncement,
   findCommentThreadCard,
@@ -69,6 +70,63 @@ describe("adjacentFilePath", () => {
       expect(adjacentFilePath([], current, "next")).toBeUndefined();
     },
   );
+});
+
+describe("adjacentUnviewedFilePath", () => {
+  const order = ["a", "b", "c", "d"];
+
+  it.each([
+    ["next", "a", "c"],
+    ["previous", "d", "c"],
+  ] as const)(
+    "skips viewed files moving %s from %s",
+    (direction, current, expected) => {
+      expect(
+        adjacentUnviewedFilePath(order, new Set(["b"]), current, direction),
+      ).toEqual({ path: expected, wrapped: false });
+    },
+  );
+
+  it.each([
+    ["next", "c", "a"],
+    ["previous", "a", "c"],
+  ] as const)(
+    "wraps moving %s from %s past the end",
+    (direction, current, expected) => {
+      expect(
+        adjacentUnviewedFilePath(
+          order,
+          new Set(["b", "d"]),
+          current,
+          direction,
+        ),
+      ).toEqual({ path: expected, wrapped: true });
+    },
+  );
+
+  it("wraps onto the current file when it is the only unviewed one", () => {
+    expect(
+      adjacentUnviewedFilePath(order, new Set(["a", "b", "d"]), "c", "next"),
+    ).toEqual({ path: "c", wrapped: true });
+  });
+
+  it.each([
+    ["next", "a"],
+    ["previous", "d"],
+  ] as const)(
+    "treats an unresolved current file as before the first on %s",
+    (direction, expected) => {
+      expect(
+        adjacentUnviewedFilePath(order, new Set(), undefined, direction),
+      ).toEqual({ path: expected, wrapped: direction === "previous" });
+    },
+  );
+
+  it("returns undefined when every file is viewed", () => {
+    expect(
+      adjacentUnviewedFilePath(order, new Set(order), "a", "next"),
+    ).toBeUndefined();
+  });
 });
 
 describe("adjacentHunkAnchor", () => {

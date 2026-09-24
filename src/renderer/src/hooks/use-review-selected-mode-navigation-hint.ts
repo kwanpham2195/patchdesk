@@ -18,6 +18,11 @@ function navigationKeyKind(
     case "{":
     case "}":
       return "comment";
+    case "n":
+    case "p":
+      return "unviewed";
+    case "v":
+      return "viewed";
     default:
       return undefined;
   }
