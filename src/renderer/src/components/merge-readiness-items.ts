@@ -7,7 +7,7 @@ export type MergeReadinessItem =
 
 /**
  * The blocking entries PR overview lists, top to bottom; the Review header's
- * Merge chip names the first one, so both read from this single ordering.
+ * Merge chip names the first one and counts the rest, so both read from this single ordering.
  */
 export function mergeReadinessItems(
   blockers: readonly string[],
@@ -57,16 +57,40 @@ function blockerRestatesReason(
   }
 }
 
-/** The short name of the first listed blocker, or undefined when it names no specific cause. */
-export function firstMergeBlockerLabel(
+/** The short names of the listed blockers in list order, skipping entries that name no specific cause. */
+export function mergeBlockerLabels(
   blockers: readonly string[],
   mergeReasons: ReadonlyArray<MergeDisplayReason>,
-): string | undefined {
-  const first = mergeReadinessItems(blockers, mergeReasons)[0];
-  if (first === undefined) return undefined;
-  return first.kind === "reason"
-    ? reasonShortLabel(first.reason.code)
-    : blockerShortLabel(first.blocker);
+): ReadonlyArray<string> {
+  const labels = mergeReadinessItems(blockers, mergeReasons).map((item) =>
+    item.kind === "reason"
+      ? reasonShortLabel(item.reason.code)
+      : blockerShortLabel(item.blocker),
+  );
+  return [...new Set(labels.filter((label) => label !== undefined))];
+}
+
+/** What a Blocked Merge chip shows and what assistive tech reads for it. */
+type BlockedMergeChip = {
+  readonly text: string;
+  readonly accessibleName: string;
+};
+
+/**
+ * The Merge chip for a Blocked Review: it names the first cause and counts
+ * the rest, while its accessible name lists every cause.
+ */
+export function blockedMergeChip(
+  labels: ReadonlyArray<string>,
+): BlockedMergeChip {
+  const [first] = labels;
+  if (first === undefined)
+    return { text: "Blocked", accessibleName: "blocked" };
+  const more = labels.length > 1 ? ` +${labels.length - 1}` : "";
+  return {
+    text: `Blocked · ${first}${more}`,
+    accessibleName: `blocked: ${labels.join(", ").toLowerCase()}`,
+  };
 }
 
 function reasonShortLabel(

@@ -119,7 +119,10 @@ export function buildInsightReaders({
     workbench.insights.analysis.retained !== undefined ? (
       <AnalysisReader
         result={workbench.insights.analysis.retained.value}
-        checkStatus={workbench.checks.overall}
+        {...(workbench.review.status !== "open" &&
+        workbench.checks.overall === "unknown"
+          ? {}
+          : { checkStatus: workbench.checks.overall })}
         findingStatuses={Object.fromEntries(
           Object.entries(workbench.analysisReviewActions?.findings ?? {}).map(
             ([id, status]) => [id, status.state],

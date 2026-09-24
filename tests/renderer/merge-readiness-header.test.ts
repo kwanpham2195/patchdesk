@@ -5,7 +5,10 @@ import {
   mergeReadinessLabel,
   mergeReadinessTone,
 } from "../../src/renderer/src/components/pr-overview-sheet";
-import { firstMergeBlockerLabel } from "../../src/renderer/src/components/merge-readiness-items";
+import {
+  blockedMergeChip,
+  mergeBlockerLabels,
+} from "../../src/renderer/src/components/merge-readiness-items";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { MergeDisplayReason } from "../../src/domain/github-context";
 
@@ -106,7 +109,7 @@ describe("mergeReadinessLabel and mergeReadinessTone", () => {
   });
 });
 
-describe("firstMergeBlockerLabel", () => {
+describe("mergeBlockerLabels", () => {
   const reason = (code: MergeDisplayReason["code"]): MergeDisplayReason => ({
     code,
     message: `${code} message`,
@@ -232,7 +235,41 @@ describe("firstMergeBlockerLabel", () => {
     { name: "no blockers at all", blockers: [], reasons: [], label: undefined },
   ];
 
-  it.each(cases)("names $name", ({ blockers, reasons, label }) => {
-    expect(firstMergeBlockerLabel(blockers, reasons)).toBe(label);
+  it.each(cases)("names $name first", ({ blockers, reasons, label }) => {
+    expect(mergeBlockerLabels(blockers, reasons)[0]).toBe(label);
+  });
+
+  it("lists every named cause once, in list order", () => {
+    expect(
+      mergeBlockerLabels(
+        ["draft", "conflicting", "required_check", "failing_check"],
+        [reason("conflicts")],
+      ),
+    ).toEqual(["Draft", "Conflicts", "Checks"]);
+  });
+});
+
+describe("blockedMergeChip", () => {
+  it.each([
+    {
+      name: "no named cause reads plain Blocked",
+      labels: [],
+      text: "Blocked",
+      accessibleName: "blocked",
+    },
+    {
+      name: "one cause is named without a count",
+      labels: ["Draft"],
+      text: "Blocked · Draft",
+      accessibleName: "blocked: draft",
+    },
+    {
+      name: "further causes are counted, and all are named for assistive tech",
+      labels: ["Draft", "Conflicts", "Checks"],
+      text: "Blocked · Draft +2",
+      accessibleName: "blocked: draft, conflicts, checks",
+    },
+  ])("$name", ({ labels, text, accessibleName }) => {
+    expect(blockedMergeChip(labels)).toEqual({ text, accessibleName });
   });
 });

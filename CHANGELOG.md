@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a merged pull request reading **Ready to merge** with "No blockers or warnings." in PR overview. A merged or closed Review now reads **Merged** or **Closed** there with no blocker cards or merge controls, drops "Up to date with GitHub · checked 8 d ago" from the header and the Revision row, and hides the **Checks** chip and the Analysis CI badge when its checks are unknown. The **Merge** chip now counts causes beyond the first, as in "Merge · Blocked · Draft +1", and a draft reads as a neutral card instead of a red error. #348
+
 - The Pull requests inspector now shows **Failed** for an Insight whose last run failed, where it read **Not run**, and lists the chips Brief, Walkthrough, Analysis like the Insights tabs. The Merged filter no longer wraps its inspector toggle onto an empty second row or repeats a **Merged** badge on every row, row badges now follow the title's last word, and a zero change count such as "-0" reads muted instead of red or green. #348
 
 - The Insights tab now opens with one row above the document: the Brief / Walkthrough / Analysis tabs, with the generated time, provider, model, and **Regenerate** at the row's right end. Tab states read as muted text after a small dot instead of bordered pills, and a merged or closed Review no longer repeats "Insights cannot be generated" under the header's **Merge** chip. #348
