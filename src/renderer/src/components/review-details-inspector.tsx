@@ -72,7 +72,7 @@ export function ReviewDetailsInspector({
             </span>
           </dd>
         </div>
-        <Fact label="Changes" value={changeStatsText(row.changeStats)} mono />
+        <ChangesFact stats={row.changeStats} />
         {row.scope === undefined ? null : (
           <div className="col-span-2 min-w-0">
             <FactLabel>Scope</FactLabel>
@@ -189,21 +189,23 @@ function InspectorStatusCard({
 const INSIGHT_STATE_LABELS = {
   ready: "Ready",
   outdated: "Outdated",
+  failed: "Failed",
   absent: "Not run",
 } as const;
 
-/** Retained-but-stale evidence is still readable, so Outdated reads amber rather than red. */
+/** Retained-but-stale evidence is still readable, so Outdated reads amber and only Failed reads red. */
 const INSIGHT_STATE_TONES = {
   ready: "secondary",
   outdated: "warning",
+  failed: "destructive",
   absent: "outline",
 } as const;
 
-/** The Insight kinds the inspector lists, in reading order. */
+/** The Insight kinds the inspector lists, in the Insights tab order. */
 const INSPECTOR_INSIGHTS = [
   { kind: "brief", noun: "Brief" },
-  { kind: "analysis", noun: "Analysis" },
   { kind: "walkthrough", noun: "Walkthrough" },
+  { kind: "analysis", noun: "Analysis" },
 ] as const satisfies ReadonlyArray<{
   readonly kind: InboxInsightKind;
   readonly noun: string;
@@ -244,28 +246,60 @@ function InsightsFact({ row }: { readonly row: InboxRow }): React.JSX.Element {
 function Fact({
   label,
   value,
-  mono = false,
 }: {
   readonly label: string;
   readonly value: string;
-  readonly mono?: boolean;
 }): React.JSX.Element {
   return (
     <div className="min-w-0">
       <FactLabel>{label}</FactLabel>
-      <dd
-        className={cn(
-          "mt-0.5 text-[12px]",
-          // The change counts are the one fact worth two lines: the column is
-          // narrow enough to clip "-30" off the end, and a clipped count reads
-          // as a smaller diff rather than as a truncation.
-          mono
-            ? "font-mono text-[11px] tabular-nums [overflow-wrap:anywhere]"
-            : "truncate",
-        )}
-        title={value}
-      >
+      <dd className="mt-0.5 truncate text-[12px]" title={value}>
         {value}
+      </dd>
+    </div>
+  );
+}
+
+/** The change counts, with a zero count muted so "-0" does not read as a removal. */
+function ChangesFact({
+  stats,
+}: {
+  readonly stats: InboxRow["changeStats"];
+}): React.JSX.Element {
+  const { additions, deletions, changedFiles } = stats;
+  const parts = [
+    changedFiles === undefined
+      ? undefined
+      : { text: `${changedFiles} files`, zero: false },
+    additions === undefined
+      ? undefined
+      : { text: `+${additions}`, zero: additions === 0 },
+    deletions === undefined
+      ? undefined
+      : { text: `-${deletions}`, zero: deletions === 0 },
+  ].filter((part) => part !== undefined);
+  const text =
+    parts.length === 0
+      ? "Not available"
+      : parts.map((part) => part.text).join(" · ");
+  return (
+    <div className="min-w-0">
+      <FactLabel>Changes</FactLabel>
+      {/* The one fact worth two lines: a clipped "-30" reads as a smaller diff rather than a truncation. */}
+      <dd
+        className="mt-0.5 font-mono text-[11px] tabular-nums [overflow-wrap:anywhere]"
+        title={text}
+      >
+        {parts.length === 0
+          ? text
+          : parts.map((part, index) => (
+              <span key={part.text}>
+                {index === 0 ? null : " · "}
+                <span className={cn(part.zero && "text-muted-foreground")}>
+                  {part.text}
+                </span>
+              </span>
+            ))}
       </dd>
     </div>
   );
@@ -281,14 +315,4 @@ function FactLabel({
       {children}
     </dt>
   );
-}
-
-function changeStatsText(stats: InboxRow["changeStats"]): string {
-  const { additions, deletions, changedFiles } = stats;
-  const parts = [
-    changedFiles === undefined ? undefined : `${changedFiles} files`,
-    additions === undefined ? undefined : `+${additions}`,
-    deletions === undefined ? undefined : `-${deletions}`,
-  ].filter((value): value is string => value !== undefined);
-  return parts.length === 0 ? "Not available" : parts.join(" · ");
 }

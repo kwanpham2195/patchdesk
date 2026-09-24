@@ -569,6 +569,7 @@ function InboxRowsPanel({
                 onAction={() => onActionRow(row)}
                 openingState={openingOperations.get(key)}
                 columns={columns}
+                stateFilter={state}
               />
             );
           })}

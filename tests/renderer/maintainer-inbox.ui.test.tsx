@@ -449,10 +449,9 @@ describe("MaintainerInbox", () => {
       />,
     );
 
-    // The row's Merged badge, the filter bar's state Select showing its
-    // current value, and the inspector's review-state card — the queue rail
-    // is gone entirely (slice 8a), so no fourth "Merged" source remains.
-    expect(screen.getAllByText("Merged")).toHaveLength(3);
+    // The filter bar's state Select and the inspector's review-state card;
+    // the row drops its Merged badge because the filter already says it.
+    expect(screen.getAllByText("Merged")).toHaveLength(2);
     const stateSelect = screen.getByRole("combobox", {
       name: "Pull request state",
     });

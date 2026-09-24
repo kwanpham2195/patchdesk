@@ -301,8 +301,8 @@ export type InboxReviewSummary = {
  */
 const INBOX_INSIGHT_KINDS = ["brief", "analysis", "walkthrough"] as const;
 export type InboxInsightKind = (typeof INBOX_INSIGHT_KINDS)[number];
-/** `ready` is bound to the row's current head; `outdated` is bound to an earlier one. */
-export const INBOX_INSIGHT_STATES = ["ready", "outdated"] as const;
+/** `ready` is bound to the row's current head, `outdated` to an earlier one; `failed` is a last run that ended without a result, as the workbench shows it. */
+export const INBOX_INSIGHT_STATES = ["ready", "outdated", "failed"] as const;
 export type InboxInsightState = (typeof INBOX_INSIGHT_STATES)[number];
 export type InboxInsightReadiness = Partial<
   Record<InboxInsightKind, InboxInsightState>
@@ -340,10 +340,10 @@ export type MaintainerInboxRow = {
   readonly scope?: ChangeScope;
   /**
    * The Insight kinds Patchdesk holds for this row's Review, each said to be
-   * bound to the current head or to an earlier one. A kind with nothing
-   * retained is absent rather than `false`, and the whole field is absent when
-   * no kind has a state: a row that has never been reviewed has no claim to
-   * make either way.
+   * bound to the current head or to an earlier one, or to have failed its
+   * last run. A kind with nothing retained is absent rather than `false`, and
+   * the whole field is absent when no kind has a state: a row that has never
+   * been reviewed has no claim to make either way.
    */
   readonly insights?: InboxInsightReadiness;
   readonly latestReview?: InboxReviewSummary;

@@ -33,7 +33,10 @@ const row: InboxRow = {
   dataFreshness: "fresh",
 };
 
-function renderRow(value: InboxRow): void {
+function renderRow(
+  value: InboxRow,
+  stateFilter: InboxRow["remoteState"] = "open",
+): void {
   render(
     <InboxRowItem
       row={value}
@@ -42,6 +45,7 @@ function renderRow(value: InboxRow): void {
       onAction={vi.fn()}
       openingState={undefined}
       columns={{ labels: true, changes: true }}
+      stateFilter={stateFilter}
     />,
   );
 }
@@ -55,6 +59,15 @@ describe("InboxRowItem", () => {
   it("leaves the tag off a row with no Brief for its current head", () => {
     renderRow(row);
     expect(screen.queryByText("Brief")).toBeNull();
+  });
+
+  it("leaves the Merged badge off a merged row only when the list already filters to merged", () => {
+    const merged: InboxRow = { ...row, remoteState: "merged" };
+    renderRow(merged, "open");
+    expect(screen.getByText("Merged")).toBeTruthy();
+    cleanup();
+    renderRow(merged, "merged");
+    expect(screen.queryByText("Merged")).toBeNull();
   });
 
   it("marks a row whose head moved since the maintainer last looked, and only that row", () => {
@@ -116,6 +129,7 @@ describe("InboxRowItem", () => {
         onAction={onAction}
         openingState={{ status: "opening" }}
         columns={{ labels: true, changes: true }}
+        stateFilter="open"
       />,
     );
     const option = screen.getByRole("option");
@@ -161,6 +175,7 @@ function renderActionableRow() {
       onAction={onAction}
       openingState={undefined}
       columns={{ labels: true, changes: true }}
+      stateFilter="open"
     />,
   );
   return { onSelect, onAction };

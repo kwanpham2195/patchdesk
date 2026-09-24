@@ -98,7 +98,12 @@ describe("ReviewDetailsInspector", () => {
       <MaintainerInbox
         profileId="inspector-insights"
         profileLabel="P"
-        rows={[{ ...row, insights: { brief: "ready", analysis: "outdated" } }]}
+        rows={[
+          {
+            ...row,
+            insights: { brief: "ready", analysis: "failed" },
+          },
+        ]}
         freshness="fresh"
         refreshStatus="Current"
         onOpenReview={vi.fn()}
@@ -112,7 +117,7 @@ describe("ReviewDetailsInspector", () => {
       within(inspector).getByRole("status", { name: "Current" }),
     ).toBeTruthy();
     expect(within(inspector).getByLabelText("Brief: Ready")).toBeTruthy();
-    expect(within(inspector).getByLabelText("Analysis: Outdated")).toBeTruthy();
+    expect(within(inspector).getByLabelText("Analysis: Failed")).toBeTruthy();
     expect(
       within(inspector).getByLabelText("Walkthrough: Not run"),
     ).toBeTruthy();
