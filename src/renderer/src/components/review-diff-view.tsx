@@ -57,8 +57,6 @@ import { pierreDiffColorsCss } from "@/diff-colors";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
 import {
   diffThemeFor,
-  loadDiffThemePreferences,
-  parseDiffThemePreferences,
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
@@ -76,6 +74,7 @@ import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
 import { useReviewSelectedModeNavigationHint } from "@/hooks/use-review-selected-mode-navigation-hint";
 import { useReviewDiffSelectionScroll } from "@/hooks/use-review-diff-scroll-state";
 import { useDiffWorkerPoolTheme } from "@/hooks/use-diff-worker-pool-theme";
+import { useDiffAppearanceTheme } from "@/hooks/use-diff-code-theme";
 import {
   useReviewDiffModel,
   type ReviewDiffModel,
@@ -250,6 +249,8 @@ type ReviewDiffViewProps = {
   readonly bodyContext?: PullRequestBodyContext;
   /** Drives the toolbar Scope picker; absent where the diff cannot be filtered by bucket. */
   readonly scopeFilter?: ScopeFilterControl | undefined;
+  /** Drawn first in the toolbar, such as the review navigator toggle. */
+  readonly toolbarLeadingAction?: React.ReactNode;
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
@@ -277,39 +278,12 @@ function ReviewDiffSurface({
   conversationActions,
   bodyContext = EMPTY_BODY_CONTEXT,
   scopeFilter,
+  toolbarLeadingAction,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
-  const [appearance, setAppearance] = useState<ResolvedAppearance>(() =>
-    document.documentElement.dataset.appearance === "light" ? "light" : "dark",
-  );
-  const [themePreferences, setThemePreferences] =
-    useState<DiffThemePreferences>(() => loadDiffThemePreferences());
+  const { appearance, themePreferences } = useDiffAppearanceTheme();
   const viewer =
     useRef<CodeViewHandle<ReviewInlineAnnotation | undefined>>(null);
-  useEffect(() => {
-    const onAppearance = (event: Event): void => {
-      // SAFETY: only `window.dispatchEvent(new CustomEvent("patchdesk:appearance", ...))`
-      // ever fires this listener; the `if` below still validates the detail
-      // before trusting it as a real ResolvedAppearance.
-      const value = (event as CustomEvent<ResolvedAppearance>).detail;
-      if (value === "light" || value === "dark") setAppearance(value);
-    };
-    window.addEventListener("patchdesk:appearance", onAppearance);
-    return () =>
-      window.removeEventListener("patchdesk:appearance", onAppearance);
-  }, []);
-  useEffect(() => {
-    const onTheme = (event: Event): void => {
-      // SAFETY: only a `patchdesk:diff-theme` CustomEvent reaches this
-      // listener; its `detail` is still unknown to TS, and
-      // `parseDiffThemePreferences` validates it before use.
-      setThemePreferences(
-        parseDiffThemePreferences((event as CustomEvent<unknown>).detail),
-      );
-    };
-    window.addEventListener("patchdesk:diff-theme", onTheme);
-    return () => window.removeEventListener("patchdesk:diff-theme", onTheme);
-  }, []);
   useDiffWorkerPoolTheme(themePreferences);
   const {
     displayedAnnotations,
@@ -463,6 +437,7 @@ function ReviewDiffSurface({
       handleCodeViewScroll={handleCodeViewScroll}
       beginAuthoring={beginAuthoring}
       scopeFilter={scopeFilter}
+      toolbarLeadingAction={toolbarLeadingAction}
     />
   );
 }
@@ -520,6 +495,7 @@ type ReviewDiffRenderSiteProps = {
   readonly handleCodeViewScroll: ReviewDiffModel["handleCodeViewScroll"];
   readonly beginAuthoring: (selection: CodeViewLineSelection | null) => void;
   readonly scopeFilter: ScopeFilterControl | undefined;
+  readonly toolbarLeadingAction: React.ReactNode;
 };
 
 function ReviewDiffRenderSite({
@@ -562,6 +538,7 @@ function ReviewDiffRenderSite({
   handleCodeViewScroll,
   beginAuthoring,
   scopeFilter,
+  toolbarLeadingAction,
 }: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
     () => ({
@@ -683,6 +660,7 @@ function ReviewDiffRenderSite({
         onSetAllCollapsed={setAllCollapsed}
         scopeFilter={scopeFilter}
         markdownPreview={markdownPreview}
+        leadingAction={toolbarLeadingAction}
       />
       {!browserSupportsPierre &&
       localComposerAnnotation?.localComposer !== undefined ? (

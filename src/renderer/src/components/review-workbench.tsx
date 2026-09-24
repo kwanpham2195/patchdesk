@@ -812,8 +812,8 @@ export function ReviewWorkbench({
                             <TooltipTrigger
                               render={
                                 <Button
-                                  size="icon-sm"
-                                  variant="outline"
+                                  size="icon-xs"
+                                  variant="ghost"
                                   onClick={() =>
                                     setNavigatorVisible((visible) => !visible)
                                   }
