@@ -914,7 +914,7 @@ describe("MaintainerInbox", () => {
     );
     expect(
       screen.getByRole("button", {
-        name: "Refresh pull requests. GitHub: Cached after refresh failure · checked 3 h ago",
+        name: "Refresh pull requests. GitHub: Cached after refresh failure · checked 3h",
       }),
     ).toBeTruthy();
   });

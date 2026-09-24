@@ -28,7 +28,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Analysis opens in the Insights slot for the represented Review session. At the right end of the tab strip, a muted meta line says when the Analysis was generated ("Generated 7 h ago", or "Outdated · generated 7 h ago"), and the provider and model, with a secondary Regenerate button while the Insight is current.
+Analysis opens in the Insights slot for the represented Review session. At the right end of the tab strip, a muted meta line says when the Analysis was generated ("Generated 7h", or "Outdated · generated 7h"), and the provider and model, with a secondary Regenerate button while the Insight is current.
 
 The reader shows its cards in a fixed order.
 

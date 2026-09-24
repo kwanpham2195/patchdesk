@@ -384,7 +384,9 @@ function MoreFiltersPopover({
       />
       <PopoverContent className="w-80">
         <PopoverHeader>
-          <PopoverTitle>More filters</PopoverTitle>
+          <PopoverTitle className="text-[10px] font-medium tracking-[0.1em] text-muted-foreground uppercase">
+            More filters
+          </PopoverTitle>
         </PopoverHeader>
         <div className="grid gap-3">
           <Field>

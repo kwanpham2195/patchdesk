@@ -6,18 +6,16 @@ import type { WorkbenchResponse } from "./renderer-contracts";
 export type RevisionFreshness = WorkbenchResponse["revision"]["freshness"];
 
 /**
- * The muted freshness line every rail section renders under its heading,
- * derived from `model.revision.freshness` — the same signal the workbench
- * header's "Updates available" pill already reads, so the rail never
- * disagrees with the rest of the workbench about how current its data is.
- * A pure function in its own module so every section (Labels today,
- * Assignees and Reviewers later) reuses it verbatim instead of re-deriving
- * its own copy.
+ * The muted line at the top of the metadata rail when its data may be behind,
+ * from the same `model.revision.freshness` the workbench header reads, so the
+ * two never disagree. A fresh Review gets none.
  */
-export function freshnessCopy(freshness: RevisionFreshness): string {
+export function freshnessCopy(
+  freshness: RevisionFreshness,
+): string | undefined {
   switch (freshness) {
     case "fresh":
-      return "as of your last refresh";
+      return undefined;
     case "updates_available":
       return "may be out of date — updates available";
     case "unavailable":

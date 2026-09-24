@@ -161,9 +161,9 @@ describe("MaintainerInbox layout", () => {
     );
 
     const chip = screen.getByRole("button", {
-      name: "Refresh pull requests. GitHub: checked 26 min ago",
+      name: "Refresh pull requests. GitHub: checked 26m",
     });
-    expect(chip.textContent).toContain("26 min ago");
+    expect(chip.textContent).toContain("checked 26m");
     expect(screen.queryByText(/Updated .* ago/)).toBeNull();
   });
 });

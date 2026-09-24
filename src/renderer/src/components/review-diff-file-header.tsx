@@ -15,6 +15,7 @@ import {
 } from "@/review-finding-counts";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { Badge } from "@/components/ui/badge";
+import { changeCountToneClass } from "@/lib/change-count-tone";
 import { cn } from "@/lib/utils";
 
 /** Text tone for a finding badge, matching the severity badge in the Analysis reader. */
@@ -60,8 +61,19 @@ export function FileChangeCounts({
         data-deletions={stats.deletions}
         aria-label={`${stats.additions} additions, ${stats.deletions} deletions`}
       >
-        <span className="text-status-success">+{stats.additions}</span>
-        <span className="text-destructive">-{stats.deletions}</span>
+        <span
+          className={changeCountToneClass(
+            stats.additions,
+            "text-status-success",
+          )}
+        >
+          +{stats.additions}
+        </span>
+        <span
+          className={changeCountToneClass(stats.deletions, "text-destructive")}
+        >
+          -{stats.deletions}
+        </span>
       </span>
     </span>
   );

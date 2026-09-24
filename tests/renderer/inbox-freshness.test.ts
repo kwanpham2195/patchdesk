@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  formatInboxAge,
-  inboxFreshnessLabel,
-} from "../../src/renderer/src/inbox-freshness";
+import { inboxFreshnessLabel } from "../../src/renderer/src/inbox-freshness";
 
 describe("inboxFreshnessLabel", () => {
   it("returns Stale for a hard-refused cached snapshot", () => {
@@ -22,20 +19,5 @@ describe("inboxFreshnessLabel", () => {
         refreshing: false,
       }),
     ).toBe("Cached after refresh failure");
-  });
-});
-
-describe("formatInboxAge", () => {
-  it("formats boundary ages", () => {
-    expect(formatInboxAge(59_999)).toBe("moments ago");
-    expect(formatInboxAge(60_000)).toBe("1 minute ago");
-    expect(formatInboxAge(3_599_999)).toBe("1 hour ago");
-    expect(formatInboxAge(3_600_000)).toBe("1 hour ago");
-    expect(formatInboxAge(86_400_000)).toBe("1 day ago");
-  });
-
-  it("fails closed on an unparseable (NaN) age instead of reading as fresh", () => {
-    expect(formatInboxAge(Number.NaN)).not.toBe("moments ago");
-    expect(formatInboxAge(Number.NaN)).toBe("an unknown time ago");
   });
 });

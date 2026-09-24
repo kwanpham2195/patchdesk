@@ -137,6 +137,8 @@ export function AppCommandDialog({
       }}
       title="Navigate Patchdesk"
       description="Open a Patchdesk destination"
+      // A fixed top edge keeps the input still while results filter; a centred dialog moves with its height.
+      className="top-[15vh] translate-y-0"
     >
       <Command label="Search views and actions">
         <CommandInput

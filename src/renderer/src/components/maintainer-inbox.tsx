@@ -9,10 +9,11 @@ import {
 import { InboxFiltersBar } from "./inbox-filters-bar";
 import { LabelFilterPopover } from "./inbox-label-filter";
 import { InboxRowItem } from "./inbox-row-item";
+import { RelativeTime } from "./relative-time";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import { ReviewDetailsInspector } from "./review-details-inspector";
 import { useInboxView } from "../hooks/use-inbox-view";
-import { formatInboxAge, type InboxFreshnessLabel } from "@/inbox-freshness";
+import type { InboxFreshnessLabel } from "@/inbox-freshness";
 import {
   inboxColumnVisibility,
   inboxGridStyle,
@@ -347,9 +348,8 @@ function StaleInboxBanner({
     <Alert variant="warning" className="mx-3 mt-2 shrink-0">
       <AlertTitle>Priority order may be unreliable</AlertTitle>
       <AlertDescription>
-        Snapshot from {formatInboxAge(Date.now() - Date.parse(refreshedAt))}.
-        Sign-in unverified since then; order, checks, and review state may be
-        stale.
+        <RelativeTime iso={refreshedAt} prefix="Snapshot checked " />. Sign-in
+        unverified since then; order, checks, and review state may be stale.
       </AlertDescription>
     </Alert>
   );
