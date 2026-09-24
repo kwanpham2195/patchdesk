@@ -13,6 +13,7 @@ import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-stora
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
+import { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import { systemNow } from "../adapters/process/system-clock";
 import type {
@@ -36,6 +37,7 @@ import { DirectSummaryReviewService } from "../services/direct-summary-review-se
 import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import { AvatarSyncService } from "../services/avatar-sync-service";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
+import { ReviewViewedFilesService } from "../services/review-viewed-files-service";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { RefreshOperationService } from "../services/refresh-operation-service";
 import { ReviewObservationService } from "../services/review-observation-service";
@@ -89,6 +91,7 @@ export type LocalApiContainer = {
   readonly watchedPullRequests: WatchedPullRequestService;
   readonly reviewOperations: ReviewOperationCoordinator;
   readonly refreshOperations: RefreshOperationService;
+  readonly viewedFiles: ReviewViewedFilesService;
 };
 
 /** Either the built container, or the startup refusal that stopped it. */
@@ -197,6 +200,7 @@ export async function buildLocalApiContainer(
     diagnostics,
     notifier: configuration.desktopNotifier,
   });
+  const viewedFiles = new ViewedFilesStore(paths, logs);
   const reviewProjection = new ReviewWorkbenchProjectionService(
     profiles,
     sessions,
@@ -204,6 +208,7 @@ export async function buildLocalApiContainer(
     insights,
     paths,
     reviewWriteOperations,
+    viewedFiles,
   );
   const inlineConversations = new InlineConversationService(
     reviewWriteGate,
@@ -507,6 +512,11 @@ export async function buildLocalApiContainer(
       }),
       reviewOperations,
       refreshOperations,
+      viewedFiles: new ReviewViewedFilesService(
+        reviews,
+        viewedFiles,
+        reviewOperations,
+      ),
     },
   };
 }

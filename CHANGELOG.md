@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Saved **Viewed** marks in the Diff. Files marked Viewed stay marked after leaving the Review, switching Reviews, or restarting Patchdesk, and a new head starts with none viewed. #358
+
 - In the Diff with **All files** chosen, `n` and `p` jump to the next and previous file not marked **Viewed**, wrapping at the ends, and `v` toggles **Viewed** on the current file. The **All files** tooltip lists the new keys. #357
 
 - Split view now draws as unified while the Diff pane is too narrow for two readable code columns, and returns when the pane widens. The saved choice does not change; **View options** shows **Split view** disabled with the reason "Pane too narrow". #146

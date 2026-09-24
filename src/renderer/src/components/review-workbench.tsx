@@ -61,6 +61,7 @@ import {
 import { ReviewNavigatorResizeHandle } from "./review-navigator-resize-handle";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
+import type { ViewedFilesControls } from "../hooks/use-viewed-files";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
 import {
   loadReviewViewPreferences,
@@ -252,9 +253,12 @@ export function ReviewWorkbench({
   slots,
   initialState,
   onPositionCommitted,
+  viewedFiles,
 }: {
   readonly model: WorkbenchResponse;
   readonly actions: ReviewWorkbenchActions;
+  /** Saved Viewed marks for the full Review diff; a commit slice keeps its own. */
+  readonly viewedFiles?: ViewedFilesControls;
   readonly slots: ReviewWorkbenchSlots;
   readonly initialState?: ReviewWorkbenchInitialState;
   /** Reports a visible navigation command so reloads can restore it. */
@@ -767,6 +771,12 @@ export function ReviewWorkbench({
                         {...(selectedRange === undefined
                           ? {}
                           : { selectedRange })}
+                        {...definedProps({
+                          viewedFiles:
+                            selectedCommitSha === undefined
+                              ? viewedFiles
+                              : undefined,
+                        })}
                         {...(scopeFilteredPaths === undefined
                           ? {}
                           : { visiblePaths: scopeFilteredPaths })}
