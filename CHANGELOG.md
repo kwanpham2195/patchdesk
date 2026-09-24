@@ -4,6 +4,8 @@
 
 - Added **Add all to review** to the Analysis **Needs attention** card. It confirms once, listing every Finding it will add, then adds them one at a time with progress and a **Stop adding** button; it stops at the first failure and keeps Findings already added. #356
 
+- A long title in the **Visited pull requests** column now scrolls to its end and back after half a second of hover or keyboard focus, so it can be read without opening the pull request. Titles that fit stay still, and nothing moves when the system asks for reduced motion. #402
+
 - The **Visited pull requests** column now sits on the window background with no border, and its merged and closed markers read in muted grey after a purple or grey dot instead of bright blue and red. The open Review's row has a solid fill and a bold title, so it stands apart from a hovered row. #399
 
 - Changing **Check watched pull requests** in Settings → General → Notifications now takes effect at once: the next check comes one new interval after the change, with no restart. #365
