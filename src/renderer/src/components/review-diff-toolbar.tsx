@@ -183,6 +183,7 @@ export function ReviewDiffToolbar({
   onSetAllCollapsed,
   scopeFilter,
   markdownPreview,
+  leadingAction,
 }: {
   readonly virtualized: boolean;
   readonly preferences: Pick<
@@ -204,6 +205,8 @@ export function ReviewDiffToolbar({
   readonly scopeFilter?: ScopeFilterControl | undefined;
   /** Absent where the file on screen has no Markdown preview to switch to. */
   readonly markdownPreview?: MarkdownPreviewControl | undefined;
+  /** Drawn before every other control, such as the review navigator toggle. */
+  readonly leadingAction?: React.ReactNode;
 }): React.JSX.Element {
   // A showing preview replaces the CodeView, so every control that describes
   // one is suppressed; the Scope picker stays because it also filters Browse.
@@ -219,6 +222,7 @@ export function ReviewDiffToolbar({
       className="z-20 flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card/95 px-2 py-1 backdrop-blur"
     >
       <div className="flex flex-wrap items-center gap-1">
+        {leadingAction}
         {previewing ? null : (
           <ButtonGroup
             className={`items-center ${virtualized ? "flex" : "hidden"}`}

@@ -7,23 +7,20 @@ import {
   type DiffThemePreferences,
 } from "../diff-theme-preferences";
 
-/**
- * The Shiki theme name a code surface outside the Diff tab should use.
- *
- * The Diff tab hands `@pierre/diffs` both halves of the theme pair and lets
- * the element pick with `light-dark()`. A plain highlighted block has no such
- * element, so it resolves the pair itself and follows the same two events the
- * Diff tab listens to, keeping one shared theme choice across both.
- */
-export function useDiffCodeTheme(): string {
+type DiffAppearanceTheme = {
+  readonly appearance: ResolvedAppearance;
+  readonly themePreferences: DiffThemePreferences;
+};
+
+/** The app appearance and diff theme pair, following their change events. */
+export function useDiffAppearanceTheme(): DiffAppearanceTheme {
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() =>
     globalThis.document?.documentElement.dataset.appearance === "light"
       ? "light"
       : "dark",
   );
-  const [preferences, setPreferences] = useState<DiffThemePreferences>(() =>
-    loadDiffThemePreferences(),
-  );
+  const [themePreferences, setThemePreferences] =
+    useState<DiffThemePreferences>(() => loadDiffThemePreferences());
 
   useEffect(() => {
     const onAppearance = (event: Event): void => {
@@ -41,7 +38,7 @@ export function useDiffCodeTheme(): string {
     const onTheme = (event: Event): void => {
       // SAFETY: only a `patchdesk:diff-theme` CustomEvent reaches this
       // listener, and `parseDiffThemePreferences` validates its detail.
-      setPreferences(
+      setThemePreferences(
         parseDiffThemePreferences((event as CustomEvent<unknown>).detail),
       );
     };
@@ -49,5 +46,19 @@ export function useDiffCodeTheme(): string {
     return () => window.removeEventListener("patchdesk:diff-theme", onTheme);
   }, []);
 
-  return appearance === "light" ? preferences.light : preferences.dark;
+  return { appearance, themePreferences };
+}
+
+/**
+ * The Shiki theme name a code surface outside the Diff tab should use.
+ *
+ * The Diff tab hands `@pierre/diffs` both halves of the theme pair and lets
+ * the element pick with `light-dark()`; a plain highlighted block resolves the
+ * pair itself.
+ */
+export function useDiffCodeTheme(): string {
+  const { appearance, themePreferences } = useDiffAppearanceTheme();
+  return appearance === "light"
+    ? themePreferences.light
+    : themePreferences.dark;
 }

@@ -148,11 +148,10 @@ test("Pierre controls persist and navigator collapses", async ({ page }) => {
     await page.setViewportSize({ width: 1_440, height: 900 });
     await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
-    const hideNavigatorButton = '[aria-label="Hide review navigator"]';
 
     await chooseDiffOptions(page, { split: true, wrap: true });
     await page.getByRole("button", { name: "Selected", exact: true }).click();
-    await page.locator(`header ${hideNavigatorButton}`).click();
+    await page.getByRole("button", { name: "Hide review navigator" }).click();
 
     await expect(diff).toHaveAttribute("data-diff-style", "split");
     await expect(diff).toHaveAttribute("data-file-mode", "selected");

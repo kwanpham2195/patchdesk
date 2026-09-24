@@ -219,69 +219,29 @@ export function DiffWorkbench({
           </aside>
         )}
         <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-          <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
-            <div className="flex min-w-0 items-center gap-3">
-              {leadingAction}
-              {/* Each file block's sticky header names its file, so only a commit title belongs here. */}
-              {diffTitle === undefined ? null : (
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{diffTitle}</p>
-                  {diffSubtitle === undefined ? null : (
-                    <p className="text-xs text-muted-foreground">
-                      {diffSubtitle}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex shrink-0 gap-2">
+          {/* Each file block's sticky header names its file, so this row exists only for a commit. */}
+          {diffTitle === undefined ? null : (
+            <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{diffTitle}</p>
+                {diffSubtitle === undefined ? null : (
+                  <p className="text-xs text-muted-foreground">
+                    {diffSubtitle}
+                  </p>
+                )}
+              </div>
               {copyValue === undefined ? null : (
                 <Button
                   variant="outline"
                   size="sm"
+                  className="shrink-0"
                   onClick={() => void navigator.clipboard?.writeText(copyValue)}
                 >
                   Copy commit SHA
                 </Button>
               )}
-              {hideFileNavigation ? null : (
-                <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
-                  <SheetTrigger
-                    render={
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="max-[1099px]:inline-flex min-[1100px]:hidden"
-                      />
-                    }
-                  >
-                    Files
-                  </SheetTrigger>
-                  <SheetContent side="left">
-                    <SheetHeader>
-                      <SheetTitle>Changed files</SheetTitle>
-                      <SheetDescription>
-                        Files in this revision.
-                      </SheetDescription>
-                    </SheetHeader>
-                    <div className="min-h-0 overflow-auto p-4">
-                      <PierreFileTree
-                        files={fileRows}
-                        {...(selectedPath === undefined
-                          ? {}
-                          : { selectedPath })}
-                        {...(activePath === undefined ? {} : { activePath })}
-                        onSelect={(path) => {
-                          selectFile(path);
-                          setNavigationOpen(false);
-                        }}
-                      />
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              )}
-            </div>
-          </header>
+            </header>
+          )}
           {viewedFiles?.saveFailed === true ? (
             <InlineError className="border-b px-4 py-2">
               Viewed marks could not be saved.
@@ -329,6 +289,47 @@ export function DiffWorkbench({
               ? {}
               : { onOpenFindingInAnalysis })}
             {...(selectedRange === undefined ? {} : { selectedRange })}
+            toolbarLeadingAction={
+              <>
+                {leadingAction}
+                {hideFileNavigation ? null : (
+                  <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
+                    <SheetTrigger
+                      render={
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          className="max-[1099px]:inline-flex min-[1100px]:hidden"
+                        />
+                      }
+                    >
+                      Files
+                    </SheetTrigger>
+                    <SheetContent side="left">
+                      <SheetHeader>
+                        <SheetTitle>Changed files</SheetTitle>
+                        <SheetDescription>
+                          Files in this revision.
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="min-h-0 overflow-auto p-4">
+                        <PierreFileTree
+                          files={fileRows}
+                          {...(selectedPath === undefined
+                            ? {}
+                            : { selectedPath })}
+                          {...(activePath === undefined ? {} : { activePath })}
+                          onSelect={(path) => {
+                            selectFile(path);
+                            setNavigationOpen(false);
+                          }}
+                        />
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+                )}
+              </>
+            }
           />
         </div>
       </section>

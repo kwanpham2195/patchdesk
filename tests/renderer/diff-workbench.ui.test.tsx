@@ -176,6 +176,52 @@ describe("diff workbench", () => {
     expect(screen.getByLabelText("Diff workbench")).toBeTruthy();
   });
 
+  it("draws no header row without a commit and puts the leading action in the diff toolbar", () => {
+    const { container } = render(
+      <DiffWorkbench
+        patch={patch}
+        hideFileNavigation
+        leadingAction={<button type="button">Hide review navigator</button>}
+      />,
+    );
+
+    // The toolbar is drawn inside the Review diff region; the header row sits above it.
+    expect(
+      within(screen.getByRole("region", { name: "Review diff" })).getByRole(
+        "button",
+        { name: "Hide review navigator" },
+      ),
+    ).toBeTruthy();
+    expect(container.querySelector("header")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Copy commit SHA" }),
+    ).toBeNull();
+  });
+
+  it("shows the selected commit's title above the toolbar and keeps the leading action", () => {
+    render(
+      <DiffWorkbench
+        patch={patch}
+        hideFileNavigation
+        leadingAction={<button type="button">Hide review navigator</button>}
+        diffTitle="fix: guard the empty form"
+        diffSubtitle="1 of 3"
+        copyValue="abc1234"
+      />,
+    );
+
+    expect(screen.getByText("fix: guard the empty form")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Copy commit SHA" }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: "Review diff" })).getByRole(
+        "button",
+        { name: "Hide review navigator" },
+      ),
+    ).toBeTruthy();
+  });
+
   it("keeps Markdown in diff mode while verified head content is unavailable", async () => {
     desktop = installDesktopDouble({
       "/v1/reviews/diff-file": () =>
