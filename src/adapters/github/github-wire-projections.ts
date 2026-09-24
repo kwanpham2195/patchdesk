@@ -389,7 +389,7 @@ function mapMergePolicyReviewDecision(
   return "unknown";
 }
 
-function mapMergeStateStatus(
+export function mapMergeStateStatus(
   value: string | null | undefined,
 ): GitHubMergeStateStatus {
   switch (value) {

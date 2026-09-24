@@ -3,8 +3,10 @@ import { definedProps } from "./defined-props";
 import type {
   CheckSummary,
   GitHubLabel,
+  GitHubMergeStateStatus,
   PullRequestSummary,
 } from "./github-context";
+import { listingMergeability } from "./merge-readiness";
 import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 import type { RepositoryIdentity } from "./repository-identity";
@@ -331,6 +333,8 @@ export type MaintainerInboxRow = {
   readonly checks: CheckSummary;
   readonly reviewState: PullRequestSummary["reviewState"];
   readonly mergeability: PullRequestSummary["mergeability"];
+  /** Absent on a row cached before the listing read it; see `listingMergeability`. */
+  readonly mergeStateStatus?: GitHubMergeStateStatus;
   /**
    * Present only when Patchdesk already holds a Review session whose retained
    * patch describes this row's current head. GitHub's inbox query returns
@@ -388,7 +392,10 @@ export function projectMaintainerInboxRow(input: {
   if (
     input.dataFreshness === "fresh" &&
     review?.matchesCurrentHead &&
-    input.summary.mergeability === "mergeable" &&
+    listingMergeability({
+      mergeable: input.summary.mergeability,
+      mergeStateStatus: input.summary.mergeStateStatus ?? "unavailable",
+    }) === "mergeable" &&
     input.checks.overall === "passing"
   )
     categories.push("ready_to_merge");
@@ -436,6 +443,7 @@ export function projectMaintainerInboxRow(input: {
     checks: input.checks,
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
+    ...definedProps({ mergeStateStatus: input.summary.mergeStateStatus }),
     ...scopeField,
     ...definedProps({ insights: input.insights }),
     ...latestReviewField,
@@ -490,6 +498,7 @@ function projectMergedMaintainerInboxRow(input: {
     checks: input.checks,
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
+    ...definedProps({ mergeStateStatus: input.summary.mergeStateStatus }),
     ...scopeField,
     ...definedProps({ insights: input.insights }),
     headMovedSinceLastLooked: false,

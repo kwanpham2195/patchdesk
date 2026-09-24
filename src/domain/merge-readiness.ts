@@ -189,7 +189,7 @@ function checkReason(message: string): MergeDisplayReason {
  * different, lower-confidence source this axis does not touch.
  */
 export function readinessMergeability(
-  aggregate: GitHubMergeEvidence,
+  aggregate: Pick<GitHubMergeEvidence, "mergeable" | "mergeStateStatus">,
   mergePolicyComplete?: boolean,
 ): "mergeable" | "conflicting" | "blocked" | "unknown" {
   if (mergePolicyComplete === false) return "unknown";
@@ -198,4 +198,17 @@ export function readinessMergeability(
   if (mergeable === "blocked" || status === "blocked" || status === "behind")
     return "blocked";
   return mergeable;
+}
+
+/**
+ * A listing row's mergeability, folded as the Review folds it. A row with no
+ * reported merge state, such as one cached before the listing read it, is
+ * unknown rather than mergeable, so it never reads ready.
+ */
+export function listingMergeability(
+  evidence: Pick<GitHubMergeEvidence, "mergeable" | "mergeStateStatus">,
+): "mergeable" | "conflicting" | "blocked" | "unknown" {
+  return evidence.mergeStateStatus === "unavailable"
+    ? "unknown"
+    : readinessMergeability(evidence);
 }

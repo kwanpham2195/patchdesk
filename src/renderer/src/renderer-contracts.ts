@@ -15,7 +15,10 @@ import {
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
 import { changeScopeSchema } from "../../domain/change-scope";
-import { CHECK_OVERALL_STATES } from "../../domain/github-context";
+import {
+  CHECK_OVERALL_STATES,
+  GITHUB_MERGE_STATE_STATUSES,
+} from "../../domain/github-context";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
 import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
@@ -98,6 +101,8 @@ const inboxRowSchema = v.strictObject({
   checks: checkSchema,
   reviewState: reviewStateSchema,
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
+  /** Absent on a row cached before the listing read it; see `MaintainerInboxRow.mergeStateStatus`. */
+  mergeStateStatus: v.optional(v.picklist(GITHUB_MERGE_STATE_STATUSES)),
   /** Present only for a row whose retained Review session still matches the current head; see `MaintainerInboxRow.scope`. */
   scope: v.optional(changeScopeSchema),
   /** Present only when the row's Review retains at least one Insight; see `MaintainerInboxRow.insights`. */

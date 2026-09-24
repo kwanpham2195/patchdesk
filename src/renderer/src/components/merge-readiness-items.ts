@@ -1,6 +1,7 @@
 import type { MergeDisplayReason } from "../../../domain/github-context";
 import {
   evaluateMergeReadiness,
+  listingMergeability,
   type MergeReadiness,
 } from "../../../domain/merge-readiness";
 import type { InboxRow } from "../renderer-contracts";
@@ -211,12 +212,7 @@ type InboxRowMergeFact = {
   readonly tone: string;
 };
 
-/**
- * The Merge fact for one listing row. The listing reads GitHub's `mergeable`,
- * draft state, check rollup, and review decision but not branch rules, so a
- * required check still running or a strict "behind base" rule shows only in
- * the Review.
- */
+/** The Merge fact for one listing row, evaluated by the Review's readiness rule from the listing's merge evidence. */
 export function inboxRowMergeFact(row: InboxRow): InboxRowMergeFact {
   if (row.remoteState === "merged")
     return { text: "Merged", accessibleName: "merged", tone: successTone };
@@ -224,7 +220,10 @@ export function inboxRowMergeFact(row: InboxRow): InboxRowMergeFact {
     isCurrentHead: true,
     isOpen: true,
     isDraft: row.isDraft,
-    mergeability: row.mergeability,
+    mergeability: listingMergeability({
+      mergeable: row.mergeability,
+      mergeStateStatus: row.mergeStateStatus ?? "unavailable",
+    }),
     // The listing reads only the check rollup, never per-check required flags.
     checks: { overall: row.checks.overall, checks: [] },
     hasFailingChecks: row.checks.overall === "failing",

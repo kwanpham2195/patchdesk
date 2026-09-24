@@ -127,7 +127,7 @@ describe("maintainer inbox cache store", () => {
     });
   });
 
-  it("round-trips the author's avatar URL, and still parses a row without one", async () => {
+  it("round-trips the author's avatar URL and merge state, and still parses a row without them", async () => {
     const { store, profileId } = await fixtureStore();
     const base = {
       remoteState: "open" as const,
@@ -158,7 +158,11 @@ describe("maintainer inbox cache store", () => {
       schemaVersion: 2 as const,
       refreshedAt: updatedAt,
       rows: [
-        { ...base, authorAvatarUrl: "https://avatars.example/author.png" },
+        {
+          ...base,
+          authorAvatarUrl: "https://avatars.example/author.png",
+          mergeStateStatus: "blocked" as const,
+        },
         base,
       ],
       repository: {

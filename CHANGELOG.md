@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The Pull requests inspector shows a **Merge** fact beside **Checks**, worded like PR overview Merge readiness: **Ready to merge**, **Blocked · Conflicts +1**, **Draft**, **Unknown** before GitHub reports mergeability, or **Merged**. It reads the listing's mergeable, draft, checks, and review state; branch rules such as a running required check show only in the Review. #348
+- The Pull requests inspector shows a **Merge** fact beside **Checks**, worded like PR overview Merge readiness: **Ready to merge**, **Blocked · Conflicts +1**, **Draft**, **Unknown** before GitHub reports mergeability, or **Merged**. It applies the Review's readiness rule to the listing's merge state, so a branch GitHub's rules block reads **Blocked** in both places, and a pull request is no longer counted Ready to merge while its Review says Blocked. #348
 
 - More status badges show an icon beside their word. Conversation review verdicts use the same icons as the Reviewers rail, the Analysis verdict badge uses the approved, changes-requested, or commented icon, Threads rows mark Open, Resolved, Outdated, and Pending with their own icon, **Needs your reply** carries a reply arrow, and in Pull requests rows **Merged** has a merge icon and **Brief** the green check Insight status uses. #348
 

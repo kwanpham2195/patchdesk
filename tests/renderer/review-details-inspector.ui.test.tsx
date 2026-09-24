@@ -171,23 +171,35 @@ describe("ReviewDetailsInspector", () => {
       name: "a clean, approved row reads ready to merge",
       overrides: {
         mergeability: "mergeable",
+        mergeStateStatus: "clean",
         checks: { overall: "passing", checks: [] },
         reviewState: "approved",
       },
       mergeName: "Merge: ready to merge",
     },
     {
+      name: "a mergeable branch GitHub's rules block reads blocked, as the Review does",
+      overrides: {
+        mergeability: "mergeable",
+        mergeStateStatus: "blocked",
+        checks: { overall: "passing", checks: [] },
+        reviewState: "approved",
+      },
+      mergeName: "Merge: blocked",
+    },
+    {
       name: "a draft with conflicts names every cause",
       overrides: {
         isDraft: true,
         mergeability: "conflicting",
+        mergeStateStatus: "dirty",
         checks: { overall: "failing", checks: [] },
       },
       mergeName: "Merge: blocked: draft, conflicts, checks",
     },
     {
-      name: "a row GitHub has not classified reads unknown",
-      overrides: { mergeability: "unknown" },
+      name: "a row with no reported merge state reads unknown",
+      overrides: { mergeability: "mergeable" },
       mergeName: "Merge: unknown",
     },
   ])("shows the Merge fact: $name", ({ overrides, mergeName }) => {

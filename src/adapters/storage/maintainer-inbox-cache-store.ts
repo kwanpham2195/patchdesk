@@ -27,7 +27,10 @@ import {
   type InboxReviewSummary,
   type MaintainerInboxRow,
 } from "../../domain/maintainer-inbox";
-import type { PullRequestSummary } from "../../domain/github-context";
+import {
+  GITHUB_MERGE_STATE_STATUSES,
+  type PullRequestSummary,
+} from "../../domain/github-context";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
 import { checksSchema, projectChecks } from "./check-summary-schema";
@@ -98,6 +101,8 @@ const rowSchema = v.strictObject({
     "unknown",
   ]),
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
+  /** Optional because rows cached before the listing read it lack it; they read as unknown mergeability. */
+  mergeStateStatus: v.optional(v.picklist(GITHUB_MERGE_STATE_STATUSES)),
   /** Written whenever the fresh row carried one; the cache is strict, so a row field it does not name invalidates the whole file. */
   scope: v.optional(changeScopeSchema),
   /** Named here for the same reason `scope` is: the cache is strict, so an unnamed row field invalidates the whole file. */
@@ -272,6 +277,7 @@ function parseRow(
     checks,
     reviewState: summaryState,
     mergeability: input.mergeability,
+    ...definedProps({ mergeStateStatus: input.mergeStateStatus }),
     ...scopeField,
     ...definedProps({
       insights:

@@ -142,7 +142,11 @@ describe("maintainer inbox", () => {
   it("keeps Open Review as the one action for a ready-to-merge matching Review", () => {
     const row = projectMaintainerInboxRow({
       ...input,
-      summary: { ...input.summary, mergeability: "mergeable" },
+      summary: {
+        ...input.summary,
+        mergeability: "mergeable",
+        mergeStateStatus: "clean",
+      },
       checks: { overall: "passing", checks: [] },
       latestReview: {
         reviewId,
@@ -225,7 +229,11 @@ describe("maintainer inbox", () => {
     };
     const readyInput = {
       ...input,
-      summary: { ...input.summary, mergeability: "mergeable" as const },
+      summary: {
+        ...input.summary,
+        mergeability: "mergeable" as const,
+        mergeStateStatus: "clean" as const,
+      },
       checks: { overall: "passing" as const, checks: [] },
       latestReview: matchingReview,
       dataFreshness: "fresh" as const,
@@ -259,6 +267,23 @@ describe("maintainer inbox", () => {
           ...readyInput.summary,
           mergeability: "conflicting" as const,
         },
+      });
+      expect(row.categories).not.toContain("ready_to_merge");
+    });
+
+    it("is absent when GitHub's merge state blocks a mergeable branch, as the Review would", () => {
+      const row = projectMaintainerInboxRow({
+        ...readyInput,
+        summary: { ...readyInput.summary, mergeStateStatus: "blocked" },
+      });
+      expect(row.categories).not.toContain("ready_to_merge");
+    });
+
+    it("is absent when GitHub did not report a merge state", () => {
+      const { mergeStateStatus: _dropped, ...unreported } = readyInput.summary;
+      const row = projectMaintainerInboxRow({
+        ...readyInput,
+        summary: unreported,
       });
       expect(row.categories).not.toContain("ready_to_merge");
     });
