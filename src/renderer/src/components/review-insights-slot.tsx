@@ -264,6 +264,13 @@ export function InsightsSlot({
       addFinding: onAddFinding,
       addAllFindings,
       onOpenFindingInDiff: openFindingInDiff,
+      // The Brief points at the Walkthrough rather than duplicating it: read the current one, or start one while the Review is open.
+      onOpenWalkthrough:
+        workbench.insights.walkthrough.status === "current"
+          ? () => setSelectedInsight("walkthrough")
+          : reviewOpen
+            ? () => openRunDialog("run", "walkthrough")
+            : undefined,
     }),
     dismissFinding,
     analysisVerification,
@@ -271,16 +278,6 @@ export function InsightsSlot({
     walkthroughFocused,
     setWalkthroughFocused: requestWalkthroughFocusChange,
     onRegenerateBrief: () => openRunDialog("regenerate"),
-    // The Brief points at the Walkthrough rather than duplicating it: read the
-    // one that already stands for this revision, or start one from the same
-    // run dialog every other Insight run uses.
-    onOpenWalkthrough: () => {
-      if (workbench.insights.walkthrough.status === "current") {
-        setSelectedInsight("walkthrough");
-        return;
-      }
-      openRunDialog("run", "walkthrough");
-    },
     runEnabled,
   });
   const walkthroughFocusActive =
@@ -301,6 +298,7 @@ export function InsightsSlot({
     configuration.runDialogType === null
       ? undefined
       : runs[configuration.runDialogType];
+  const retryRun = reviewOpen ? () => openRunDialog("retry") : undefined;
   const selectedRequestFailureMessage = insightRequestFailureMessage(
     selectedInsightName,
     selectedRequestFailure,
@@ -376,16 +374,15 @@ export function InsightsSlot({
               <InsightFailed
                 projection={selectedProjection}
                 activity={selectedRunning?.activity}
-                onRetry={() => openRunDialog("retry")}
                 onReprepare={onReprepare}
-                {...definedProps({ retainedDescription })}
+                {...definedProps({ retainedDescription, onRetry: retryRun })}
               />
             ) : selectedIsOutdated ? (
               <InsightOutdated
                 type={selectedInsight}
-                onRetry={() => openRunDialog("retry")}
                 {...definedProps({
                   retainedRevision: selectedRetained?.headSha,
+                  onRetry: retryRun,
                 })}
                 currentRevision={currentRevision}
               />

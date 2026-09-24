@@ -31,7 +31,7 @@ type InsightReaderBuilderInput = {
   /** Opens the run dialog from the Brief's own Provenance card. */
   readonly onRegenerateBrief: () => void;
   /** Drives the Brief "Start here" card's Walkthrough link: open the one that exists, or run one. */
-  readonly onOpenWalkthrough: () => void;
+  readonly onOpenWalkthrough?: () => void;
   readonly runEnabled: boolean;
   /** Opens the Diff tab at a mapped finding's lines; absent outside the workbench. */
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
@@ -223,7 +223,7 @@ export function buildInsightReaders({
           : {})}
         regenerateDisabled={!runEnabled}
         walkthroughStatus={workbench.insights.walkthrough.status}
-        onOpenWalkthrough={onOpenWalkthrough}
+        {...definedProps({ onOpenWalkthrough })}
       />
     ) : null;
   return retainedAnalysis ?? retainedWalkthrough ?? retainedBrief;
