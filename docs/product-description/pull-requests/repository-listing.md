@@ -126,6 +126,7 @@ After a row-open failure, the row remains inspectable and can be activated again
 - Confirm row selection, inspector focus, and Arrow key wrapping in a real window.
 - Confirm the exact visible behavior when a selected row disappears during refresh.
 - Confirm which cached listing actions remain available in the running workbench.
-- Confirm the title hover affordance, double-click, and Enter each open exactly once in a real window.
+- Live pass on 2026-09-24 ([#63](https://github.com/kwanpham2195/patchdesk/issues/63)): the row title click, a double-click on the row, Enter on the focused row, and the inspector's Open button each sent one Review load and entered the workbench; a single click only selected. The inspector hid Watch on a merged row, and the palette refused Watch for a merged and a closed pull request with "Merged pull requests cannot be watched." and "Closed pull requests cannot be watched." ([#269](https://github.com/kwanpham2195/patchdesk/issues/269)). Closed rows cannot be listed, because the state filter offers only Open and Merged.
+- The inspector shows no mergeability fact, so the edge case "A ready row shows its Ready to merge evidence among the inspector's facts" is not observable; LIST-02-B failed on that part. Decide whether the inspector gains a mergeability fact or this page drops the claim.
 
 Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.
