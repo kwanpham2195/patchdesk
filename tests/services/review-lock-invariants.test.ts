@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ok, type Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 import {
   at,
   barrier,
@@ -233,7 +233,10 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
           reject: async () => ok(undefined),
           remove: async () => ok(undefined),
         },
-        (input) => refresh.refresh(input) as Promise<Result<unknown, unknown>>,
+        async (input) => {
+          const refreshed = await refresh.refresh(input);
+          return refreshed._tag === "ok" ? ok(undefined) : err(refreshed.error);
+        },
       );
       await expect(
         withinDeadline(route.issue(service), 500, `${route.name} refresh`),

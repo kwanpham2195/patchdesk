@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
-import { err, ok } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import type { ReviewRefreshFailure } from "../../src/services/review-refresh-service";
 
 type UpdateReviewCommentInput = Parameters<
   NonNullable<GitHubReviewWriter["updateReviewComment"]>
@@ -83,9 +84,7 @@ function fixture(
     readonly write?: () => Promise<
       ReturnType<typeof ok<void>> | ReturnType<typeof err<typeof unavailable>>
     >;
-    readonly refresh?: () => Promise<
-      ReturnType<typeof ok<void>> | ReturnType<typeof err<string>>
-    >;
+    readonly refresh?: () => Promise<Result<undefined, ReviewRefreshFailure>>;
     readonly headSha?: string;
     readonly publishedFeedback?: typeof feedback;
   } = {},
@@ -383,7 +382,9 @@ describe("PublishedFeedbackService", () => {
   });
 
   it("returns confirmed success with reconciliation required when refresh fails", async () => {
-    const built = fixture({ refresh: async () => err("refresh failed") });
+    const built = fixture({
+      refresh: async () => err({ reason: "github_read" }),
+    });
     await expect(
       built.service.deleteComment({
         ...input,
