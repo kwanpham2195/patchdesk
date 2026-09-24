@@ -297,6 +297,44 @@ describe("useReviewObservation scheduling", () => {
     });
   });
 
+  it.each([
+    ["the remount's run answers first", [2, 1]],
+    ["the discarded first run answers first", [1, 2]],
+  ] as const)(
+    "applies one detection after a Strict Mode remount when %s",
+    async (_name, order) => {
+      vi.useFakeTimers();
+      const answers = [deferred<unknown>(), deferred<unknown>()];
+      installObservationDouble({
+        detect: (call) => answers[call - 1]?.promise,
+      });
+      const base = projection();
+      const patch = vi.fn<(value: ReviewWorkbenchPatch) => void>();
+      renderHook(
+        () =>
+          useReviewObservation({
+            workbench: base,
+            onWorkbenchReplace: vi.fn(),
+            onWorkbenchPatch: patch,
+          }),
+        { wrapper: StrictMode },
+      );
+      await flush();
+
+      for (const call of order) {
+        await act(async () => {
+          answers[call - 1]?.resolve({ _tag: "RevisionChanged" });
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      }
+
+      expect(patch).toHaveBeenCalledTimes(1);
+      expect(patch).toHaveBeenCalledWith({
+        revision: { ...base.revision, freshness: "updates_available" },
+      });
+    },
+  );
+
   it("does not detect while the Review is no longer open", async () => {
     vi.useFakeTimers();
     const observed = installObservationDouble({

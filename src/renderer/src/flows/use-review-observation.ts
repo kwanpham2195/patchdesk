@@ -101,7 +101,8 @@ export function useReviewObservation({
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
   const mountEpochRef = useRef(0);
-  const detectInFlightRef = useRef(false);
+  // Keyed by generation so a Strict Mode remount, which bumps the generation and discards the first run's result, can start its own run.
+  const detectInFlightGenerationRef = useRef<number | undefined>(undefined);
   const detectCompletionRef = useRef<Promise<void> | undefined>(undefined);
   const commandInFlightCountRef = useRef(0);
   const directCommandGenerationRef = useRef(0);
@@ -142,19 +143,19 @@ export function useReviewObservation({
     const wb = workbenchRef.current;
     if (wb.review.status !== "open") return;
     if (document.visibilityState !== "visible") return;
+    const generation = generationRef.current;
     if (
-      detectInFlightRef.current ||
+      detectInFlightGenerationRef.current === generation ||
       commandInFlightCountRef.current > 0 ||
       refreshInFlightCountRef.current > 0
     )
       return;
-    detectInFlightRef.current = true;
+    detectInFlightGenerationRef.current = generation;
     let resolveDetectCompletion!: () => void;
     const detectCompletion = new Promise<void>((resolve) => {
       resolveDetectCompletion = resolve;
     });
     detectCompletionRef.current = detectCompletion;
-    const generation = generationRef.current;
     const directCommandGeneration = directCommandGenerationRef.current;
     const key = snapshotKey(wb);
     try {
@@ -230,7 +231,8 @@ export function useReviewObservation({
     } catch {
       // Detection is advisory and never replaces the represented snapshot.
     } finally {
-      detectInFlightRef.current = false;
+      if (detectInFlightGenerationRef.current === generation)
+        detectInFlightGenerationRef.current = undefined;
       resolveDetectCompletion();
       if (detectCompletionRef.current === detectCompletion)
         detectCompletionRef.current = undefined;
