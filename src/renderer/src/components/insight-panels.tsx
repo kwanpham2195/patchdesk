@@ -14,17 +14,17 @@ import {
 } from "./ui/empty";
 import { Spinner } from "./ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type { InsightFailureCategory } from "../../../domain/insight-record";
 import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { InsightRunActivity } from "../insight-contracts";
 import { RelativeTime } from "./relative-time";
-import {
-  insightStatusTone,
-  type InsightStatusTone,
-} from "../insight-status-tone";
+import { INSIGHT_STATUS_LABELS } from "../insight-status";
 import { INSIGHT_ICONS } from "../insight-icons";
+import { InsightStatusIcon } from "./insight-status-icon";
+import { cn } from "@/lib/utils";
 
 export type InsightProjection =
   | WorkbenchResponse["insights"]["analysis"]
@@ -42,14 +42,9 @@ const INSIGHT_PURPOSES = {
   walkthrough: "Chapter-by-chapter read of the change.",
   brief: "Structure and where to start.",
 } as const satisfies Record<InsightRunDialogType, string>;
-/** The rail marks each state with a small dot so the tabs stay quiet; Not generated is a hollow ring. */
-const STATUS_DOT_CLASS = {
-  success: "bg-status-success",
-  warning: "bg-status-warning",
-  secondary: "bg-muted-foreground",
-  destructive: "bg-destructive",
-  outline: "ring-1 ring-inset ring-muted-foreground",
-} as const satisfies Record<InsightStatusTone, string>;
+/** Not run reads dimmer than a tab with a result, selected or not. */
+const NOT_RUN_TAB_CLASS =
+  "text-foreground/40 data-active:text-foreground/70 dark:text-muted-foreground/60 dark:data-active:text-foreground/70";
 const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
 const INSIGHT_EMPTY_CLASS = "mx-auto max-w-2xl justify-start py-10";
 
@@ -92,10 +87,7 @@ export function InsightNavRail({
         >
           <TabsList variant="line" className="pb-1">
             {documents.map(([type, projection]) => (
-              <TabsTrigger key={type} value={type}>
-                {INSIGHT_NOUNS[type]}
-                <InsightStatusMark status={projection.status} />
-              </TabsTrigger>
+              <InsightTab key={type} type={type} status={projection.status} />
             ))}
           </TabsList>
         </Tabs>
@@ -105,23 +97,36 @@ export function InsightNavRail({
   );
 }
 
-function InsightStatusMark({
+/** Only Running, Outdated, and Failed draw an icon; the tooltip and accessible name carry the word. */
+function InsightTab({
+  type,
   status,
 }: {
+  readonly type: InsightRunDialogType;
   readonly status: InsightProjection["status"];
 }): React.JSX.Element {
+  const noun = INSIGHT_NOUNS[type];
+  const label = INSIGHT_STATUS_LABELS[status];
+  if (label === undefined)
+    return <TabsTrigger value={type}>{noun}</TabsTrigger>;
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
-      {status === "running" ? (
-        <Spinner className="size-3" />
-      ) : (
-        <span
-          aria-hidden="true"
-          className={`size-1.5 shrink-0 rounded-full ${STATUS_DOT_CLASS[insightStatusTone(status)]}`}
-        />
-      )}
-      {insightStatusLabel(status)}
-    </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <TabsTrigger
+            value={type}
+            aria-label={`${noun}: ${label}`}
+            className={cn(status === "not_generated" && NOT_RUN_TAB_CLASS)}
+          />
+        }
+      >
+        {noun}
+        {status === "not_generated" ? null : (
+          <InsightStatusIcon status={status} />
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -384,25 +389,4 @@ export function InsightEmpty({
       )}
     </Empty>
   );
-}
-
-function insightStatusLabel(status: string): string {
-  switch (status) {
-    case "not_generated":
-      return "Not generated";
-    case "running":
-      return "Running";
-    case "current":
-      return "Generated";
-    case "outdated":
-      return "Outdated";
-    case "failed":
-      return "Failed";
-    case "error":
-      return "Error";
-    case "idle":
-      return "Idle";
-    default:
-      return status;
-  }
 }

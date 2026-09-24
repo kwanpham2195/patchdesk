@@ -11,8 +11,10 @@ import {
 
 import {
   InsightFailed,
+  InsightNavRail,
   InsightRunning,
 } from "../../src/renderer/src/components/insight-panels";
+import { briefInsight, withAnalysis } from "./review-workbench-fixtures";
 
 const failedProjection = {
   status: "failed",
@@ -27,6 +29,31 @@ const failedProjection = {
 
 afterEach(() => {
   cleanup();
+});
+
+it("names each Insight tab with its status and leaves a current result unmarked", () => {
+  const workbench = withAnalysis("actionable");
+  render(
+    <InsightNavRail
+      workbench={{
+        ...workbench,
+        insights: {
+          ...workbench.insights,
+          brief: briefInsight({ status: "failed" }),
+        },
+      }}
+      selectedInsight="analysis"
+      setSelectedInsight={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("tab", { name: "Brief: Failed" })).not.toBeNull();
+  expect(
+    screen.getByRole("tab", { name: "Walkthrough: Not run" }),
+  ).not.toBeNull();
+  expect(
+    screen.getByRole("tab", { name: "Analysis", selected: true }),
+  ).not.toBeNull();
 });
 
 it("renders a running Insight's command trace", () => {

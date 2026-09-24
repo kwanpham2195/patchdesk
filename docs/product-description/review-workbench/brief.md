@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Brief occupies the Insights slot for the represented Review. The Insight tab strip reads Brief, Walkthrough, Analysis, each followed by a muted status: a small dot and Generated, Not generated, Outdated, or Failed, or a spinner and Running. Insights opens on the first of Brief, Walkthrough, and Analysis that has a retained result, and on Brief when none has one; a restored or explicitly chosen Insight wins over that rule.
+Brief occupies the Insights slot for the represented Review. The Insight tab strip reads Brief, Walkthrough, Analysis. A tab with a current result has no mark; Running shows a spinner, Outdated an amber clock, and Failed a red circle-x, each naming its state in a tooltip; a Not run tab has no icon and a dimmer name. Insights opens on the first of Brief, Walkthrough, and Analysis that has a retained result, and on Brief when none has one; a restored or explicitly chosen Insight wins over that rule.
 
 A retained result is laid out in two columns on a wide window and one column on a narrow one. The main column holds up to three Flow views, one per kind, the grouped Shape tree, and four Reach rows. The side column holds the Start here card, a read-only copy of the Scope card, and the Provenance card.
 

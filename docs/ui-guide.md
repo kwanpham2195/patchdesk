@@ -26,8 +26,8 @@ Base UI activates tabs manually: the arrow keys move focus along the list, and E
 ## Status badges
 
 A state is shown as one `Badge`, and the tone comes from a plain function, never from a bare grey word or an inline `variant` picked at the call site.
-`insightStatusTone` in `src/renderer/src/insight-status-tone.ts` maps the five Insight states: Current is `success` (green), Outdated is `warning` (amber), Running is `secondary` with a `Spinner` beside the label, Failed is `destructive` (red), and Not generated is `outline`.
-The Brief / Walkthrough / Analysis rail is the exception to the `Badge` rule: a tab label is already a control, so each state is muted text after a small dot in that tone, a hollow ring for Not generated, or a `Spinner` for Running.
+`InsightStatusIcon` in `src/renderer/src/components/insight-status-icon.tsx` draws the five Insight states: a green check for Current, an amber history clock for Outdated, a `Spinner` for Running, a red circle-x for Failed, and a muted dashed circle for Not run. `INSIGHT_STATUS_LABELS` in `src/renderer/src/insight-status.ts` holds the words; Current has none.
+The Brief / Walkthrough / Analysis tabs show the icon alone, with the word in a tooltip and the tab's accessible name; Current shows nothing, and a Not run tab has no icon and a dimmer name. PR overview and the Pull requests inspector show the icon and the word.
 Add a new state to that function, so the rail and the PR overview sheet change together.
 
 ## Empty, running, and failed states
