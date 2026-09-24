@@ -131,6 +131,30 @@ describe("InsightStore schema", () => {
     ).toBe("err");
   });
 
+  it("rejects a record that is both running and failed", () => {
+    const { replacementFailure, ...withoutFailure } = currentRecord;
+    const running = {
+      ...withoutFailure,
+      activeRun: {
+        id: "insight-walkthrough-3-aaaaaaaaaaaa-github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+        type: "walkthrough" as const,
+        revision: currentRecord.retained.revision,
+        token: 3,
+        provider: "pi" as const,
+        model: "model",
+        reasoning: "medium" as const,
+        status: "running" as const,
+        startedAt: "2026-08-01T00:02:00.000Z",
+      },
+    };
+
+    expect(parseInsightRecord(running)._tag).toBe("ok");
+    expect(parseInsightRecord({ ...running, replacementFailure })).toEqual({
+      _tag: "err",
+      error: expect.objectContaining({ reason: "invalid_stored_value" }),
+    });
+  });
+
   it("rejects historical unavailable provenance", () => {
     expect(
       parseInsightRecord({

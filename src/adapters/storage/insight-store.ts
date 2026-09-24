@@ -265,6 +265,9 @@ function parseV2Record(
 ): Result<InsightRecord<RetainedInsight<unknown>>, StorageFailure> {
   const common = parseCommonRecord(input);
   if (common._tag === "err") return common;
+  // No transition writes both, and consumers disagree on which one wins, so the pair is corrupt data.
+  if (input.activeRun !== undefined && input.replacementFailure !== undefined)
+    return invalidRead();
   const activeRun =
     input.activeRun === undefined ? undefined : parseActiveRun(input.activeRun);
   if (activeRun?._tag === "err") return invalidRead();
