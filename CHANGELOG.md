@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Pull requests **GitHub:** chip now shows how long ago the list was read, such as "GitHub: checked 26 min ago", in place of "Aged" and the separate "Updated … ago" line; it stays the Refresh control. A column with nothing in it on the current page, such as **Labels**, is hidden and its width goes to the others, and Previous, Next, and **Rows per page** hide on a short single page. **Visited** rows label both times, as in "#347 · opened 28m" and "merged, seen 7h". #363
+
 - The Review header keeps one layout for every pull request state: the status chips sit under the title and Refresh ends the meta line. A merged or closed Review states that once, in the **Merge** chip, and its Insights draw no disabled **Generate** button. Freshness reads in plain words, such as "Up to date with GitHub · checked 7 h ago" and "Generated 7 h ago", in place of "Current" and "retained". #361
 
 - Saved **Viewed** marks in the Diff. Files marked Viewed stay marked after leaving the Review, switching Reviews, or restarting Patchdesk, and a new head starts with none viewed. #358

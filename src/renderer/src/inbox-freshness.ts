@@ -3,8 +3,7 @@ import type { InboxSnapshotState } from "../../domain/maintainer-inbox";
 /**
  * The maintainer-facing copy for how current the inbox rows are. This is
  * presentation, not policy: every value below is English shown in a badge,
- * and the two-minute "Aged" cutoff is a wording threshold, not a rule about
- * what Patchdesk will serve. The rules live in
+ * and none of them is a rule about what Patchdesk will serve. The rules live in
  * `src/domain/inbox-freshness-policy.ts` — `isInboxCacheDegraded` and
  * `isInboxCacheStale` — which the main-process service also imports, and
  * which this module deliberately does not join: moving user-visible copy
@@ -15,7 +14,6 @@ import type { InboxSnapshotState } from "../../domain/maintainer-inbox";
 export type InboxFreshnessLabel =
   | "Refreshing"
   | "Current"
-  | "Aged"
   | "Partial"
   | "Cached after refresh failure"
   | "Stale"
@@ -25,8 +23,6 @@ export function inboxFreshnessLabel(input: {
   readonly remote?: InboxSnapshotState | undefined;
   readonly refreshing: boolean;
   readonly refreshFailed?: boolean;
-  readonly refreshedAt?: string | undefined;
-  readonly now?: number;
 }): InboxFreshnessLabel {
   if (input.refreshing) return "Refreshing";
   if (input.refreshFailed === true) return "Cached after refresh failure";
@@ -34,19 +30,10 @@ export function inboxFreshnessLabel(input: {
   if (input.remote === "stale_cached") return "Stale";
   if (input.remote === "failed_cached") return "Cached after refresh failure";
   if (input.remote === "unavailable") return "Unavailable";
-  const refreshedAt =
-    input.refreshedAt === undefined
-      ? Number.NaN
-      : Date.parse(input.refreshedAt);
-  if (
-    !Number.isNaN(refreshedAt) &&
-    (input.now ?? Date.now()) - refreshedAt > 120_000
-  )
-    return "Aged";
   return "Current";
 }
 
-/** Prose elapsed-time copy for cached/aged freshness states — e.g. "3 hours ago". */
+/** Prose elapsed-time copy for the stale-snapshot banner — e.g. "3 hours ago". */
 export function formatInboxAge(ms: number): string {
   // An unparseable age (NaN) must fail closed, the same as the freshness
   // policy predicates: it must never read as "moments ago", which would

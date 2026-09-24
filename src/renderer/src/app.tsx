@@ -496,10 +496,6 @@ function AppContent({
     inbox?.inbox.snapshot?.state === undefined
       ? {}
       : { remote: inbox.inbox.snapshot.state };
-  const refreshedAtField =
-    inbox?.inbox.snapshot?.refreshedAt === undefined
-      ? {}
-      : { refreshedAt: inbox.inbox.snapshot.refreshedAt };
   return shell(
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
@@ -513,7 +509,6 @@ function AppContent({
           ...remoteField,
           refreshing: inboxRefreshing,
           refreshFailed: inboxRefreshFailed,
-          ...refreshedAtField,
         })}
         onRefresh={() => void refreshDashboard()}
         inboxState={inboxRequest.state}

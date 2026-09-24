@@ -27,7 +27,9 @@ stateDiagram-v2
 
 The filter bar shows the saved state (`Open` or `Merged`), the Awaiting review from you and Your pull requests toggles, a lazy label-filter button, and More filters once a Selected repository is known. More filters contains four fields: Review state (`Any`, `Not reviewed`, `Review required`, `Approved`, or `Changes requested`), Check status (`Any`, `Pending`, `Passing`, or `Failing`), Author, and Base branch. Author and Base branch are text fields. Author takes a GitHub login or `@me` and shows the placeholder `login or @me`; Base branch takes a branch name and shows the placeholder `main`. The badge shows the number of active fields. Rows per page offers 10, 25, and 50, with 25 as the default. The count is GitHub's repository-wide match count when a fresh search provides it; otherwise it honestly says how many rows are on this page.
 
-The freshness badge says GitHub: Current, Aged, Partial, Cached after refresh failure, Stale, or Unavailable. It is also the explicit refresh control. The badge never refreshes itself.
+The freshness badge shows how long ago the rows were read, such as `GitHub: checked 26 min ago`. A read that is not current names its state before the age: Partial, Cached after refresh failure, Stale, or Unavailable, as in `GitHub: Cached after refresh failure · checked 3 h ago`. While a read runs it says `GitHub: Refreshing`. The badge is also the explicit refresh control and never refreshes itself. There is no separate "Updated … ago" line.
+
+Previous and Next are hidden when there is one page and it is not full. Rows per page is hidden on a single page of 10 rows or fewer, since every size shows them all; it stays reachable whenever there are more rows than the smallest size or more than one page.
 
 ### Leave unchanged
 
@@ -108,7 +110,7 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 
 **Concurrent operations and locking.** Equivalent reads coalesce by profile, repository, filter, size, and page token. Generation checks keep late results from older requests off screen.
 
-**Feedback, errors, and diagnostics.** The screen distinguishes loading, Current, Aged, Partial, cached-after-failure, Stale, Unavailable, and repository-specific errors. It does not show raw page tokens.
+**Feedback, errors, and diagnostics.** The screen distinguishes loading, a current read with its age, Partial, cached-after-failure, Stale, Unavailable, and repository-specific errors. It does not show raw page tokens.
 
 **Preferences, keyboard commands, and desktop integration.** State, size, labels, the preset, Review state, Check status, Author, Base branch, and repository choices restore per profile. The command palette's Pull requests group sets either preset. Refresh can be invoked from the freshness badge or desktop command.
 
@@ -146,7 +148,7 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 - Confirm Enter versus blur for applying Author and Base branch in a real window.
 - The Your pull requests preset, its exclusivity with Awaiting review from you, and both command-palette entries are drafted from source and tests; they are not yet live-verified in the running app.
 - Suspected gap: either preset, Review state, Check status, a change from Open to Merged, and a change of Selected repository can all lengthen the search, and none is measured at its control. With a search near 256 characters, the main process refuses the resulting read as an invalid request. Confirm what the listing shows in that case. See [B-20](../bug-triage.md#b-20-some-pull-requests-filters-are-not-measured-against-the-search-length-limit).
-- Confirm the visual difference between Current, Aged, Partial, Cached after refresh failure, Stale, and Unavailable in the running app.
+- Confirm the visual difference between a current read, Partial, Cached after refresh failure, Stale, and Unavailable in the running app.
 - Confirm keyboard focus after label selection, page changes, and freshness-badge refresh.
 - Confirm whether a stale cache should remain actionable for opening Reviews while merge-oriented actions are disabled.
 - Confirm the behavior when a page token expires remotely even though its local shape still validates.

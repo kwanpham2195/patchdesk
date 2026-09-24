@@ -13,6 +13,7 @@ import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 const row: InboxRow = {
@@ -895,8 +896,9 @@ describe("MaintainerInbox", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it("shows visible elapsed-age copy for a cached-after-failure snapshot", () => {
-    const { container } = render(
+  it("keeps the cached-after-failure state in the chip beside the age", () => {
+    vi.setSystemTime(new Date("2020-01-01T03:00:00.000Z"));
+    render(
       <MaintainerInbox
         profileId="p"
         profileLabel="P"
@@ -911,7 +913,11 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={vi.fn()}
       />,
     );
-    expect(within(container).getByText(/Updated .* ago/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Refresh pull requests. GitHub: Cached after refresh failure · checked 3 h ago",
+      }),
+    ).toBeTruthy();
   });
 
   it("renders GitHub's repository-wide matchCount, not the loaded page's row count", () => {
