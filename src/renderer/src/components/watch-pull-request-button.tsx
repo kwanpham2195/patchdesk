@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 
 /** The sentence a refused Watch or Unwatch shows beside its toggle. */
 function watchToggleFailureCopy(failure: WatchToggleFailure): string {
@@ -42,16 +43,21 @@ export function WatchPullRequestButton({
   pullRequest,
   size = "sm",
   className,
+  showFailure = true,
+  onTerminalRefusal,
 }: {
   readonly pullRequest: WatchedPullRequestRef;
   readonly size?: "xs" | "sm";
   readonly className?: string;
+  /** False when the surface renders `WatchPullRequestFailure` elsewhere. */
+  readonly showFailure?: boolean;
+  /** Called when GitHub reports the pull request merged or closed. */
+  readonly onTerminalRefusal?: () => void;
 }): React.JSX.Element | null {
   const watch = useWatchedPullRequests();
   if (watch === undefined) return null;
   const watched = watch.isWatched(pullRequest);
   const pending = watch.isPending(pullRequest);
-  const failure = watch.failureFor(pullRequest);
   return (
     <>
       <Button
@@ -59,7 +65,11 @@ export function WatchPullRequestButton({
         size={size}
         className={className}
         disabled={pending}
-        onClick={() => void watch.toggle(pullRequest)}
+        onClick={() =>
+          void watch.toggle(pullRequest).then((failure) => {
+            if (failure?.kind === "terminal") onTerminalRefusal?.();
+          })
+        }
       >
         {pending ? (
           <Spinner data-icon="inline-start" />
@@ -70,11 +80,29 @@ export function WatchPullRequestButton({
         )}
         {watched ? "Unwatch" : "Watch"}
       </Button>
-      {failure === undefined ? null : (
-        <InlineError className="basis-full text-xs">
-          {watchToggleFailureCopy(failure)}
-        </InlineError>
-      )}
+      {showFailure ? (
+        <WatchPullRequestFailure
+          pullRequest={pullRequest}
+          className="basis-full"
+        />
+      ) : null}
     </>
+  );
+}
+
+/** The last refused Watch or Unwatch of one pull request, if any. */
+export function WatchPullRequestFailure({
+  pullRequest,
+  className,
+}: {
+  readonly pullRequest: WatchedPullRequestRef;
+  readonly className?: string;
+}): React.JSX.Element | null {
+  const failure = useWatchedPullRequests()?.failureFor(pullRequest);
+  if (failure === undefined) return null;
+  return (
+    <InlineError className={cn("text-xs", className)}>
+      {watchToggleFailureCopy(failure)}
+    </InlineError>
   );
 }

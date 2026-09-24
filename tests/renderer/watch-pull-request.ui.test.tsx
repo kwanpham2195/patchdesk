@@ -335,4 +335,46 @@ describe("Watch toggle surfaces", () => {
 
     expect(await screen.findByRole("button", { name: "Unwatch" })).toBeTruthy();
   });
+  it("puts a closed refusal below the header actions and asks detection to confirm it", async () => {
+    installWatchRoutes({ pullRequests: [] }, () =>
+      failure(
+        { error: { _tag: "WatchedPullRequestTerminal", state: "closed" } },
+        409,
+      ),
+    );
+    const parsed = parsePullRequestInput("acme/widgets#7");
+    if (parsed._tag === "err") throw new Error("invalid fixture");
+    const detectUpdates = vi.fn(async () => undefined);
+    render(
+      <WatchedPullRequestsProvider profileId="acme">
+        <ReviewWorkbenchHeader
+          model={projection()}
+          actions={{
+            detectUpdates,
+            refresh: vi.fn(),
+            loadCommitDiff: vi.fn(),
+            loadSinceReviewDiff: vi.fn(),
+            reportNavigationState: vi.fn(),
+          }}
+          title="Canonical workbench"
+          repository="octo-org/patchdesk"
+          checksLabel="Passing"
+          freshnessLabel="Up to date with GitHub"
+          mergeStatus="Ready"
+          hasUpdates={false}
+          terminal={false}
+          externalPullRequest={parsed.value}
+          openOverview={vi.fn()}
+          setSummaryDialogOpen={vi.fn()}
+        />
+      </WatchedPullRequestsProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Watch" }));
+
+    const refusal = await screen.findByRole("alert");
+    const actions = screen.getByRole("group", { name: "Pull request actions" });
+    expect(actions.contains(refusal)).toBe(false);
+    await waitFor(() => expect(detectUpdates).toHaveBeenCalledTimes(1));
+  });
 });

@@ -269,8 +269,8 @@ export function AppCommandDialog({
                 failure={watch.failureFor(parsedPullRequest.value)}
                 query={query}
                 onSelect={() => {
-                  void watch.toggle(parsedPullRequest.value).then((applied) => {
-                    if (applied) close();
+                  void watch.toggle(parsedPullRequest.value).then((failure) => {
+                    if (failure === undefined) close();
                   });
                 }}
               />
