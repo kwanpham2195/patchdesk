@@ -449,9 +449,9 @@ describe("MaintainerInbox", () => {
       />,
     );
 
-    // The filter bar's state Select and the inspector's review-state card;
-    // the row drops its Merged badge because the filter already says it.
-    expect(screen.getAllByText("Merged")).toHaveLength(2);
+    // The filter bar's state Select, the inspector's review-state card, and
+    // its Merge fact; the row drops its Merged badge because the filter already says it.
+    expect(screen.getAllByText("Merged")).toHaveLength(3);
     const stateSelect = screen.getByRole("combobox", {
       name: "Pull request state",
     });

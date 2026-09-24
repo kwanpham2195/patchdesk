@@ -12,6 +12,7 @@ import {
   type InspectorReviewStatusKind,
 } from "@/inspector-review-status";
 import { LabelChip } from "./label-chip";
+import { inboxRowMergeFact } from "./merge-readiness-items";
 import { InsightStatusIcon } from "./insight-status-icon";
 import type { InsightStatus } from "@/insight-status";
 import { CheckIcon } from "./inbox-row-item";
@@ -74,6 +75,7 @@ export function ReviewDetailsInspector({
             </span>
           </dd>
         </div>
+        <MergeFact row={row} />
         <ChangesFact stats={row.changeStats} />
         {row.scope === undefined ? null : (
           <div className="col-span-2 min-w-0">
@@ -265,6 +267,23 @@ function Fact({
       <FactLabel>{label}</FactLabel>
       <dd className="mt-0.5 truncate text-[12px]" title={value}>
         {value}
+      </dd>
+    </div>
+  );
+}
+
+/** The Merge fact in PR overview's readiness wording; a blocked row names its first cause and its accessible name lists them all. */
+function MergeFact({ row }: { readonly row: InboxRow }): React.JSX.Element {
+  const fact = inboxRowMergeFact(row);
+  return (
+    <div className="min-w-0">
+      <FactLabel>Merge</FactLabel>
+      <dd
+        className={cn("mt-0.5 truncate text-[12px]", fact.tone)}
+        aria-label={`Merge: ${fact.accessibleName}`}
+        title={fact.text}
+      >
+        {fact.text}
       </dd>
     </div>
   );

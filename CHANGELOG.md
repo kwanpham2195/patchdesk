@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Pull requests inspector shows a **Merge** fact beside **Checks**, worded like PR overview Merge readiness: **Ready to merge**, **Blocked · Conflicts +1**, **Draft**, **Unknown** before GitHub reports mergeability, or **Merged**. It reads the listing's mergeable, draft, checks, and review state; branch rules such as a running required check show only in the Review. #348
+
 - More status badges show an icon beside their word. Conversation review verdicts use the same icons as the Reviewers rail, the Analysis verdict badge uses the approved, changes-requested, or commented icon, Threads rows mark Open, Resolved, Outdated, and Pending with their own icon, **Needs your reply** carries a reply arrow, and in Pull requests rows **Merged** has a merge icon and **Brief** the green check Insight status uses. #348
 
 - Fixed the header and Analysis Findings still showing **Finish review** and **Added** until a reload after the background update check found the pending review deleted on GitHub. They now follow GitHub on the next check. The notice that a Finish sent nothing now appears only for that result, also names a different pending review found on GitHub, and clears when Finish review reopens or a Refresh completes; reopening Finish review no longer shows an earlier error. #419
