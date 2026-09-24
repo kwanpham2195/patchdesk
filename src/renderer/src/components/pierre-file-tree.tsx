@@ -11,6 +11,7 @@ import {
 import {
   buildActivePathTreeStyle,
   escapeCssAttributeValue,
+  FILE_NAME_TREE_STYLE,
   FLATTENED_PATH_TREE_STYLE,
   FOLDER_GIT_DOT_TREE_STYLE,
   GIT_STATUS_LABEL_TREE_STYLE,
@@ -136,6 +137,7 @@ function PierreFileTreeModel({
       GIT_STATUS_LABEL_TREE_STYLE,
       FOLDER_GIT_DOT_TREE_STYLE,
       FLATTENED_PATH_TREE_STYLE,
+      FILE_NAME_TREE_STYLE,
     ].join(" "),
     onSelectionChange: (paths) => {
       const path = paths[0];

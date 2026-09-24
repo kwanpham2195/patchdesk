@@ -26,7 +26,7 @@ export function ReviewDiffPane({
   return (
     <div className="flex min-h-0 min-w-0 flex-col">
       {conflicting ? (
-        <Alert variant="warning" className="m-2 shrink-0">
+        <Alert variant="warning" className="m-2 w-auto shrink-0">
           <AlertTitle>Merge conflicts</AlertTitle>
           <AlertDescription>
             {/* Named branches are dropped rather than called "unknown", which would read as a branch name. */}

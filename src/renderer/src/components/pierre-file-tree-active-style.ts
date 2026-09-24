@@ -49,18 +49,35 @@ export const GIT_STATUS_LABEL_TREE_STYLE = `[data-item-git-status] > [data-item-
 export const FOLDER_GIT_DOT_TREE_STYLE = `[data-item-contains-git-change="true"]:not([data-item-git-status]) > [data-item-section="git"] > * { display: none; }`;
 
 /**
- * Keeps the last segment of a flattened folder row whole and shrinks the
- * leading segments first, farthest from the end first.
+ * Clips a flattened folder row from the left as one path, so
+ * `src / renderer / src / components` reads `…derer / src / components`.
  *
- * The library truncates every segment of `a / b / c` equally, which hides the
- * folder name that the files below it belong to.
+ * The library truncates every segment separately, which leaves
+ * `…/ren…/s…/components`. An RTL line with left alignment overflows at its
+ * start and takes `text-overflow` there; the trailing LRM keeps the separators
+ * in path order, and inline, non-isolating segments keep them one bidi run.
  */
 export const FLATTENED_PATH_TREE_STYLE = [
-  `[data-item-flattened-subitems] { display: flex; min-width: 0; max-width: 100%; }`,
-  `[data-item-flattened-subitem] { min-width: 1.5ch; flex-shrink: 1; }`,
-  `[data-item-flattened-subitem]:nth-last-child(3) { flex-shrink: 10; }`,
-  `[data-item-flattened-subitem]:nth-last-child(n + 4) { flex-shrink: 100; }`,
-  `[data-item-flattened-subitem]:last-child { min-width: auto; flex-shrink: 0; }`,
+  `[data-item-flattened-subitems] { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; }`,
+  `[data-item-flattened-subitems]::after { content: "\\200E"; }`,
+  `[data-item-flattened-subitem], [data-item-flattened-subitem] * { display: inline; min-width: 0; unicode-bidi: normal; }`,
+  `[data-item-flattened-subitem] [data-truncate-content="overflow"], [data-item-flattened-subitem] [data-truncate-marker-cell] { display: none; }`,
+].join(" ");
+
+/**
+ * Truncates a file name's stem from the start instead of the end, so
+ * `sidebar-variant-a-tree.tsx` reads `…variant-a-tree.tsx`.
+ *
+ * The library hard-codes a middle truncation split at the extension, which
+ * shows the stem's shared prefix and turns sibling files into identical
+ * `sidebar-variant…tsx` rows. The trailing LRM keeps the stem's final `.` on
+ * the right inside the RTL box.
+ */
+export const FILE_NAME_TREE_STYLE = [
+  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { direction: rtl; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"]::after { content: "\\200E"; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-marker] { left: 0; right: auto; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-container] { --truncate-marker-gap: 1px; }`,
 ].join(" ");
 
 /**
