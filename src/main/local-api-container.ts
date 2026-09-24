@@ -288,6 +288,7 @@ export async function buildLocalApiContainer(
           systemNow,
           reviewOperations,
           recentWriteJournals,
+          configuration.desktopNotifier,
         )
       : undefined;
   if (pendingReviewGateway === undefined || pendingReviews === undefined)
@@ -305,6 +306,7 @@ export async function buildLocalApiContainer(
           systemNow,
           reviewOperations,
           recentWriteJournals,
+          configuration.desktopNotifier,
         )
       : undefined;
   const reviewRefresh = new ReviewRefreshService({

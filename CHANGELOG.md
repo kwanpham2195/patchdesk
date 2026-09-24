@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The **GitHub writes are paused** notification now also covers a merge or a **Finish review** submission whose outcome Patchdesk could not confirm. It follows the same rules as the other write notifications: nothing while Patchdesk is focused on that Review or while **Notifications** is off. #266
+
 - Fixed a merge GitHub confirmed being reported as **Merge not confirmed** when Patchdesk then failed to save the merged Review or clear its merge record. The Review now shows Merged, the merge-completed notification is posted, and the failed local step is logged and finished by startup recovery. #349
 
 - Saved Analysis **Verification** ticks. A ticked step now stays ticked after switching Insight tabs, leaving the Review, or restarting Patchdesk, and a regenerated Analysis starts unticked. The "Ticks are not saved" note is gone. #352

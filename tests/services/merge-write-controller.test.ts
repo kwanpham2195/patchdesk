@@ -56,6 +56,8 @@ type SaveResult = Awaited<ReturnType<ReviewStore["save"]>>;
 type RemoveResult = Awaited<
   ReturnType<MergeOperationStore["removeAfterSessionReceipt"]>
 >;
+type BeginResult = Awaited<ReturnType<MergeOperationStore["begin"]>>;
+type ConfirmResult = Awaited<ReturnType<MergeOperationStore["confirm"]>>;
 type TerminalWriteEffect = "review_saved" | "merge_receipt_removed";
 
 const values = createReviewRefreshFixtureValues();
@@ -84,6 +86,8 @@ class RecordingMergeOperationStore extends MergeOperationStore {
   constructor(
     private readonly terminalWriteEffects: TerminalWriteEffect[],
     private readonly removeResult: RemoveResult,
+    private readonly beginResult: BeginResult,
+    private readonly confirmResult: ConfirmResult,
   ) {
     super(PatchdeskPaths.forTest(unusedStoreRoot));
   }
@@ -92,7 +96,7 @@ class RecordingMergeOperationStore extends MergeOperationStore {
     operation: MergeOperation,
   ): Promise<Awaited<ReturnType<MergeOperationStore["begin"]>>> {
     this.begun.push(operation);
-    return ok(undefined);
+    return this.beginResult;
   }
 
   override async markOutcomeUnknown(
@@ -106,7 +110,7 @@ class RecordingMergeOperationStore extends MergeOperationStore {
     operation: MergeOperation,
   ): Promise<Awaited<ReturnType<MergeOperationStore["confirm"]>>> {
     this.confirmed.push(operation);
-    return ok(undefined);
+    return this.confirmResult;
   }
 
   override async reject(
@@ -342,6 +346,8 @@ function fixture(
     readonly loadReview?: LoadResult;
     readonly saveReview?: SaveResult;
     readonly removeReceipt?: RemoveResult;
+    readonly beginOperation?: BeginResult;
+    readonly confirmOperation?: ConfirmResult;
     readonly mergeResult?: GatewayMergeResult;
     readonly mergeability?: MergePolicySnapshot["mergeability"];
     readonly analysis?: AnalysisFixture;
@@ -385,6 +391,8 @@ function fixture(
   const operations = new RecordingMergeOperationStore(
     terminalWriteEffects,
     options.removeReceipt ?? ok(undefined),
+    options.beginOperation ?? ok(undefined),
+    options.confirmOperation ?? ok(undefined),
   );
   const loadReview = vi.fn(
     async (): Promise<LoadResult> => options.loadReview ?? ok(review),
@@ -502,6 +510,43 @@ describe("MergeWriteController", () => {
     expect(current.operations.rejected).toHaveLength(0);
     expect(current.operations.removed).toHaveLength(0);
     expect(current.gateway.mergeRequests).toHaveLength(1);
+    expect(current.notifications).toMatchObject([
+      {
+        _tag: "WriteNeedsRecovery",
+        reviewId,
+        pullRequest: { number: current.session.key.prNumber },
+      },
+    ]);
+  });
+
+  it("posts one recovery event when the merge cannot be recorded as confirmed", async () => {
+    const current = fixture({
+      confirmOperation: err({
+        _tag: "StorageFailure",
+        operation: "write",
+        reason: "io",
+      }),
+    });
+    await expect(current.controller.merge(request())).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "merge_outcome_unknown" },
+    });
+    expect(current.operations.removed).toHaveLength(0);
+    expect(current.notifications).toMatchObject([
+      { _tag: "WriteNeedsRecovery", reviewId },
+    ]);
+  });
+
+  it("posts nothing when an earlier merge operation already holds the lock", async () => {
+    const current = fixture({
+      beginOperation: err({ _tag: "MergeOperationExists" }),
+    });
+    await expect(current.controller.merge(request())).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "merge_outcome_unknown" },
+    });
+    expect(current.gateway.mergeRequests).toHaveLength(0);
+    expect(current.notifications).toEqual([]);
   });
 
   it("records finite rejection but retains no uncertain evidence", async () => {

@@ -13,6 +13,7 @@ import type { PendingReviewState } from "../../src/domain/pending-review";
 import type { ReviewSession } from "../../src/domain/review-session";
 import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
@@ -107,6 +108,7 @@ function fixture(
   };
   const coordinator = new ReviewOperationCoordinator();
   const recentWrites = confirmedWriteJournal();
+  const notifications: DesktopNotificationEvent[] = [];
   // SAFETY: these fixture mocks implement only the Pick<...> subset each
   // dependency interface requires; the service never calls their other members.
   return {
@@ -117,7 +119,9 @@ function fixture(
       () => now,
       coordinator,
       recentWrites,
+      { notify: (event) => notifications.push(event) },
     ),
+    notifications,
     github,
     coordinator,
     recentWrites,
@@ -195,7 +199,7 @@ describe("DirectSummaryReviewService", () => {
     expect(value.github.createDirectSummaryReview).not.toHaveBeenCalled();
   });
 
-  it("retains uncertainty and never replays its direct write", async () => {
+  it("retains uncertainty, notifies once, and never replays its direct write", async () => {
     const value = fixture(undefined, {
       createDirectSummaryReview: vi.fn(async () =>
         err({ category: "unavailable" }),
@@ -213,6 +217,10 @@ describe("DirectSummaryReviewService", () => {
       error: "outcome_unknown",
     });
     expect(value.github.createDirectSummaryReview).toHaveBeenCalledTimes(1);
+    // The second submit is refused by the first one's lock and posts nothing.
+    expect(value.notifications).toMatchObject([
+      { _tag: "WriteNeedsRecovery", reviewId, pullRequest: { number: 42 } },
+    ]);
   });
 
   it("surfaces a forbidden write as 'forbidden', not the generic 'rejected' category", async () => {
