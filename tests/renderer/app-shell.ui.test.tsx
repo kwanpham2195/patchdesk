@@ -150,6 +150,44 @@ describe("AppShell Navigate shortcut", () => {
     },
   );
 
+  it("does not open Navigate from an input inside an open shadow root", () => {
+    render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+        >
+          <div data-testid="tree-host" />
+        </AppShell>
+      </BusyProvider>,
+    );
+    // The Browse tree's search field lives in a shadow root, so a window listener sees the host as the target.
+    const shadow = screen
+      .getByTestId("tree-host")
+      .attachShadow({ mode: "open" });
+    const search = document.createElement("input");
+    search.ariaLabel = "Search files";
+    shadow.append(search);
+    search.focus();
+
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: "k",
+      metaKey: true,
+    });
+    search.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(
+      screen.queryByRole("dialog", { name: "Navigate Patchdesk" }),
+    ).toBeNull();
+  });
+
   it("opens Navigate from a non-editable target", async () => {
     const user = userEvent.setup();
     render(
