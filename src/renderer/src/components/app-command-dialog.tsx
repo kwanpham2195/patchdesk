@@ -1,5 +1,12 @@
 import type { RefObject } from "react";
-import { ArrowLeft, Eye, EyeOff, GitPullRequest, Settings } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  GitPullRequest,
+  Settings,
+} from "lucide-react";
 
 import {
   INBOX_PRESET_FILTERS,
@@ -50,6 +57,7 @@ export function AppCommandDialog({
   onQueryChange,
   onNavigate,
   onOpenSettings,
+  onOpenDiagnostics,
   onInboxStateChange,
   onInboxPresetChange,
   onOpenPullRequest,
@@ -66,6 +74,7 @@ export function AppCommandDialog({
   readonly onQueryChange: (query: string) => void;
   readonly onNavigate: (destination: AppDestination) => void;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
+  readonly onOpenDiagnostics: (opener?: HTMLElement) => void;
   readonly onInboxStateChange?: (state: InboxStateFilter) => void;
   /** Sets the one-click preset rather than toggling it, the way the state
    * commands set the state; the filter bar's toggles are the off switch. */
@@ -210,6 +219,16 @@ export function AppCommandDialog({
             >
               <Settings />
               Settings
+            </CommandItem>
+            <CommandItem
+              value="Diagnostics"
+              onSelect={() => {
+                close();
+                onOpenDiagnostics(settingsOpenerRef.current ?? undefined);
+              }}
+            >
+              <Activity />
+              Diagnostics
             </CommandItem>
           </CommandGroup>
           <CommandSeparator />

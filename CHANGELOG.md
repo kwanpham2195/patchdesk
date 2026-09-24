@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Logs** and **Review activity** moved out of Settings into a new **Diagnostics** overlay, opened from **Help → Diagnostics…** or the Diagnostics command in ⌘K. Settings now has General, Workspace, and Data & recovery; a reload that had Settings open on Logs reopens it on General. #364
+
 - Fixed the Diff's single-key shortcuts taking over the **Browse** search field, which appears for pull requests with 500 or more files. Typing `n`, `p`, `v`, `,`, `.`, `[`, `]`, `{`, or `}` there now enters the letter instead of moving through the Diff or toggling **Viewed**. #357
 
 - Fixed **Mark all viewed** and **Show all** clearing the **Viewed** marks on files the **Scope** picker hides. They now change only the files the Scope picker shows. #146

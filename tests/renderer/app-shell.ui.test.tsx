@@ -55,6 +55,7 @@ describe("AppShell settings overlay entry points", () => {
           onNavigate={() => undefined}
           visitedReloadKey={0}
           onOpenSettings={onOpenSettings}
+          onOpenDiagnostics={() => undefined}
         >
           <div>Inbox content</div>
         </AppShell>
@@ -80,6 +81,7 @@ describe("AppShell settings overlay entry points", () => {
           onNavigate={() => undefined}
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
         >
           <div>Inbox content</div>
         </AppShell>
@@ -122,6 +124,7 @@ describe("AppShell Navigate shortcut", () => {
             onNavigate={() => undefined}
             visitedReloadKey={0}
             onOpenSettings={() => undefined}
+            onOpenDiagnostics={() => undefined}
           >
             {target}
           </AppShell>
@@ -156,6 +159,7 @@ describe("AppShell Navigate shortcut", () => {
           onNavigate={() => undefined}
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
         >
           <button type="button">Review content</button>
         </AppShell>
@@ -188,6 +192,7 @@ describe("AppShell preset commands", () => {
             onNavigate={onNavigate}
             visitedReloadKey={0}
             onOpenSettings={() => undefined}
+            onOpenDiagnostics={() => undefined}
             onInboxPresetChange={onInboxPresetChange}
           >
             <div>Inbox content</div>
@@ -220,6 +225,7 @@ describe("AppShell pull-request command", () => {
           onNavigate={() => undefined}
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
           onOpenPullRequest={onOpenPullRequest}
         >
           <div>Inbox content</div>
@@ -253,6 +259,7 @@ describe("AppShell pull-request command", () => {
           onNavigate={() => undefined}
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
           onOpenPullRequest={() => undefined}
         >
           <div>Review content</div>
@@ -282,6 +289,7 @@ describe("AppShell visited pull requests toggle", () => {
           onNavigate={() => undefined}
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
         >
           <div>Inbox content</div>
         </AppShell>
@@ -346,6 +354,7 @@ describe("AppShell pull-request search", () => {
           visitedReloadKey={0}
           activeProfileId="profile-1"
           onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
           pullRequestDefaultHost={host.value}
           onOpenPullRequest={options.onOpenPullRequest}
           {...definedProps({ selectedRepository: options.selectedRepository })}

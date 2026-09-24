@@ -7,6 +7,7 @@ export function createDesktopMenuTemplate(
   development: boolean,
   actions: {
     readonly openSettings: () => void;
+    readonly openDiagnostics: () => void;
     readonly refresh: () => void;
   },
 ): ReadonlyArray<MenuItemConstructorOptions> {
@@ -90,7 +91,13 @@ export function createDesktopMenuTemplate(
     ],
   };
 
+  // The `help` role makes macOS add its menu search field to this menu.
+  const helpMenu: MenuItemConstructorOptions = {
+    role: "help",
+    submenu: [{ label: "Diagnostics…", click: actions.openDiagnostics }],
+  };
+
   return platform === "darwin"
-    ? [applicationMenu, editMenu, viewMenu, windowMenu]
-    : [fileMenu, editMenu, viewMenu, windowMenu];
+    ? [applicationMenu, editMenu, viewMenu, windowMenu, helpMenu]
+    : [fileMenu, editMenu, viewMenu, windowMenu, helpMenu];
 }

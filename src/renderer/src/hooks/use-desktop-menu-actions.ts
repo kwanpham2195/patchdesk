@@ -17,14 +17,16 @@ import type { DesktopMenuAction } from "../../../main/ipc-contract";
 export function useDesktopMenuActions(
   enabled: boolean,
   openSettings: () => void,
+  openDiagnostics: () => void,
   refresh: () => Promise<void> | void,
 ): void {
   useEffect(() => {
     if (!enabled || window.patchdesk?.onMenuAction === undefined) return;
     const handlers = {
       openSettings,
+      openDiagnostics,
       refresh: () => void refresh(),
     } satisfies Record<DesktopMenuAction, () => void>;
     return window.patchdesk.onMenuAction((action) => handlers[action]());
-  }, [enabled, openSettings, refresh]);
+  }, [enabled, openSettings, openDiagnostics, refresh]);
 }

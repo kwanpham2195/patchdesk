@@ -92,10 +92,10 @@ export function useSettingsOverlay({
 function restoredSettingsSection(): SettingsSection | undefined {
   const restored = loadSettingsRestore();
   if (restored === undefined) return undefined;
+  // A section saved before it moved to Diagnostics, such as "logs", reopens on General.
   return restored.section === "general" ||
     restored.section === "workspace" ||
-    restored.section === "data" ||
-    restored.section === "logs"
+    restored.section === "data"
     ? restored.section
     : undefined;
 }

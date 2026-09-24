@@ -38,6 +38,7 @@ describe("useDesktopMenuBridge destination", () => {
           destination,
           navigationState: "clear",
           openSettings: () => undefined,
+          openDiagnostics: () => undefined,
           refreshDashboard: async () => undefined,
         }),
       { initialProps: { destination: { kind: "workbench", reviewId: "a" } } },

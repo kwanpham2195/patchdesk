@@ -16,7 +16,7 @@ export const DESKTOP_REQUEST_CHANNEL = "patchdesk:request";
  * not navigation: "refresh" re-reads the screen the maintainer is already on.
  */
 export const DESKTOP_MENU_ACTION_CHANNEL = "patchdesk:menu-action";
-export type DesktopMenuAction = "openSettings" | "refresh";
+export type DesktopMenuAction = "openSettings" | "openDiagnostics" | "refresh";
 
 /**
  * The window's native-full-screen state, both directions on one channel.

@@ -25,9 +25,9 @@ stateDiagram-v2
 
 ### Arrive
 
-The active workspace profile is the target. With no active profile, both cleanup buttons and Load activity are disabled, and the section shows `No active workspace`.
+The active workspace profile is the target. With no active profile, both cleanup buttons are disabled, and the section shows `No active workspace`.
 
-The Local review data card carries the two actions with no preamble; each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. The Review activity card below it is described in [Logs and diagnostics](logs-and-diagnostics.md).
+The Local review data card carries the two actions with no preamble; each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. Review activity moved to the Diagnostics overlay; see [Logs and diagnostics](logs-and-diagnostics.md).
 
 The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: a terminal Review older than 14 days is removed with its record and session, orphaned sessions older than 14 days and quarantine entries older than 30 days are removed, as [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) describes.
 
@@ -110,7 +110,7 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 
 ## Open questions and verification
 
-- A read-only live pass on 2026-09-14 confirmed the Local review data and Review activity card copy and that both cleanup buttons are enabled with an active workspace. It pressed neither, so the confirmations, success, and failure were not observed, and the no-active-workspace state was not reachable.
+- A read-only live pass on 2026-09-14 confirmed the Local review data and Review activity card copy (Review activity then lived in this section) and that both cleanup buttons are enabled with an active workspace. It pressed neither, so the confirmations, success, and failure were not observed, and the no-active-workspace state was not reachable.
 - Confirm focus behavior for both cleanup confirmations and after Settings closes on success.
 - Confirm what the maintainer sees if a protected session becomes active after the confirmation opens.
 - Confirm the Review workbench a maintainer reaches after Clear cache when its represented-review worktree was removed. The 2026-09-14 pass found Reviews with missing worktrees showing Context unavailable and no Preview; see [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).

@@ -48,9 +48,10 @@ describe("desktop menu-action channel", () => {
 
     const stop = subscribeToMenuActions(bus, (action) => received.push(action));
     sendMenuAction(bus, "openSettings");
+    sendMenuAction(bus, "openDiagnostics");
     sendMenuAction(bus, "refresh");
 
-    expect(received).toEqual(["openSettings", "refresh"]);
+    expect(received).toEqual(["openSettings", "openDiagnostics", "refresh"]);
     stop();
   });
 

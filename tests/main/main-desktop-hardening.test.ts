@@ -96,6 +96,7 @@ describe("desktop hardening", () => {
   it("uses native macOS application roles and keeps developer roles out of production", () => {
     const noActions = {
       openSettings: () => undefined,
+      openDiagnostics: () => undefined,
       refresh: () => undefined,
     };
     const production = createDesktopMenuTemplate(
@@ -270,12 +271,31 @@ describe("desktop hardening", () => {
     expect(
       createDesktopMenuTemplate("linux", "Patchdesk", false, {
         openSettings: () => undefined,
+        openDiagnostics: () => undefined,
         refresh: () => undefined,
       })[0],
     ).toMatchObject({
       label: "File",
     });
   });
+
+  it.each(["darwin", "linux"] as const)(
+    "opens Diagnostics from the Help menu on %s",
+    (platform) => {
+      const openDiagnostics = (): void => undefined;
+      const template = createDesktopMenuTemplate(platform, "Patchdesk", false, {
+        openSettings: () => undefined,
+        openDiagnostics,
+        refresh: () => undefined,
+      });
+      const help = template.find((menu) => menu.role === "help");
+      const submenu = Array.isArray(help?.submenu) ? help.submenu : [];
+      const item = submenu.find((entry) => entry.label === "Diagnostics…");
+
+      // Electron calls this handler with menu-item arguments it ignores.
+      expect(item?.click).toBe(openDiagnostics);
+    },
+  );
 
   it("keeps development origins out of the packaged content security policy", () => {
     expect(contentSecurityPolicy(true)).not.toContain("localhost:5173");
