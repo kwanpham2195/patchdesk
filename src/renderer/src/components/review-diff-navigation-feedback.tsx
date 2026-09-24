@@ -7,7 +7,6 @@ export function ReviewDiffNavigationFeedback({
   readonly status: ReviewDiffNavigationStatus | undefined;
 }): React.JSX.Element | null {
   if (status === undefined) return null;
-  const target = status.state === "target" ? status : undefined;
   return (
     <p
       role="status"
@@ -15,14 +14,12 @@ export function ReviewDiffNavigationFeedback({
       data-review-diff-navigation-status
       data-navigation-kind={status.kind}
       data-navigation-state={status.state}
-      data-navigation-position={target?.position}
-      data-navigation-total={
-        status.state === "unavailable" ? undefined : status.total
+      data-navigation-position={
+        "position" in status ? status.position : undefined
       }
-      data-navigation-path={target?.path}
-      data-navigation-line={
-        target === undefined || target.kind === "file" ? undefined : target.line
-      }
+      data-navigation-total={"total" in status ? status.total : undefined}
+      data-navigation-path={"path" in status ? status.path : undefined}
+      data-navigation-line={"line" in status ? status.line : undefined}
       className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-md border bg-card/95 px-3 py-2 text-sm shadow-lg backdrop-blur"
     >
       {status.message}

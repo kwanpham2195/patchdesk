@@ -409,6 +409,8 @@ function ReviewDiffSurface({
     activePathRef,
     items,
     fileMode: preferences.fileMode,
+    collapsedPaths,
+    onCollapsedPathsChange,
     onActiveFileChange,
     createNavigationOperation,
     virtualized,

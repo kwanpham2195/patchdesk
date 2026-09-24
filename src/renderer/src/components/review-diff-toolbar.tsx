@@ -113,6 +113,8 @@ const NAVIGATION_KEYS = [
   { keys: [",", "."], label: "Previous / next file" },
   { keys: ["[", "]"], label: "Previous / next change" },
   { keys: ["{", "}"], label: "Previous / next comment" },
+  { keys: ["p", "n"], label: "Previous / next unviewed file" },
+  { keys: ["v"], label: "Toggle viewed" },
 ] as const;
 
 function NavigationKeysTooltip(): React.JSX.Element {

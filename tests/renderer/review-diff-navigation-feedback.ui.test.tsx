@@ -352,6 +352,10 @@ describe("ReviewDiffView navigation feedback", () => {
 
     press("]");
     await expectStatus({ kind: "hunk", state: "unavailable" });
+    press("n");
+    await expectStatus({ kind: "unviewed", state: "unavailable" });
+    press("v");
+    await expectStatus({ kind: "viewed", state: "unavailable" });
 
     rerender(view("all"));
     expect(
@@ -478,5 +482,122 @@ describe("ReviewDiffView navigation feedback", () => {
     expect(
       screen.queryByRole("status", { name: "Diff navigation status" }),
     ).toBeNull();
+  });
+});
+
+describe("ReviewDiffView unviewed-file keys", () => {
+  function viewedDiff(
+    collapsedPaths: ReadonlySet<string>,
+    onCollapsedPathsChange: (paths: ReadonlySet<string>) => void,
+  ): React.JSX.Element {
+    const parsed = parseReviewDiff(patch);
+    return (
+      <ReviewDiffView
+        patch={patch}
+        parsedFiles={parsed.files}
+        fileStatsByPath={parsed.statsByPath}
+        selectedPath="src/a.ts"
+        preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+        collapsedPaths={collapsedPaths}
+        onPreferencesChange={() => undefined}
+        onCollapsedPathsChange={onCollapsedPathsChange}
+      />
+    );
+  }
+
+  it("steps through unviewed files with n and p and wraps at the ends", async () => {
+    enablePierre();
+    render(viewedDiff(new Set(), () => undefined));
+
+    press("n");
+    await expectStatus({
+      kind: "unviewed",
+      state: "target",
+      position: 2,
+      total: 2,
+      path: "src/b.ts",
+    });
+    press("n");
+    await expectStatus({
+      kind: "unviewed",
+      state: "wrapped",
+      position: 1,
+      total: 2,
+      path: "src/a.ts",
+    });
+    press("p");
+    await expectStatus({
+      kind: "unviewed",
+      state: "wrapped",
+      position: 2,
+      total: 2,
+      path: "src/b.ts",
+    });
+  });
+
+  it("reports that every file is viewed when n has nowhere to go", async () => {
+    enablePierre();
+    render(viewedDiff(new Set(["src/a.ts", "src/b.ts"]), () => undefined));
+
+    press("n");
+    await expectStatus({ kind: "unviewed", state: "empty", total: 0 });
+  });
+
+  it("toggles viewed on the file on screen with v", async () => {
+    enablePierre();
+    const onCollapsedPathsChange = vi.fn();
+    const { rerender } = render(viewedDiff(new Set(), onCollapsedPathsChange));
+
+    press(".");
+    await expectStatus({
+      kind: "file",
+      state: "target",
+      position: 2,
+      total: 2,
+      path: "src/b.ts",
+    });
+    press("v");
+    expect(onCollapsedPathsChange).toHaveBeenLastCalledWith(
+      new Set(["src/b.ts"]),
+    );
+
+    rerender(viewedDiff(new Set(["src/b.ts"]), onCollapsedPathsChange));
+    press("v");
+    expect(onCollapsedPathsChange).toHaveBeenLastCalledWith(new Set());
+  });
+
+  it.each([
+    [
+      "an editable field has focus",
+      (key: string) => {
+        const input = document.createElement("input");
+        document.body.append(input);
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { key, bubbles: true }),
+        );
+        input.remove();
+      },
+    ],
+    [
+      "a modifier is held",
+      (key: string) => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { key, metaKey: true, bubbles: true }),
+        );
+      },
+    ],
+  ])("ignores n, p, and v when %s", async (_case, pressKey) => {
+    enablePierre();
+    const onCollapsedPathsChange = vi.fn();
+    render(viewedDiff(new Set(), onCollapsedPathsChange));
+
+    for (const key of ["n", "p", "v"]) pressKey(key);
+    await waitForFrames();
+    await waitForFrames();
+
+    expect(
+      screen.queryByRole("status", { name: "Diff navigation status" }),
+    ).toBeNull();
+    expect(onCollapsedPathsChange).not.toHaveBeenCalled();
   });
 });
