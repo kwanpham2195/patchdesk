@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
@@ -26,13 +26,16 @@ import {
   type LocalApiServer,
 } from "../../src/main/local-api";
 import {
-  NodeCommandExecutor,
+  CommandRunner,
   type CommandExecution,
   type CommandRequest,
 } from "../../src/adapters/github/command-runner";
-import { ok } from "../../src/domain/result";
-import { StorageManagementService } from "../../src/services/storage-management-service";
-import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
+import type {
+  ReviewWorkbenchSeam,
+  StorageManagementSeam,
+} from "../../src/main/local-api-configuration";
+import type { WorkspaceProfileId } from "../../src/domain/ids";
+import { err, ok } from "../../src/domain/result";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";
@@ -50,7 +53,6 @@ afterEach(async () => {
       retryDelay: 50,
     });
   root = undefined;
-  vi.restoreAllMocks();
 });
 
 type LocalApiServerConfiguration = Parameters<typeof startLocalApiServer>[0];
@@ -58,7 +60,12 @@ type LocalApiServerConfiguration = Parameters<typeof startLocalApiServer>[0];
 async function start(
   options: Pick<
     LocalApiServerConfiguration,
-    "readOnlyGit" | "resolveGitHubCli" | "github"
+    | "readOnlyGit"
+    | "resolveGitHubCli"
+    | "github"
+    | "commands"
+    | "reviewWorkbench"
+    | "storageManagement"
   > = {},
 ): Promise<LocalApiServer> {
   root = await mkdtemp(join(tmpdir(), "patchdesk-api-auth-"));
@@ -360,11 +367,24 @@ describe("local API current Review capability boundary", () => {
   });
 
   it("accepts a LabelChange recent write and passes it through to the workbench controller unchanged", async () => {
-    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiContainer` builds its own `ReviewWorkbenchController` and `LocalApiConfiguration` exposes no workbench seam, so this route test observes the forwarded write through a spy; follow-up: add reviewWorkbench to LocalApiConfiguration.
-    const detectUpdates = vi
-      .spyOn(ReviewWorkbenchController.prototype, "detectUpdates")
-      .mockResolvedValue(ok(undefined));
-    const api = await start();
+    const detectUpdatesCalls: Array<
+      Parameters<ReviewWorkbenchSeam["detectUpdates"]>[0]
+    > = [];
+    const unused = async () => err({ reason: "invalid_input" as const });
+    const api = await start({
+      reviewWorkbench: {
+        open: unused,
+        openMerged: unused,
+        load: unused,
+        leave: unused,
+        commitDiff: unused,
+        sinceReviewDiff: unused,
+        async detectUpdates(input) {
+          detectUpdatesCalls.push(input);
+          return ok(undefined);
+        },
+      },
+    });
     const reviewId =
       "github.com__octo-org__patchdesk__pr-42__review-abcdef123456";
     const labelChangeWrite = {
@@ -380,29 +400,35 @@ describe("local API current Review capability boundary", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(detectUpdates).toHaveBeenCalledTimes(1);
-    expect(detectUpdates.mock.calls[0]?.[0]).toMatchObject({
-      recentWrites: [labelChangeWrite],
-    });
+    expect(detectUpdatesCalls).toEqual([
+      expect.objectContaining({ recentWrites: [labelChangeWrite] }),
+    ]);
   });
 
   it("delegates cache and full local-data cleanup to distinct operations", async () => {
-    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiStores` builds its own `StorageManagementService` and `LocalApiConfiguration` exposes no storage-management seam, so this route test tells the two operations apart through spies; follow-up: add storageManagement to LocalApiConfiguration.
-    const clearCache = vi
-      .spyOn(StorageManagementService.prototype, "clearCache")
-      .mockResolvedValue(ok(undefined));
-    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiStores` builds its own `StorageManagementService` and `LocalApiConfiguration` exposes no storage-management seam, so this route test tells the two operations apart through spies; follow-up: add storageManagement to LocalApiConfiguration.
-    const clearLocalData = vi
-      .spyOn(StorageManagementService.prototype, "clearLocalData")
-      .mockResolvedValue(ok(undefined));
-    const api = await start();
+    const calls: Array<{
+      readonly operation: keyof StorageManagementSeam;
+      readonly profileId: WorkspaceProfileId;
+    }> = [];
+    const record =
+      (operation: keyof StorageManagementSeam) =>
+      async (profileId: WorkspaceProfileId) => {
+        calls.push({ operation, profileId });
+        return ok(undefined);
+      };
+    const api = await start({
+      storageManagement: {
+        clearCache: record("clearCache"),
+        clearLocalData: record("clearLocalData"),
+        sweepRetained: record("sweepRetained"),
+      },
+    });
 
     expect(
       (await post(api, "v1/storage/cache/clear", { profileId: "profile" }))
         .status,
     ).toBe(200);
-    expect(clearCache).toHaveBeenCalledTimes(1);
-    expect(clearLocalData).not.toHaveBeenCalled();
+    expect(calls).toEqual([{ operation: "clearCache", profileId: "profile" }]);
 
     expect(
       (
@@ -411,8 +437,10 @@ describe("local API current Review capability boundary", () => {
         })
       ).status,
     ).toBe(200);
-    expect(clearCache).toHaveBeenCalledTimes(1);
-    expect(clearLocalData).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([
+      { operation: "clearCache", profileId: "profile" },
+      { operation: "clearLocalData", profileId: "profile" },
+    ]);
   });
 
   it("does not expose deleted dashboard, list, model, write, or cleanup routes", async () => {
@@ -876,7 +904,9 @@ describe("GET /v1/inbox/labels", () => {
 
 describe("GET /v1/environment GitHub authentication", () => {
   // Plain `gh auth status` fails on any invalid listed account; the JSON probe reports each account's own state.
-  function fakeGhAuthStatus(accountStates: ReadonlyArray<string>): void {
+  function fakeGhAuthStatus(
+    accountStates: ReadonlyArray<string>,
+  ): CommandRunner {
     const hosts = {
       "github.com": accountStates.map((state, index) => ({
         active: index === 0,
@@ -885,9 +915,8 @@ describe("GET /v1/environment GitHub authentication", () => {
         state,
       })),
     };
-    // oxlint-disable-next-line patchdesk/no-method-spying -- LocalApiConfiguration exposes no executor seam, so the GET /v1/environment path builds its own CommandRunner; follow-up: add commands to LocalApiConfiguration.
-    vi.spyOn(NodeCommandExecutor.prototype, "execute").mockImplementation(
-      async (input): Promise<CommandExecution> => {
+    return new CommandRunner({
+      async execute(input): Promise<CommandExecution> {
         const json = input.argv.includes("--json");
         return {
           _tag: "Exited",
@@ -898,11 +927,11 @@ describe("GET /v1/environment GitHub authentication", () => {
             : "X Failed to log in to github.com account stale (keyring)\n  - To re-authenticate, run: gh auth login -h github.com",
         };
       },
-    );
+    });
   }
 
-  async function environment() {
-    const api = await start();
+  async function environment(commands: CommandRunner) {
+    const api = await start({ commands });
     const response = await fetch(new URL("v1/environment", api.url), {
       headers: headers(),
     });
@@ -911,9 +940,9 @@ describe("GET /v1/environment GitHub authentication", () => {
   }
 
   it("reports ready when one account works though another has an invalid token", async () => {
-    fakeGhAuthStatus(["success", "invalid token"]);
-
-    await expect(environment()).resolves.toMatchObject({
+    await expect(
+      environment(fakeGhAuthStatus(["success", "invalid token"])),
+    ).resolves.toMatchObject({
       githubAuth: "ready",
       githubAccounts: [
         { host: "github.com", login: "account-0", active: true },
@@ -922,9 +951,9 @@ describe("GET /v1/environment GitHub authentication", () => {
   });
 
   it("reports authentication required when no account works", async () => {
-    fakeGhAuthStatus(["invalid token"]);
-
-    await expect(environment()).resolves.toMatchObject({
+    await expect(
+      environment(fakeGhAuthStatus(["invalid token"])),
+    ).resolves.toMatchObject({
       githubAuth: "authentication_required",
       githubAccounts: [],
     });
