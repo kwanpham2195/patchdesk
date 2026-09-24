@@ -21,10 +21,15 @@ const repository = {
 /**
  * What one Insight kind's stored record holds: a retained result bound to
  * `headSha` (carrying `value` when the kind's parser should see something
- * other than a well-formed Brief), or a record too corrupt to read at all.
+ * other than a well-formed Brief), a failed last run, or a record too corrupt
+ * to read at all.
  */
 type RetainedFixture =
-  | { readonly headSha: string; readonly value?: unknown }
+  | {
+      readonly headSha?: string;
+      readonly value?: unknown;
+      readonly failed?: true;
+    }
   | "unreadable";
 
 /**
@@ -106,16 +111,17 @@ describe("MaintainerInboxService insight readiness", () => {
           _tag: "err" as const,
           error: { reason: "invalid_stored_value" },
         };
-      return ok(
-        fixture === undefined
-          ? {}
-          : {
-              retained: {
-                revision: { headSha: fixture.headSha },
-                value: fixture.value ?? storedBrief,
-              },
-            },
-      );
+      return ok({
+        ...(fixture?.headSha !== undefined && {
+          retained: {
+            revision: { headSha: fixture.headSha },
+            value: fixture.value ?? storedBrief,
+          },
+        }),
+        ...(fixture?.failed === true && {
+          replacementFailure: { reason: "failed" },
+        }),
+      });
     }
     const insights = {
       load: async (
@@ -180,6 +186,18 @@ describe("MaintainerInboxService insight readiness", () => {
     ).toEqual({
       brief: "outdated",
     });
+  });
+
+  it("reads a kind whose last run failed as failed, with or without an earlier result", async () => {
+    expect(
+      (
+        await rowFor({
+          brief: { failed: true },
+          analysis: { headSha: earlierHeadSha, failed: true },
+          walkthrough: { headSha },
+        })
+      ).insights,
+    ).toEqual({ brief: "failed", analysis: "failed", walkthrough: "ready" });
   });
 
   it("reports every kind the review retains in one row", async () => {

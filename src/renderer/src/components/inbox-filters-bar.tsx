@@ -110,74 +110,77 @@ export function InboxFiltersBar({
     : "Show review details";
   return (
     <section
-      className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5"
+      className="flex min-h-10 shrink-0 items-center gap-2 border-b px-3 py-1.5"
       aria-label="Pull requests filters"
     >
-      <Select
-        value={state}
-        items={INBOX_STATE_FILTERS.map((option) => ({
-          label: stateFilterShortLabel(option.state),
-          value: option.state,
-        }))}
-        onValueChange={(value) => {
-          const next = INBOX_STATE_FILTERS.find(
-            (option) => option.state === value,
-          );
-          if (next !== undefined) onStateChange(next.state);
-        }}
-      >
-        <SelectTrigger
-          size="sm"
-          className="w-28 text-xs"
-          aria-label="Pull request state"
+      {/* Only the filters wrap, so the count and the inspector toggle never drop to a row of their own. */}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <Select
+          value={state}
+          items={INBOX_STATE_FILTERS.map((option) => ({
+            label: stateFilterShortLabel(option.state),
+            value: option.state,
+          }))}
+          onValueChange={(value) => {
+            const next = INBOX_STATE_FILTERS.find(
+              (option) => option.state === value,
+            );
+            if (next !== undefined) onStateChange(next.state);
+          }}
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            {INBOX_STATE_FILTERS.map((option) => (
-              <SelectItem
-                key={option.state}
-                value={option.state}
-                className="text-xs"
-              >
-                {stateFilterShortLabel(option.state)}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      {INBOX_PRESET_FILTERS.map((option) => {
-        const Icon = PRESET_FILTER_ICONS[option.preset];
-        return (
-          <Toggle
-            key={option.preset}
-            pressed={preset === option.preset}
-            onPressedChange={(pressed) =>
-              onPresetChange(pressed ? option.preset : undefined)
-            }
+          <SelectTrigger
             size="sm"
-            variant="outline"
-            className="h-7 gap-1.5 px-2 text-xs"
+            className="w-28 text-xs"
+            aria-label="Pull request state"
           >
-            <Icon className="size-3.5" aria-hidden="true" />
-            {option.label}
-          </Toggle>
-        );
-      })}
-      {labelFilter}
-      <MoreFiltersPopover
-        {...(reviewState === undefined ? {} : { reviewState })}
-        onReviewStateChange={onReviewStateChange}
-        {...(checkStatus === undefined ? {} : { checkStatus })}
-        onCheckStatusChange={onCheckStatusChange}
-        {...(author === undefined ? {} : { author })}
-        onAuthorChange={onAuthorChange}
-        {...(baseBranch === undefined ? {} : { baseBranch })}
-        onBaseBranchChange={onBaseBranchChange}
-        onClearInboxMoreFilters={onClearInboxMoreFilters}
-      />
-      <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {INBOX_STATE_FILTERS.map((option) => (
+                <SelectItem
+                  key={option.state}
+                  value={option.state}
+                  className="text-xs"
+                >
+                  {stateFilterShortLabel(option.state)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {INBOX_PRESET_FILTERS.map((option) => {
+          const Icon = PRESET_FILTER_ICONS[option.preset];
+          return (
+            <Toggle
+              key={option.preset}
+              pressed={preset === option.preset}
+              onPressedChange={(pressed) =>
+                onPresetChange(pressed ? option.preset : undefined)
+              }
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <Icon className="size-3.5" aria-hidden="true" />
+              {option.label}
+            </Toggle>
+          );
+        })}
+        {labelFilter}
+        <MoreFiltersPopover
+          {...(reviewState === undefined ? {} : { reviewState })}
+          onReviewStateChange={onReviewStateChange}
+          {...(checkStatus === undefined ? {} : { checkStatus })}
+          onCheckStatusChange={onCheckStatusChange}
+          {...(author === undefined ? {} : { author })}
+          onAuthorChange={onAuthorChange}
+          {...(baseBranch === undefined ? {} : { baseBranch })}
+          onBaseBranchChange={onBaseBranchChange}
+          onClearInboxMoreFilters={onClearInboxMoreFilters}
+        />
+      </div>
+      <span className="shrink-0 text-[11px] whitespace-nowrap tabular-nums text-muted-foreground">
         {listPending
           ? "Loading…"
           : matchCount === undefined

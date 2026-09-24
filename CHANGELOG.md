@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Pull requests inspector now shows **Failed** for an Insight whose last run failed, where it read **Not run**, and lists the chips Brief, Walkthrough, Analysis like the Insights tabs. The Merged filter no longer wraps its inspector toggle onto an empty second row or repeats a **Merged** badge on every row, row badges now follow the title's last word, and a zero change count such as "-0" reads muted instead of red or green. #348
+
 - The Insights tab now opens with one row above the document: the Brief / Walkthrough / Analysis tabs, with the generated time, provider, model, and **Regenerate** at the row's right end. Tab states read as muted text after a small dot instead of bordered pills, and a merged or closed Review no longer repeats "Insights cannot be generated" under the header's **Merge** chip. #348
 
 - Fixed **Try again**, **Run for latest revision**, and the Brief's **Generate walkthrough** showing on a merged or closed Review, where the run could never start. They are now hidden there, like **Generate** and **Regenerate**. #348

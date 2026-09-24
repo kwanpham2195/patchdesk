@@ -734,19 +734,19 @@ async function readInsightReadiness(
     insights.load(profileId, reviewId, "walkthrough"),
   ]);
   const readiness = definedProps({
-    brief: retainedInsightState(summary, brief),
-    analysis: retainedInsightState(summary, analysis),
-    walkthrough: retainedInsightState(summary, walkthrough),
+    brief: rowInsightState(summary, brief),
+    analysis: rowInsightState(summary, analysis),
+    walkthrough: rowInsightState(summary, walkthrough),
   });
   return Object.keys(readiness).length === 0 ? undefined : readiness;
 }
 
 /**
- * One kind's readiness, or absent when nothing readable is retained for it.
+ * One kind's readiness, or absent when nothing readable is retained or failed for it.
  * Takes whatever record its kind's loader returned: both `load` and
  * `loadTyped` prove the same revision envelope, and only that is read here.
  */
-function retainedInsightState(
+function rowInsightState(
   summary: PullRequestSummary,
   record: Result<
     InsightRecord<{ readonly revision: InsightRevision }>,
@@ -754,6 +754,12 @@ function retainedInsightState(
   >,
 ): InboxInsightState | undefined {
   if (record._tag === "err") return undefined;
+  // Same rule as `projectStoredInsight`, so the row and the Insights tab agree.
+  if (
+    record.value.activeRun === undefined &&
+    record.value.replacementFailure !== undefined
+  )
+    return "failed";
   const retained = record.value.retained;
   if (retained === undefined) return undefined;
   return retained.revision.headSha === summary.headSha ? "ready" : "outdated";

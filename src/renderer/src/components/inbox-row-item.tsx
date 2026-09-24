@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 /** The author's cached avatar at the row's text scale; initials until the cache warms. */
 const authorAvatarClassName = "size-4 border-0 text-[9px]";
 
+const inlineBadgeClassName = "ml-1.5 h-4 px-1 align-middle text-[10px]";
+
 export function InboxRowItem({
   row,
   selected,
@@ -33,6 +35,7 @@ export function InboxRowItem({
   onAction,
   openingState,
   columns,
+  stateFilter,
 }: {
   readonly row: InboxRow;
   readonly selected: boolean;
@@ -40,6 +43,8 @@ export function InboxRowItem({
   readonly onAction: () => void;
   readonly openingState: ReviewOpeningState;
   readonly columns: InboxColumnVisibility;
+  /** The list's state filter; a state badge that repeats it is left off. */
+  readonly stateFilter: InboxRow["remoteState"];
 }): React.JSX.Element {
   const key = inboxIdentityKey(row);
   const opening = openingState?.status === "opening";
@@ -80,21 +85,25 @@ export function InboxRowItem({
             className={cn("mt-0.5 size-3.5 shrink-0", pullRequestIconTone(row))}
           />
           <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1.5">
+            {/* Badges flow inline after the title's last word, so one- and two-line titles place them the same way. */}
+            <div className="line-clamp-2 min-w-0 text-[13px] leading-5">
               <span
                 data-slot="pull-request-title"
-                className="min-w-0 line-clamp-2 cursor-pointer text-[13px] leading-5 font-medium hover:text-primary hover:underline"
+                className="cursor-pointer font-medium hover:text-primary hover:underline"
                 title={`#${row.identity.number} ${row.title}`}
               >
                 #{row.identity.number} {row.title}
               </span>
               {row.isDraft ? (
-                <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                <Badge variant="outline" className={inlineBadgeClassName}>
                   Draft
                 </Badge>
               ) : null}
               {watched ? (
-                <span className="inline-flex shrink-0" title="Watched">
+                <span
+                  className="ml-1.5 inline-flex align-middle"
+                  title="Watched"
+                >
                   <Eye className="size-3 text-muted-foreground" />
                   <span className="sr-only">Watched</span>
                 </span>
@@ -102,20 +111,23 @@ export function InboxRowItem({
               {row.headMovedSinceLastLooked === true ? (
                 <Badge
                   variant="outline"
-                  className="h-4 border-primary/40 px-1 text-[10px] text-primary"
+                  className={cn(
+                    inlineBadgeClassName,
+                    "border-primary/40 text-primary",
+                  )}
                   aria-label="New commits since you last looked"
                   title="New commits since you last looked"
                 >
                   New
                 </Badge>
               ) : null}
-              {row.remoteState === "merged" ? (
-                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+              {row.remoteState === "merged" && stateFilter !== "merged" ? (
+                <Badge variant="secondary" className={inlineBadgeClassName}>
                   Merged
                 </Badge>
               ) : null}
               {row.insights?.brief === "ready" ? (
-                <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                <Badge variant="outline" className={inlineBadgeClassName}>
                   Brief
                 </Badge>
               ) : null}
@@ -293,7 +305,7 @@ export function CheckIcon({
   );
 }
 
-/** Change size with the workbench diff colors, so scale reads before the title does. */
+/** Change size with the workbench diff colors, so scale reads before the title does; a zero count stays muted. */
 function ChangeSize({
   stats,
 }: {
@@ -317,10 +329,22 @@ function ChangeSize({
         </span>
       )}
       {additions === undefined ? null : (
-        <span className="text-diff-added-fg">+{compactCount(additions)}</span>
+        <span
+          className={
+            additions === 0 ? "text-muted-foreground" : "text-diff-added-fg"
+          }
+        >
+          +{compactCount(additions)}
+        </span>
       )}
       {deletions === undefined ? null : (
-        <span className="text-diff-removed-fg">-{compactCount(deletions)}</span>
+        <span
+          className={
+            deletions === 0 ? "text-muted-foreground" : "text-diff-removed-fg"
+          }
+        >
+          -{compactCount(deletions)}
+        </span>
       )}
     </span>
   );
