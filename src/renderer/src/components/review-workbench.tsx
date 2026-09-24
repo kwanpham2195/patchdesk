@@ -3,12 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
-import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { parseUnifiedPatch } from "../../../domain/patch";
 import {
   deriveConversationThreadEntries,
   type ConversationThreadRow,
 } from "../conversation-thread-entries";
-import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
+import {
+  fingerprintPatchAnchor,
+  patchesAgreeAtAnchor,
+} from "../../../domain/diff-anchor";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -172,71 +175,42 @@ function pullRequestExternalRef(
   };
 }
 
-function createCommitCommentAuthoring(
+function createNarrowedCommentAuthoring(
   base: LocalCommentAuthoring | undefined,
+  shownPatch: string,
   fullPatch: string,
-  headSideOnly: boolean,
 ): LocalCommentAuthoring | undefined {
   if (base?.enabled !== true) return undefined;
-  const files = parseUnifiedPatch(fullPatch);
-  // The since-review diff's old side is the reviewed commit, whose line numbers mean different code on the pull request base.
-  const map = (location: LocalCommentLocation) =>
-    headSideOnly && location.side !== "new"
-      ? { mappingStatus: "unmapped" as const }
-      : mapFindingLocation(files, {
-          file: location.path,
-          lineStart: location.startLine,
-          lineEnd: location.line,
-          diffSide: location.side,
-        });
+  // A narrowed diff's old side is never the pull request base, and its new side is the head only where both patches show the same code there.
+  const fullPatchAnchor = (location: LocalCommentLocation) => {
+    const path = parseRepoRelativePath(location.path);
+    if (location.side !== "new" || path._tag === "err") return undefined;
+    const anchor = {
+      path: path.value,
+      startLine: location.startLine,
+      line: location.line,
+      side: location.side,
+    };
+    return patchesAgreeAtAnchor(shownPatch, fullPatch, anchor)
+      ? anchor
+      : undefined;
+  };
   return {
     enabled: true,
-    canAuthor: (location) => map(location).mappingStatus === "mapped",
+    canAuthor: (location) => fullPatchAnchor(location) !== undefined,
     onSelectionChange: (location) => {
-      const mapped = map(location);
-      if (
-        mapped.mappingStatus !== "mapped" ||
-        mapped.path === undefined ||
-        mapped.side === undefined ||
-        mapped.line === undefined
-      )
-        return;
-      base.onSelectionChange?.({
-        path: mapped.path,
-        startLine: mapped.startLine ?? mapped.line,
-        line: mapped.line,
-        side: mapped.side,
-      });
+      if (fullPatchAnchor(location) !== undefined)
+        base.onSelectionChange?.(location);
     },
     onSave: async (input) => {
-      const mapped = map(input);
-      if (
-        mapped.mappingStatus !== "mapped" ||
-        mapped.path === undefined ||
-        mapped.side === undefined ||
-        mapped.line === undefined
-      )
-        return;
-      const parsedPath = parseRepoRelativePath(mapped.path);
-      if (parsedPath._tag === "err") return;
-      const startLine = mapped.startLine ?? mapped.line;
-      const anchor = {
-        path: parsedPath.value,
-        startLine,
-        line: mapped.line,
-        side: mapped.side,
-      };
-      const fingerprint = fingerprintPatchAnchor(fullPatch, anchor);
-      const payload = {
+      const anchor = fullPatchAnchor(input);
+      if (anchor === undefined) return;
+      return base.onSave({
         ...input,
-        path: mapped.path,
-        startLine,
-        line: mapped.line,
-        side: mapped.side,
-      };
-      await base.onSave(
-        fingerprint === undefined ? payload : { ...payload, fingerprint },
-      );
+        ...definedProps({
+          fingerprint: fingerprintPatchAnchor(fullPatch, anchor),
+        }),
+      });
     },
   };
 }
@@ -490,24 +464,21 @@ export function ReviewWorkbench({
   // A commit slice and the since-review diff both show a narrower patch than the Review, so comments map back onto the full patch.
   const narrowedDiff =
     selectedCommitSha !== undefined || sincePatch !== undefined;
-  const commitCommentAuthoring = useMemo(
-    () =>
-      !narrowedDiff || model.fullPatch === undefined
-        ? undefined
-        : createCommitCommentAuthoring(
-            actions.localCommentAuthoring,
-            model.fullPatch,
-            selectedCommitSha === undefined,
-          ),
-    [
-      actions.localCommentAuthoring,
-      model.fullPatch,
-      narrowedDiff,
-      selectedCommitSha,
-    ],
-  );
   const commitDiff =
     commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
+  const narrowedPatch =
+    selectedCommitSha === undefined ? sincePatch : commitDiff?.patch;
+  const commitCommentAuthoring = useMemo(
+    () =>
+      narrowedPatch === undefined || model.fullPatch === undefined
+        ? undefined
+        : createNarrowedCommentAuthoring(
+            actions.localCommentAuthoring,
+            narrowedPatch,
+            model.fullPatch,
+          ),
+    [actions.localCommentAuthoring, model.fullPatch, narrowedPatch],
+  );
   const readOnlyConversationAnnotations = useMemo(
     () =>
       buildReadOnlyConversationAnnotations(

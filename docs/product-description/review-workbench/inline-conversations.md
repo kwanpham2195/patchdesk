@@ -29,7 +29,7 @@ stateDiagram-v2
 
 Existing comments render as annotations on their mapped file, side, and line. Thread cards distinguish open, resolved, outdated, unknown, pending-review, locally publishing, published comment-only, and failed local creation states. Each card renders its comment bodies as Markdown with images and links. The Threads tab lists conversation threads for the represented revision and can move focus to the matching card. It orders the threads that need the maintainer's reply first and counts them on its tab label; [Conversation and pull request metadata](conversation-and-metadata.md#arrive) owns what Needs your reply means and when it clears.
 
-The composer appears only on eligible changed lines when direct conversation authoring is enabled. A stale, closed, merged, patchless, or recovery-locked Review remains readable but does not expose the authoring action.
+The composer appears only on eligible changed lines when direct conversation authoring is enabled. A stale, closed, merged, patchless, or recovery-locked Review remains readable but does not expose the authoring action. In a selected commit's diff the action appears only on lines of the commit's new version that the pull request head shows with the same code; [Files, diff, commits, and navigation](files-diff-and-navigation.md) describes the rule.
 
 ### Leave unchanged
 

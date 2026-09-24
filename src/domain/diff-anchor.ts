@@ -54,6 +54,37 @@ export function fingerprintPatchAnchor(
   };
 }
 
+/** Whether two patches show the same code at one anchor, judged by its lines and the in-hunk neighbours both patches show. */
+export function patchesAgreeAtAnchor(
+  shownPatch: string,
+  targetPatch: string,
+  anchor: PendingReviewAnchor,
+): boolean {
+  const shown = fingerprintPatchAnchor(shownPatch, anchor);
+  const target = fingerprintPatchAnchor(targetPatch, anchor);
+  if (shown === undefined || target === undefined) return false;
+  const before = Math.min(shown.before.length, target.before.length);
+  const after = Math.min(shown.after.length, target.after.length);
+  return (
+    sameLines(shown.selectedLines, target.selectedLines) &&
+    sameLines(
+      shown.before.slice(shown.before.length - before),
+      target.before.slice(target.before.length - before),
+    ) &&
+    sameLines(shown.after.slice(0, after), target.after.slice(0, after))
+  );
+}
+
+function sameLines(
+  left: ReadonlyArray<string>,
+  right: ReadonlyArray<string>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((line, index) => line === right[index])
+  );
+}
+
 function patchLines(patch: string): ReadonlyArray<PatchLine> {
   const lines: PatchLine[] = [];
   let oldPath: string | undefined;
