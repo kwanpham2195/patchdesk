@@ -19,7 +19,10 @@ import type { ReviewWorkbenchActions } from "./review-workbench";
 import { blockedMergeChip, mergeBlockerLabels } from "./merge-readiness-items";
 import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
-import { WatchPullRequestButton } from "./watch-pull-request-button";
+import {
+  WatchPullRequestButton,
+  WatchPullRequestFailure,
+} from "./watch-pull-request-button";
 import { cn } from "@/lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -147,7 +150,12 @@ export function ReviewWorkbenchHeader({
             <ExternalLink data-icon="inline-start" /> Open on GitHub
           </Button>
           {externalPullRequest === undefined || terminal ? null : (
-            <WatchPullRequestButton pullRequest={externalPullRequest} />
+            <WatchPullRequestButton
+              pullRequest={externalPullRequest}
+              showFailure={false}
+              // A closed or merged refusal is GitHub's answer; detection confirms it and moves the Review to its terminal header.
+              onTerminalRefusal={() => void actions.detectUpdates()}
+            />
           )}
           {actions.pendingReview === undefined || terminal ? null : (
             <PendingReviewHeaderAction
@@ -161,6 +169,13 @@ export function ReviewWorkbenchHeader({
           )}
         </div>
       </div>
+      {/* Below the action row, so an error never wraps the buttons. */}
+      {externalPullRequest === undefined || terminal ? null : (
+        <WatchPullRequestFailure
+          pullRequest={externalPullRequest}
+          className="self-end"
+        />
+      )}
       {/* A merged or closed Review states that once, in the Merge chip. */}
       {terminal ? null : (
         <PendingReviewNotice pendingReview={actions.pendingReview} />

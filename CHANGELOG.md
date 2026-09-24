@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a Review whose pull request was closed on GitHub still showing **Merge · Ready**, Watch, and **Start a review** after Watch was refused with "Closed pull requests cannot be watched." The refusal now checks GitHub, and the header turns to **Merge · Closed** (or **Merge · Merged**) once GitHub confirms it. The Watch error now sits under the header buttons instead of pushing **Start a review** onto its own line. #348
+
 - Fixed Markdown-syntax screenshots, such as the ones in a before/after table, never opening the full-size view. An image that is the only content of its paragraph or table cell now zooms on click, and so does a link whose only content is one image, Markdown or HTML; the full-size view then has an **Open link** button for the link. Images in a line of text or a row of badges still behave as before. #348
 
 - The Pull requests inspector shows a **Merge** fact beside **Checks**, worded like PR overview Merge readiness: **Ready to merge**, **Blocked · Conflicts +1**, **Draft**, **Unknown** before GitHub reports mergeability, or **Merged**. It applies the Review's readiness rule to the listing's merge state, so a branch GitHub's rules block reads **Blocked** in both places, and a pull request is no longer counted Ready to merge while its Review says Blocked. #348

@@ -32,7 +32,10 @@ type WatchedPullRequestsValue = {
   readonly failureFor: (
     ref: WatchedPullRequestRef,
   ) => WatchToggleFailure | undefined;
-  readonly toggle: (ref: WatchedPullRequestRef) => Promise<boolean>;
+  /** Resolves with the refusal, or `undefined` once the change applied. */
+  readonly toggle: (
+    ref: WatchedPullRequestRef,
+  ) => Promise<WatchToggleFailure | undefined>;
   /** When this window last heard that a poll found a change for the profile; the freshness badge compares it with its refresh. */
   readonly changedAt: string | undefined;
 };
@@ -158,15 +161,17 @@ export function WatchedPullRequestsProvider({
   }, [load, profileId]);
 
   const toggle = useCallback(
-    async (ref: WatchedPullRequestRef): Promise<boolean> => {
-      if (watched === undefined) return false;
+    async (
+      ref: WatchedPullRequestRef,
+    ): Promise<WatchToggleFailure | undefined> => {
+      if (watched === undefined) return { kind: "failed" };
       const key = refKey(ref);
       const owner = generation.current;
       setPending((current) => new Set(current).add(key));
       const withoutFailure = new Map(failures);
       withoutFailure.delete(key);
       setFailureState({ profileId, value: withoutFailure });
-      let applied = false;
+      let failure: WatchToggleFailure | undefined;
       try {
         const list = readList(
           await requestJson("/v1/watched-pull-requests", {
@@ -176,12 +181,12 @@ export function WatchedPullRequestsProvider({
         );
         if (generation.current === owner)
           setLoaded({ profileId, value: new Set(list.map(refKey)) });
-        applied = true;
       } catch (cause: unknown) {
+        failure = toggleFailure(cause);
         if (generation.current === owner)
           setFailureState({
             profileId,
-            value: new Map(withoutFailure).set(key, toggleFailure(cause)),
+            value: new Map(withoutFailure).set(key, failure),
           });
       } finally {
         setPending((current) => {
@@ -190,7 +195,7 @@ export function WatchedPullRequestsProvider({
           return next;
         });
       }
-      return applied;
+      return failure;
     },
     [failures, profileId, watched],
   );
