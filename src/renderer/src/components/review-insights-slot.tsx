@@ -250,6 +250,7 @@ export function InsightsSlot({
   const walkthroughProgress = useWalkthroughProgress({
     profileId,
     reviewId,
+    reviewOpen: workbench.review.status === "open",
     walkthrough: workbench.insights.walkthrough,
     onWorkbenchPatch,
   });

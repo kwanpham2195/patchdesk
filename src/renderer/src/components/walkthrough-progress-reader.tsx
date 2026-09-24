@@ -1,3 +1,4 @@
+import { definedProps } from "../../../domain/defined-props";
 import { NarrativeWalkthrough } from "./narrative-walkthrough";
 import { InlineError } from "./ui/inline-error";
 import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
@@ -28,8 +29,10 @@ export function WalkthroughProgressReader({
           ? {}
           : { currentSectionId: progress.currentSectionId })}
         actions={{
-          onMarkSectionReviewed: controls.markSectionReviewed,
-          onMarkSupportReviewed: controls.markSupportReviewed,
+          ...definedProps({
+            onMarkSectionReviewed: controls.markSectionReviewed,
+            onMarkSupportReviewed: controls.markSupportReviewed,
+          }),
           onSelectSection: controls.selectSection,
         }}
       />

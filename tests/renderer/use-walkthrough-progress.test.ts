@@ -25,6 +25,7 @@ function renderProgress(patches: ReviewWorkbenchPatch[]) {
     useWalkthroughProgress({
       profileId: "profile",
       reviewId: "review-42",
+      reviewOpen: true,
       walkthrough: withWalkthrough().insights.walkthrough,
       onWorkbenchPatch: (patch) => patches.push(patch),
     }),
@@ -39,7 +40,7 @@ describe("useWalkthroughProgress", () => {
     const patches: ReviewWorkbenchPatch[] = [];
     const { result } = renderProgress(patches);
 
-    act(() => result.current.markSectionReviewed("section-1"));
+    act(() => result.current.markSectionReviewed?.("section-1"));
 
     expect(result.current.progress.reviewedSectionIds).toEqual(["section-1"]);
     await waitFor(() => expect(patches).toHaveLength(1));
@@ -69,8 +70,8 @@ describe("useWalkthroughProgress", () => {
     const patches: ReviewWorkbenchPatch[] = [];
     const { result } = renderProgress(patches);
 
-    act(() => result.current.markSectionReviewed("section-1"));
-    act(() => result.current.markSupportReviewed());
+    act(() => result.current.markSectionReviewed?.("section-1"));
+    act(() => result.current.markSupportReviewed?.());
     await waitFor(() => expect(answers).toHaveLength(2));
     await act(async () => answers[1]?.(success({ status: "saved" })));
     await act(async () => answers[0]?.(success({ status: "saved" })));
