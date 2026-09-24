@@ -58,6 +58,7 @@ type RemoveResult = Awaited<
 >;
 type BeginResult = Awaited<ReturnType<MergeOperationStore["begin"]>>;
 type ConfirmResult = Awaited<ReturnType<MergeOperationStore["confirm"]>>;
+type RejectResult = Awaited<ReturnType<MergeOperationStore["reject"]>>;
 type TerminalWriteEffect = "review_saved" | "merge_receipt_removed";
 
 const values = createReviewRefreshFixtureValues();
@@ -88,6 +89,7 @@ class RecordingMergeOperationStore extends MergeOperationStore {
     private readonly removeResult: RemoveResult,
     private readonly beginResult: BeginResult,
     private readonly confirmResult: ConfirmResult,
+    private readonly rejectResult: RejectResult,
   ) {
     super(PatchdeskPaths.forTest(unusedStoreRoot));
   }
@@ -117,7 +119,7 @@ class RecordingMergeOperationStore extends MergeOperationStore {
     operation: MergeOperation,
   ): Promise<Awaited<ReturnType<MergeOperationStore["reject"]>>> {
     this.rejected.push(operation);
-    return ok(undefined);
+    return this.rejectResult;
   }
 
   override async removeAfterSessionReceipt(
@@ -348,6 +350,7 @@ function fixture(
     readonly removeReceipt?: RemoveResult;
     readonly beginOperation?: BeginResult;
     readonly confirmOperation?: ConfirmResult;
+    readonly rejectOperation?: RejectResult;
     readonly mergeResult?: GatewayMergeResult;
     readonly mergeability?: MergePolicySnapshot["mergeability"];
     readonly analysis?: AnalysisFixture;
@@ -393,6 +396,7 @@ function fixture(
     options.removeReceipt ?? ok(undefined),
     options.beginOperation ?? ok(undefined),
     options.confirmOperation ?? ok(undefined),
+    options.rejectOperation ?? ok(undefined),
   );
   const loadReview = vi.fn(
     async (): Promise<LoadResult> => options.loadReview ?? ok(review),
@@ -561,6 +565,25 @@ describe("MergeWriteController", () => {
     });
     expect(current.operations.removed).toHaveLength(0);
     expect(current.gateway.mergeRequests).toHaveLength(0);
+    expect(current.notifications).toEqual([]);
+  });
+
+  it("posts one recovery event when a refused merge cannot be recorded as rejected", async () => {
+    const current = fixture({
+      mergeability: "blocked",
+      rejectOperation: err({
+        _tag: "StorageFailure",
+        operation: "write",
+        reason: "io",
+      }),
+    });
+    await expect(current.controller.merge(request())).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "merge_blocked" },
+    });
+    expect(current.notifications).toMatchObject([
+      { _tag: "WriteNeedsRecovery", reviewId },
+    ]);
   });
 
   it("saves a terminal Review before deleting confirmed merge evidence", async () => {
