@@ -219,7 +219,11 @@ describe("usePendingReviewActions commands", () => {
     });
 
     expect(appendRecentWrites).toHaveBeenCalledWith([
-      { _tag: "PendingThread", threadId: "PRRT_2" },
+      {
+        _tag: "PendingThread",
+        threadId: "PRRT_2",
+        pendingReviewNodeId: "PRR_1",
+      },
     ]);
   });
 

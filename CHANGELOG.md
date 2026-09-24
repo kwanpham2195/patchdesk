@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the header and Analysis Findings not following GitHub for up to a day after the maintainer deleted a pending review on GitHub and then started a new one in Patchdesk. The background update check no longer waits for threads added to the deleted pending review, so the Review updates on the next check.
+
 - Fixed a Review whose pull request was closed on GitHub still showing **Merge · Ready**, Watch, and **Start a review** after Watch was refused with "Closed pull requests cannot be watched." The refusal now checks GitHub, and the header turns to **Merge · Closed** (or **Merge · Merged**) once GitHub confirms it. The Watch error now sits under the header buttons instead of pushing **Start a review** onto its own line. #348
 
 - Fixed Markdown-syntax screenshots, such as the ones in a before/after table, never opening the full-size view. An image that is the only content of its paragraph or table cell now zooms on click, and so does a link whose only content is one image, Markdown or HTML; the full-size view then has an **Open link** button for the link. Images in a line of text or a row of badges still behave as before. #348

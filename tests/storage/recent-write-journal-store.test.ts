@@ -9,6 +9,7 @@ import { createReviewId } from "../../src/domain/ids";
 import type { LogEntryInput } from "../../src/domain/log-entry";
 import {
   parseGitHubHost,
+  parseGitHubReviewNodeId,
   parseGitHubThreadId,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -67,7 +68,11 @@ describe("RecentWriteJournalStore", () => {
     const receipts = {
       Comment: { _tag: "Comment", commentId: "PRRC_1", reviewId: "PRR_1" },
       ThreadState: { _tag: "ThreadState", threadId, state: "resolved" },
-      PendingThread: { _tag: "PendingThread", threadId },
+      PendingThread: {
+        _tag: "PendingThread",
+        threadId,
+        pendingReviewNodeId: must(parseGitHubReviewNodeId("PRR_pending")),
+      },
       DiscardedThread: {
         _tag: "DiscardedThread",
         threadId: must(parseGitHubThreadId("PRRT_discarded")),

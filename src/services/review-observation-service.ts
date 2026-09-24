@@ -816,15 +816,17 @@ export class ReviewObservationService {
 
 /**
  * A pending thread cannot reappear once GitHub confirms the viewer has no
- * pending review, or a pending review other than the recorded one that lacks
- * the thread, so its receipt would otherwise withhold every projection until
- * the journal's age ceiling. A failed read, or the recorded pending review
- * read without the thread (read lag), settles nothing.
+ * pending review, or a pending review other than the one it was created in
+ * that lacks the thread, so its receipt would otherwise withhold every
+ * projection until the journal's age ceiling. A failed read, or the recorded
+ * pending review read without the thread (read lag), settles nothing. An entry
+ * written before receipts named their pending review compares against the
+ * stored one instead.
  */
 function pendingThreadGone(
   stored: PendingReviewState | undefined,
   observed: { readonly read: PendingReviewRead; readonly available: boolean },
-): (threadId: string) => boolean {
+): (write: PendingThreadWrite) => boolean {
   const read = observed.read;
   if (!observed.available || read._tag === "Unavailable") return () => false;
   if (read._tag === "None") return () => true;
@@ -832,15 +834,19 @@ function pendingThreadGone(
     stored === undefined || stored._tag === "None"
       ? undefined
       : stored.review?.nodeId;
-  if (read.review.nodeId === storedNodeId) return () => false;
-  return (threadId) =>
-    !read.review.comments.some((comment) => comment.threadId === threadId);
+  return (write) =>
+    read.review.nodeId !== (write.pendingReviewNodeId ?? storedNodeId) &&
+    !read.review.comments.some(
+      (comment) => comment.threadId === write.threadId,
+    );
 }
+
+type PendingThreadWrite = Extract<RecentReviewWrite, { _tag: "PendingThread" }>;
 
 function containsRecentWrites(
   snapshot: ReviewRemoteSnapshot,
   writes: ReadonlyArray<RecentReviewWrite>,
-  pendingThreadIsGone: (threadId: string) => boolean,
+  pendingThreadIsGone: (write: PendingThreadWrite) => boolean,
 ): boolean {
   return writes.every((write): boolean => {
     switch (write._tag) {
@@ -878,7 +884,7 @@ function containsRecentWrites(
         return (
           snapshot.comments.threads.some(
             (thread) => thread.id === write.threadId,
-          ) || pendingThreadIsGone(write.threadId)
+          ) || pendingThreadIsGone(write)
         );
       case "DiscardedThread":
         // A discard is proven by absence: the thread the draft held is gone.

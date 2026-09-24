@@ -2,7 +2,11 @@ import { useCallback, useState } from "react";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
 import * as v from "valibot";
 
-import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
+import {
+  parseGitHubReviewNodeId,
+  parseGitHubThreadId,
+  type GitHubThreadId,
+} from "../../../domain/ids";
 import {
   ReviewPreconditionError,
   contextualMessage,
@@ -256,12 +260,21 @@ export function usePendingReviewActions({
           const added = threadIdsOf(projection).filter(
             (id) => !priorThreadIdSet.has(id),
           );
+          const pendingReviewNodeId =
+            projection.state === "pending"
+              ? parseGitHubReviewNodeId(projection.review.nodeId)
+              : undefined;
           if (added.length > 0) {
             appendRecentWrites(
-              added.map((threadId) => ({
-                _tag: "PendingThread" as const,
-                threadId,
-              })),
+              added.map((threadId) =>
+                pendingReviewNodeId?._tag === "ok"
+                  ? {
+                      _tag: "PendingThread" as const,
+                      threadId,
+                      pendingReviewNodeId: pendingReviewNodeId.value,
+                    }
+                  : { _tag: "PendingThread" as const, threadId },
+              ),
             );
           }
         } else if (command._tag === "Discard" && projection?.state === "none") {

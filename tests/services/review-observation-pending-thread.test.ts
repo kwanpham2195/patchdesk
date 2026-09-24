@@ -25,6 +25,7 @@ import type {
   PendingReviewRead,
   ViewerPendingReview,
 } from "../../src/domain/pending-review";
+import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import { createReview, moveReviewToSession } from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
 import { ok } from "../../src/domain/result";
@@ -55,6 +56,13 @@ const at = must(parseIsoTimestamp("2026-08-12T00:00:00.000Z"));
 /** The durable journal filters against the real clock's 24h ceiling. */
 const justWrittenAt = () => must(parseIsoTimestamp(new Date().toISOString()));
 const threadId = must(parseGitHubThreadId("PRRT_added"));
+/** A receipt journaled before receipts named their pending review. */
+const unnamedReceipt: RecentReviewWrite = { _tag: "PendingThread", threadId };
+const receiptIn = (nodeId: string): RecentReviewWrite => ({
+  _tag: "PendingThread",
+  threadId,
+  pendingReviewNodeId: must(parseGitHubReviewNodeId(nodeId)),
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -94,8 +102,19 @@ function viewerReview(
   };
 }
 
-/** A Review whose session recorded pending review A holding the added thread. */
-async function observeAfterPendingRead(read: PendingReviewRead) {
+/**
+ * A Review whose session stored `stored` and whose receipt is both journaled
+ * by main and sent by the renderer, as a confirmed AddThread does.
+ */
+async function observeAfterPendingRead({
+  read,
+  stored = viewerReview("PRR_a", [threadId]),
+  receipt = unnamedReceipt,
+}: {
+  readonly read: PendingReviewRead;
+  readonly stored?: ViewerPendingReview;
+  readonly receipt?: RecentReviewWrite;
+}) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-pending-thread-"));
   roots.push(root);
   const paths = PatchdeskPaths.forTest(root);
@@ -138,7 +157,7 @@ async function observeAfterPendingRead(read: PendingReviewRead) {
     ...created,
     pendingReview: {
       _tag: "Pending" as const,
-      review: viewerReview("PRR_a", [threadId]),
+      review: stored,
     },
   };
   await mkdir(join(session.patchPath, ".."), { recursive: true });
@@ -173,12 +192,7 @@ async function observeAfterPendingRead(read: PendingReviewRead) {
   const recentWrites = new RecentWriteJournalStore(paths, {
     write: () => undefined,
   });
-  await recentWrites.append(
-    profileId,
-    review.id,
-    { _tag: "PendingThread", threadId },
-    justWrittenAt(),
-  );
+  await recentWrites.append(profileId, review.id, receipt, justWrittenAt());
   const observation = new ReviewObservationService({
     profiles,
     reviews,
@@ -208,6 +222,7 @@ async function observeAfterPendingRead(read: PendingReviewRead) {
   const observed = await observation.observe({
     profileId,
     reviewId: review.id,
+    recentWrites: [receipt],
   });
   const journal = await recentWrites.load(profileId, review.id);
   return {
@@ -227,7 +242,7 @@ describe("ReviewObservationService pending-thread receipts", () => {
       read: { _tag: "Pending", review: viewerReview("PRR_b", []) },
     },
   ] as const)("settles the receipt when $name", async ({ read }) => {
-    const result = await observeAfterPendingRead(read);
+    const result = await observeAfterPendingRead({ read });
 
     expect(result.projected).toBe(true);
     expect(result.journal).toEqual([]);
@@ -243,9 +258,31 @@ describe("ReviewObservationService pending-thread receipts", () => {
       read: { _tag: "Pending", review: viewerReview("PRR_a", []) },
     },
   ] as const)("keeps withholding when $name", async ({ read }) => {
-    const result = await observeAfterPendingRead(read);
+    const result = await observeAfterPendingRead({ read });
 
     expect(result.projected).toBe(false);
-    expect(result.journal).toEqual([{ _tag: "PendingThread", threadId }]);
+    expect(result.journal).toEqual([unnamedReceipt]);
+  });
+
+  it("settles a receipt from a deleted pending review once a new one is stored and read without its thread", async () => {
+    const result = await observeAfterPendingRead({
+      read: { _tag: "Pending", review: viewerReview("PRR_b", []) },
+      stored: viewerReview("PRR_b", []),
+      receipt: receiptIn("PRR_a"),
+    });
+
+    expect(result.projected).toBe(true);
+    expect(result.journal).toEqual([]);
+  });
+
+  it("keeps withholding when the pending review the receipt names is read without the thread", async () => {
+    const result = await observeAfterPendingRead({
+      read: { _tag: "Pending", review: viewerReview("PRR_b", []) },
+      stored: viewerReview("PRR_a", []),
+      receipt: receiptIn("PRR_b"),
+    });
+
+    expect(result.projected).toBe(false);
+    expect(result.journal).toEqual([receiptIn("PRR_b")]);
   });
 });

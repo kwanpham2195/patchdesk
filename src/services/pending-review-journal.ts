@@ -28,7 +28,13 @@ export function journalEntriesFor(
     written !== undefined &&
     "createdThreadId" in written
   ) {
-    return [{ _tag: "PendingThread", threadId: written.createdThreadId }];
+    return [
+      {
+        _tag: "PendingThread",
+        threadId: written.createdThreadId,
+        pendingReviewNodeId: written.review.nodeId,
+      },
+    ];
   }
   if (
     operation._tag === "Discard" &&
