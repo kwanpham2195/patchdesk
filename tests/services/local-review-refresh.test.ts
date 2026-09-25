@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { parseFindingId, parseRepoRelativePath } from "../../src/domain/ids";
 import {
+  applyRequest,
   cleanupLocalApplyRoots,
   git,
   localApplyHarness,
@@ -65,7 +66,7 @@ async function draftedReview() {
       text: "Use a template literal type.",
     }),
   );
-  return { harness, workbench };
+  return { harness, workbench, runId };
 }
 
 describe("LocalReviewOpening.refresh", () => {
@@ -87,11 +88,18 @@ describe("LocalReviewOpening.refresh", () => {
     expect(after.localDrafts).toEqual(before.localDrafts);
   });
 
-  it("moves an edited Review to a new session and carries each draft with whether its lines changed", async () => {
-    const { harness, workbench } = await draftedReview();
+  it("moves an edited Review to a new session, makes it Fresh, and carries each draft with whether its lines changed", async () => {
+    const { harness, workbench, runId } = await draftedReview();
     await writeFile(
       join(harness.repositoryPath, "probe.ts"),
       probe.replace("index <= values.length", "index < values.length"),
+    );
+    // An Apply on the session the checkout moved past records the change.
+    const refusedApply = await harness.service.apply(
+      applyRequest(workbench, runId, ["finding-bound"]),
+    );
+    const stale = value(
+      await harness.reviews.load(profileId, workbench.review.id),
     );
 
     const refreshed = value(
@@ -121,6 +129,12 @@ describe("LocalReviewOpening.refresh", () => {
     const stored = value(
       await harness.reviews.load(profileId, workbench.review.id),
     );
+    expect(refusedApply).toEqual({
+      _tag: "err",
+      error: { reason: "revision_changed" },
+    });
+    expect(stale.freshness._tag).toBe("RevisionChanged");
+    expect(stored.freshness).toEqual({ _tag: "Fresh" });
     expect(stored.currentSessionId).toBe(refreshed.session.id);
     expect(stored.localDrafts?.[0]?.anchor.selectedLines).toEqual([
       "  for (let index = 0; index < values.length; index += 1) {",

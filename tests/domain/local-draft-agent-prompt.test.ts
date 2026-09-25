@@ -145,7 +145,7 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
     const prompt = renderLocalDraftsAsAgentPrompt([
       {
         ...note("src/items.ts", 4, "Handle the empty list."),
-        carry: { state: "changed", sessionId },
+        carry: { state: "changed", sessionId, notedLines: [] },
       },
       {
         ...draft({
@@ -155,7 +155,7 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
           startLine: 1,
           line: 1,
         }),
-        carry: { state: "needs_attention", sessionId },
+        carry: { state: "needs_attention", sessionId, notedLines: [] },
       },
       {
         ...draft({
@@ -169,7 +169,7 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
       },
       {
         ...note("src/items.ts", 9, "Name this constant."),
-        carry: { state: "unchanged", sessionId },
+        carry: { state: "unchanged", sessionId, notedLines: [] },
       },
     ]);
 

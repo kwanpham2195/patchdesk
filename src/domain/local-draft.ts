@@ -63,6 +63,8 @@ type LocalDraftCarry = {
   readonly state: LocalDraftCarryState;
   /** The session the draft was carried to. */
   readonly sessionId: ReviewSessionId;
+  /** The drafted lines as the maintainer saw them, which every later state is compared with. */
+  readonly notedLines: ReadonlyArray<string>;
 };
 
 export type LocalDraftCarryState = "unchanged" | "changed" | "needs_attention";
@@ -125,6 +127,7 @@ const storedCarrySchema = v.optional(
   v.strictObject({
     state: v.picklist(["unchanged", "changed", "needs_attention"]),
     sessionId: nonEmpty,
+    notedLines: v.array(v.string()),
   }),
 );
 
@@ -189,7 +192,11 @@ function parseStoredLocalDraft(
   const carry =
     entry.carry === undefined || carriedTo === undefined
       ? undefined
-      : { state: entry.carry.state, sessionId: carriedTo.value };
+      : {
+          state: entry.carry.state,
+          sessionId: carriedTo.value,
+          notedLines: entry.carry.notedLines,
+        };
   if ("author" in entry) {
     const noteId = parseLocalNoteId(entry.noteId);
     const text = parseMaintainerNoteText(entry.text);

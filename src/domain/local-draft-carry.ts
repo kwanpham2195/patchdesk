@@ -4,11 +4,7 @@ import {
   resolveSuggestionTarget,
 } from "./finding-suggestion";
 import type { RepoRelativePath, ReviewSessionId } from "./ids";
-import {
-  isMaintainerNote,
-  type LocalDraft,
-  type LocalDraftCarryState,
-} from "./local-draft";
+import { isMaintainerNote, type LocalDraft } from "./local-draft";
 
 /** The session a local Review moves to, as the carry rule reads it. */
 export type LocalDraftCarryTarget = {
@@ -19,70 +15,72 @@ export type LocalDraftCarryTarget = {
 };
 
 /**
- * ADR 0002's carry rule for one Local draft (ADR 0050 "Local drafts", #452).
- * A draft whose fingerprint maps to exactly one location in the new patch is
- * unchanged and moves there. A new-side draft whose surrounding lines are each
- * found exactly once in the new file, around lines that differ from the
- * drafted ones, changed since the note and moves to the lines between them.
- * Any other draft needs attention and keeps its original anchor and session.
- * No draft is discarded, and an applied Finding draft is left as it is.
+ * ADR 0002's carry rule for one Local draft (ADR 0050 "Local drafts", ADR
+ * 0051 "Addressed or not", #452). The draft moves when its fingerprint maps to
+ * exactly one location in the new patch, or else when its surrounding lines
+ * are each found exactly once in the new file around at least one line; it
+ * moves to the lines between them even when those left the patch. Any other
+ * draft needs attention and keeps its anchor and session. The state describes
+ * the lines under the draft, not how it was placed: changed once they differ
+ * from the lines the maintainer saw, unchanged otherwise. No draft is
+ * discarded, and an applied Finding draft is left as it is.
  */
 export function carryLocalDraft(
   draft: LocalDraft,
   target: LocalDraftCarryTarget,
 ): LocalDraft {
   if (!isMaintainerNote(draft) && draft.appliedAt !== undefined) return draft;
+  const notedLines = draft.carry?.notedLines ?? draft.anchor.selectedLines;
   const locations = locatePatchAnchor(target.patch, draft.anchor);
   const location = locations.length === 1 ? locations[0] : undefined;
-  if (location !== undefined)
-    return moved(
-      draft,
-      target,
-      { ...draft.anchor, ...location },
-      // Lines that stopped moving after they changed are still changed since the note.
-      draft.carry?.state === "changed" ? "changed" : "unchanged",
+  const anchor =
+    location !== undefined
+      ? { ...draft.anchor, ...location }
+      : draft.anchor.side === "new"
+        ? regionBetweenContext(
+            draft.anchor,
+            target.files.get(draft.anchor.path),
+          )
+        : undefined;
+  if (anchor === undefined)
+    return withoutStaleSuggestion(
+      {
+        ...draft,
+        carry: {
+          state: "needs_attention",
+          sessionId: target.sessionId,
+          notedLines,
+        },
+      },
+      notedLines,
+      target.patch,
     );
-  const region =
-    draft.anchor.side === "new"
-      ? changedRegion(draft.anchor, target.files.get(draft.anchor.path))
-      : undefined;
-  if (region !== undefined) return moved(draft, target, region, "changed");
-  return withoutStaleSuggestion(
-    {
-      ...draft,
-      carry: { state: "needs_attention", sessionId: target.sessionId },
-    },
-    draft.anchor,
-    target.patch,
-  );
-}
-
-function moved(
-  draft: LocalDraft,
-  target: LocalDraftCarryTarget,
-  anchor: ReviewAnchorFingerprint,
-  state: LocalDraftCarryState,
-): LocalDraft {
+  // Once changed since the note, lines that stop moving are still changed since it.
+  const state =
+    draft.carry?.state === "changed" ||
+    !sameLines(anchor.selectedLines, notedLines)
+      ? "changed"
+      : "unchanged";
   return withoutStaleSuggestion(
     {
       ...draft,
       sessionId: target.sessionId,
       anchor,
-      carry: { state, sessionId: target.sessionId },
+      carry: { state, sessionId: target.sessionId, notedLines },
     },
-    draft.anchor,
+    notedLines,
     target.patch,
   );
 }
 
 /**
  * Keeps a Finding draft's suggestion only when it can still be serialized and
- * the new patch holds, at the draft's new location, the exact lines the
+ * the new patch holds, at the draft's location, the exact lines the
  * suggestion was verified against; otherwise the draft stays without it.
  */
 function withoutStaleSuggestion(
   draft: LocalDraft,
-  verifiedAgainst: ReviewAnchorFingerprint,
+  verifiedAgainst: ReadonlyArray<string>,
   patch: string,
 ): LocalDraft {
   if (isMaintainerNote(draft) || draft.suggestion === undefined) return draft;
@@ -95,7 +93,7 @@ function withoutStaleSuggestion(
   if (
     isAcceptableSuggestionCode(draft.suggestion.code) &&
     target !== undefined &&
-    sameLines(target.originalLines, verifiedAgainst.selectedLines)
+    sameLines(target.originalLines, verifiedAgainst)
   )
     return draft;
   const { suggestion: _dropped, ...rest } = draft;
@@ -105,9 +103,9 @@ function withoutStaleSuggestion(
 /**
  * The lines between the draft's `before` and `after` context in the new file,
  * when each context block is found there exactly once, in order, around at
- * least one line, and those lines are not the drafted ones.
+ * least one line.
  */
-function changedRegion(
+function regionBetweenContext(
   anchor: ReviewAnchorFingerprint,
   text: string | undefined,
 ): ReviewAnchorFingerprint | undefined {
@@ -126,9 +124,12 @@ function changedRegion(
   const start = (before[0] ?? 0) + anchor.before.length;
   const end = after[0] ?? 0;
   if (end <= start) return undefined;
-  const selectedLines = lines.slice(start, end);
-  if (sameLines(selectedLines, anchor.selectedLines)) return undefined;
-  return { ...anchor, startLine: start + 1, line: end, selectedLines };
+  return {
+    ...anchor,
+    startLine: start + 1,
+    line: end,
+    selectedLines: lines.slice(start, end),
+  };
 }
 
 function occurrences(
