@@ -11,6 +11,10 @@ import {
   PendingReviewThreadCard,
   PendingReviewWriteCard,
 } from "./review-diff-authoring";
+import {
+  GeneratedMarkdown,
+  GeneratedMarkdownInline,
+} from "./generated-markdown";
 import type { PullRequestBodyContext } from "./pull-request-description";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { Badge } from "@/components/ui/badge";
@@ -91,7 +95,9 @@ export function renderReviewDiffAnnotation(
         enclosing article already carries the same text in its
         aria-label. A real <h3> here skips straight from the page's
         <h1> with no <h2> between them (axe: heading-order). */}
-        <span className="min-w-0 break-words font-medium">{finding.title}</span>
+        <span className="min-w-0 break-words font-medium">
+          <GeneratedMarkdownInline markdown={finding.title} />
+        </span>
         {onOpenFindingInAnalysis === undefined ? null : (
           <Button
             size="xs"
@@ -104,9 +110,10 @@ export function renderReviewDiffAnnotation(
           </Button>
         )}
       </div>
-      <p className="mt-1 break-words text-muted-foreground">
-        {finding.explanation}
-      </p>
+      <GeneratedMarkdown
+        markdown={finding.explanation}
+        className="mt-1 text-muted-foreground"
+      />
     </article>
   );
 }
