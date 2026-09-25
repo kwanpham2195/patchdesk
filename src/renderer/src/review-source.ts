@@ -47,3 +47,27 @@ export function reviewSourceTitle(source: WorkbenchReviewSource): string {
       return casesHandled(source);
   }
 }
+
+/**
+ * What a local Review's header says about its revision: the commit it
+ * represents and that it was read from the checkout. It names no GitHub state
+ * because a local Review has none; absent for a pull request.
+ */
+export function localRevisionLabel(
+  source: WorkbenchReviewSource,
+  headSha: string,
+): string | undefined {
+  const short = headSha.slice(0, 8);
+  switch (source.kind) {
+    case "pull_request":
+      return undefined;
+    case "working_tree":
+      return `Local snapshot ${short} · read from the local checkout`;
+    case "branch":
+      return `Branch tip ${short} · read from the local checkout`;
+    case "commit":
+      return `Commit ${short} · read from the local checkout`;
+    default:
+      return casesHandled(source);
+  }
+}

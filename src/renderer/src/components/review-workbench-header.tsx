@@ -14,7 +14,10 @@ import {
   pullRequestPageUrl,
 } from "../external-links";
 import type { WorkbenchResponse } from "../renderer-contracts";
-import { workbenchPullRequestNumber } from "../review-source";
+import {
+  localRevisionLabel,
+  workbenchPullRequestNumber,
+} from "../review-source";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { blockedMergeChip, mergeBlockerLabels } from "./merge-readiness-items";
@@ -209,19 +212,26 @@ export function ReviewWorkbenchHeader({
           }
         >
           {repository} ·{" "}
-          {local
-            ? null
-            : `${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"} · `}
-          {model.revision.reviewedHeadSha.slice(0, 8)}
-          {/* A merged or closed Review is never refreshed, so its freshness and updates notice would only age. */}
-          {terminal ? null : (
+          {local ? (
+            localRevisionLabel(
+              model.session.key.source,
+              model.revision.reviewedHeadSha,
+            )
+          ) : (
             <>
-              {" "}
-              · {freshnessLabel} ·{" "}
-              <RelativeTime
-                iso={model.revision.refreshedAt}
-                prefix="checked "
-              />
+              {`${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"} · `}
+              {model.revision.reviewedHeadSha.slice(0, 8)}
+              {/* A merged or closed Review is never refreshed, so its freshness and updates notice would only age. */}
+              {terminal ? null : (
+                <>
+                  {" "}
+                  · {freshnessLabel} ·{" "}
+                  <RelativeTime
+                    iso={model.revision.refreshedAt}
+                    prefix="checked "
+                  />
+                </>
+              )}
             </>
           )}
           {hasUpdates && !terminal ? (

@@ -109,7 +109,9 @@ export function ReviewWorkbenchFlow({
   // Permission is read with the branch list and enforced by BaseBranchService.
   const canWriteBaseBranch =
     workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
+  // A local Review has no pull request to comment on (ADR 0050).
   const canWriteDirectConversation =
+    workbench.session.key.source.kind === "pull_request" &&
     workbench.review.status === "open" &&
     !writeRecovery.githubWritesLocked &&
     workbench.revision.freshness === "fresh" &&
