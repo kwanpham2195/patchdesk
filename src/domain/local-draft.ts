@@ -36,6 +36,9 @@ export type FindingDraft = {
   /** Present only when the Finding's replacement resolved in the session patch. */
   readonly suggestion?: FindingSuggestedReplacement;
   readonly addedAt: IsoTimestamp;
+  /** Set when a confirmed Apply wrote this Finding's suggestion; the draft stays listed and leaves the agent prompt. */
+  readonly appliedAt?: IsoTimestamp;
+  readonly carry?: LocalDraftCarry;
 };
 
 /** A note the maintainer wrote on diff lines of a local Review (ADR 0051); the maintainer may edit its text. */
@@ -48,7 +51,21 @@ export type MaintainerNote = {
   readonly text: string;
   readonly createdAt: IsoTimestamp;
   readonly updatedAt: IsoTimestamp;
+  readonly carry?: LocalDraftCarry;
 };
+
+/**
+ * What the last move of the Review to a new session decided for one draft
+ * (#452): its lines are unchanged, changed since the note, or could not be
+ * placed and need the maintainer's attention.
+ */
+export type LocalDraftCarry = {
+  readonly state: LocalDraftCarryState;
+  /** The session the draft was carried to. */
+  readonly sessionId: ReviewSessionId;
+};
+
+export type LocalDraftCarryState = "unchanged" | "changed" | "needs_attention";
 
 /** One entry of a local Review's Local draft list: feedback for the coding agent. */
 export type LocalDraft = FindingDraft | MaintainerNote;
@@ -71,6 +88,7 @@ export type LocalDraftEntry =
       readonly line: number;
       readonly title: string;
       readonly suggests: boolean;
+      readonly state?: LocalDraftState;
     }
   | {
       readonly kind: "note";
@@ -81,7 +99,11 @@ export type LocalDraftEntry =
       readonly startLine: number;
       readonly line: number;
       readonly text: string;
+      readonly state?: LocalDraftState;
     };
+
+/** What the workbench labels a draft with; absent until the Review first moves to a new session. */
+export type LocalDraftState = LocalDraftCarryState | "applied";
 
 export type InvalidLocalDraft = { readonly _tag: "InvalidLocalDraft" };
 
@@ -99,6 +121,12 @@ const storedAnchorSchema = v.strictObject({
   before: v.array(v.string()),
   after: v.array(v.string()),
 });
+const storedCarrySchema = v.optional(
+  v.strictObject({
+    state: v.picklist(["unchanged", "changed", "needs_attention"]),
+    sessionId: nonEmpty,
+  }),
+);
 
 /** The stored form of one Local draft; unknown fields are refused. A Finding draft has no `author`. */
 export const storedLocalDraftSchema = v.union([
@@ -111,6 +139,8 @@ export const storedLocalDraftSchema = v.union([
     comment: nonEmpty,
     suggestion: v.optional(v.strictObject({ code: nonEmpty })),
     addedAt: nonEmpty,
+    appliedAt: v.optional(nonEmpty),
+    carry: storedCarrySchema,
   }),
   v.strictObject({
     author: v.literal("maintainer"),
@@ -120,6 +150,7 @@ export const storedLocalDraftSchema = v.union([
     text: v.pipe(v.string(), v.maxLength(MAX_MAINTAINER_NOTE_LENGTH)),
     createdAt: nonEmpty,
     updatedAt: nonEmpty,
+    carry: storedCarrySchema,
   }),
 ]);
 
@@ -143,13 +174,22 @@ function parseStoredLocalDraft(
 ): LocalDraft | undefined {
   const sessionId = parseReviewSessionId(entry.sessionId);
   const path = parseRepoRelativePath(entry.anchor.path);
+  const carriedTo =
+    entry.carry === undefined
+      ? undefined
+      : parseReviewSessionId(entry.carry.sessionId);
   if (
     sessionId._tag === "err" ||
     path._tag === "err" ||
+    carriedTo?._tag === "err" ||
     entry.anchor.line < entry.anchor.startLine
   )
     return undefined;
   const anchor = { ...entry.anchor, path: path.value };
+  const carry =
+    entry.carry === undefined || carriedTo === undefined
+      ? undefined
+      : { state: entry.carry.state, sessionId: carriedTo.value };
   if ("author" in entry) {
     const noteId = parseLocalNoteId(entry.noteId);
     const text = parseMaintainerNoteText(entry.text);
@@ -170,15 +210,21 @@ function parseStoredLocalDraft(
       text: text.value,
       createdAt: createdAt.value,
       updatedAt: updatedAt.value,
+      ...definedProps({ carry }),
     };
   }
   const findingId = parseFindingId(entry.findingId);
   const analysisRunId = parseInsightRunId(entry.analysisRunId);
   const addedAt = parseIsoTimestamp(entry.addedAt);
+  const appliedAt =
+    entry.appliedAt === undefined
+      ? undefined
+      : parseIsoTimestamp(entry.appliedAt);
   if (
     findingId._tag === "err" ||
     analysisRunId._tag === "err" ||
-    addedAt._tag === "err"
+    addedAt._tag === "err" ||
+    appliedAt?._tag === "err"
   )
     return undefined;
   return {
@@ -190,6 +236,7 @@ function parseStoredLocalDraft(
     comment: entry.comment,
     ...definedProps({ suggestion: entry.suggestion }),
     addedAt: addedAt.value,
+    ...definedProps({ appliedAt: appliedAt?.value, carry }),
   };
 }
 
@@ -227,6 +274,15 @@ export function isLocalDraftOf(
     : isDraftOfFinding(draft, target);
 }
 
+/** An applied Finding draft is done, whatever its lines did afterwards. */
+export function localDraftState(
+  draft: LocalDraft,
+): LocalDraftState | undefined {
+  return !isMaintainerNote(draft) && draft.appliedAt !== undefined
+    ? "applied"
+    : draft.carry?.state;
+}
+
 export function projectLocalDraft(draft: LocalDraft): LocalDraftEntry {
   const location = {
     sessionId: draft.sessionId,
@@ -234,6 +290,7 @@ export function projectLocalDraft(draft: LocalDraft): LocalDraftEntry {
     side: draft.anchor.side,
     startLine: draft.anchor.startLine,
     line: draft.anchor.line,
+    ...definedProps({ state: localDraftState(draft) }),
   };
   return isMaintainerNote(draft)
     ? { kind: "note", noteId: draft.noteId, ...location, text: draft.text }

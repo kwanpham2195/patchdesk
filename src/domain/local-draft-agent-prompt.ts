@@ -1,5 +1,18 @@
 import { withTrailingNewline } from "./finding-suggestion";
-import { isMaintainerNote, type LocalDraft } from "./local-draft";
+import {
+  isMaintainerNote,
+  localDraftState,
+  type LocalDraft,
+  type LocalDraftState,
+} from "./local-draft";
+
+/** Tells the agent which comments the maintainer is re-checking after a Refresh. */
+const STATUS_LINES = {
+  changed:
+    "these lines changed since this comment; the maintainer is checking whether the change addresses it.",
+  needs_attention:
+    "these lines are no longer where this comment was made, so the line numbers are from an earlier version.",
+} satisfies Partial<Record<LocalDraftState, string>>;
 
 const TASK_INSTRUCTION =
   "Address each review comment below: read the cited lines, make the smallest correct change, and do not change unrelated code.";
@@ -9,12 +22,15 @@ const TASK_INSTRUCTION =
  * whose work is under review, in file then line order. Each comment names its
  * lines; a Finding draft carries its verified suggestion as a fenced block,
  * and verification already refused any suggestion holding a fence line (ADR
- * 0048). A maintainer note is its text alone. Follows the Analysis "Copy as
- * markdown prompt" layout.
+ * 0048). A maintainer note is its text alone. A draft whose lines changed
+ * or could not be placed after a Refresh says so, and an applied Finding draft
+ * is left out because its change is already made (#452). Follows the Analysis
+ * "Copy as markdown prompt" layout.
  */
 export function renderLocalDraftsAsAgentPrompt(
-  drafts: ReadonlyArray<LocalDraft>,
+  all: ReadonlyArray<LocalDraft>,
 ): string {
+  const drafts = all.filter((draft) => localDraftState(draft) !== "applied");
   const comments =
     drafts.length === 0
       ? "No review comments."
@@ -49,9 +65,14 @@ function renderDraft(draft: LocalDraft, position: number): string {
   const title = isMaintainerNote(draft)
     ? "Note from the maintainer"
     : draft.title.trim();
+  const state = localDraftState(draft);
+  const status =
+    state === "changed" || state === "needs_attention"
+      ? STATUS_LINES[state]
+      : undefined;
   const blocks = [
     `### ${String(position)}. ${title}`,
-    `- File: \`${lines}\`${side}`,
+    `- File: \`${lines}\`${side}${status === undefined ? "" : `\n- Status: ${status}`}`,
     isMaintainerNote(draft) ? draft.text.trim() : draft.comment.trim(),
   ];
   if (!isMaintainerNote(draft) && draft.suggestion !== undefined)

@@ -47,6 +47,7 @@ async function draftedReview() {
   const request = {
     profileId,
     reviewId: workbench.review.id,
+    sessionId: workbench.session.id,
     runId,
     findingId,
   };
@@ -122,7 +123,7 @@ describe("LocalDraftService", () => {
     expect(stored).not.toHaveProperty("localDrafts");
   });
 
-  it("keeps a draft from an earlier session listed and refuses drafting from the outdated Analysis", async () => {
+  it("carries a draft whose lines did not change to the next session and refuses drafting from the outdated Analysis", async () => {
     const { harness, workbench, request } = await draftedReview();
     value(await harness.drafts.add(request));
     await writeFile(
@@ -131,16 +132,84 @@ describe("LocalDraftService", () => {
     );
 
     const next = await harness.open();
-    const refused = await harness.drafts.add(request);
+    const refused = await harness.drafts.add({
+      ...request,
+      sessionId: next.session.id,
+    });
 
     expect(next.session.id).not.toBe(workbench.session.id);
     expect(next.localDrafts).toMatchObject([
-      { findingId: "finding-bound", sessionId: workbench.session.id },
+      {
+        findingId: "finding-bound",
+        sessionId: next.session.id,
+        startLine: 3,
+        state: "unchanged",
+      },
     ]);
     expect(refused).toEqual({
       _tag: "err",
       error: { reason: "not_applicable" },
     });
+  });
+
+  it("refuses every draft write that names a session the Review has moved past, and stores nothing", async () => {
+    const { harness, workbench, request } = await draftedReview();
+    value(await harness.drafts.add(request));
+    value(
+      await harness.drafts.addNote({
+        ...request,
+        anchor: {
+          path: value(parseRepoRelativePath("probe.ts")),
+          side: "new",
+          startLine: 2,
+          line: 2,
+        },
+        text: "Start from zero.",
+      }),
+    );
+    await writeFile(
+      join(harness.repositoryPath, "probe.ts"),
+      `${probe}export const more = 1;\n`,
+    );
+    const next = await harness.open();
+    const before = value(
+      await harness.reviews.load(profileId, request.reviewId),
+    );
+    const noteId = value(parseLocalNoteId("note-fixture-1"));
+    const stale = { profileId, reviewId: request.reviewId };
+    const staleSession = { ...stale, sessionId: workbench.session.id };
+
+    const refusals = [
+      await harness.drafts.add(request),
+      await harness.drafts.remove(request),
+      await harness.drafts.addNote({
+        ...staleSession,
+        anchor: {
+          path: value(parseRepoRelativePath("probe.ts")),
+          side: "new",
+          startLine: 4,
+          line: 4,
+        },
+        text: "Another note.",
+      }),
+      await harness.drafts.editNote({
+        ...staleSession,
+        noteId,
+        text: "Edited on the old view.",
+      }),
+      await harness.drafts.removeNote({ ...staleSession, noteId }),
+    ];
+
+    expect(next.session.id).not.toBe(workbench.session.id);
+    expect(refusals).toEqual(
+      refusals.map(() => ({
+        _tag: "err",
+        error: { reason: "not_applicable" },
+      })),
+    );
+    expect(
+      value(await harness.reviews.load(profileId, request.reviewId)),
+    ).toEqual(before);
   });
 
   it("refuses a draft change while another operation holds the Review and stores nothing", async () => {
@@ -185,7 +254,11 @@ describe("LocalDraftService", () => {
       const harness = await localApplyHarness();
       await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
       const workbench = await harness.open();
-      const key = { profileId, reviewId: workbench.review.id };
+      const key = {
+        profileId,
+        reviewId: workbench.review.id,
+        sessionId: workbench.session.id,
+      };
       return { harness, workbench, key };
     }
 

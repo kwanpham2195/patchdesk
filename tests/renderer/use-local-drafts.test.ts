@@ -86,6 +86,7 @@ describe("useLocalDrafts", () => {
     expect(callBody(call?.[0])).toEqual({
       profileId: "profile",
       reviewId: "review-42",
+      sessionId: "session-a",
       runId: "insight-analysis-1-fixture",
       findingId: "finding-1",
     });
@@ -169,6 +170,7 @@ describe("useLocalDrafts", () => {
     expect(callBody(double.request.mock.calls[0]?.[0])).toEqual({
       profileId: "profile",
       reviewId: "review-42",
+      sessionId: "session-a",
       path: "src/a.ts",
       side: "new",
       startLine: 1,

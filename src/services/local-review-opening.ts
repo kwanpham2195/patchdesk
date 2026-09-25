@@ -1,12 +1,17 @@
+import { readFile, realpath } from "node:fs/promises";
+
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   createReviewId,
   type IsoTimestamp,
   type LocalBranchName,
+  type RepoRelativePath,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../domain/ids";
+import type { LocalDraft } from "../domain/local-draft";
+import { carryLocalDraft } from "../domain/local-draft-carry";
 import { casesHandled, err, type Result } from "../domain/result";
 import {
   createReview,
@@ -16,10 +21,13 @@ import {
   type Review,
 } from "../domain/review";
 import { definedProps } from "../domain/defined-props";
-import type {
-  LocalReviewSource,
-  LocalReviewSourceRequest,
+import {
+  reopenLocalSourceRequest,
+  type LocalReviewSource,
+  type LocalReviewSourceRequest,
 } from "../domain/review-source";
+import type { LocalReviewSession } from "../domain/review-session";
+import { readCheckoutFile } from "./local-apply-checkout";
 import type {
   LocalReviewOpenRequest,
   LocalReviewPreparationFailure,
@@ -48,10 +56,15 @@ export type LocalReviewOpenFailure =
       readonly currentBranch?: LocalBranchName;
     };
 
+/** Refresh refuses while another command holds the Review, and on a Review that is not local. */
+export type LocalReviewRefreshFailure =
+  | LocalReviewOpenFailure
+  | { readonly reason: "in_progress" | "not_applicable" };
+
 /**
- * Opens a local Review (ADR 0050). Every open reads the source from the
- * checkout again, so unchanged content lands on the same session and an edit
- * moves the Review to a new one.
+ * Opens and refreshes a local Review (ADR 0050). Every open reads the source
+ * from the checkout again, so unchanged content lands on the same session and
+ * an edit moves the Review to a new one, carrying its Local drafts (#452).
  */
 export class LocalReviewOpening {
   constructor(
@@ -66,7 +79,10 @@ export class LocalReviewOpening {
     private readonly lifecycle: {
       readonly reviews: Pick<ReviewStore, "load" | "save">;
       readonly artifacts: Pick<ReviewArtifactStorage, "quarantineReview">;
-      readonly coordinator: Pick<ReviewOperationCoordinator, "withReviewLock">;
+      readonly coordinator: Pick<
+        ReviewOperationCoordinator,
+        "withReviewLock" | "acquire" | "release"
+      >;
     },
     private readonly now: () => IsoTimestamp,
   ) {}
@@ -102,6 +118,46 @@ export class LocalReviewOpening {
       if (opened !== undefined) return opened;
     }
     return err({ reason: "storage" });
+  }
+
+  /**
+   * Refresh (#452): reads the stored source from the checkout again. It is a
+   * command, so it refuses rather than waits while another one holds the
+   * Review, and a working tree on another branch is refused as a reopen is.
+   */
+  async refresh(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<ReviewWorkbenchProjection, LocalReviewRefreshFailure>> {
+    const key = `${profileId}:${reviewId}`;
+    if (!this.lifecycle.coordinator.acquire(key))
+      return err({ reason: "in_progress" });
+    try {
+      const stored = await this.lifecycle.reviews.load(profileId, reviewId);
+      if (stored._tag === "err")
+        return err({
+          reason: stored.error.reason === "not_found" ? "not_found" : "storage",
+        });
+      if (!isLocalReview(stored.value))
+        return err({ reason: "not_applicable" });
+      const { host, owner, repo, source } = stored.value.identity;
+      const request = reopenLocalSourceRequest(source);
+      if (request === undefined) return err({ reason: "storage" });
+      const resolved = await this.preparation.resolve({
+        profileId,
+        repository: { host, owner, repo },
+        request,
+      });
+      if (resolved._tag === "err")
+        return err(mapPreparationFailure(resolved.error));
+      const mismatch = headMismatch(request, resolved.value.identity.source);
+      if (mismatch !== undefined) return err(mismatch);
+      if (createReviewId(resolved.value.identity) !== reviewId)
+        return err({ reason: "storage" });
+      return await this.moveToSession(resolved.value, reviewId);
+    } finally {
+      this.lifecycle.coordinator.release(key);
+    }
   }
 
   /**
@@ -164,6 +220,12 @@ export class LocalReviewOpening {
       return err({ reason: "storage" });
     }
     const now = this.now();
+    const drafts = stored?.localDrafts;
+    let carried: ReadonlyArray<LocalDraft> | undefined;
+    if (drafts !== undefined && stored?.currentSessionId !== session.value.id) {
+      carried = await carryToSession(drafts, session.value);
+      if (carried === undefined) return err({ reason: "storage" });
+    }
     const moved = moveLocalReviewToSession(
       stored ??
         createReview({
@@ -176,6 +238,7 @@ export class LocalReviewOpening {
         sessionId: session.value.id,
         headSha: session.value.key.headSha,
         updatedAt: now,
+        ...definedProps({ localDrafts: carried }),
       },
     );
     if (moved._tag === "err") return err({ reason: "terminal" });
@@ -199,6 +262,34 @@ export class LocalReviewOpening {
               : "not_found",
         });
   }
+}
+
+/**
+ * The drafts carried to `session` by ADR 0002's rule, reading the new patch
+ * and each drafted file from the session's own worktree at its head, never
+ * from the maintainer's checkout. Undefined when the session cannot be read.
+ */
+async function carryToSession(
+  drafts: ReadonlyArray<LocalDraft>,
+  session: LocalReviewSession,
+): Promise<ReadonlyArray<LocalDraft> | undefined> {
+  const [patch, root] = await Promise.all([
+    readFile(session.patchPath, "utf8").catch(() => undefined),
+    // `readCheckoutFile` refuses any path whose resolution differs, so the root is resolved first.
+    realpath(session.worktree.path).catch(() => undefined),
+  ]);
+  if (patch === undefined || root === undefined) return undefined;
+  const paths = new Set(drafts.map((draft) => draft.anchor.path));
+  const files = new Map<RepoRelativePath, string>();
+  await Promise.all(
+    [...paths].map(async (path) => {
+      const bytes = await readCheckoutFile(root, path);
+      if (bytes !== undefined) files.set(path, bytes.toString("utf8"));
+    }),
+  );
+  return drafts.map((draft) =>
+    carryLocalDraft(draft, { sessionId: session.id, patch, files }),
+  );
 }
 
 function headMismatch(

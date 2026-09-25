@@ -217,10 +217,18 @@ describe("Local drafts on a Review", () => {
     expect(removed.localDrafts).toEqual([draft("finding-bound")]);
   });
 
-  it("round-trips a local Review's Finding draft and maintainer note through its stored form", () => {
+  it("round-trips a local Review's Finding draft and maintainer note, with their carry and applied marks, through its stored form", () => {
+    const sessionId = localReview().currentSessionId;
     const review = added(
-      added(localReview(), draft("finding-bound")),
-      note("Name this total."),
+      added(localReview(), {
+        ...draft("finding-bound"),
+        appliedAt: removedAt,
+        carry: { state: "changed", sessionId },
+      }),
+      {
+        ...note("Name this total."),
+        carry: { state: "needs_attention", sessionId },
+      },
     );
     const stored = structuredClone(serializeReview(review));
 
@@ -240,6 +248,10 @@ describe("Local drafts on a Review", () => {
       { ...entry, anchor: { ...entry.anchor, startLine: 4, line: 3 } },
     ],
     ["an empty suggestion", { ...entry, suggestion: { code: "" } }],
+    [
+      "an unknown carry state",
+      { ...entry, carry: { state: "moved", sessionId: entry.sessionId } },
+    ],
     [
       "a Finding draft marked as a maintainer's",
       { ...entry, author: "maintainer" },

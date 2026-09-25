@@ -14,10 +14,12 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
+  type FindingId,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
   type GitSha,
+  type InsightRunId,
   type IsoTimestamp,
   type LocalNoteId,
   type PullRequestNumber,
@@ -326,7 +328,8 @@ export function moveReviewToSession(
 /**
  * Point a local Review at the session its source just resolved to. Opening
  * recomputed that revision from the checkout, so the Review is Fresh; a local
- * Review has no represented GitHub snapshot.
+ * Review has no represented GitHub snapshot. `localDrafts` replaces the list
+ * with the drafts carried to that session.
  */
 export function moveLocalReviewToSession(
   review: Review<LocalReviewSource>,
@@ -334,6 +337,7 @@ export function moveLocalReviewToSession(
     readonly sessionId: ReviewSessionId;
     readonly headSha: GitSha;
     readonly updatedAt: IsoTimestamp;
+    readonly localDrafts?: ReadonlyArray<LocalDraft>;
   },
 ): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
@@ -343,6 +347,7 @@ export function moveLocalReviewToSession(
     currentHeadSha: input.headSha,
     freshness: { _tag: "Fresh" },
     updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
+    ...definedProps({ localDrafts: input.localDrafts ?? review.localDrafts }),
   });
 }
 
@@ -534,6 +539,35 @@ export function editMaintainerNote(
     ),
     updatedAt,
   });
+}
+
+/**
+ * Mark the Finding drafts a confirmed Apply wrote as applied (#452). They stay
+ * listed for the maintainer and leave the agent prompt.
+ */
+export function markLocalDraftsApplied(
+  review: Review<LocalReviewSource>,
+  applied: {
+    readonly runId: InsightRunId;
+    readonly findingIds: ReadonlyArray<FindingId>;
+    readonly appliedAt: IsoTimestamp;
+  },
+): Review<LocalReviewSource> {
+  const drafts = review.localDrafts ?? [];
+  const wrote = (draft: LocalDraft) =>
+    !isMaintainerNote(draft) &&
+    draft.appliedAt === undefined &&
+    applied.findingIds.some((findingId) =>
+      isLocalDraftOf(draft, { runId: applied.runId, findingId }),
+    );
+  if (!drafts.some(wrote)) return review;
+  return {
+    ...review,
+    localDrafts: drafts.map((draft) =>
+      wrote(draft) ? { ...draft, appliedAt: applied.appliedAt } : draft,
+    ),
+    updatedAt: laterTimestamp(review.updatedAt, applied.appliedAt),
+  };
 }
 
 /** Remove one Local draft; removing a draft that is not listed changes nothing. */

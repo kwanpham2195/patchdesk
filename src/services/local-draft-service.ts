@@ -5,7 +5,10 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { ReviewStore } from "../adapters/storage/review-store";
 import { definedProps } from "../domain/defined-props";
 import { fingerprintPatchAnchor } from "../domain/diff-anchor";
-import { resolveSuggestionTarget } from "../domain/finding-suggestion";
+import {
+  isAcceptableSuggestionCode,
+  resolveSuggestionTarget,
+} from "../domain/finding-suggestion";
 import {
   parseContentHash,
   parseRepoRelativePath,
@@ -15,6 +18,7 @@ import {
   type LocalNoteId,
   type RepoRelativePath,
   type ReviewId,
+  type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { sameInsightRevision } from "../domain/insight-record";
@@ -40,9 +44,14 @@ import type { LocalReviewSource } from "../domain/review-source";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
+/**
+ * Every draft write names the session the workbench displays, so a write made
+ * on a view the Review has since moved past is refused (#452).
+ */
 type ReviewKey = {
   readonly profileId: WorkspaceProfileId;
   readonly reviewId: ReviewId;
+  readonly sessionId: ReviewSessionId;
 };
 
 /** Identity only: the main process reads the Finding, its anchor, and its suggestion itself. */
@@ -72,7 +81,7 @@ export type LocalDraftFailure = {
     | "in_progress"
     | "not_found"
     | "terminal"
-    /** Not a local Review; the Finding is not a current, open, Mapped Finding; or a note's lines are not in the current patch. */
+    /** Not a local Review; the Review moved to another session than the one named; the Finding is not a current, open, Mapped Finding; or a note's lines are not in the current patch. */
     | "not_applicable"
     /** A note's text is empty or longer than the comment limit. */
     | "invalid_input"
@@ -203,7 +212,11 @@ export class LocalDraftService {
           reason: loaded.error.reason === "not_found" ? "not_found" : "storage",
         });
       const review = loaded.value;
-      if (!isLocalReview(review)) return err({ reason: "not_applicable" });
+      if (
+        !isLocalReview(review) ||
+        review.currentSessionId !== request.sessionId
+      )
+        return err({ reason: "not_applicable" });
       const changed = await change(review);
       if (changed._tag === "err") return changed;
       const next = changed.value;
@@ -320,9 +333,10 @@ export class LocalDraftService {
     });
     if (anchor === undefined) return err({ reason: "not_applicable" });
     const code = finding.suggestedReplacement?.code;
-    // Only a replacement that still resolves in this patch travels with the draft.
+    // Only a replacement that still resolves in this patch, and that a fence line cannot break out of, travels with the draft.
     const suggestion =
       code !== undefined &&
+      isAcceptableSuggestionCode(code) &&
       resolveSuggestionTarget(patch, finding) !== undefined
         ? { code }
         : undefined;

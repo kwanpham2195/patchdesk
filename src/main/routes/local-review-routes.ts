@@ -29,6 +29,7 @@ import {
   parseLocalNoteId,
   parseRepoRelativePath,
   parseReviewId,
+  parseReviewSessionId,
   parseWorkspaceProfileId,
   type FindingId,
 } from "../../domain/ids";
@@ -78,6 +79,32 @@ export function registerLocalReviewRoutes(
         409,
       );
     return response(context, opened);
+  });
+
+  // Reads the stored source from the checkout again; a changed one moves the Review and its drafts to a new session (#452).
+  app.post("/v1/reviews/local-refresh", async (context) => {
+    const parsed = safeParse(reviewIdentitySchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const refreshed = await container.localReviewOpening.refresh(
+      profileId.value,
+      reviewId.value,
+    );
+    if (
+      refreshed._tag === "err" &&
+      refreshed.error.reason === "branch_mismatch"
+    )
+      return context.json(
+        {
+          error: refreshed.error.reason,
+          currentBranch: refreshed.error.currentBranch ?? null,
+        },
+        409,
+      );
+    return response(context, refreshed);
   });
 
   // Identity only: the main process derives every range and replacement (ADR 0048).
@@ -136,12 +163,10 @@ export function registerLocalReviewRoutes(
   app.post("/v1/reviews/local-drafts/notes/add", async (context) => {
     const parsed = safeParse(localNoteAddSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-    const reviewId = parseReviewId(parsed.output.reviewId);
+    const key = parseDraftWriteKey(parsed.output);
     const path = parseRepoRelativePath(parsed.output.path);
     if (
-      profileId._tag === "err" ||
-      reviewId._tag === "err" ||
+      key === undefined ||
       path._tag === "err" ||
       parsed.output.line < parsed.output.startLine
     )
@@ -149,8 +174,7 @@ export function registerLocalReviewRoutes(
     return response(
       context,
       await container.localDrafts.addNote({
-        profileId: profileId.value,
-        reviewId: reviewId.value,
+        ...key,
         anchor: {
           path: path.value,
           side: parsed.output.side,
@@ -219,23 +243,12 @@ async function localDraftResponse(
   parsed: SafeParseResult<typeof localDraftSchema>,
 ): Promise<Response> {
   if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-  const reviewId = parseReviewId(parsed.output.reviewId);
+  const key = parseDraftWriteKey(parsed.output);
   const runId = parseInsightRunId(parsed.output.runId);
   const findingId = parseFindingId(parsed.output.findingId);
-  if (
-    profileId._tag === "err" ||
-    reviewId._tag === "err" ||
-    runId._tag === "err" ||
-    findingId._tag === "err"
-  )
+  if (key === undefined || runId._tag === "err" || findingId._tag === "err")
     return context.json({ error: "invalid_input" }, 400);
-  const request = {
-    profileId: profileId.value,
-    reviewId: reviewId.value,
-    runId: runId.value,
-    findingId: findingId.value,
-  };
+  const request = { ...key, runId: runId.value, findingId: findingId.value };
   return response(
     context,
     action === "add"
@@ -244,9 +257,34 @@ async function localDraftResponse(
   );
 }
 
-const localDraftSchema = strictObject({
+/** A draft write names the session the workbench displays; the service refuses another one (#452). */
+const draftWriteKeySchema = {
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
+  sessionId: pipe(string(), minLength(1)),
+};
+
+function parseDraftWriteKey(raw: {
+  readonly profileId: string;
+  readonly reviewId: string;
+  readonly sessionId: string;
+}) {
+  const profileId = parseWorkspaceProfileId(raw.profileId);
+  const reviewId = parseReviewId(raw.reviewId);
+  const sessionId = parseReviewSessionId(raw.sessionId);
+  return profileId._tag === "err" ||
+    reviewId._tag === "err" ||
+    sessionId._tag === "err"
+    ? undefined
+    : {
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        sessionId: sessionId.value,
+      };
+}
+
+const localDraftSchema = strictObject({
+  ...draftWriteKeySchema,
   runId: pipe(string(), minLength(1)),
   findingId: pipe(string(), minLength(1)),
 });
@@ -255,8 +293,7 @@ const noteText = pipe(string(), maxLength(MAX_MAINTAINER_NOTE_LENGTH));
 const lineNumber = pipe(number(), integer(), minValue(1));
 
 const localNoteAddSchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  reviewId: pipe(string(), minLength(1)),
+  ...draftWriteKeySchema,
   path: pipe(string(), minLength(1)),
   side: picklist(["new", "old"]),
   startLine: lineNumber,
@@ -265,8 +302,7 @@ const localNoteAddSchema = strictObject({
 });
 
 const localNoteSchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  reviewId: pipe(string(), minLength(1)),
+  ...draftWriteKeySchema,
   noteId: pipe(string(), minLength(1)),
 });
 
@@ -276,18 +312,11 @@ const localNoteEditSchema = strictObject({
 });
 
 function parseNoteKey(raw: InferOutput<typeof localNoteSchema>) {
-  const profileId = parseWorkspaceProfileId(raw.profileId);
-  const reviewId = parseReviewId(raw.reviewId);
+  const key = parseDraftWriteKey(raw);
   const noteId = parseLocalNoteId(raw.noteId);
-  return profileId._tag === "err" ||
-    reviewId._tag === "err" ||
-    noteId._tag === "err"
+  return key === undefined || noteId._tag === "err"
     ? undefined
-    : {
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        noteId: noteId.value,
-      };
+    : { ...key, noteId: noteId.value };
 }
 
 const localApplySchema = strictObject({

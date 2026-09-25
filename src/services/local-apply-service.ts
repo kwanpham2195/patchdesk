@@ -23,7 +23,11 @@ import {
 import { definedProps } from "../domain/defined-props";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
-import { isLocalReview, type Review } from "../domain/review";
+import {
+  isLocalReview,
+  markLocalDraftsApplied,
+  type Review,
+} from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import {
@@ -96,7 +100,7 @@ type LocalApplyDependencies = {
     "load" | "begin" | "save" | "remove" | "listReviews"
   >;
   readonly insights: Pick<InsightStore, "loadTyped">;
-  readonly reviews: Pick<ReviewStore, "load">;
+  readonly reviews: Pick<ReviewStore, "load" | "save">;
   readonly profiles: Pick<ProfileStore, "load" | "list">;
   readonly opening: Pick<LocalReviewOpening, "openLocked">;
   readonly coordinator: Pick<
@@ -318,8 +322,9 @@ export class LocalApplyService {
   }
 
   /**
-   * Persists confirmation, then prepares the next session through the local
-   * open path. Preparation is bookkeeping: its failure leaves the Apply
+   * Persists confirmation, marks the drafted Findings it wrote as applied, then
+   * prepares the next session through the local open path, which carries the
+   * other Local drafts. Both are bookkeeping: a failure leaves the Apply
    * confirmed, and the stale session's Findings cannot apply again because
    * the freshness gate sees the changed checkout.
    */
@@ -333,8 +338,8 @@ export class LocalApplyService {
     if ((await this.dependencies.operations.save(confirmed))._tag === "err")
       return { status: "outcome_unknown" };
     this.log("info", "Local apply confirmed", operation, { trigger });
-    // Local drafts stay on the Review record here; moving them to the next session is #452.
-    // A failure here is bookkeeping: the Apply stays confirmed and reopening the Review recovers the session.
+    if (!(await this.markDraftsApplied(operation).catch(() => false)))
+      this.log("warn", "Local apply drafts not marked applied", operation, {});
     const next = await this.dependencies.opening
       .openLocked(
         {
@@ -357,6 +362,28 @@ export class LocalApplyService {
       return { status: "applied", workbench: next.value };
     this.log("warn", "Local apply next session not prepared", operation, {});
     return { status: "applied" };
+  }
+
+  /** False when the Review could not be read or saved. */
+  private async markDraftsApplied(
+    operation: LocalApplyOperation,
+  ): Promise<boolean> {
+    const loaded = await this.dependencies.reviews.load(
+      operation.profileId,
+      operation.reviewId,
+    );
+    if (loaded._tag === "err" || !isLocalReview(loaded.value)) return false;
+    const marked = markLocalDraftsApplied(loaded.value, {
+      runId: operation.analysisRunId,
+      findingIds: operation.findingIds,
+      appliedAt: this.dependencies.now(),
+    });
+    if (marked === loaded.value) return true;
+    const saved = await this.dependencies.reviews.save(
+      marked,
+      loaded.value.updatedAt,
+    );
+    return saved._tag === "ok";
   }
 
   private async recoverLocked(
