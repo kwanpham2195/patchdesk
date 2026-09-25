@@ -503,7 +503,7 @@ describe("ReviewSessionPreparation", () => {
       host: pullRequest.host,
       owner: pullRequest.owner,
       repo: pullRequest.repo,
-      prNumber: pullRequest.number,
+      source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
     });
@@ -596,7 +596,7 @@ describe("ReviewSessionPreparation", () => {
           host: pullRequest.host,
           owner: pullRequest.owner,
           repo: pullRequest.repo,
-          prNumber: pullRequest.number,
+          source: { kind: "pull_request", prNumber: pullRequest.number },
         }),
         pullRequest,
       },
@@ -647,7 +647,7 @@ describe("ReviewSessionPreparation", () => {
       host: pullRequest.host,
       owner: pullRequest.owner,
       repo: pullRequest.repo,
-      prNumber: pullRequest.number,
+      source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
     });
@@ -681,7 +681,7 @@ describe("ReviewSessionPreparation", () => {
       host: pullRequest.host,
       owner: pullRequest.owner,
       repo: pullRequest.repo,
-      prNumber: pullRequest.number,
+      source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
     });
@@ -707,7 +707,7 @@ describe("ReviewSessionPreparation", () => {
       host: pullRequest.host,
       owner: pullRequest.owner,
       repo: pullRequest.repo,
-      prNumber: pullRequest.number,
+      source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
     });
@@ -808,7 +808,7 @@ describe("ReviewSessionPreparation", () => {
       host: pullRequest.host,
       owner: pullRequest.owner,
       repo: pullRequest.repo,
-      prNumber: pullRequest.number,
+      source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
     });
@@ -858,7 +858,7 @@ describe("ReviewSessionPreparation", () => {
       host: pullRequest.host,
       owner: pullRequest.owner,
       repo: pullRequest.repo,
-      prNumber: pullRequest.number,
+      source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
     });

@@ -26,14 +26,30 @@ import {
 } from "./ids";
 import { err, ok, type Result } from "./result";
 import type { ReviewSessionKey } from "./review-session";
+import {
+  parseStoredLocalReviewSource,
+  sameReviewSource,
+  storedLocalReviewSourceSchema,
+  type LocalReviewSource,
+  type PullRequestReviewSource,
+  type ReviewSource,
+} from "./review-source";
 
-export type ReviewIdentity = {
+/**
+ * What one Review is keyed by: the profile repository and its Review source
+ * (ADR 0050 "Identity"). `Source` narrows the kind for code that serves only
+ * one, such as `PullRequestReviewIdentity`.
+ */
+export type ReviewIdentity<Source extends ReviewSource = ReviewSource> = {
   readonly profileId: WorkspaceProfileId;
   readonly host: GitHubHost;
   readonly owner: GitHubOwner;
   readonly repo: GitHubRepoName;
-  readonly prNumber: PullRequestNumber;
+  readonly source: Source;
 };
+
+/** The identity of a Review on a GitHub pull request. */
+export type PullRequestReviewIdentity = ReviewIdentity<PullRequestReviewSource>;
 
 export type RepresentedRemoteState = {
   readonly headSha: GitSha;
@@ -82,10 +98,10 @@ type ReviewStatus =
       readonly observedAt: IsoTimestamp;
     };
 
-export type Review = {
+export type Review<Source extends ReviewSource = ReviewSource> = {
   readonly schemaVersion: 2;
   readonly id: ReviewId;
-  readonly identity: ReviewIdentity;
+  readonly identity: ReviewIdentity<Source>;
   readonly currentSessionId: ReviewSessionId;
   readonly currentHeadSha: GitSha;
   readonly representedRemote?: RepresentedRemoteState;
@@ -116,6 +132,16 @@ type LastLooked = {
   readonly seenThrough?: IsoTimestamp;
 };
 
+/** A Review on a GitHub pull request; the only kind GitHub reads and writes serve. */
+export type PullRequestReview = Review<PullRequestReviewSource>;
+
+/** Narrow a Review to the pull request kind before any GitHub read or write. */
+export function isPullRequestReview(
+  review: Review,
+): review is PullRequestReview {
+  return review.identity.source.kind === "pull_request";
+}
+
 export type InvalidReview = { readonly _tag: "InvalidReview" };
 
 const representedRemoteSchema = v.strictObject({
@@ -125,13 +151,27 @@ const representedRemoteSchema = v.strictObject({
   refreshedAt: v.string(),
 });
 
-const identitySchema = v.strictObject({
-  profileId: v.string(),
-  host: v.string(),
-  owner: v.string(),
-  repo: v.string(),
-  prNumber: v.number(),
-});
+/**
+ * A pull request identity is stored flat with `prNumber` and no `source`,
+ * exactly as before ADR 0050, so records already on disk load unchanged and
+ * there is one stored form per kind. `serializeReview` writes the same form.
+ */
+const identitySchema = v.union([
+  v.strictObject({
+    profileId: v.string(),
+    host: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
+  }),
+  v.strictObject({
+    profileId: v.string(),
+    host: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    source: storedLocalReviewSourceSchema,
+  }),
+]);
 
 const statusSchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("Open") }),
@@ -193,7 +233,7 @@ type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
 
 /**
  * True when `session` is the exact revision the Review currently represents:
- * same profile, same pull request, and the Review's current head SHA.
+ * same profile, same Review source, and the Review's current head SHA.
  *
  * Every write precondition in the app compares these same six fields before
  * it lets a caller touch GitHub or durable review state, so they are compared
@@ -210,18 +250,18 @@ export function sessionRepresentsReview(
     session.key.host === review.identity.host &&
     session.key.owner === review.identity.owner &&
     session.key.repo === review.identity.repo &&
-    session.key.prNumber === review.identity.prNumber &&
+    sameReviewSource(session.key.source, review.identity.source) &&
     session.key.headSha === review.currentHeadSha
   );
 }
 
 /** Construct a new Review before its initial remote snapshot is available. */
-export function createReview(input: {
-  readonly identity: ReviewIdentity;
+export function createReview<Source extends ReviewSource>(input: {
+  readonly identity: ReviewIdentity<Source>;
   readonly currentSessionId: ReviewSessionId;
   readonly headSha: GitSha;
   readonly createdAt: IsoTimestamp;
-}): Review {
+}): Review<Source> {
   return {
     schemaVersion: 2,
     id: createReviewId(input.identity),
@@ -410,6 +450,31 @@ function laterTimestamp(
   return new Date(Date.parse(previous) + 1).toISOString() as IsoTimestamp;
 }
 
+/**
+ * The stored form of a Review, the inverse of `parseReview`. A pull request
+ * identity is written flat with `prNumber`, the form records had before local
+ * sources existed; a local identity is written with its `source`.
+ */
+export function serializeReview(review: Review): StoredReview {
+  const { source, ...repository } = review.identity;
+  return {
+    ...review,
+    identity:
+      source.kind === "pull_request"
+        ? { ...repository, prNumber: source.prNumber }
+        : { ...repository, source },
+  };
+}
+
+/** The JSON a Review store writes; only `serializeReview` builds it. */
+export type StoredReview = Omit<Review, "identity"> & {
+  readonly identity:
+    | (Omit<ReviewIdentity, "source"> & {
+        readonly prNumber: PullRequestNumber;
+      })
+    | ReviewIdentity<LocalReviewSource>;
+};
+
 /** Parse persisted Review data under the current durable freshness contract. */
 export function parseReview(input: unknown): Result<Review, InvalidReview> {
   const current = v.safeParse(reviewV2Schema, input);
@@ -444,7 +509,7 @@ function parseReviewBase(
   const host = parseGitHubHost(raw.identity.host);
   const owner = parseGitHubOwner(raw.identity.owner);
   const repo = parseGitHubRepoName(raw.identity.repo);
-  const prNumber = parsePullRequestNumber(raw.identity.prNumber);
+  const source = parseStoredIdentitySource(raw.identity);
   const id = parseReviewId(raw.id);
   const sessionId = parseReviewSessionId(raw.currentSessionId);
   const headSha = parseGitSha(raw.currentHeadSha);
@@ -455,7 +520,7 @@ function parseReviewBase(
     host._tag === "err" ||
     owner._tag === "err" ||
     repo._tag === "err" ||
-    prNumber._tag === "err" ||
+    source._tag === "err" ||
     id._tag === "err" ||
     sessionId._tag === "err" ||
     headSha._tag === "err" ||
@@ -470,7 +535,7 @@ function parseReviewBase(
     host: host.value,
     owner: owner.value,
     repo: repo.value,
-    prNumber: prNumber.value,
+    source: source.value,
   };
   if (id.value !== createReviewId(identity)) return invalid();
 
@@ -510,6 +575,19 @@ function parseReviewBase(
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
   });
+}
+
+function parseStoredIdentitySource(
+  raw: RawReviewV2["identity"],
+): Result<ReviewSource, InvalidReview> {
+  if ("prNumber" in raw) {
+    const prNumber = parsePullRequestNumber(raw.prNumber);
+    return prNumber._tag === "ok"
+      ? ok({ kind: "pull_request", prNumber: prNumber.value })
+      : invalid();
+  }
+  const source = parseStoredLocalReviewSource(raw.source);
+  return source._tag === "ok" ? source : invalid();
 }
 
 function parseRepresentedRemote(

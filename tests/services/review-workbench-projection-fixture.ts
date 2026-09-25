@@ -32,7 +32,7 @@ export const identity = {
   // SAFETY: a plain repo name already satisfies GitHubRepoName's runtime shape.
   repo: "patchdesk" as never,
   // SAFETY: a positive integer already satisfies PullRequestNumber's runtime shape.
-  prNumber: 42 as never,
+  source: { kind: "pull_request" as const, prNumber: 42 as never },
 };
 export const reviewId = createReviewId(identity);
 export const hash =
@@ -52,7 +52,7 @@ export function session(
   // every field already matches its real runtime shape.
   return {
     id: sessionId,
-    key: { ...identity, headSha },
+    key: { ...identity, headSha, baseSha: headSha },
     pr: { headSha, baseSha: headSha, isDraft: false, isOpen: true },
     prContext: {
       title: "saved title",

@@ -61,7 +61,7 @@ function makeReview(
     host,
     owner,
     repo: repository,
-    prNumber,
+    source: { kind: "pull_request", prNumber },
   };
   return createReview({
     identity,

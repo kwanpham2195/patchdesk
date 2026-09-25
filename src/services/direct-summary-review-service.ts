@@ -17,7 +17,11 @@ import {
 import type { PullRequestRef } from "../domain/pull-request";
 import { KeyedMutex } from "../domain/keyed-mutex";
 import { err, ok, type Result } from "../domain/result";
-import type { ReviewSession } from "../domain/review-session";
+import { definedProps } from "../domain/defined-props";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../domain/review-session";
 import type { GitHubReviewEvent } from "../domain/pending-review";
 import {
   requireCurrentHead,
@@ -343,7 +347,7 @@ export class DirectSummaryReviewService {
   }
 
   private async persist(
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     state: DirectSummaryReviewState,
   ): Promise<boolean> {
     return this.save(session, state);
@@ -352,7 +356,7 @@ export class DirectSummaryReviewService {
   // The persisted in-flight intent already locks the Review, so notify even if this save failed.
   private async lockOutcomeUnknown(
     reviewId: ReviewId,
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     state: DirectSummaryReviewState,
   ): Promise<void> {
     await this.persist(session, state);
@@ -363,12 +367,12 @@ export class DirectSummaryReviewService {
     });
   }
 
-  private async clear(session: ReviewSession): Promise<boolean> {
+  private async clear(session: PullRequestReviewSession): Promise<boolean> {
     return this.save(session, undefined);
   }
 
   private async save(
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     state: DirectSummaryReviewState | undefined,
   ): Promise<boolean> {
     return sessionMutationLocks.run(
@@ -378,12 +382,15 @@ export class DirectSummaryReviewService {
           session.key.profileId,
           session.id,
         );
-        if (current._tag === "err") return false;
-        const next = {
-          ...current.value,
-          ...(state === undefined
-            ? { directSummaryReview: undefined }
-            : { directSummaryReview: state }),
+        if (
+          current._tag === "err" ||
+          !isPullRequestReviewSession(current.value)
+        )
+          return false;
+        const { directSummaryReview: _previous, ...unchanged } = current.value;
+        const next: PullRequestReviewSession = {
+          ...unchanged,
+          ...definedProps({ directSummaryReview: state }),
           updatedAt: this.now(),
         };
         // Compare-and-swap against the reload above: the mutex only orders
@@ -432,12 +439,12 @@ function submittedWithinRecoveryWindow(
 function digest(body: string): string {
   return createHash("sha256").update(body).digest("hex");
 }
-function sessionPr(session: ReviewSession): PullRequestRef {
+function sessionPr(session: PullRequestReviewSession): PullRequestRef {
   return {
     host: session.key.host,
     owner: session.key.owner,
     repo: session.key.repo,
-    number: session.key.prNumber,
+    number: session.key.source.prNumber,
   };
 }
 function mapGateFailure(reason: string): DirectSummaryReviewFailure {

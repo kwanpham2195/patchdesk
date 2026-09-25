@@ -7,7 +7,10 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { Review } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type ReviewSession,
+} from "../domain/review-session";
 import { isDirectSummaryReviewLocked } from "../domain/direct-summary-review";
 import { isPendingReviewLocked } from "../domain/pending-review";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -288,8 +291,9 @@ export class StorageManagementService {
     )
       return ok({ running: true });
     if (
-      isPendingReviewLocked(session.pendingReview) ||
-      isDirectSummaryReviewLocked(session.directSummaryReview)
+      isPullRequestReviewSession(session) &&
+      (isPendingReviewLocked(session.pendingReview) ||
+        isDirectSummaryReviewLocked(session.directSummaryReview))
     )
       return ok({ running: true });
     return ok(
@@ -537,7 +541,9 @@ function projectSession(
 ): StorageSessionProjection {
   return {
     id: session.id,
-    prLabel: `${session.key.owner}/${session.key.repo}#${session.key.prNumber}`,
+    prLabel: isPullRequestReviewSession(session)
+      ? `${session.key.owner}/${session.key.repo}#${session.key.source.prNumber}`
+      : `${session.key.owner}/${session.key.repo} (${session.key.source.kind})`,
     state: "prepared",
     updatedAt: session.updatedAt,
     canDiscard,

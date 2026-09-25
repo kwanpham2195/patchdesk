@@ -9,7 +9,7 @@ import type {
   WorkspaceProfileId,
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
-import type { Review } from "../domain/review";
+import { isPullRequestReview, type Review } from "../domain/review";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 /** How many visited pull requests the sidebar shows. */
@@ -77,14 +77,16 @@ export class SidebarListingService {
     const { reviews, unreadable } = listing.value;
     if (unreadable > 0) await this.recordUnreadable(profileId, unreadable);
 
-    const rows = [...reviews]
+    // The sidebar lists visited pull requests; local Reviews get no row here yet.
+    const rows = reviews
+      .filter(isPullRequestReview)
       .sort((left, right) => sortedAt(right).localeCompare(sortedAt(left)))
       .slice(0, SIDEBAR_ROW_LIMIT)
       .map((review): SidebarReviewRow => ({
         reviewId: review.id,
         owner: review.identity.owner,
         repo: review.identity.repo,
-        number: review.identity.prNumber,
+        number: review.identity.source.prNumber,
         // An empty stored title is no title: the renderer's row schema requires
         // a non-empty string, and one such row must not fail the whole parse.
         ...definedProps({

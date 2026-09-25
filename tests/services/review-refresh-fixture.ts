@@ -6,9 +6,11 @@ import {
 } from "../../src/adapters/storage/review-remote-store";
 import {
   createReview,
+  isPullRequestReview,
   parseReview,
-  type Review,
-  type ReviewIdentity,
+  serializeReview,
+  type PullRequestReview,
+  type PullRequestReviewIdentity,
 } from "../../src/domain/review";
 import type {
   MergePolicySnapshot,
@@ -16,7 +18,8 @@ import type {
 } from "../../src/domain/github-context";
 import {
   createReviewSession,
-  type ReviewSession,
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
 } from "../../src/domain/review-session";
 import {
   parseAbsolutePath,
@@ -34,7 +37,6 @@ import {
   type WorkspaceProfileId,
 } from "../../src/domain/ids";
 import { err, ok, type Result } from "../../src/domain/result";
-import { parseStoredReviewSession } from "../../src/adapters/storage/review-session-store";
 import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import type { ReviewRefreshDependencies } from "../../src/services/review-refresh-service";
 import type { PrepareReviewSessionFailure } from "../../src/services/review-session-preparation";
@@ -54,14 +56,14 @@ type ProjectionInput = Parameters<
 export type ReviewRefreshFixtureValues = {
   readonly profileId: WorkspaceProfileId;
   readonly profile: WorkspaceProfileConfig;
-  readonly identity: ReviewIdentity;
+  readonly identity: PullRequestReviewIdentity;
   readonly baseSha: GitSha;
   readonly headSha: GitSha;
   readonly at: IsoTimestamp;
   readonly sessionId: ReviewSessionId;
   readonly snapshot: ReviewRemoteSnapshot;
-  readonly session: ReviewSession;
-  readonly review: Review;
+  readonly session: PullRequestReviewSession;
+  readonly review: PullRequestReview;
 };
 
 type PullRequestResult = Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
@@ -106,9 +108,9 @@ type MutableReviewRefreshDependencies = {
 
 /** Named behavior overrides for the shared refresh dependency graph. */
 export type ReviewRefreshFixtureOptions = {
-  readonly review?: Review;
+  readonly review?: PullRequestReview;
   readonly representedSnapshot?: ReviewRemoteSnapshot;
-  readonly session?: ReviewSession;
+  readonly session?: PullRequestReviewSession;
   readonly sessionLoad?: SessionLoadResult;
   readonly currentPullRequest?: PullRequestSummary;
   readonly pullRequestResults?: ReadonlyArray<PullRequestResult>;
@@ -119,7 +121,7 @@ export type ReviewRefreshFixtureOptions = {
   readonly mergePolicyEvidenceResult?: MergePolicyEvidenceResult;
   readonly mergeOutcomeResult?: MergeOutcomeResult;
   readonly publishedFeedbackResult?: PublishedFeedbackResult;
-  readonly preparedSession?: ReviewSession;
+  readonly preparedSession?: PullRequestReviewSession;
   /** Forces `preparation.prepare` to fail instead of returning a session. */
   readonly preparationFailure?: PrepareReviewSessionFailure;
   readonly pendingReviewReconcileResult?: PendingReviewReconcileResult;
@@ -134,15 +136,15 @@ export type ReviewRefreshFixtureOptions = {
 /** Recording seams owned by the refresh fixture. */
 export type ReviewRefreshFixtureCalls = {
   readonly savedCandidates: Array<ReviewRemoteSnapshot>;
-  readonly savedReviews: Array<Review>;
-  readonly savedSessions: Array<ReviewSession>;
+  readonly savedReviews: Array<PullRequestReview>;
+  readonly savedSessions: Array<PullRequestReviewSession>;
   readonly preparations: Array<"prepare">;
   readonly projections: Array<"project">;
   readonly projectionInputs: Array<ProjectionInput>;
   readonly avatarSyncs: Array<"syncCommentAuthors">;
   readonly clearedRecentWrites: Array<{
     readonly profileId: WorkspaceProfileId;
-    readonly reviewId: Review["id"];
+    readonly reviewId: PullRequestReview["id"];
   }>;
 };
 
@@ -154,8 +156,11 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
     host: must(parseGitHubHost("github.com")),
     owner: must(parseGitHubOwner("octo-org")),
     repo: must(parseGitHubRepoName("patchdesk")),
-    prNumber: must(parsePullRequestNumber(42)),
-  } satisfies ReviewIdentity;
+    source: {
+      kind: "pull_request",
+      prNumber: must(parsePullRequestNumber(42)),
+    },
+  } satisfies PullRequestReviewIdentity;
   const headSha = must(parseGitSha("1".repeat(40)));
   const baseSha = must(parseGitSha("b".repeat(40)));
   const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
@@ -166,7 +171,7 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
         host: identity.host,
         owner: identity.owner,
         repo: identity.repo,
-        number: identity.prNumber,
+        number: identity.source.prNumber,
       },
       headSha,
       baseSha,
@@ -192,7 +197,7 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
     createdAt: at,
     headSha,
   });
-  const review: Review = {
+  const review: PullRequestReview = {
     ...createReview({
       identity,
       currentSessionId: session.id,
@@ -238,11 +243,11 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
 
 /** Build a complete session for a requested head SHA. */
 export function createReviewRefreshSession(input: {
-  readonly identity: ReviewIdentity;
+  readonly identity: PullRequestReviewIdentity;
   readonly snapshot: ReviewRemoteSnapshot;
   readonly createdAt: IsoTimestamp;
   readonly headSha: GitSha;
-}): ReviewSession {
+}): PullRequestReviewSession {
   const baseSha = input.snapshot.pullRequest.baseSha;
   if (baseSha === undefined) throw new Error("Fixture snapshot needs a base");
   const key = { ...input.identity, headSha: input.headSha, baseSha };
@@ -325,14 +330,17 @@ export function createReviewRefreshFixture(
     reviews: {
       load: async () => ok(review),
       save: async (saved) => {
-        calls.savedReviews.push(must(parseReview(saved)));
+        const stored = must(parseReview(serializeReview(saved)));
+        if (!isPullRequestReview(stored)) throw new Error("fixture");
+        calls.savedReviews.push(stored);
         return ok(undefined);
       },
     },
     sessions: {
       load: async () => options.sessionLoad ?? ok(session),
       save: async (saved) => {
-        calls.savedSessions.push(must(parseStoredReviewSession(saved)));
+        if (!isPullRequestReviewSession(saved)) throw new Error("fixture");
+        calls.savedSessions.push(saved);
         return ok(undefined);
       },
     },
@@ -407,7 +415,7 @@ function createMergePolicy(
       host: values.identity.host,
       owner: values.identity.owner,
       repo: values.identity.repo,
-      number: values.identity.prNumber,
+      number: values.identity.source.prNumber,
     },
     headSha: currentPullRequest.headSha,
     isOpen: currentPullRequest.isOpen,
@@ -420,8 +428,8 @@ function createMergePolicy(
 }
 
 function createProjection(
-  review: Review,
-  session: ReviewSession,
+  review: PullRequestReview,
+  session: PullRequestReviewSession,
   values: ReviewRefreshFixtureValues,
   currentPullRequest: PullRequestSummary,
 ): ReviewWorkbenchProjection {
@@ -432,7 +440,17 @@ function createProjection(
       id: review.id,
       status: review.status._tag === "Open" ? "open" : review.status.state,
     },
-    session: { id: session.id, key: session.key },
+    session: {
+      id: session.id,
+      key: {
+        profileId: session.key.profileId,
+        host: session.key.host,
+        owner: session.key.owner,
+        repo: session.key.repo,
+        prNumber: session.key.source.prNumber,
+        headSha: session.key.headSha,
+      },
+    },
     revision: {
       reviewedHeadSha: session.key.headSha,
       freshness: "fresh",

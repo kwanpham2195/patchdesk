@@ -19,7 +19,7 @@ const pullRequest = {
   host: sessionKey.host,
   owner: sessionKey.owner,
   repo: sessionKey.repo,
-  number: sessionKey.prNumber,
+  number: sessionKey.source.prNumber,
 };
 
 const analysisFinished: DesktopNotificationEvent = {

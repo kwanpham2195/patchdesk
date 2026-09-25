@@ -9,7 +9,7 @@ import { RefreshOperationStore } from "../../src/adapters/storage/refresh-operat
 import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
 import { createReview } from "../../src/domain/review";
 import type { RefreshOperation } from "../../src/domain/refresh-operation";
-import type { ReviewSession } from "../../src/domain/review-session";
+import type { PullRequestReviewSession } from "../../src/domain/review-session";
 import {
   createReviewSessionId,
   parseContentHash,
@@ -40,7 +40,10 @@ const identity = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo")),
   repo: must(parseGitHubRepoName("widgets")),
-  prNumber: must(parsePullRequestNumber(7)),
+  source: {
+    kind: "pull_request" as const,
+    prNumber: must(parsePullRequestNumber(7)),
+  },
 };
 const headSha = must(parseGitSha("a".repeat(40)));
 const review = createReview({
@@ -65,7 +68,7 @@ const prepared: PreparedReviewRefresh = {
   // SAFETY: this service test's refresh double never reads in-memory projection inputs after preparation; only the durable next Review fields are under test.
   snapshot: {} as ReviewRemoteSnapshot,
   // SAFETY: as above, the fake commit path does not project the selected session.
-  selectedSession: {} as ReviewSession,
+  selectedSession: {} as PullRequestReviewSession,
   refreshedAt: nextReview.updatedAt,
 };
 

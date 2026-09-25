@@ -8,7 +8,10 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ContentHash } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
-import type { ReviewSession } from "../domain/review-session";
+import type {
+  PullRequestReviewSession,
+  ReviewSession,
+} from "../domain/review-session";
 import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import type { ReviewContextService } from "./review-context-service";
 import { exists } from "./review-preparation-journal";
@@ -57,7 +60,7 @@ export class ReviewContextPackService {
    * or read a half-written pack.
    */
   async ensure(input: {
-    readonly session: ReviewSession;
+    readonly session: PullRequestReviewSession;
     readonly patchHash: ContentHash;
   }): Promise<Result<void, ReviewContextPackFailure>> {
     const { profileId } = input.session.key;
@@ -74,7 +77,7 @@ export class ReviewContextPackService {
       host: input.session.key.host,
       owner: input.session.key.owner,
       repo: input.session.key.repo,
-      number: input.session.key.prNumber,
+      number: input.session.key.source.prNumber,
     };
     const [comments, checks] = await Promise.all([
       this.dependencies.github.getPullRequestComments({

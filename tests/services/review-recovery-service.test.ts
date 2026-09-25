@@ -9,7 +9,10 @@ import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
-import { createReview, type ReviewIdentity } from "../../src/domain/review";
+import {
+  createReview,
+  type PullRequestReviewIdentity,
+} from "../../src/domain/review";
 import {
   createReviewId,
   createReviewSessionId,
@@ -28,12 +31,12 @@ function must<T>(result: Result<T, unknown>): T {
   return result.value;
 }
 
-const storedIdentity: ReviewIdentity = {
+const storedIdentity: PullRequestReviewIdentity = {
   profileId: must(parseWorkspaceProfileId("acme")),
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
+  source: { kind: "pull_request", prNumber: must(parsePullRequestNumber(42)) },
 };
 const storedReviewId = createReviewId(storedIdentity);
 const storedHeadSha = must(parseGitSha("1".repeat(40)));
@@ -320,7 +323,7 @@ describe("ReviewRecoveryService", () => {
           host: storedIdentity.host,
           owner: storedIdentity.owner,
           repo: storedIdentity.repo,
-          number: storedIdentity.prNumber,
+          number: storedIdentity.source.prNumber,
         },
         expectedHeadSha: storedHeadSha,
         method: "squash",

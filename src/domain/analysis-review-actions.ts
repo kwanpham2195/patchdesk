@@ -9,7 +9,7 @@ import {
   type PendingReviewState,
 } from "./pending-review";
 import type { ReviewResult } from "./review-result";
-import type { ReviewSession } from "./review-session";
+import type { PullRequestReviewSession } from "./review-session";
 
 /**
  * How fresh the projected revision is against its pull request, as the
@@ -40,7 +40,7 @@ export type AnalysisReviewActionsProjection = {
 
 export function projectAnalysisReviewActions(input: {
   readonly analysis: InsightProjection<ReviewResult>;
-  readonly session: ReviewSession;
+  readonly session: PullRequestReviewSession;
   readonly freshness: WorkbenchRevisionFreshness;
   readonly patchHash: ContentHash | undefined;
   readonly pendingReview: PendingReviewState | undefined;

@@ -9,7 +9,7 @@ import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
 import { KeyedMutex } from "../../domain/keyed-mutex";
 import { mapConcurrent } from "../../domain/map-concurrent";
 import { err, ok, type Result } from "../../domain/result";
-import { parseReview, type Review } from "../../domain/review";
+import { parseReview, serializeReview, type Review } from "../../domain/review";
 import {
   isNotFound,
   readJsonFile,
@@ -63,10 +63,11 @@ export class ReviewStore {
    * can never be silently replaced by a stale caller.
    */
   async save(
-    review: unknown,
+    review: Review,
     expectedUpdatedAt?: IsoTimestamp,
   ): Promise<Result<void, ReviewStoreFailure>> {
-    const parsed = parseReview(review);
+    const stored = serializeReview(review);
+    const parsed = parseReview(stored);
     if (parsed._tag === "err") return invalidWrite();
 
     const value = parsed.value;
@@ -99,7 +100,7 @@ export class ReviewStore {
       }
       return writeAtomicJson(
         this.paths.reviewFile(value.identity.profileId, value.id),
-        value,
+        stored,
       );
     });
   }

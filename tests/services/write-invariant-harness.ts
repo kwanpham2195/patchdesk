@@ -9,7 +9,7 @@ import type { PendingReviewState } from "../../src/domain/pending-review";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import {
   createReviewSession,
-  type ReviewSession,
+  type PullRequestReviewSession,
 } from "../../src/domain/review-session";
 import { err, ok, type Result } from "../../src/domain/result";
 import { PendingReviewService } from "../../src/services/pending-review-service";
@@ -142,7 +142,9 @@ export function recorded<T extends Record<string, GatewayCall>>(
 }
 
 /** The durable-intent tag a stored session carries, if any. */
-export function sessionIntentTag(session: ReviewSession): string | undefined {
+export function sessionIntentTag(
+  session: PullRequestReviewSession,
+): string | undefined {
   return (
     session.pendingReview?._tag ??
     session.directSummaryReview?._tag ??
@@ -156,20 +158,23 @@ export function sessionIntentTag(session: ReviewSession): string | undefined {
  * `intent:` entry at all, which is exactly the bug the blockers plan's M7
  * describes for inline conversation and published feedback.
  */
-export function recordingSessions(trace: Trace, initial: ReviewSession) {
+export function recordingSessions(
+  trace: Trace,
+  initial: PullRequestReviewSession,
+) {
   let stored = initial;
   return {
-    load: async (): Promise<Result<ReviewSession, StorageFailure>> =>
+    load: async (): Promise<Result<PullRequestReviewSession, StorageFailure>> =>
       ok(stored),
     save: async (
-      next: ReviewSession,
+      next: PullRequestReviewSession,
     ): Promise<Result<void, StorageFailure>> => {
       stored = next;
       const tag = sessionIntentTag(next);
       if (tag !== undefined) trace.push(`intent:${tag}`);
       return ok(undefined);
     },
-    current: (): ReviewSession => stored,
+    current: (): PullRequestReviewSession => stored,
   };
 }
 
@@ -327,7 +332,9 @@ export async function recordedWriteFlowRun(
 }
 
 /** A session's intent tag, but only while it still refuses the next write. */
-export function sessionWriteLock(session: ReviewSession): string | undefined {
+export function sessionWriteLock(
+  session: PullRequestReviewSession,
+): string | undefined {
   const tag = sessionIntentTag(session);
   return tag !== undefined && IN_FLIGHT_TAGS.has(tag) ? tag : undefined;
 }
@@ -349,7 +356,9 @@ export const mergeSession = createReviewSession({
 });
 
 /** Pending-review and direct-summary flows share this fresh-gate shape. */
-export function freshGate(sessions: { current: () => ReviewSession }) {
+export function freshGate(sessions: {
+  current: () => PullRequestReviewSession;
+}) {
   return {
     requireFresh: async () =>
       ok({
@@ -382,7 +391,7 @@ export function pendingOwner(): Extract<
         host: values.identity.host,
         owner: values.identity.owner,
         repo: values.identity.repo,
-        number: values.identity.prNumber,
+        number: values.identity.source.prNumber,
       },
       headSha: values.headSha,
       comments: [

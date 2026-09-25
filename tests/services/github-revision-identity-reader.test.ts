@@ -218,7 +218,7 @@ async function makeSession(
       host: pr.host,
       owner: pr.owner,
       repo: pr.repo,
-      prNumber: pr.number,
+      source: { kind: "pull_request", prNumber: pr.number },
       headSha,
       baseSha,
     },

@@ -18,8 +18,10 @@ import type {
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
+  isPullRequestReview,
   markReviewTerminal,
   moveReviewToSession,
+  type PullRequestReview,
   type Review,
 } from "../domain/review";
 import type { PullRequestRef } from "../domain/pull-request";
@@ -38,8 +40,9 @@ import type {
   WorkspaceProfileId,
 } from "../domain/ids";
 import {
+  isPullRequestReviewSession,
   sameReviewRevision,
-  type ReviewSession,
+  type PullRequestReviewSession,
   type ReviewRevision,
 } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -128,7 +131,7 @@ export type PreparedReviewRefresh = {
   readonly sessionId: ReviewSessionId;
   readonly snapshotHash: ContentHash;
   readonly snapshot: ReviewRemoteSnapshot;
-  readonly selectedSession: ReviewSession;
+  readonly selectedSession: PullRequestReviewSession;
   readonly refreshedAt: IsoTimestamp;
 };
 
@@ -179,14 +182,18 @@ export class ReviewRefreshService {
         ? err({ reason: "not_found" })
         : err({ reason: "storage" });
     }
-    if (currentSession.value.id !== review.currentSessionId)
+    if (
+      currentSession.value.id !== review.currentSessionId ||
+      !isPullRequestReviewSession(currentSession.value)
+    )
       return err({ reason: "storage" });
     if (
       currentSession.value.key.profileId !== review.identity.profileId ||
       currentSession.value.key.host !== review.identity.host ||
       currentSession.value.key.owner !== review.identity.owner ||
       currentSession.value.key.repo !== review.identity.repo ||
-      currentSession.value.key.prNumber !== review.identity.prNumber
+      currentSession.value.key.source.prNumber !==
+        review.identity.source.prNumber
     ) {
       return err({ reason: "storage" });
     }
@@ -583,7 +590,10 @@ export class ReviewRefreshService {
     reviewId: ReviewId,
   ): Promise<
     Result<
-      { readonly review: Review; readonly profile: WorkspaceProfileConfig },
+      {
+        readonly review: PullRequestReview;
+        readonly profile: WorkspaceProfileConfig;
+      },
       ReviewRefreshFailure
     >
   > {
@@ -597,6 +607,8 @@ export class ReviewRefreshService {
       return err({ reason: "not_found" });
     if (profile._tag === "err" || review._tag === "err")
       return err({ reason: "storage" });
+    // This refresh reads GitHub; Refresh of a local Review arrives with #452.
+    if (!isPullRequestReview(review.value)) return err({ reason: "not_found" });
     return ok({ profile: profile.value, review: review.value });
   }
 
@@ -648,12 +660,12 @@ function latestRepresentedMoment(
   return new Date(latest).toISOString() as IsoTimestamp;
 }
 
-function ref(review: Review): PullRequestRef {
+function ref(review: PullRequestReview): PullRequestRef {
   return {
     host: review.identity.host,
     owner: review.identity.owner,
     repo: review.identity.repo,
-    number: review.identity.prNumber,
+    number: review.identity.source.prNumber,
   };
 }
 

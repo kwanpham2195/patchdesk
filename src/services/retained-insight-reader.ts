@@ -141,7 +141,7 @@ export class RetainedInsightReader {
     return {
       artifactStatus: "verified",
       scope: {
-        baseShort: (retainedSession.value.pr.baseSha ?? "unknown").slice(0, 7),
+        baseShort: (retainedSession.value.key.baseSha ?? "unknown").slice(0, 7),
         headShort: retained.revision.headSha.slice(0, 7),
         commitCount: 0,
         fileCount: files.length,

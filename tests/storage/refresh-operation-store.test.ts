@@ -35,7 +35,10 @@ const identity = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo")),
   repo: must(parseGitHubRepoName("widgets")),
-  prNumber: must(parsePullRequestNumber(7)),
+  source: {
+    kind: "pull_request" as const,
+    prNumber: must(parsePullRequestNumber(7)),
+  },
 };
 const headSha = must(parseGitSha("a".repeat(40)));
 const review = createReview({

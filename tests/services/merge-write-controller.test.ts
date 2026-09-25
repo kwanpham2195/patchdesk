@@ -17,10 +17,10 @@ import type { MergePolicySnapshot } from "../../src/domain/github-context";
 import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
 import type { MergeOperation } from "../../src/domain/merge-operation";
 import { err, ok, type Result } from "../../src/domain/result";
-import type { Review } from "../../src/domain/review";
+import type { PullRequestReview } from "../../src/domain/review";
 import {
   createReviewSession,
-  type ReviewSession,
+  type PullRequestReviewSession,
 } from "../../src/domain/review-session";
 import type {
   AnalysisMergePolicy,
@@ -157,8 +157,8 @@ class RecordingReviewWriteGate extends ReviewWriteGate {
 
   constructor(
     profile: WorkspaceProfileConfig,
-    review: Review,
-    session: ReviewSession,
+    review: PullRequestReview,
+    session: PullRequestReviewSession,
     snapshot: ReviewRemoteSnapshot,
   ) {
     super(
@@ -176,7 +176,7 @@ class RecordingReviewWriteGate extends ReviewWriteGate {
 
   override async requireFresh(
     _profileId: WorkspaceProfileId,
-    _reviewId: Review["id"],
+    _reviewId: PullRequestReview["id"],
     _expected?: Parameters<ReviewWriteGate["requireFresh"]>[2],
   ): Promise<FreshResult> {
     this.requireFreshCalls += 1;
@@ -192,11 +192,11 @@ class RecordingReviewWriteGate extends ReviewWriteGate {
     return this.profileValue;
   }
 
-  private get review(): Review {
+  private get review(): PullRequestReview {
     return this.reviewValue;
   }
 
-  private get session(): ReviewSession {
+  private get session(): PullRequestReviewSession {
     return this.sessionValue;
   }
 
@@ -205,8 +205,8 @@ class RecordingReviewWriteGate extends ReviewWriteGate {
   }
 
   private readonly profileValue: WorkspaceProfileConfig;
-  private readonly reviewValue: Review;
-  private readonly sessionValue: ReviewSession;
+  private readonly reviewValue: PullRequestReview;
+  private readonly sessionValue: PullRequestReviewSession;
   private readonly snapshotValue: ReviewRemoteSnapshot;
 }
 
@@ -219,7 +219,7 @@ function createMergePolicy(
       host: fixtureValues.identity.host,
       owner: fixtureValues.identity.owner,
       repo: fixtureValues.identity.repo,
-      number: fixtureValues.identity.prNumber,
+      number: fixtureValues.identity.source.prNumber,
     },
     headSha: fixtureValues.headSha,
     baseSha: fixtureValues.baseSha,
@@ -366,7 +366,7 @@ function fixture(
     worktree: values.session.worktree,
     createdAt: values.session.createdAt,
   });
-  const session: ReviewSession =
+  const session: PullRequestReviewSession =
     options.analysis?.addedToReview === true
       ? {
           ...created,
@@ -385,7 +385,7 @@ function fixture(
           ],
         }
       : created;
-  const review: Review = {
+  const review: PullRequestReview = {
     ...values.review,
     currentSessionId: session.id,
     freshness: { _tag: "Fresh" },
@@ -518,7 +518,7 @@ describe("MergeWriteController", () => {
       {
         _tag: "WriteNeedsRecovery",
         reviewId,
-        pullRequest: { number: current.session.key.prNumber },
+        pullRequest: { number: current.session.key.source.prNumber },
       },
     ]);
   });
@@ -604,7 +604,7 @@ describe("MergeWriteController", () => {
         host: current.session.key.host,
         owner: current.session.key.owner,
         repo: current.session.key.repo,
-        number: current.session.key.prNumber,
+        number: current.session.key.source.prNumber,
       },
       headSha: current.headSha,
       method: "squash",
@@ -619,7 +619,7 @@ describe("MergeWriteController", () => {
     expect(current.notifications).toMatchObject([
       {
         _tag: "MergeCompleted",
-        pullRequest: { number: current.session.key.prNumber },
+        pullRequest: { number: current.session.key.source.prNumber },
       },
     ]);
   });

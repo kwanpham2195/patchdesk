@@ -29,7 +29,7 @@ export const identity = {
   host: "github.com" as never,
   owner: "octo-org" as never,
   repo: "patchdesk" as never,
-  prNumber: 42 as never,
+  source: { kind: "pull_request" as const, prNumber: 42 as never },
 };
 export const reviewId = createReviewId(identity);
 // SAFETY: 64 lowercase hex characters is a well-formed ContentHash.
@@ -95,7 +95,11 @@ export function fixture(
       load: vi.fn(async () => ok(review)),
       save: vi.fn(async () => ok(undefined)),
     },
-    sessions: { load: vi.fn(async () => ok({ id: sessionId })) },
+    sessions: {
+      load: vi.fn(async () =>
+        ok({ id: sessionId, key: { ...identity, headSha, baseSha } }),
+      ),
+    },
     artifacts: {
       quarantineIfPresent: vi.fn(async () =>
         ok({ entryName: "session.backup" }),

@@ -14,6 +14,7 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
+import type { PullRequestReviewSession } from "../domain/review-session";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import {
   confirmReviewWrite,
@@ -457,19 +458,13 @@ function mapWriteFailure(
   }
 }
 
-function sessionPr(session: {
-  readonly key: {
-    readonly host: PullRequestRef["host"];
-    readonly owner: PullRequestRef["owner"];
-    readonly repo: PullRequestRef["repo"];
-    readonly prNumber: PullRequestRef["number"];
-    readonly headSha?: string;
-  };
-}): PullRequestRef {
+function sessionPr(
+  session: Pick<PullRequestReviewSession, "key">,
+): PullRequestRef {
   return {
     host: session.key.host,
     owner: session.key.owner,
     repo: session.key.repo,
-    number: session.key.prNumber,
+    number: session.key.source.prNumber,
   };
 }

@@ -78,7 +78,10 @@ import {
 import { projectPendingReview } from "./pending-review-service";
 import type { PendingReviewState } from "../domain/pending-review";
 import type { ReviewResult } from "../domain/review-result";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import { RetainedInsightReader } from "./retained-insight-reader";
 
@@ -281,7 +284,7 @@ export class ReviewWorkbenchProjectionService {
     Result<
       {
         readonly profile: WorkspaceProfileConfig;
-        readonly session: ReviewSession;
+        readonly session: PullRequestReviewSession;
       },
       WorkbenchProjectionFailure
     >
@@ -292,6 +295,9 @@ export class ReviewWorkbenchProjectionService {
     ]);
     if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
     if (session._tag === "err") return err({ _tag: "SessionNotFound" });
+    // The workbench projects pull request sessions only until the local open route exists (ADR 0050).
+    if (!isPullRequestReviewSession(session.value))
+      return err({ _tag: "SessionNotFound" });
     return ok({ profile: profile.value, session: session.value });
   }
 
@@ -410,7 +416,7 @@ export class ReviewWorkbenchProjectionService {
 
   private async project(
     profile: WorkspaceProfileConfig,
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     remote: ProjectRemoteInput | undefined,
     representedAt: IsoTimestamp,
     durableFreshness: ReviewFreshness,
@@ -447,7 +453,7 @@ export class ReviewWorkbenchProjectionService {
                 host: session.key.host,
                 owner: session.key.owner,
                 repo: session.key.repo,
-                number: session.key.prNumber,
+                number: session.key.source.prNumber,
               },
               ...session.prContext,
               headSha: session.key.headSha,
@@ -658,7 +664,9 @@ function directSummaryDecision(
     : "allowed";
 }
 
-function projectSession(session: ReviewSession): WorkbenchSessionProjection {
+function projectSession(
+  session: PullRequestReviewSession,
+): WorkbenchSessionProjection {
   return {
     id: session.id,
     key: {
@@ -666,14 +674,14 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
       host: session.key.host,
       owner: session.key.owner,
       repo: session.key.repo,
-      prNumber: session.key.prNumber,
+      prNumber: session.key.source.prNumber,
       headSha: session.key.headSha,
     },
   };
 }
 
 function projectLocalCheckoutWarning(
-  warning: ReviewSession["localCheckoutWarning"],
+  warning: PullRequestReviewSession["localCheckoutWarning"],
 ): ReviewWorkbenchProjection["localCheckout"] {
   if (warning === undefined) return undefined;
   return {

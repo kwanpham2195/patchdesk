@@ -30,7 +30,10 @@ const identity = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
+  source: {
+    kind: "pull_request" as const,
+    prNumber: must(parsePullRequestNumber(42)),
+  },
 };
 const reviewId = createReviewId(identity);
 const writtenAt = must(parseIsoTimestamp("2025-01-15T12:00:00.000Z"));

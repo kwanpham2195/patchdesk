@@ -4,6 +4,7 @@ import type { ReviewId, WorkspaceProfileId } from "../../domain/ids";
 import { parseReviewId } from "../../domain/ids";
 import {
   parseRefreshOperation,
+  serializeRefreshOperation,
   type RefreshOperation,
 } from "../../domain/refresh-operation";
 import { err, ok, type Result } from "../../domain/result";
@@ -35,7 +36,7 @@ export class RefreshOperationStore {
       return existing;
     return writeAtomicJson(
       this.paths.refreshOperationFile(operation.profileId, operation.reviewId),
-      operation,
+      serializeRefreshOperation(operation),
     );
   }
 
@@ -44,7 +45,7 @@ export class RefreshOperationStore {
   ): Promise<Result<void, StorageFailure>> {
     return writeAtomicJson(
       this.paths.refreshOperationFile(operation.profileId, operation.reviewId),
-      operation,
+      serializeRefreshOperation(operation),
     );
   }
 

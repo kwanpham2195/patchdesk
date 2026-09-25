@@ -253,7 +253,12 @@ describe("ReviewWorkbenchProjectionService", () => {
       review({ currentHeadSha: "c".repeat(40) }),
       // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
       review({ identity: { ...identity, owner: "someone-else" } }),
-      review({ identity: { ...identity, prNumber: 43 } }),
+      review({
+        identity: {
+          ...identity,
+          source: { kind: "pull_request", prNumber: 43 },
+        },
+      }),
     ]) {
       await expect(
         fixture(stale).service.loadRepresented({

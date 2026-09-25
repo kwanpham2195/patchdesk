@@ -40,14 +40,19 @@ import type {
   PendingReviewState,
 } from "../domain/pending-review";
 import {
+  isPullRequestReview,
   markReviewRevisionChanged,
   markReviewTerminal,
   markReviewUnavailable,
   reconcileReviewRemoteState,
+  type PullRequestReview,
   type Review,
   type RevisionUnavailableReason,
 } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../domain/review-session";
 import { casesHandled, err, ok, type Result } from "../domain/result";
 import type {
   ReviewWorkbenchProjection,
@@ -137,7 +142,7 @@ export type ReviewObservationDependencies = {
   readonly now: () => IsoTimestamp;
   readonly project?: (input: {
     readonly profileId: WorkspaceProfileId;
-    readonly sessionId: ReviewSession["id"];
+    readonly sessionId: PullRequestReviewSession["id"];
     readonly snapshot: ReviewRemoteSnapshot;
     readonly refreshedAt: IsoTimestamp;
     readonly freshness: Review["freshness"];
@@ -632,8 +637,8 @@ export class ReviewObservationService {
         > extends Result<infer T, unknown>
           ? T
           : never;
-        readonly review: Review;
-        readonly session: ReviewSession;
+        readonly review: PullRequestReview;
+        readonly session: PullRequestReviewSession;
         readonly represented: ReviewRemoteSnapshot;
       },
       ReviewObservationFailure
@@ -651,7 +656,9 @@ export class ReviewObservationService {
             ? "not_found"
             : "storage",
       });
+    // Observation reads GitHub, so a local Review, which has no represented remote, is never observed.
     if (
+      !isPullRequestReview(review.value) ||
       review.value.representedRemote === undefined ||
       review.value.currentSessionId === undefined
     )
@@ -674,6 +681,8 @@ export class ReviewObservationService {
             ? "not_found"
             : "storage",
       });
+    if (!isPullRequestReviewSession(session.value))
+      return err({ reason: "storage" });
     return ok({
       profile: profile.value,
       review: review.value,
@@ -732,7 +741,7 @@ export class ReviewObservationService {
     >
       ? T
       : never,
-    review: Review,
+    review: PullRequestReview,
     pullRequestReviews: Promise<PullRequestReviewsRead> | undefined,
   ): Promise<{
     readonly read: PendingReviewRead;
@@ -764,7 +773,7 @@ export class ReviewObservationService {
     >
       ? T
       : never,
-    review: Review,
+    review: PullRequestReview,
     isOpen: boolean,
   ): Promise<"merged" | "closed"> {
     if (isOpen || this.dependencies.github.getMergeOutcome === undefined)
@@ -940,11 +949,11 @@ function containsRecentWrites(
   });
 }
 
-function reviewRef(review: Review) {
+function reviewRef(review: PullRequestReview) {
   return {
     host: review.identity.host,
     owner: review.identity.owner,
     repo: review.identity.repo,
-    number: review.identity.prNumber,
+    number: review.identity.source.prNumber,
   };
 }

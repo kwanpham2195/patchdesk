@@ -5,7 +5,7 @@ import type {
   ObservedRevisionIdentity,
   RevisionUnavailableReason,
 } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
+import type { PullRequestReviewSession } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { parseContentHash } from "../domain/ids";
 import { ok, type Result } from "../domain/result";
@@ -57,7 +57,7 @@ export class GitHubRevisionIdentityReader {
   async read(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
-    readonly session: ReviewSession;
+    readonly session: PullRequestReviewSession;
     readonly current?: PullRequestSummary;
   }): Promise<Result<RevisionComparison, never>> {
     if (input.session.pr.baseSha === undefined) {

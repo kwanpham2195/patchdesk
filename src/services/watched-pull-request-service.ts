@@ -191,7 +191,7 @@ export class WatchedPullRequestService {
           host: watched.ref.host,
           owner: watched.ref.owner,
           repo: watched.ref.repo,
-          prNumber: watched.ref.number,
+          source: { kind: "pull_request", prNumber: watched.ref.number },
         });
         for (const change of changes)
           events.push({

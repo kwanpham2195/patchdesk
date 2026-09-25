@@ -4,7 +4,10 @@ import {
   type RevisionUnavailableReason,
 } from "../domain/review";
 import type { PendingReviewState } from "../domain/pending-review";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../domain/review-session";
 import type {
   ContentHash,
   IsoTimestamp,
@@ -70,6 +73,7 @@ export class ReviewObservationRecovery {
     if (
       review._tag === "err" ||
       session._tag === "err" ||
+      !isPullRequestReviewSession(session.value) ||
       review.value.currentSessionId !== journal.value.sessionId ||
       (review.value.representedRemote?.snapshotHash !==
         journal.value.previousSnapshotHash &&
@@ -271,11 +275,13 @@ export async function completeObservationJournal(
 }
 
 export function applySessionAdoption(
-  session: ReviewSession,
+  session: PullRequestReviewSession,
   pendingReview: PendingReviewState | undefined,
-  findingReviewReceipts: ReviewSession["findingReviewReceipts"] | undefined,
+  findingReviewReceipts:
+    | PullRequestReviewSession["findingReviewReceipts"]
+    | undefined,
   updatedAt: IsoTimestamp,
-): ReviewSession {
+): PullRequestReviewSession {
   const {
     pendingReview: _previousPending,
     findingReviewReceipts: _previousReceipts,
@@ -293,8 +299,8 @@ export function applySessionAdoption(
 }
 
 function sameSessionAdoption(
-  left: ReviewSession,
-  right: ReviewSession,
+  left: PullRequestReviewSession,
+  right: PullRequestReviewSession,
 ): boolean {
   return (
     left.updatedAt === right.updatedAt &&

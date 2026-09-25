@@ -82,7 +82,7 @@ function viewerReview(
       host: identity.host,
       owner: identity.owner,
       repo: identity.repo,
-      number: identity.prNumber,
+      number: identity.source.prNumber,
     },
     headSha,
     comments: threadIds.map((id, index) => ({

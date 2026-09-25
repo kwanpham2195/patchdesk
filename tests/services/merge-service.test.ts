@@ -13,7 +13,7 @@ const session = {
     host: "github.com",
     owner: "octo-org",
     repo: "patchdesk",
-    prNumber: 1,
+    source: { kind: "pull_request", prNumber: 1 },
     headSha: sha,
   },
   pr: { headSha: sha, baseSha: sha, isDraft: false, isOpen: true },

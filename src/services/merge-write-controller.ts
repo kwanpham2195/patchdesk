@@ -34,7 +34,7 @@ import {
 import { markReviewTerminal, type Review } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
 import { parseReviewResult } from "../domain/review-result";
-import type { ReviewSession } from "../domain/review-session";
+import type { PullRequestReviewSession } from "../domain/review-session";
 import {
   postDesktopNotification,
   type DesktopNotifier,
@@ -175,7 +175,7 @@ export class MergeWriteController {
           host: session.value.key.host,
           owner: session.value.key.owner,
           repo: session.value.key.repo,
-          number: session.value.key.prNumber,
+          number: session.value.key.source.prNumber,
         },
         expectedHeadSha: session.value.key.headSha,
         method,
@@ -336,7 +336,7 @@ export class MergeWriteController {
       readonly headSha: GitSha;
       readonly patchHash: ContentHash;
     },
-    receipts: ReviewSession["findingReviewReceipts"],
+    receipts: PullRequestReviewSession["findingReviewReceipts"],
   ): Promise<
     Result<ReadonlyArray<MergeGateFinding>, { readonly reason: string }>
   > {

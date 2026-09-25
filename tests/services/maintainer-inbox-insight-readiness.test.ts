@@ -58,7 +58,7 @@ describe("MaintainerInboxService insight readiness", () => {
       host: "github.com",
       owner: "octo-org",
       repo: "patchdesk",
-      prNumber: 42,
+      source: { kind: "pull_request", prNumber: 42 },
       headSha,
     },
     patchPath: "/nowhere/patch.diff",

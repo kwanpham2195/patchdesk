@@ -120,7 +120,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
           host: values.identity.host,
           owner: values.identity.owner,
           repo: values.identity.repo,
-          number: values.identity.prNumber,
+          number: values.identity.source.prNumber,
         });
     },
   },
@@ -135,7 +135,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
           host: values.identity.host,
           owner: values.identity.owner,
           repo: values.identity.repo,
-          number: values.identity.prNumber,
+          number: values.identity.source.prNumber,
         });
     },
   },

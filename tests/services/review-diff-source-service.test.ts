@@ -107,7 +107,10 @@ async function saveSession(input: {
     host: must(parseGitHubHost("github.com")),
     owner: must(parseGitHubOwner("octo-org")),
     repo: must(parseGitHubRepoName("patchdesk")),
-    prNumber: must(parsePullRequestNumber(input.number)),
+    source: {
+      kind: "pull_request" as const,
+      prNumber: must(parsePullRequestNumber(input.number)),
+    },
     baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
     headSha: must(
       parseGitSha(
@@ -230,7 +233,10 @@ describe("ReviewDiffSourceService", () => {
         host: must(parseGitHubHost("github.com")),
         owner: must(parseGitHubOwner("octo-org")),
         repo: must(parseGitHubRepoName("patchdesk")),
-        prNumber: must(parsePullRequestNumber(42)),
+        source: {
+          kind: "pull_request" as const,
+          prNumber: must(parsePullRequestNumber(42)),
+        },
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
         baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
       };
@@ -392,7 +398,10 @@ describe("ReviewDiffSourceService", () => {
         host: must(parseGitHubHost("github.com")),
         owner: must(parseGitHubOwner("octo-org")),
         repo: must(parseGitHubRepoName("patchdesk")),
-        prNumber: must(parsePullRequestNumber(42)),
+        source: {
+          kind: "pull_request" as const,
+          prNumber: must(parsePullRequestNumber(42)),
+        },
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
         baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
       };
@@ -464,7 +473,10 @@ describe("ReviewDiffSourceService", () => {
         host: must(parseGitHubHost("github.com")),
         owner: must(parseGitHubOwner("octo-org")),
         repo: must(parseGitHubRepoName("patchdesk")),
-        prNumber: must(parsePullRequestNumber(42)),
+        source: {
+          kind: "pull_request" as const,
+          prNumber: must(parsePullRequestNumber(42)),
+        },
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
         baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
       };

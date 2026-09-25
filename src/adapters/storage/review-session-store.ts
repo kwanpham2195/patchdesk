@@ -14,6 +14,7 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type GitSha,
+  type PullRequestNumber,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
@@ -27,7 +28,19 @@ import { definedProps } from "../../domain/defined-props";
 import { parseDirectSummaryReviewState } from "../../domain/direct-summary-review";
 import { KeyedMutex } from "../../domain/keyed-mutex";
 import { mapConcurrent } from "../../domain/map-concurrent";
-import type { ReviewSession } from "../../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type LocalReviewSession,
+  type PullRequestReviewSession,
+  type ReviewSession,
+  type ReviewSessionFields,
+  type ReviewSessionKey,
+} from "../../domain/review-session";
+import {
+  parseStoredLocalReviewSource,
+  storedLocalReviewSourceSchema,
+  type ReviewSource,
+} from "../../domain/review-source";
 import { err, ok, type Result } from "../../domain/result";
 import {
   isNotFound,
@@ -37,9 +50,26 @@ import {
 } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
-const reviewSessionSchema = v.strictObject({
+const sessionFieldEntries = {
   schemaVersion: v.literal(6),
   id: v.string(),
+  patchPath: v.string(),
+  canonicalPatchHash: v.optional(v.string()),
+  localCheckoutWarning: v.optional(
+    v.picklist(["missing_local_path", "local_checkout_unavailable"]),
+  ),
+  worktree: v.strictObject({ path: v.string(), headSha: v.string() }),
+  createdAt: v.string(),
+  updatedAt: v.string(),
+};
+
+/**
+ * A pull request session is stored exactly as before ADR 0050: `prNumber`
+ * flat in `key` and no `source`, so records already on disk load unchanged
+ * and there is one stored form per kind.
+ */
+const pullRequestSessionSchema = v.strictObject({
+  ...sessionFieldEntries,
   key: v.strictObject({
     profileId: v.string(),
     host: v.string(),
@@ -64,18 +94,26 @@ const reviewSessionSchema = v.strictObject({
       baseBranch: v.string(),
     }),
   ),
-  patchPath: v.string(),
-  canonicalPatchHash: v.optional(v.string()),
-  localCheckoutWarning: v.optional(
-    v.picklist(["missing_local_path", "local_checkout_unavailable"]),
-  ),
-  worktree: v.strictObject({ path: v.string(), headSha: v.string() }),
   pendingReview: v.optional(v.unknown()),
   findingReviewReceipts: v.optional(v.unknown()),
   directSummaryReview: v.optional(v.unknown()),
-  createdAt: v.string(),
-  updatedAt: v.string(),
 });
+
+const localSessionSchema = v.strictObject({
+  ...sessionFieldEntries,
+  key: v.strictObject({
+    profileId: v.string(),
+    host: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    source: storedLocalReviewSourceSchema,
+    headSha: v.string(),
+    baseSha: v.string(),
+  }),
+});
+
+type RawPullRequestSession = v.InferOutput<typeof pullRequestSessionSchema>;
+type RawLocalSession = v.InferOutput<typeof localSessionSchema>;
 
 type InvalidSessionEntry = {
   readonly entryName: string;
@@ -94,10 +132,11 @@ export class ReviewSessionStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
   async save(
-    session: unknown,
+    session: ReviewSession,
     expectedUpdatedAt?: ReviewSession["updatedAt"],
   ): Promise<Result<void, StorageFailure>> {
-    const parsed = parseStoredReviewSession(session);
+    const stored = serializeReviewSession(session);
+    const parsed = parseStoredReviewSession(stored);
     if (parsed._tag === "err") return invalidWrite();
     const value = parsed.value;
     const key = `${value.key.profileId}:${value.id}`;
@@ -118,7 +157,7 @@ export class ReviewSessionStore {
       }
       return writeAtomicJson(
         this.paths.sessionFile(value.key.profileId, value.id),
-        value,
+        stored,
       );
     });
   }
@@ -196,22 +235,13 @@ export class ReviewSessionStore {
   }
 }
 
-function buildSessionPr(
-  headSha: GitSha,
-  baseSha: GitSha,
-  isDraft: boolean,
-  isOpen: boolean,
-): ReviewSession["pr"] {
-  return { headSha, baseSha, isDraft, isOpen };
-}
-
 function buildSessionPrContext(raw: {
   readonly title: string;
   readonly description?: string | undefined;
   readonly author: string;
   readonly headBranch: string;
   readonly baseBranch: string;
-}): NonNullable<ReviewSession["prContext"]> {
+}): NonNullable<PullRequestReviewSession["prContext"]> {
   return {
     title: raw.title,
     author: raw.author,
@@ -229,37 +259,151 @@ function buildFindingReviewContext(
   return { id, headSha, ...definedProps({ pendingReview }) };
 }
 
+/**
+ * The stored form of a session, the inverse of `parseStoredReviewSession`. A
+ * pull request key is written flat with `prNumber`, as before local sources
+ * existed; a local key is written with its `source`.
+ */
+function serializeReviewSession(session: ReviewSession): StoredReviewSession {
+  if (!isPullRequestReviewSession(session)) return session;
+  const { source, ...key } = session.key;
+  return { ...session, key: { ...key, prNumber: source.prNumber } };
+}
+
+type StoredReviewSession =
+  | (Omit<PullRequestReviewSession, "key"> & {
+      readonly key: Omit<ReviewSessionKey, "source"> & {
+        readonly prNumber: PullRequestNumber;
+      };
+    })
+  | LocalReviewSession;
+
 /** Parses one current schema-6 session and rejects all removed authority fields. */
 export function parseStoredReviewSession(
   input: unknown,
 ): Result<ReviewSession, StorageFailure> {
-  const raw = v.safeParse(reviewSessionSchema, input);
-  if (!raw.success) return invalidRead();
-  const profileId = parseWorkspaceProfileId(raw.output.key.profileId);
-  const host = parseGitHubHost(raw.output.key.host);
-  const owner = parseGitHubOwner(raw.output.key.owner);
-  const repo = parseGitHubRepoName(raw.output.key.repo);
-  const prNumber = parsePullRequestNumber(raw.output.key.prNumber);
-  const headSha = parseGitSha(raw.output.key.headSha);
-  const baseSha = parseGitSha(raw.output.key.baseSha);
-  const id = parseReviewSessionId(raw.output.id);
-  const patchPath = parseAbsolutePath(raw.output.patchPath);
+  const pullRequest = v.safeParse(pullRequestSessionSchema, input);
+  if (pullRequest.success) return parsePullRequestSession(pullRequest.output);
+  const local = v.safeParse(localSessionSchema, input);
+  return local.success ? parseLocalSession(local.output) : invalidRead();
+}
+
+function parsePullRequestSession(
+  raw: RawPullRequestSession,
+): Result<PullRequestReviewSession, StorageFailure> {
+  const prNumber = parsePullRequestNumber(raw.key.prNumber);
+  if (prNumber._tag === "err") return invalidRead();
+  const fields = parseSessionFields(raw, {
+    kind: "pull_request",
+    prNumber: prNumber.value,
+  });
+  if (fields._tag === "err") return fields;
+  const { key, id } = fields.value;
+  const prHeadSha = parseGitSha(raw.pr.headSha);
+  const prBaseSha = parseGitSha(raw.pr.baseSha);
+  if (
+    prHeadSha._tag === "err" ||
+    prBaseSha._tag === "err" ||
+    prHeadSha.value !== key.headSha ||
+    prBaseSha.value !== key.baseSha
+  ) {
+    return invalidRead();
+  }
+  const pendingReview =
+    raw.pendingReview === undefined
+      ? ok(undefined)
+      : parsePendingReviewState(raw.pendingReview);
+  if (pendingReview._tag === "err") return invalidRead();
+  if (
+    pendingReview.value !== undefined &&
+    !pendingReviewMatchesSession(pendingReview.value, {
+      host: key.host,
+      owner: key.owner,
+      repo: key.repo,
+      number: key.source.prNumber,
+    })
+  ) {
+    return invalidRead();
+  }
+  const findingReviewReceipts =
+    raw.findingReviewReceipts === undefined
+      ? ok(undefined)
+      : parseFindingReviewReceipts(
+          raw.findingReviewReceipts,
+          buildFindingReviewContext(id, key.headSha, pendingReview.value),
+        );
+  const directSummaryReview =
+    raw.directSummaryReview === undefined
+      ? ok(undefined)
+      : parseDirectSummaryReviewState(raw.directSummaryReview);
+  if (
+    findingReviewReceipts._tag === "err" ||
+    directSummaryReview._tag === "err" ||
+    (directSummaryReview.value !== undefined &&
+      (directSummaryReview.value._tag === "Confirmed"
+        ? directSummaryReview.value.receipt.headSha !== key.headSha
+        : directSummaryReview.value.operation.headSha !== key.headSha))
+  ) {
+    return invalidRead();
+  }
+  return ok({
+    ...fields.value,
+    key,
+    pr: {
+      headSha: prHeadSha.value,
+      baseSha: prBaseSha.value,
+      isDraft: raw.pr.isDraft,
+      isOpen: raw.pr.isOpen,
+    },
+    ...definedProps({
+      prContext:
+        raw.prContext === undefined
+          ? undefined
+          : buildSessionPrContext(raw.prContext),
+      pendingReview: pendingReview.value,
+      findingReviewReceipts: findingReviewReceipts.value,
+      directSummaryReview: directSummaryReview.value,
+    }),
+  });
+}
+
+function parseLocalSession(
+  raw: RawLocalSession,
+): Result<LocalReviewSession, StorageFailure> {
+  const source = parseStoredLocalReviewSource(raw.key.source);
+  if (source._tag === "err") return invalidRead();
+  return parseSessionFields(raw, source.value);
+}
+
+/** Parses the fields every kind shares and checks the id against the key. */
+function parseSessionFields<Source extends ReviewSource>(
+  raw: RawPullRequestSession | RawLocalSession,
+  source: Source,
+): Result<
+  ReviewSessionFields & { readonly key: ReviewSessionKey<Source> },
+  StorageFailure
+> {
+  const profileId = parseWorkspaceProfileId(raw.key.profileId);
+  const host = parseGitHubHost(raw.key.host);
+  const owner = parseGitHubOwner(raw.key.owner);
+  const repo = parseGitHubRepoName(raw.key.repo);
+  const headSha = parseGitSha(raw.key.headSha);
+  const baseSha = parseGitSha(raw.key.baseSha);
+  const id = parseReviewSessionId(raw.id);
+  const patchPath = parseAbsolutePath(raw.patchPath);
   const canonicalPatchHash =
-    raw.output.canonicalPatchHash === undefined
+    raw.canonicalPatchHash === undefined
       ? undefined
-      : parseContentHash(raw.output.canonicalPatchHash);
-  const worktreePath = parseAbsolutePath(raw.output.worktree.path);
-  const worktreeHeadSha = parseGitSha(raw.output.worktree.headSha);
-  const prHeadSha = parseGitSha(raw.output.pr.headSha);
-  const prBaseSha = parseGitSha(raw.output.pr.baseSha);
-  const createdAt = parseIsoTimestamp(raw.output.createdAt);
-  const updatedAt = parseIsoTimestamp(raw.output.updatedAt);
+      : parseContentHash(raw.canonicalPatchHash);
+  const worktreePath = parseAbsolutePath(raw.worktree.path);
+  const worktreeHeadSha = parseGitSha(raw.worktree.headSha);
+  const createdAt = parseIsoTimestamp(raw.createdAt);
+  const updatedAt = parseIsoTimestamp(raw.updatedAt);
   if (
     profileId._tag === "err" ||
     host._tag === "err" ||
     owner._tag === "err" ||
     repo._tag === "err" ||
-    prNumber._tag === "err" ||
     headSha._tag === "err" ||
     baseSha._tag === "err" ||
     id._tag === "err" ||
@@ -267,104 +411,37 @@ export function parseStoredReviewSession(
     (canonicalPatchHash !== undefined && canonicalPatchHash._tag === "err") ||
     worktreePath._tag === "err" ||
     worktreeHeadSha._tag === "err" ||
-    prHeadSha._tag === "err" ||
-    prBaseSha._tag === "err" ||
     createdAt._tag === "err" ||
     updatedAt._tag === "err"
   ) {
     return invalidRead();
   }
+  const key: ReviewSessionKey<Source> = {
+    profileId: profileId.value,
+    host: host.value,
+    owner: owner.value,
+    repo: repo.value,
+    source,
+    headSha: headSha.value,
+    baseSha: baseSha.value,
+  };
   if (
-    id.value !==
-      createReviewSessionId({
-        profileId: profileId.value,
-        host: host.value,
-        owner: owner.value,
-        repo: repo.value,
-        prNumber: prNumber.value,
-        headSha: headSha.value,
-        baseSha: baseSha.value,
-      }) ||
-    worktreeHeadSha.value !== headSha.value ||
-    prHeadSha.value !== headSha.value ||
-    prBaseSha.value !== baseSha.value
+    id.value !== createReviewSessionId(key) ||
+    worktreeHeadSha.value !== headSha.value
   ) {
     return invalidRead();
   }
-  const pendingReview =
-    raw.output.pendingReview === undefined
-      ? ok(undefined)
-      : parsePendingReviewState(raw.output.pendingReview);
-  if (pendingReview._tag === "err") return invalidRead();
-  if (
-    pendingReview.value !== undefined &&
-    !pendingReviewMatchesSession(pendingReview.value, {
-      host: host.value,
-      owner: owner.value,
-      repo: repo.value,
-      number: prNumber.value,
-    })
-  ) {
-    return invalidRead();
-  }
-  const findingReviewReceipts =
-    raw.output.findingReviewReceipts === undefined
-      ? ok(undefined)
-      : parseFindingReviewReceipts(
-          raw.output.findingReviewReceipts,
-          buildFindingReviewContext(
-            id.value,
-            headSha.value,
-            pendingReview.value,
-          ),
-        );
-  const directSummaryReview =
-    raw.output.directSummaryReview === undefined
-      ? ok(undefined)
-      : parseDirectSummaryReviewState(raw.output.directSummaryReview);
-  if (
-    findingReviewReceipts._tag === "err" ||
-    directSummaryReview._tag === "err" ||
-    (directSummaryReview.value !== undefined &&
-      (directSummaryReview.value._tag === "Confirmed"
-        ? directSummaryReview.value.receipt.headSha !== headSha.value
-        : directSummaryReview.value.operation.headSha !== headSha.value))
-  ) {
-    return invalidRead();
-  }
-  const prContext =
-    raw.output.prContext === undefined
-      ? undefined
-      : buildSessionPrContext(raw.output.prContext);
   return ok({
     schemaVersion: 6,
     id: id.value,
-    key: {
-      profileId: profileId.value,
-      host: host.value,
-      owner: owner.value,
-      repo: repo.value,
-      prNumber: prNumber.value,
-      headSha: headSha.value,
-      baseSha: baseSha.value,
-    },
-    pr: buildSessionPr(
-      prHeadSha.value,
-      prBaseSha.value,
-      raw.output.pr.isDraft,
-      raw.output.pr.isOpen,
-    ),
+    key,
     patchPath: patchPath.value,
     worktree: { path: worktreePath.value, headSha: worktreeHeadSha.value },
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
     ...definedProps({
-      prContext,
       canonicalPatchHash: canonicalPatchHash?.value,
-      localCheckoutWarning: raw.output.localCheckoutWarning,
-      pendingReview: pendingReview.value,
-      findingReviewReceipts: findingReviewReceipts.value,
-      directSummaryReview: directSummaryReview.value,
+      localCheckoutWarning: raw.localCheckoutWarning,
     }),
   });
 }

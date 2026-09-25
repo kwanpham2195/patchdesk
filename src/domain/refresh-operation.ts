@@ -13,7 +13,12 @@ import {
   type WorkspaceProfileId,
 } from "./ids";
 import { err, ok, type Result } from "./result";
-import { parseReview, type Review } from "./review";
+import {
+  parseReview,
+  serializeReview,
+  type Review,
+  type StoredReview,
+} from "./review";
 
 type RefreshOperationFailure =
   | "github_read"
@@ -77,6 +82,30 @@ const operationSchema = v.strictObject({
     v.strictObject({ _tag: v.literal("Failed"), reason: refreshFailureSchema }),
   ]),
 });
+
+/** The JSON a refresh-operation store writes: a Prepared Review in its stored form. */
+export function serializeRefreshOperation(
+  operation: RefreshOperation,
+): StoredRefreshOperation {
+  return operation.state._tag === "Prepared"
+    ? {
+        ...operation,
+        state: {
+          ...operation.state,
+          nextReview: serializeReview(operation.state.nextReview),
+        },
+      }
+    : { ...operation, state: operation.state };
+}
+
+type StoredRefreshOperation = Omit<RefreshOperation, "state"> & {
+  readonly state:
+    | Exclude<RefreshOperationState, { readonly _tag: "Prepared" }>
+    | (Omit<
+        Extract<RefreshOperationState, { readonly _tag: "Prepared" }>,
+        "nextReview"
+      > & { readonly nextReview: StoredReview });
+};
 
 /** Parses the refresh-operation JSON boundary without retaining provider bodies or free-form errors. */
 export function parseRefreshOperation(

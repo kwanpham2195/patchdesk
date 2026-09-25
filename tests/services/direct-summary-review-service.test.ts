@@ -11,7 +11,10 @@ import { createReviewSessionId, type IsoTimestamp } from "../../src/domain/ids";
 import { err, ok, type Result } from "../../src/domain/result";
 import type { DirectSummaryReviewState } from "../../src/domain/direct-summary-review";
 import type { PendingReviewState } from "../../src/domain/pending-review";
-import type { ReviewSession } from "../../src/domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../../src/domain/review-session";
 import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
@@ -42,7 +45,7 @@ const expected = { sessionId, headSha, patchHash: "b".repeat(64) as never };
 function session(
   directSummaryReview?: DirectSummaryReviewState,
   pendingReview?: PendingReviewState,
-): ReviewSession {
+): PullRequestReviewSession {
   const base = {
     schemaVersion: 6 as const,
     id: sessionId,
@@ -54,7 +57,7 @@ function session(
       owner: "octo-org" as never,
       repo: "patchdesk" as never,
       // SAFETY: this literal is a positive integer, matching parsePullRequestNumber's format.
-      prNumber: 42 as never,
+      source: { kind: "pull_request" as const, prNumber: 42 as never },
       headSha,
       baseSha,
     },
@@ -82,7 +85,9 @@ function fixture(
   const sessions = {
     load: vi.fn(async () => ok(stored)),
     save: vi.fn(
-      async (next: ReviewSession): Promise<Result<void, StorageFailure>> => {
+      async (
+        next: PullRequestReviewSession,
+      ): Promise<Result<void, StorageFailure>> => {
         stored = next;
         saves.push(next);
         return ok(undefined);
@@ -131,7 +136,9 @@ function fixture(
     recentWrites,
     saves,
     current: () => stored,
-    updateCurrent: (update: (current: ReviewSession) => ReviewSession) => {
+    updateCurrent: (
+      update: (current: PullRequestReviewSession) => PullRequestReviewSession,
+    ) => {
       stored = update(stored);
     },
   };
@@ -370,7 +377,10 @@ describe("DirectSummaryReviewService save compare-and-swap", () => {
     let competing = true;
     const store = {
       load: sessions.load.bind(sessions),
-      async save(next: ReviewSession, expectedUpdatedAt?: IsoTimestamp) {
+      async save(
+        next: PullRequestReviewSession,
+        expectedUpdatedAt?: IsoTimestamp,
+      ) {
         if (competing) {
           competing = false;
           // Another process lands a write in the window the in-process mutex
@@ -432,7 +442,8 @@ describe("DirectSummaryReviewService save compare-and-swap", () => {
     });
     const cleared = await sessions.load(profileId, seeded.id);
     expect(cleared).toMatchObject({ _tag: "ok", value: { updatedAt: now } });
-    if (cleared._tag === "err") throw new Error("fixture");
+    if (cleared._tag === "err" || !isPullRequestReviewSession(cleared.value))
+      throw new Error("fixture");
     expect(cleared.value.directSummaryReview).toBeUndefined();
   });
 });

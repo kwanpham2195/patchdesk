@@ -35,7 +35,10 @@ const sessionKey = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
+  source: {
+    kind: "pull_request" as const,
+    prNumber: must(parsePullRequestNumber(42)),
+  },
   headSha,
 };
 
