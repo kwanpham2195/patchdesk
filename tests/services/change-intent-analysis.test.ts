@@ -226,6 +226,16 @@ describe("Change intent in an Analysis run", () => {
       { "spec.md": Buffer.from([0x47, 0x00, 0x6f]) },
       "change_intent_file_not_text",
     ],
+    [
+      "not UTF-8",
+      { "spec.md": Buffer.from([0x47, 0xc3, 0x28]) },
+      "change_intent_file_not_text",
+    ],
+    [
+      "holding a credential",
+      { "spec.md": `Use ghp_${"a".repeat(36)} to call the API.` },
+      "change_intent_file_sensitive",
+    ],
   ] as const)(
     "refuses an Analysis whose spec file is %s, and starts nothing",
     async (_case, files, reason) => {

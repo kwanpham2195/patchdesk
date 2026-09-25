@@ -136,6 +136,7 @@ describe("Change intent on a Review", () => {
     ["an absolute path", { kind: "file", path: "/etc/passwd" }],
     ["a path that leaves the repository", { kind: "file", path: "../spec.md" }],
     ["an empty path", { kind: "file", path: "" }],
+    ["a path with a . segment", { kind: "file", path: "docs/./spec.md" }],
   ] as const)("refuses %s", (_case, raw) => {
     expect(parseChangeIntent(raw)).toEqual({
       _tag: "err",

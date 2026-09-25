@@ -83,6 +83,7 @@ const insightFailureStatuses: InsightFailureStatuses = {
   change_intent_file_missing: 409,
   change_intent_file_too_large: 409,
   change_intent_file_not_text: 409,
+  change_intent_file_sensitive: 409,
   catalog_unavailable: 503,
   storage_unavailable: 503,
 };
@@ -130,6 +131,8 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["apply_locked", 409],
   ["in_progress", 409],
   ["not_applicable", 409],
+  // A text Change intent holding a credential-shaped value, which Patchdesk never stores.
+  ["change_intent_sensitive", 400],
   ["overlapping", 409],
   ["path_refused", 409],
   ["file_changed", 409],

@@ -153,12 +153,14 @@ export type InsightCoordinatorFailure =
   /** An Analysis on a local Review whose spec-file Change intent cannot be read (#467). */
   | "change_intent_file_missing"
   | "change_intent_file_too_large"
-  | "change_intent_file_not_text";
+  | "change_intent_file_not_text"
+  | "change_intent_file_sensitive";
 
 const changeIntentRefusal = {
   file_missing: "change_intent_file_missing",
   file_too_large: "change_intent_file_too_large",
   file_not_text: "change_intent_file_not_text",
+  file_sensitive: "change_intent_file_sensitive",
 } as const satisfies Record<
   ChangeIntentUnreadable["reason"],
   InsightCoordinatorFailure
