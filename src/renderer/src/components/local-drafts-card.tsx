@@ -3,6 +3,7 @@ import { localDraftKey } from "../flows/use-local-drafts";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { CopyLoadedTextButton } from "./copy-loaded-text-button";
+import { GeneratedMarkdownInline } from "./generated-markdown";
 import {
   Card,
   CardAction,
@@ -60,7 +61,9 @@ export function LocalDraftsCard({
                   className="flex items-center justify-between gap-3 rounded-md border px-2 py-1.5"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">{entry.title}</p>
+                    <p className="truncate text-sm">
+                      <GeneratedMarkdownInline markdown={entry.title} />
+                    </p>
                     <p className="truncate font-mono text-xs text-muted-foreground">
                       {location}
                     </p>
