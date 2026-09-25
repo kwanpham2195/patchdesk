@@ -6,11 +6,14 @@ import type { GitHubReader } from "../adapters/github/github-adapter";
 import { readJsonFile } from "../adapters/storage/json-file";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import { definedProps } from "../domain/defined-props";
 import type { ContentHash } from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import type {
-  PullRequestReviewSession,
-  ReviewSession,
+import { casesHandled, err, ok, type Result } from "../domain/result";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+  type ReviewSession,
 } from "../domain/review-session";
 import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import type { ReviewContextService } from "./review-context-service";
@@ -37,8 +40,9 @@ const packIdentitySchema = v.looseObject({
  * maintainer may never run an Insight against.
  *
  * The pack describes the pull request as of the Insight run, not as of
- * prepare. Crash safety needs no journal: a half-written pack fails
- * `isUsable` and is rebuilt from scratch.
+ * prepare. A local Review has no pull request, so its pack carries no
+ * comments or checks and makes no GitHub read (ADR 0050). Crash safety needs
+ * no journal: a half-written pack fails `isUsable` and is rebuilt from scratch.
  */
 export class ReviewContextPackService {
   constructor(
@@ -60,7 +64,7 @@ export class ReviewContextPackService {
    * or read a half-written pack.
    */
   async ensure(input: {
-    readonly session: PullRequestReviewSession;
+    readonly session: ReviewSession;
     readonly patchHash: ContentHash;
   }): Promise<Result<void, ReviewContextPackFailure>> {
     const { profileId } = input.session.key;
@@ -73,25 +77,10 @@ export class ReviewContextPackService {
       () => undefined,
     );
     if (patch === undefined) return err({ _tag: "ContextPackUnavailable" });
-    const pullRequest = {
-      host: input.session.key.host,
-      owner: input.session.key.owner,
-      repo: input.session.key.repo,
-      number: input.session.key.source.prNumber,
-    };
-    const [comments, checks] = await Promise.all([
-      this.dependencies.github.getPullRequestComments({
-        profile: profile.value,
-        pr: pullRequest,
-      }),
-      this.dependencies.github.getPullRequestChecks({
-        profile: profile.value,
-        pr: pullRequest,
-        headSha: input.session.key.headSha,
-      }),
-    ]);
-    if (comments._tag === "err" || checks._tag === "err")
-      return err({ _tag: "ContextPackUnavailable" });
+    const pullRequestEvidence = isPullRequestReviewSession(input.session)
+      ? await this.readPullRequestEvidence(profile.value, input.session)
+      : ok(undefined);
+    if (pullRequestEvidence._tag === "err") return pullRequestEvidence;
     const built = await this.dependencies.context.prepare({
       worktreePath: input.session.worktree.path,
       preparedDirectory: this.dependencies.paths.preparedDirectory(
@@ -99,11 +88,13 @@ export class ReviewContextPackService {
         sessionId,
       ),
       pr: {
-        title: `${pullRequest.owner}/${pullRequest.repo}#${pullRequest.number}`,
+        title: reviewSourceTitle(input.session),
         headSha: input.session.key.headSha,
       },
-      comments: comments.value,
-      checks: checks.value,
+      ...definedProps({
+        comments: pullRequestEvidence.value?.comments,
+        checks: pullRequestEvidence.value?.checks,
+      }),
       changedFiles: changedFiles(patch),
       patch: { path: input.session.patchPath, sha256: input.patchHash },
       rulePaths: profile.value.rulePaths,
@@ -111,6 +102,33 @@ export class ReviewContextPackService {
     return built._tag === "ok"
       ? ok(undefined)
       : err({ _tag: "ContextPackUnavailable" });
+  }
+
+  /** The comments and checks a pull request pack carries; either read failing fails the pack. */
+  private async readPullRequestEvidence(
+    profile: WorkspaceProfileConfig,
+    session: PullRequestReviewSession,
+  ) {
+    const pullRequest = {
+      host: session.key.host,
+      owner: session.key.owner,
+      repo: session.key.repo,
+      number: session.key.source.prNumber,
+    };
+    const [comments, checks] = await Promise.all([
+      this.dependencies.github.getPullRequestComments({
+        profile,
+        pr: pullRequest,
+      }),
+      this.dependencies.github.getPullRequestChecks({
+        profile,
+        pr: pullRequest,
+        headSha: session.key.headSha,
+      }),
+    ]);
+    return comments._tag === "err" || checks._tag === "err"
+      ? err({ _tag: "ContextPackUnavailable" } as const)
+      : ok({ comments: comments.value, checks: checks.value });
   }
 
   /**
@@ -152,4 +170,22 @@ function changedFiles(diff: string): ReadonlyArray<string> {
       ? [token.path]
       : [],
   );
+}
+
+/** Names the Review source in the pack, since a local Review has no pull request title. */
+function reviewSourceTitle(session: ReviewSession): string {
+  const repository = `${session.key.owner}/${session.key.repo}`;
+  const source = session.key.source;
+  switch (source.kind) {
+    case "pull_request":
+      return `${repository}#${source.prNumber}`;
+    case "working_tree":
+      return `${repository} working tree on ${source.branch ?? "detached HEAD"}`;
+    case "branch":
+      return `${repository} branch ${source.branch} against ${source.baseBranch}`;
+    case "commit":
+      return `${repository} commit ${source.commitSha}`;
+    default:
+      return casesHandled(source);
+  }
 }

@@ -74,8 +74,9 @@ type ContextInput = {
   readonly worktreePath: string;
   readonly preparedDirectory: string;
   readonly pr: { readonly title: string; readonly headSha: string };
-  readonly comments: ContextComments;
-  readonly checks: ContextChecks;
+  /** Absent for a local Review, which has no pull request to read them from. */
+  readonly comments?: ContextComments;
+  readonly checks?: ContextChecks;
   readonly changedFiles: ReadonlyArray<string>;
   readonly patch: { readonly path: string; readonly sha256: string };
   readonly rulePaths: ReadonlyArray<string>;
@@ -135,18 +136,18 @@ export class ReviewContextService {
       let changedFiles = input.changedFiles;
       let criteria = projectReviewCriteria.criteria;
       const checksTrim = fitPrefix(
-        checks.checks ?? [],
+        checks?.checks ?? [],
         MAX_CONTEXT_CHECKS_BYTES,
       );
-      if (checksTrim.dropped > 0) {
+      if (checks !== undefined && checksTrim.dropped > 0) {
         checks = { ...checks, checks: checksTrim.kept };
         truncated.checks = checksTrim.dropped;
       }
       const threadsTrim = fitPrefix(
-        comments.threads,
+        comments?.threads ?? [],
         MAX_CONTEXT_THREADS_BYTES,
       );
-      if (threadsTrim.dropped > 0) {
+      if (comments !== undefined && threadsTrim.dropped > 0) {
         comments = { ...comments, threads: threadsTrim.kept };
         truncated.threads = threadsTrim.dropped;
       }
@@ -159,8 +160,7 @@ export class ReviewContextService {
         JSON.stringify(
           {
             pr: input.pr,
-            comments,
-            checks,
+            ...definedProps({ comments, checks }),
             changedFiles,
             patch: input.patch,
             projectReviewCriteria: criteria,
