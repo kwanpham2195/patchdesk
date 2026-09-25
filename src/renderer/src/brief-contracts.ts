@@ -310,22 +310,27 @@ export const NOT_GENERATED_BRIEF: BriefInsight = { status: "not_generated" };
  * evidence -- a paragraph, a commit subject, a hunk header -- so the chip shows
  * the shortest thing that names it and the full label stays in the chip title.
  *
- * A hunk chip is the file name and the hunk alias (`repository.go · h3`), not
- * the repository-relative path: the chip sits inline in a Flow row, and a
- * path-shaped chip wraps the row onto its own line.
+ * A hunk chip is its alias alone (`h3`): Flow rows repeat the same file many
+ * times, so the file lives in the chip's accessible name and title instead.
  */
 export function briefCitationChipLabel(citation: BriefCitation): string {
   if (citation.kind === "description")
     return `desc ¶${citation.alias.slice(1)}`;
   if (citation.kind === "commit")
     return citation.label.split(" ")[0] ?? citation.alias;
-  if (citation.path === undefined) return citation.label;
+  return citation.alias;
+}
+
+/** What a chip is called to assistive technology: a hunk chip names its file (`repository.go · h3`), which its visible alias leaves out. */
+export function briefCitationChipName(citation: BriefCitation): string {
+  if (citation.kind !== "hunk" || citation.path === undefined)
+    return briefCitationChipLabel(citation);
   return `${citation.path.slice(citation.path.lastIndexOf("/") + 1)} · ${citation.alias}`;
 }
 
 /**
  * The whole evidence one citation chip stands for, shown on hover. A hunk chip
- * shortens its path away, so the title carries the path back.
+ * shows only its alias, so the title carries the path back.
  */
 export function briefCitationChipTitle(citation: BriefCitation): string {
   const source =

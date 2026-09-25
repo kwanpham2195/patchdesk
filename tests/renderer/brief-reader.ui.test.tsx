@@ -48,7 +48,15 @@ const FLOW = {
         {
           label: "Start insight run",
           change: "unchanged" as const,
-          citations: [],
+          // The spine may cite a hunk; the reader keeps its chips off the row.
+          citations: [
+            {
+              alias: "h1",
+              kind: "hunk" as const,
+              label: "@@ -1 +1 @@",
+              path: "src/a.ts",
+            },
+          ],
           children: [
             {
               label: "read patch",
@@ -427,10 +435,12 @@ describe("BriefReader", () => {
       />,
     );
 
+    // The chip shows the alias alone; its name and title still carry the file.
     const trigger = screen.getByRole("button", {
       name: "Show hunk a.ts · h1",
     });
-    expect(trigger.textContent).toContain("a.ts · h1");
+    expect(trigger.textContent).toBe("h1");
+    expect(screen.getByTitle("hunk: src/a.ts @@ -1 +1 @@")).toBe(trigger);
     expect(screen.queryByText("src/a.ts")).toBeNull();
 
     await user.click(trigger);
@@ -477,7 +487,7 @@ describe("BriefReader", () => {
     expect(within(region).queryByRole("group")).toBeNull();
   });
 
-  it("marks an added row with + and its chip, a removed row with −, and leaves an unchanged row bare", () => {
+  it("marks an added row with + and its chip, a removed row with −, and leaves a citing unchanged row bare", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -501,8 +511,50 @@ describe("BriefReader", () => {
       within(addedRow).getByRole("button", { name: "Show hunk a.ts · h1" }),
     ).toBeTruthy();
     expect(removedRow?.textContent).toContain("−");
-    expect(unchangedRow?.textContent).not.toContain("+");
-    expect(unchangedRow?.textContent).not.toContain("−");
+    if (unchangedRow === null)
+      throw new Error("Expected the unchanged row's div");
+    expect(unchangedRow.textContent).not.toContain("+");
+    expect(unchangedRow.textContent).not.toContain("−");
+    expect(
+      within(unchangedRow).queryByRole("button", { name: /Show hunk/ }),
+    ).toBeNull();
+  });
+
+  it("keeps a long step label available in full on its row's title", () => {
+    const label =
+      "useWatchedPullRequests(repositories, pollInterval, onUpdate, hasUpdates, terminal)";
+    const base = retained();
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={{
+          ...base,
+          value: {
+            ...briefValue,
+            flow: {
+              trees: [
+                {
+                  kind: "call_tree" as const,
+                  title: "Watch",
+                  nodes: [
+                    {
+                      label,
+                      change: "added" as const,
+                      citations: [],
+                      children: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Flow" });
+    expect(within(region).getByTitle(label).textContent).toContain(label);
   });
 
   it("keeps an uncited added row visible with a muted marker, no chip, and a title explaining why", () => {
@@ -545,6 +597,7 @@ describe("BriefReader", () => {
           title: "Draft saving",
           nodes: [
             {
+              // Unchanged, yet it keeps the chip: it carries the whole contract's evidence.
               label: "saveDraft",
               change: "unchanged" as const,
               citations: [
@@ -787,7 +840,7 @@ const COMMIT_CITATION = {
 describe("brief citation labels", () => {
   it("names each evidence kind by its shortest identifier", () => {
     expect(briefCitationChipLabel(DESCRIPTION_CITATION)).toBe("desc ¶1");
-    expect(briefCitationChipLabel(HUNK_CITATION)).toBe("a.ts · h1");
+    expect(briefCitationChipLabel(HUNK_CITATION)).toBe("h1");
     expect(briefCitationChipLabel(COMMIT_CITATION)).toBe("c6d5d41");
   });
 
