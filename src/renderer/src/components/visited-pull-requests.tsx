@@ -6,24 +6,33 @@ import { formatExactTime, formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import type { VisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
-import type { SidebarReviewRow } from "@/renderer-contracts";
+import { reviewSourceTitle } from "@/review-source";
+import {
+  isSidebarLocalReviewRow,
+  type SidebarLocalReviewRow,
+  type SidebarPullRequestRow,
+  type SidebarReviewRow,
+} from "@/sidebar-contracts";
 import type { AppDestination } from "@/routes";
 
 /**
- * The pull requests the maintainer has opened in the active workspace, drawn
- * from rows `useVisitedPullRequestRows` loads so the Navigate palette can
- * search the same list.
+ * The pull requests and local Reviews the maintainer has opened in the active
+ * workspace, drawn from rows `useVisitedPullRequestRows` loads so the Navigate
+ * palette can search the same list.
  */
 export function VisitedPullRequests({
   state,
   destination,
   onNavigate,
+  onOpenLocalReview,
   workspaceLabel,
   host,
 }: {
   readonly state: VisitedPullRequestRows;
   readonly destination: AppDestination;
   readonly onNavigate: (destination: AppDestination) => void;
+  /** Reopens a local Review through the local open path, which reads the checkout again (ADR 0050). */
+  readonly onOpenLocalReview: (row: SidebarLocalReviewRow) => void;
   /** The active workspace's label for the header strip; undefined while a switch is in flight. */
   readonly workspaceLabel: string | undefined;
   /** The workspace's GitHub host; the rows carry none, and a watched mark needs it. */
@@ -109,15 +118,19 @@ export function VisitedPullRequests({
                       scope={scope}
                       watched={
                         host !== undefined &&
+                        !isSidebarLocalReviewRow(row) &&
                         watch?.isWatched({ ...row, host }) === true
                       }
                       onFocus={() => setActiveReviewId(row.reviewId)}
-                      onOpen={() =>
-                        onNavigate({
-                          kind: "workbench",
-                          reviewId: row.reviewId,
-                        })
-                      }
+                      onOpen={() => {
+                        if (isSidebarLocalReviewRow(row))
+                          onOpenLocalReview(row);
+                        else
+                          onNavigate({
+                            kind: "workbench",
+                            reviewId: row.reviewId,
+                          });
+                      }}
                     />
                   </Fragment>
                 ),
@@ -293,7 +306,7 @@ function VisitedRow({
               <span className="sr-only">Watched</span>
             </span>
           ) : null}
-          {row.terminal === undefined ? null : (
+          {isSidebarLocalReviewRow(row) || row.terminal === undefined ? null : (
             <TerminalMarker terminal={row.terminal} />
           )}
         </span>
@@ -371,7 +384,7 @@ function prefersReducedMotion(): boolean {
 function TerminalMarker({
   terminal,
 }: {
-  readonly terminal: NonNullable<SidebarReviewRow["terminal"]>;
+  readonly terminal: NonNullable<SidebarPullRequestRow["terminal"]>;
 }): React.JSX.Element {
   const { label, dot } = visitedTerminalMarker(terminal);
   return (
@@ -407,7 +420,7 @@ type VisitedTerminalMarker = {
  */
 // oxlint-disable-next-line react/only-export-components -- Shared state-marker rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedTerminalMarker(
-  terminal: NonNullable<SidebarReviewRow["terminal"]>,
+  terminal: NonNullable<SidebarPullRequestRow["terminal"]>,
   now: number = Date.now(),
 ): VisitedTerminalMarker {
   const seen = `seen ${formatRelativeTime(terminal.observedAt, now)}`;
@@ -426,20 +439,29 @@ type VisitedRowLabels = {
  * opened before the route stored titles has none, so its reference becomes the
  * label; printing the reference again underneath would repeat the number, so
  * that row leaves the age standing alone. The separator belongs to the age, so
- * a row with no recorded open ends its reference at the number.
+ * a row with no recorded open ends its reference at the number. A local
+ * Review is named from its source and marked "local" where a pull request
+ * prints its number.
  */
 // oxlint-disable-next-line react/only-export-components -- Shared row-label rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedRowLabels(
-  row: Pick<
-    SidebarReviewRow,
-    "title" | "owner" | "repo" | "number" | "lastOpenedAt"
-  >,
+  row:
+    | Pick<
+        SidebarPullRequestRow,
+        "title" | "owner" | "repo" | "number" | "lastOpenedAt"
+      >
+    | Pick<SidebarLocalReviewRow, "owner" | "repo" | "source" | "lastOpenedAt">,
   scope: VisitedLabelScope,
 ): VisitedRowLabels {
   const repository = visitedRepositoryLabel(row, scope);
+  const separator = row.lastOpenedAt === undefined ? "" : " · ";
+  if ("source" in row)
+    return {
+      title: reviewSourceTitle(row.source),
+      reference: `${repository === "" ? "" : `${repository} · `}local${separator}`,
+    };
   if (row.title === undefined)
     return { title: `${repository}#${row.number}`, reference: "" };
-  const separator = row.lastOpenedAt === undefined ? "" : " · ";
   return {
     title: row.title,
     reference: `${repository}#${row.number}${separator}`,

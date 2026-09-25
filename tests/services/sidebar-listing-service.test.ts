@@ -8,6 +8,7 @@ import {
   parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
+  parseLocalBranchName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   createReviewSessionId,
@@ -19,7 +20,10 @@ import {
   type ReviewIdentity,
 } from "../../src/domain/review";
 import type { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
-import { SidebarListingService } from "../../src/services/sidebar-listing-service";
+import {
+  SidebarListingService,
+  type SidebarListing,
+} from "../../src/services/sidebar-listing-service";
 
 type ListResult = Awaited<ReturnType<ReviewStore["list"]>>;
 type DiagnosticInput = Parameters<ReviewDiagnosticService["record"]>[0];
@@ -88,6 +92,34 @@ function review(input: {
   };
 }
 
+/** A working-tree Review on `branch`, opened at `lastOpenedAt`. */
+function localReview(branch: string, lastOpenedAt: string): Review {
+  const identity: ReviewIdentity = {
+    profileId,
+    host,
+    owner,
+    repo,
+    source: {
+      kind: "working_tree",
+      branch: must(parseLocalBranchName(branch)),
+    },
+  };
+  return {
+    ...createReview({
+      identity,
+      currentSessionId: createReviewSessionId({
+        ...identity,
+        headSha,
+        baseSha,
+      }),
+      headSha,
+      createdAt,
+    }),
+    updatedAt: createdAt,
+    lastOpenedAt: must(parseIsoTimestamp(lastOpenedAt)),
+  };
+}
+
 function service(listing: ListResult) {
   const recorded: DiagnosticInput[] = [];
   const record = vi.fn(
@@ -115,8 +147,11 @@ function service(listing: ListResult) {
   return { listed, recorded };
 }
 
-function numbers(rows: ReadonlyArray<{ readonly number: number }>): number[] {
-  return rows.map((row) => row.number);
+/** The pull request numbers of the listed rows; a local row lists none. */
+function numbers(
+  rows: SidebarListing["rows"],
+): ReadonlyArray<number | undefined> {
+  return rows.map((row) => ("number" in row ? row.number : undefined));
 }
 
 describe("SidebarListingService.list", () => {
@@ -209,6 +244,56 @@ describe("SidebarListingService.list", () => {
     expect(listing.rows).toHaveLength(20);
     expect(numbers(listing.rows).at(0)).toBe(25);
     expect(numbers(listing.rows).at(-1)).toBe(6);
+  });
+
+  it("lists a local Review with its source spec and recorded open, and no pull request number", async () => {
+    const value = service(
+      ok({
+        reviews: [localReview("feat/x", "2026-03-01T00:00:00.000Z")],
+        unreadable: 0,
+      }),
+    );
+
+    const listing = must(await value.listed.list(profileId));
+
+    const row = listing.rows.at(0);
+    expect(row).toMatchObject({
+      host: "github.com",
+      owner: "octo-org",
+      repo: "patchdesk",
+      source: { kind: "working_tree", branch: "feat/x" },
+      lastOpenedAt: "2026-03-01T00:00:00.000Z",
+      sortedAt: "2026-03-01T00:00:00.000Z",
+    });
+    expect(Object.hasOwn(row ?? {}, "number")).toBe(false);
+  });
+
+  it("orders pull request and local Reviews together under one twenty-row cap", async () => {
+    // Day 1..25 alternate between the two kinds, so the newest twenty are days 25..6.
+    const reviews = Array.from({ length: 25 }, (_unused, index) => {
+      const opened = `2026-06-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`;
+      return index % 2 === 0
+        ? localReview(`day-${index + 1}`, opened)
+        : review({
+            number: index + 1,
+            updatedAt: createdAt,
+            lastOpenedAt: opened,
+          });
+    });
+    const value = service(ok({ reviews, unreadable: 0 }));
+
+    const listing = must(await value.listed.list(profileId));
+
+    expect(listing.rows).toHaveLength(20);
+    expect(listing.rows.map((row) => row.sortedAt.slice(8, 10))).toEqual(
+      Array.from({ length: 20 }, (_unused, index) =>
+        String(25 - index).padStart(2, "0"),
+      ),
+    );
+    expect(listing.rows.at(0)).toMatchObject({
+      source: { kind: "working_tree", branch: "day-25" },
+    });
+    expect(listing.rows.at(1)).toMatchObject({ number: 24 });
   });
 
   it("records a diagnostic for unreadable records and still returns the readable rows", async () => {
@@ -338,7 +423,9 @@ describe("SidebarListingService.list", () => {
 
     const listing = must(await value.listed.list(profileId));
 
-    expect(listing.rows.map((row) => row.terminal)).toEqual([
+    expect(
+      listing.rows.map((row) => ("terminal" in row ? row.terminal : undefined)),
+    ).toEqual([
       { state: "merged", observedAt: "2026-02-20T08:30:00.000Z" },
       { state: "closed", observedAt: "2026-01-18T11:00:00.000Z" },
     ]);

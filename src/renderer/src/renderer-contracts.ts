@@ -2,6 +2,10 @@ import * as v from "valibot";
 
 import { reviewSourceSchema } from "./review-source";
 import {
+  sidebarReviewsResponseSchema,
+  type SidebarReviewsResponse,
+} from "./sidebar-contracts";
+import {
   mergeReadinessSchema,
   parseMergeReceipt,
   remoteWriteRecoverySchema,
@@ -936,45 +940,7 @@ export function parseWorkbenchResponse(
   return undefined;
 }
 
-// `GET /v1/sidebar/reviews` is a local-API payload Patchdesk owns on both
-// sides (ADR "Choose a validation style by data boundary"), so it gets a
-// `v.strictObject` parsed with `v.safeParse`.
-const sidebarReviewsResponseSchema = v.strictObject({
-  rows: v.array(
-    v.strictObject({
-      reviewId: v.pipe(v.string(), v.minLength(1)),
-      owner: v.pipe(v.string(), v.minLength(1)),
-      repo: v.pipe(v.string(), v.minLength(1)),
-      number: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      // Absent on a Review opened before the route stored a title.
-      title: v.optional(v.pipe(v.string(), v.minLength(1))),
-      // What the column orders and date-groups by, present on every row.
-      sortedAt: v.pipe(v.string(), v.minLength(1)),
-      // Absent on a Review stored before Patchdesk recorded opens. The row's
-      // age comes from this alone, so an unvisited row shows none.
-      lastOpenedAt: v.optional(v.pipe(v.string(), v.minLength(1))),
-      // Absent while the pull request is still open. `observedAt` is when
-      // Patchdesk saw the state — except on the recovery path, which dates a
-      // merge from GitHub's own `mergedAt` — so the row can date what it shows.
-      terminal: v.optional(
-        v.strictObject({
-          state: v.picklist(["merged", "closed"]),
-          observedAt: v.pipe(v.string(), v.minLength(1)),
-        }),
-      ),
-    }),
-  ),
-  // How many stored Reviews the route could not read. A diagnostic the main
-  // process already recorded; the column draws nothing for it.
-  unreadable: v.pipe(v.number(), v.integer(), v.minValue(0)),
-});
-
-type SidebarReviewsResponse = v.InferOutput<
-  typeof sidebarReviewsResponseSchema
->;
-export type SidebarReviewRow = SidebarReviewsResponse["rows"][number];
-
-/** Parses the visited pull requests the sidebar column lists. */
+/** Parses the visited Reviews the sidebar column lists. */
 export function parseSidebarReviewsResponse(
   input: unknown,
 ): SidebarReviewsResponse | undefined {

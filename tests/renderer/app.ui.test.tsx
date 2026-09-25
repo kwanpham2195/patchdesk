@@ -608,6 +608,57 @@ describe("App global pull-request opening", () => {
   });
 });
 
+describe("App visited local Review", () => {
+  it("reopens a local sidebar row through the local open route", async () => {
+    const user = userEvent.setup();
+    const source = { kind: "branch", branch: "feat/x", baseBranch: "main" };
+    installed = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profileFixture]),
+        "/v1/inbox": () => success({ ...inbox([]), profile: profileFixture }),
+        "/v1/sidebar/reviews": () =>
+          success({
+            rows: [
+              {
+                reviewId: "review-local",
+                ...repoA,
+                source,
+                sortedAt: "2026-08-01T00:00:00.000Z",
+              },
+            ],
+            unreadable: 0,
+          }),
+        "/v1/reviews/open-local": () => success(asJsonBody(projection())),
+      },
+      { operations: APP_BOOT_OPERATIONS },
+    );
+    render(
+      <App
+        reviewWorkbenchLoader={async () => ({
+          default: () => <h1>Review destination</h1>,
+        })}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /Branch feat\/x against main/,
+      }),
+    );
+
+    await screen.findByRole("heading", { name: "Review destination" });
+    const opened = installed.request.mock.calls.find(
+      ([request]) =>
+        "path" in request && request.path === "/v1/reviews/open-local",
+    );
+    expect(opened?.[0]).toMatchObject({
+      method: "POST",
+      body: { profileId: "profile", ...repoA, source },
+    });
+  });
+});
+
 /** Builds a single-row inbox response accepted by `parseInboxResponse`. */
 function stateFilteredInbox(
   state: InboxStateFilter,

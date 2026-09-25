@@ -2,12 +2,8 @@ import * as v from "valibot";
 
 import { casesHandled } from "../../domain/result";
 
-/** What a Review's patch is computed from; every kind but `pull_request` is a local Review (ADR 0050). */
-export const reviewSourceSchema = v.variant("kind", [
-  v.strictObject({
-    kind: v.literal("pull_request"),
-    prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  }),
+/** A local Review source (ADR 0050), as the workbench and a sidebar row carry it. */
+export const localReviewSourceSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("working_tree"),
     branch: v.optional(v.pipe(v.string(), v.minLength(1))),
@@ -21,6 +17,15 @@ export const reviewSourceSchema = v.variant("kind", [
     kind: v.literal("commit"),
     commitSha: v.pipe(v.string(), v.minLength(7)),
   }),
+]);
+
+/** What a Review's patch is computed from; every kind but `pull_request` is a local Review (ADR 0050). */
+export const reviewSourceSchema = v.variant("kind", [
+  v.strictObject({
+    kind: v.literal("pull_request"),
+    prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  }),
+  ...localReviewSourceSchema.options,
 ]);
 
 export type WorkbenchReviewSource = v.InferOutput<typeof reviewSourceSchema>;

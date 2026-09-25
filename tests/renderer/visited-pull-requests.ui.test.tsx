@@ -21,6 +21,7 @@ import {
   visitedTerminalMarker,
 } from "../../src/renderer/src/components/visited-pull-requests";
 import { useVisitedPullRequestRows } from "../../src/renderer/src/hooks/use-visited-pull-request-rows";
+import type { SidebarLocalReviewRow } from "../../src/renderer/src/sidebar-contracts";
 import { formatExactTime } from "../../src/renderer/src/lib/relative-time";
 import {
   installDesktopDouble,
@@ -135,10 +136,22 @@ const unvisited = {
   terminal: { state: "closed", observedAt: MERGED_OBSERVED_AT },
 } satisfies RawJsonValue;
 
+// A working-tree Review (ADR 0050): named from its source, reopened through the local open path.
+const local = {
+  reviewId: "review-local",
+  host: "github.com",
+  owner: "kwanpham2195",
+  repo: "patchdesk",
+  source: { kind: "working_tree", branch: "feat/x" },
+  sortedAt: OPENED_AT,
+  lastOpenedAt: OPENED_AT,
+} satisfies RawJsonValue;
+
 function renderColumn(options: {
   readonly rows: ReadonlyArray<RawJsonValue>;
   readonly destination?: AppDestination;
   readonly onNavigate?: (destination: AppDestination) => void;
+  readonly onOpenLocalReview?: (row: SidebarLocalReviewRow) => void;
 }): void {
   desktop = installDesktopDouble({
     "/v1/sidebar/reviews": () => success({ rows: options.rows, unreadable: 0 }),
@@ -147,6 +160,7 @@ function renderColumn(options: {
     <LoadedColumn
       destination={options.destination ?? { kind: "dashboard" }}
       onNavigate={options.onNavigate ?? (() => undefined)}
+      onOpenLocalReview={options.onOpenLocalReview ?? (() => undefined)}
     />,
   );
 }
@@ -155,6 +169,7 @@ function renderColumn(options: {
 function LoadedColumn(props: {
   readonly destination: AppDestination;
   readonly onNavigate: (destination: AppDestination) => void;
+  readonly onOpenLocalReview: (row: SidebarLocalReviewRow) => void;
 }): React.JSX.Element {
   const state = useVisitedPullRequestRows("profile-1", 0);
   return (
@@ -162,6 +177,7 @@ function LoadedColumn(props: {
       state={state}
       destination={props.destination}
       onNavigate={props.onNavigate}
+      onOpenLocalReview={props.onOpenLocalReview}
       workspaceLabel="Personal"
     />
   );
@@ -273,6 +289,35 @@ describe("VisitedPullRequests", () => {
       kind: "workbench",
       reviewId: "review-titled",
     });
+  });
+
+  it("names a local row from its source and marks it local where a pull request row prints its number", async () => {
+    renderColumn({ rows: [titled, local] });
+
+    const row = await screen.findByRole("button", {
+      name: /Working tree on feat\/x/,
+    });
+    expect(row.textContent).toContain("local · visited");
+    expect(row.textContent).not.toContain("#");
+  });
+
+  it("reopens a local row through the local open path rather than navigating", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    const onOpenLocalReview = vi.fn();
+    renderColumn({ rows: [titled, local], onNavigate, onOpenLocalReview });
+
+    await user.click(
+      await screen.findByRole("button", { name: /Working tree on feat\/x/ }),
+    );
+
+    expect(onOpenLocalReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewId: "review-local",
+        source: { kind: "working_tree", branch: "feat/x" },
+      }),
+    );
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("gives the column one Tab stop and moves between rows with the arrow keys", async () => {

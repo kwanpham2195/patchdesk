@@ -1,6 +1,7 @@
 import type { ReviewStore } from "../adapters/storage/review-store";
 import { definedProps } from "../domain/defined-props";
 import type {
+  GitHubHost,
   GitHubOwner,
   GitHubRepoName,
   IsoTimestamp,
@@ -9,10 +10,11 @@ import type {
   WorkspaceProfileId,
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
-import { isPullRequestReview, type Review } from "../domain/review";
+import type { Review } from "../domain/review";
+import type { LocalReviewSource } from "../domain/review-source";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
-/** How many visited pull requests the sidebar shows. */
+/** How many visited Reviews the sidebar shows, pull request and local together. */
 const SIDEBAR_ROW_LIMIT = 20;
 
 /**
@@ -26,7 +28,7 @@ type SidebarTerminalState = {
 };
 
 /** One visited pull request, as the sidebar renders it. */
-type SidebarReviewRow = {
+type SidebarPullRequestRow = {
   readonly reviewId: ReviewId;
   readonly owner: GitHubOwner;
   readonly repo: GitHubRepoName;
@@ -44,9 +46,24 @@ type SidebarReviewRow = {
   readonly terminal?: SidebarTerminalState;
 };
 
+/**
+ * One visited local Review (ADR 0050). It carries the source spec so a click
+ * can reopen it through the local open path; the renderer names it from the
+ * same spec, so no title is stored.
+ */
+type SidebarLocalReviewRow = {
+  readonly reviewId: ReviewId;
+  readonly host: GitHubHost;
+  readonly owner: GitHubOwner;
+  readonly repo: GitHubRepoName;
+  readonly source: LocalReviewSource;
+  readonly sortedAt: IsoTimestamp;
+  readonly lastOpenedAt?: IsoTimestamp;
+};
+
 /** The sidebar's rows, plus how many stored Reviews could not be read. */
 export type SidebarListing = {
-  readonly rows: ReadonlyArray<SidebarReviewRow>;
+  readonly rows: ReadonlyArray<SidebarPullRequestRow | SidebarLocalReviewRow>;
   readonly unreadable: number;
 };
 
@@ -58,8 +75,8 @@ export type SidebarListingDependencies = {
 };
 
 /**
- * Projects one workspace profile's visited pull requests into the sidebar's
- * rows, most recently opened first.
+ * Projects one workspace profile's visited Reviews, pull request and local,
+ * into the sidebar's rows, most recently opened first.
  *
  * `ReviewStore.list` has no index: it opens every review file under the
  * profile, so this runs on demand for one profile rather than eagerly or
@@ -77,25 +94,10 @@ export class SidebarListingService {
     const { reviews, unreadable } = listing.value;
     if (unreadable > 0) await this.recordUnreadable(profileId, unreadable);
 
-    // The sidebar lists visited pull requests; local Reviews get no row here yet.
-    const rows = reviews
-      .filter(isPullRequestReview)
+    const rows = [...reviews]
       .sort((left, right) => sortedAt(right).localeCompare(sortedAt(left)))
       .slice(0, SIDEBAR_ROW_LIMIT)
-      .map((review): SidebarReviewRow => ({
-        reviewId: review.id,
-        owner: review.identity.owner,
-        repo: review.identity.repo,
-        number: review.identity.source.prNumber,
-        // An empty stored title is no title: the renderer's row schema requires
-        // a non-empty string, and one such row must not fail the whole parse.
-        ...definedProps({
-          title: review.title === "" ? undefined : review.title,
-          terminal: terminalState(review),
-          lastOpenedAt: review.lastOpenedAt,
-        }),
-        sortedAt: sortedAt(review),
-      }));
+      .map(sidebarRow);
     return ok({ rows, unreadable });
   }
 
@@ -115,6 +117,36 @@ export class SidebarListingService {
       // Diagnostics are best effort and never become an unhandled rejection.
     }
   }
+}
+
+function sidebarRow(
+  review: Review,
+): SidebarPullRequestRow | SidebarLocalReviewRow {
+  const { source, host, owner, repo } = review.identity;
+  if (source.kind !== "pull_request")
+    return {
+      reviewId: review.id,
+      host,
+      owner,
+      repo,
+      source,
+      ...definedProps({ lastOpenedAt: review.lastOpenedAt }),
+      sortedAt: sortedAt(review),
+    };
+  return {
+    reviewId: review.id,
+    owner,
+    repo,
+    number: source.prNumber,
+    // An empty stored title is no title: the renderer's row schema requires
+    // a non-empty string, and one such row must not fail the whole parse.
+    ...definedProps({
+      title: review.title === "" ? undefined : review.title,
+      terminal: terminalState(review),
+      lastOpenedAt: review.lastOpenedAt,
+    }),
+    sortedAt: sortedAt(review),
+  };
 }
 
 /**
