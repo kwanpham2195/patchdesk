@@ -98,14 +98,46 @@ describe("ReachBlock", () => {
     ).toBeNull();
     expect(screen.queryByText("RefreshOperationOutcome")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: /^3 new names/ }));
+    await user.click(
+      screen.getByRole("button", {
+        name: /^3 names nothing outside this PR mentions \(3 new\)/,
+      }),
+    );
 
-    const list = screen.getByRole("list", { name: /^3 new names/ });
+    const list = screen.getByRole("list", { name: /^3 names nothing outside/ });
     expect(
       within(list)
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual(fresh);
+  });
+
+  it("splits the folded names into new and changed", () => {
+    const quiet = (name: string, status: "new" | "changed") => ({
+      name,
+      outsideCallerFiles: 0,
+      outsidePaths: [],
+      insidePR: true,
+      status,
+    });
+    render(
+      <ReachBlock
+        headSha={HEAD_SHA}
+        reach={reach({
+          symbols: [
+            quiet("RefreshOperationStatus", "new"),
+            quiet("RefreshOperationOutcome", "new"),
+            quiet("refreshReview", "changed"),
+          ],
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: /^3 names nothing outside this PR mentions \(2 new, 1 changed\)/,
+      }),
+    ).toBeTruthy();
   });
 
   it("splits a changed name's files into source and tests and reveals the paths past five on request", async () => {
@@ -175,9 +207,11 @@ describe("ReachBlock", () => {
     expect(within(changed).getByText("ReviewRefreshService")).toBeTruthy();
     // The search counted two files but stored one path.
     expect(within(changed).getByText("+1 not listed")).toBeTruthy();
-    // An unmentioned legacy name is folded without being called new.
+    // An unmentioned legacy name is folded and counted as changed.
     expect(
-      screen.getByRole("button", { name: /^1 name not used outside/ }),
+      screen.getByRole("button", {
+        name: /^1 name nothing outside this PR mentions \(1 changed\)/,
+      }),
     ).toBeTruthy();
   });
 });

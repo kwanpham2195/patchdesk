@@ -26,8 +26,8 @@ const MAX_COUNTED_REACH_SYMBOLS = 12;
 export const MAX_REACH_OUTSIDE_PATHS = 20;
 
 /**
- * An `export`-shaped declaration head, used both for the fallback when a model
- * proposes nothing and for the removed-symbol rule. Go's `func Name(` is
+ * An `export`-shaped declaration head, used for the counted names and for the
+ * removed-symbol rule. Go's `func Name(` is
  * included; a Go method with a receiver (`func (r *T) Name(`) is not, because
  * its name is not the first identifier on the line.
  */
@@ -262,29 +262,28 @@ function matchesSurfaceCondition(
 /**
  * The symbol names Patchdesk will count callers for.
  *
- * A proposed name survives only when it looks like an identifier and appears as
- * a whole word on a line the patch added or removed -- a model naming something
- * the diff never touched is naming something it did not read. When the model
- * proposes nothing usable, the patch's own `export`-shaped declarations stand
- * in, so the block still has something to count.
+ * Every `export`-shaped name the patch declares on an added or removed line is
+ * counted first, so the blast radius does not depend on which names a model
+ * happened to list. A proposed name is added after them when it looks like an
+ * identifier and appears as a whole word on a changed line -- a model naming
+ * something the diff never touched is naming something it did not read. When
+ * the cap bites, the patch's own declarations are the ones kept.
  */
 export function candidateReachSymbols(
   patch: string,
   proposed: ReadonlyArray<string>,
 ): ReadonlyArray<string> {
   const changed = changedLineText(patch, "both");
-  const kept: Array<string> = [];
-  const seen = new Set<string>();
+  const kept = [...declaredNames(patch, "both")];
+  const seen = new Set(kept);
   for (const name of proposed) {
     const trimmed = name.trim();
     if (!isReachIdentifier(trimmed) || seen.has(trimmed)) continue;
     if (!appearsAsWholeWord(changed, trimmed)) continue;
     seen.add(trimmed);
     kept.push(trimmed);
-    if (kept.length === MAX_COUNTED_REACH_SYMBOLS) return kept;
   }
-  if (kept.length > 0) return kept;
-  return declaredNames(patch, "both").slice(0, MAX_COUNTED_REACH_SYMBOLS);
+  return kept.slice(0, MAX_COUNTED_REACH_SYMBOLS);
 }
 
 /**
@@ -355,7 +354,8 @@ export function surfacesCrossed(
  * `label-service` or names it in a describe block still counts. What counts
  * as a "test file" is `classifyChangedPath`'s `tests` bucket (js/ts `.test.`,
  * Go/Rust/C `_test.*`, Python, JVM, Ruby, Elixir conventions, and test
- * directories). Generated files and the tests themselves are never reported.
+ * directories). Generated, docs, and config files and the tests themselves are
+ * never reported: a test cannot cover prose or settings.
  */
 export function untestedReach(
   files: ReadonlyArray<BriefReachFile>,
@@ -385,7 +385,7 @@ export function untestedReach(
       );
       continue;
     }
-    if (bucket !== "generated")
+    if (bucket === "core")
       candidates.push({
         path: file.path,
         stem: normalizeReachIdentifier(pathStem(file.path)),

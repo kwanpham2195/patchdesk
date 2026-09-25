@@ -26,13 +26,46 @@ const WRITER_PATCH = patch(
 
 describe("candidateReachSymbols", () => {
   it("keeps a proposed name only when the patch changed a line carrying it", () => {
+    const withCall = patch(
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1 +1 @@",
+      "-  return loadThreads(id);",
+      "+  return loadThreads(id, { fresh: true });",
+    );
     expect(
-      candidateReachSymbols(WRITER_PATCH, [
-        "updateThreadComment",
-        "CommentReadBack",
+      candidateReachSymbols(withCall, [
+        "loadThreads",
         "somethingNeverInTheDiff",
       ]),
-    ).toEqual(["updateThreadComment", "CommentReadBack"]);
+    ).toEqual(["loadThreads"]);
+  });
+
+  it("counts every exported name the patch declares even when the model leaves it out", () => {
+    // Two runs of one PR once disagreed because one model list omitted a changed export.
+    expect(candidateReachSymbols(WRITER_PATCH, ["CommentReadBack"])).toEqual([
+      "updateComment",
+      "updateThreadComment",
+      "CommentReadBack",
+    ]);
+  });
+
+  it("keeps the patch's own declarations before model-only names when the cap bites", () => {
+    const wide = patch(
+      "diff --git a/src/wide.ts b/src/wide.ts",
+      "--- a/src/wide.ts",
+      "+++ b/src/wide.ts",
+      "@@ -1 +1,13 @@",
+      "+const helper = loadThreads();",
+      ...Array.from(
+        { length: 12 },
+        (_, index) => `+export const sym${String(index)} = 1;`,
+      ),
+    );
+    const kept = candidateReachSymbols(wide, ["loadThreads"]);
+    expect(kept).toHaveLength(12);
+    expect(kept).not.toContain("loadThreads");
   });
 
   it("rejects a name that is only part of a longer word in the diff", () => {
@@ -217,6 +250,21 @@ describe("untestedReach", () => {
         },
       ]),
     ).toEqual([{ path: "src/assignee-service.ts", reason: "no_test_in_pr" }]);
+  });
+
+  it("never reports a docs or config file as untested", () => {
+    expect(
+      untestedReach([
+        { path: "CHANGELOG.md", changedText: "- Blast radius" },
+        { path: "docs/adr/0046-blast-radius.md", changedText: "# 46" },
+        {
+          path: "docs/product-description/review-workbench/brief.md",
+          changedText: "Blast radius",
+        },
+        { path: ".oxlintrc.json", changedText: "{}" },
+        { path: "src/writer.ts", changedText: "export const a = 1;" },
+      ]),
+    ).toEqual([{ path: "src/writer.ts", reason: "no_test_in_pr" }]);
   });
 
   it("never reports a test file or a generated file as untested", () => {
