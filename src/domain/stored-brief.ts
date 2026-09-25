@@ -82,7 +82,13 @@ const storedFlowMidSchema = storedFlowNodeSchema(storedFlowLeafSchema);
 /** Depth 1, a tree's own root nodes: their `children` are depth-2 nodes. */
 const storedFlowRootSchema = storedFlowNodeSchema(storedFlowMidSchema);
 const storedFlowTreeSchema = v.strictObject({
-  kind: v.picklist(["call_tree", "control_flow", "component"]),
+  kind: v.picklist([
+    "call_tree",
+    "control_flow",
+    "component",
+    "state",
+    "contract",
+  ]),
   title: v.pipe(v.string(), v.minLength(1)),
   nodes: v.array(storedFlowRootSchema),
 });

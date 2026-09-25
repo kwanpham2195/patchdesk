@@ -173,9 +173,13 @@ describe("briefFlowAsDiffText", () => {
 });
 
 describe("briefFlowKindLabel", () => {
-  it("maps each kind to the human label its badge shows", () => {
-    expect(briefFlowKindLabel("call_tree")).toBe("call tree");
-    expect(briefFlowKindLabel("control_flow")).toBe("control flow");
-    expect(briefFlowKindLabel("component")).toBe("component");
+  it.each([
+    ["call_tree", "call tree"],
+    ["control_flow", "control flow"],
+    ["component", "component"],
+    ["state", "state"],
+    ["contract", "contract"],
+  ] as const)("labels the %s badge %s", (kind, label) => {
+    expect(briefFlowKindLabel(kind)).toBe(label);
   });
 });

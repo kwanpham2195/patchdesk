@@ -168,7 +168,9 @@ export const briefOutputSchema = v.strictObject({
  * `startHere`: a Brief with no flow proposed is still a complete Brief.
  * Every tree carries a `kind`: `call_tree` is real function or method names
  * with parameter names as written in the patch, `control_flow` is short
- * pseudocode lines, and `component` is a `<ComponentName>` tree. Every
+ * pseudocode lines, `component` is a `<ComponentName>` tree, `state` is
+ * state names with `→ <next state> on <event>` transitions, and `contract`
+ * is an exported name with its old and new signature or fields. Every
  * `added`/`removed` node should cite a hunk when the patch shows it -- a
  * description or commit alias is never evidence that a runtime step
  * changed, no matter how it is paired with a real one; an uncited step is
@@ -176,7 +178,7 @@ export const briefOutputSchema = v.strictObject({
  * counted Reach block; the model never writes the count itself.
  */
 export const BRIEF_RESULT_CONTRACT =
-  '{"ownership":{"notes":[{"path":string,"note":string}]},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"reachSymbols":[string]}';
+  '{"ownership":{"notes":[{"path":string,"note":string}]},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component"|"state"|"contract","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };

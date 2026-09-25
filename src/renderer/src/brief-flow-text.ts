@@ -11,9 +11,11 @@ const FLOW_KIND_LABELS = {
   call_tree: "call tree",
   control_flow: "control flow",
   component: "component",
+  state: "state",
+  contract: "contract",
 } as const satisfies Record<BriefFlowKind, string>;
 
-/** "call tree" / "control flow" / "component": the word a kind badge shows. */
+/** "call tree", "control flow", "component", "state", or "contract": the word a kind badge shows. */
 export function briefFlowKindLabel(kind: BriefFlowKind): string {
   return FLOW_KIND_LABELS[kind];
 }
