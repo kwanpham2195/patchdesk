@@ -68,6 +68,8 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Local snapshot.** The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, committed with a fixed identity so the same content always has the same SHA. The maintainer's index and branches never see it.
 
+**Change intent.** The spec a local Review's change is checked against: Markdown the maintainer entered, or a repository-relative spec file read at the reviewed revision. Only Analysis reads it, as the change's stated goal, and an Analysis result names the intent it was checked against.
+
 **Represented revision.** The exact head, base, and canonical patch identity a Review session presents. User-visible evidence and Insights remain bound to it.
 
 **Represented-review worktree.** Patchdesk's immutable checkout for a Review session's represented revision. It is separate from the maintainer's checkout and is available only to bounded, read-only review inspection.
