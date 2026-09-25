@@ -59,7 +59,7 @@ export type MaintainerNote = {
  * (#452): its lines are unchanged, changed since the note, or could not be
  * placed and need the maintainer's attention.
  */
-export type LocalDraftCarry = {
+type LocalDraftCarry = {
   readonly state: LocalDraftCarryState;
   /** The session the draft was carried to. */
   readonly sessionId: ReviewSessionId;
