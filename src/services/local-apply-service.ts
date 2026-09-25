@@ -27,6 +27,7 @@ import { isLocalReview, type Review } from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import {
+  findWorkingTreeConversion,
   hashFileBytes,
   readCheckoutFile,
   resolveCheckoutRoot,
@@ -70,7 +71,9 @@ export type LocalApplyFailure = {
     /** A file no longer holds the lines its suggestion was verified against, or is not UTF-8. */
     | "file_changed"
     /** `git apply --check` refused the composed patch; nothing was written. */
-    | "check_failed";
+    | "check_failed"
+    /** Git would convert line endings or run a filter when writing a file, so its bytes could not be confirmed. */
+    | "working_tree_conversion";
 };
 
 export type LocalApplyOutcome =
@@ -157,11 +160,21 @@ export class LocalApplyService {
         if (reviewIds._tag === "err") return;
         await Promise.all(
           reviewIds.value.map((reviewId) =>
-            this.dependencies.coordinator.withReviewLock(
-              profile.id,
-              reviewId,
-              () => this.recoverLocked(profile.id, reviewId, "startup"),
-            ),
+            this.dependencies.coordinator
+              .withReviewLock(profile.id, reviewId, () =>
+                this.recoverLocked(profile.id, reviewId, "startup"),
+              )
+              // One Review's failed recovery must not keep the local API from starting; its record stays for the next start or a check.
+              .catch(() => {
+                this.dependencies.logs.write({
+                  process: "main",
+                  level: "warn",
+                  topic: "local-apply",
+                  message: "Local apply recovery failed",
+                  profileId: profile.id,
+                  meta: { reviewId },
+                });
+              }),
           ),
         );
       }),
@@ -200,6 +213,15 @@ export class LocalApplyService {
       edits.value,
     );
     if (composed._tag === "err") return composed;
+    const conversion = await findWorkingTreeConversion(
+      this.dependencies.git,
+      composed.value.root,
+      composed.value.files.map((file) => file.path),
+    );
+    if (conversion._tag === "unreadable")
+      return err({ reason: "checkout_unavailable" });
+    if (conversion._tag === "converts")
+      return err({ reason: "working_tree_conversion" });
     const now = this.dependencies.now();
     const intent: LocalApplyOperation = {
       schemaVersion: 1,
@@ -312,18 +334,21 @@ export class LocalApplyService {
       return { status: "outcome_unknown" };
     this.log("info", "Local apply confirmed", operation, { trigger });
     // Local drafts would move to the next session here once they exist (#451 slice B).
-    const next = await this.dependencies.opening.openLocked(
-      {
-        profileId: operation.profileId,
-        repository: {
-          host: review.identity.host,
-          owner: review.identity.owner,
-          repo: review.identity.repo,
+    // A failure here is bookkeeping: the Apply stays confirmed and reopening the Review recovers the session.
+    const next = await this.dependencies.opening
+      .openLocked(
+        {
+          profileId: operation.profileId,
+          repository: {
+            host: review.identity.host,
+            owner: review.identity.owner,
+            repo: review.identity.repo,
+          },
+          request: { kind: "working_tree" },
         },
-        request: { kind: "working_tree" },
-      },
-      operation.reviewId,
-    );
+        operation.reviewId,
+      )
+      .catch(() => undefined);
     await this.dependencies.operations.remove(
       operation.profileId,
       operation.reviewId,
