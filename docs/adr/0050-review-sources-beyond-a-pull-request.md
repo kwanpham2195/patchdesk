@@ -87,9 +87,11 @@ one commit object:
    the session worktree with the existing `git worktree add --detach`, marker,
    and cleanup code in `review-worktree-service.ts`.
 
-The patch is `git diff --binary --no-ext-diff --no-textconv <baseSha>
-<headSha>`, hashed as written; its sha256 is the session's canonical patch
-hash. A local source has one renderer, so ADR 0026's two-renderer problem
+The patch is `git diff --binary --no-ext-diff --no-textconv --no-color
+--src-prefix=a/ --dst-prefix=b/ --no-relative <baseSha> <headSha>`, hashed
+as written; its sha256 is the session's canonical patch hash. The last four
+flags keep the maintainer's `diff.noprefix`, `color.diff`, and
+`diff.relative` settings out of the patch (amended 2026-09-25, #449). A local source has one renderer, so ADR 0026's two-renderer problem
 does not arise and no normalization is applied.
 
 The goal record proposed "a detached worktree at `HEAD` with the patch

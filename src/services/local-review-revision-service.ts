@@ -256,7 +256,9 @@ export class LocalReviewRevisionService {
       "--verify",
       `${commit}^{commit}`,
     ]);
-    if (commitSha === undefined) return err({ _tag: "LocalRevisionNotFound" });
+    // Git prefers a branch or tag named like the prefix over the object, with only a warning.
+    if (commitSha === undefined || !commitSha.startsWith(commit))
+      return err({ _tag: "LocalRevisionNotFound" });
     const parents = await this.git.run([
       "git",
       "-C",
