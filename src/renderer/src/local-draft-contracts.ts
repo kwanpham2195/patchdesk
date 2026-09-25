@@ -8,6 +8,10 @@ const location = {
   side: v.picklist(["new", "old"]),
   startLine: lineNumber,
   line: lineNumber,
+  /** Absent until the Review first moves to a new session (#452). */
+  state: v.exactOptional(
+    v.picklist(["unchanged", "changed", "needs_attention", "applied"]),
+  ),
 };
 
 /** One Local draft as the workbench lists it (`LocalDraftEntry` in `src/domain/local-draft.ts`). */

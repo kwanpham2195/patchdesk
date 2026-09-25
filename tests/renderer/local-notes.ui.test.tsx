@@ -173,6 +173,7 @@ describe("Maintainer notes on a local Review", () => {
         {
           profileId: "profile",
           reviewId: "review-42",
+          sessionId: "session-a",
           path: "src/a.ts",
           startLine: 1,
           line: 1,
@@ -182,7 +183,12 @@ describe("Maintainer notes on a local Review", () => {
       ],
       [
         REMOVE,
-        { profileId: "profile", reviewId: "review-42", noteId: "note-1" },
+        {
+          profileId: "profile",
+          reviewId: "review-42",
+          sessionId: "session-a",
+          noteId: "note-1",
+        },
       ],
     ]);
   });
@@ -227,6 +233,7 @@ describe("Maintainer notes on a local Review", () => {
     const edit = {
       profileId: "profile",
       reviewId: "review-42",
+      sessionId: "session-a",
       noteId: "note-1",
       text: "Return early when empty.",
     };
@@ -235,7 +242,12 @@ describe("Maintainer notes on a local Review", () => {
       [EDIT, edit],
       [
         REMOVE,
-        { profileId: "profile", reviewId: "review-42", noteId: "note-1" },
+        {
+          profileId: "profile",
+          reviewId: "review-42",
+          sessionId: "session-a",
+          noteId: "note-1",
+        },
       ],
     ]);
   });

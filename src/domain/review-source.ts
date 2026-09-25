@@ -2,6 +2,7 @@ import * as v from "valibot";
 
 import {
   parseGitSha,
+  parseGitShaPrefix,
   parseLocalBranchName,
   type GitSha,
   type GitShaPrefix,
@@ -154,4 +155,39 @@ function invalidSource(): Result<
   { readonly _tag: "InvalidReviewSource" }
 > {
   return err({ _tag: "InvalidReviewSource" });
+}
+
+/**
+ * The request that reads a stored local source from the checkout again. A
+ * working tree names the `HEAD` it was opened on, so a branch switch is
+ * refused rather than read as this Review. Undefined only for a stored
+ * commit SHA that is not a valid prefix.
+ */
+export function reopenLocalSourceRequest(
+  source: LocalReviewSource,
+): LocalReviewSourceRequest | undefined {
+  switch (source.kind) {
+    case "working_tree":
+      return {
+        kind: "working_tree",
+        expectedHead:
+          source.branch === undefined
+            ? { kind: "detached" }
+            : { kind: "branch", branch: source.branch },
+      };
+    case "branch":
+      return {
+        kind: "branch",
+        branch: source.branch,
+        baseBranch: source.baseBranch,
+      };
+    case "commit": {
+      const commit = parseGitShaPrefix(source.commitSha);
+      return commit._tag === "ok"
+        ? { kind: "commit", commit: commit.value }
+        : undefined;
+    }
+    default:
+      return casesHandled(source);
+  }
 }

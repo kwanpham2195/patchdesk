@@ -67,7 +67,7 @@ function failureMessage(cause: unknown): string {
   if (isApiErrorCode(cause, "in_progress"))
     return "Another action on this review is running. Try again when it finishes.";
   if (isApiErrorCode(cause, "not_applicable"))
-    return "This finding can no longer be drafted. Run Analysis again on the current files.";
+    return "The review changed or this finding can no longer be drafted. Press Refresh, then run Analysis on the current files.";
   return "The draft list was not changed.";
 }
 
@@ -75,9 +75,9 @@ function noteFailureMessage(cause: unknown): string {
   if (isApiErrorCode(cause, "in_progress"))
     return "Another action on this review is running. Try again when it finishes.";
   if (isApiErrorCode(cause, "not_applicable"))
-    return "These lines are not in the current diff. Refresh the review and select them again.";
+    return "The review changed or these lines are not in the current diff. Press Refresh and select them again.";
   if (isApiErrorCode(cause, "not_found"))
-    return "This note was removed. Refresh the review.";
+    return "This note was removed. Press Refresh.";
   return "The note was not saved.";
 }
 
@@ -99,6 +99,8 @@ export function useLocalDrafts({
   const [error, setError] = useState<string | undefined>(undefined);
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
+  // Every write names the session on screen; the main process refuses one the Review has moved past (#452).
+  const sessionId = workbench.session.id;
 
   /** Posts one command and applies the list it answers with; throws when it was refused. */
   const post = useCallback(
@@ -115,7 +117,7 @@ export function useLocalDrafts({
           localDraftListSchema,
           await requestJson(path, {
             method: "POST",
-            body: { profileId, reviewId, ...command },
+            body: { profileId, reviewId, sessionId, ...command },
           }),
         );
         if (!parsed.success) throw new Error("Unexpected Local draft response");
@@ -125,7 +127,7 @@ export function useLocalDrafts({
         setPending(new Set(pendingRef.current));
       }
     },
-    [onWorkbenchPatch, profileId, reviewId],
+    [onWorkbenchPatch, profileId, reviewId, sessionId],
   );
 
   const sendFinding = useCallback(

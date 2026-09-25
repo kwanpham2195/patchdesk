@@ -116,6 +116,7 @@ describe("Local drafts in the Analysis reader", () => {
         {
           profileId: "profile",
           reviewId: "review-42",
+          sessionId: "session-a",
           runId: "insight-analysis-1-fixture",
           findingId: "finding-1",
         },
@@ -125,6 +126,7 @@ describe("Local drafts in the Analysis reader", () => {
         {
           profileId: "profile",
           reviewId: "review-42",
+          sessionId: "session-a",
           runId: "insight-analysis-1-fixture",
           findingId: "finding-1",
         },

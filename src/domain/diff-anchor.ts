@@ -28,30 +28,85 @@ export function fingerprintPatchAnchor(
   patch: string,
   anchor: PendingReviewAnchor,
 ): ReviewAnchorFingerprint | undefined {
-  const lines = patchLines(patch).filter(
-    (line) => line.path === anchor.path && line.side === anchor.side,
-  );
+  const lines = sideLines(patchLines(patch), anchor);
   const start = lines.findIndex((line) => line.line === anchor.startLine);
   const end = lines.findIndex((line) => line.line === anchor.line);
   if (start < 0 || end < start || lines[start]?.hunk !== lines[end]?.hunk)
     return undefined;
-  const selected = lines.slice(start, end + 1);
-  if (selected.length !== anchor.line - anchor.startLine + 1) return undefined;
-  const hunk = selected[0]?.hunk;
-  if (hunk === undefined) return undefined;
+  if (end - start + 1 !== anchor.line - anchor.startLine + 1) return undefined;
   return {
     path: anchor.path,
     side: anchor.side,
     startLine: anchor.startLine,
     line: anchor.line,
-    selectedLines: selected.map((line) => line.text),
+    ...contextAt(lines, start, end),
+  };
+}
+
+/**
+ * Every place in `patch` whose selected lines and surrounding diff context
+ * equal the fingerprint's, by the same rules that captured it. One result is
+ * an unambiguous location; none or several are not.
+ */
+export function locatePatchAnchor(
+  patch: string,
+  fingerprint: ReviewAnchorFingerprint,
+): ReadonlyArray<{ readonly startLine: number; readonly line: number }> {
+  const lines = sideLines(patchLines(patch), fingerprint);
+  const length = fingerprint.selectedLines.length;
+  const found: Array<{ readonly startLine: number; readonly line: number }> =
+    [];
+  for (let start = 0; start + length <= lines.length; start += 1) {
+    const end = start + length - 1;
+    const first = lines[start];
+    const last = lines[end];
+    if (first === undefined || last === undefined || first.hunk !== last.hunk)
+      continue;
+    const context = contextAt(lines, start, end);
+    if (
+      sameTexts(context.selectedLines, fingerprint.selectedLines) &&
+      sameTexts(context.before, fingerprint.before) &&
+      sameTexts(context.after, fingerprint.after)
+    )
+      found.push({ startLine: first.line, line: last.line });
+  }
+  return found;
+}
+
+function sideLines(
+  lines: ReadonlyArray<PatchLine>,
+  anchor: { readonly path: string; readonly side: "new" | "old" },
+): ReadonlyArray<PatchLine> {
+  return lines.filter(
+    (line) => line.path === anchor.path && line.side === anchor.side,
+  );
+}
+
+/** The selected lines `start..end` and up to two lines either side of them in the same hunk. */
+function contextAt(
+  lines: ReadonlyArray<PatchLine>,
+  start: number,
+  end: number,
+): Pick<ReviewAnchorFingerprint, "selectedLines" | "before" | "after"> {
+  const hunk = lines[start]?.hunk;
+  const inHunk = (line: PatchLine) => (line.hunk === hunk ? [line.text] : []);
+  return {
+    selectedLines: lines.slice(start, end + 1).map((line) => line.text),
     before: lines
       .slice(Math.max(0, start - contextLines), start)
-      .flatMap((line) => (line.hunk === hunk ? [line.text] : [])),
-    after: lines
-      .slice(end + 1, end + contextLines + 1)
-      .flatMap((line) => (line.hunk === hunk ? [line.text] : [])),
+      .flatMap(inHunk),
+    after: lines.slice(end + 1, end + contextLines + 1).flatMap(inHunk),
   };
+}
+
+function sameTexts(
+  left: ReadonlyArray<string>,
+  right: ReadonlyArray<string>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((text, index) => text === right[index])
+  );
 }
 
 function patchLines(patch: string): ReadonlyArray<PatchLine> {

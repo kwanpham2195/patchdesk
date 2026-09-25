@@ -23,21 +23,20 @@ import {
   type PullRequestReviewSession,
 } from "../domain/review-session";
 import {
+  reopenLocalSourceRequest,
   sameReviewSource,
   type LocalReviewSource,
-  type LocalReviewSourceRequest,
 } from "../domain/review-source";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import {
   parseContentHash,
-  parseGitShaPrefix,
   type ContentHash,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../domain/ids";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+import { err, ok, type Result } from "../domain/result";
 import type { LocalReviewRevisionService } from "./local-review-revision-service";
 import { contentHash, hashReviewArtifactContent } from "./review-artifact-hash";
 
@@ -312,7 +311,7 @@ export class ReviewWriteGate {
       sameRepositoryIdentity(candidate, value.identity),
     )?.localPath;
     if (localPath === undefined) return err({ reason: "checkout_unavailable" });
-    const request = localSourceRequest(value.identity.source);
+    const request = reopenLocalSourceRequest(value.identity.source);
     if (request === undefined) return err({ reason: "storage" });
     const current = await this.localSources.revisions.resolve(
       profileId,
@@ -363,29 +362,5 @@ export class ReviewWriteGate {
       );
     }
     return err({ reason: "revision_changed" });
-  }
-}
-
-/** The request that recomputes a stored local source from its checkout. */
-function localSourceRequest(
-  source: LocalReviewSource,
-): LocalReviewSourceRequest | undefined {
-  switch (source.kind) {
-    case "working_tree":
-      return { kind: "working_tree" };
-    case "branch":
-      return {
-        kind: "branch",
-        branch: source.branch,
-        baseBranch: source.baseBranch,
-      };
-    case "commit": {
-      const commit = parseGitShaPrefix(source.commitSha);
-      return commit._tag === "ok"
-        ? { kind: "commit", commit: commit.value }
-        : undefined;
-    }
-    default:
-      return casesHandled(source);
   }
 }

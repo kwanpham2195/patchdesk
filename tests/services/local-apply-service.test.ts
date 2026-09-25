@@ -3,7 +3,11 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseFindingId, parseLocalBranchName } from "../../src/domain/ids";
+import {
+  parseFindingId,
+  parseLocalBranchName,
+  parseRepoRelativePath,
+} from "../../src/domain/ids";
 import { dismissInsightFinding } from "../../src/domain/insight-record";
 import { err } from "../../src/domain/result";
 import {
@@ -324,6 +328,64 @@ describe("LocalApplyService refusals that write nothing", () => {
 });
 
 describe("LocalApplyService after confirmation", () => {
+  it("marks the drafted Finding it applied, carries the other drafts to the next session, and leaves the applied one out of the agent prompt", async () => {
+    const harness = await localApplyHarness();
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    const key = {
+      profileId,
+      reviewId: workbench.review.id,
+      sessionId: workbench.session.id,
+    };
+    value(
+      await harness.drafts.add({
+        ...key,
+        runId,
+        findingId: value(parseFindingId("finding-bound")),
+      }),
+    );
+    value(
+      await harness.drafts.addNote({
+        ...key,
+        anchor: {
+          path: value(parseRepoRelativePath("probe.ts")),
+          side: "new",
+          startLine: 6,
+          line: 6,
+        },
+        text: "Return early for an empty list.",
+      }),
+    );
+
+    const applied = value(
+      await harness.service.apply(
+        applyRequest(workbench, runId, ["finding-bound"]),
+      ),
+    );
+
+    const next = applied.status === "applied" ? applied.workbench : undefined;
+    expect(next?.session.id).not.toBe(workbench.session.id);
+    expect(next?.localDrafts).toEqual([
+      expect.objectContaining({
+        kind: "finding",
+        findingId: "finding-bound",
+        state: "applied",
+      }),
+      expect.objectContaining({
+        kind: "note",
+        sessionId: next?.session.id,
+        startLine: 6,
+        state: "unchanged",
+      }),
+    ]);
+    const prompt = value(
+      await harness.drafts.agentPrompt(profileId, workbench.review.id),
+    ).markdown;
+    expect(prompt).toContain("Return early for an empty list.");
+    expect(prompt).not.toContain(boundFix.title);
+  });
+
   it("reports a confirmed Apply as applied and leaves no lock when the next session cannot be prepared", async () => {
     const harness = await localApplyHarness(undefined, {
       opening: () => ({

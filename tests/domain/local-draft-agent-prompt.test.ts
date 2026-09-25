@@ -140,4 +140,56 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
       ].join("\n"),
     );
   });
+
+  it("says which drafts changed or lost their place after a Refresh and leaves applied Findings out", () => {
+    const prompt = renderLocalDraftsAsAgentPrompt([
+      {
+        ...note("src/items.ts", 4, "Handle the empty list."),
+        carry: { state: "changed", sessionId },
+      },
+      {
+        ...draft({
+          title: "Unused import",
+          comment: "Remove it.",
+          path: "src/items.ts",
+          startLine: 1,
+          line: 1,
+        }),
+        carry: { state: "needs_attention", sessionId },
+      },
+      {
+        ...draft({
+          title: "Applied bound fix",
+          comment: "Stop before the length.",
+          path: "src/items.ts",
+          startLine: 2,
+          line: 2,
+        }),
+        appliedAt: at,
+      },
+      {
+        ...note("src/items.ts", 9, "Name this constant."),
+        carry: { state: "unchanged", sessionId },
+      },
+    ]);
+
+    expect(prompt).not.toContain("Applied bound fix");
+    expect(prompt).toContain(
+      [
+        "### 1. Unused import",
+        "",
+        "- File: `src/items.ts:1`",
+        "- Status: these lines are no longer where this comment was made, so the line numbers are from an earlier version.",
+      ].join("\n"),
+    );
+    expect(prompt).toContain(
+      [
+        "- File: `src/items.ts:4`",
+        "- Status: these lines changed since this comment; the maintainer is checking whether the change addresses it.",
+      ].join("\n"),
+    );
+    expect(prompt).toContain(
+      ["- File: `src/items.ts:9`", "", "Name this constant."].join("\n"),
+    );
+  });
 });
