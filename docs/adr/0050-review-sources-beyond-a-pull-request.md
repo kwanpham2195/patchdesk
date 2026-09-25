@@ -265,8 +265,9 @@ The commit message is seeded the same way.
 A local Review shows the Diff workbench and the three Insights. It has no
 Conversation, no metadata rail, no Publish, no Merge, and no Finding review
 command. The context pack skips comments and checks. The Brief has no
-Description vs diff block, because there is no description, and cites `c*`
-commits only for `branch` sources.
+Description vs diff block, because there is no description. Its citation
+manifest is diff hunks only, as ADR 0040 made it for every source (amended
+2026-09-25, #450; this record first said `c*` for `branch` sources).
 
 ## Rejected alternatives
 
