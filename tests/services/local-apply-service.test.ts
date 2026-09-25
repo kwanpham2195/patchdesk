@@ -215,6 +215,154 @@ describe("LocalApplyService", () => {
   });
 });
 
+describe("LocalApplyService refusals that write nothing", () => {
+  it.each([
+    {
+      name: "a file git would write with CRLF line endings",
+      configure: async (repositoryPath: string) =>
+        writeFile(
+          join(repositoryPath, ".gitattributes"),
+          "*.ts text eol=crlf\n",
+        ),
+    },
+    {
+      name: "a text file under core.autocrlf=true",
+      configure: async (repositoryPath: string) => {
+        git(repositoryPath, "config", "core.autocrlf", "true");
+      },
+    },
+  ])("refuses $name before any intent is stored", async ({ configure }) => {
+    const harness = await localApplyHarness();
+    await configure(harness.repositoryPath);
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+
+    const refused = await harness.service.apply(
+      applyRequest(workbench, runId, ["finding-bound"]),
+    );
+
+    expect(refused).toEqual(err({ reason: "working_tree_conversion" }));
+    expect(
+      await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
+    ).toBe(probe);
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    {
+      name: "git apply --check refuses",
+      check: (async () =>
+        err({ _tag: "GitReadFailed" as const })) satisfies GitInterceptor,
+      reason: "check_failed",
+    },
+    {
+      name: "the file changes after the patch was composed",
+      check: (async (argv, run) => {
+        const checked = await run();
+        await writeFile(join(argv[2] ?? "", "probe.ts"), `${probe}\n// edited`);
+        return checked;
+      }) satisfies GitInterceptor,
+      reason: "file_changed",
+    },
+  ])("removes the intent when $name", async ({ check, reason }) => {
+    let writes = 0;
+    const harness = await localApplyHarness(async (argv, run) => {
+      if (argv.includes("--check")) return check(argv, run);
+      if (isApplyWrite(argv)) writes += 1;
+      return run();
+    });
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+
+    const refused = await harness.service.apply(
+      applyRequest(workbench, runId, ["finding-bound"]),
+    );
+
+    expect(refused).toEqual(err({ reason }));
+    expect(writes).toBe(0);
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+  });
+});
+
+describe("LocalApplyService after confirmation", () => {
+  it("reports a confirmed Apply as applied and leaves no lock when the next session cannot be prepared", async () => {
+    const harness = await localApplyHarness(undefined, {
+      opening: () => ({
+        openLocked: async () => {
+          throw new Error("preparation crashed");
+        },
+      }),
+    });
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+
+    const applied = await harness.service.apply(
+      applyRequest(workbench, runId, ["finding-bound"]),
+    );
+
+    expect(applied).toEqual({ _tag: "ok", value: { status: "applied" } });
+    expect(
+      await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
+    ).toBe(probe.replace("index <= values.length", "index < values.length"));
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+  });
+
+  it("keeps the lock when confirmation cannot be saved, and recovery confirms from the hashes", async () => {
+    let confirmationSaves = "failing";
+    const harness = await localApplyHarness(undefined, {
+      operations: (store) => ({
+        load: (profile, review) => store.load(profile, review),
+        begin: (operation) => store.begin(operation),
+        remove: (profile, review) => store.remove(profile, review),
+        listReviews: (profile) => store.listReviews(profile),
+        save: async (operation) =>
+          operation.state === "Confirmed" && confirmationSaves === "failing"
+            ? err({
+                _tag: "StorageFailure" as const,
+                operation: "write" as const,
+                reason: "io" as const,
+              })
+            : store.save(operation),
+      }),
+    });
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+
+    const applied = value(
+      await harness.service.apply(
+        applyRequest(workbench, runId, ["finding-bound"]),
+      ),
+    );
+    expect(applied).toEqual({ status: "outcome_unknown" });
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id))
+        ?.state,
+    ).toBe("OutcomeUnknown");
+
+    confirmationSaves = "working";
+    await harness.service.recoverAll();
+
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+    expect(
+      harness.logs.find(
+        (entry) => entry.message === "Local apply recovery decided",
+      )?.meta,
+    ).toEqual(expect.objectContaining({ decision: "confirmed" }));
+  });
+});
+
 describe("LocalApplyService recovery", () => {
   const second = "export const second = 1;\n";
   const secondFix = suggestionFinding(

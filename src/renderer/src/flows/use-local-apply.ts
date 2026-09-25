@@ -65,6 +65,8 @@ function refusalFor(reason: string): string | undefined {
       return "A selected finding has no suggestion that can be applied.";
     case "file_changed":
       return "A file no longer holds the lines a suggestion replaces. Open the review again.";
+    case "working_tree_conversion":
+      return "Git would convert line endings or run a filter on a changed file. Apply this change in your editor.";
     case "check_failed":
       return "git apply refused the change. Nothing was written.";
     case "path_refused":

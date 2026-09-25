@@ -93,14 +93,15 @@ Patchdesk first reads the checkout again. When the working tree differs from the
 
 On success the Review moves to a new session for the changed working tree and the workbench opens on it. The earlier Analysis reads Outdated: its Findings stay readable and offer no Apply, and applying more needs a new run.
 
-| Cause                                                      | Sentence beside the button                                                                              |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| The working tree changed after the run                     | `The working tree changed after this Analysis ran. Open the review again to analyze the current files.` |
-| Two selected suggestions change the same line              | `Two selected suggestions change the same lines. Select only one of them.`                              |
-| A file no longer holds the replaced lines, or is not UTF-8 | `A file no longer holds the lines a suggestion replaces. Open the review again.`                        |
-| `git apply --check` refuses the patch                      | `git apply refused the change. Nothing was written.`                                                    |
-| A path leaves the checkout or passes through a symlink     | `A file is outside the checkout or behind a symlink. Nothing was written.`                              |
-| Another action on the Review is running                    | `Another action on this review is running. Try again when it finishes.`                                 |
+| Cause                                                                                                                                               | Sentence beside the button                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| The working tree changed after the run                                                                                                              | `The working tree changed after this Analysis ran. Open the review again to analyze the current files.` |
+| Two selected suggestions change the same line                                                                                                       | `Two selected suggestions change the same lines. Select only one of them.`                              |
+| A file no longer holds the replaced lines, or is not UTF-8                                                                                          | `A file no longer holds the lines a suggestion replaces. Open the review again.`                        |
+| `git apply --check` refuses the patch                                                                                                               | `git apply refused the change. Nothing was written.`                                                    |
+| A path leaves the checkout or passes through a symlink                                                                                              | `A file is outside the checkout or behind a symlink. Nothing was written.`                              |
+| Git would convert line endings, expand `ident`, run a filter, or re-encode a changed file (`.gitattributes`, `core.autocrlf=true`, `core.eol=crlf`) | `Git would convert line endings or run a filter on a changed file. Apply this change in your editor.`   |
+| Another action on the Review is running                                                                                                             | `Another action on this review is running. Try again when it finishes.`                                 |
 
 When Patchdesk cannot prove the outcome, for example the app quits while `git apply` runs, the bar replaces Apply with `An Apply may have changed files. Check them before applying more.` and a **Check files** button. Checking, and every app start, compares each file's sha256 with the hashes recorded before the write: every file at its new content confirms the Apply and prepares the next session; every file at its old content clears the lock; anything else keeps the lock and reads `An Apply left the files in an unexpected state.` Patchdesk never runs `git apply` again on its own. Each decision is logged to `patchdesk.jsonl` with topic `local-apply` and message `Local apply recovery decided`.
 

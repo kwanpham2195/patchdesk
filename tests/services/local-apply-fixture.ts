@@ -107,6 +107,19 @@ export type LocalApplyHarness = {
 /** A checkout with one committed file, an Apply service over it, and every store on disk. */
 export async function localApplyHarness(
   intercept?: GitInterceptor,
+  seams: {
+    /** Wraps the store the service writes through, to fail one transition. */
+    readonly operations?: (
+      store: LocalApplyOperationStore,
+    ) => Pick<
+      LocalApplyOperationStore,
+      "load" | "begin" | "save" | "remove" | "listReviews"
+    >;
+    /** Wraps the open path the service prepares the next session through. */
+    readonly opening?: (
+      opening: LocalReviewOpening,
+    ) => Pick<LocalReviewOpening, "openLocked">;
+  } = {},
 ): Promise<LocalApplyHarness> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-local-apply-"));
   roots.push(root);
@@ -178,11 +191,11 @@ export async function localApplyHarness(
       { load: async () => ok(undefined) },
       { revisions, reviews, now: () => now },
     ),
-    operations,
+    operations: seams.operations?.(operations) ?? operations,
     insights,
     reviews,
     profiles,
-    opening,
+    opening: seams.opening?.(opening) ?? opening,
     coordinator,
     git: {
       run: (argv, environment) =>

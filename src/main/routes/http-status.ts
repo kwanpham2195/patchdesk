@@ -131,6 +131,7 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["path_refused", 409],
   ["file_changed", 409],
   ["check_failed", 409],
+  ["working_tree_conversion", 409],
   ["checkout_unavailable", 503],
   ["stale_head", 409],
   ["terminal", 409],
