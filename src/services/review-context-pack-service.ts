@@ -6,6 +6,13 @@ import type { GitHubReader } from "../adapters/github/github-adapter";
 import { readJsonFile } from "../adapters/storage/json-file";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import {
+  CHANGE_INTENT_HEADING,
+  renderChangeIntentSection,
+  type ChangeIntent,
+  type ChangeIntentProvenance,
+  type ResolvedChangeIntent,
+} from "../domain/change-intent";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { definedProps } from "../domain/defined-props";
 import type { ContentHash } from "../domain/ids";
@@ -16,12 +23,28 @@ import {
   type ReviewSession,
 } from "../domain/review-session";
 import { tokenizeUnifiedPatch } from "../domain/unified-patch";
+import {
+  changeIntentProvenance,
+  resolveChangeIntent,
+  type ChangeIntentUnreadable,
+} from "./change-intent-resolution";
 import type { ReviewContextService } from "./review-context-service";
 import { exists } from "./review-preparation-journal";
+import type { GitReadExecutor } from "./review-worktree-service";
 
-export type ReviewContextPackFailure = {
-  readonly _tag: "ContextPackUnavailable";
-};
+export type ReviewContextPackFailure =
+  | { readonly _tag: "ContextPackUnavailable" }
+  | ChangeIntentUnreadable;
+
+/**
+ * Only Analysis reads `review-input.md`, where the Change intent goes. An
+ * Analysis start names the Review's intent and gets a pack that holds exactly
+ * it; Brief and Walkthrough accept a pack whatever intent it holds, so their
+ * starts never rewrite the file under a running Analysis.
+ */
+export type PackChangeIntent =
+  | { readonly _tag: "Unread" }
+  | { readonly _tag: "Read"; readonly intent: ChangeIntent | undefined };
 
 /**
  * Reads only what decides whether a pack on disk still describes this
@@ -54,6 +77,8 @@ export class ReviewContextPackService {
       >;
       readonly context: ReviewContextService;
       readonly paths: PatchdeskPaths;
+      /** Reads a spec-file Change intent from the session's head commit. */
+      readonly git: GitReadExecutor;
     },
   ) {}
 
@@ -66,11 +91,34 @@ export class ReviewContextPackService {
   async ensure(input: {
     readonly session: ReviewSession;
     readonly patchHash: ContentHash;
-  }): Promise<Result<void, ReviewContextPackFailure>> {
+    readonly changeIntent: PackChangeIntent;
+  }): Promise<
+    Result<
+      { readonly changeIntent?: ChangeIntentProvenance },
+      ReviewContextPackFailure
+    >
+  > {
     const { profileId } = input.session.key;
     const sessionId = input.session.id;
-    if (await this.isUsable(input.session, input.patchHash))
-      return ok(undefined);
+    const resolved = await this.resolve(input.session, input.changeIntent);
+    if (resolved._tag === "err") return resolved;
+    const changeIntent =
+      resolved.value === undefined
+        ? undefined
+        : changeIntentProvenance(resolved.value);
+    if (resolved.value !== undefined && changeIntent === undefined)
+      return err({ _tag: "ContextPackUnavailable" });
+    const provenance = ok(definedProps({ changeIntent }));
+    if (
+      await this.isUsable(
+        input.session,
+        input.patchHash,
+        input.changeIntent._tag === "Unread"
+          ? { _tag: "Unread" }
+          : { _tag: "Read", resolved: resolved.value },
+      )
+    )
+      return provenance;
     const profile = await this.dependencies.profiles.load(profileId);
     if (profile._tag === "err") return err({ _tag: "ContextPackUnavailable" });
     const patch = await readFile(input.session.patchPath, "utf8").catch(
@@ -94,14 +142,36 @@ export class ReviewContextPackService {
       ...definedProps({
         comments: pullRequestEvidence.value?.comments,
         checks: pullRequestEvidence.value?.checks,
+        changeIntent: resolved.value,
       }),
       changedFiles: changedFiles(patch),
       patch: { path: input.session.patchPath, sha256: input.patchHash },
       rulePaths: profile.value.rulePaths,
     });
     return built._tag === "ok"
-      ? ok(undefined)
+      ? provenance
       : err({ _tag: "ContextPackUnavailable" });
+  }
+
+  private async resolve(
+    session: ReviewSession,
+    changeIntent: PackChangeIntent,
+  ): Promise<
+    Result<ResolvedChangeIntent | undefined, ReviewContextPackFailure>
+  > {
+    if (changeIntent._tag === "Unread" || changeIntent.intent === undefined)
+      return ok(undefined);
+    const resolved = await resolveChangeIntent(
+      this.dependencies.git,
+      session,
+      changeIntent.intent,
+    );
+    if (resolved._tag === "ok") return resolved;
+    return err(
+      resolved.error._tag === "ChangeIntentUnreadable"
+        ? resolved.error
+        : { _tag: "ContextPackUnavailable" },
+    );
   }
 
   /** The comments and checks a pull request pack carries; either read failing fails the pack. */
@@ -135,11 +205,18 @@ export class ReviewContextPackService {
    * A pack is usable only when all three files are present and `context.json`
    * parses and names this session's current patch hash. A pack interrupted
    * mid-build fails one of those, and a pack left by an earlier revision
-   * fails the hash.
+   * fails the hash. For Analysis, `review-input.md` must also end with the
+   * section of the resolved Change intent, or hold none when there is none.
    */
   private async isUsable(
     session: ReviewSession,
     patchHash: ContentHash,
+    changeIntent:
+      | { readonly _tag: "Unread" }
+      | {
+          readonly _tag: "Read";
+          readonly resolved: ResolvedChangeIntent | undefined;
+        },
   ): Promise<boolean> {
     const { profileId } = session.key;
     const present = await Promise.all([
@@ -154,7 +231,22 @@ export class ReviewContextPackService {
     );
     if (stored._tag === "err") return false;
     const parsed = v.safeParse(packIdentitySchema, stored.value);
-    return parsed.success && parsed.output.patch.sha256 === patchHash;
+    if (!parsed.success || parsed.output.patch.sha256 !== patchHash)
+      return false;
+    if (changeIntent._tag === "Unread") return true;
+    const reviewInput = await readFile(
+      this.dependencies.paths.preparedReviewInputFile(profileId, session.id),
+      "utf8",
+    ).catch(() => undefined);
+    if (reviewInput === undefined) return false;
+    const start = reviewInput.indexOf(`\n${CHANGE_INTENT_HEADING}\n`);
+    const section = start < 0 ? undefined : reviewInput.slice(start + 1);
+    return (
+      section ===
+      (changeIntent.resolved === undefined
+        ? undefined
+        : renderChangeIntentSection(changeIntent.resolved))
+    );
   }
 }
 

@@ -73,6 +73,7 @@ import {
   unavailablePiInsightInvoker,
 } from "../services/pi-insight-child-invoker";
 import { resolveInsightRuntime } from "./insight-runtime";
+import { createReadOnlyGitExecutor } from "./local-api-stores";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
@@ -383,6 +384,9 @@ function createInsightCoordinator(
       github,
       context: new ReviewContextService(),
       paths,
+      git: createReadOnlyGitExecutor(
+        new CommandRunner(undefined, logUnclassifiedCommandFailure),
+      ),
     }),
     undefined,
     diagnostics,

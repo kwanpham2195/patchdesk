@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "../domain/defined-props";
 import {
   parseContentHash,
   parseIsoTimestamp,
@@ -262,6 +263,7 @@ export class InsightRunExecutor {
               revision: active.revision,
               generatedAt: timestamp.value,
               provenance: provenanceFromRun(active),
+              ...definedProps({ changeIntent: active.changeIntent }),
               value: validated.value,
             },
             timestamp.value,

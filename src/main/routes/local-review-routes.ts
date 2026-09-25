@@ -4,6 +4,7 @@ import {
   integer,
   literal,
   maxLength,
+  nullable,
   minLength,
   minValue,
   number,
@@ -18,6 +19,10 @@ import {
   type SafeParseResult,
 } from "valibot";
 
+import {
+  changeIntentSchema,
+  parseChangeIntent,
+} from "../../domain/change-intent";
 import {
   parseFindingId,
   parseGitHubHost,
@@ -34,6 +39,7 @@ import {
   type FindingId,
 } from "../../domain/ids";
 import { MAX_MAINTAINER_NOTE_LENGTH } from "../../domain/local-draft";
+import { ok } from "../../domain/result";
 import type { LocalReviewSourceRequest } from "../../domain/review-source";
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
@@ -208,6 +214,32 @@ export function registerLocalReviewRoutes(
     return response(context, await container.localDrafts.removeNote(note));
   });
 
+  // Sets the Change intent, or clears it with `intent: null` (#467); the Analysis start reads a spec file.
+  app.post("/v1/reviews/local-intent", async (context) => {
+    const parsed = safeParse(localIntentSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    const intent =
+      parsed.output.intent === null
+        ? ok(undefined)
+        : parseChangeIntent(parsed.output.intent);
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      intent._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await container.localChangeIntent.set({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        intent: intent.value,
+      }),
+    );
+  });
+
   app.post("/v1/reviews/local-drafts/agent-prompt", async (context) => {
     const parsed = safeParse(reviewIdentitySchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
@@ -331,6 +363,11 @@ const localApplySchema = strictObject({
 const reviewIdentitySchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
+});
+
+const localIntentSchema = strictObject({
+  ...reviewIdentitySchema.entries,
+  intent: nullable(changeIntentSchema),
 });
 
 const nonEmpty = pipe(string(), minLength(1));

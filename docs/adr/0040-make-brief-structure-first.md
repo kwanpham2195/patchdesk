@@ -73,6 +73,10 @@ The check is not being replaced by anything in this ADR. A future ADR may
 bring it back as its own Insight, or as an Analysis Finding, if a maintainer
 still wants it; this decision only removes it from Brief.
 
+> **Note (2026-09-26):** Analysis owns this check as a Finding, and a local
+> Review's Change intent is its stated goal; see ADR 0051, "Change intent
+> (#467)". Brief stays as decided here.
+
 With Description vs diff gone, no surviving Brief block cites a `d*`
 (description) or `c*` (commit) alias — Flow already cited hunks only, and
 Shape, Start here, and Reach never took citations at all. The citation

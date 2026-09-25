@@ -56,6 +56,7 @@ import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { LocalReviewOpening } from "../services/local-review-opening";
 import { LocalApplyService } from "../services/local-apply-service";
+import { LocalChangeIntentService } from "../services/local-change-intent-service";
 import { LocalDraftService } from "../services/local-draft-service";
 import { createLocalNoteId } from "../domain/ids";
 import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
@@ -87,6 +88,7 @@ export type LocalApiContainer = {
   readonly localReviewOpening: LocalReviewOpening;
   readonly localApply: LocalApplyService;
   readonly localDrafts: LocalDraftService;
+  readonly localChangeIntent: LocalChangeIntentService;
   /** Retained Insight reads for routes that compose from a stored result, such as the Brief's PR description. */
   readonly retainedInsights: Pick<InsightStore, "loadTyped">;
   readonly reviewDiffSources: ReviewDiffSourceService;
@@ -551,6 +553,11 @@ export async function buildLocalApiContainer(
         coordinator: reviewOperations,
         now: systemNow,
         createNoteId: () => createLocalNoteId(randomUUID()),
+      }),
+      localChangeIntent: new LocalChangeIntentService({
+        reviews,
+        coordinator: reviewOperations,
+        now: systemNow,
       }),
       retainedInsights: insights,
       reviewDiffSources,

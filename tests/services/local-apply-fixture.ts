@@ -95,6 +95,7 @@ export type GitInterceptor = (
 
 export type LocalApplyHarness = {
   readonly repositoryPath: string;
+  readonly paths: PatchdeskPaths;
   readonly service: LocalApplyService;
   readonly opening: LocalReviewOpening;
   readonly reviews: ReviewStore;
@@ -215,6 +216,7 @@ export async function localApplyHarness(
   });
   return {
     repositoryPath,
+    paths,
     service,
     opening,
     reviews,
