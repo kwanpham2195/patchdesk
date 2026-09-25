@@ -263,6 +263,12 @@ describe("insightOutputGuidance", () => {
       "Give a contract tree only when the patch changes an exported signature, type, or field that callers outside the patch depend on.",
     );
     expect(guidance).toContain(
+      "Never give a contract tree for a test file, a fixture, or a new export that no code outside the patch calls.",
+    );
+    expect(guidance).toContain(
+      "Cite every hunk that changes the export on its root. Its signature and field rows cite nothing.",
+    );
+    expect(guidance).toContain(
       "Each step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
     );
     expect(guidance).toContain(

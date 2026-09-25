@@ -154,6 +154,8 @@ export function insightOutputGuidance(
     "Give a contract tree only when the patch changes an exported signature, type, or field that callers outside the patch depend on.",
     "Each root is the exported name. Its children are its signature or its fields, one per line, as written in the patch.",
     "Mark the old signature removed and the new one added; never write prose.",
+    "Never give a contract tree for a test file, a fixture, or a new export that no code outside the patch calls.",
+    "Cite every hunk that changes the export on its root. Its signature and field rows cite nothing.",
     "A contract change reads like this:",
     " saveDraft",
     "-  (draft): Promise<void>",

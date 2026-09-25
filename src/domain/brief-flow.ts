@@ -268,14 +268,10 @@ function resolveFlowCitations(
 /**
  * Walks one tree's proposed nodes in pre-order, applying, in this order: the
  * `MAX_FLOW_NODES_PER_TREE` cap, the `MAX_FLOW_DEPTH` cut, the label cap,
- * and finally -- for `added`/`removed` nodes only -- the rule that a changed
- * step left with no surviving hunk citation still keeps its place, but
- * counts toward `rejected` as an unverified claim. `unchanged` nodes need no
- * citation at all, but any they carry are still resolved so a non-hunk or
- * unknown alias still counts toward `rejected`.
+ * and citation resolution. `ctx.rejected` counts discarded aliases only;
+ * `countUncitedChangedNodes` counts uncited changed steps after the walk.
  *
- * Only citation failures count toward `rejected`; the node cap, the depth
- * cut, and a whitespace-only label are silent.
+ * The node cap, the depth cut, and a whitespace-only label are silent.
  */
 function walkFlowNodes(
   rawNodes: ReadonlyArray<BriefFlowNodeOutput>,
@@ -297,10 +293,6 @@ function walkFlowNodes(
     const resolved = resolveFlowCitations(raw.citations ?? [], byAlias);
     ctx.rejected += resolved.rejected;
 
-    if (raw.change !== "unchanged" && resolved.citations.length === 0) {
-      ctx.rejected += 1;
-    }
-
     // The depth cut is presentation only, so nodes below it are never walked:
     // their citations are not resolved and they spend none of the node cap.
     const children =
@@ -315,6 +307,57 @@ function walkFlowNodes(
     });
   }
   return kept;
+}
+
+/**
+ * Moves every citation below a contract root onto that root, root's own
+ * first, then the rest in pre-order with repeats dropped: a contract's rows
+ * belong to one export and are checked together.
+ */
+function liftContractCitations(root: BriefFlowNode): BriefFlowNode {
+  const citations = [...root.citations];
+  const seen = new Set(citations.map((citation) => citation.alias));
+  const strip = (
+    nodes: ReadonlyArray<BriefFlowNode>,
+  ): ReadonlyArray<BriefFlowNode> =>
+    nodes.map((node) => {
+      for (const citation of node.citations) {
+        if (seen.has(citation.alias)) continue;
+        seen.add(citation.alias);
+        citations.push(citation);
+      }
+      return { ...node, citations: [], children: strip(node.children) };
+    });
+  const children = strip(root.children);
+  return { ...root, citations, children };
+}
+
+/** `added`/`removed` nodes with no surviving hunk citation, at any depth. */
+function uncitedChangedNodes(nodes: ReadonlyArray<BriefFlowNode>): number {
+  return nodes.reduce(
+    (count, node) =>
+      count +
+      (node.change !== "unchanged" && node.citations.length === 0 ? 1 : 0) +
+      uncitedChangedNodes(node.children),
+    0,
+  );
+}
+
+/**
+ * Uncited changed steps in one kept tree, each an unverified claim counted
+ * toward `rejected`. A contract row is covered by its root's citations, so a
+ * contract root counts its subtree only when the root itself cites nothing.
+ */
+function countUncitedChangedNodes(
+  kind: BriefFlowKind,
+  nodes: ReadonlyArray<BriefFlowNode>,
+): number {
+  if (kind !== "contract") return uncitedChangedNodes(nodes);
+  return nodes.reduce(
+    (count, root) =>
+      root.citations.length > 0 ? count : count + uncitedChangedNodes([root]),
+    0,
+  );
 }
 
 /** True when a kept tree has a surviving `added`/`removed` node, at any depth. */
@@ -348,7 +391,9 @@ function normalizeFlowTitle(rawTitle: string): string {
  *
  * `rejected` counts citation failures only: a discarded alias (unknown,
  * repeated, or -- for a changed step -- resolved to a non-hunk kind), and an
- * `added`/`removed` node left with zero surviving hunk citations. Every
+ * `added`/`removed` node left with zero surviving hunk citations. A
+ * `contract` tree cites on its root only: citations below a root move up to
+ * it, and a changed row counts as cited when its root is. Every
  * other cap here is silent, the same way `normalizeBriefStartHere`'s
  * five-file cap and an unmatched Start here path are silent: the per-tree
  * node cap, the `MAX_FLOW_DEPTH` cut (the schema accepts deeper input up to
@@ -369,8 +414,10 @@ export function normalizeBriefFlow(
 
   for (const rawTree of raw) {
     const ctx: FlowWalkContext = { rejected: 0, visited: 0 };
-    const nodes = walkFlowNodes(rawTree.nodes, 1, byAlias, ctx);
-    rejected += ctx.rejected;
+    const walked = walkFlowNodes(rawTree.nodes, 1, byAlias, ctx);
+    const nodes =
+      rawTree.kind === "contract" ? walked.map(liftContractCitations) : walked;
+    rejected += ctx.rejected + countUncitedChangedNodes(rawTree.kind, nodes);
 
     if (!anyFlowNodeChanged(nodes)) continue;
     survivors.push({

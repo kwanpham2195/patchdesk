@@ -534,6 +534,89 @@ describe("normalizeBriefFlow", () => {
       "control_flow",
     ]);
   });
+
+  it("moves a contract row's citations onto its exported name, still counting a discarded alias", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "contract",
+        title: "saveDraft",
+        nodes: [
+          {
+            label: "saveDraft",
+            change: "unchanged",
+            citations: ["h1"],
+            children: [
+              {
+                label: "(draft): Promise<void>",
+                change: "removed",
+                citations: ["h2", "h1"],
+              },
+              {
+                label: "(draft, opts): Promise<SaveResult>",
+                change: "added",
+                citations: ["h3", "d1"],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const result = normalize(raw, NON_UI_PATHS);
+    const root = result.value?.trees[0]?.nodes[0];
+    expect(root?.citations.map((citation) => citation.alias)).toEqual([
+      "h1",
+      "h2",
+      "h3",
+    ]);
+    expect(root?.children.map((node) => node.citations)).toEqual([[], []]);
+    // Only the discarded d1 alias; both rows are covered by the root.
+    expect(result.rejected).toBe(1);
+  });
+
+  it("counts a changed contract row as cited when its exported name cites a hunk", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "contract",
+        title: "SaveResult",
+        nodes: [
+          {
+            label: "SaveResult",
+            change: "unchanged",
+            citations: ["h1"],
+            children: [{ label: "conflict?: RemoteVersion", change: "added" }],
+          },
+        ],
+      },
+    ];
+    const result = normalize(raw, NON_UI_PATHS);
+    expect(result.value?.trees[0]?.nodes[0]?.children[0]?.change).toBe("added");
+    expect(result.rejected).toBe(0);
+  });
+
+  it("counts the changed rows of an uncited contract root, leaving a cited root's rows covered", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "contract",
+        title: "Draft exports",
+        nodes: [
+          {
+            label: "saveDraft",
+            change: "unchanged",
+            citations: ["h1"],
+            children: [{ label: "(draft, opts)", change: "added" }],
+          },
+          {
+            label: "SaveResult",
+            change: "added",
+            children: [{ label: "conflict?: RemoteVersion", change: "added" }],
+          },
+        ],
+      },
+    ];
+    const result = normalize(raw, NON_UI_PATHS);
+    // SaveResult and its field; saveDraft's row is covered by h1.
+    expect(result.rejected).toBe(2);
+  });
 });
 
 describe("patchTouchesUiComponents", () => {

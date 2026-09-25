@@ -450,6 +450,7 @@ function FlowView({
           <FlowRowView
             key={`${String(row.depth)}:${String(index)}:${row.label}`}
             row={row}
+            kind={tree.kind}
             citedHunks={citedHunks}
           />
         ))}
@@ -472,16 +473,24 @@ function FlowView({
  * has zero citations, so it draws with the dimmer `uncited*` variant of its
  * hue and no chip -- a claim the Brief could not verify, shown honestly
  * rather than dropped.
+ *
+ * A `contract` tree's evidence sits on its root, the exported name, so its
+ * signature and field rows draw no chip and are never marked uncited.
  */
 function FlowRowView({
   row,
+  kind,
   citedHunks,
 }: {
   readonly row: ReturnType<typeof flowRows>[number];
+  readonly kind: BriefFlow["trees"][number]["kind"];
   readonly citedHunks?: Readonly<Record<string, string>> | undefined;
 }): React.JSX.Element {
   const mark = FLOW_CHANGE_MARKS[row.change];
-  const uncited = row.change !== "unchanged" && row.citations.length === 0;
+  const citedOnRoot = kind === "contract" && row.depth > 0;
+  const citations = citedOnRoot ? [] : row.citations;
+  const uncited =
+    !citedOnRoot && row.change !== "unchanged" && citations.length === 0;
   return (
     <div
       className={`flex items-baseline gap-2 rounded px-1 py-0.5 font-mono text-xs ${uncited ? mark.uncitedRowClassName : mark.rowClassName}`}
@@ -503,7 +512,7 @@ function FlowRowView({
           {row.guide}
         </span>
         {row.label}{" "}
-        {row.citations.map((citation) => (
+        {citations.map((citation) => (
           <CitationChip
             key={citation.alias}
             citation={citation}
