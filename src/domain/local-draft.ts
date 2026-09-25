@@ -67,7 +67,7 @@ type LocalDraftCarry = {
   readonly notedLines: ReadonlyArray<string>;
 };
 
-export type LocalDraftCarryState = "unchanged" | "changed" | "needs_attention";
+type LocalDraftCarryState = "unchanged" | "changed" | "needs_attention";
 
 /** One entry of a local Review's Local draft list: feedback for the coding agent. */
 export type LocalDraft = FindingDraft | MaintainerNote;
