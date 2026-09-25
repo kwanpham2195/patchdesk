@@ -56,6 +56,7 @@ describe("AppShell settings overlay entry points", () => {
           visitedReloadKey={0}
           onOpenSettings={onOpenSettings}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
         >
           <div>Inbox content</div>
         </AppShell>
@@ -82,6 +83,7 @@ describe("AppShell settings overlay entry points", () => {
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
         >
           <div>Inbox content</div>
         </AppShell>
@@ -125,6 +127,7 @@ describe("AppShell Navigate shortcut", () => {
             visitedReloadKey={0}
             onOpenSettings={() => undefined}
             onOpenDiagnostics={() => undefined}
+            onOpenLocalReview={() => undefined}
           >
             {target}
           </AppShell>
@@ -159,6 +162,7 @@ describe("AppShell Navigate shortcut", () => {
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
         >
           <div data-testid="tree-host" />
         </AppShell>
@@ -198,6 +202,7 @@ describe("AppShell Navigate shortcut", () => {
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
         >
           <button type="button">Review content</button>
         </AppShell>
@@ -231,6 +236,7 @@ describe("AppShell preset commands", () => {
             visitedReloadKey={0}
             onOpenSettings={() => undefined}
             onOpenDiagnostics={() => undefined}
+            onOpenLocalReview={() => undefined}
             onInboxPresetChange={onInboxPresetChange}
           >
             <div>Inbox content</div>
@@ -264,6 +270,7 @@ describe("AppShell pull-request command", () => {
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
           onOpenPullRequest={onOpenPullRequest}
         >
           <div>Inbox content</div>
@@ -298,6 +305,7 @@ describe("AppShell pull-request command", () => {
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
           onOpenPullRequest={() => undefined}
         >
           <div>Review content</div>
@@ -328,6 +336,7 @@ describe("AppShell visited pull requests toggle", () => {
           visitedReloadKey={0}
           onOpenSettings={() => undefined}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
         >
           <div>Inbox content</div>
         </AppShell>
@@ -393,6 +402,7 @@ describe("AppShell pull-request search", () => {
           activeProfileId="profile-1"
           onOpenSettings={() => undefined}
           onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={() => undefined}
           pullRequestDefaultHost={host.value}
           onOpenPullRequest={options.onOpenPullRequest}
           {...definedProps({ selectedRepository: options.selectedRepository })}

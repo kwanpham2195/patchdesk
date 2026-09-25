@@ -7,6 +7,8 @@ import {
   pullRequestIdentityKey,
 } from "../renderer-contracts";
 import type { InboxResponse } from "../renderer-contracts";
+import type { SidebarLocalReviewRow } from "../sidebar-contracts";
+import { casesHandled } from "../../../domain/result";
 import type { Dashboard, WorkbenchPayload } from "../renderer-models";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
@@ -20,6 +22,26 @@ export type LocalReviewSourceInput =
       readonly baseBranch: string;
     }
   | { readonly kind: "commit"; readonly commit: string };
+
+/** The open request that reads a stored local source from the checkout again; a working tree names its branch from `HEAD`. */
+export function localReviewSourceInput(
+  source: SidebarLocalReviewRow["source"],
+): LocalReviewSourceInput {
+  switch (source.kind) {
+    case "working_tree":
+      return { kind: "working_tree" };
+    case "branch":
+      return {
+        kind: "branch",
+        branch: source.branch,
+        baseBranch: source.baseBranch,
+      };
+    case "commit":
+      return { kind: "commit", commit: source.commitSha };
+    default:
+      return casesHandled(source);
+  }
+}
 
 type PrRef = {
   readonly host?: string;

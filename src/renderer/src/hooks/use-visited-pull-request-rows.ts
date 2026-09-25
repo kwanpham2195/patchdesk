@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { requestJson } from "@/api-client";
-import {
-  parseSidebarReviewsResponse,
-  type SidebarReviewRow,
-} from "@/renderer-contracts";
+import { parseSidebarReviewsResponse } from "@/renderer-contracts";
+import type { SidebarReviewRow } from "@/sidebar-contracts";
 
 export type VisitedPullRequestRows =
   | { readonly kind: "idle" }

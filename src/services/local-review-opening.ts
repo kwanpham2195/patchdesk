@@ -4,11 +4,13 @@ import {
   createReviewId,
   type IsoTimestamp,
   type ReviewId,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import { casesHandled, err, type Result } from "../domain/result";
 import {
   createReview,
   isLocalReview,
+  markReviewOpened,
   moveLocalReviewToSession,
   type Review,
 } from "../domain/review";
@@ -72,11 +74,33 @@ export class LocalReviewOpening {
       const opened = await this.lifecycle.coordinator.withReviewLock(
         request.profileId,
         reviewId,
-        () => this.openLocked(request, reviewId),
+        async () => {
+          const result = await this.openLocked(request, reviewId);
+          if (result?._tag === "ok")
+            await this.recordOpened(request.profileId, reviewId);
+          return result;
+        },
       );
       if (opened !== undefined) return opened;
     }
     return err({ reason: "storage" });
+  }
+
+  /**
+   * Stamps `lastOpenedAt` for the sidebar (ADR 0042) only on a maintainer's
+   * open, so the reopen after an Apply leaves the order alone. Best effort:
+   * the open has already succeeded, so a failed save is dropped.
+   */
+  private async recordOpened(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<void> {
+    const loaded = await this.lifecycle.reviews.load(profileId, reviewId);
+    if (loaded._tag === "err") return;
+    await this.lifecycle.reviews.save(
+      markReviewOpened(loaded.value, { now: this.now() }),
+      loaded.value.updatedAt,
+    );
   }
 
   /**

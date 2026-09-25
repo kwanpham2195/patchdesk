@@ -47,6 +47,7 @@ import {
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { useVisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
+import type { SidebarLocalReviewRow } from "@/sidebar-contracts";
 import { isTextEntryTarget } from "../text-entry-target";
 
 type ProfileEntry = {
@@ -58,6 +59,7 @@ export function AppShell({
   destination,
   navigationBlocked = false,
   onNavigate,
+  onOpenLocalReview,
   onOpenSettings,
   onOpenDiagnostics,
   profiles,
@@ -75,6 +77,8 @@ export function AppShell({
   readonly destination: AppDestination;
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
+  /** Reopens a local Review from its sidebar row through the local open path. */
+  readonly onOpenLocalReview: (row: SidebarLocalReviewRow) => void;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
   readonly onOpenDiagnostics: (opener?: HTMLElement) => void;
   readonly profiles?: ReadonlyArray<ProfileEntry>;
@@ -311,6 +315,7 @@ export function AppShell({
             state={visitedRows}
             destination={destination}
             onNavigate={onNavigate}
+            onOpenLocalReview={onOpenLocalReview}
             workspaceLabel={activeProfileLabel}
             {...(pullRequestDefaultHost === undefined
               ? {}

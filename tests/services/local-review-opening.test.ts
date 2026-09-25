@@ -29,6 +29,7 @@ import {
   parseGitShaPrefix,
   parseIsoTimestamp,
   parseLocalBranchName,
+  parseReviewId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
@@ -227,6 +228,23 @@ describe("LocalReviewOpening", () => {
     expect(edited.session.id).not.toBe(first.session.id);
     expect(edited.review.id).toBe(first.review.id);
     expect(edited.fullPatch).toContain("+second");
+  });
+
+  it("records the open on the Review so the sidebar can order and date it", async () => {
+    const { root, repositoryPath } = await checkout();
+    const service = await opening(root, repositoryPath);
+
+    const opened = value(
+      await service.open({ profileId, repository, request: workingTree }),
+    );
+
+    const stored = value(
+      await new ReviewStore(PatchdeskPaths.forTest(join(root, "app"))).load(
+        profileId,
+        value(parseReviewId(opened.review.id)),
+      ),
+    );
+    expect(stored.lastOpenedAt).toBe(now);
   });
 
   it("moves the Review to the checkout as it is once the Review lock is free", async () => {

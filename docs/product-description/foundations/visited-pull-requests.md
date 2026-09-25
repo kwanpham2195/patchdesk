@@ -2,7 +2,7 @@
 
 ## Summary
 
-The Visited pull requests column lists the pull requests the maintainer has opened in the active workspace, most recently opened first, up to 20 rows. It sits left of the main content on the Pull requests screen, on every Review workbench, and beside workspace setup, and it stays in place while the destination changes. It reads only Patchdesk's local Review records, so it makes no GitHub request and works offline. One click on a row opens that pull request's Review workbench. A toggle at the left of the titlebar collapses and expands the column, and that choice is kept on this machine.
+The Visited pull requests column lists the pull requests and [local Reviews](../pull-requests/opening-a-local-review.md) the maintainer has opened in the active workspace, most recently opened first, up to 20 rows across both kinds. It sits left of the main content on the Pull requests screen, on every Review workbench, and beside workspace setup, and it stays in place while the destination changes. It reads only Patchdesk's local Review records, so it makes no GitHub request and works offline. One click on a row opens that pull request's Review workbench; one click on a local row reads its source from the checkout again and opens that local Review. A toggle at the left of the titlebar collapses and expands the column, and that choice is kept on this machine.
 
 ## The simple case
 
@@ -39,6 +39,8 @@ A pull request the maintainer watches carries an eye mark on that same line, tit
 
 > Technical note: the date on a marker is when Patchdesk first observed the terminal state. A merge reconciled by startup recovery is dated from GitHub's own merge time instead, so it can read older than Patchdesk's sighting. A terminal Review is never observed again, so the date never moves.
 
+A local Review row is named from its source: `Working tree on feat/x`, `Branch feat/x against main`, or `Commit 1a2b3c4d`. Where a pull request row prints its reference, a local row prints `local`, after the repository when the rows span repositories, such as `local · visited 5m` or `patchdesk · local · visited 5m`. A local row carries no state marker and no eye mark. Local Reviews opened before this row existed have no recorded open, so they show no age and are ordered by their last update until the next open.
+
 A Review stored before Patchdesk recorded opens has no title and no open time. Its row uses the reference as its label and shows no age, and it is ordered by the time its record was last updated until the next time it is opened.
 
 The column has three settled states besides its rows. With no Review in the workspace it says `Opened pull requests appear here.` When the local read fails it says `Could not load recent pull requests.` and offers no Retry. Until the first read answers, the list is blank, with no loading indicator.
@@ -52,6 +54,8 @@ Reading the column, scrolling it, and hovering a title or an age record nothing.
 ### Begin an action
 
 Clicking a row, or pressing Enter or Space on a focused row, asks for that Review's workbench as the destination. Arrow Down and Arrow Up move focus to the next or previous row without asking for anything; at the first and last row they do nothing. The request uses the same [navigation guard](navigation-and-overlays.md#begin-an-action) as Back and Navigate. When navigation is clear the destination changes at once. An unsaved Review draft or a pending GitHub write parks the request behind the leave dialog.
+
+A local row opens through the same path as **Open review** in the [Local review](../pull-requests/opening-a-local-review.md) picker: Patchdesk reads the working tree, branch, or commit from the checkout again, so unchanged content lands on the same session and an edit moves the Review to a new one. The titlebar busy bar reads `Opening Review…` while it runs. When navigation is not clear, the click parks that Review's own destination behind the leave dialog, and confirming loads the local Review as stored, without reading the checkout.
 
 A row has no select step and no pending state of its own, unlike a [Pull requests row](../pull-requests/opening-a-review.md), which shows `Opening…` while it works.
 
@@ -70,6 +74,8 @@ A second request for the same Review while it loads joins the load already runni
 A successful load shows the Review workbench and records the open. The column reads its list again, and the row moves to the top of `Today` with the age `now`. Every path that opens a Review has the same effect: a Pull requests row, a Navigate pull-request action, a Visited row, and the launch restore of a saved workbench destination.
 
 > Technical note: only a real open stamps the time. The reloads after a publish, a merge, or a finished Insight run re-read the workbench already on screen and neither stamp an open nor re-read the column. The title and open time are written on a best-effort basis, so a failure to record them never fails the open.
+
+A failed local open, such as a commit the checkout no longer has or a working tree with merge conflicts, returns to the Pull requests screen and shows `Could not open review` with the local reason.
 
 A failed load shows the Pull requests screen's `Could not open review` notice with `Could not open the saved review.` and the reason. The destination stays on the requested Review: the titlebar still names the Review workbench and shows Back, and that Review's row stays highlighted and inert. The exception is the launch restore of a Review whose record no longer exists, which returns quietly to Pull requests; [Navigation and overlays](navigation-and-overlays.md#arrive) owns it.
 
@@ -119,11 +125,13 @@ After an interrupt the column keeps the list it last read. Nothing in it is a dr
 
 **Supported input and accessibility limits.** Rows and the toggle are keyboard operable. The column carries one Tab stop, which lands on the row of the Review on screen where there is one and on the first row otherwise; Arrow Down and Arrow Up move between rows. The row of the Review on screen is announced as the current page and stays focusable. Patchdesk does not claim screen-reader, touch, or pen support.
 
-> Technical note: the column reads `GET /v1/sidebar/reviews` for the active profile. The route lists every Review record under the profile, orders them by last open (falling back to last update for older records), and returns the first 20. It is not polled; it re-reads on a workspace switch, on every Review open, and when the column mounts.
+> Technical note: the column reads `GET /v1/sidebar/reviews` for the active profile. The route lists every Review record under the profile, pull request and local, orders them by last open (falling back to last update for older records), and returns the first 20. A local row carries its source spec and host so the click can call `POST /v1/reviews/open-local`; that open records the time only when it is a maintainer's open, not the reopen after an Apply. It is not polled; it re-reads on a workspace switch, on every Review open, and when the column mounts.
 
 ## Edge cases
 
 - A pull request never opened in Patchdesk does not appear, however recently it changed on GitHub.
+- A working-tree row names the branch `HEAD` was on when it was opened. Its click reads the working tree as it is now, so after a branch switch it opens the working-tree Review of the current branch, which gets its own row.
+- The Navigate palette's title search lists pull request rows only.
 - The column holds 20 rows. There is no page past them; the oldest visit drops off when a new one arrives.
 - Opening a pull request always moves it to the top, so it is never the row pushed out.
 - The age is computed when the column draws and no timer advances it; it catches up whenever the column draws again.

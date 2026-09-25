@@ -60,7 +60,11 @@ import { parseGitHubHost } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { sameRepositoryIdentity } from "../../domain/repository-identity";
 import { definedProps } from "../../domain/defined-props";
-import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
+import {
+  localReviewSourceInput,
+  useInboxReviewOpening,
+} from "./flows/use-inbox-review-opening";
+import type { SidebarLocalReviewRow } from "./sidebar-contracts";
 import { requestJson } from "./api-client";
 import { appLog } from "./lib/logger";
 
@@ -284,7 +288,27 @@ function AppContent({
     dashboard,
     onOpenWorkbench: openWorkbench,
   });
-  const { openPullRequestByRef, reportOpenError } = reviewOpening;
+  const { openLocalReview, openPullRequestByRef, reportOpenError } =
+    reviewOpening;
+  const openLocalReviewFromSidebar = useCallback(
+    (row: SidebarLocalReviewRow): void => {
+      // The leave-confirmation holds a destination, not an open, so a guarded
+      // click parks the Review's own route, which loads it as stored.
+      if (navigationState !== "clear") {
+        navigate({ kind: "workbench", reviewId: row.reviewId });
+        return;
+      }
+      void openLocalReview(row, localReviewSourceInput(row.source)).catch(
+        (cause: unknown) => {
+          navigate({ kind: "dashboard" });
+          reportOpenError(
+            cause instanceof Error ? cause.message : "Could not open review.",
+          );
+        },
+      );
+    },
+    [navigate, navigationState, openLocalReview, reportOpenError],
+  );
   const openPullRequestFromPalette = useCallback(
     (ref: PullRequestRef): void => {
       navigate({ kind: "dashboard" });
@@ -330,6 +354,7 @@ function AppContent({
           destination={next}
           navigationBlocked={navigationState !== "clear"}
           onNavigate={navigate}
+          onOpenLocalReview={openLocalReviewFromSidebar}
           onOpenSettings={openSettings}
           onOpenDiagnostics={openDiagnostics}
           profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
