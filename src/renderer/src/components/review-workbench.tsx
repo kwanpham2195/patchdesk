@@ -20,6 +20,10 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 
 import type { WorkbenchResponse } from "../renderer-contracts";
+import {
+  reviewSourceTitle,
+  workbenchPullRequestNumber,
+} from "../review-source";
 import { Conversation } from "./conversation";
 import { DiffWorkbench } from "./diff-workbench";
 import { ReviewDiffPane } from "./review-diff-pane";
@@ -148,11 +152,13 @@ function directConversationActionProps(
 function pullRequestExternalRef(
   model: WorkbenchResponse,
 ): PullRequestRef | undefined {
+  const prNumber = workbenchPullRequestNumber(model.session.key.source);
+  if (prNumber === undefined) return undefined;
   const source = model.pullRequest?.ref ?? {
     host: model.session.key.host,
     owner: model.session.key.owner,
     repo: model.session.key.repo,
-    number: model.session.key.prNumber,
+    number: prNumber,
   };
   const host = parseGitHubHost(source.host);
   const owner = parseGitHubOwner(source.owner);
@@ -270,7 +276,7 @@ export function ReviewWorkbench({
               : "Unknown";
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title =
-    model.pullRequest?.title ?? `Pull request #${model.session.key.prNumber}`;
+    model.pullRequest?.title ?? reviewSourceTitle(model.session.key.source);
   // The desktop close guard blocks quitting while a GitHub write is in
   // flight; report write_pending on busy transitions (and clear afterwards).
   const writePending =
@@ -696,7 +702,9 @@ export function ReviewWorkbench({
           }}
         >
           <TabsList variant="ghost">
-            <TabsTrigger value="conversation">Conversation</TabsTrigger>
+            {model.session.key.source.kind === "pull_request" ? (
+              <TabsTrigger value="conversation">Conversation</TabsTrigger>
+            ) : null}
             <TabsTrigger value="diff">Diff</TabsTrigger>
             <TabsTrigger value="insights">Insights</TabsTrigger>
           </TabsList>

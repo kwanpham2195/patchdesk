@@ -38,7 +38,6 @@ import {
   type GitHubOwner,
   type GitSha,
   type IsoTimestamp,
-  type PullRequestNumber,
   type ReviewId,
   type ContentHash,
   type GitHubRepoName,
@@ -80,8 +79,9 @@ import type { PendingReviewState } from "../domain/pending-review";
 import type { ReviewResult } from "../domain/review-result";
 import {
   isPullRequestReviewSession,
-  type PullRequestReviewSession,
+  type ReviewSession,
 } from "../domain/review-session";
+import type { ReviewSource } from "../domain/review-source";
 import { err, ok, type Result } from "../domain/result";
 import { RetainedInsightReader } from "./retained-insight-reader";
 
@@ -93,7 +93,7 @@ type WorkbenchSessionProjection = {
     readonly host: GitHubHost;
     readonly owner: GitHubOwner;
     readonly repo: GitHubRepoName;
-    readonly prNumber: PullRequestNumber;
+    readonly source: ReviewSource;
     readonly headSha: GitSha;
   };
 };
@@ -141,11 +141,12 @@ export type ReviewWorkbenchProjection = {
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
     readonly brief: InsightProjection<NormalizedBrief>;
   };
-  readonly analysisReviewActions: AnalysisReviewActionsProjection;
+  /** Absent on a local Review, which has no Finding review command (ADR 0050). */
+  readonly analysisReviewActions?: AnalysisReviewActionsProjection;
   readonly pendingReview?: PendingReviewProjection;
   readonly directSummary?: DirectSummaryReviewProjection;
   /** Advisory only; the direct-summary service rechecks the account and PR author before writing. */
-  readonly directSummaryDecision: "allowed" | "blocked_author" | "unknown";
+  readonly directSummaryDecision?: "allowed" | "blocked_author" | "unknown";
   readonly conversation: Conversation;
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
@@ -253,6 +254,8 @@ export class ReviewWorkbenchProjectionService {
       sessionId: input.sessionId,
     });
     if (session._tag === "err") return session;
+    if (!isPullRequestReviewSession(session.value.session))
+      return err({ _tag: "SessionNotFound" });
     const remote: ProjectRemoteInput = {
       current: { _tag: "ok", value: input.snapshot.pullRequest },
       conversation: ok(input.snapshot.conversation),
@@ -280,11 +283,34 @@ export class ReviewWorkbenchProjectionService {
     );
   }
 
+  /**
+   * Projects a local Review's current session. It has no GitHub snapshot, so
+   * Conversation, checks, merge, and the pending review stay empty or absent.
+   */
+  async loadLocal(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly sessionId: ReviewSessionId;
+    readonly refreshedAt: IsoTimestamp;
+    readonly freshness: ReviewFreshness;
+  }): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
+    const session = await this.loadSession(input);
+    if (session._tag === "err") return session;
+    if (isPullRequestReviewSession(session.value.session))
+      return err({ _tag: "SessionNotFound" });
+    return this.project(
+      session.value.profile,
+      session.value.session,
+      undefined,
+      input.refreshedAt,
+      input.freshness,
+    );
+  }
+
   private async loadSession(input: LoadWorkbenchInput): Promise<
     Result<
       {
         readonly profile: WorkspaceProfileConfig;
-        readonly session: PullRequestReviewSession;
+        readonly session: ReviewSession;
       },
       WorkbenchProjectionFailure
     >
@@ -295,9 +321,6 @@ export class ReviewWorkbenchProjectionService {
     ]);
     if (profile._tag === "err") return err({ _tag: "ProfileNotFound" });
     if (session._tag === "err") return err({ _tag: "SessionNotFound" });
-    // The workbench projects pull request sessions only until the local open route exists (ADR 0050).
-    if (!isPullRequestReviewSession(session.value))
-      return err({ _tag: "SessionNotFound" });
     return ok({ profile: profile.value, session: session.value });
   }
 
@@ -416,7 +439,7 @@ export class ReviewWorkbenchProjectionService {
 
   private async project(
     profile: WorkspaceProfileConfig,
-    session: PullRequestReviewSession,
+    session: ReviewSession,
     remote: ProjectRemoteInput | undefined,
     representedAt: IsoTimestamp,
     durableFreshness: ReviewFreshness,
@@ -440,25 +463,28 @@ export class ReviewWorkbenchProjectionService {
         ? undefined
         : this.patchHashOf(session.patchPath, patch);
 
+    const pullRequestSession = isPullRequestReviewSession(session)
+      ? session
+      : undefined;
     const current = remote?.current;
     const currentHeadSha =
       current?._tag === "ok" ? current.value.headSha : undefined;
     const pullRequest =
       current?._tag === "ok"
         ? current.value
-        : session.prContext === undefined
+        : pullRequestSession?.prContext === undefined
           ? undefined
           : {
               ref: {
-                host: session.key.host,
-                owner: session.key.owner,
-                repo: session.key.repo,
-                number: session.key.source.prNumber,
+                host: pullRequestSession.key.host,
+                owner: pullRequestSession.key.owner,
+                repo: pullRequestSession.key.repo,
+                number: pullRequestSession.key.source.prNumber,
               },
-              ...session.prContext,
-              headSha: session.key.headSha,
-              isDraft: session.pr.isDraft,
-              isOpen: session.pr.isOpen,
+              ...pullRequestSession.prContext,
+              headSha: pullRequestSession.key.headSha,
+              isDraft: pullRequestSession.pr.isDraft,
+              isOpen: pullRequestSession.pr.isOpen,
               reviewState: "unknown" as const,
               mergeability: "unknown" as const,
               labels: [],
@@ -516,7 +542,7 @@ export class ReviewWorkbenchProjectionService {
                   headSha: session.key.headSha,
                   patchHash,
                 },
-                session.findingReviewReceipts,
+                pullRequestSession?.findingReviewReceipts,
               ),
               profile.analysisMergePolicy,
             ),
@@ -576,14 +602,18 @@ export class ReviewWorkbenchProjectionService {
         ? stableReview.value.status.state
         : ("open" as const);
 
-    const analysisReviewActions = projectAnalysisReviewActions({
-      analysis,
-      session,
-      freshness,
-      patchHash,
-      pendingReview: pendingReview?.state ?? session.pendingReview,
-      threads: conversation.inline?.threads ?? [],
-    });
+    const analysisReviewActions =
+      pullRequestSession === undefined
+        ? undefined
+        : projectAnalysisReviewActions({
+            analysis,
+            session: pullRequestSession,
+            freshness,
+            patchHash,
+            pendingReview:
+              pendingReview?.state ?? pullRequestSession.pendingReview,
+            threads: conversation.inline?.threads ?? [],
+          });
 
     const revision: ReviewWorkbenchProjection["revision"] = {
       reviewedHeadSha: session.key.headSha,
@@ -615,13 +645,29 @@ export class ReviewWorkbenchProjectionService {
         walkthrough,
         brief,
       },
-      analysisReviewActions,
-      pendingReview: projectPendingReview(
-        pendingReview?.state ?? session.pendingReview ?? { _tag: "None" },
-        pendingReview?.unavailable ?? session.pendingReview === undefined,
-      ),
-      directSummary: projectDirectSummaryReview(session.directSummaryReview),
-      directSummaryDecision: directSummaryDecision(profile, pullRequest),
+      // A local Review has no pending review and no Finding review command (ADR 0050).
+      ...definedProps({
+        analysisReviewActions,
+        pendingReview:
+          pullRequestSession === undefined
+            ? undefined
+            : projectPendingReview(
+                pendingReview?.state ??
+                  pullRequestSession.pendingReview ?? { _tag: "None" },
+                pendingReview?.unavailable ??
+                  pullRequestSession.pendingReview === undefined,
+              ),
+        directSummary:
+          pullRequestSession === undefined
+            ? undefined
+            : projectDirectSummaryReview(
+                pullRequestSession.directSummaryReview,
+              ),
+        directSummaryDecision:
+          pullRequestSession === undefined
+            ? undefined
+            : directSummaryDecision(profile, pullRequest),
+      }),
       conversation,
       checks,
       mergeReadiness,
@@ -664,9 +710,7 @@ function directSummaryDecision(
     : "allowed";
 }
 
-function projectSession(
-  session: PullRequestReviewSession,
-): WorkbenchSessionProjection {
+function projectSession(session: ReviewSession): WorkbenchSessionProjection {
   return {
     id: session.id,
     key: {
@@ -674,14 +718,14 @@ function projectSession(
       host: session.key.host,
       owner: session.key.owner,
       repo: session.key.repo,
-      prNumber: session.key.source.prNumber,
+      source: session.key.source,
       headSha: session.key.headSha,
     },
   };
 }
 
 function projectLocalCheckoutWarning(
-  warning: PullRequestReviewSession["localCheckoutWarning"],
+  warning: ReviewSession["localCheckoutWarning"],
 ): ReviewWorkbenchProjection["localCheckout"] {
   if (warning === undefined) return undefined;
   return {

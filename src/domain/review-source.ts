@@ -4,6 +4,7 @@ import {
   parseGitSha,
   parseLocalBranchName,
   type GitSha,
+  type GitShaPrefix,
   type LocalBranchName,
   type PullRequestNumber,
 } from "./ids";
@@ -46,6 +47,20 @@ export type LocalReviewSource =
 
 /** What a Review's patch is computed from (ADR 0050, CONTEXT.md "Review source"). */
 export type ReviewSource = PullRequestReviewSource | LocalReviewSource;
+
+/**
+ * The local source a maintainer asks to open. A working tree names no branch:
+ * the branch is read from `HEAD` when the checkout is read, and a commit may
+ * be abbreviated until git resolves it.
+ */
+export type LocalReviewSourceRequest =
+  | { readonly kind: "working_tree" }
+  | {
+      readonly kind: "branch";
+      readonly branch: LocalBranchName;
+      readonly baseBranch: LocalBranchName;
+    }
+  | { readonly kind: "commit"; readonly commit: GitShaPrefix };
 
 /** True when both values name the same source spec, so they key the same Review. */
 export function sameReviewSource(

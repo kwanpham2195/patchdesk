@@ -142,6 +142,13 @@ export function isPullRequestReview(
   return review.identity.source.kind === "pull_request";
 }
 
+/** Narrow a Review to a local source, which is read from the checkout and never from GitHub. */
+export function isLocalReview(
+  review: Review,
+): review is Review<LocalReviewSource> {
+  return review.identity.source.kind !== "pull_request";
+}
+
 export type InvalidReview = { readonly _tag: "InvalidReview" };
 
 const representedRemoteSchema = v.strictObject({
@@ -298,6 +305,29 @@ export function moveReviewToSession(
     currentSessionId: input.sessionId,
     currentHeadSha: input.headSha,
     representedRemote: input.representedRemote,
+    freshness: { _tag: "Fresh" },
+    updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
+  });
+}
+
+/**
+ * Point a local Review at the session its source just resolved to. Opening
+ * recomputed that revision from the checkout, so the Review is Fresh; a local
+ * Review has no represented GitHub snapshot.
+ */
+export function moveLocalReviewToSession(
+  review: Review<LocalReviewSource>,
+  input: {
+    readonly sessionId: ReviewSessionId;
+    readonly headSha: GitSha;
+    readonly updatedAt: IsoTimestamp;
+  },
+): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  return ok({
+    ...review,
+    currentSessionId: input.sessionId,
+    currentHeadSha: input.headSha,
     freshness: { _tag: "Fresh" },
     updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
   });

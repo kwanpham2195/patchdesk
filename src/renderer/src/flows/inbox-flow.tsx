@@ -35,7 +35,11 @@ import type {
   InboxResponse,
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
-import type { RepositoryIdentity } from "../../../domain/repository-identity";
+import {
+  sameRepositoryIdentity,
+  type RepositoryIdentity,
+} from "../../../domain/repository-identity";
+import { OpenLocalReviewAction } from "../components/local-review-source-dialog";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
@@ -229,11 +233,27 @@ export function InboxFlow({
       </div>
     );
 
+  const localRepository = dashboard.profile.repos?.find(
+    (repo) =>
+      (repo.localPath ?? "") !== "" &&
+      sameRepositoryIdentity(repo, selectedRepository),
+  );
+  const localReviewAction =
+    localRepository === undefined ? undefined : (
+      <OpenLocalReviewAction
+        repositoryLabel={`${localRepository.owner}/${localRepository.repo}`}
+        onOpen={(source) =>
+          reviewOpening.openLocalReview(localRepository, source)
+        }
+      />
+    );
+
   return (
     <InboxScreen
       state={state}
       inbox={inbox}
       dashboard={dashboard}
+      localReviewAction={localReviewAction}
       refreshStatus={refreshStatus}
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(activeOpenError === undefined ? {} : { openError: activeOpenError })}
@@ -321,7 +341,9 @@ function InboxScreen({
   onOpenReviewId,
   openedPr,
   openError,
+  localReviewAction,
 }: {
+  readonly localReviewAction: React.ReactNode;
   readonly state: DashboardScreenState;
   readonly inbox: InboxResponse;
   readonly dashboard: Dashboard;
@@ -452,6 +474,7 @@ function InboxScreen({
           openingOperations={openingOperations}
           onOpenReview={onOpenReview}
           onOpenReviewId={onOpenReviewId}
+          localReviewAction={localReviewAction}
         />
       </div>
     </div>

@@ -79,7 +79,7 @@ export const projection: WorkbenchResponse = {
       host: "github.com",
       owner: "owner",
       repo: "repo",
-      prNumber: 1,
+      source: { kind: "pull_request", prNumber: 1 },
       headSha: sha,
     },
   },

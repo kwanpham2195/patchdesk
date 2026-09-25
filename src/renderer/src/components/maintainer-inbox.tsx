@@ -166,6 +166,8 @@ type MaintainerInboxProps = {
   >;
   readonly onOpenReview: (row: InboxRow) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
+  /** Opens a local Review on the Selected repository; absent without a local checkout. */
+  readonly localReviewAction?: React.ReactNode;
 };
 
 /** Dense, keyboard-operable maintainer queue built from the parsed local API projection. */
@@ -208,6 +210,7 @@ export function MaintainerInbox({
   openingOperations = new Map(),
   onOpenReview,
   onOpenReviewId,
+  localReviewAction,
 }: MaintainerInboxProps): React.JSX.Element {
   // While a filter change is in flight, `rows` still belongs to the previous
   // request. Every row-derived view (the row list, selection, labels) must
@@ -244,6 +247,7 @@ export function MaintainerInbox({
         refreshStatus={refreshStatus}
         onRefresh={onRefresh}
         {...(snapshot === undefined ? {} : { snapshot })}
+        localReviewAction={localReviewAction}
       />
       {refreshStatus === "Stale" && snapshot?.refreshedAt !== undefined ? (
         <StaleInboxBanner refreshedAt={snapshot.refreshedAt} />
@@ -365,8 +369,10 @@ function InboxHeader({
   refreshStatus,
   onRefresh,
   snapshot,
+  localReviewAction,
 }: {
   readonly profileLabel: string;
+  readonly localReviewAction: React.ReactNode;
   /** The profile's full watchlist; the picker hides itself when empty (the
    * setup checklist owns the screen instead), and stays visible for exactly
    * one watched repository — hiding it there would make the scoping
@@ -444,6 +450,7 @@ function InboxHeader({
             </SelectContent>
           </Select>
         )}
+        {localReviewAction}
         <InboxFreshness
           status={refreshStatus}
           onRefresh={onRefresh}

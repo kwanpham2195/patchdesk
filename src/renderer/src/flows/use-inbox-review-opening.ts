@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PatchdeskApiError, requestJson } from "../api-client";
+import { isApiErrorCode, PatchdeskApiError, requestJson } from "../api-client";
 import { useBusy } from "../hooks/use-busy";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
 import {
@@ -9,6 +9,17 @@ import {
 import type { InboxResponse } from "../renderer-contracts";
 import type { Dashboard, WorkbenchPayload } from "../renderer-models";
 import type { PullRequestRef } from "../../../domain/pull-request";
+import type { RepositoryIdentity } from "../../../domain/repository-identity";
+
+/** The local Review source a maintainer picks, as `POST /v1/reviews/open-local` takes it (ADR 0050). */
+export type LocalReviewSourceInput =
+  | { readonly kind: "working_tree" }
+  | {
+      readonly kind: "branch";
+      readonly branch: string;
+      readonly baseBranch: string;
+    }
+  | { readonly kind: "commit"; readonly commit: string };
 
 type PrRef = {
   readonly host?: string;
@@ -38,6 +49,11 @@ export type InboxReviewOpeningControls = {
      * Review the maintainer never asked for in this session.
      */
     onMissingRecord?: () => void,
+  ) => Promise<void>;
+  /** Opens a local Review on the Selected repository; rejects with the sentence the source picker shows. */
+  readonly openLocalReview: (
+    repository: RepositoryIdentity,
+    source: LocalReviewSourceInput,
   ) => Promise<void>;
   /** Raises the screen's "Could not open review" alert for a refusal decided
    * in the renderer, so it clears with the same profile and open rules. */
@@ -386,6 +402,38 @@ export function useInboxReviewOpening({
     [loadPullRequest, openByIdentity],
   );
 
+  const openLocalReview = useCallback(
+    async (
+      repository: RepositoryIdentity,
+      source: LocalReviewSourceInput,
+    ): Promise<void> => {
+      const profileId = dashboardProfileIdRef.current;
+      if (profileId === undefined)
+        throw new Error("Select a workspace before opening a local review.");
+      const value = await runBusy(
+        () =>
+          requestJson("/v1/reviews/open-local", {
+            method: "POST",
+            body: {
+              profileId,
+              host: repository.host,
+              owner: repository.owner,
+              repo: repository.repo,
+              source,
+            },
+          }),
+        "Opening Review…",
+      ).catch((cause: unknown) => {
+        throw new Error(localReviewOpenFailure(cause));
+      });
+      const parsed = parseWorkbenchResponse(value);
+      if (parsed === undefined)
+        throw new Error("The review projection could not be validated.");
+      if (dashboardProfileIdRef.current === profileId) onOpenWorkbench(parsed);
+    },
+    [dashboardProfileIdRef, onOpenWorkbench, runBusy],
+  );
+
   const reportOpenError = useCallback(
     (message: string): void => {
       const profileId = dashboard?.profile.id;
@@ -452,10 +500,24 @@ export function useInboxReviewOpening({
     openInboxRow,
     openPullRequestByRef,
     openStoredReviewById,
+    openLocalReview,
     reportOpenError,
     dismissOpenedPr,
     dismissOpenError,
   };
+}
+
+function localReviewOpenFailure(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this maps it to the picker's sentence.
+  cause: unknown,
+): string {
+  if (isApiErrorCode(cause, "unmerged_index"))
+    return "The working tree has unresolved merge conflicts.";
+  if (isApiErrorCode(cause, "revision_not_found"))
+    return "This checkout has no such branch, base branch, or commit.";
+  if (isApiErrorCode(cause, "repository_not_local"))
+    return "This repository has no local checkout in the workspace.";
+  return "Patchdesk could not read the local checkout.";
 }
 
 function withoutProfile(

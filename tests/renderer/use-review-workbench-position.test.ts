@@ -6,8 +6,8 @@ import { useReviewWorkbenchPosition } from "../../src/renderer/src/hooks/use-rev
 import type { ReviewWorkbenchInitialState } from "../../src/renderer/src/components/review-workbench";
 import { projection } from "./review-workbench-fixtures";
 
-const { commits, revision } = projection();
-const model = { commits, revision };
+const { commits, revision, session } = projection();
+const model = { commits, revision, session };
 
 function openAt(initialState?: ReviewWorkbenchInitialState) {
   return renderHook(() =>
@@ -22,6 +22,20 @@ afterEach(cleanup);
 describe("useReviewWorkbenchPosition", () => {
   it("opens a Review with no saved position on Conversation", () => {
     expect(openAt().result.current.activeTab).toBe("conversation");
+  });
+
+  it("opens a local Review with no saved position on Diff, since it has no Conversation", () => {
+    const local = {
+      ...model,
+      session: {
+        ...session,
+        key: { ...session.key, source: { kind: "working_tree" as const } },
+      },
+    };
+    const { result } = renderHook(() =>
+      useReviewWorkbenchPosition({ model: local }),
+    );
+    expect(result.current.activeTab).toBe("diff");
   });
 
   it.each([

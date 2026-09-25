@@ -100,7 +100,8 @@ type ReviewInsightState = {
 
 export type CanonicalReviewOverview = {
   readonly repository: string;
-  readonly prNumber: number;
+  /** Absent for a local Review, which has no pull request yet. */
+  readonly prNumber?: number;
   readonly title: string;
   readonly description?: string;
   readonly summary: string;
@@ -205,7 +206,11 @@ export function CanonicalReviewOverviewSheet({
         <SheetHeader className="border-b px-5 py-4 pr-12">
           <SheetTitle>PR overview</SheetTitle>
           <p className="truncate text-xs text-muted-foreground">
-            {overview.repository}#{overview.prNumber} · {overview.title}
+            {overview.repository}
+            {overview.prNumber === undefined
+              ? null
+              : `#${overview.prNumber}`} ·{" "}
+            {overview.title}
           </p>
         </SheetHeader>
         <div

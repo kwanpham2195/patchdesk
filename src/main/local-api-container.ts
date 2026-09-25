@@ -50,6 +50,9 @@ import { ReviewPreparationJournal } from "../services/review-preparation-journal
 import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
+import { LocalReviewOpening } from "../services/local-review-opening";
+import { LocalReviewRevisionService } from "../services/local-review-revision-service";
+import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
 import { WatchedPullRequestService } from "../services/watched-pull-request-service";
@@ -75,6 +78,7 @@ export type LocalApiContainer = {
   readonly dashboard: DashboardController;
   readonly recovery: ReviewRecoveryService;
   readonly reviewWorkbench: ReviewWorkbenchSeam;
+  readonly localReviewOpening: LocalReviewOpening;
   readonly reviewDiffSources: ReviewDiffSourceService;
   readonly mergeWrites: MergeWriteController | undefined;
   readonly inlineConversations: InlineConversationService;
@@ -449,6 +453,27 @@ export async function buildLocalApiContainer(
       commits: reviewCommits,
       logs,
     });
+  const localReviewOpening = new LocalReviewOpening(
+    new LocalReviewSessionPreparation({
+      profiles,
+      sessions,
+      revisions: new LocalReviewRevisionService(readOnlyGit, paths),
+      worktrees: new ReviewWorktreeService(
+        paths,
+        readOnlyGit,
+        credentials,
+        resolveGitHubCli,
+      ),
+      artifacts: storageArtifacts,
+      paths,
+      lifecycleGate,
+      now: systemNow,
+      diagnostics,
+    }),
+    reviewProjection,
+    { reviews, artifacts: storageArtifacts, coordinator: reviewOperations },
+    systemNow,
+  );
   const merger =
     configuration.mergeWriter ??
     (isGitHubMergeWriter(github) ? github : undefined);
@@ -489,6 +514,7 @@ export async function buildLocalApiContainer(
       dashboard,
       recovery,
       reviewWorkbench,
+      localReviewOpening,
       reviewDiffSources,
       mergeWrites,
       inlineConversations,
