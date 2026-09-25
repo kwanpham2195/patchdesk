@@ -29,7 +29,7 @@ import { definedProps } from "../domain/defined-props";
 import type { ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
 
 /**
- * The Reach block's counts, from `git grep` over the represented worktree.
+ * The Reach block's counts, from `git grep --count` over the represented worktree.
  *
  * The model never writes a number: it proposes names, `candidateReachSymbols`
  * keeps only the ones the patch itself changes, and every count here is one
@@ -131,7 +131,7 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
   const headLines = await readWorktreeFiles(worktree, [...changedPaths]);
   const searched: Array<{
     readonly name: string;
-    readonly outside: ReadonlyArray<MatchedLine>;
+    readonly outside: ReadonlyArray<FileCount>;
     readonly insidePR: boolean;
   }> = [];
   for (const name of candidateReachSymbols(
@@ -139,49 +139,61 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
     input.proposed,
     headLines,
   )) {
-    const matches = await searchSymbol(input, worktree, name, deadline);
-    if (matches._tag === "unavailable") return matches;
-    const outside = matches.lines.filter(
-      (line) => !changedPaths.has(line.path),
+    const counted = await countSymbol(input, worktree, name, deadline);
+    if (counted._tag === "unavailable") return counted;
+    const outside = counted.files.filter(
+      (file) => !changedPaths.has(file.path),
     );
     searched.push({
       name,
       outside,
-      insidePR: outside.length < matches.lines.length,
+      insidePR: outside.length < counted.files.length,
     });
   }
 
   const removed: Array<{
     readonly name: string;
-    readonly outside: ReadonlyArray<MatchedLine>;
+    readonly outside: ReadonlyArray<FileCount>;
   }> = [];
   for (const name of removedSymbols(input.patch)) {
-    const matches = await searchSymbol(input, worktree, name, deadline);
-    if (matches._tag === "unavailable") return matches;
-    const outside = matches.lines.filter(
-      (line) => !changedPaths.has(line.path),
+    const counted = await countSymbol(input, worktree, name, deadline);
+    if (counted._tag === "unavailable") return counted;
+    const outside = counted.files.filter(
+      (file) => !changedPaths.has(file.path),
     );
     if (outside.length > 0) removed.push({ name, outside });
   }
 
-  // Removed names spend the shared site budget first: they are what breaks.
+  // Removed names spend the shared site budget first: they are what breaks. A
+  // sites pass that succeeds returns at least min(cap, matching lines), so the
+  // counts fix each name's share before any sites are read.
   let budget = MAX_MENTIONS_TOTAL;
-  const keep = (item: {
-    readonly name: string;
-    readonly outside: ReadonlyArray<MatchedLine>;
-  }) => {
-    const kept = rankedSites(item.name, item.outside).slice(
-      0,
-      Math.min(MAX_MENTIONS_PER_NAME, budget),
+  const planned = [...removed, ...searched].map((item) => {
+    const limit = Math.min(
+      MAX_MENTIONS_PER_NAME,
+      budget,
+      matchingLines(item.outside),
     );
-    budget -= kept.length;
-    return kept;
-  };
-  const removedSites = removed.map(keep);
-  const symbolSites = searched.map(keep);
+    budget -= limit;
+    return { item, limit };
+  });
+  const kept = await Promise.all(
+    planned.map(async ({ item, limit }) =>
+      limit === 0
+        ? []
+        : rankedSites(
+            item.name,
+            await symbolSites(input, worktree, item, deadline),
+          ).slice(0, limit),
+    ),
+  );
+  const removedSites = kept.slice(0, removed.length);
+  const symbolSitesKept = kept.slice(removed.length);
   const fileLines = await readWorktreeFiles(worktree, [
     ...new Set(
-      [...removedSites.flat(), ...symbolSites.flat()].map((site) => site.path),
+      [...removedSites.flat(), ...symbolSitesKept.flat()].map(
+        (site) => site.path,
+      ),
     ),
   ]);
   const mentions = (sites: ReadonlyArray<RankedSite> | undefined) =>
@@ -190,23 +202,24 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
   const removedStillReferenced: Array<BriefReachRemoved> = removed.map(
     (item, index) => ({
       name: item.name,
-      paths: distinctPaths(item.outside).slice(0, MAX_REACH_OUTSIDE_PATHS),
+      paths: item.outside
+        .map((file) => file.path)
+        .slice(0, MAX_REACH_OUTSIDE_PATHS),
       mentions: mentions(removedSites[index]),
-      mentionCount: item.outside.length,
+      mentionCount: matchingLines(item.outside),
     }),
   );
-  const symbols: Array<BriefReachSymbol> = searched.map((item, index) => {
-    const paths = distinctPaths(item.outside);
-    return {
-      name: item.name,
-      outsideCallerFiles: paths.length,
-      outsidePaths: paths.slice(0, MAX_REACH_OUTSIDE_PATHS),
-      insidePR: item.insidePR,
-      status: newNames.has(item.name) ? "new" : "changed",
-      mentions: mentions(symbolSites[index]),
-      mentionCount: item.outside.length,
-    };
-  });
+  const symbols: Array<BriefReachSymbol> = searched.map((item, index) => ({
+    name: item.name,
+    outsideCallerFiles: item.outside.length,
+    outsidePaths: item.outside
+      .map((file) => file.path)
+      .slice(0, MAX_REACH_OUTSIDE_PATHS),
+    insidePR: item.insidePR,
+    status: newNames.has(item.name) ? "new" : "changed",
+    mentions: mentions(symbolSitesKept[index]),
+    mentionCount: matchingLines(item.outside),
+  }));
 
   return {
     _tag: "ok",
@@ -214,24 +227,21 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
   };
 }
 
-/** One line of the head tree that names a symbol as a whole word. */
-type MatchedLine = {
-  readonly path: string;
-  readonly line: number;
-  readonly text: string;
-};
+/** How many lines of one head-tree file name a symbol as a whole word. */
+type FileCount = { readonly path: string; readonly count: number };
 
-/** Every line of the head tree that names `name` as a whole word, or why the search stopped. */
-type SymbolMatches =
-  | { readonly _tag: "matched"; readonly lines: ReadonlyArray<MatchedLine> }
+/** Every head-tree file that names `name` as a whole word, or why the search stopped. */
+type SymbolCounts =
+  | { readonly _tag: "counted"; readonly files: ReadonlyArray<FileCount> }
   | BriefReachUnavailable;
 
-async function searchSymbol(
+/** Counts come from `--count`, whose output is one line per file however long or many the matching lines are. */
+async function countSymbol(
   input: BriefReachInput,
   worktree: string,
   name: string,
   deadline: number,
-): Promise<SymbolMatches> {
+): Promise<SymbolCounts> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) return unavailable("timed_out");
   const output = await runGit(
@@ -241,7 +251,7 @@ async function searchSymbol(
       "grep",
       "--fixed-strings",
       "--word-regexp",
-      "--line-number",
+      "--count",
       "--null",
       "-e",
       name,
@@ -251,9 +261,70 @@ async function searchSymbol(
     ],
     Math.min(MAX_SEARCH_MS, remaining),
   );
-  if (output._tag === "empty") return { _tag: "matched", lines: [] };
+  if (output._tag === "empty") return { _tag: "counted", files: [] };
   if (output._tag !== "found") return unavailable(searchFailure(output._tag));
-  return { _tag: "matched", lines: matchedLines(output.stdout, input.headSha) };
+  return { _tag: "counted", files: fileCounts(output.stdout, input.headSha) };
+}
+
+/** `git grep --count --null` prints `<rev>:<path>\0<count>` per matching file. */
+function fileCounts(stdout: string, rev: string): ReadonlyArray<FileCount> {
+  const files: Array<FileCount> = [];
+  for (const record of stdout.split("\n")) {
+    const [location, count] = record.split("\0");
+    if (location === undefined || !location.startsWith(`${rev}:`)) continue;
+    const lines = Number(count);
+    if (!Number.isInteger(lines) || lines <= 0) continue;
+    files.push({ path: location.slice(rev.length + 1), count: lines });
+  }
+  return files;
+}
+
+function matchingLines(files: ReadonlyArray<FileCount>): number {
+  return files.reduce((total, file) => total + file.count, 0);
+}
+
+/** One line of the head tree that names a symbol as a whole word. */
+type MatchedLine = {
+  readonly path: string;
+  readonly line: number;
+  readonly text: string;
+};
+
+/**
+ * The matching lines of the first outside files, at most a name's site cap per
+ * file, so the output stays small. A search that still fails, such as a
+ * minified line pushing it past the runner's output limit, leaves the name
+ * without sites; its counts already stand.
+ */
+async function symbolSites(
+  input: BriefReachInput,
+  worktree: string,
+  item: { readonly name: string; readonly outside: ReadonlyArray<FileCount> },
+  deadline: number,
+): Promise<ReadonlyArray<MatchedLine>> {
+  const output = await runGit(
+    input,
+    worktree,
+    [
+      "grep",
+      "--fixed-strings",
+      "--word-regexp",
+      "--line-number",
+      "--null",
+      `--max-count=${String(MAX_MENTIONS_PER_NAME)}`,
+      "-e",
+      item.name,
+      input.headSha,
+      "--",
+      ...item.outside
+        .slice(0, MAX_MENTIONS_PER_NAME)
+        .map((file) => `:(literal)${file.path}`),
+    ],
+    Math.min(MAX_SEARCH_MS, deadline - Date.now()),
+  );
+  return output._tag === "found"
+    ? matchedLines(output.stdout, input.headSha)
+    : [];
 }
 
 /** A minified line can run to megabytes; the kind rules only need its start. */
@@ -277,10 +348,6 @@ function matchedLines(stdout: string, rev: string): ReadonlyArray<MatchedLine> {
     });
   }
   return lines;
-}
-
-function distinctPaths(lines: ReadonlyArray<MatchedLine>): Array<string> {
-  return [...new Set(lines.map((line) => line.path))];
 }
 
 /** A matched line with the kind its text reads as. */

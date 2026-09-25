@@ -189,12 +189,16 @@ function declarationAbove(
   return undefined;
 }
 
-function declarationHead(text: string):
+/** A declaration head fits well inside this; longer lines are cut so the head rules cannot backtrack across a minified line. */
+const MAX_DECLARATION_LINE_LENGTH = 500;
+
+function declarationHead(line: string):
   | {
       readonly name: string;
       readonly declares: "function" | "class" | "method";
     }
   | undefined {
+  const text = line.slice(0, MAX_DECLARATION_LINE_LENGTH);
   for (const rule of DECLARATION_RULES) {
     const name = rule.pattern.exec(text)?.[1];
     if (name !== undefined && !CONTROL_WORDS.has(name))
