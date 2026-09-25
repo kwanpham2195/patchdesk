@@ -230,25 +230,13 @@ try {
   await settings.getByTestId("settings-section-data").waitFor();
   await settings.getByTestId("local-review-data-card").waitFor();
   // The fixture route never resolves a workspace profile, so cleanup stays
-  // unavailable: assert the real disabled state and its explanatory copy
-  // instead of an activity load that can never become clickable here.
-  await settings
-    .getByText("Choose a workspace before clearing its local data.", {
-      exact: true,
-    })
-    .waitFor();
+  // unavailable: assert the real disabled state and its alert instead of an
+  // activity load that can never become clickable here.
+  await settings.getByText("No active workspace", { exact: true }).waitFor();
   const clearLocalData = settings.getByTestId("clear-local-data-button");
   if (await clearLocalData.isEnabled())
     throw new Error(
       "Packaged Settings clear-local-data button should stay disabled without an active workspace profile",
-    );
-  const reviewActivityCard = settings.getByTestId("review-activity-card");
-  await reviewActivityCard.scrollIntoViewIfNeeded();
-  await reviewActivityCard.waitFor();
-  const loadActivity = settings.getByRole("button", { name: "Load activity" });
-  if (await loadActivity.isEnabled())
-    throw new Error(
-      "Packaged Settings Load activity button should stay disabled without an active workspace profile",
     );
   const settingsViewport = window
     .getByTestId("settings-scroll-region")
@@ -262,6 +250,22 @@ try {
   if (scrollMetrics.overflowY !== "scroll")
     throw new Error(
       `Packaged Settings content is not independently scrollable: ${JSON.stringify(scrollMetrics)}`,
+    );
+  await window.keyboard.press("Escape");
+  await settings.waitFor({ state: "hidden" });
+  // The Help menu is native and unreachable over CDP; the palette opens the same overlay.
+  await window.getByRole("button", { name: /^Navigate/ }).click();
+  await window.getByRole("option", { name: "Diagnostics" }).click();
+  const diagnostics = window.getByRole("dialog", { name: "Diagnostics" });
+  await diagnostics.waitFor();
+  await diagnostics.getByRole("tab", { name: "Review activity" }).click();
+  await diagnostics.getByTestId("review-activity-card").waitFor();
+  const loadActivity = diagnostics.getByRole("button", {
+    name: "Load activity",
+  });
+  if (await loadActivity.isEnabled())
+    throw new Error(
+      "Packaged Diagnostics Load activity button should stay disabled without an active workspace profile",
     );
   const packagedFonts = await window.evaluate(async () => {
     await globalThis.document.fonts.ready;
