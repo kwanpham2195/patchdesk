@@ -243,6 +243,13 @@ function singleLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+/** Cuts a label past `MAX_FLOW_LABEL_LENGTH` at its last space when it has one, so the reader never shows half a word, and marks the cut with `…`. */
+function capFlowLabel(label: string): string {
+  if (label.length <= MAX_FLOW_LABEL_LENGTH) return label;
+  const space = label.lastIndexOf(" ", MAX_FLOW_LABEL_LENGTH - 1);
+  return `${label.slice(0, space > 0 ? space : MAX_FLOW_LABEL_LENGTH - 1)}…`;
+}
+
 /**
  * Resolves one node's proposed aliases, keeping only hunk citations. Flow
  * cites hunks only, so `resolveBriefCitations` first drops an unknown alias
@@ -285,9 +292,8 @@ function walkFlowNodes(
     if (ctx.visited > MAX_FLOW_NODES_PER_TREE) continue;
 
     // A whitespace-only label cannot fail `v.minLength(1)` on the raw
-    // string, so it is checked here instead, after collapsing and
-    // truncating it the way every other Brief label is capped.
-    const label = singleLine(raw.label).slice(0, MAX_FLOW_LABEL_LENGTH);
+    // string, so it is checked here instead, after collapsing and capping it.
+    const label = capFlowLabel(singleLine(raw.label));
     if (label === "") continue;
 
     const resolved = resolveFlowCitations(raw.citations ?? [], byAlias);

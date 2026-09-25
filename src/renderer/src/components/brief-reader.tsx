@@ -14,6 +14,7 @@ import {
 import {
   BRIEF_REACH_UNAVAILABLE_LABELS,
   briefCitationChipLabel,
+  briefCitationChipName,
   briefCitationChipTitle,
   briefCitationStatusLine,
   briefOwnershipTree,
@@ -462,11 +463,11 @@ function FlowView({
 /**
  * One flattened Flow row: a fixed-width marker column carrying the change
  * (blank for `unchanged`, the same +/− the Ownership tree uses), the row's
- * box-drawing `guide` showing its parent and whether more siblings follow,
- * the label, and its citation chips -- a hunk citation opens the same
- * popover any other chip in Brief does. Added and removed rows get the
- * diff-hue tint from `FLOW_CHANGE_MARKS`; unchanged rows are dimmed and
- * untinted, so the changed steps stand out.
+ * box-drawing `guide` and label on one truncated line, and a right-hand chip
+ * column, so the tree reads straight down however many hunks a step cites.
+ * Added and removed rows get the diff-hue tint from `FLOW_CHANGE_MARKS`;
+ * unchanged rows are dimmed, untinted, and draw no chips, so the changed
+ * steps stand out.
  *
  * Hunk citations on a changed step are best effort: the model keeps a step it
  * added or removed even when it could not place it in the diff. Such a row
@@ -474,8 +475,9 @@ function FlowView({
  * hue and no chip -- a claim the Brief could not verify, shown honestly
  * rather than dropped.
  *
- * A `contract` tree's evidence sits on its root, the exported name, so its
- * signature and field rows draw no chip and are never marked uncited.
+ * A `contract` tree's evidence sits on its root, the exported name, so the
+ * root keeps its chips even when unchanged, and its signature and field rows
+ * draw no chip and are never marked uncited.
  */
 function FlowRowView({
   row,
@@ -488,11 +490,13 @@ function FlowRowView({
 }): React.JSX.Element {
   const mark = FLOW_CHANGE_MARKS[row.change];
   const citedOnRoot = kind === "contract" && row.depth > 0;
-  const citations = citedOnRoot ? [] : row.citations;
+  const chipsShown =
+    kind === "contract" ? row.depth === 0 : row.change !== "unchanged";
   const uncited =
-    !citedOnRoot && row.change !== "unchanged" && citations.length === 0;
+    !citedOnRoot && row.change !== "unchanged" && row.citations.length === 0;
   return (
     <div
+      title={row.label}
       className={`flex items-baseline gap-2 rounded px-1 py-0.5 font-mono text-xs ${uncited ? mark.uncitedRowClassName : mark.rowClassName}`}
     >
       <span
@@ -503,7 +507,7 @@ function FlowRowView({
         {mark.glyph}
       </span>
       <span
-        className={`min-w-0 [overflow-wrap:anywhere] ${row.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
+        className={`min-w-0 flex-1 truncate ${row.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
       >
         <span
           aria-hidden="true"
@@ -511,15 +515,19 @@ function FlowRowView({
         >
           {row.guide}
         </span>
-        {row.label}{" "}
-        {citations.map((citation) => (
-          <CitationChip
-            key={citation.alias}
-            citation={citation}
-            raw={citedHunks?.[citation.alias]}
-          />
-        ))}
+        {row.label}
       </span>
+      {!chipsShown || row.citations.length === 0 ? null : (
+        <span className="flex max-w-48 shrink-0 flex-wrap justify-end gap-y-0.5">
+          {row.citations.map((citation) => (
+            <CitationChip
+              key={citation.alias}
+              citation={citation}
+              raw={citedHunks?.[citation.alias]}
+            />
+          ))}
+        </span>
+      )}
     </div>
   );
 }
@@ -654,7 +662,7 @@ function CitationChip({
           <button
             type="button"
             title={briefCitationChipTitle(citation)}
-            aria-label={`Show hunk ${chipLabel}`}
+            aria-label={`Show hunk ${briefCitationChipName(citation)}`}
             className={`${CITATION_CHIP_CLASS_NAME} hover:bg-accent/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring`}
           />
         }

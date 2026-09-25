@@ -446,24 +446,34 @@ describe("normalizeBriefFlow", () => {
     ]);
   });
 
-  it("truncates a label longer than 120 characters instead of dropping it", () => {
-    const raw: BriefFlowOutput = [
-      {
-        kind: "call_tree",
-        title: "Long label",
-        nodes: [
-          { label: "keep this step", change: "added", citations: ["h1"] },
-          { label: "x".repeat(121), change: "unchanged" },
-        ],
-      },
-    ];
-    const result = normalize(raw, NON_UI_PATHS);
-    expect(result.rejected).toBe(0);
-    expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
-      "keep this step",
-      "x".repeat(120),
-    ]);
-  });
+  // A signature cut mid-word read as a different name (`hasUpdates, termina`).
+  it.each([
+    [
+      "at the last space before the cap",
+      `${"word ".repeat(23)}signatureName, anotherLongerParameterName`,
+      `${"word ".repeat(23).trimEnd()}…`,
+    ],
+    ["mid-word when it has no space", "x".repeat(121), `${"x".repeat(119)}…`],
+  ])(
+    "cuts a label longer than 120 characters %s and ends it with an ellipsis",
+    (_, label, expected) => {
+      const raw: BriefFlowOutput = [
+        {
+          kind: "call_tree",
+          title: "Long label",
+          nodes: [
+            { label: "keep this step", change: "added", citations: ["h1"] },
+            { label, change: "unchanged" },
+          ],
+        },
+      ];
+      const result = normalize(raw, NON_UI_PATHS);
+      const kept = result.value?.trees[0]?.nodes[1]?.label;
+      expect(result.rejected).toBe(0);
+      expect(kept).toBe(expected);
+      expect(kept?.length).toBeLessThanOrEqual(120);
+    },
+  );
 
   it("drops a node whose label is only whitespace, and does not count it rejected", () => {
     const raw: BriefFlowOutput = [
