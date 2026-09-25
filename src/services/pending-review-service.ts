@@ -31,7 +31,7 @@ import {
   type WorkspaceProfileId,
   type IsoTimestamp,
 } from "../domain/ids";
-import type { ReviewSession } from "../domain/review-session";
+import type { PullRequestReviewSession } from "../domain/review-session";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -107,13 +107,13 @@ export type PendingReviewServiceFailure =
   | "pending_review_locked";
 
 export type PendingReviewCommandResult = {
-  readonly session: ReviewSession;
+  readonly session: PullRequestReviewSession;
   readonly state: PendingReviewState;
 };
 
 /** A reconciled Review; `unavailable` means GitHub was not read, never None. */
 type PendingReviewReconciled = {
-  readonly session: ReviewSession;
+  readonly session: PullRequestReviewSession;
   readonly state: PendingReviewState;
   readonly unavailable: boolean;
 };
@@ -205,7 +205,7 @@ export class PendingReviewService {
    * method only owns pending-draft and Finding-receipt policy.
    */
   adoptObservedState(input: {
-    readonly session: ReviewSession;
+    readonly session: PullRequestReviewSession;
     readonly observed: PendingReviewRead;
     readonly evidenceComplete: boolean;
     readonly comments: GitHubComments;
@@ -334,7 +334,7 @@ export class PendingReviewService {
       ...sessionWithoutReceipts
     } = session;
     void _previousReceipts;
-    const nextSession: ReviewSession =
+    const nextSession: PullRequestReviewSession =
       receipts === undefined || receipts.length === 0
         ? { ...sessionWithoutReceipts, pendingReview: next }
         : {
@@ -557,7 +557,7 @@ export class PendingReviewService {
   private async settleGonePendingReview(
     input: Pick<SubmitPendingReviewInput, "profileId" | "reviewId">,
     profile: WorkspaceProfileConfig,
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     recorded: Extract<PendingReviewState, { readonly _tag: "Pending" }>,
   ): Promise<boolean> {
     const pr = sessionPr(session);
@@ -650,7 +650,7 @@ export class PendingReviewService {
     expected: ReviewWriteExpectation,
     operation: (
       profile: WorkspaceProfileConfig,
-      session: ReviewSession,
+      session: PullRequestReviewSession,
     ) => Promise<
       Result<PendingReviewCommandResult, PendingReviewServiceFailure>
     >,
@@ -679,7 +679,7 @@ export class PendingReviewService {
   private async executeWrite(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     state: PendingReviewState,
     operation: PendingReviewOperation,
     write: () => Promise<
@@ -808,7 +808,7 @@ export class PendingReviewService {
   /** Keep the intent and lock the Review for read-side recovery (ADR 0035). */
   private async lockOutcomeUnknown(
     reviewId: ReviewId,
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     begun: PendingReviewState,
   ): Promise<PendingReviewServiceFailure> {
     const unknown = markPendingReviewOutcomeUnknown(begun);
@@ -825,7 +825,7 @@ export class PendingReviewService {
   // A failed save leaves WriteInFlight on disk, which locks the Review until recovery.
   private async persistRejection(
     reviewId: ReviewId,
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     rejected: PendingReviewState,
   ): Promise<void> {
     if (await this.persist(session, rejected)) return;
@@ -846,7 +846,7 @@ export class PendingReviewService {
    * stays uncertain.
    */
   private async resolvePendingReviewConflict(
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     intent: PendingReviewThreadIntent,
   ): Promise<PendingReviewConflictOutcome> {
     const account = await this.github.resolveAuthenticatedAccount(
@@ -884,7 +884,7 @@ export class PendingReviewService {
   }
 
   private async persist(
-    session: ReviewSession,
+    session: PullRequestReviewSession,
     pendingReview: PendingReviewState,
     findingReviewReceipts = session.findingReviewReceipts,
   ): Promise<boolean> {
@@ -961,12 +961,12 @@ function projectPendingReviewOwner(
   };
 }
 
-function sessionPr(session: ReviewSession): PullRequestRef {
+function sessionPr(session: PullRequestReviewSession): PullRequestRef {
   return {
     host: session.key.host,
     owner: session.key.owner,
     repo: session.key.repo,
-    number: session.key.prNumber,
+    number: session.key.source.prNumber,
   };
 }
 

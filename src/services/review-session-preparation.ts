@@ -23,9 +23,10 @@ import {
 import type { PullRequestRef } from "../domain/pull-request";
 import {
   createReviewSession,
+  isPullRequestReviewSession,
   sameReviewRevision,
+  type PullRequestReviewSession,
   type ReviewRevision,
-  type ReviewSession,
 } from "../domain/review-session";
 import { definedProps } from "../domain/defined-props";
 import { KeyedMutex } from "../domain/keyed-mutex";
@@ -58,7 +59,7 @@ export type PrepareReviewSessionInput = {
 };
 
 export type PreparedReviewSession = {
-  readonly session: ReviewSession;
+  readonly session: PullRequestReviewSession;
   readonly disposition: "resumed" | "prepared";
 };
 
@@ -135,7 +136,7 @@ export class ReviewSessionPreparation {
       host: input.pullRequest.host,
       owner: input.pullRequest.owner,
       repo: input.pullRequest.repo,
-      prNumber: input.pullRequest.number,
+      source: { kind: "pull_request", prNumber: input.pullRequest.number },
       ...revision,
     });
     const run = (): Promise<
@@ -165,7 +166,12 @@ export class ReviewSessionPreparation {
       input.profileId,
       sessionId,
     );
-    if (stored._tag === "ok" && input.replaceExistingSession !== true)
+    // The id was built from a pull request key, so a stored session under it is that kind.
+    if (
+      stored._tag === "ok" &&
+      isPullRequestReviewSession(stored.value) &&
+      input.replaceExistingSession !== true
+    )
       return ok({ session: stored.value, disposition: "resumed" });
     const previousPatch =
       stored._tag === "ok" && input.replaceExistingSession === true
@@ -353,7 +359,7 @@ export class ReviewSessionPreparation {
     const committing = await journal.markCommitting();
     if (committing._tag === "err")
       return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    const prContext: NonNullable<ReviewSession["prContext"]> = {
+    const prContext: NonNullable<PullRequestReviewSession["prContext"]> = {
       title: current.value.title,
       author: current.value.author,
       headBranch: current.value.headBranch,
@@ -366,7 +372,7 @@ export class ReviewSessionPreparation {
         host: input.pullRequest.host,
         owner: input.pullRequest.owner,
         repo: input.pullRequest.repo,
-        prNumber: input.pullRequest.number,
+        source: { kind: "pull_request", prNumber: input.pullRequest.number },
         ...revision,
       },
       pr: {
@@ -398,7 +404,7 @@ export class ReviewSessionPreparation {
         host: input.pullRequest.host,
         owner: input.pullRequest.owner,
         repo: input.pullRequest.repo,
-        prNumber: input.pullRequest.number,
+        source: { kind: "pull_request", prNumber: input.pullRequest.number },
       }),
       pullRequest: input.pullRequest,
     });

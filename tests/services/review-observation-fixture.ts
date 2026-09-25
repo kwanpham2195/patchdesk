@@ -22,7 +22,10 @@ export const identity = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
+  source: {
+    kind: "pull_request" as const,
+    prNumber: must(parsePullRequestNumber(42)),
+  },
 };
 export const headSha = must(parseGitSha("1".repeat(40)));
 export const baseSha = must(parseGitSha("0".repeat(40)));
@@ -50,7 +53,7 @@ export function snapshot(input: {
         host: identity.host,
         owner: identity.owner,
         repo: identity.repo,
-        number: identity.prNumber,
+        number: identity.source.prNumber,
       },
       headSha,
       baseSha,

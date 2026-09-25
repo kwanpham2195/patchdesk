@@ -47,7 +47,10 @@ import type {
   FindingReviewSource,
   PendingReviewAnchor,
 } from "../domain/pending-review";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type ReviewSession,
+} from "../domain/review-session";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
@@ -293,6 +296,8 @@ export class InsightRunCoordinator {
           ? "not_found"
           : "storage_unavailable",
       );
+    // Insight runs on a local Review arrive with #450.
+    if (!isPullRequestReviewSession(session.value)) return err("not_found");
     const hash = parseContentHash(await contentHash(session.value.patchPath));
     if (hash._tag === "err") return err("storage_unavailable");
     // The context pack is built here, not at prepare, and this runs under

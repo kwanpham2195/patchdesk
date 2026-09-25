@@ -173,7 +173,7 @@ describe("metadata recovery evidence", () => {
             host: "github.com",
             owner: "octo-org",
             repo: "patchdesk",
-            prNumber: 42,
+            source: { kind: "pull_request", prNumber: 42 },
             headSha: "1".repeat(40),
           },
         },

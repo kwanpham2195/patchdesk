@@ -40,7 +40,7 @@ const sessionId = createReviewSessionId({
   host,
   owner,
   repo,
-  prNumber,
+  source: { kind: "pull_request", prNumber },
   headSha,
   baseSha,
 });
@@ -51,7 +51,7 @@ const session = reviewSessionFixture({
     host,
     owner,
     repo,
-    prNumber,
+    source: { kind: "pull_request", prNumber },
     headSha,
     baseSha,
   },
@@ -652,7 +652,10 @@ describe("StorageManagementService", () => {
         host,
         owner,
         repo,
-        prNumber: unwrap(parsePullRequestNumber(43)),
+        source: {
+          kind: "pull_request",
+          prNumber: unwrap(parsePullRequestNumber(43)),
+        },
         headSha: unwrap(parseGitSha("b".repeat(40))),
         baseSha: unwrap(parseGitSha("c".repeat(40))),
       });
@@ -665,7 +668,7 @@ describe("StorageManagementService", () => {
             id: second,
             key: {
               ...session.key,
-              prNumber: 43,
+              source: { kind: "pull_request", prNumber: 43 },
               headSha: "b".repeat(40),
               baseSha: "c".repeat(40),
             },

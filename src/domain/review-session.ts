@@ -2,16 +2,17 @@ import {
   createReviewSessionId,
   type AbsolutePath,
   type ContentHash,
-  type GitHubHost,
-  type GitHubOwner,
-  type GitHubRepoName,
   type GitSha,
   type IsoTimestamp,
-  type PullRequestNumber,
   type ReviewSessionId,
-  type WorkspaceProfileId,
 } from "./ids";
 import { definedProps } from "./defined-props";
+import type { ReviewIdentity } from "./review";
+import type {
+  LocalReviewSource,
+  PullRequestReviewSource,
+  ReviewSource,
+} from "./review-source";
 import type { PullRequestSnapshot } from "./github-context";
 import type { DirectSummaryReviewState } from "./direct-summary-review";
 import type {
@@ -23,11 +24,25 @@ export type ReviewLocalCheckoutWarning =
   | "missing_local_path"
   | "local_checkout_unavailable";
 
-/** Immutable local artifacts and current durable GitHub-write evidence for one pinned revision. */
-export type ReviewSession = {
+/** The fields every session kind shares; the kind lives in `key.source`. */
+export type ReviewSessionFields = {
   readonly schemaVersion: 6;
   readonly id: ReviewSessionId;
-  readonly key: ReviewSessionKey;
+  readonly patchPath: AbsolutePath;
+  readonly canonicalPatchHash?: ContentHash;
+  readonly localCheckoutWarning?: ReviewLocalCheckoutWarning;
+  readonly worktree: ReviewWorktreeRef;
+  readonly createdAt: IsoTimestamp;
+  readonly updatedAt: IsoTimestamp;
+};
+
+/**
+ * Immutable local artifacts and current durable GitHub-write evidence for one
+ * pinned pull request revision. `pr`, `prContext`, and the GitHub pending
+ * review state exist only on this kind (ADR 0050).
+ */
+export type PullRequestReviewSession = ReviewSessionFields & {
+  readonly key: ReviewSessionKey<PullRequestReviewSource>;
   readonly pr: PullRequestSnapshot & { readonly baseSha: GitSha };
   readonly prContext?: {
     readonly title: string;
@@ -36,28 +51,34 @@ export type ReviewSession = {
     readonly headBranch: string;
     readonly baseBranch: string;
   };
-  readonly patchPath: AbsolutePath;
-  readonly canonicalPatchHash?: ContentHash;
-  readonly localCheckoutWarning?: ReviewLocalCheckoutWarning;
-  readonly worktree: ReviewWorktreeRef;
   readonly pendingReview?: PendingReviewState;
   readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
   readonly directSummaryReview?: DirectSummaryReviewState;
-  readonly createdAt: IsoTimestamp;
-  readonly updatedAt: IsoTimestamp;
 };
 
-export type ReviewSessionKey = {
-  readonly profileId: WorkspaceProfileId;
-  readonly host: GitHubHost;
-  readonly owner: GitHubOwner;
-  readonly repo: GitHubRepoName;
-  readonly prNumber: PullRequestNumber;
+/** Immutable local artifacts for one pinned revision of a local Review source. */
+export type LocalReviewSession = ReviewSessionFields & {
+  readonly key: ReviewSessionKey<LocalReviewSource>;
+};
+
+/** The local work for one pinned revision of a Review source. */
+export type ReviewSession = PullRequestReviewSession | LocalReviewSession;
+
+/** Narrow a session to the pull request kind before any GitHub read or write. */
+export function isPullRequestReviewSession(
+  session: ReviewSession,
+): session is PullRequestReviewSession {
+  return session.key.source.kind === "pull_request";
+}
+
+/** A Review identity plus the pinned revision; the session id is derived from it. */
+export type ReviewSessionKey<Source extends ReviewSource = ReviewSource> =
+  ReviewIdentity<Source> & ReviewRevision;
+
+export type ReviewRevision = {
   readonly headSha: GitSha;
   readonly baseSha: GitSha;
 };
-
-export type ReviewRevision = Pick<ReviewSessionKey, "headSha" | "baseSha">;
 
 export function sameReviewRevision(
   left: ReviewRevision,
@@ -73,15 +94,15 @@ export type ReviewWorktreeRef = {
 
 /** Constructs a deterministic session without filesystem or GitHub effects. */
 export function createReviewSession(input: {
-  readonly key: ReviewSessionKey;
+  readonly key: ReviewSessionKey<PullRequestReviewSource>;
   readonly pr: PullRequestSnapshot & { readonly baseSha: GitSha };
-  readonly prContext?: ReviewSession["prContext"];
+  readonly prContext?: PullRequestReviewSession["prContext"];
   readonly patchPath: AbsolutePath;
   readonly canonicalPatchHash?: ContentHash;
   readonly localCheckoutWarning?: ReviewLocalCheckoutWarning;
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
-}): ReviewSession {
+}): PullRequestReviewSession {
   return {
     schemaVersion: 6,
     id: createReviewSessionId(input.key),

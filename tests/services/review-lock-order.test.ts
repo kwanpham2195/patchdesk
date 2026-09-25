@@ -128,7 +128,7 @@ const sessionId = createReviewSessionId({
   host: pullRequest.host,
   owner: pullRequest.owner,
   repo: pullRequest.repo,
-  prNumber: pullRequest.number,
+  source: { kind: "pull_request", prNumber: pullRequest.number },
   headSha,
   baseSha,
 });

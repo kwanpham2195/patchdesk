@@ -9,7 +9,7 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { GitSha, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import type { PullRequestCommit } from "../domain/github-context";
 import { err, ok, type Result } from "../domain/result";
-import { sessionRepresentsReview } from "../domain/review";
+import { isPullRequestReview, sessionRepresentsReview } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import { selectSinceReviewBaseline } from "../domain/since-review-baseline";
 import type { GitReadExecutor } from "./review-worktree-service";
@@ -169,7 +169,8 @@ export class ReviewCommitService {
       snapshotIdentity.host !== review.value.identity.host ||
       snapshotIdentity.owner !== review.value.identity.owner ||
       snapshotIdentity.repo !== review.value.identity.repo ||
-      snapshotIdentity.number !== review.value.identity.prNumber
+      !isPullRequestReview(review.value) ||
+      snapshotIdentity.number !== review.value.identity.source.prNumber
     )
       return err({ reason: "stale_head" });
     const session = await this.sessions.load(

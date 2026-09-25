@@ -203,7 +203,7 @@ describe("local API current Review capability boundary", () => {
       host,
       owner,
       repo,
-      prNumber: number,
+      source: { kind: "pull_request", prNumber: number },
       headSha,
       baseSha,
     });
@@ -222,7 +222,7 @@ describe("local API current Review capability boundary", () => {
               host,
               owner,
               repo,
-              prNumber: number,
+              source: { kind: "pull_request", prNumber: number },
               headSha,
               baseSha,
             },

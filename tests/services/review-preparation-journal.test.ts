@@ -64,7 +64,10 @@ async function fixture() {
     host: must(parseGitHubHost("github.com")),
     owner: must(parseGitHubOwner("octo-org")),
     repo: must(parseGitHubRepoName("patchdesk")),
-    prNumber: must(parsePullRequestNumber(42)),
+    source: {
+      kind: "pull_request",
+      prNumber: must(parsePullRequestNumber(42)),
+    },
     headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
     baseSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
   });
@@ -213,7 +216,7 @@ function persistedSession(
       host,
       owner,
       repo,
-      prNumber,
+      source: { kind: "pull_request", prNumber },
       headSha,
       baseSha: headSha,
     },
@@ -263,7 +266,7 @@ describe("ReviewPreparationJournal", () => {
       host: must(host),
       owner: must(owner),
       repo: must(repo),
-      prNumber: must(prNumber),
+      source: { kind: "pull_request", prNumber: must(prNumber) },
       headSha: must(headSha),
       baseSha: must(headSha),
     });

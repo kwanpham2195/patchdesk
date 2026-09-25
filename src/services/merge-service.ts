@@ -13,7 +13,7 @@ import {
 } from "../domain/merge-readiness";
 import type { GitSha } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
-import type { ReviewSession } from "../domain/review-session";
+import type { PullRequestReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
@@ -45,7 +45,7 @@ export type MergeFailure =
 /** Performs one explicit merge only after fresh PR evidence satisfies the selected readiness policy. */
 export async function mergePullRequest(input: {
   readonly profile: WorkspaceProfileConfig;
-  readonly session: ReviewSession;
+  readonly session: PullRequestReviewSession;
   /**
    * The current Analysis Findings, dismissals and review receipts already
    * applied. Absent means "no current Analysis", not "no Findings were
@@ -162,11 +162,11 @@ function sameWarningCodes(
   );
 }
 
-function sessionPr(session: ReviewSession): PullRequestRef {
+function sessionPr(session: PullRequestReviewSession): PullRequestRef {
   return {
     host: session.key.host,
     owner: session.key.owner,
     repo: session.key.repo,
-    number: session.key.prNumber,
+    number: session.key.source.prNumber,
   };
 }

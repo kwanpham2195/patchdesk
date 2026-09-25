@@ -12,7 +12,7 @@ const identity = {
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
   repo: "patchdesk" as never,
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
-  prNumber: 42 as never,
+  source: { kind: "pull_request" as const, prNumber: 42 as never },
 };
 // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
 const now = "2026-08-01T00:00:00.000Z" as never;

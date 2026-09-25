@@ -54,7 +54,10 @@ function review(input: {
     host,
     owner,
     repo,
-    prNumber: must(parsePullRequestNumber(input.number)),
+    source: {
+      kind: "pull_request",
+      prNumber: must(parsePullRequestNumber(input.number)),
+    },
   };
   const base = createReview({
     identity,

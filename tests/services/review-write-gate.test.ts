@@ -42,7 +42,10 @@ const key = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
+  source: {
+    kind: "pull_request" as const,
+    prNumber: must(parsePullRequestNumber(42)),
+  },
   headSha: must(parseGitSha("1".repeat(40))),
   baseSha: must(parseGitSha("0".repeat(40))),
 };
@@ -119,7 +122,7 @@ describe("ReviewWriteGate", () => {
           host: key.host,
           owner: key.owner,
           repo: key.repo,
-          number: key.prNumber,
+          number: key.source.prNumber,
         },
         headSha: key.headSha,
         isDraft: false,
@@ -146,7 +149,7 @@ describe("ReviewWriteGate", () => {
           host: key.host,
           owner: key.owner,
           repo: key.repo,
-          prNumber: key.prNumber,
+          source: { kind: "pull_request", prNumber: key.source.prNumber },
         },
         currentSessionId: storedSession.id,
         headSha: key.headSha,
@@ -162,7 +165,7 @@ describe("ReviewWriteGate", () => {
           host: key.host,
           owner: key.owner,
           repo: key.repo,
-          prNumber: key.prNumber,
+          source: { kind: "pull_request", prNumber: key.source.prNumber },
         },
         currentSessionId: storedSession.id,
         headSha: key.headSha,
@@ -261,7 +264,7 @@ describe("ReviewWriteGate revision agreement", () => {
     host: key.host,
     owner: key.owner,
     repo: key.repo,
-    prNumber: key.prNumber,
+    source: key.source,
   };
   const movedHeadSha = must(parseGitSha("9".repeat(40)));
   const profile = must(
@@ -299,7 +302,7 @@ describe("ReviewWriteGate revision agreement", () => {
         host: key.host,
         owner: key.owner,
         repo: key.repo,
-        number: key.prNumber,
+        number: key.source.prNumber,
       },
       headSha: key.headSha,
       isDraft: false,
@@ -358,7 +361,12 @@ describe("ReviewWriteGate revision agreement", () => {
       { host: must(parseGitHubHost("ghe.example.com")) },
       { owner: must(parseGitHubOwner("someone-else")) },
       { repo: must(parseGitHubRepoName("other-repo")) },
-      { prNumber: must(parsePullRequestNumber(43)) },
+      {
+        source: {
+          kind: "pull_request" as const,
+          prNumber: must(parsePullRequestNumber(43)),
+        },
+      },
     ]) {
       await expect(
         gateFor({ ...key, ...mismatch }).requireFresh(profileId, review.id),

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,7 +9,10 @@ import {
   parseStoredReviewSession,
 } from "../../src/adapters/storage/review-session-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { createReviewSession } from "../../src/domain/review-session";
+import {
+  createReviewSession,
+  type LocalReviewSession,
+} from "../../src/domain/review-session";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -19,6 +22,7 @@ import {
   parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
+  parseLocalBranchName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
@@ -174,7 +178,10 @@ describe("ReviewSession storage", () => {
       host: must(parseGitHubHost("github.com")),
       owner: must(parseGitHubOwner("octo-org")),
       repo: must(parseGitHubRepoName("patchdesk")),
-      prNumber: must(parsePullRequestNumber(42)),
+      source: {
+        kind: "pull_request" as const,
+        prNumber: must(parsePullRequestNumber(42)),
+      },
       headSha: must(parseGitSha("a".repeat(40))),
       baseSha: must(parseGitSha("b".repeat(40))),
     };
@@ -205,6 +212,80 @@ describe("ReviewSession storage", () => {
     await expect(store.load(profileId, session.id)).resolves.toMatchObject({
       _tag: "ok",
       value: { canonicalPatchHash },
+    });
+  });
+
+  it("writes a pull request session back in the stored form it had before local sources", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-session-store-"));
+    roots.push(root);
+    const paths = PatchdeskPaths.forTest(root);
+    const session = must(parseStoredReviewSession(current));
+
+    await expect(new ReviewSessionStore(paths).save(session)).resolves.toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    const written: unknown = JSON.parse(
+      await readFile(
+        paths.sessionFile(session.key.profileId, session.id),
+        "utf8",
+      ),
+    );
+    expect(written).toEqual(current);
+  });
+
+  it("saves and loads a local branch session with its source and no pull request fields", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-session-store-"));
+    roots.push(root);
+    const paths = PatchdeskPaths.forTest(root);
+    const store = new ReviewSessionStore(paths);
+    const profileId = must(parseWorkspaceProfileId("acme"));
+    const key = {
+      profileId,
+      host: must(parseGitHubHost("github.com")),
+      owner: must(parseGitHubOwner("octo-org")),
+      repo: must(parseGitHubRepoName("patchdesk")),
+      source: {
+        kind: "branch" as const,
+        branch: must(parseLocalBranchName("feat/login")),
+        baseBranch: must(parseLocalBranchName("main")),
+      },
+      headSha: must(parseGitSha("a".repeat(40))),
+      baseSha: must(parseGitSha("b".repeat(40))),
+    };
+    const sessionId = createReviewSessionId(key);
+    const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
+    const session: LocalReviewSession = {
+      schemaVersion: 6,
+      id: sessionId,
+      key,
+      patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionId))),
+      worktree: {
+        path: must(
+          parseAbsolutePath(paths.worktreeDirectory(profileId, sessionId)),
+        ),
+        headSha: key.headSha,
+      },
+      createdAt: at,
+      updatedAt: at,
+    };
+
+    await expect(store.save(session)).resolves.toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    await expect(store.load(profileId, sessionId)).resolves.toEqual({
+      _tag: "ok",
+      value: session,
+    });
+    const written: unknown = JSON.parse(
+      await readFile(paths.sessionFile(profileId, sessionId), "utf8"),
+    );
+    expect(written).not.toHaveProperty("pr");
+    expect(written).toMatchObject({
+      key: {
+        source: { kind: "branch", branch: "feat/login", baseBranch: "main" },
+      },
     });
   });
 });

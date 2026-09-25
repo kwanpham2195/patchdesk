@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createReview } from "../../src/domain/review";
+import { createReview, serializeReview } from "../../src/domain/review";
 import { parseRefreshOperation } from "../../src/domain/refresh-operation";
 import {
   createReviewSessionId,
@@ -24,7 +24,10 @@ const identity = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo")),
   repo: must(parseGitHubRepoName("widgets")),
-  prNumber: must(parsePullRequestNumber(7)),
+  source: {
+    kind: "pull_request" as const,
+    prNumber: must(parsePullRequestNumber(7)),
+  },
 };
 const headSha = must(parseGitSha("a".repeat(40)));
 const review = createReview({
@@ -53,7 +56,10 @@ describe("refresh operation", () => {
         ...operation,
         state: {
           _tag: "Prepared",
-          nextReview: { ...review, updatedAt: "2026-09-17T10:00:00.000Z" },
+          nextReview: serializeReview({
+            ...review,
+            updatedAt: must(parseIsoTimestamp("2026-09-17T10:00:00.000Z")),
+          }),
           sessionId: review.currentSessionId,
           snapshotHash: "d".repeat(64),
         },

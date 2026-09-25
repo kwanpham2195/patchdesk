@@ -95,7 +95,10 @@ describe("maintainer inbox cache store", () => {
             reviewId: createReviewId({
               profileId: acme,
               ...repository,
-              prNumber: must(parsePullRequestNumber(42)),
+              source: {
+                kind: "pull_request",
+                prNumber: must(parsePullRequestNumber(42)),
+              },
             }),
             reviewedHeadSha: sha,
             updatedAt,

@@ -108,7 +108,7 @@ async function seedRepresentedReview(
     host,
     owner,
     repo,
-    prNumber: number,
+    source: { kind: "pull_request", prNumber: number },
     headSha,
     baseSha,
   });
@@ -124,7 +124,7 @@ async function seedRepresentedReview(
       host,
       owner,
       repo,
-      prNumber: number,
+      source: { kind: "pull_request", prNumber: number },
       headSha,
       baseSha,
     },
@@ -137,7 +137,13 @@ async function seedRepresentedReview(
   });
   expect((await new ReviewSessionStore(paths).save(session))._tag).toBe("ok");
   const review = createReview({
-    identity: { profileId, host, owner, repo, prNumber: number },
+    identity: {
+      profileId,
+      host,
+      owner,
+      repo,
+      source: { kind: "pull_request", prNumber: number },
+    },
     currentSessionId: session.id,
     headSha,
     createdAt: session.createdAt,

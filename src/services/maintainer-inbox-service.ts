@@ -49,7 +49,10 @@ import {
 import type { PullRequestRef } from "../domain/pull-request";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { parseStoredBrief } from "../domain/stored-brief";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../domain/review-session";
 import { ok, type Result } from "../domain/result";
 import type {
   WorkspaceProfileConfig,
@@ -197,7 +200,7 @@ type InboxRepositoryReadInput = {
   readonly filter: NormalizedInboxFilter;
   readonly pageSize: InboxPageSize;
   readonly cursor: string | undefined;
-  readonly sessions: ReadonlyArray<ReviewSession>;
+  readonly sessions: ReadonlyArray<PullRequestReviewSession>;
 };
 
 /** Reads one Selected repository's maintainer inbox page and keeps its GitHub cursor inside an opaque token. */
@@ -326,8 +329,11 @@ export class MaintainerInboxService {
 
     const sessions = await this.sessions.listSessions(profile.id);
     const allSessions = sessions._tag === "ok" ? sessions.value : [];
-    const repositorySessions = allSessions.filter((session) =>
-      sameRepositoryIdentity(session.key, repository),
+    // Review indicators describe pull request rows, so only pull request sessions feed them.
+    const repositorySessions = allSessions.filter(
+      (session): session is PullRequestReviewSession =>
+        isPullRequestReviewSession(session) &&
+        sameRepositoryIdentity(session.key, repository),
     );
     const read = await this.readRepository({
       profile,
@@ -712,7 +718,7 @@ function encodeInboxPageToken(token: InboxPageToken): string {
  */
 async function readInsightReadiness(
   summary: PullRequestSummary,
-  sessions: ReadonlyArray<ReviewSession>,
+  sessions: ReadonlyArray<PullRequestReviewSession>,
   insights: InboxInsightReader | undefined,
 ): Promise<InboxInsightReadiness | undefined> {
   if (insights === undefined) return undefined;
@@ -723,7 +729,7 @@ async function readInsightReadiness(
     host: session.key.host,
     owner: session.key.owner,
     repo: session.key.repo,
-    prNumber: session.key.prNumber,
+    source: session.key.source,
   });
   // Each kind is its own stored record, so reading them independently keeps
   // one corrupt or missing record from hiding the kinds beside it.
@@ -768,28 +774,28 @@ function rowInsightState(
 /** Any Review session Patchdesk holds for this row's pull request, at any head. */
 function sessionForRow(
   summary: PullRequestSummary,
-  sessions: ReadonlyArray<ReviewSession>,
-): ReviewSession | undefined {
+  sessions: ReadonlyArray<PullRequestReviewSession>,
+): PullRequestReviewSession | undefined {
   return sessions.find(
     (candidate) =>
       candidate.key.host === summary.ref.host &&
       candidate.key.owner === summary.ref.owner &&
       candidate.key.repo === summary.ref.repo &&
-      candidate.key.prNumber === summary.ref.number,
+      candidate.key.source.prNumber === summary.ref.number,
   );
 }
 
 /** The Review session Patchdesk holds for exactly this row's current head. */
 function sessionAtCurrentHead(
   summary: PullRequestSummary,
-  sessions: ReadonlyArray<ReviewSession>,
-): ReviewSession | undefined {
+  sessions: ReadonlyArray<PullRequestReviewSession>,
+): PullRequestReviewSession | undefined {
   return sessions.find(
     (candidate) =>
       candidate.key.host === summary.ref.host &&
       candidate.key.owner === summary.ref.owner &&
       candidate.key.repo === summary.ref.repo &&
-      candidate.key.prNumber === summary.ref.number &&
+      candidate.key.source.prNumber === summary.ref.number &&
       candidate.key.headSha === summary.headSha,
   );
 }
@@ -803,7 +809,7 @@ function sessionAtCurrentHead(
  */
 async function readCurrentHeadScope(
   summary: PullRequestSummary,
-  sessions: ReadonlyArray<ReviewSession>,
+  sessions: ReadonlyArray<PullRequestReviewSession>,
 ): Promise<ChangeScope | undefined> {
   const session = sessionAtCurrentHead(summary, sessions);
   if (session === undefined) return undefined;
@@ -815,14 +821,14 @@ async function readCurrentHeadScope(
 
 function latestReviewFor(
   summary: PullRequestSummary,
-  sessions: ReadonlyArray<ReviewSession>,
+  sessions: ReadonlyArray<PullRequestReviewSession>,
 ): InboxReviewSummary | undefined {
   const session = sessions.find(
     (candidate) =>
       candidate.key.host === summary.ref.host &&
       candidate.key.owner === summary.ref.owner &&
       candidate.key.repo === summary.ref.repo &&
-      candidate.key.prNumber === summary.ref.number,
+      candidate.key.source.prNumber === summary.ref.number,
   );
   return session === undefined
     ? undefined
@@ -832,7 +838,7 @@ function latestReviewFor(
           host: session.key.host,
           owner: session.key.owner,
           repo: session.key.repo,
-          prNumber: session.key.prNumber,
+          source: session.key.source,
         }),
         reviewedHeadSha: session.key.headSha,
         updatedAt: session.updatedAt,

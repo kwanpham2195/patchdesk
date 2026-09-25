@@ -244,7 +244,7 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
               host: values.identity.host,
               owner: values.identity.owner,
               repo: values.identity.repo,
-              number: values.identity.prNumber,
+              number: values.identity.source.prNumber,
             },
             headSha: values.headSha,
             baseSha: values.baseSha,

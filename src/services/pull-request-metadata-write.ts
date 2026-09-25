@@ -16,6 +16,7 @@ import type {
 import type { PullRequestRef } from "../domain/pull-request";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import type { ReviewSessionKey } from "../domain/review-session";
+import type { PullRequestReviewSource } from "../domain/review-source";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
@@ -83,13 +84,13 @@ export type PullRequestMetadataListFailure = "not_found" | "permission_denied";
 
 /** The pull request a current Review's session names. */
 export function pullRequestRefForSession(
-  key: ReviewSessionKey,
+  key: ReviewSessionKey<PullRequestReviewSource>,
 ): PullRequestRef {
   return {
     host: key.host,
     owner: key.owner,
     repo: key.repo,
-    number: key.prNumber,
+    number: key.source.prNumber,
   };
 }
 

@@ -18,6 +18,7 @@ import {
   type InsightType,
 } from "../domain/insight-record";
 import { rawJsonValueSchema } from "../domain/json";
+import { isPullRequestReview } from "../domain/review";
 import { err, type Result } from "../domain/result";
 import type { InsightActivitySink } from "../adapters/codex/codex-activity";
 import type { InsightStore } from "../adapters/storage/insight-store";
@@ -380,7 +381,8 @@ export class InsightRunExecutor {
           // Posted inside the lock but outside the record transition, so only a persisted settlement is announced.
           if (mutated._tag === "ok") {
             const outcome = settledOutcome(mutated.value, runId);
-            if (outcome !== undefined)
+            // The notification names a pull request; local Insights arrive with #450.
+            if (outcome !== undefined && isPullRequestReview(review.value))
               postDesktopNotification(this.notifier, {
                 _tag: "InsightSettled",
                 reviewId: input.reviewId,
@@ -388,7 +390,7 @@ export class InsightRunExecutor {
                   host: review.value.identity.host,
                   owner: review.value.identity.owner,
                   repo: review.value.identity.repo,
-                  number: review.value.identity.prNumber,
+                  number: review.value.identity.source.prNumber,
                 },
                 insightType: type,
                 outcome,

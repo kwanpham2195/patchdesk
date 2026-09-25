@@ -9,6 +9,7 @@ import {
   markReviewTerminal,
   moveReviewToSession,
   parseReview,
+  serializeReview,
   sessionRepresentsReview,
   type ReviewIdentity,
 } from "../../src/domain/review";
@@ -21,7 +22,10 @@ import {
   parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
+  parseLocalBranchName,
   parsePullRequestNumber,
+  parseReviewId,
+  parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
@@ -36,7 +40,7 @@ const identity: ReviewIdentity = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
+  source: { kind: "pull_request", prNumber: must(parsePullRequestNumber(42)) },
 };
 const firstSha = must(parseGitSha("1".repeat(40)));
 const secondSha = must(parseGitSha("2".repeat(40)));
@@ -83,6 +87,43 @@ describe("Review", () => {
         baseSha: otherBaseSha,
       }),
     );
+  });
+
+  it("keeps pull request IDs byte-identical to the ones stored before local sources", () => {
+    expect(createReviewId(identity)).toBe(
+      "github.com__octo-org__patchdesk__pr-42__review-96b3842bb75a",
+    );
+    expect(firstSessionId).toBe(
+      "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-bbbbbbbb__e8f65ce3936a",
+    );
+  });
+
+  it("loads a pull request record stored before local sources and writes it back unchanged", () => {
+    const stored = {
+      schemaVersion: 2,
+      id: "github.com__octo-org__patchdesk__pr-42__review-96b3842bb75a",
+      identity: {
+        profileId: "acme",
+        host: "github.com",
+        owner: "octo-org",
+        repo: "patchdesk",
+        prNumber: 42,
+      },
+      currentSessionId:
+        "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-bbbbbbbb__e8f65ce3936a",
+      currentHeadSha: "1".repeat(40),
+      freshness: { _tag: "Fresh" },
+      status: { _tag: "Open" },
+      createdAt: "2026-08-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    };
+    const parsed = parseReview(stored);
+    expect(parsed).toMatchObject({
+      _tag: "ok",
+      value: { identity: { source: { kind: "pull_request", prNumber: 42 } } },
+    });
+    if (parsed._tag === "err") throw new Error("fixture");
+    expect(serializeReview(parsed.value)).toEqual(stored);
   });
 
   it("keeps one identity-derived ID across heads", () => {
@@ -152,7 +193,7 @@ describe("Review", () => {
       lastLooked: { headSha: firstSha, seenThrough: now },
       updatedAt: later,
     });
-    expect(parseReview(structuredClone(left))).toEqual({
+    expect(parseReview(structuredClone(serializeReview(left)))).toEqual({
       _tag: "ok",
       value: left,
     });
@@ -172,7 +213,7 @@ describe("Review", () => {
   });
 
   it("parses a record written before the cursor existed", () => {
-    const parsed = parseReview(structuredClone(review()));
+    const parsed = parseReview(structuredClone(serializeReview(review())));
     expect(parsed).toMatchObject({ _tag: "ok" });
     expect(parsed._tag === "ok" && "lastLooked" in parsed.value).toBe(false);
   });
@@ -180,8 +221,11 @@ describe("Review", () => {
   it("rejects identity mismatches in stored data", () => {
     expect(
       parseReview({
-        ...review(),
-        identity: { ...identity, owner: "other-owner" },
+        ...serializeReview(review()),
+        identity: {
+          ...serializeReview(review()).identity,
+          owner: "other-owner",
+        },
       }),
     ).toMatchObject({ _tag: "err" });
   });
@@ -241,7 +285,8 @@ describe("Review", () => {
   });
 
   it("rejects legacy detection records that lack a canonical revision identity", () => {
-    const { freshness: _freshness, ...legacyFields } = review();
+    const { freshness: _freshness, ...legacyFields } =
+      serializeReview(review());
     void _freshness;
     const legacy = {
       ...legacyFields,
@@ -254,7 +299,7 @@ describe("Review", () => {
 
   it("parses only complete revision-change evidence", () => {
     const invalid = {
-      ...review(),
+      ...serializeReview(review()),
       freshness: {
         _tag: "RevisionChanged",
         detectedAt: later,
@@ -278,7 +323,12 @@ describe("sessionRepresentsReview", () => {
       { host: must(parseGitHubHost("github.example.com")) },
       { owner: must(parseGitHubOwner("someone-else")) },
       { repo: must(parseGitHubRepoName("other-repo")) },
-      { prNumber: must(parsePullRequestNumber(43)) },
+      {
+        source: {
+          kind: "pull_request" as const,
+          prNumber: must(parsePullRequestNumber(43)),
+        },
+      },
       { headSha: secondSha },
     ];
     for (const mismatch of mismatches)
@@ -293,5 +343,88 @@ describe("sessionRepresentsReview", () => {
         key: { ...key, baseSha: otherBaseSha },
       }),
     ).toBe(true);
+  });
+});
+
+describe("local Review source IDs", () => {
+  const repository = {
+    profileId: identity.profileId,
+    host: identity.host,
+    owner: identity.owner,
+    repo: identity.repo,
+  };
+  function branchIdentity(branch: string): ReviewIdentity {
+    return {
+      ...repository,
+      source: {
+        kind: "branch",
+        branch: must(parseLocalBranchName(branch)),
+        baseBranch: must(parseLocalBranchName("main")),
+      },
+    };
+  }
+
+  it("names a branch with a slash in a readable segment that both ID parsers accept", () => {
+    const branch = branchIdentity("feat/login");
+    const reviewId = createReviewId(branch);
+    const sessionId = createReviewSessionId({
+      ...branch,
+      headSha: firstSha,
+      baseSha,
+    });
+
+    expect(reviewId).toMatch(
+      /^github\.com__octo-org__patchdesk__local-branch-feat-login__review-[a-f0-9]{12}$/,
+    );
+    expect(sessionId).toContain("__local-branch-feat-login__sha-11111111__");
+    expect(parseReviewId(reviewId)).toEqual({ _tag: "ok", value: reviewId });
+    expect(parseReviewSessionId(sessionId)).toEqual({
+      _tag: "ok",
+      value: sessionId,
+    });
+  });
+
+  it.each<[string, ReviewIdentity, ReviewIdentity]>([
+    [
+      "two branches that sanitize to the same slug",
+      branchIdentity("feat/login"),
+      branchIdentity("feat-login"),
+    ],
+    [
+      "a detached working tree and a branch literally named detached",
+      { ...repository, source: { kind: "working_tree" } },
+      {
+        ...repository,
+        source: {
+          kind: "working_tree",
+          branch: must(parseLocalBranchName("detached")),
+        },
+      },
+    ],
+  ])("gives %s different IDs", (_case, left, right) => {
+    expect(createReviewId(left)).not.toBe(createReviewId(right));
+    expect(
+      createReviewSessionId({ ...left, headSha: firstSha, baseSha }),
+    ).not.toBe(createReviewSessionId({ ...right, headSha: firstSha, baseSha }));
+  });
+
+  it("round-trips a stored local Review with its source", () => {
+    const local = createReview({
+      identity: branchIdentity("feat/login"),
+      currentSessionId: createReviewSessionId({
+        ...branchIdentity("feat/login"),
+        headSha: firstSha,
+        baseSha,
+      }),
+      headSha: firstSha,
+      createdAt: now,
+    });
+    const stored = structuredClone(serializeReview(local));
+
+    expect(stored.identity).toEqual({
+      ...repository,
+      source: { kind: "branch", branch: "feat/login", baseBranch: "main" },
+    });
+    expect(parseReview(stored)).toEqual({ _tag: "ok", value: local });
   });
 });

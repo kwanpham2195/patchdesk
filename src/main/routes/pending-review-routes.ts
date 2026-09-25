@@ -7,6 +7,7 @@ import type { ReviewSessionId, WorkspaceProfileId } from "../../domain/ids";
 import type { RawJsonValue } from "../../domain/json";
 import type { Result } from "../../domain/result";
 import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
+import { isPullRequestReviewSession } from "../../domain/review-session";
 import {
   projectPendingReview,
   type PendingReviewCommandResult,
@@ -282,7 +283,8 @@ async function storedPendingReviewProjection(
   sessionId: ReviewSessionId,
 ): Promise<PendingReviewProjection | undefined> {
   const loaded = await sessions.load(profileId, sessionId);
-  if (loaded._tag === "err") return undefined;
+  if (loaded._tag === "err" || !isPullRequestReviewSession(loaded.value))
+    return undefined;
   return projectPendingReview(
     loaded.value.pendingReview ?? { _tag: "None" },
     false,

@@ -8,6 +8,7 @@ import type {
   PullRequestSummary,
 } from "../domain/github-context";
 import type { ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type { PullRequestReviewSession } from "../domain/review-session";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import {
   confirmReviewWrite,
@@ -134,7 +135,7 @@ export class ReviewWriteRecoveryService {
         host: fresh.value.session.key.host,
         owner: fresh.value.session.key.owner,
         repo: fresh.value.session.key.repo,
-        number: fresh.value.session.key.prNumber,
+        number: fresh.value.session.key.source.prNumber,
       },
     });
     if (comments._tag === "err") return err("github_read_failed");
@@ -153,22 +154,7 @@ export class ReviewWriteRecoveryService {
     profile: Parameters<
       NonNullable<RecoveryGateway["getPullRequestPublishedFeedback"]>
     >[0]["profile"],
-    session: {
-      readonly key: {
-        readonly host: Parameters<
-          NonNullable<RecoveryGateway["getPullRequestPublishedFeedback"]>
-        >[0]["pr"]["host"];
-        readonly owner: Parameters<
-          NonNullable<RecoveryGateway["getPullRequestPublishedFeedback"]>
-        >[0]["pr"]["owner"];
-        readonly repo: Parameters<
-          NonNullable<RecoveryGateway["getPullRequestPublishedFeedback"]>
-        >[0]["pr"]["repo"];
-        readonly prNumber: Parameters<
-          NonNullable<RecoveryGateway["getPullRequestPublishedFeedback"]>
-        >[0]["pr"]["number"];
-      };
-    },
+    session: Pick<PullRequestReviewSession, "key">,
   ): Promise<Result<ReviewWriteRecovery, ReviewWriteRecoveryFailure>> {
     const read = this.github.getPullRequestPublishedFeedback?.bind(this.github);
     if (read === undefined) return err("github_read_failed");
@@ -178,7 +164,7 @@ export class ReviewWriteRecoveryService {
         host: session.key.host,
         owner: session.key.owner,
         repo: session.key.repo,
-        number: session.key.prNumber,
+        number: session.key.source.prNumber,
       },
     });
     if (feedback._tag === "err") return err("github_read_failed");
@@ -214,7 +200,7 @@ export class ReviewWriteRecoveryService {
         host: current.value.session.key.host,
         owner: current.value.session.key.owner,
         repo: current.value.session.key.repo,
-        number: current.value.session.key.prNumber,
+        number: current.value.session.key.source.prNumber,
       },
     });
     if (pullRequest._tag === "err") return err("github_read_failed");

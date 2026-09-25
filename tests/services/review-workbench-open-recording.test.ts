@@ -4,7 +4,10 @@ import type { Review } from "../../src/domain/review";
 import { err, ok } from "../../src/domain/result";
 import {
   at,
+  baseSha,
   fixture,
+  headSha,
+  identity,
   profileId,
   projection,
   review,
@@ -23,7 +26,11 @@ describe("ReviewWorkbenchController open recording", () => {
     const value = fixture({
       sessions: {
         load: vi.fn(async () =>
-          ok({ id: sessionId, prContext: { title: "Add the sidebar" } }),
+          ok({
+            id: sessionId,
+            key: { ...identity, headSha, baseSha },
+            prContext: { title: "Add the sidebar" },
+          }),
         ),
       },
     });
@@ -142,7 +149,11 @@ describe("ReviewWorkbenchController open recording", () => {
       reviews,
       sessions: {
         load: vi.fn(async () =>
-          ok({ id: sessionId, prContext: { title: "Add the sidebar" } }),
+          ok({
+            id: sessionId,
+            key: { ...identity, headSha, baseSha },
+            prContext: { title: "Add the sidebar" },
+          }),
         ),
       },
     });

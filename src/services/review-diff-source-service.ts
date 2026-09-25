@@ -12,7 +12,10 @@ import {
 } from "../domain/ids";
 import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type ReviewSession,
+} from "../domain/review-session";
 import type { GitReadExecutor } from "./review-worktree-service";
 import { readObjectField } from "./read-object-field";
 import { ReviewPatchIndex } from "./review-patch-index";
@@ -115,7 +118,11 @@ export class ReviewDiffSourceService {
       return ok({ state: "unavailable", reason: "path_unavailable" });
     }
 
-    if (session.value.pr.baseSha === undefined) {
+    // Full-file sources resolve through the pull request's managed refs; a local source has none yet (ADR 0050).
+    if (
+      !isPullRequestReviewSession(session.value) ||
+      session.value.pr.baseSha === undefined
+    ) {
       return ok({ state: "unavailable", reason: "revision_unavailable" });
     }
 

@@ -1,4 +1,5 @@
-import type { Review, ReviewIdentity } from "../domain/review";
+import type { PullRequestReviewIdentity, Review } from "../domain/review";
+import { isPullRequestReviewSession } from "../domain/review-session";
 import type {
   GitSha,
   IsoTimestamp,
@@ -122,7 +123,7 @@ export class ReviewWorkbenchController {
   }
 
   private async openUnlocked(
-    identity: ReviewIdentity,
+    identity: PullRequestReviewIdentity,
     expectedTerminalState?: "merged",
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const reviewId = createReviewId(identity);
@@ -158,7 +159,9 @@ export class ReviewWorkbenchController {
           return err({ reason: "storage" });
         return this.restartUnusableReview(identity, expectedTerminalState);
       }
-      const title = currentSession.value.prContext?.title;
+      const title = isPullRequestReviewSession(currentSession.value)
+        ? currentSession.value.prContext?.title
+        : undefined;
       if (existing.value.representedRemote !== undefined) {
         const represented = await this.lifecycle.remote.load({
           profileId: identity.profileId,
@@ -197,7 +200,7 @@ export class ReviewWorkbenchController {
   }
 
   private async openFresh(
-    identity: ReviewIdentity,
+    identity: PullRequestReviewIdentity,
     expectedTerminalState?: "merged",
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const created = await this.createFreshReview(
@@ -217,7 +220,7 @@ export class ReviewWorkbenchController {
   }
 
   private async createFreshReview(
-    identity: ReviewIdentity,
+    identity: PullRequestReviewIdentity,
     expectedTerminalState?: "merged",
   ): Promise<Result<Review, ReviewWorkbenchFailure>> {
     const preparationInput = {
@@ -226,7 +229,7 @@ export class ReviewWorkbenchController {
         host: identity.host,
         owner: identity.owner,
         repo: identity.repo,
-        number: identity.prNumber,
+        number: identity.source.prNumber,
       },
     };
     const prepared = await this.preparation.prepare(
@@ -309,7 +312,7 @@ export class ReviewWorkbenchController {
    * doing so would deadlock behind the lock the caller already holds.
    */
   private async restartUnusableReview(
-    identity: ReviewIdentity,
+    identity: PullRequestReviewIdentity,
     expectedTerminalState?: "merged",
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const reviewId = createReviewId(identity);
@@ -336,7 +339,7 @@ export class ReviewWorkbenchController {
 
   /** Decides whether the existing Review can be kept or must be quarantined and rebuilt fresh; see `restartUnusableReview`'s lock note. */
   private async restartOrKeepReview(
-    identity: ReviewIdentity,
+    identity: PullRequestReviewIdentity,
     expectedTerminalState?: "merged",
   ): Promise<
     Result<
@@ -396,7 +399,9 @@ export class ReviewWorkbenchController {
         review: current.value,
         restarted: false,
         title:
-          session._tag === "ok" ? session.value.prContext?.title : undefined,
+          session._tag === "ok" && isPullRequestReviewSession(session.value)
+            ? session.value.prContext?.title
+            : undefined,
       });
     const quarantinedSession =
       await this.lifecycle.artifacts.quarantineIfPresent(
@@ -701,9 +706,9 @@ export class ReviewWorkbenchController {
 
 /** Parses the strict review identity once at the controller I/O boundary. */
 function parseReviewIdentity(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the parser that converts its raw local-API input to the typed ReviewIdentity.
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the parser that converts its raw local-API input to the typed PullRequestReviewIdentity.
   input: unknown,
-): ReviewIdentity | undefined {
+): PullRequestReviewIdentity | undefined {
   const profileId = parseWorkspaceProfileId(
     readObjectField(input, "profileId"),
   );
@@ -724,7 +729,7 @@ function parseReviewIdentity(
     host: host.value,
     owner: owner.value,
     repo: repo.value,
-    prNumber: number.value,
+    source: { kind: "pull_request", prNumber: number.value },
   };
 }
 

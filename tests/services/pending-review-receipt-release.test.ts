@@ -31,7 +31,10 @@ import type {
   ViewerPendingReview,
 } from "../../src/domain/pending-review";
 import { ok, type Result } from "../../src/domain/result";
-import type { ReviewSession } from "../../src/domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../../src/domain/review-session";
 import {
   PendingReviewService,
   projectPendingReview,
@@ -73,7 +76,7 @@ function viewerPendingReview(
       host: values.identity.host,
       owner: values.identity.owner,
       repo: values.identity.repo,
-      number: values.identity.prNumber,
+      number: values.identity.source.prNumber,
     },
     headSha,
     comments: [
@@ -107,7 +110,7 @@ const addedReceipt: FindingReviewReceipt = {
 };
 
 /** The Review after Add: a Finding receipt owned by the recorded pending review. */
-const addedSession: ReviewSession = {
+const addedSession: PullRequestReviewSession = {
   ...values.session,
   pendingReview: {
     _tag: "Pending",
@@ -130,7 +133,7 @@ async function pendingReviewFixture(
     | { readonly read: PendingReviewRead }
     | { readonly failure: GitHubReadFailure },
   coordinator = new ReviewOperationCoordinator(),
-  initial: ReviewSession = addedSession,
+  initial: PullRequestReviewSession = addedSession,
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-receipt-release-"));
   roots.push(root);
@@ -147,10 +150,15 @@ async function pendingReviewFixture(
     pendingReviewSubmission: { reviewId: "9002" },
   });
   const logs: LogEntryInput[] = [];
+  const stored = async (): Promise<PullRequestReviewSession> => {
+    const loaded = must(await sessions.load(profileId, initial.id));
+    if (!isPullRequestReviewSession(loaded)) throw new Error("fixture");
+    return loaded;
+  };
   const current = async () => ({
     profile,
     review,
-    session: must(await sessions.load(profileId, initial.id)),
+    session: await stored(),
   });
   const service = new PendingReviewService(
     {
@@ -166,13 +174,14 @@ async function pendingReviewFixture(
     undefined,
     { write: (entry) => logs.push(entry) },
   );
-  const stored = async (): Promise<ReviewSession> =>
-    must(await sessions.load(profileId, initial.id));
   return { service, stored, logs, github };
 }
 
 /** What the workbench shows for the Finding and the Analysis Finish review action. */
-function workbench(session: ReviewSession, state: PendingReviewState) {
+function workbench(
+  session: PullRequestReviewSession,
+  state: PendingReviewState,
+) {
   const actions = projectAnalysisReviewActions({
     // SAFETY: only the fields the projection reads are supplied; the full
     // Insight projection shape is outside this seam.
@@ -390,7 +399,7 @@ describe("Refresh leaves receipts alone while a write is unsettled", () => {
   it.each(["WriteInFlight", "OutcomeUnknown"] as const)(
     "keeps the Finding Added while the stored state is %s",
     async (tag) => {
-      const unsettled: ReviewSession = {
+      const unsettled: PullRequestReviewSession = {
         ...addedSession,
         pendingReview: {
           _tag: tag,

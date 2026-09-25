@@ -191,7 +191,7 @@ export class InlineConversationService {
       host: fresh.value.session.key.host,
       owner: fresh.value.session.key.owner,
       repo: fresh.value.session.key.repo,
-      number: fresh.value.session.key.prNumber,
+      number: fresh.value.session.key.source.prNumber,
     };
     const current = await requireCurrentHead(
       this.github,

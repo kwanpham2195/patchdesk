@@ -13,7 +13,7 @@ import type {
   PendingReviewState,
   ViewerPendingReview,
 } from "../../src/domain/pending-review";
-import type { ReviewSession } from "../../src/domain/review-session";
+import type { PullRequestReviewSession } from "../../src/domain/review-session";
 import {
   PendingReviewService,
   projectPendingReview,
@@ -126,10 +126,11 @@ function duplicatedPending(): ViewerPendingReview {
   };
 }
 
+type SessionSave = Result<void, StorageFailure>;
 function session(
   state?: PendingReviewState,
-  findingReviewReceipts?: ReviewSession["findingReviewReceipts"],
-): ReviewSession {
+  findingReviewReceipts?: PullRequestReviewSession["findingReviewReceipts"],
+): PullRequestReviewSession {
   const base = {
     schemaVersion: 6 as const,
     id: sessionId,
@@ -140,7 +141,7 @@ function session(
       host: "github.com" as never,
       owner: "octo-org" as never,
       repo: "patchdesk" as never,
-      prNumber: 42 as never,
+      source: { kind: "pull_request" as const, prNumber: 42 as never },
       headSha,
       baseSha,
     },
@@ -171,14 +172,14 @@ function fixture(
   state?: PendingReviewState,
   // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- each test overrides a differently-shaped github mock method (varying Result payloads); there is no single concrete value type across every possible override.
   overrides: Record<string, unknown> = {},
-  findingReviewReceipts?: ReviewSession["findingReviewReceipts"],
+  findingReviewReceipts?: PullRequestReviewSession["findingReviewReceipts"],
 ) {
   let stored = session(state, findingReviewReceipts);
   const saves: unknown[] = [];
   const store = {
     load: vi.fn(async () => ok(stored)),
     save: vi.fn(
-      async (next: ReviewSession): Promise<Result<void, StorageFailure>> => {
+      async (next: PullRequestReviewSession): Promise<SessionSave> => {
         stored = next;
         saves.push(next);
         return ok(undefined);
@@ -981,8 +982,7 @@ describe("PendingReviewService reconcile compare-and-swap", () => {
       _tag: "ok",
       value: { updatedAt: competingAt },
     });
-    if (rejected._tag === "err") throw new Error("fixture");
-    expect(rejected.value.pendingReview).toBeUndefined();
+    expect(rejected).not.toHaveProperty(["value", "pendingReview"]);
 
     // The next reconcile reads the competitor's session, so its expectation
     // matches and the same write now lands.

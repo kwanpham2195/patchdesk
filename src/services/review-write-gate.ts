@@ -8,8 +8,15 @@ import type {
 } from "../adapters/storage/review-remote-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
-import { sessionRepresentsReview, type Review } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReview,
+  sessionRepresentsReview,
+  type PullRequestReview,
+} from "../domain/review";
+import {
+  isPullRequestReviewSession,
+  type PullRequestReviewSession,
+} from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ContentHash, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
@@ -38,7 +45,7 @@ export type CurrentHeadFailure = {
 export async function requireCurrentHead(
   github: Pick<GitHubReader, "getPullRequest">,
   profile: WorkspaceProfileConfig,
-  session: Pick<ReviewSession, "key">,
+  session: Pick<PullRequestReviewSession, "key">,
 ): Promise<Result<PullRequestSummary, CurrentHeadFailure>> {
   const current = await github.getPullRequest({
     profile,
@@ -46,7 +53,7 @@ export async function requireCurrentHead(
       host: session.key.host,
       owner: session.key.owner,
       repo: session.key.repo,
-      number: session.key.prNumber,
+      number: session.key.source.prNumber,
     },
   });
   if (current._tag === "err") return err({ reason: "github_read" });
@@ -57,20 +64,20 @@ export async function requireCurrentHead(
 
 export type FreshReview = {
   readonly profile: WorkspaceProfileConfig;
-  readonly review: Review;
-  readonly session: ReviewSession;
+  readonly review: PullRequestReview;
+  readonly session: PullRequestReviewSession;
   readonly snapshot: ReviewRemoteSnapshot;
 };
 
 export type CurrentReviewSession = {
   readonly profile: WorkspaceProfileConfig;
-  readonly review: Review;
-  readonly session: ReviewSession;
+  readonly review: PullRequestReview;
+  readonly session: PullRequestReviewSession;
 };
 
 export type ReviewWriteExpectation = {
-  readonly sessionId: ReviewSession["id"];
-  readonly headSha: ReviewSession["key"]["headSha"];
+  readonly sessionId: PullRequestReviewSession["id"];
+  readonly headSha: PullRequestReviewSession["key"]["headSha"];
   readonly patchHash: ContentHash;
 };
 
@@ -109,6 +116,8 @@ export class ReviewWriteGate {
       return err({ reason: "stale" });
     if (review.value.status._tag === "Terminal")
       return err({ reason: "terminal" });
+    // Pull request metadata writes have no local Review counterpart (ADR 0050).
+    if (!isPullRequestReview(review.value)) return err({ reason: "stale" });
     const session = await this.sessions.load(
       profileId,
       review.value.currentSessionId,
@@ -117,7 +126,10 @@ export class ReviewWriteGate {
       return session.error.reason === "not_found"
         ? err({ reason: "not_found" })
         : err({ reason: "storage" });
-    if (!sessionRepresentsReview(review.value, session.value))
+    if (
+      !isPullRequestReviewSession(session.value) ||
+      !sessionRepresentsReview(review.value, session.value)
+    )
       return err({ reason: "stale" });
     return ok({
       profile: profile.value,
@@ -147,6 +159,9 @@ export class ReviewWriteGate {
       return err({ reason: "storage" });
     const value = review.value;
     if (value.status._tag === "Terminal") return err({ reason: "terminal" });
+    // Freshness of a local Review is proven by recomputing its source, which
+    // this gate does not do yet; until it does, no local write can pass.
+    if (!isPullRequestReview(value)) return err({ reason: "not_fresh" });
     if (
       value.representedRemote === undefined ||
       value.freshness._tag !== "Fresh"
@@ -171,10 +186,11 @@ export class ReviewWriteGate {
       snapshotRef.host !== value.identity.host ||
       snapshotRef.owner !== value.identity.owner ||
       snapshotRef.repo !== value.identity.repo ||
-      snapshotRef.number !== value.identity.prNumber
+      snapshotRef.number !== value.identity.source.prNumber
     )
       return err({ reason: "stale" });
     if (
+      !isPullRequestReviewSession(session.value) ||
       !sessionRepresentsReview(value, session.value) ||
       session.value.key.headSha !== value.representedRemote.headSha
     )
