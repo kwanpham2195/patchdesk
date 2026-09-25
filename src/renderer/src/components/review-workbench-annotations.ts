@@ -135,6 +135,7 @@ export function buildLocalNoteAnnotations(
               line: entry.line,
               text: entry.text,
               ...definedProps({
+                state: entry.state,
                 onEdit:
                   notes === undefined
                     ? undefined

@@ -49,7 +49,7 @@ export type LocalApplyControls = {
 };
 
 const REVISION_CHANGED_MESSAGE =
-  "The working tree changed after this Analysis ran. Open the review again to analyze the current files.";
+  "The working tree changed after this Analysis ran. Press Refresh, then run Analysis on the current files.";
 
 /** The sentence for each reason the Apply route refuses with. */
 function refusalFor(reason: string): string | undefined {
@@ -58,13 +58,13 @@ function refusalFor(reason: string): string | undefined {
     case "not_fresh":
       return REVISION_CHANGED_MESSAGE;
     case "stale":
-      return "This Analysis no longer matches the review. Open the review again.";
+      return "This Analysis no longer matches the review. Press Refresh.";
     case "overlapping":
       return "Two selected suggestions change the same lines. Select only one of them.";
     case "not_applicable":
       return "A selected finding has no suggestion that can be applied.";
     case "file_changed":
-      return "A file no longer holds the lines a suggestion replaces. Open the review again.";
+      return "A file no longer holds the lines a suggestion replaces. Press Refresh.";
     case "working_tree_conversion":
       return "Git would convert line endings or run a filter on a changed file. Apply this change in your editor.";
     case "check_failed":
@@ -202,8 +202,7 @@ export function useLocalApply({
             ? {}
             : {
                 selected: new Set<string>(),
-                notice:
-                  "Applied. Open the review again to read the changed files.",
+                notice: "Applied. Press Refresh to read the changed files.",
               };
         } catch (cause: unknown) {
           return { refusal: refusalMessage(cause) };
@@ -251,7 +250,7 @@ export function useLocalApply({
                 : {
                     lock: "settled",
                     notice:
-                      "The suggestions were applied. Open the review again to read the changed files.",
+                      "The suggestions were applied. Press Refresh to read the changed files.",
                   };
             case "not_applied":
               return {
@@ -290,7 +289,7 @@ export function useLocalApply({
     retained === undefined
   )
     return undefined;
-  // A refused Apply marked the Review RevisionChanged; only opening it again reads the checkout.
+  // A refused Apply marked the Review RevisionChanged; only Refresh reads the checkout again.
   const blocked = workbench.revision.freshness !== "fresh";
   return {
     selectedIds: current.selected,
