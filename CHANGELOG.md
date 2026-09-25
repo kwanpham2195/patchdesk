@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added newer models to choose from for API key Insight runs, among them Claude Opus 5.5 and Fable 5.1, GPT-6 Sol, Luna, and Astra, and Grok 4.7. Providers retired some models, among them the Kimi K2 models on Moonshot and DeepSeek V4 Flash; a saved model that is no longer listed needs picking again in the run dialog.
+
 - Brief Flow can show two new views: **state**, for a change to the values of a status field and the transitions between them, and **contract**, for an exported signature or fields shown old and new. Citation chips now appear only on changed steps, as the hunk alias with the file on hover, in their own column, and long steps stay on one line with the full text on hover. A Flow tree nested deeper than three levels is cut to three levels instead of failing the whole Brief. #445
 
 - Brief **Reach** is now **Blast radius**: what this pull request could affect in files it doesn't change. It checks every changed export, lists names removed but still mentioned first, then changed names by how often they are mentioned, and shows each mention's function, kind (call, type-only, import), and line. Names nothing outside mentions fold into one line, and **No matching test** no longer lists docs or config files. #445

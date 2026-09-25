@@ -20,7 +20,7 @@ const providerSchema = v.strictObject({
   models: v.array(modelSchema),
 });
 const artifactSchema = v.strictObject({
-  piVersion: v.literal("0.84.4"),
+  piVersion: v.literal("0.87.1"),
   catalog: v.array(providerSchema),
   digest: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
 });

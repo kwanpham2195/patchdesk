@@ -352,9 +352,15 @@ function createInsightAgent(
       return attempted;
     },
     toolExecution: "parallel",
-    shouldStopAfterTurn: () => {
+    finishTurn: (turn) => {
+      // Error and aborted turns end the run anyway and never counted toward the cap.
+      if (
+        turn.message.stopReason === "error" ||
+        turn.message.stopReason === "aborted"
+      )
+        return;
       turns += 1;
-      return turns >= MAX_AGENT_TURNS;
+      return turns >= MAX_AGENT_TURNS ? { action: "end" } : undefined;
     },
   });
   return {

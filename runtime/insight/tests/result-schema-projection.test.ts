@@ -40,7 +40,7 @@ function acceptedByProjection(
         type: "toolCall",
         id: "call-1",
         name: "submit_patchdesk_result",
-        arguments: structuredClone(value),
+        arguments: JSON.parse(JSON.stringify(value)),
       },
     );
     return true;

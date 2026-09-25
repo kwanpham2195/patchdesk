@@ -10,8 +10,13 @@ import {
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-const PI_VERSION = "0.84.4";
+const PI_VERSION = "0.87.1";
 const NODE_FLOOR = ">=22.19.0";
+const UNUSED_RUNTIME_PACKAGE_PREFIXES = [
+  "typescript@",
+  "esbuild@",
+  "@esbuild+",
+];
 
 /** Stages the exact self-contained one-shot insight runtime for Electron resources. */
 export async function stageInsightRuntime({ projectRoot, runtimeRoot, run }) {
@@ -85,6 +90,8 @@ export async function stageInsightRuntime({ projectRoot, runtimeRoot, run }) {
   }
   // pnpm 8 links a direct dev-only TypeScript into Valibot's optional peer
   // graph even for --prod, so remove that type-only payload after resolution.
+  // Pi's chord imports esbuild only from its `node` and `bundler` entries,
+  // which the one-shot runner never loads; its native binary alone is 11 MiB.
   const nodeModules = join(runtimeRoot, "node_modules");
   const virtualStore = join(nodeModules, ".pnpm");
   const virtualStoreEntries = await readdir(virtualStore, {
@@ -95,10 +102,21 @@ export async function stageInsightRuntime({ projectRoot, runtimeRoot, run }) {
   });
   await Promise.all([
     rm(join(nodeModules, "typescript"), { recursive: true, force: true }),
+    // pnpm's hoisted links would dangle once their targets go, and codesign rejects them.
+    rm(join(virtualStore, "node_modules", "esbuild"), {
+      recursive: true,
+      force: true,
+    }),
+    rm(join(virtualStore, "node_modules", "@esbuild"), {
+      recursive: true,
+      force: true,
+    }),
     ...virtualStoreEntries
       .filter((entry) => entry.isDirectory())
       .flatMap((entry) => [
-        ...(entry.name.startsWith("typescript@")
+        ...(UNUSED_RUNTIME_PACKAGE_PREFIXES.some((prefix) =>
+          entry.name.startsWith(prefix),
+        )
           ? [
               rm(join(virtualStore, entry.name), {
                 recursive: true,
@@ -107,6 +125,10 @@ export async function stageInsightRuntime({ projectRoot, runtimeRoot, run }) {
             ]
           : []),
         rm(join(virtualStore, entry.name, "node_modules", "typescript"), {
+          recursive: true,
+          force: true,
+        }),
+        rm(join(virtualStore, entry.name, "node_modules", "esbuild"), {
           recursive: true,
           force: true,
         }),

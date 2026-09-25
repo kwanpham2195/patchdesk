@@ -5,7 +5,7 @@ export type GeneratedPiModel = {
   readonly cost?: { readonly input: number; readonly output: number };
 };
 export type GeneratedPiCatalog = {
-  readonly piVersion: "0.84.4";
+  readonly piVersion: "0.87.1";
   readonly catalog: ReadonlyArray<{
     readonly provider: string;
     readonly models: ReadonlyArray<GeneratedPiModel>;

@@ -9,8 +9,8 @@
     "deploy:verify": "pnpm install --frozen-lockfile --prod --offline --ignore-scripts --config.auto-install-peers=false"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.84.4",
-    "@earendil-works/pi-ai": "0.84.4",
+    "@earendil-works/pi-agent-core": "0.87.1",
+    "@earendil-works/pi-ai": "0.87.1",
     "@valibot/to-json-schema": "1.7.1",
     "valibot": "1.4.2"
   },

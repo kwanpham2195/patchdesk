@@ -1,6 +1,6 @@
 {
-  "piVersion": "0.84.4",
-  "catalogDigest": "f71ade477f6ff270dfc553057fecbff2ebf225e2a609bb2796080c0e3eb119e2",
+  "piVersion": "0.87.1",
+  "catalogDigest": "61faea0902c6487fa1f8aaa2ee8e4ccc78bad3eafa15da0b3fb7317959eaede6",
   "nodeFloor": ">=22.19.0",
-  "lockDigest": "86e3502de4850fc525af33d0742f47c9bed67dae2dbfcdfc9365d39e2be85706"
+  "lockDigest": "7b534ad9ef53eba6f91f38b48241efb6ba243381dfb14de6a881b83c92f7c93f"
 }

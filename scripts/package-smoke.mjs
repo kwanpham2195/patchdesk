@@ -484,7 +484,7 @@ async function validatePackagedRuntime(executable, runtime) {
   const runtimePackage = JSON.parse(packageRaw);
   const lockDigest = createHash("sha256").update(lock).digest("hex");
   if (
-    manifest.piVersion !== "0.84.4" ||
+    manifest.piVersion !== "0.87.1" ||
     manifest.nodeFloor !== ">=22.19.0" ||
     manifest.lockDigest !== lockDigest
   ) {
@@ -494,8 +494,8 @@ async function validatePackagedRuntime(executable, runtime) {
   }
   if (
     runtimePackage.dependencies?.["@earendil-works/pi-agent-core"] !==
-      "0.84.4" ||
-    runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.84.4"
+      "0.87.1" ||
+    runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.87.1"
   ) {
     throw new Error(
       "Packaged insight runtime package does not contain the expected exact versions.",

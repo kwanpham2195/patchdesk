@@ -6,7 +6,7 @@ import * as v from "valibot";
 
 import { generatedPiAiCatalog } from "../adapters/pi/pi-ai-catalog.generated";
 
-const PI_VERSION = "0.84.4";
+const PI_VERSION = "0.87.1";
 const NODE_FLOOR = ">=22.19.0";
 
 /**
