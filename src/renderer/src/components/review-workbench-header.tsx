@@ -77,7 +77,7 @@ export function ReviewWorkbenchHeader({
     blockedChip?.accessibleName ?? mergeText.toLowerCase();
   // GitHub stops reporting checks once a pull request is merged or closed, so an unknown result there is expected, not a warning.
   const showChecksChip = !(terminal && model.checks.overall === "unknown");
-  // A local Review has no pull request: no checks, merge, GitHub link, or Refresh until #452.
+  // A local Review has no pull request: no checks, merge, or GitHub link, and Refresh reads the checkout (#452).
   const pullRequestNumber = workbenchPullRequestNumber(
     model.session.key.source,
   );
@@ -243,7 +243,22 @@ export function ReviewWorkbenchHeader({
             </span>
           ) : null}
         </p>
-        {terminal || local ? null : (
+        {terminal ? null : local ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="shrink-0"
+            disabled={actions.refreshing === true}
+            onClick={() => void actions.refresh()}
+          >
+            {actions.refreshing === true ? (
+              <LoaderCircle data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            {actions.refreshing === true ? "Refreshing…" : "Refresh"}
+          </Button>
+        ) : (
           // A renderer reload loads the stored projection; only the explicit
           // refresh action replaces represented GitHub state.
           <Button

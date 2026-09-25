@@ -4,6 +4,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { CopyLoadedTextButton } from "./copy-loaded-text-button";
 import { GeneratedMarkdownInline } from "./generated-markdown";
+import { LocalDraftStateBadge } from "./local-draft-state-badge";
 import {
   Card,
   CardAction,
@@ -16,8 +17,9 @@ import { InlineError } from "./ui/inline-error";
 
 /**
  * A local Review's Local draft list (ADR 0050, ADR 0051): Findings and the
- * maintainer's notes as feedback for the coding agent, including drafts from
- * an earlier session, which stay listed until removed.
+ * maintainer's notes as feedback for the coding agent. Each draft shows what
+ * the last Refresh decided for it, and one that could not be placed keeps its
+ * earlier lines under Needs attention until removed (#452).
  */
 export function LocalDraftsCard({
   controls,
@@ -72,6 +74,7 @@ export function LocalDraftsCard({
                       {location}
                     </p>
                   </div>
+                  <LocalDraftStateBadge state={entry.state} />
                   {entry.kind === "note" ? (
                     <Badge variant="outline">Note</Badge>
                   ) : entry.suggests ? (

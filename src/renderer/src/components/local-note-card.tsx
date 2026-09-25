@@ -7,12 +7,16 @@ import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
+import type { LocalDraftEntry } from "../local-draft-contracts";
+import { LocalDraftStateBadge } from "./local-draft-state-badge";
+
 export type LocalNoteCardProps = {
   readonly noteId: string;
   readonly path: string;
   readonly startLine: number;
   readonly line: number;
   readonly text: string;
+  readonly state?: LocalDraftEntry["state"];
   /** Absent once the Review is merged or closed; rejects with the message to show. */
   readonly onEdit?: (text: string) => Promise<void>;
   readonly onRemove?: () => Promise<void>;
@@ -25,6 +29,7 @@ export function LocalNoteCard({
   startLine,
   line,
   text,
+  state,
   onEdit,
   onRemove,
 }: LocalNoteCardProps): React.JSX.Element {
@@ -77,6 +82,7 @@ export function LocalNoteCard({
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="outline">Note</Badge>
+        <LocalDraftStateBadge state={state} />
         <span>For the coding agent</span>
         {draft !== undefined || onEdit === undefined ? null : (
           <div className="ml-auto flex gap-1">

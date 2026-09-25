@@ -10,6 +10,7 @@ import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useAddAllFindings } from "./use-add-all-findings";
 import { useLocalApply } from "./use-local-apply";
 import { useLocalDrafts } from "./use-local-drafts";
+import { useLocalRefresh } from "./use-local-refresh";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
 import { usePendingReviewActions } from "./use-pending-review-actions";
@@ -160,6 +161,11 @@ export function ReviewWorkbenchFlow({
   });
   // One owner for the Insights tab's Local drafts card and the Diff tab's notes.
   const localDrafts = useLocalDrafts({ workbench, onWorkbenchPatch });
+  // A local Review refreshes from the checkout, not from GitHub (#452).
+  const localRefresh = useLocalRefresh({
+    workbench,
+    onWorkbenchReplace: replaceWorkbench,
+  });
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
 
@@ -186,7 +192,15 @@ export function ReviewWorkbenchFlow({
     metadata,
     conversation,
     localNotes: localDrafts?.notes,
-    observation: { runDetect, refresh, refreshing, refreshError },
+    observation:
+      localRefresh === undefined
+        ? { runDetect, refresh, refreshing, refreshError }
+        : {
+            runDetect,
+            refresh: localRefresh.refresh,
+            refreshing: localRefresh.refreshing,
+            refreshError: undefined,
+          },
     merge: mergeAction,
     pendingReviewComposer:
       pendingReviewComposer === undefined || !findingBatchRunning
@@ -272,6 +286,11 @@ export function ReviewWorkbenchFlow({
             </AlertAction>
           )}
         </Alert>
+      )}
+      {localRefresh?.error === undefined ? null : (
+        <InlineError className="border-t px-4 py-2">
+          {localRefresh.error}
+        </InlineError>
       )}
       {refreshError ? (
         <InlineError className="border-t px-4 py-2">
