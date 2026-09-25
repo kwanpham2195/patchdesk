@@ -12,6 +12,9 @@ import {
 
 const patch = (...lines: ReadonlyArray<string>) => `${lines.join("\n")}\n`;
 
+/** No head files: only names on changed lines can be found. */
+const NO_HEAD: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
+
 const WRITER_PATCH = patch(
   "diff --git a/src/adapters/github-thread-writer.ts b/src/adapters/github-thread-writer.ts",
   "--- a/src/adapters/github-thread-writer.ts",
@@ -35,20 +38,19 @@ describe("candidateReachSymbols", () => {
       "+  return loadThreads(id, { fresh: true });",
     );
     expect(
-      candidateReachSymbols(withCall, [
-        "loadThreads",
-        "somethingNeverInTheDiff",
-      ]),
+      candidateReachSymbols(
+        withCall,
+        ["loadThreads", "somethingNeverInTheDiff"],
+        NO_HEAD,
+      ),
     ).toEqual(["loadThreads"]);
   });
 
   it("counts every exported name the patch declares even when the model leaves it out", () => {
     // Two runs of one PR once disagreed because one model list omitted a changed export.
-    expect(candidateReachSymbols(WRITER_PATCH, ["CommentReadBack"])).toEqual([
-      "updateComment",
-      "updateThreadComment",
-      "CommentReadBack",
-    ]);
+    expect(
+      candidateReachSymbols(WRITER_PATCH, ["CommentReadBack"], NO_HEAD),
+    ).toEqual(["updateComment", "updateThreadComment", "CommentReadBack"]);
   });
 
   it("keeps the patch's own declarations before model-only names when the cap bites", () => {
@@ -56,59 +58,58 @@ describe("candidateReachSymbols", () => {
       "diff --git a/src/wide.ts b/src/wide.ts",
       "--- a/src/wide.ts",
       "+++ b/src/wide.ts",
-      "@@ -1 +1,13 @@",
+      "@@ -1 +1,21 @@",
       "+const helper = loadThreads();",
       ...Array.from(
-        { length: 12 },
+        { length: 20 },
         (_, index) => `+export const sym${String(index)} = 1;`,
       ),
     );
-    const kept = candidateReachSymbols(wide, ["loadThreads"]);
-    expect(kept).toHaveLength(12);
+    const kept = candidateReachSymbols(wide, ["loadThreads"], NO_HEAD);
+    expect(kept).toHaveLength(20);
     expect(kept).not.toContain("loadThreads");
   });
 
   it("rejects a name that is only part of a longer word in the diff", () => {
-    expect(candidateReachSymbols(WRITER_PATCH, ["updateThread"])).not.toContain(
-      "updateThread",
-    );
+    expect(
+      candidateReachSymbols(WRITER_PATCH, ["updateThread"], NO_HEAD),
+    ).not.toContain("updateThread");
   });
 
   it("rejects anything that is not a plausible identifier", () => {
     // Nothing proposed survives the syntax rule, so the patch's own exported
     // declarations stand in -- none of the proposed strings reaches the block.
     expect(
-      candidateReachSymbols(WRITER_PATCH, [
-        "update Thread Comment",
-        "1updateThreadComment",
-        "u",
-        "x".repeat(81),
-      ]),
+      candidateReachSymbols(
+        WRITER_PATCH,
+        ["update Thread Comment", "1updateThreadComment", "u", "x".repeat(81)],
+        NO_HEAD,
+      ),
     ).toEqual(["updateComment", "updateThreadComment", "CommentReadBack"]);
   });
 
-  it("dedupes and caps the kept names at twelve", () => {
+  it("dedupes and caps the kept names at twenty", () => {
     const wide = patch(
       "diff --git a/src/wide.ts b/src/wide.ts",
       "--- a/src/wide.ts",
       "+++ b/src/wide.ts",
-      "@@ -1 +1,20 @@",
+      "@@ -1 +1,25 @@",
       ...Array.from(
-        { length: 20 },
+        { length: 25 },
         (_, index) => `+export const sym${index} = 1;`,
       ),
     );
     const proposed = [
-      ...Array.from({ length: 20 }, (_, index) => `sym${index}`),
+      ...Array.from({ length: 25 }, (_, index) => `sym${index}`),
       "sym0",
     ];
-    const kept = candidateReachSymbols(wide, proposed);
-    expect(kept).toHaveLength(12);
-    expect(new Set(kept).size).toBe(12);
+    const kept = candidateReachSymbols(wide, proposed, NO_HEAD);
+    expect(kept).toHaveLength(20);
+    expect(new Set(kept).size).toBe(20);
   });
 
   it("falls back to the patch's own exported declarations when nothing is proposed", () => {
-    expect(candidateReachSymbols(WRITER_PATCH, [])).toEqual([
+    expect(candidateReachSymbols(WRITER_PATCH, [], NO_HEAD)).toEqual([
       "updateComment",
       "updateThreadComment",
       "CommentReadBack",
@@ -116,11 +117,149 @@ describe("candidateReachSymbols", () => {
   });
 
   it("falls back when every proposed name is rejected", () => {
-    expect(candidateReachSymbols(WRITER_PATCH, ["notInTheDiff"])).toEqual([
-      "updateComment",
-      "updateThreadComment",
-      "CommentReadBack",
+    expect(
+      candidateReachSymbols(WRITER_PATCH, ["notInTheDiff"], NO_HEAD),
+    ).toEqual(["updateComment", "updateThreadComment", "CommentReadBack"]);
+  });
+});
+
+describe("candidateReachSymbols with head files", () => {
+  const REFRESH_PATH = "src/services/review-refresh-service.ts";
+  const REFRESH_HEAD = [
+    'import { loadReview } from "./review-store";',
+    "",
+    "function localHelper(id: string) {",
+    "  return id.trim();",
+    "}",
+    "",
+    "export class ReviewRefreshService {",
+    "  async refresh(id: string) {",
+    "    const review = await loadReview(localHelper(id));",
+    "    return review;",
+    "  }",
+    "}",
+  ];
+  const head = new Map([[REFRESH_PATH, REFRESH_HEAD]]);
+  /** A one-line body edit at `line` (1-based head line) that leaves every declaration line alone. */
+  const bodyEdit = (line: number) =>
+    patch(
+      `diff --git a/${REFRESH_PATH} b/${REFRESH_PATH}`,
+      `--- a/${REFRESH_PATH}`,
+      `+++ b/${REFRESH_PATH}`,
+      `@@ -${String(line)} +${String(line)} @@`,
+      "-    const review = loadReview(id);",
+      `+${REFRESH_HEAD[line - 1] ?? ""}`,
+    );
+
+  it("counts an exported class whose method body the patch changes as an existing name", () => {
+    const edit = bodyEdit(9);
+    expect(candidateReachSymbols(edit, [], head)).toEqual([
+      "ReviewRefreshService",
     ]);
+    expect(newlyDeclaredNames(edit).has("ReviewRefreshService")).toBe(false);
+  });
+
+  it("counts nothing for a changed line inside a function that is not exported", () => {
+    expect(candidateReachSymbols(bodyEdit(4), [], head)).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "a removal inside one exported body counts that export",
+      hunk: [
+        "@@ -8,2 +8,1 @@",
+        "   async refresh(id: string) {",
+        "-    audit(id);",
+      ],
+      expected: ["ReviewRefreshService"],
+    },
+    {
+      name: "a function removed after an exported class does not count the class",
+      hunk: [
+        "@@ -12,5 +12,1 @@",
+        " }",
+        "-",
+        "-function dropped() {",
+        "-  return 1;",
+        "-}",
+      ],
+      expected: [],
+    },
+  ])("$name", ({ hunk, expected }) => {
+    const removal = patch(
+      `diff --git a/${REFRESH_PATH} b/${REFRESH_PATH}`,
+      `--- a/${REFRESH_PATH}`,
+      `+++ b/${REFRESH_PATH}`,
+      ...hunk,
+    );
+    expect(candidateReachSymbols(removal, [], head)).toEqual(expected);
+  });
+
+  it.each([
+    {
+      path: "internal/refresh.go",
+      declaration: "func (s *Service) Refresh(id string) error {",
+      expected: ["Refresh"],
+    },
+    {
+      path: "internal/refresh.go",
+      declaration: "func refresh(id string) error {",
+      expected: [],
+    },
+    {
+      path: "app/refresh.py",
+      declaration: "def refresh(review_id):",
+      expected: ["refresh"],
+    },
+    {
+      path: "app/refresh.py",
+      declaration: "def _refresh(review_id):",
+      expected: [],
+    },
+  ])(
+    "reads the export rule of $path for $declaration",
+    ({ path, declaration, expected }) => {
+      const bodyChange = patch(
+        `diff --git a/${path} b/${path}`,
+        `--- a/${path}`,
+        `+++ b/${path}`,
+        "@@ -2 +2 @@",
+        "-    return nil",
+        "+    return load(id)",
+      );
+      const lines = [declaration, "    return load(id)"];
+      expect(
+        candidateReachSymbols(bodyChange, [], new Map([[path, lines]])),
+      ).toEqual(expected);
+    },
+  );
+
+  it("orders declared names, then enclosing exports, then model-only names under the cap", () => {
+    const declared = Array.from(
+      { length: 19 },
+      (_, index) => `+export const sym${String(index)} = 1;`,
+    );
+    const mixed = patch(
+      `diff --git a/${REFRESH_PATH} b/${REFRESH_PATH}`,
+      `--- a/${REFRESH_PATH}`,
+      `+++ b/${REFRESH_PATH}`,
+      "@@ -9 +9 @@",
+      "-    const review = loadReview(id);",
+      `+${REFRESH_HEAD[8] ?? ""}`,
+      "diff --git a/src/wide.ts b/src/wide.ts",
+      "--- a/src/wide.ts",
+      "+++ b/src/wide.ts",
+      "@@ -1 +1,20 @@",
+      "+const helper = loadReview();",
+      ...declared,
+    );
+    const kept = candidateReachSymbols(mixed, ["loadReview"], head);
+    expect(kept).toHaveLength(20);
+    expect(kept.slice(0, 19)).toEqual(
+      Array.from({ length: 19 }, (_, index) => `sym${String(index)}`),
+    );
+    expect(kept[19]).toBe("ReviewRefreshService");
+    expect(kept).not.toContain("loadReview");
   });
 });
 

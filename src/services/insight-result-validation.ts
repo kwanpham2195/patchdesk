@@ -9,7 +9,6 @@ import {
   type BriefError,
   type NormalizedBrief,
 } from "../domain/brief";
-import { candidateReachSymbols } from "../domain/brief-reach";
 import {
   containsFenceLine,
   isAcceptableSuggestionCode,
@@ -186,10 +185,10 @@ function withoutSuggestedReplacement<
 /**
  * Attaches the Reach block to a Brief that already normalized.
  *
- * The names come from the child's `reachSymbols`, filtered against the patch;
- * every count comes from `computeBriefReach`. A search that cannot answer is
- * recorded as `reachUnavailable` rather than failing the run: a Brief without
- * Reach is still a Brief, and the reader says so in one line.
+ * The child's `reachSymbols` are proposals; `computeBriefReach` filters them
+ * against the patch and head files and makes every count. A search that
+ * cannot answer is recorded as `reachUnavailable` rather than failing the run:
+ * a Brief without Reach is still a Brief, and the reader says so in one line.
  */
 async function withBriefReach(
   brief: NormalizedBrief,
@@ -209,7 +208,7 @@ async function withBriefReach(
     worktree: input.worktreePath,
     headSha: revision.headSha,
     patch,
-    symbols: candidateReachSymbols(patch, proposed),
+    proposed,
   });
   return outcome._tag === "ok"
     ? { ...brief, reach: outcome.value }

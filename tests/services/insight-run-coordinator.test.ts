@@ -331,9 +331,8 @@ describe("InsightRunCoordinator current lifecycle", () => {
         "brief",
       ),
     ).toMatchObject({ status: "completed" });
-    // The model proposed `guard`; the patch's one added line carries it, so
-    // Patchdesk is the one that asked for a count of it.
-    expect(requests[0]?.symbols).toEqual(["guard"]);
+    // The reach service, not the model, decides which proposed names are counted.
+    expect(requests[0]?.proposed).toEqual(["guard"]);
     expect(requests[0]?.headSha).toBe(headSha);
     expect(
       await value.insights.load(profileId, value.review.id, "brief"),

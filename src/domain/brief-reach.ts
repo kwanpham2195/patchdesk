@@ -1,3 +1,4 @@
+import { changedEnclosingExports } from "./brief-reach-exports";
 import type { BriefReachMention } from "./brief-reach-mentions";
 import { classifyChangedPath } from "./change-scope";
 import { tokenizeUnifiedPatch } from "./unified-patch";
@@ -7,8 +8,8 @@ import { tokenizeUnifiedPatch } from "./unified-patch";
  * depends on the changed code, one hop out, by text match.
  *
  * Nothing here asks a model for a number. A model may propose symbol names; a
- * name survives only when it is a plausible identifier that actually appears on
- * an added or removed line of the patch, and the counting itself is a
+ * name survives only when it is a plausible identifier that the patch changed
+ * (on a changed line or around one), and the counting itself is a
  * `git grep` run by `src/services/brief-reach-service.ts`. Every rule below is
  * a text rule, so the block is labelled "text match" and never "call graph".
  */
@@ -18,11 +19,10 @@ const REACH_IDENTIFIER_SYNTAX = /^[A-Za-z_$][\w$]*$/;
 const MIN_REACH_SYMBOL_LENGTH = 2;
 const MAX_REACH_SYMBOL_LENGTH = 80;
 /**
- * Past a dozen symbols the block stops being a reading order and becomes a
- * list. This is the cap on names Patchdesk *counts*; `briefOutputSchema`'s own
- * `MAX_REACH_SYMBOLS` is the wider cap on names a child may propose.
+ * The cap on names Patchdesk *counts*, sized so every export a PR changes
+ * fits; `briefOutputSchema`'s `MAX_REACH_SYMBOLS` caps what a child proposes.
  */
-const MAX_COUNTED_REACH_SYMBOLS = 12;
+const MAX_COUNTED_REACH_SYMBOLS = 20;
 /** How many outside paths one symbol names before the rest become a count. */
 export const MAX_REACH_OUTSIDE_PATHS = 20;
 
@@ -271,22 +271,26 @@ function matchesSurfaceCondition(
 }
 
 /**
- * The symbol names Patchdesk will count callers for.
- *
- * Every `export`-shaped name the patch declares on an added or removed line is
- * counted first, so the blast radius does not depend on which names a model
- * happened to list. A proposed name is added after them when it looks like an
- * identifier and appears as a whole word on a changed line -- a model naming
- * something the diff never touched is naming something it did not read. When
- * the cap bites, the patch's own declarations are the ones kept.
+ * The symbol names Patchdesk will count callers for, in cap order: every
+ * `export`-shaped name declared on a changed line, then every exported
+ * top-level declaration enclosing a changed line at the head (`headLines`,
+ * keyed by path), then proposed names a changed line carries. The first two
+ * make the block independent of which names a model happened to list; a
+ * proposed name the diff never touched names something the model did not read.
  */
 export function candidateReachSymbols(
   patch: string,
   proposed: ReadonlyArray<string>,
+  headLines: ReadonlyMap<string, ReadonlyArray<string>>,
 ): ReadonlyArray<string> {
   const changed = changedLineText(patch, "both");
   const kept = [...declaredNames(patch, "both")];
   const seen = new Set(kept);
+  for (const name of changedEnclosingExports(patch, headLines)) {
+    if (!isReachIdentifier(name) || seen.has(name)) continue;
+    seen.add(name);
+    kept.push(name);
+  }
   for (const name of proposed) {
     const trimmed = name.trim();
     if (!isReachIdentifier(trimmed) || seen.has(trimmed)) continue;
