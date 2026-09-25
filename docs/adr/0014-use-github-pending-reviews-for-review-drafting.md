@@ -1,5 +1,7 @@
 # Use GitHub pending reviews for Review drafting
 
+> **Note, 2026-09-25:** this record covers pull request Reviews. A local Review (ADR 0050) keeps a Local draft list until it hands off to a pull request Review, where the drafts become ordinary threads of this pending review.
+
 After a maintainer starts a review, the authenticated viewer's GitHub `PENDING` review is the one authoritative editable Review draft. Patchdesk reads, appends to, finishes, and discards that remote pending review; it does not keep a second editable local copy. Before a pending review exists, the inline composer offers the explicit immediate **Comment now** write or **Start a review**, which creates the pending review with the selected inline comment. Once a pending review is confirmed, new inline authoring offers only **Add review comment** against that remote owner.
 
 The workbench header replaces the hidden Review draft dock with one action: **Start a review** when no viewer pending review is confirmed, and **Finish review · N** when one is. The final summary exists only inside the Finish review modal and is sent only on Submit; Patchdesk does not persist a second local summary field. A pending-review read that cannot prove absence is `Unavailable`, never `None`: it disables new-comment actions and offers explicit retry or **Check GitHub again**, which is the only recovery for an uncertain pending-review write. Explicit Refresh remains the sole normal replacement of the represented GitHub snapshot.

@@ -43,7 +43,7 @@ The single primary command a Pull requests screen row offers. Exactly one per ro
 _Avoid_: Row actions, quick actions, suggested next step
 
 **Review**:
-A maintainer's end-to-end evaluation of an open pull request. It continues as the pull request receives updates and ends when the pull request is merged or closed, whether or not the maintainer uses model analysis.
+A maintainer's end-to-end evaluation of an open pull request. It continues as the pull request receives updates and ends when the pull request is merged or closed, whether or not the maintainer uses model analysis. A local Review evaluates a Review source other than a pull request and ends when it hands off to a pull request Review or is closed.
 _Avoid_: Model review, completed review, prepared review
 
 **Review workbench**:
@@ -51,8 +51,20 @@ The persistent surface where a maintainer conducts a review. It represents GitHu
 _Avoid_: Prepared workbench, completed workbench, read-only view
 
 **Review session**:
-The local work for a review, anchored to one pinned pull request revision.
+The local work for a review, anchored to one pinned revision of its Review source: a pull request head and base, or a local head and base.
 _Avoid_: Prepared review
+
+**Review source**:
+What a Review's patch is computed from: a pull request, the working tree against `HEAD`, a local branch against its merge base with a chosen base branch, or one commit against its parent (ADR 0050). The last three make a local Review.
+_Avoid_: Diff mode, target, local PR
+
+**Local snapshot**:
+The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, built in a temporary index copy and committed with a fixed identity so the same content always has the same SHA. It is the head of a working-tree Review session, and the maintainer's index and branches never see it.
+_Avoid_: Stash, WIP commit, temp commit
+
+**Local draft**:
+A Finding a maintainer added to a local Review's draft list. It is kept on the Review because no GitHub pending review exists yet, moves across Refresh only when its anchor maps unambiguously, and becomes a pending-review thread at handoff to the pull request Review.
+_Avoid_: Local comment, queued finding, offline draft
 
 **Represented-review worktree**:
 Patchdesk's immutable checkout for a Review session's pinned revision. Codex may inspect it only through verified sandboxed read-only tools; it is never the maintainer's original checkout.
