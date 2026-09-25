@@ -50,12 +50,18 @@ describe("review rubric", () => {
     expect(prompt).toContain("PATCH ARTIFACT:\n\npatch");
   });
 
-  it("owns the description-versus-patch check at P2", () => {
+  it("owns the stated-goal check at P2, with a local Review's change intent as its goal", () => {
     expect(prompt).toContain(
-      "Check the pull request description against the patch",
+      "Check the patch against the change's stated goal",
+    );
+    expect(prompt).toContain(
+      "The stated goal is the pull request description, or, on a local Review, the change intent in the review input.",
     );
     expect(prompt).toContain(
       "give each one severity P2, since it blocks the review rather than the code",
+    );
+    expect(prompt).toContain(
+      "When the review input states no goal at all, record an unresolved item instead of a finding.",
     );
   });
 });

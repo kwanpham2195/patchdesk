@@ -29,10 +29,10 @@ const REPOSITORY_RULES = [
 ].join(" ");
 
 const DESCRIPTION_CHECK = [
-  "Check the pull request description against the patch, because this Insight is the one that owns that check.",
-  "A goal the description states and the patch does not deliver is a finding, and so is a change the patch makes and the description does not mention; give each one severity P2, since it blocks the review rather than the code.",
-  "When the description states no goal at all, record an unresolved item instead of a finding.",
-  "A decision the author explained in a review thread counts as part of the description.",
+  "Check the patch against the change's stated goal, because this Insight is the one that owns that check. The stated goal is the pull request description, or, on a local Review, the change intent in the review input.",
+  "A goal the stated goal names and the patch does not deliver is a finding, and so is a change the patch makes and the stated goal does not mention; give each one severity P2, since it blocks the review rather than the code.",
+  "When the review input states no goal at all, record an unresolved item instead of a finding.",
+  "A decision the author explained in a review thread counts as part of the stated goal.",
 ].join(" ");
 
 /** Builds the one full represented-revision Analysis prompt both providers send. */
