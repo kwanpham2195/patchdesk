@@ -205,6 +205,23 @@ describe("LocalReviewOpening", () => {
     expect(edited.fullPatch).toContain("+second");
   });
 
+  it("writes a/ and b/ paths with no colour whatever the maintainer's diff config says", async () => {
+    const { root, repositoryPath } = await checkout();
+    git(repositoryPath, "config", "diff.noprefix", "true");
+    git(repositoryPath, "config", "color.diff", "always");
+    await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
+
+    const patch = value(
+      await (
+        await opening(root, repositoryPath)
+      ).open({ profileId, repository, request: workingTree }),
+    ).fullPatch;
+
+    expect(patch).toContain("diff --git a/tracked.txt b/tracked.txt");
+    expect(patch).toContain("+++ b/tracked.txt");
+    expect(patch).not.toContain("\u001b");
+  });
+
   it("refuses a working tree whose index holds a merge conflict", async () => {
     const { root, repositoryPath } = await checkout();
     git(repositoryPath, "checkout", "-q", "-b", "other");
