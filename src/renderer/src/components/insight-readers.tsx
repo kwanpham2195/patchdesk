@@ -104,6 +104,9 @@ export function buildInsightReaders({
       deletions: file.deletions,
     })),
   };
+  // A local Review has no checks or discussion (ADR 0050).
+  const pullRequestReview =
+    workbench.session.key.source.kind === "pull_request";
   const analysisResult = workbench.insights.analysis.retained?.value;
   const pullRequest = workbench.pullRequest;
   const fixPromptContext =
@@ -122,8 +125,9 @@ export function buildInsightReaders({
     workbench.insights.analysis.retained !== undefined ? (
       <AnalysisReader
         result={workbench.insights.analysis.retained.value}
-        {...(workbench.review.status !== "open" &&
-        workbench.checks.overall === "unknown"
+        {...(!pullRequestReview ||
+        (workbench.review.status !== "open" &&
+          workbench.checks.overall === "unknown")
           ? {}
           : { checkStatus: workbench.checks.overall })}
         findingStatuses={Object.fromEntries(
@@ -179,7 +183,7 @@ export function buildInsightReaders({
     ) : null;
   const walkthroughRetained = workbench.insights.walkthrough.retained;
   const walkthroughDiscussion =
-    walkthroughRetained === undefined
+    walkthroughRetained === undefined || !pullRequestReview
       ? undefined
       : walkthroughDiscussionState(
           workbench,
