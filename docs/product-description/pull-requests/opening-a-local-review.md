@@ -85,6 +85,34 @@ What differs is what a local Review has no source for:
 - Brief draws Flow, Shape, Blast radius, and Start here. Blast radius counts names by text search at the session head, which for a working tree is the Local snapshot, so a name the uncommitted change adds is found. Brief has no Description vs diff block for any Review (ADR 0040), and no citation names a commit. A current Brief offers **Copy as PR description** in its Provenance card; see [Copy Brief as PR description](#copy-brief-as-pr-description).
 - A settled run posts no desktop notification.
 
+## Change intent
+
+A local Review can hold a **Change intent**: what the change is meant to do, usually the task or spec the coding agent was given (#467, ADR 0051). Analysis reads it as the change's stated goal. A goal the intent names and the patch does not deliver is a P2 Finding, and so is a change the patch makes and the intent does not mention. With no intent, Analysis records an unresolved item instead. Brief and Walkthrough do not read it.
+
+The header shows the intent on its own line under the revision line: the first line of the text, `Spec: <path>` for a spec file, or `No change intent`. Beside it, **Change intent** opens a dialog with two tabs. **Text** takes Markdown of at most 64 KiB; **Spec file** takes a path inside the repository, such as `docs/spec.md`. **Save** stays disabled while the field is empty, **Clear** removes the intent, and **Cancel** or Escape closes the dialog without a change. A merged or closed Review shows the line without the button.
+
+Saving writes only the Review record. A refused save keeps the dialog open with its text and one sentence under `Change intent not saved`:
+
+| Cause                                                          | Sentence                                                                                   |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Blank text, text over 64 KiB, or a path outside the repository | `Enter text of at most 64 KiB, or a file path inside the repository such as docs/spec.md.` |
+| The text holds what looks like a credential                    | `The text contains what looks like a credential. Remove it and save again.`                |
+| Another action on the Review is running                        | `Another action on this review is running. Try again when it finishes.`                    |
+| Any other failure                                              | `The change intent was not saved.`                                                         |
+
+A spec file is read when Analysis starts, from the reviewed revision (the Local snapshot on a working tree), never from the working tree, so an edit after the snapshot reaches Analysis only after Refresh. When the file cannot be used, the run does not start and the run dialog says why:
+
+| Cause                                         | Sentence                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| No file at that path in the reviewed revision | `The spec file is not in the reviewed revision. Fix the path in Change intent, or add the file and press Refresh.` |
+| Larger than 64 KiB                            | `The spec file is larger than 64 KiB. Shorten it, or enter the goal as text in Change intent.`                     |
+| Not UTF-8 text                                | `The spec file is not UTF-8 text. Point Change intent at a Markdown or text file.`                                 |
+| Holds what looks like a credential            | `The spec file contains what looks like a credential. Remove it and press Refresh.`                                |
+
+An Analysis run on a Review with an intent names it after the provider and model: `Checked against: change intent`, or `Checked against: spec <path>`. When the intent was edited, replaced, or cleared after the run, the line adds `Intent changed since this run`; a spec file counts as unchanged while its path is the same, because its bytes belong to the revision the run already names. Refresh and opening the Review again keep the intent.
+
+> Technical note: the intent is stored on the Review record, and each Analysis records the source and the sha256 of the text it read. It goes into `review-input.md` between `BEGIN CHANGE INTENT` and `END CHANGE INTENT`; changing it rebuilds that file at the next Analysis start.
+
 ## Local drafts
 
 A local Review reviews a coding agent's work before any pull request exists. The Findings the maintainer wants the agent to address, and the maintainer's own notes on diff lines, go to a **Local draft** list kept on the Review (ADR 0050, ADR 0051), and the list is copied to the agent as one prompt.
@@ -236,7 +264,7 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - Live pass on 2026-09-25 over CDP 9233: a working-tree Review on the Patchdesk checkout showed an untracked probe file as NEW on the Diff tab; `shasum` of the checkout's index and `git status --short` were identical before and after; opening again with unchanged content left one session.
 - Live pass on 2026-09-25 over CDP 9233 (#450): on a working-tree Review of the Patchdesk checkout with an untracked probe file, Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P2 Finding anchored to the probe file's line 9 with no Add to review command, and Brief (medium) rendered Flow, Shape, Blast radius counted at the snapshot SHA, and Start here. The header read `Local snapshot 66316662 · read from the local checkout`. Walkthrough was not run live.
 - Brief's Blast radius heading reads "what this PR could affect" on a local Review, which is pull-request wording.
-- The Analysis prompt still asks the model to review a pull request and check its description; changing prompt text needs its own review.
+- The Analysis prompt's first line still asks the model to review a pull request; its stated-goal check names the pull request description or, on a local Review, the Change intent (#467).
 - Commit, Push, Open PR, and handoff to a pull request Review were dropped on 2026-09-25.
 - Live pass on 2026-09-25 over CDP 9233 (#452): a working-tree Review of the Patchdesk checkout with an untracked probe file; Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P2 Finding with a suggestion at `tmp-local-refresh-probe.ts:4`. The Finding was added to draft and a note added at line 12 on session `…sha-17ece124…`. After line 4 was fixed in the file, Apply was refused with the changed-tree sentence; Refresh moved the Review to session `…sha-060d6ddd…`, the Analysis read Outdated with no Apply, the card listed the Finding as `Changed since your note` (suggestion dropped) and the note as `Unchanged`, and Copy as agent prompt carried the status line for the Finding only. Evidence: `/tmp/patchdesk-452/`.
 - Live pass on 2026-09-25 over CDP 9233 (#451): a working-tree Review of the Patchdesk checkout with an untracked probe file; Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P1 Finding at `tmp-local-review-probe.ts:3` with a suggestion. Apply was refused with the changed-tree sentence after the probe was edited, and after the edit was undone and the Review reopened, Apply changed exactly line 3; `git status --short` and the index `shasum` were identical before and after.
