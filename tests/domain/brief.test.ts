@@ -251,7 +251,16 @@ describe("insightOutputGuidance", () => {
   it("gives the Brief its own Flow rules and still forbids prose numbers", () => {
     const guidance = insightOutputGuidance("brief", "en");
     expect(guidance).toContain(
-      "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, and component.",
+      "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, component, state, and contract.",
+    );
+    expect(guidance).toContain(
+      "Give at most three trees; prefer the kinds that show the change most directly.",
+    );
+    expect(guidance).toContain(
+      "Give a state tree only when the patch adds, removes, or rewires a named state of a lifecycle, such as a write, a run, a session, or a review.",
+    );
+    expect(guidance).toContain(
+      "Give a contract tree only when the patch changes an exported signature, type, or field that callers outside the patch depend on.",
     );
     expect(guidance).toContain(
       "Each step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
@@ -288,6 +297,8 @@ describe("insightOutputGuidance", () => {
       "CALL_TREE",
       "CONTROL_FLOW",
       "COMPONENT",
+      "STATE",
+      "CONTRACT",
       "MARKING ADDED, REMOVED, AND UNCHANGED",
       "CITATIONS",
       "LIMITS",
@@ -590,18 +601,19 @@ describe("normalizeBrief flow", () => {
     expect(normalized.value.citationStatus).toBe("verified");
   });
 
+  const goPatch = [
+    "diff --git a/internal/recovery/recovery.go b/internal/recovery/recovery.go",
+    "index 1111111..2222222 100644",
+    "--- a/internal/recovery/recovery.go",
+    "+++ b/internal/recovery/recovery.go",
+    "@@ -1,2 +1,3 @@",
+    " const before = true",
+    "+const first = true",
+    " ",
+    "",
+  ].join("\n");
+
   it("drops a proposed component tree, silently, for a Go-only patch", () => {
-    const goPatch = [
-      "diff --git a/internal/recovery/recovery.go b/internal/recovery/recovery.go",
-      "index 1111111..2222222 100644",
-      "--- a/internal/recovery/recovery.go",
-      "+++ b/internal/recovery/recovery.go",
-      "@@ -1,2 +1,3 @@",
-      " const before = true",
-      "+const first = true",
-      " ",
-      "",
-    ].join("\n");
     const goManifest = briefManifest({ patch: goPatch });
     const normalized = normalizeBrief(
       {
@@ -620,6 +632,60 @@ describe("normalizeBrief flow", () => {
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.flow).toBeUndefined();
     expect(normalized.value.citationStatus).toBe("verified");
+  });
+
+  it("keeps state and contract trees for a Go-only patch and round-trips them through the stored-Brief parser", () => {
+    const normalized = normalizeBrief(
+      {
+        flow: [
+          {
+            kind: "state",
+            title: "Write lifecycle",
+            nodes: [
+              {
+                label: "pending",
+                change: "unchanged",
+                children: [
+                  {
+                    label: "→ unknown on timeout",
+                    change: "added",
+                    citations: ["h1"],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            kind: "contract",
+            title: "saveDraft",
+            nodes: [
+              {
+                label: "saveDraft",
+                change: "unchanged",
+                children: [
+                  {
+                    label: "(draft, opts): Promise<SaveResult>",
+                    change: "added",
+                    citations: ["h1"],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      briefManifest({ patch: goPatch }),
+      goPatch,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow?.trees.map((tree) => tree.kind)).toEqual([
+      "state",
+      "contract",
+    ]);
+    expect(
+      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
+    ).toEqual({ _tag: "ok", value: normalized.value });
   });
 
   it("does not throw when flow proposes 2000 levels of nesting, and rejects the whole Brief as malformed", () => {

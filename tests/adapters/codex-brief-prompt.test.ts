@@ -26,7 +26,7 @@ describe("buildCodexBriefPrompt", () => {
     expect(result.value).toContain(briefPrompt);
     expect(result.value).toContain("HUNK ALIAS MANIFEST");
     expect(result.value).toContain(
-      '"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string',
+      '"flow":[{"kind":"call_tree"|"control_flow"|"component"|"state"|"contract","title":string',
     );
     expect(result.value).toContain("Use no other keys.");
     expect(result.value).not.toContain("flow trees");

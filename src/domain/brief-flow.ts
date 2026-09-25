@@ -6,8 +6,8 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
 /*
  * The Brief reader draws this block as "Flow": a before/after tree of a
  * runtime sequence. Every tree carries a `kind` -- call_tree, control_flow,
- * or component -- and the Brief keeps at most one tree per kind, so up to
- * `MAX_FLOW_TREES` trees survive, one for each kind the patch changes.
+ * component, state, or contract -- and the Brief keeps at most one tree per
+ * kind and at most `MAX_FLOW_TREES` trees in all.
  *
  * A component view is a claim about a user-interface tree; a patch with no
  * UI file cannot support one, so it is dropped regardless of what the model
@@ -50,10 +50,16 @@ type BriefFlowChange = "added" | "removed" | "unchanged";
 
 /**
  * What a Flow tree draws: a call tree of real function/method names, a
- * pseudocode control-flow sketch, or a component tree. The Brief keeps at
- * most one tree per kind (see `MAX_FLOW_TREES`).
+ * pseudocode control-flow sketch, a component tree, a lifecycle's states and
+ * their transitions, or an exported contract's signature and fields. The
+ * Brief keeps at most one tree per kind (see `MAX_FLOW_TREES`).
  */
-type BriefFlowKind = "call_tree" | "control_flow" | "component";
+type BriefFlowKind =
+  | "call_tree"
+  | "control_flow"
+  | "component"
+  | "state"
+  | "contract";
 
 /** One step of a Flow tree, already checked against the citation manifest. */
 export type BriefFlowNode = {
@@ -196,7 +202,13 @@ export const briefFlowOutputSchema = v.optional(
   v.pipe(
     v.array(
       v.strictObject({
-        kind: v.picklist(["call_tree", "control_flow", "component"]),
+        kind: v.picklist([
+          "call_tree",
+          "control_flow",
+          "component",
+          "state",
+          "contract",
+        ]),
         title: v.pipe(
           v.string(),
           v.minLength(1),

@@ -3,6 +3,9 @@
 > **Status: Accepted.** This decision introduced Flow as a sixth Brief block.
 > ADR 0040 later removed the prose blocks and made Flow the only
 > citation-bearing Brief block.
+>
+> ADR 0049 adds the `state` and `contract` kinds; Flow still keeps at most
+> three trees.
 
 Brief's five blocks answer what a change is for, what it touches, and where to
 start reading. None of them shows how the change reorders a runtime sequence.
