@@ -35,6 +35,7 @@ import { useWalkthroughProgress } from "../hooks/use-walkthrough-progress";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
+import type { LocalApplyControls } from "../flows/use-local-apply";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 import {
   INSIGHT_LANGUAGE_LABELS,
@@ -175,6 +176,7 @@ export function InsightsSlot({
   onReprepare,
   onAddFinding,
   addAllFindings,
+  localApply,
   onFinishWithAnalysisSummary,
 }: {
   readonly workbench: WorkbenchResponse;
@@ -184,6 +186,7 @@ export function InsightsSlot({
   readonly onReprepare: () => Promise<WorkbenchResponse>;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly addAllFindings?: AddAllFindingsControls;
+  readonly localApply?: LocalApplyControls;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
 }): React.JSX.Element {
   const {
@@ -278,6 +281,7 @@ export function InsightsSlot({
       onFinishWithAnalysisSummary,
       addFinding: onAddFinding,
       addAllFindings,
+      localApply,
       onOpenFindingInDiff: openFindingInDiff,
       onOpenFileInDiff: openFileInDiff,
       // The Brief points at the Walkthrough rather than duplicating it: read the current one, or start one while the Review is open.

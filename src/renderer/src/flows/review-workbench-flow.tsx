@@ -8,6 +8,7 @@ import { InsightsSlot } from "../components/review-insights-slot";
 import { useWorkbenchActions } from "./use-workbench-actions";
 import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useAddAllFindings } from "./use-add-all-findings";
+import { useLocalApply } from "./use-local-apply";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
 import { usePendingReviewActions } from "./use-pending-review-actions";
@@ -152,6 +153,10 @@ export function ReviewWorkbenchFlow({
       workbench.insights.analysis.retained?.runId,
     ]),
   });
+  const localApply = useLocalApply({
+    workbench,
+    onWorkbenchReplace: replaceWorkbench,
+  });
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
 
@@ -213,6 +218,7 @@ export function ReviewWorkbenchFlow({
               onWorkbenchReplace={replaceWorkbench}
               onWorkbenchPatch={onWorkbenchPatch}
               onReprepare={requestReprepare}
+              {...(localApply === undefined ? {} : { localApply })}
               {...(writeRecovery.githubWritesLocked
                 ? {}
                 : {

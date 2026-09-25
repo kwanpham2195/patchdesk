@@ -19,6 +19,7 @@ import {
 import { NeedsReplyBadge } from "./needs-reply-badge";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -26,6 +27,7 @@ import {
 } from "./ui/collapsible";
 import { Input } from "./ui/input";
 import { InlineError } from "./ui/inline-error";
+import { Label } from "./ui/label";
 import { Spinner } from "./ui/spinner";
 import {
   Popover,
@@ -86,6 +88,7 @@ export function AnalysisFindingRow({
   onAddFinding,
   onDismissFinding,
   onOpenFindingInDiff,
+  applySelection,
 }: {
   readonly finding: AnalysisFinding;
   readonly status?: FindingStatus | undefined;
@@ -101,6 +104,12 @@ export function AnalysisFindingRow({
     finding: AnalysisFinding,
     reason: string,
   ) => Promise<void>;
+  /** Offered on a working-tree Review; shown only when the suggestion resolves in the patch. */
+  readonly applySelection?: {
+    readonly selected: boolean;
+    readonly disabled: boolean;
+    readonly onChange: (selected: boolean) => void;
+  };
 }): React.JSX.Element {
   const [reason, setReason] = useState("");
   const [dismissOpen, setDismissOpen] = useState(false);
@@ -174,7 +183,12 @@ export function AnalysisFindingRow({
   };
 
   const location = findingLocation(finding);
-  const statusLabel = findingStatusLabel(reviewStatus);
+  const applicable =
+    applySelection !== undefined &&
+    disposition === "open" &&
+    suggestionTarget !== undefined;
+  // A local Finding has no review status to report; its suggestion's Apply takes the label's place.
+  const statusLabel = applicable ? undefined : findingStatusLabel(reviewStatus);
 
   return (
     // Focusable so a Diff card's "Open in Analysis" can land keyboard focus here.
@@ -233,6 +247,16 @@ export function AnalysisFindingRow({
             </Badge>
           )}
           {needsReply ? <NeedsReplyBadge /> : null}
+          {applicable ? (
+            <Label className="text-xs font-normal">
+              <Checkbox
+                checked={applySelection.selected}
+                disabled={applySelection.disabled}
+                onCheckedChange={(checked) => applySelection.onChange(checked)}
+              />
+              Apply
+            </Label>
+          ) : null}
           {disposition === "open" &&
           reviewStatus === "actionable" &&
           finding.mappingStatus === "mapped" &&
