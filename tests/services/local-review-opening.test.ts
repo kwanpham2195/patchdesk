@@ -247,6 +247,36 @@ describe("LocalReviewOpening", () => {
     expect(stored.lastOpenedAt).toBe(now);
   });
 
+  it("refuses to reopen a working-tree Review after a branch switch, creating nothing", async () => {
+    const { root, repositoryPath } = await checkout();
+    const service = await opening(root, repositoryPath);
+    value(await service.open({ profileId, repository, request: workingTree }));
+    const reviews = new ReviewStore(PatchdeskPaths.forTest(join(root, "app")));
+    const refsBefore = git(repositoryPath, "for-each-ref", "refs/patchdesk");
+    git(repositoryPath, "checkout", "-q", "-b", "other");
+
+    const reopened = await service.open({
+      profileId,
+      repository,
+      request: {
+        kind: "working_tree",
+        expectedHead: {
+          kind: "branch",
+          branch: value(parseLocalBranchName("main")),
+        },
+      },
+    });
+
+    expect(reopened).toEqual({
+      _tag: "err",
+      error: { reason: "branch_mismatch", currentBranch: "other" },
+    });
+    expect(value(await reviews.list(profileId)).reviews).toHaveLength(1);
+    expect(git(repositoryPath, "for-each-ref", "refs/patchdesk")).toBe(
+      refsBefore,
+    );
+  });
+
   it("moves the Review to the checkout as it is once the Review lock is free", async () => {
     const { root, repositoryPath } = await checkout();
     await writeFile(join(repositoryPath, "untracked.txt"), "first\n");

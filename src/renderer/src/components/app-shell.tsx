@@ -39,7 +39,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { VisitedPullRequests } from "@/components/visited-pull-requests";
+import {
+  VisitedPullRequests,
+  type LocalReviewReopen,
+} from "@/components/visited-pull-requests";
 import {
   loadVisitedPullRequestsCollapsed,
   saveVisitedPullRequestsCollapsed,
@@ -47,7 +50,6 @@ import {
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { useVisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
-import type { SidebarLocalReviewRow } from "@/sidebar-contracts";
 import { isTextEntryTarget } from "../text-entry-target";
 
 type ProfileEntry = {
@@ -77,8 +79,7 @@ export function AppShell({
   readonly destination: AppDestination;
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
-  /** Reopens a local Review from its sidebar row through the local open path. */
-  readonly onOpenLocalReview: (row: SidebarLocalReviewRow) => void;
+  readonly onOpenLocalReview: LocalReviewReopen;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
   readonly onOpenDiagnostics: (opener?: HTMLElement) => void;
   readonly profiles?: ReadonlyArray<ProfileEntry>;

@@ -7,6 +7,7 @@ import {
   minLength,
   minValue,
   number,
+  optional,
   picklist,
   pipe,
   safeParse,
@@ -62,14 +63,21 @@ export function registerLocalReviewRoutes(
       request === undefined
     )
       return context.json({ error: "invalid_input" }, 400);
-    return response(
-      context,
-      await container.localReviewOpening.open({
-        profileId: profileId.value,
-        repository: { host: host.value, owner: owner.value, repo: repo.value },
-        request,
-      }),
-    );
+    const opened = await container.localReviewOpening.open({
+      profileId: profileId.value,
+      repository: { host: host.value, owner: owner.value, repo: repo.value },
+      request,
+    });
+    // The refusal names the checkout's branch so the renderer can say which one to switch to.
+    if (opened._tag === "err" && opened.error.reason === "branch_mismatch")
+      return context.json(
+        {
+          error: opened.error.reason,
+          currentBranch: opened.error.currentBranch ?? null,
+        },
+        409,
+      );
+    return response(context, opened);
   });
 
   // Identity only: the main process derives every range and replacement (ADR 0048).
@@ -303,7 +311,15 @@ const localReviewOpenSchema = strictObject({
   owner: nonEmpty,
   repo: nonEmpty,
   source: variant("kind", [
-    strictObject({ kind: literal("working_tree") }),
+    strictObject({
+      kind: literal("working_tree"),
+      expectedHead: optional(
+        variant("kind", [
+          strictObject({ kind: literal("branch"), branch: nonEmpty }),
+          strictObject({ kind: literal("detached") }),
+        ]),
+      ),
+    }),
     strictObject({
       kind: literal("branch"),
       branch: nonEmpty,
@@ -316,7 +332,18 @@ const localReviewOpenSchema = strictObject({
 function parseSourceRequest(
   raw: InferOutput<typeof localReviewOpenSchema>["source"],
 ): LocalReviewSourceRequest | undefined {
-  if (raw.kind === "working_tree") return { kind: "working_tree" };
+  if (raw.kind === "working_tree") {
+    if (raw.expectedHead === undefined) return { kind: "working_tree" };
+    if (raw.expectedHead.kind === "detached")
+      return { kind: "working_tree", expectedHead: { kind: "detached" } };
+    const expected = parseLocalBranchName(raw.expectedHead.branch);
+    return expected._tag === "ok"
+      ? {
+          kind: "working_tree",
+          expectedHead: { kind: "branch", branch: expected.value },
+        }
+      : undefined;
+  }
   if (raw.kind === "commit") {
     const commit = parseGitShaPrefix(raw.commit.toLowerCase());
     return commit._tag === "ok"

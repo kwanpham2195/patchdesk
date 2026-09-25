@@ -7,41 +7,26 @@ import {
   pullRequestIdentityKey,
 } from "../renderer-contracts";
 import type { InboxResponse } from "../renderer-contracts";
-import type { SidebarLocalReviewRow } from "../sidebar-contracts";
-import { casesHandled } from "../../../domain/result";
+import { branchMismatchMessage } from "../local-review-reopen";
 import type { Dashboard, WorkbenchPayload } from "../renderer-models";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
 
 /** The local Review source a maintainer picks, as `POST /v1/reviews/open-local` takes it (ADR 0050). */
 export type LocalReviewSourceInput =
-  | { readonly kind: "working_tree" }
+  | {
+      readonly kind: "working_tree";
+      /** Sent by a sidebar reopen: the `HEAD` the stored Review was opened on. */
+      readonly expectedHead?:
+        | { readonly kind: "branch"; readonly branch: string }
+        | { readonly kind: "detached" };
+    }
   | {
       readonly kind: "branch";
       readonly branch: string;
       readonly baseBranch: string;
     }
   | { readonly kind: "commit"; readonly commit: string };
-
-/** The open request that reads a stored local source from the checkout again; a working tree names its branch from `HEAD`. */
-export function localReviewSourceInput(
-  source: SidebarLocalReviewRow["source"],
-): LocalReviewSourceInput {
-  switch (source.kind) {
-    case "working_tree":
-      return { kind: "working_tree" };
-    case "branch":
-      return {
-        kind: "branch",
-        branch: source.branch,
-        baseBranch: source.baseBranch,
-      };
-    case "commit":
-      return { kind: "commit", commit: source.commitSha };
-    default:
-      return casesHandled(source);
-  }
-}
 
 type PrRef = {
   readonly host?: string;
@@ -446,7 +431,10 @@ export function useInboxReviewOpening({
           }),
         "Opening Review…",
       ).catch((cause: unknown) => {
-        throw new Error(localReviewOpenFailure(cause));
+        throw new Error(
+          branchMismatchMessage(cause, source) ?? localReviewOpenFailure(cause),
+          { cause },
+        );
       });
       const parsed = parseWorkbenchResponse(value);
       if (parsed === undefined)

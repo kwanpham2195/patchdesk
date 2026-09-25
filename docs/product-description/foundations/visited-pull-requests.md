@@ -75,7 +75,7 @@ A successful load shows the Review workbench and records the open. The column re
 
 > Technical note: only a real open stamps the time. The reloads after a publish, a merge, or a finished Insight run re-read the workbench already on screen and neither stamp an open nor re-read the column. The title and open time are written on a best-effort basis, so a failure to record them never fails the open.
 
-A failed local open, such as a commit the checkout no longer has or a working tree with merge conflicts, returns to the Pull requests screen and shows `Could not open review` with the local reason.
+A failed local open, such as a commit the checkout no longer has or a working tree with merge conflicts, returns to the Pull requests screen and shows `Could not open review` with the local reason. A working-tree row refused for a branch switch is the exception: see [Edge cases](#edge-cases).
 
 A failed load shows the Pull requests screen's `Could not open review` notice with `Could not open the saved review.` and the reason. The destination stays on the requested Review: the titlebar still names the Review workbench and shows Back, and that Review's row stays highlighted and inert. The exception is the launch restore of a Review whose record no longer exists, which returns quietly to Pull requests; [Navigation and overlays](navigation-and-overlays.md#arrive) owns it.
 
@@ -130,7 +130,7 @@ After an interrupt the column keeps the list it last read. Nothing in it is a dr
 ## Edge cases
 
 - A pull request never opened in Patchdesk does not appear, however recently it changed on GitHub.
-- A working-tree row names the branch `HEAD` was on when it was opened. Its click reads the working tree as it is now, so after a branch switch it opens the working-tree Review of the current branch, which gets its own row.
+- A working-tree row names the branch `HEAD` was on when it was opened. After a branch switch its click opens nothing: the row shows, beneath it, which branch the checkout is on and which to switch to, such as `The checkout is on main. Switch to feat/x to reopen this review.`, and the screen stays where it was. A row opened on a detached `HEAD` asks to detach it. The message clears on the next click in the column.
 - The Navigate palette's title search lists pull request rows only.
 - The column holds 20 rows. There is no page past them; the oldest visit drops off when a new one arrives.
 - Opening a pull request always moves it to the top, so it is never the row pushed out.

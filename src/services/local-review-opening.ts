@@ -3,6 +3,7 @@ import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   createReviewId,
   type IsoTimestamp,
+  type LocalBranchName,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../domain/ids";
@@ -14,7 +15,11 @@ import {
   moveLocalReviewToSession,
   type Review,
 } from "../domain/review";
-import type { LocalReviewSource } from "../domain/review-source";
+import { definedProps } from "../domain/defined-props";
+import type {
+  LocalReviewSource,
+  LocalReviewSourceRequest,
+} from "../domain/review-source";
 import type {
   LocalReviewOpenRequest,
   LocalReviewPreparationFailure,
@@ -27,15 +32,21 @@ import type {
   ReviewWorkbenchProjectionService,
 } from "./review-workbench-projection";
 
-export type LocalReviewOpenFailure = {
-  readonly reason:
-    | "not_found"
-    | "repository_not_local"
-    | "unmerged_index"
-    | "revision_not_found"
-    | "storage"
-    | "terminal";
-};
+export type LocalReviewOpenFailure =
+  | {
+      readonly reason:
+        | "not_found"
+        | "repository_not_local"
+        | "unmerged_index"
+        | "revision_not_found"
+        | "storage"
+        | "terminal";
+    }
+  /** The checkout's `HEAD` is not the one the request expects; `currentBranch` is absent when it is detached. */
+  | {
+      readonly reason: "branch_mismatch";
+      readonly currentBranch?: LocalBranchName;
+    };
 
 /**
  * Opens a local Review (ADR 0050). Every open reads the source from the
@@ -70,6 +81,13 @@ export class LocalReviewOpening {
       const resolved = await this.preparation.resolve(request);
       if (resolved._tag === "err")
         return err(mapPreparationFailure(resolved.error));
+      // The locked open proceeds only on this same Review id, and a working
+      // tree's id is keyed by its branch, so checking here also holds under the lock.
+      const mismatch = headMismatch(
+        request.request,
+        resolved.value.identity.source,
+      );
+      if (mismatch !== undefined) return err(mismatch);
       const reviewId = createReviewId(resolved.value.identity);
       const opened = await this.lifecycle.coordinator.withReviewLock(
         request.profileId,
@@ -181,6 +199,24 @@ export class LocalReviewOpening {
               : "not_found",
         });
   }
+}
+
+function headMismatch(
+  request: LocalReviewSourceRequest,
+  source: LocalReviewSource,
+): LocalReviewOpenFailure | undefined {
+  if (request.kind !== "working_tree" || request.expectedHead === undefined)
+    return undefined;
+  if (source.kind !== "working_tree") return undefined;
+  const expected =
+    request.expectedHead.kind === "branch"
+      ? request.expectedHead.branch
+      : undefined;
+  if (source.branch === expected) return undefined;
+  return {
+    reason: "branch_mismatch",
+    ...definedProps({ currentBranch: source.branch }),
+  };
 }
 
 function mapPreparationFailure(
