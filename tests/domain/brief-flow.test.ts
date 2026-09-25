@@ -336,27 +336,39 @@ describe("normalizeBriefFlow", () => {
     expect(v.safeParse(briefFlowOutputSchema, noKind).success).toBe(false);
   });
 
-  it("rejects a proposal nested 4 deep at the schema level, whole and unparsed", () => {
-    const tooDeep = [
+  it("cuts a tree nested past the kept depth to three levels, without counting the cut nodes' citations", () => {
+    // Shaped like a live gpt-5.6-luna control_flow tree that nested one level
+    // too deep; the depth-4 step cites an alias the manifest does not have.
+    const proposed = [
       {
-        kind: "call_tree",
-        title: "Depth test",
+        kind: "control_flow",
+        title: "Watch refusal flow",
         nodes: [
           {
-            label: "L1",
+            label: "on(WatchPullRequestButton click)",
             change: "unchanged",
             children: [
               {
-                label: "L2",
+                label: "toggle(pullRequest)",
                 change: "unchanged",
                 children: [
                   {
-                    label: "L3",
+                    label: "if failure.kind is terminal",
                     change: "added",
                     citations: ["h1"],
                     children: [
-                      { label: "L4", change: "added", citations: ["h2"] },
+                      {
+                        label: "onTerminalRefusal()",
+                        change: "added",
+                        citations: ["h9"],
+                        children: [{ label: "close()", change: "unchanged" }],
+                      },
                     ],
+                  },
+                  {
+                    label: "return applied",
+                    change: "removed",
+                    citations: ["h2"],
                   },
                 ],
               },
@@ -365,7 +377,18 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    expect(v.safeParse(briefFlowOutputSchema, tooDeep).success).toBe(false);
+    const parsed = v.safeParse(briefFlowOutputSchema, proposed);
+    if (!parsed.success) throw new Error("expected the schema to accept it");
+    const result = normalize(parsed.output, NON_UI_PATHS);
+    const root = result.value?.trees[0]?.nodes[0];
+    const depthThree = root?.children[0]?.children;
+    expect(root?.label).toBe("on(WatchPullRequestButton click)");
+    expect(depthThree?.map((node) => node.label)).toEqual([
+      "if failure.kind is terminal",
+      "return applied",
+    ]);
+    expect(depthThree?.map((node) => node.children)).toEqual([[], []]);
+    expect(result.rejected).toBe(0);
   });
 
   it("does not throw when a proposal chains 2000 levels deep", () => {
