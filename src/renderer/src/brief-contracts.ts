@@ -401,7 +401,15 @@ export function briefBlastRadius(reach: BriefReach): BriefBlastRadius {
   const quiet = reach.symbols.filter(
     (symbol) => symbol.outsideCallerFiles === 0,
   );
-  const quietNames = `${String(quiet.length)} ${quiet.every((symbol) => symbol.status === "new") ? "new " : ""}${quiet.length === 1 ? "name" : "names"}`;
+  const quietNew = quiet.filter((symbol) => symbol.status === "new").length;
+  const quietSplit = [
+    quietNew === 0 ? undefined : `${String(quietNew)} new`,
+    quiet.length === quietNew
+      ? undefined
+      : `${String(quiet.length - quietNew)} changed`,
+  ]
+    .filter((part) => part !== undefined)
+    .join(", ");
   const affected = new Set([
     ...reach.removedStillReferenced.flatMap((item) => item.paths),
     ...mentioned.flatMap((symbol) => symbol.outsidePaths),
@@ -414,7 +422,7 @@ export function briefBlastRadius(reach: BriefReach): BriefBlastRadius {
     removed,
     changed,
     quiet: {
-      label: `${quietNames} not used outside this PR`,
+      label: `${String(quiet.length)} ${quiet.length === 1 ? "name" : "names"} nothing outside this PR mentions (${quietSplit})`,
       names: quiet.map((symbol) => symbol.name),
     },
     untested: {
