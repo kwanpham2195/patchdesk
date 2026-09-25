@@ -429,6 +429,9 @@ function importLoginShellEnvironmentOnce(): Promise<void> {
 }
 
 app.setName("Patchdesk");
+// Electron keys the single-instance lock on userData, so a separate dev profile lets an installed Patchdesk run beside `pnpm dev`; PatchdeskPaths stay shared.
+if (!app.isPackaged && !app.commandLine.hasSwitch("user-data-dir"))
+  app.setPath("userData", join(app.getPath("appData"), "Patchdesk Dev"));
 process.on("uncaughtException", (cause: unknown) => {
   logs.write({
     process: "main",

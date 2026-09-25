@@ -148,7 +148,7 @@ Lessons from past sessions and commits that code cannot enforce. Each one cost a
 
 Dev app and live checks:
 
-- A running Patchdesk holds `app.requestSingleInstanceLock()`; a second instance opens CDP and quits with no error. When 9233 "never comes up", look for the older process first.
+- A running Patchdesk holds `app.requestSingleInstanceLock()`; a second instance opens CDP and quits with no error. When 9233 "never comes up", look for the older process first. `pnpm dev` uses its own Electron profile (`~/Library/Application Support/Patchdesk Dev`), so an installed Patchdesk does not hold its lock; both still share `~/.local/share/patchdesk`.
 - App data is `~/.local/share/patchdesk` for every instance; a separate `--user-data-dir` does not give a separate workspace or review store.
 - After a renderer `.ts` -> `.tsx` rename, restart `pnpm dev`. Vite's transform cache keeps the old import path in every importer, the lazy route fails on MIME, and `agent-browser reload` does not clear it.
 - `agent-browser` must use the default session: named sessions call `Target.createTarget`, which Electron's CDP does not implement. Base UI `Select` opens with focus then Enter, not a click. Fixture hashes route only on a full load, so `agent-browser reload` after changing the hash.
