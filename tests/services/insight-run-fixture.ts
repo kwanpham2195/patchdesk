@@ -8,6 +8,7 @@ import { ReviewSessionStore } from "../../src/adapters/storage/review-session-st
 import { ReviewStore } from "../../src/adapters/storage/review-store";
 import {
   parseAbsolutePath,
+  parseContentHash,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -18,7 +19,12 @@ import {
 } from "../../src/domain/ids";
 import type { InsightType } from "../../src/domain/insight-record";
 import { createReview } from "../../src/domain/review";
-import { createReviewSession } from "../../src/domain/review-session";
+import {
+  createLocalReviewSession,
+  createReviewSession,
+  type ReviewSession,
+} from "../../src/domain/review-session";
+import type { LocalReviewSource } from "../../src/domain/review-source";
 import { ok, type Result } from "../../src/domain/result";
 import type { DesktopNotifier } from "../../src/services/desktop-notifier";
 import type { BriefReachComputer } from "../../src/services/brief-reach-service";
@@ -61,8 +67,8 @@ export async function cleanupRoots(): Promise<void> {
 /**
  * The context pack the Insight run builds on demand, over a real
  * `ReviewContextService` and a real temp directory, so a test can assert
- * what landed on disk. `commentReads` counts the GitHub reads a build costs:
- * one build reads once, a reused pack reads not at all.
+ * what landed on disk. `commentReads` and `checkReads` count the GitHub reads
+ * a build costs: one build reads each once, a reused pack reads not at all.
  */
 export function contextPackFixture(
   paths: PatchdeskPaths,
@@ -74,7 +80,7 @@ export function contextPackFixture(
     checks: { overall: "unknown", checks: [] },
   }),
 ) {
-  const counted = { commentReads: 0 };
+  const counted = { commentReads: 0, checkReads: 0 };
   return {
     counted,
     service: new ReviewContextPackService({
@@ -97,6 +103,7 @@ export function contextPackFixture(
           return github.getPullRequestComments(input);
         },
         async getPullRequestChecks(input) {
+          counted.checkReads += 1;
           return github.getPullRequestChecks(input);
         },
       },
@@ -115,6 +122,8 @@ type FixtureOptions = {
     FakeGitHubAdapter,
     "getPullRequestComments" | "getPullRequestChecks"
   >;
+  /** Seeds a local Review on this source instead of pull request #42. */
+  localSource?: LocalReviewSource;
 };
 
 export async function fixture(
@@ -125,6 +134,7 @@ export async function fixture(
     providerCatalog,
     notifier,
     github,
+    localSource,
   }: FixtureOptions = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-current-"));
@@ -133,46 +143,56 @@ export async function fixture(
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
   const insights = new InsightStore(paths);
-  const seeded = createReviewSession({
-    key: {
-      profileId,
-      host: must(parseGitHubHost("github.com")),
-      owner: must(parseGitHubOwner("octo-org")),
-      repo: must(parseGitHubRepoName("patchdesk")),
-      source: {
-        kind: "pull_request",
-        prNumber: must(parsePullRequestNumber(42)),
-      },
-      headSha,
-      baseSha,
-    },
-    pr: { headSha, baseSha, isDraft: false, isOpen: true },
-    prContext: {
-      title: "Guard recovery",
-      description: "Adds a guard to recovery.",
-      author: "fixture",
-      headBranch: "feature",
-      baseBranch: "main",
-    },
+  const identity = {
+    profileId,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  };
+  // SAFETY: "placeholder" only needs to satisfy the ReviewSessionId-branded
+  // parameter type; both paths are recomputed from the real session id below.
+  const placeholderId = "placeholder" as never;
+  const placeholderPaths = {
     patchPath: must(
-      // SAFETY: "placeholder" only needs to satisfy paths.patchFile's ReviewSessionId-branded
-      // parameter type; this value is never read back — session.patchPath below is recomputed
-      // from the real seeded.id once it exists.
-      parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never)),
+      parseAbsolutePath(paths.patchFile(profileId, placeholderId)),
     ),
     worktree: {
       path: must(
-        parseAbsolutePath(
-          // SAFETY: same as above — this placeholder session id is only a type-shape stand-in and
-          // is overwritten by session.worktree.path below.
-          paths.worktreeDirectory(profileId, "placeholder" as never),
-        ),
+        parseAbsolutePath(paths.worktreeDirectory(profileId, placeholderId)),
       ),
       headSha,
     },
-    createdAt: now,
-  });
-  const session = {
+  };
+  const seeded: ReviewSession =
+    localSource === undefined
+      ? createReviewSession({
+          key: {
+            ...identity,
+            source: {
+              kind: "pull_request",
+              prNumber: must(parsePullRequestNumber(42)),
+            },
+            headSha,
+            baseSha,
+          },
+          pr: { headSha, baseSha, isDraft: false, isOpen: true },
+          prContext: {
+            title: "Guard recovery",
+            description: "Adds a guard to recovery.",
+            author: "fixture",
+            headBranch: "feature",
+            baseBranch: "main",
+          },
+          ...placeholderPaths,
+          createdAt: now,
+        })
+      : createLocalReviewSession({
+          key: { ...identity, source: localSource, headSha, baseSha },
+          canonicalPatchHash: must(parseContentHash("c".repeat(64))),
+          ...placeholderPaths,
+          createdAt: now,
+        });
+  const session: ReviewSession = {
     ...seeded,
     patchPath: must(parseAbsolutePath(paths.patchFile(profileId, seeded.id))),
     worktree: {
@@ -192,13 +212,7 @@ export async function fixture(
   );
   await sessions.save(session);
   const review = createReview({
-    identity: {
-      profileId,
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
-      source: { kind: "pull_request", prNumber: session.key.source.prNumber },
-    },
+    identity: { ...identity, source: session.key.source },
     currentSessionId: session.id,
     headSha,
     createdAt: now,

@@ -381,7 +381,7 @@ export class InsightRunExecutor {
           // Posted inside the lock but outside the record transition, so only a persisted settlement is announced.
           if (mutated._tag === "ok") {
             const outcome = settledOutcome(mutated.value, runId);
-            // The notification names a pull request; local Insights arrive with #450.
+            // The notification subject is a pull request, and ADR 0050 decides no local one, so a local run settles silently.
             if (outcome !== undefined && isPullRequestReview(review.value))
               postDesktopNotification(this.notifier, {
                 _tag: "InsightSettled",

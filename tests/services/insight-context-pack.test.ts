@@ -4,11 +4,14 @@ import { dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { parseLocalBranchName } from "../../src/domain/ids";
 import { ok } from "../../src/domain/result";
+import type { InsightInvocationInput } from "../../src/services/insight-run-coordinator";
 import {
   analysisResult,
   cleanupRoots,
   fixture,
+  must,
   profileId,
   settled,
 } from "./insight-run-fixture";
@@ -19,9 +22,9 @@ afterEach(cleanupRoots);
  * The context pack is no longer written at prepare, so the Insight run owns
  * building it. These tests pin what that makes load-bearing: the pack exists
  * before the invoker reads it, it is built once however many runs start, a
- * pack that does not describe this session's patch is rebuilt, and a build
- * that cannot reach GitHub refuses the run rather than running against a
- * pack that is not there.
+ * pack that does not describe this session's patch is rebuilt, a local
+ * Review's pack reads nothing from GitHub, and a build that cannot reach
+ * GitHub refuses the run rather than running against a pack that is not there.
  */
 describe("Insight run context pack", () => {
   const completes = {
@@ -220,6 +223,60 @@ describe("Insight run context pack", () => {
         "brief",
       ),
     ).toMatchObject({ status: "completed" });
+  });
+
+  it("runs an Insight on a local Review bound to its session, with no GitHub read", async () => {
+    let invoked: InsightInvocationInput | undefined;
+    const value = await fixture(
+      {
+        async invoke(input) {
+          invoked = input;
+          return ok(analysisResult);
+        },
+      },
+      {
+        localSource: {
+          kind: "working_tree",
+          branch: must(parseLocalBranchName("main")),
+        },
+        // Neither read has a fixture value, so calling either would fail the pack.
+        github: new FakeGitHubAdapter({}),
+      },
+    );
+
+    expect(await run(value)).toMatchObject({ status: "completed" });
+    expect(value.contextPack).toEqual({ commentReads: 0, checkReads: 0 });
+    expect(invoked).toMatchObject({
+      sessionId: value.session.id,
+      expectedHeadSha: value.session.key.headSha,
+      patchPath: value.session.patchPath,
+      worktreePath: value.session.worktree.path,
+    });
+    const context = JSON.parse(
+      await readFile(
+        value.paths.preparedContextFile(profileId, value.session.id),
+        "utf8",
+      ),
+    );
+    expect(context).toMatchObject({ changedFiles: ["a.ts"] });
+    expect(context).not.toHaveProperty("comments");
+    expect(context).not.toHaveProperty("checks");
+    const record = await value.insights.load(
+      profileId,
+      value.review.id,
+      "analysis",
+    );
+    expect(record).toMatchObject({
+      _tag: "ok",
+      value: {
+        retained: {
+          revision: {
+            sessionId: value.session.id,
+            headSha: value.session.key.headSha,
+          },
+        },
+      },
+    });
   });
 
   it("refuses the run when the pack cannot be built", async () => {
