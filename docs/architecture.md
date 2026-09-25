@@ -128,7 +128,7 @@ The types and invariants of the system. This is the **API Boundary** every other
 - `review.ts` models the Review aggregate: identity, current session, freshness, and terminal state. Pure functions such as `reconcileReviewRemoteState` and `markReviewTerminal` are the only state transitions.
 - `review-session.ts` models a session pinned to one pull-request revision.
 - `insight-record.ts` models the run lifecycle of an Insight: an `InsightRun` is `queued`, `running`, or `cancelling`, a run that produces a validated result becomes a `RetainedInsight` bound to the analyzed revision, and a run that ends without one becomes an `InsightFailure` whose reason is `cancelled`, `failed`, `invalid_result`, or `superseded`.
-- `pending-review.ts`, `merge-operation.ts`, and `direct-summary-review.ts` model write intents and their receipts.
+- `pending-review.ts`, `merge-operation.ts`, and `direct-summary-review.ts` model write intents and their receipts. `local-apply-operation.ts` models the Apply suggestion write on a local Review and decides its recovery from file hashes; `local-apply-patch.ts` composes one file's post-image and patch from its current text.
 - `patch.ts` maps Findings to diff locations (`mapFindingLocation`, `toGitHubReviewCoordinates`), and `diff-anchor.ts` fingerprints the diff context around a `PendingReviewAnchor` so one inline command can be validated against the represented diff. Both read the patch through the tokenizer in `unified-patch.ts`.
 - `watched-pull-request.ts` models a watched pull request and the GitHub snapshot each poll is compared against. `diffWatchedSnapshot` derives the changes between two snapshots, and `checkWatchCapacity` refuses a 21st watch before GitHub is asked (ADR 0045).
 - `github-context.ts` describes the GitHub shapes the app consumes.
@@ -151,7 +151,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-workbench-projection.ts` assembles the projection the renderer displays.
 - `review-operation-coordinator.ts` serializes every mutation or reconciliation for one Review.
 - `review-lifecycle-gate.ts` serializes durable lifecycle mutations per workspace profile.
-- `review-write-gate.ts` holds the two write preconditions: `requireFresh` for review-content writes — comment, publish, merge — and `requireCurrentSession` for pull-request metadata writes. Label, assignee, reviewer, base-branch, and draft-state writes need only a current, non-stale, non-terminal session (ADR 0025).
+- `review-write-gate.ts` holds the write preconditions: `requireFresh` for review-content writes — comment, publish, merge — and `requireCurrentSession` for pull-request metadata writes. Label, assignee, reviewer, base-branch, and draft-state writes need only a current, non-stale, non-terminal session (ADR 0025). `requireFreshLocal` is the local branch of freshness (ADR 0050): it recomputes the source from the checkout immediately before the write and records `RevisionChanged` when the head/base pair moved.
 - `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results. It delegates the parts it owns: `insight-run-executor.ts` runs one invocation to its terminal state under the Review lock, `insight-recovery.ts` fails the runs a crash left marked active, `insight-result-validation.ts` validates the result a child submitted, and `insight-provider-catalog.ts` owns provider status, explicit Codex model discovery, and the provider, model, and effort revalidation immediately before a run.
 - `insight-activity-buffer.ts` keeps one running Insight's bounded activity trace in memory — the phase, the last reasoning line, at most 200 command rows, and the approval counts — which the run poll answers from and nothing ever persists (ADR 0043).
 - `pi-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
@@ -161,6 +161,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-observation-service.ts` reconciles bounded GitHub state only after canonical same-revision proof, in a fixed candidate, journal, session, Review order; `review-observation-recovery.ts` replays an observation the process was interrupted partway through from that journal rather than from a new read.
 - `review-worktree-service.ts` owns the git commands that create a session checkout: the managed refs, `git worktree add --detach`, the ownership marker, and cleanup, for pull request and local sessions alike.
 - `local-review-opening.ts` opens a local Review (ADR 0050) under the Review lock. `local-review-session-preparation.ts` resolves the source from a profile repository's `localPath` and prepares its session, and `local-review-revision-service.ts` reads the head and base SHAs from the checkout, writes the working-tree Local snapshot in a temporary index copy, and renders the patch with `git diff --binary`. The maintainer's index is only read.
+- `local-apply-service.ts` applies verified Finding suggestions to a working-tree checkout with `git apply` (ADR 0050): durable intent, outcome-unknown immediately before the write, confirmation from file hashes, then the next session through the local open path. `local-apply-composition.ts` rebuilds each range from the retained Analysis and the file's current bytes, and `local-apply-checkout.ts` reads a file only inside the checkout and never through a symlink. Recovery at startup and on request reads file hashes only and never applies again.
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
 - `review-recovery-service.ts` recovers a Review after an interrupted operation.
 - `review-diagnostic-service.ts` and `app-log-service.ts` implement observability.
@@ -182,7 +183,7 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 - `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its remaining callers are `git`, `gh auth`, the `gh --version` probe in `github-environment-probe.ts`, and the Insight runtime child, which `pi-insight-child-invoker.ts` spawns as this process's own executable running the staged runner.
 - `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every request runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory and are never logged or persisted.
 - `storage/json-file.ts` reads and writes one JSON value per file with atomic replacement and a sensitive-value guard.
-- `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, `viewed-files-store.ts` (per-session Diff viewed marks), and others.
+- `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, `local-apply-operation-store.ts` (the one Apply operation of a local Review), `viewed-files-store.ts` (per-session Diff viewed marks), and others.
 - `storage/review-remote-store.ts` stores remote snapshots by content hash. A stored snapshot that does not match its hash fails the hash check and is never trusted.
 - `storage/review-artifact-storage.ts` stores artifacts and quarantines corrupt or unexpected files.
 - `storage/patchdesk-paths.ts` builds every app-owned path without doing I/O.
@@ -257,6 +258,7 @@ The design concentrates authority in the main process and removes it from everyw
 - Merge and Published feedback deletion or dismissal require explicit confirmation.
 - A confirmed write is followed by one read-only post-write reconciliation. The reconciliation never repeats the write.
 - If Patchdesk cannot confirm a write outcome, it locks further writes for explicit GitHub reconciliation. It never retries automatically.
+- The one write to the maintainer's checkout is Apply on a working-tree local Review: `git apply` without `--index`, gated by `requireFreshLocal`, with file pre- and post-image hashes recorded before the write.
 - Model children never touch GitHub, the maintainer's checkout, or the network.
 
 **Architecture Invariant:** the app must never start with the renderer holding authority.

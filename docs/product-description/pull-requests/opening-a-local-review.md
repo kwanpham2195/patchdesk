@@ -80,10 +80,31 @@ Brief, Walkthrough, and Analysis run on a local Review from the same run dialog,
 What differs is what a local Review has no source for:
 
 - The model's context carries the repository's rule files and the changed-file list, but no pull request comments and no check results. Patchdesk makes no GitHub read to start the run.
-- Analysis shows its Findings and their evidence hunks, with Dismiss. There is no Add to review, no Add all, no Finish with the Analysis summary, and no CI badge, because a local Review has no pull request to write to or checks to report. A Finding's status reads Unavailable.
+- Analysis shows its Findings and their evidence hunks, with Dismiss. There is no Add to review, no Add all, no Finish with the Analysis summary, and no CI badge, because a local Review has no pull request to write to or checks to report. On a working tree, a Finding that carries a suggestion offers an Apply checkbox in place of its status; any other Finding's status reads Unavailable. See [Apply suggestions to the working tree](#apply-suggestions-to-the-working-tree).
 - Walkthrough shows no discussion note, because a local Review has no Conversation.
 - Brief draws Flow, Shape, Blast radius, and Start here. Blast radius counts names by text search at the session head, which for a working tree is the Local snapshot, so a name the uncommitted change adds is found. Brief has no Description vs diff block for any Review (ADR 0040), and no citation names a commit.
 - A settled run posts no desktop notification.
+
+## Apply suggestions to the working tree
+
+On a working-tree Review with a current Analysis, a Finding whose suggestion resolves in the session's patch shows an **Apply** checkbox beside Dismiss, and the Needs attention card shows an Apply bar above the Findings. The maintainer ticks one or more Findings; the button reads `Apply 1 suggestion` or `Apply <n> suggestions` and stays disabled while nothing is ticked. Pressing it opens a confirmation that lists every selected Finding by title and location. **Apply to working tree** writes; Cancel, Escape, or a click outside writes nothing.
+
+Patchdesk first reads the checkout again. When the working tree differs from the session the Analysis ran on, nothing is written, the Review records that its revision changed, and the bar shows `The working tree changed after this Analysis ran. Open the review again to analyze the current files.` beside the button. Otherwise it rebuilds each change from the retained Analysis and the file's current bytes, runs `git apply` on the checkout, and confirms every file reached its expected content. The maintainer's index is not written and nothing is staged.
+
+On success the Review moves to a new session for the changed working tree and the workbench opens on it. The earlier Analysis reads Outdated: its Findings stay readable and offer no Apply, and applying more needs a new run.
+
+| Cause                                                      | Sentence beside the button                                                                              |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| The working tree changed after the run                     | `The working tree changed after this Analysis ran. Open the review again to analyze the current files.` |
+| Two selected suggestions change the same line              | `Two selected suggestions change the same lines. Select only one of them.`                              |
+| A file no longer holds the replaced lines, or is not UTF-8 | `A file no longer holds the lines a suggestion replaces. Open the review again.`                        |
+| `git apply --check` refuses the patch                      | `git apply refused the change. Nothing was written.`                                                    |
+| A path leaves the checkout or passes through a symlink     | `A file is outside the checkout or behind a symlink. Nothing was written.`                              |
+| Another action on the Review is running                    | `Another action on this review is running. Try again when it finishes.`                                 |
+
+When Patchdesk cannot prove the outcome, for example the app quits while `git apply` runs, the bar replaces Apply with `An Apply may have changed files. Check them before applying more.` and a **Check files** button. Checking, and every app start, compares each file's sha256 with the hashes recorded before the write: every file at its new content confirms the Apply and prepares the next session; every file at its old content clears the lock; anything else keeps the lock and reads `An Apply left the files in an unexpected state.` Patchdesk never runs `git apply` again on its own. Each decision is logged to `patchdesk.jsonl` with topic `local-apply` and message `Local apply recovery decided`.
+
+> Technical note: the operation record in the Review's folder (`local-apply-operation.json`) stores each file's path and pre- and post-image sha256 before `git apply` runs, and is marked outcome-unknown immediately before it (ADR 0050, ADR 0035). Branch and commit Reviews offer no Apply.
 
 ## Variants
 
@@ -144,7 +165,9 @@ What differs is what a local Review has no source for:
 - Brief's Blast radius heading reads "what this PR could affect", and Analysis shows `0 of 1 handled` and an Unavailable status beside each Finding; both are pull-request wording on a local Review. Finding actions for local Reviews belong to #451.
 - The Analysis prompt still asks the model to review a pull request and check its description; changing prompt text needs its own review.
 - That selecting lines offers no inline comment was checked in code, not live.
-- Refresh of a local Review, and Apply, Commit, Push, and Open PR, are not built (#451, #452).
+- Refresh of a local Review, and Commit, Push, and Open PR, are not built (#452). Local drafts, Add to draft, and the copy actions of #451 are not built yet.
+- Live pass on 2026-09-25 over CDP 9233 (#451): a working-tree Review of the Patchdesk checkout with an untracked probe file; Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P1 Finding at `tmp-local-review-probe.ts:3` with a suggestion. Apply was refused with the changed-tree sentence after the probe was edited, and after the edit was undone and the Review reopened, Apply changed exactly line 3; `git status --short` and the index `shasum` were identical before and after.
+- The outcome-unknown lock and Check files were checked in service and component tests, not live: interrupting the app between the two marks cannot be timed by hand.
 - The empty-patch workbench, the conflict refusal, the branch and commit sources, and the failure sentences were checked in service and component tests, not live.
 - Managed refs and worktrees of local sessions are not removed after a successful open; cleanup is not described here because it does not exist yet.
 
