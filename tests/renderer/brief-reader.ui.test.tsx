@@ -271,7 +271,7 @@ describe("BriefReader", () => {
     expect(screen.getByRole("region", { name: "Shape" })).toBeTruthy();
   });
 
-  it("renders the Reach rows that found something and states how the counts were made", () => {
+  it("renders the Blast radius rows that found something and states how the counts were made", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -280,9 +280,9 @@ describe("BriefReader", () => {
       />,
     );
 
-    expect(screen.getByRole("region", { name: "Reach" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Blast radius" })).toBeTruthy();
     expect(
-      screen.getByRole("region", { name: "Changed contracts" }),
+      screen.getByRole("region", { name: "Changed and mentioned elsewhere" }),
     ).toBeTruthy();
     expect(
       screen.getByRole("region", { name: "Surfaces crossed" }),
@@ -291,13 +291,13 @@ describe("BriefReader", () => {
       screen.getByRole("region", { name: "No matching test" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("region", { name: "Removed, still referenced" }),
+      screen.getByRole("region", { name: "Removed but still mentioned" }),
     ).toBeTruthy();
-    expect(screen.getByText(/one hop out from the diff/)).toBeTruthy();
-    expect(screen.getByText(/not a call graph/)).toBeTruthy();
+    expect(screen.getByText(/one hop out/)).toBeTruthy();
+    expect(screen.getByText(/not proof of a call/)).toBeTruthy();
   });
 
-  it("folds the Reach rows that found nothing into one summary until it is opened", async () => {
+  it("folds the Blast radius rows that found nothing into one summary until it is opened", async () => {
     const user = userEvent.setup();
     const base = retained();
     render(
@@ -319,7 +319,7 @@ describe("BriefReader", () => {
     );
 
     expect(
-      screen.getByRole("region", { name: "Changed contracts" }),
+      screen.getByRole("region", { name: "Changed and mentioned elsewhere" }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("region", { name: "Surfaces crossed" }),
@@ -338,7 +338,7 @@ describe("BriefReader", () => {
     ).toBeTruthy();
   });
 
-  it("omits the Reach block and says why when the search could not answer", () => {
+  it("omits the Blast radius view and says why when the search could not answer", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -347,11 +347,11 @@ describe("BriefReader", () => {
       />,
     );
 
-    expect(screen.queryByRole("region", { name: "Reach" })).toBeNull();
-    expect(screen.getByText(/Reach was not counted/)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Blast radius" })).toBeNull();
+    expect(screen.getByText(/Blast radius was not counted/)).toBeTruthy();
   });
 
-  it("omits the Reach block silently on a Brief retained before it existed", () => {
+  it("omits the Blast radius view silently on a Brief retained before it existed", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -360,8 +360,8 @@ describe("BriefReader", () => {
       />,
     );
 
-    expect(screen.queryByRole("region", { name: "Reach" })).toBeNull();
-    expect(screen.queryByText(/Reach was not counted/)).toBeNull();
+    expect(screen.queryByRole("region", { name: "Blast radius" })).toBeNull();
+    expect(screen.queryByText(/Blast radius was not counted/)).toBeNull();
   });
 
   it("renders the Start here card with its reading order", () => {

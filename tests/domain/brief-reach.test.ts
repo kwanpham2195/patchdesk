@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   briefReachFiles,
   candidateReachSymbols,
+  newlyDeclaredNames,
   removedSymbols,
   summarizeReach,
   surfacesCrossed,
@@ -105,6 +106,23 @@ describe("removedSymbols", () => {
       "+export function keep() { return 1; }",
     );
     expect(removedSymbols(renamedBody)).toEqual([]);
+  });
+});
+
+describe("newlyDeclaredNames", () => {
+  it("reads a name declared only on added lines as new and one declared on a removed line as existing", () => {
+    const rewritten = patch(
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,2 +1,3 @@",
+      "-export function keep() { return 0; }",
+      "+export function keep() { return 1; }",
+      "+export type RefreshOperationStatus = 'running' | 'done';",
+    );
+    const fresh = newlyDeclaredNames(rewritten);
+    expect(fresh.has("RefreshOperationStatus")).toBe(true);
+    expect(fresh.has("keep")).toBe(false);
   });
 });
 
@@ -310,6 +328,7 @@ describe("summarizeReach", () => {
           outsideCallerFiles: 2,
           outsidePaths: ["src/main/local-api.ts"],
           insidePR: true,
+          status: "new",
         },
       ],
       removedStillReferenced: [

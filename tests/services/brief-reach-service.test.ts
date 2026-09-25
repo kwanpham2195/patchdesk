@@ -112,6 +112,7 @@ describe("computeBriefReach", () => {
               "src/main/routes/conversation-routes.ts",
             ],
             insidePR: true,
+            status: "new",
           },
         ],
         // `updateComment` is removed by the patch and still named elsewhere.
@@ -140,6 +141,41 @@ describe("computeBriefReach", () => {
       ":(exclude)*.rst",
       ":(exclude)docs/",
     ]);
+  });
+
+  it("stores up to twenty outside paths per name and keeps the true file count", async () => {
+    const { paths, worktree } = await fixture();
+    const outsidePaths = Array.from(
+      { length: 25 },
+      (_, index) => `src/services/caller-${String(index)}.ts`,
+    );
+    const outcome = await computeBriefReach({
+      profileId,
+      sessionId,
+      worktree,
+      headSha,
+      patch: PATCH,
+      symbols: ["updateThreadComment"],
+      paths,
+      runner: runner((argv) =>
+        argv.includes("rev-parse")
+          ? ok(`${headSha}\n`)
+          : ok(outsidePaths.map((path) => grepLine(path, 1)).join("")),
+      ),
+    });
+
+    expect(outcome).toMatchObject({
+      _tag: "ok",
+      value: {
+        symbols: [
+          {
+            name: "updateThreadComment",
+            outsideCallerFiles: 25,
+            outsidePaths: outsidePaths.slice(0, 20),
+          },
+        ],
+      },
+    });
   });
 
   it("excludes prose from the caller count: a Markdown mention is not a caller", async () => {

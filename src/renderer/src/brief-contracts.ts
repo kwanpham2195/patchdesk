@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { classifyChangedPath } from "../../domain/change-scope";
 import { definedProps } from "../../domain/defined-props";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
 
@@ -72,6 +73,8 @@ const briefReachSchema = v.strictObject({
         v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
       ),
       insidePR: v.boolean(),
+      // Briefs retained before the Blast radius view lack it; the reader treats them as `changed` so no name is hidden.
+      status: v.optional(v.picklist(["new", "changed"])),
     }),
   ),
   surfaces: v.array(
@@ -214,87 +217,216 @@ export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;
 export type BriefFlow = v.InferOutput<typeof briefFlowSchema>;
 export type BriefFlowNode = v.InferOutput<typeof briefFlowNodeSchema>;
 
-/** What the Reach footer says the counts are, so no reader mistakes them for a call graph. */
-export function briefReachMethodLine(
+/** How the Blast radius counts were made, so no reader mistakes a mention for a call. */
+export function briefBlastRadiusFootnote(
   reach: BriefReach,
   headSha: string,
 ): string {
-  const method = reach.method === "text_match" ? "Text search" : reach.method;
-  return `${method} over the represented worktree at ${headSha.slice(0, 7)}, ${reach.hop === 1 ? "one hop" : `${String(reach.hop)} hops`} out from the diff. A name match is not a call graph; treat counts as places to look.`;
+  const hops = reach.hop === 1 ? "one hop" : `${String(reach.hop)} hops`;
+  return `Found by text search for each name at ${headSha.slice(0, 7)}, ${hops} out; a mention is a place to check, not proof of a call.`;
 }
-
-/** One named thing a Reach row lists, with the count Patchdesk made for it. */
-type BriefReachItem = {
-  readonly name: string;
-  /** Already written out, because the count and its unit belong in one phrase; absent when the row's hint already says it. */
-  readonly count?: string;
-  /** True when something outside this pull request is reached; drawn in the warning hue. */
-  readonly hot: boolean;
-  readonly paths: ReadonlyArray<string>;
-};
 
 /** One list row of the Reach block, including what to say when it lists nothing. */
 export type BriefReachRow = {
   readonly label: string;
   readonly hint?: string;
-  readonly items: ReadonlyArray<BriefReachItem>;
+  readonly items: ReadonlyArray<string>;
   readonly empty: string;
 };
 
-/** The Reach block's three list rows; the fourth row draws surface chips instead. */
-export type BriefReachRows = {
-  readonly contracts: BriefReachRow;
-  readonly untested: BriefReachRow;
-  readonly removed: BriefReachRow;
+/** One folder of a name's outside paths: the folder is printed once, its file names after it. */
+export type BlastRadiusFolder = {
+  /** Ends in `/`; `./` for a file at the repository root. */
+  readonly folder: string;
+  /** A folder can hold both source and test files; each side gets its own group. */
+  readonly tests: boolean;
+  readonly files: ReadonlyArray<string>;
 };
+
+/** One name in a Blast radius group, with its outside paths already grouped and cut. */
+export type BlastRadiusName = {
+  readonly name: string;
+  readonly count: string;
+  /** Every stored path, source folders before test folders. */
+  readonly folders: ReadonlyArray<BlastRadiusFolder>;
+  /** The first `MAX_COLLAPSED_PATHS` of `folders`, drawn until the reader asks for more. */
+  readonly collapsed: ReadonlyArray<BlastRadiusFolder>;
+  /** Stored paths `collapsed` leaves out. */
+  readonly hidden: number;
+  /** Files the search counted past the stored paths. */
+  readonly unlisted: number;
+};
+
+/** The Blast radius view: riskiest names first, names nothing outside mentions folded. */
+export type BriefBlastRadius = {
+  readonly summary: string;
+  readonly removed: ReadonlyArray<BlastRadiusName>;
+  readonly changed: ReadonlyArray<BlastRadiusName>;
+  readonly quiet: {
+    readonly label: string;
+    readonly names: ReadonlyArray<string>;
+  };
+  readonly untested: BriefReachRow;
+};
+
+/** Past five paths one name pushes the next name off screen. */
+const MAX_COLLAPSED_PATHS = 5;
+/** Past three areas the summary stops being one glance. */
+const MAX_SUMMARY_AREAS = 3;
 
 const files = (count: number) =>
   `${String(count)} ${count === 1 ? "file" : "files"}`;
 
-/**
- * Turns the counted block into the rows the reader draws. Every number here was
- * produced by the main process; this only chooses the words around it.
- */
-export function briefReachRows(reach: BriefReach): BriefReachRows {
+const isTestPath = (path: string) =>
+  classifyChangedPath({ path, additions: 0, deletions: 0 }) === "tests";
+
+/** `7 source · 2 tests`, leaving out an empty side. */
+function sourceTestSplit(paths: ReadonlyArray<string>, separator: string) {
+  const tests = paths.filter(isTestPath).length;
+  const source = paths.length - tests;
+  return [
+    source === 0 ? undefined : `${String(source)} source`,
+    tests === 0
+      ? undefined
+      : `${String(tests)} ${tests === 1 ? "test" : "tests"}`,
+  ]
+    .filter((part) => part !== undefined)
+    .join(separator);
+}
+
+/** Groups paths by folder, source folders first, keeping first-seen order within each side. */
+function groupByFolder(
+  paths: ReadonlyArray<string>,
+): ReadonlyArray<BlastRadiusFolder> {
+  const groups = new Map<
+    string,
+    { folder: string; tests: boolean; files: Array<string> }
+  >();
+  const ordered = [
+    ...paths.filter((path) => !isTestPath(path)),
+    ...paths.filter(isTestPath),
+  ];
+  for (const path of ordered) {
+    const cut = path.lastIndexOf("/");
+    const folder = cut < 0 ? "./" : path.slice(0, cut + 1);
+    const tests = isTestPath(path);
+    const key = `${String(tests)}:${folder}`;
+    const group = groups.get(key) ?? { folder, tests, files: [] };
+    group.files.push(path.slice(cut + 1));
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+/** The first `limit` files across `folders`, in the order they are drawn. */
+function firstFiles(
+  folders: ReadonlyArray<BlastRadiusFolder>,
+  limit: number,
+): ReadonlyArray<BlastRadiusFolder> {
+  const kept: Array<BlastRadiusFolder> = [];
+  let left = limit;
+  for (const group of folders) {
+    if (left === 0) break;
+    kept.push({ ...group, files: group.files.slice(0, left) });
+    left -= Math.min(left, group.files.length);
+  }
+  return kept;
+}
+
+function blastRadiusName(
+  name: string,
+  paths: ReadonlyArray<string>,
+  total: number,
+  count: string,
+): BlastRadiusName {
+  const folders = groupByFolder(paths);
   return {
-    contracts: {
-      label: "Changed contracts",
-      hint: "callers outside this PR",
-      empty: "No changed contract to count.",
-      items: reach.symbols.map((symbol) => ({
-        name: symbol.name,
-        count:
-          symbol.outsideCallerFiles === 0 && symbol.insidePR
-            ? "0 files outside this PR · named only inside it"
-            : `${files(symbol.outsideCallerFiles)} outside this PR`,
-        hot: symbol.outsideCallerFiles > 0,
-        paths: symbol.outsidePaths,
-      })),
+    name,
+    count,
+    folders,
+    collapsed: firstFiles(folders, MAX_COLLAPSED_PATHS),
+    hidden: Math.max(0, paths.length - MAX_COLLAPSED_PATHS),
+    unlisted: Math.max(0, total - paths.length),
+  };
+}
+
+/** The first two path segments of each file's folder, most mentioned first. */
+function areas(paths: ReadonlyArray<string>): string {
+  const counts = new Map<string, number>();
+  for (const path of paths) {
+    const segments = path.split("/").slice(0, -1);
+    const area = segments.length === 0 ? "./" : segments.slice(0, 2).join("/");
+    counts.set(area, (counts.get(area) ?? 0) + 1);
+  }
+  const ranked = [...counts].sort((a, b) => b[1] - a[1]).map(([area]) => area);
+  const shown = ranked.slice(0, MAX_SUMMARY_AREAS).join(", ");
+  return ranked.length > MAX_SUMMARY_AREAS ? `${shown}, …` : shown;
+}
+
+function blastRadiusSummary(
+  paths: ReadonlyArray<string>,
+  someUnlisted: boolean,
+): string {
+  if (paths.length === 0)
+    return "Nothing outside this PR mentions what it changed.";
+  const source = paths.filter((path) => !isTestPath(path));
+  const lead = `${someUnlisted ? "At least " : ""}${files(paths.length)} could be affected`;
+  return `${lead} · ${sourceTestSplit(paths, ", ")} · in ${areas(source.length === 0 ? paths : source)}`;
+}
+
+/**
+ * Turns the counted block into the Blast radius view. Every number here was
+ * produced by the main process; this only orders, groups, and words it.
+ */
+export function briefBlastRadius(reach: BriefReach): BriefBlastRadius {
+  const removed = reach.removedStillReferenced.map((item) =>
+    blastRadiusName(
+      item.name,
+      item.paths,
+      item.paths.length,
+      files(item.paths.length),
+    ),
+  );
+  const mentioned = reach.symbols
+    .filter((symbol) => symbol.outsideCallerFiles > 0)
+    .sort((a, b) => b.outsideCallerFiles - a.outsideCallerFiles);
+  const changed = mentioned.map((symbol) =>
+    blastRadiusName(
+      symbol.name,
+      symbol.outsidePaths,
+      symbol.outsideCallerFiles,
+      sourceTestSplit(symbol.outsidePaths, " · "),
+    ),
+  );
+  const quiet = reach.symbols.filter(
+    (symbol) => symbol.outsideCallerFiles === 0,
+  );
+  const quietNames = `${String(quiet.length)} ${quiet.every((symbol) => symbol.status === "new") ? "new " : ""}${quiet.length === 1 ? "name" : "names"}`;
+  const affected = new Set([
+    ...reach.removedStillReferenced.flatMap((item) => item.paths),
+    ...mentioned.flatMap((symbol) => symbol.outsidePaths),
+  ]);
+  return {
+    summary: blastRadiusSummary(
+      [...affected],
+      changed.some((name) => name.unlisted > 0),
+    ),
+    removed,
+    changed,
+    quiet: {
+      label: `${quietNames} not used outside this PR`,
+      names: quiet.map((symbol) => symbol.name),
     },
     untested: {
       label: "No matching test",
       hint: "no changed test file matches it by name, folder, or mention",
       empty: "Every changed file matches a changed test file.",
-      items: reach.untested.map((item) => ({
-        name: item.path,
-        hot: true,
-        paths: [],
-      })),
-    },
-    removed: {
-      label: "Removed, still referenced",
-      empty: "Nothing the patch removed is still named outside it.",
-      items: reach.removedStillReferenced.map((item) => ({
-        name: item.name,
-        count: `${files(item.paths.length)} still name it`,
-        hot: true,
-        paths: item.paths,
-      })),
+      items: reach.untested.map((item) => item.path),
     },
   };
 }
 
-/** Why the Reach block is missing, in the one line the reader shows in its place. */
+/** Why the Blast radius view is missing, in the one line the reader shows in its place. */
 export const BRIEF_REACH_UNAVAILABLE_LABELS = {
   worktree_unavailable: "worktree unreadable",
   head_mismatch: "worktree revision changed",

@@ -301,6 +301,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
                   outsideCallerFiles: 1,
                   outsidePaths: ["src/main/local-api.ts"],
                   insidePR: false,
+                  status: "new",
                 },
               ],
               surfaces: [{ surface: "Public API" }],
