@@ -23,6 +23,7 @@ import type { ReviewWorkbenchActions } from "./review-workbench";
 import { blockedMergeChip, mergeBlockerLabels } from "./merge-readiness-items";
 import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
+import { ChangeIntentControl } from "./change-intent-control";
 import {
   WatchPullRequestButton,
   WatchPullRequestFailure,
@@ -281,6 +282,12 @@ export function ReviewWorkbenchHeader({
           </Button>
         )}
       </div>
+      {actions.changeIntent === undefined ? null : (
+        <ChangeIntentControl
+          controls={actions.changeIntent}
+          editable={!terminal}
+        />
+      )}
     </header>
   );
 }

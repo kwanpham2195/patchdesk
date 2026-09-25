@@ -9,6 +9,7 @@ import type {
 import type { ReviewerPickerActions } from "./reviewer-picker";
 import type { ChangeBaseBranchActions } from "./change-base-branch-dialog";
 import type { LocalNoteControls } from "../flows/use-local-drafts";
+import type { ChangeIntentControls } from "../flows/use-change-intent";
 import type {
   DirectSummaryReviewProjection,
   WorkbenchResponse,
@@ -35,6 +36,8 @@ export type ReviewWorkbenchActions = {
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   /** Edit and Remove on a local Review's maintainer notes in the diff (ADR 0051). */
   readonly localNotes?: LocalNoteControls;
+  /** A local Review's Change intent in the header (#467). */
+  readonly changeIntent?: ChangeIntentControls;
   readonly pendingReviewComposer?: PendingReviewComposerActions;
   readonly directSummary?: {
     readonly busy: boolean;

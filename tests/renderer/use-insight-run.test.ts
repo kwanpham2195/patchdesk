@@ -14,6 +14,7 @@ import {
   type InsightRunType,
 } from "../../src/renderer/src/hooks/use-insight-run";
 import {
+  failure,
   installDesktopDouble,
   type DesktopDouble,
   type DesktopRoute,
@@ -657,5 +658,26 @@ describe("useInsightRun", () => {
     expect(result.current.status).toBe("running");
     expect(result.current.cancelling).toBe(false);
     expect(result.current.error).toBe(false);
+  });
+
+  it("names the spec-file refusal of a start on a local Review", async () => {
+    desktop = installDesktopDouble({
+      "/v1/reviews/insights/analysis/run": () =>
+        failure({ error: "change_intent_file_missing" }, 409),
+    });
+    const { result } = renderHook(() =>
+      useInsightRun({
+        profileId: "profile",
+        reviewId: "review-42",
+        type: "analysis",
+      }),
+    );
+
+    act(() => result.current.run("pi", "fixture-model", "medium", "en"));
+
+    await waitFor(() =>
+      expect(result.current.requestFailure).toBe("change_intent_file_missing"),
+    );
+    expect(result.current.status).toBe("error");
   });
 });
