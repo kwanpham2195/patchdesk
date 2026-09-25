@@ -18,9 +18,9 @@ import type { FindingSuggestedReplacement } from "./review-result";
 
 /**
  * One Finding a maintainer added to a local Review's draft list (ADR 0050
- * "Local drafts"). It keeps everything handoff needs without the Analysis:
- * the anchor fingerprint to map it into the pull request patch, and the
- * comment and suggestion the ADR 0048 fence serializer writes.
+ * "Local drafts"), kept readable without the Analysis it came from: the
+ * anchor fingerprint to map it into a later patch, and the comment and
+ * suggestion the agent prompt carries.
  */
 export type LocalDraft = {
   readonly findingId: FindingId;

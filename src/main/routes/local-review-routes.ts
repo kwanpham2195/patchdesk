@@ -117,9 +117,22 @@ export function registerLocalReviewRoutes(
     ),
   );
 
+  app.post("/v1/reviews/local-drafts/agent-prompt", async (context) => {
+    const parsed = safeParse(reviewIdentitySchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await container.localDrafts.agentPrompt(profileId.value, reviewId.value),
+    );
+  });
+
   // Reads file hashes only; it never applies again.
   app.post("/v1/reviews/local-apply/recover", async (context) => {
-    const parsed = safeParse(localApplyRecoverSchema, await jsonBody(context));
+    const parsed = safeParse(reviewIdentitySchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -179,7 +192,8 @@ const localApplySchema = strictObject({
   expected: reviewWriteExpectationSchema,
 });
 
-const localApplyRecoverSchema = strictObject({
+/** Names one Review and nothing else. */
+const reviewIdentitySchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
 });

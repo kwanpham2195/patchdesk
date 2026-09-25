@@ -2,8 +2,10 @@ import type { LocalDraftControls } from "../flows/use-local-drafts";
 import { localDraftKey } from "../flows/use-local-drafts";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { CopyLoadedTextButton } from "./copy-loaded-text-button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -12,8 +14,9 @@ import {
 import { InlineError } from "./ui/inline-error";
 
 /**
- * A local Review's Local draft list (ADR 0050): every Finding added to draft,
- * including drafts from an earlier session, which stay listed until removed.
+ * A local Review's Local draft list (ADR 0050): the maintainer's feedback for
+ * the coding agent, including drafts from an earlier session, which stay
+ * listed until removed.
  */
 export function LocalDraftsCard({
   controls,
@@ -27,9 +30,18 @@ export function LocalDraftsCard({
         <CardTitle>Local drafts</CardTitle>
         <CardDescription>
           {count === 0
-            ? "Add a finding to draft to keep it for the pull request."
-            : `${String(count)} ${count === 1 ? "draft" : "drafts"} for the pull request`}
+            ? "Add a finding to draft to collect your feedback for the coding agent."
+            : `${String(count)} ${count === 1 ? "draft" : "drafts"} for the coding agent`}
         </CardDescription>
+        {count === 0 ? null : (
+          <CardAction>
+            <CopyLoadedTextButton
+              label="Copy as agent prompt"
+              load={controls.loadAgentPrompt}
+              failure="The drafts could not be copied."
+            />
+          </CardAction>
+        )}
       </CardHeader>
       {count === 0 && controls.error === undefined ? null : (
         <CardContent className="flex flex-col gap-2">

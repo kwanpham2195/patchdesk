@@ -26,6 +26,8 @@ export type LocalDraftControls = {
     readonly analysisRunId: string;
     readonly findingId: string;
   }) => Promise<void>;
+  /** The drafts as one prompt for the coding agent, composed by the main process. */
+  readonly loadAgentPrompt: () => Promise<string>;
   /** One Finding row's toggle: Add to draft, or Remove once drafted. */
   readonly forFinding: (findingId: string) => {
     readonly drafted: boolean;
@@ -33,6 +35,8 @@ export type LocalDraftControls = {
     readonly onToggle?: () => void;
   };
 };
+
+const agentPromptSchema = v.strictObject({ markdown: v.string() });
 
 /** One draft's identity: its Analysis run and Finding. */
 export function localDraftKey(runId: string, findingId: string): string {
@@ -112,6 +116,18 @@ export function useLocalDrafts({
     [send],
   );
 
+  const loadAgentPrompt = useCallback(async (): Promise<string> => {
+    const parsed = v.safeParse(
+      agentPromptSchema,
+      await requestJson("/v1/reviews/local-drafts/agent-prompt", {
+        method: "POST",
+        body: { profileId, reviewId },
+      }),
+    );
+    if (!parsed.success) throw new Error("Unexpected agent prompt response");
+    return parsed.output.markdown;
+  }, [profileId, reviewId]);
+
   const entries = workbench.localDrafts;
   if (entries === undefined) return undefined;
   const reviewOpen = workbench.review.status === "open";
@@ -132,6 +148,7 @@ export function useLocalDrafts({
     pending,
     add,
     remove,
+    loadAgentPrompt,
     forFinding: (findingId) => {
       const drafted = draftedFindingIds.has(findingId);
       const allowed = drafted ? reviewOpen : canAdd;

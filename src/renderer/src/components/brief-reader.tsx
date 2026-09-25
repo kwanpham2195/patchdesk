@@ -31,11 +31,11 @@ import type { ChangeScope } from "../../../domain/change-scope";
 import { definedProps } from "../../../domain/defined-props";
 import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
 import { ReachBlock } from "./brief-reach-block";
+import { CopyLoadedTextButton } from "./copy-loaded-text-button";
 import { GeneratedMarkdownInline } from "./generated-markdown";
 import { ReviewDiffView } from "./review-diff-view";
 import { ScopeGauge } from "./scope-gauge";
 import { Button } from "./ui/button";
-import { InlineError } from "./ui/inline-error";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type RetainedBrief = NonNullable<BriefInsight["retained"]>;
@@ -217,8 +217,10 @@ export function BriefReader({
             </Button>
           )}
           {loadPullRequestDescription === undefined ? null : (
-            <CopyPullRequestDescriptionButton
+            <CopyLoadedTextButton
+              label="Copy as PR description"
               load={loadPullRequestDescription}
+              failure="The description could not be copied."
             />
           )}
         </section>
@@ -581,56 +583,6 @@ function CopyFlowButton({
     >
       {copied ? "Copied" : "Copy as diff"}
     </Button>
-  );
-}
-
-/**
- * Copies the Brief as a PR description composed by the main process, with
- * citations as `path:line`. The label flips to "Copied" only once the
- * clipboard write resolves.
- */
-function CopyPullRequestDescriptionButton({
-  load,
-}: {
-  readonly load: () => Promise<string>;
-}): React.JSX.Element {
-  const [state, setState] = useState<"idle" | "copying" | "copied" | "failed">(
-    "idle",
-  );
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  useEffect(
-    () => () => {
-      clearTimeout(copiedTimer.current);
-    },
-    [],
-  );
-  return (
-    <div className="flex flex-col gap-1">
-      <Button
-        size="sm"
-        variant="outline"
-        className="self-start"
-        disabled={state === "copying"}
-        onClick={() => {
-          setState("copying");
-          load()
-            .then((markdown) => navigator.clipboard.writeText(markdown))
-            .then(() => {
-              setState("copied");
-              clearTimeout(copiedTimer.current);
-              copiedTimer.current = setTimeout(() => setState("idle"), 1500);
-            })
-            .catch(() => setState("failed"));
-        }}
-      >
-        {state === "copied" ? "Copied" : "Copy as PR description"}
-      </Button>
-      {state === "failed" ? (
-        <InlineError>The description could not be copied.</InlineError>
-      ) : null}
-    </div>
   );
 }
 
