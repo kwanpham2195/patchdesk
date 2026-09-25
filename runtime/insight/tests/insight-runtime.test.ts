@@ -2,13 +2,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
-import { generateModelCatalog } from "../scripts/generate-model-catalog.mjs";
 import { describe, expect, it } from "vitest";
 import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
   fauxToolCall,
+  getCurrentSystemPrompt,
+  getCurrentTools,
 } from "@earendil-works/pi-ai";
 import type { FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 
@@ -61,25 +62,6 @@ const analysis = {
   validationPlan: [],
   assumptions: [],
 };
-
-describe("generated Pi catalog", () => {
-  it("imports and projects all 32 current allowlisted provider catalogs deterministically", () => {
-    const first = generateModelCatalog();
-    expect(first).toEqual(generateModelCatalog());
-    expect(first.piVersion).toBe("0.84.4");
-    expect(first.catalog).toHaveLength(32);
-    expect(
-      first.catalog
-        .flatMap((entry) => entry.models)
-        .every((model) =>
-          ["id,name,provider", "cost,id,name,provider"].includes(
-            Object.keys(model).sort().join(","),
-          ),
-        ),
-    ).toBe(true);
-    expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
-  });
-});
 
 function walkthroughInvocation() {
   return {
@@ -602,7 +584,9 @@ describe("one-shot insight runtime", () => {
     let walkthroughTools: ReadonlyArray<string> = [];
     const walkthroughProvider = fake([
       (context) => {
-        walkthroughTools = (context.tools ?? []).map((tool) => tool.name);
+        walkthroughTools = getCurrentTools(context.messages).map(
+          (tool) => tool.name,
+        );
         return fauxAssistantMessage(
           fauxToolCall("submit_patchdesk_result", walkthrough),
           { stopReason: "toolUse" },
@@ -619,7 +603,9 @@ describe("one-shot insight runtime", () => {
     let analysisTools: ReadonlyArray<string> = [];
     const analysisProvider = fake([
       (context) => {
-        analysisTools = (context.tools ?? []).map((tool) => tool.name);
+        analysisTools = getCurrentTools(context.messages).map(
+          (tool) => tool.name,
+        );
         return fauxAssistantMessage(
           fauxToolCall("submit_patchdesk_result", analysis),
           { stopReason: "toolUse" },
@@ -678,7 +664,7 @@ describe("one-shot insight runtime", () => {
     let systemPrompt = "";
     const provider = fake([
       (context) => {
-        systemPrompt = context.systemPrompt ?? "";
+        systemPrompt = getCurrentSystemPrompt(context.messages);
         return fauxAssistantMessage(
           fauxToolCall("submit_patchdesk_result", analysis),
           { stopReason: "toolUse" },
@@ -820,8 +806,10 @@ describe("one-shot insight runtime", () => {
         let briefTools: ReadonlyArray<string> = [];
         const provider = fake([
           (context) => {
-            systemPrompt = context.systemPrompt ?? "";
-            briefTools = (context.tools ?? []).map((tool) => tool.name);
+            systemPrompt = getCurrentSystemPrompt(context.messages);
+            briefTools = getCurrentTools(context.messages).map(
+              (tool) => tool.name,
+            );
             return fauxAssistantMessage(
               fauxToolCall("submit_patchdesk_result", brief),
               { stopReason: "toolUse" },

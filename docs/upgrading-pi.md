@@ -47,7 +47,7 @@ Expect hits in exactly these places, and edit each one to NEW:
 - `src/main/insight-runtime.ts`
 - `scripts/stage-insight-runtime-lib.mjs` (one) and `scripts/package-smoke.mjs`
   (three)
-- test fixtures: `runtime/insight/tests/insight-runtime.test.ts` (one),
+- test fixtures: `runtime/insight/tests/generate-model-catalog.test.ts` (one),
   `tests/main/main-desktop-hardening.test.ts` (three, plus one deliberate
   mismatch fixture that must stay a version other than NEW),
   `tests/scripts/stage-insight-runtime.test.ts` (two lines, one of them naming
@@ -116,7 +116,7 @@ Read the whole report. Three findings need action:
   allowlist in `src/adapters/pi/pi-provider-catalog.ts` with its environment
   variable and guidance text, and the provider-count assertions in
   `tests/adapters/pi-runtime-model-catalog.test.ts` and
-  `runtime/insight/tests/insight-runtime.test.ts`. Then rerun step 3.
+  `runtime/insight/tests/generate-model-catalog.test.ts`. Then rerun step 3.
 
 Pi may also drop a vendor SDK. `tests/scripts/stage-insight-runtime.test.ts`
 asserts the staged lock contains each provider SDK Pi wraps; if that loop fails

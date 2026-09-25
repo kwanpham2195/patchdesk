@@ -9,7 +9,7 @@ await writeFile(
   new URL("../runtime-manifest.json", import.meta.url),
   `${JSON.stringify(
     {
-      piVersion: "0.84.4",
+      piVersion: "0.87.1",
       catalogDigest: catalog.digest,
       nodeFloor: ">=22.19.0",
       lockDigest: createHash("sha256").update(lock).digest("hex"),
