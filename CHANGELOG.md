@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Brief Flow can show two new views: **state**, for a change to the values of a status field and the transitions between them, and **contract**, for an exported signature or fields shown old and new. Citation chips now appear only on changed steps, as the hunk alias with the file on hover, in their own column, and long steps stay on one line with the full text on hover. A Flow tree nested deeper than three levels is cut to three levels instead of failing the whole Brief. #445
+
+- Brief **Reach** is now **Blast radius**: what this pull request could affect in files it doesn't change. It checks every changed export, lists names removed but still mentioned first, then changed names by how often they are mentioned, and shows each mention's function, kind (call, type-only, import), and line. Names nothing outside mentions fold into one line, and **No matching test** no longer lists docs or config files. #445
+
+- Brief **Start here** files open in the Diff tab at the reviewed revision, and the Insights tab returns to the reader last shown. **Show full notes** expands Shape notes, Reach rows that found nothing fold into one line, and the citation line says whether cited hunks were found rather than claiming the Brief is verified; a Brief with no Flow reads "no hunks cited". #441
+
+- Fixed inline Analysis finding cards on the Diff tab printing Markdown, such as backticks, as plain text. #440
+
 - Fixed the header and Analysis Findings not following GitHub for up to a day after the maintainer deleted a pending review on GitHub and then started a new one in Patchdesk. The background update check no longer waits for threads added to the deleted pending review, so the Review updates on the next check.
 
 - Fixed a Review whose pull request was closed on GitHub still showing **Merge · Ready**, Watch, and **Start a review** after Watch was refused with "Closed pull requests cannot be watched." The refusal now checks GitHub, and the header turns to **Merge · Closed** (or **Merge · Merged**) once GitHub confirms it. The Watch error now sits under the header buttons instead of pushing **Start a review** onto its own line. #348
