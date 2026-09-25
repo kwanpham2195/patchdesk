@@ -89,6 +89,7 @@ export function AnalysisFindingRow({
   onDismissFinding,
   onOpenFindingInDiff,
   applySelection,
+  draft,
 }: {
   readonly finding: AnalysisFinding;
   readonly status?: FindingStatus | undefined;
@@ -110,9 +111,13 @@ export function AnalysisFindingRow({
     readonly disabled: boolean;
     readonly onChange: (selected: boolean) => void;
   };
+  /** A local Review's Local draft toggle; `onToggle` is absent while the list cannot change. */
+  readonly draft?: {
+    readonly drafted: boolean;
+    readonly pending: boolean;
+    readonly onToggle?: () => void;
+  };
 }): React.JSX.Element {
-  const [reason, setReason] = useState("");
-  const [dismissOpen, setDismissOpen] = useState(false);
   const suggestionCode = finding.suggestedReplacement?.code;
   // One resolution feeds both the preview and the add action's label, so the
   // row never offers a suggestion the represented patch cannot anchor.
@@ -171,24 +176,22 @@ export function AnalysisFindingRow({
               }
             : undefined;
         })();
-  const dismiss = async (): Promise<void> => {
-    if (onDismissFinding === undefined || reason.trim().length === 0) return;
-    try {
-      await onDismissFinding(finding, reason.trim());
-      setDismissOpen(false);
-      setReason("");
-    } catch {
-      // The parent owns the row-local error; this row keeps the dismissal draft.
-    }
-  };
-
   const location = findingLocation(finding);
   const applicable =
     applySelection !== undefined &&
     disposition === "open" &&
     suggestionTarget !== undefined;
-  // A local Finding has no review status to report; its suggestion's Apply takes the label's place.
-  const statusLabel = applicable ? undefined : findingStatusLabel(reviewStatus);
+  const draftOffered =
+    draft !== undefined &&
+    disposition === "open" &&
+    finding.mappingStatus === "mapped";
+  const drafted = draft?.drafted === true;
+  // A local Finding has no review status to report; its Apply and Add to draft controls take the label's place.
+  const statusLabel = drafted
+    ? "Drafted"
+    : applicable || draftOffered
+      ? undefined
+      : findingStatusLabel(reviewStatus);
 
   return (
     // Focusable so a Diff card's "Open in Analysis" can land keyboard focus here.
@@ -237,6 +240,7 @@ export function AnalysisFindingRow({
           {statusLabel === undefined ? null : (
             <Badge
               variant={
+                drafted ||
                 reviewStatus === "published" ||
                 reviewStatus === "pending_review"
                   ? "secondary"
@@ -269,63 +273,29 @@ export function AnalysisFindingRow({
               onAddFinding={onAddFinding}
             />
           ) : null}
+          {draftOffered && draft.onToggle !== undefined ? (
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={draft.pending || actionPending}
+              onClick={draft.onToggle}
+            >
+              {draft.pending ? <Spinner data-icon="inline-start" /> : null}
+              {drafted ? "Remove from draft" : "Add to draft"}
+            </Button>
+          ) : null}
           {disposition === "open" &&
-          // Dismissing a Finding already commented on would contradict the comment.
+          // Dismissing a Finding already commented on or drafted would contradict the comment.
+          !drafted &&
           reviewStatus !== "pending_review" &&
           reviewStatus !== "published" &&
           onDismissFinding !== undefined ? (
-            <Popover
-              open={dismissOpen}
-              onOpenChange={(open) => {
-                if (!actionPending) setDismissOpen(open);
-              }}
-            >
-              <PopoverTrigger
-                render={
-                  <Button size="xs" variant="ghost" disabled={actionPending} />
-                }
-              >
-                Dismiss
-              </PopoverTrigger>
-              <PopoverContent align="end">
-                <PopoverHeader>
-                  <PopoverTitle>Dismiss finding</PopoverTitle>
-                  <PopoverDescription>
-                    Record why this finding does not need review action.
-                  </PopoverDescription>
-                </PopoverHeader>
-                <Input
-                  aria-label={`Dismiss reason for ${finding.title}`}
-                  placeholder="Reason required"
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                />
-                <div className="flex justify-end gap-2">
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={actionPending}
-                    onClick={() => setDismissOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="xs"
-                    disabled={reason.trim().length === 0 || actionPending}
-                    onClick={() => dismiss()}
-                  >
-                    {actionState === "dismissing" ? (
-                      <>
-                        <Spinner data-icon="inline-start" />
-                        Dismissing…
-                      </>
-                    ) : (
-                      "Confirm dismissal"
-                    )}
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
+            <DismissFindingPopover
+              finding={finding}
+              dismissing={actionState === "dismissing"}
+              disabled={actionPending}
+              onDismissFinding={onDismissFinding}
+            />
           ) : null}
         </div>
       </div>
@@ -358,6 +328,87 @@ export function AnalysisFindingRow({
         </Collapsible>
       )}
     </li>
+  );
+}
+
+/** Dismiss with a required reason; the reason stays typed when the dismissal fails. */
+function DismissFindingPopover({
+  finding,
+  dismissing,
+  disabled,
+  onDismissFinding,
+}: {
+  readonly finding: AnalysisFinding;
+  readonly dismissing: boolean;
+  readonly disabled: boolean;
+  readonly onDismissFinding: (
+    finding: AnalysisFinding,
+    reason: string,
+  ) => Promise<void>;
+}): React.JSX.Element {
+  const [reason, setReason] = useState("");
+  const [dismissOpen, setDismissOpen] = useState(false);
+  const dismiss = async (): Promise<void> => {
+    if (reason.trim().length === 0) return;
+    try {
+      await onDismissFinding(finding, reason.trim());
+      setDismissOpen(false);
+      setReason("");
+    } catch {
+      // The parent owns the row-local error; this row keeps the dismissal draft.
+    }
+  };
+  return (
+    <Popover
+      open={dismissOpen}
+      onOpenChange={(open) => {
+        if (!disabled) setDismissOpen(open);
+      }}
+    >
+      <PopoverTrigger
+        render={<Button size="xs" variant="ghost" disabled={disabled} />}
+      >
+        Dismiss
+      </PopoverTrigger>
+      <PopoverContent align="end">
+        <PopoverHeader>
+          <PopoverTitle>Dismiss finding</PopoverTitle>
+          <PopoverDescription>
+            Record why this finding does not need review action.
+          </PopoverDescription>
+        </PopoverHeader>
+        <Input
+          aria-label={`Dismiss reason for ${finding.title}`}
+          placeholder="Reason required"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+        />
+        <div className="flex justify-end gap-2">
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={disabled}
+            onClick={() => setDismissOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="xs"
+            disabled={reason.trim().length === 0 || disabled}
+            onClick={() => dismiss()}
+          >
+            {dismissing ? (
+              <>
+                <Spinner data-icon="inline-start" />
+                Dismissing…
+              </>
+            ) : (
+              "Confirm dismissal"
+            )}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

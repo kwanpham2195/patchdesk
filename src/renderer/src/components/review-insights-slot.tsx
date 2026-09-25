@@ -36,6 +36,7 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { LocalApplyControls } from "../flows/use-local-apply";
+import { useLocalDrafts } from "../flows/use-local-drafts";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 import {
   INSIGHT_LANGUAGE_LABELS,
@@ -231,6 +232,7 @@ export function InsightsSlot({
     analysis: workbench.insights.analysis,
     onWorkbenchPatch,
   });
+  const localDrafts = useLocalDrafts({ workbench, onWorkbenchPatch });
   const walkthroughProgress = useWalkthroughProgress({
     profileId,
     reviewId,
@@ -282,6 +284,7 @@ export function InsightsSlot({
       addFinding: onAddFinding,
       addAllFindings,
       localApply,
+      localDrafts,
       onOpenFindingInDiff: openFindingInDiff,
       onOpenFileInDiff: openFileInDiff,
       // The Brief points at the Walkthrough rather than duplicating it: read the current one, or start one while the Review is open.

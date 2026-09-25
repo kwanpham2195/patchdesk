@@ -137,7 +137,9 @@ export function matchUnifiedFileHeader(
 }
 
 /** The line range a `@@` header declares, with git's omitted counts defaulted to 1. */
-function matchUnifiedHunkHeader(line: string): UnifiedHunkRange | undefined {
+export function matchUnifiedHunkHeader(
+  line: string,
+): UnifiedHunkRange | undefined {
   const match = hunkHeaderPattern.exec(line);
   if (match === null) return undefined;
   return {

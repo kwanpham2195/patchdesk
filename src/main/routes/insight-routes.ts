@@ -24,6 +24,7 @@ import {
 import { INSIGHT_LANGUAGES } from "../../domain/insight-provider";
 import type { InsightType } from "../../domain/insight-record";
 import { err } from "../../domain/result";
+import { readBriefPullRequestDescription } from "../../services/brief-pull-request-description";
 import type { InsightRunCoordinator } from "../../services/insight-run-coordinator";
 import type { InsightCoordinatorSeam } from "../local-api-configuration";
 import type { LocalApiContainer } from "../local-api-container";
@@ -93,6 +94,31 @@ export function registerInsightRoutes(
         await jsonBody(context),
       ),
   );
+  // Identity only: the Markdown is composed in the main process from the retained Brief.
+  app.post(
+    "/v1/reviews/insights/brief/pull-request-description",
+    async (context) => {
+      const parsed = safeParse(briefDescriptionSchema, await jsonBody(context));
+      if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+      const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+      const reviewId = parseReviewId(parsed.output.reviewId);
+      const runId = parseInsightRunId(parsed.output.runId);
+      if (
+        profileId._tag === "err" ||
+        reviewId._tag === "err" ||
+        runId._tag === "err"
+      )
+        return context.json({ error: "invalid_input" }, 400);
+      return response(
+        context,
+        await readBriefPullRequestDescription(container.retainedInsights, {
+          profileId: profileId.value,
+          reviewId: reviewId.value,
+          runId: runId.value,
+        }),
+      );
+    },
+  );
   app.post("/v1/reviews/insights/walkthrough/progress", async (context) =>
     insightWalkthroughProgressResponse(
       context,
@@ -142,6 +168,11 @@ const insightCancelSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
   type: picklist(["analysis", "walkthrough", "brief"]),
+  runId: pipe(string(), minLength(1)),
+});
+const briefDescriptionSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
   runId: pipe(string(), minLength(1)),
 });
 const insightFindingSchema = strictObject({

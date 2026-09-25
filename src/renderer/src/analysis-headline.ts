@@ -19,6 +19,8 @@ export type CheckStatus = WorkbenchResponse["checks"]["overall"];
 export function unhandledAnalysisFindings(
   result: AnalysisResult,
   findingStatuses: Readonly<Record<string, AnalysisFindingStatus>> | undefined,
+  /** On a local Review, a Local draft is where the Finding was added. */
+  draftedFindingIds?: ReadonlySet<string>,
 ): ReadonlyArray<AnalysisResult["findings"][number]> {
   return result.findings.filter((finding) => {
     const status = findingStatuses?.[finding.id];
@@ -28,7 +30,8 @@ export function unhandledAnalysisFindings(
       addedToReview:
         finding.disposition === "added" ||
         status === "pending_review" ||
-        status === "published",
+        status === "published" ||
+        draftedFindingIds?.has(finding.id) === true,
     });
   });
 }

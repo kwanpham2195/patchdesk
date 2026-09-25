@@ -333,7 +333,7 @@ export class LocalApplyService {
     if ((await this.dependencies.operations.save(confirmed))._tag === "err")
       return { status: "outcome_unknown" };
     this.log("info", "Local apply confirmed", operation, { trigger });
-    // Local drafts would move to the next session here once they exist (#451 slice B).
+    // Local drafts stay on the Review record here; moving them to the next session is #452.
     // A failure here is bookkeeping: the Apply stays confirmed and reopening the Review recovers the session.
     const next = await this.dependencies.opening
       .openLocked(

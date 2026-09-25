@@ -1,7 +1,20 @@
-import type { BriefFlow, BriefFlowNode } from "./brief-contracts";
+import type { BriefFlowTree } from "./brief-flow";
 
-/** A tree's `kind`, exactly as `briefFlowSchema` types it in `brief-contracts.ts`. */
-type BriefFlowKind = BriefFlow["trees"][number]["kind"];
+/*
+ * Shared by the Brief reader and the main-process PR description serializer,
+ * so both walk a Flow tree in the same order. Generic over the citation type:
+ * the renderer's re-validated citations carry a plain `path` string.
+ */
+
+type BriefFlowKind = BriefFlowTree["kind"];
+
+/** One Flow node as either side holds it. */
+type BriefFlowTextNode<Citation> = {
+  readonly label: string;
+  readonly change: "added" | "removed" | "unchanged";
+  readonly citations: ReadonlyArray<Citation>;
+  readonly children: ReadonlyArray<BriefFlowTextNode<Citation>>;
+};
 
 /**
  * The human label ADR 0039's kind badge shows. Mirrors `BriefFlowKind` one
@@ -32,10 +45,10 @@ export function briefFlowKindLabel(kind: BriefFlowKind): string {
  * contributes a `"│   "` column to that root's descendants -- guides show
  * nesting within one root's subtree, not across roots.
  */
-export type BriefFlowRow = {
+export type BriefFlowRow<Citation> = {
   readonly label: string;
-  readonly change: BriefFlowNode["change"];
-  readonly citations: BriefFlowNode["citations"];
+  readonly change: BriefFlowTextNode<Citation>["change"];
+  readonly citations: ReadonlyArray<Citation>;
   readonly depth: number;
   readonly guide: string;
 };
@@ -52,11 +65,11 @@ export type BriefFlowRow = {
  * its children's `ancestorGuides` -- a root's sibling never draws a `"│   "`
  * column under it.
  */
-export function flowRows(
-  nodes: ReadonlyArray<BriefFlowNode>,
+export function flowRows<Citation>(
+  nodes: ReadonlyArray<BriefFlowTextNode<Citation>>,
   ancestorGuides: ReadonlyArray<string> = [],
   depth = 0,
-): ReadonlyArray<BriefFlowRow> {
+): ReadonlyArray<BriefFlowRow<Citation>> {
   return nodes.flatMap((node, index) => {
     const isLastSibling = index === nodes.length - 1;
     const guide =
@@ -86,7 +99,7 @@ export function flowRows(
  * box-drawing `guide`, then its label -- the same tree the reader draws, so
  * the pasted block reads as the drawn tree.
  */
-function flowRowLine(row: BriefFlowRow): string {
+export function flowRowLine<Citation>(row: BriefFlowRow<Citation>): string {
   const marker =
     row.change === "added" ? "+ " : row.change === "removed" ? "- " : "  ";
   return `${marker}${row.guide}${row.label}`;
@@ -103,7 +116,13 @@ function flowRowLine(row: BriefFlowRow): string {
  * pasted into a PR comment or commit message, not to stand in for the
  * rendered tree.
  */
-export function briefFlowAsDiffText(flow: BriefFlow): string {
+export function briefFlowAsDiffText<Citation>(flow: {
+  readonly trees: ReadonlyArray<{
+    readonly kind: BriefFlowKind;
+    readonly title: string;
+    readonly nodes: ReadonlyArray<BriefFlowTextNode<Citation>>;
+  }>;
+}): string {
   return flow.trees
     .map((tree) => {
       const rows = flowRows(tree.nodes).map(flowRowLine);

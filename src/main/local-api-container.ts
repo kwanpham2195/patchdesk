@@ -14,6 +14,7 @@ import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-stora
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
+import type { InsightStore } from "../adapters/storage/insight-store";
 import { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
 import { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
@@ -53,6 +54,7 @@ import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { LocalReviewOpening } from "../services/local-review-opening";
 import { LocalApplyService } from "../services/local-apply-service";
+import { LocalDraftService } from "../services/local-draft-service";
 import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
@@ -81,6 +83,9 @@ export type LocalApiContainer = {
   readonly reviewWorkbench: ReviewWorkbenchSeam;
   readonly localReviewOpening: LocalReviewOpening;
   readonly localApply: LocalApplyService;
+  readonly localDrafts: LocalDraftService;
+  /** Retained Insight reads for routes that compose from a stored result, such as the Brief's PR description. */
+  readonly retainedInsights: Pick<InsightStore, "loadTyped">;
   readonly reviewDiffSources: ReviewDiffSourceService;
   readonly mergeWrites: MergeWriteController | undefined;
   readonly inlineConversations: InlineConversationService;
@@ -536,6 +541,14 @@ export async function buildLocalApiContainer(
       reviewWorkbench,
       localReviewOpening,
       localApply,
+      localDrafts: new LocalDraftService({
+        reviews,
+        sessions,
+        insights,
+        coordinator: reviewOperations,
+        now: systemNow,
+      }),
+      retainedInsights: insights,
       reviewDiffSources,
       mergeWrites,
       inlineConversations,
