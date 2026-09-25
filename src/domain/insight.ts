@@ -13,6 +13,7 @@ import {
   type RetainedInsight,
   type WalkthroughProgress,
 } from "./insight-record";
+import type { ChangeIntentProvenance } from "./change-intent";
 import type { InsightProvenance, InsightReasoning } from "./insight-provider";
 import type { ReviewSession } from "./review-session";
 type InsightStatus =
@@ -49,6 +50,8 @@ export type InsightProjection<T> = {
     readonly generatedAt: IsoTimestamp;
     /** The provider, model, and reasoning this Insight was actually produced with. */
     readonly provenance: InsightProvenance;
+    /** The Change intent an Analysis ran against (#467). */
+    readonly changeIntent?: ChangeIntentProvenance;
     readonly value: T;
     readonly scope?: InsightScopeProjection;
   };
@@ -104,6 +107,9 @@ export function projectStoredInsight<T>(
           headSha: record.retained.revision.headSha,
           generatedAt: record.retained.generatedAt,
           provenance: record.retained.provenance,
+          ...(record.retained.changeIntent !== undefined && {
+            changeIntent: record.retained.changeIntent,
+          }),
           value: decorate(record.retained.value, record),
           ...(scope !== undefined && { scope }),
         };

@@ -1,9 +1,10 @@
 import { containsSensitiveData } from "../adapters/storage/json-file";
 import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ChangeIntent } from "../domain/change-intent";
+import type { ChangeIntent, ChangeIntentView } from "../domain/change-intent";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, setChangeIntent } from "../domain/review";
+import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
 /** `intent` undefined clears the Change intent. */
@@ -27,8 +28,19 @@ export type ChangeIntentFailure = {
 
 /** What the Review holds after the write; `null` when it has no Change intent. */
 export type ChangeIntentState = {
-  readonly changeIntent: ChangeIntent | null;
+  readonly changeIntent: ChangeIntentView | null;
 };
+
+/** The workbench's view of a Change intent; text is compared with an Analysis by the sha256 of its Markdown. */
+export function changeIntentView(intent: ChangeIntent): ChangeIntentView {
+  return {
+    intent,
+    setting:
+      intent.kind === "text"
+        ? { kind: "text", sha256: hashReviewArtifactContent(intent.markdown) }
+        : { kind: "file", path: intent.path },
+  };
+}
 
 type ChangeIntentDependencies = {
   readonly reviews: Pick<ReviewStore, "load" | "save">;
@@ -80,7 +92,10 @@ export class LocalChangeIntentService {
         );
         if (saved._tag === "err") return err({ reason: "storage" });
       }
-      return ok({ changeIntent: changed.value.changeIntent ?? null });
+      const intent = changed.value.changeIntent;
+      return ok({
+        changeIntent: intent === undefined ? null : changeIntentView(intent),
+      });
     } finally {
       this.dependencies.coordinator.release(key);
     }

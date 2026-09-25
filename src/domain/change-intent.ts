@@ -125,10 +125,25 @@ export function parseChangeIntentProvenance(
 /**
  * The Review's current Change intent setting as an Analysis result is
  * compared with it: text by the sha256 of its Markdown, a spec file by path.
+ * Plain strings, so the renderer compares what it parsed off the wire.
  */
 export type ChangeIntentSetting =
-  | { readonly kind: "text"; readonly sha256: ContentHash }
-  | { readonly kind: "file"; readonly path: RepoRelativePath };
+  | { readonly kind: "text"; readonly sha256: string }
+  | { readonly kind: "file"; readonly path: string };
+
+/** A local Review's Change intent as the workbench shows it, with the setting its Analysis is compared against. */
+export type ChangeIntentView = {
+  readonly intent: ChangeIntent;
+  readonly setting: ChangeIntentSetting;
+};
+
+export const changeIntentViewSchema = v.strictObject({
+  intent: changeIntentSchema,
+  setting: v.variant("kind", [
+    v.strictObject({ kind: v.literal("text"), sha256: v.string() }),
+    v.strictObject({ kind: v.literal("file"), path: v.string() }),
+  ]),
+});
 
 /**
  * True when an Analysis ran against the Review's current Change intent
@@ -137,7 +152,7 @@ export type ChangeIntentSetting =
  * own revision already binds.
  */
 export function analysisRanAgainstChangeIntent(
-  ran: ChangeIntentProvenance | undefined,
+  ran: (ChangeIntentSetting & { readonly sha256: string }) | undefined,
   current: ChangeIntentSetting | undefined,
 ): boolean {
   if (ran === undefined || current === undefined)

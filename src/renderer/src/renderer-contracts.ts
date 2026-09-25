@@ -21,6 +21,10 @@ import {
 } from "./insight-contracts";
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
+import {
+  changeIntentProvenanceSchema,
+  changeIntentViewSchema,
+} from "../../domain/change-intent";
 import { changeScopeSchema } from "../../domain/change-scope";
 import {
   CHECK_OVERALL_STATES,
@@ -659,6 +663,7 @@ const analysisInsightSchema = v.strictObject({
   retained: v.optional(
     v.strictObject({
       ...retainedInsightFields,
+      changeIntent: v.optional(changeIntentProvenanceSchema),
       value: reviewResultSchema,
       scope: v.optional(insightScopeSchema),
     }),
@@ -874,6 +879,7 @@ const workbenchProjectionSchema = v.strictObject({
     }),
   ),
   localDrafts: v.optional(v.array(localDraftEntrySchema)),
+  changeIntent: v.optional(v.nullable(changeIntentViewSchema)),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export type RemoteWriteRecovery = v.InferOutput<

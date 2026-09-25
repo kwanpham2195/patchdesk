@@ -86,6 +86,8 @@ import {
 } from "../domain/review-session";
 import type { ReviewSource } from "../domain/review-source";
 import { err, ok, type Result } from "../domain/result";
+import type { ChangeIntentView } from "../domain/change-intent";
+import { changeIntentView } from "./local-change-intent-service";
 import { RetainedInsightReader } from "./retained-insight-reader";
 
 /** Renderer-safe Session identity. It deliberately omits patch/worktree paths and durable internals. */
@@ -161,6 +163,8 @@ export type ReviewWorkbenchProjection = {
   };
   /** Present exactly on a local Review, empty when nothing is drafted (ADR 0050 "Local drafts"). */
   readonly localDrafts?: ReadonlyArray<LocalDraftEntry>;
+  /** Present exactly on a local Review, `null` when it has no Change intent (#467). */
+  readonly changeIntent?: ChangeIntentView | null;
 };
 
 /** A patch file's contents plus the identity a cached hash of them is keyed on. */
@@ -708,6 +712,11 @@ export class ReviewWorkbenchProjectionService {
         localDrafts: isLocalReview(stableReview.value)
           ? (stableReview.value.localDrafts ?? []).map(projectLocalDraft)
           : undefined,
+        changeIntent: !isLocalReview(stableReview.value)
+          ? undefined
+          : stableReview.value.changeIntent === undefined
+            ? null
+            : changeIntentView(stableReview.value.changeIntent),
         localCheckout: projectLocalCheckoutWarning(
           session.localCheckoutWarning,
         ),
