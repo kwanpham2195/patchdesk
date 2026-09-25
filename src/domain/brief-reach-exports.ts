@@ -42,12 +42,10 @@ export function changedEnclosingExports(
   const seen = new Set<string>();
   for (const file of changedSites(patch)) {
     const lines = headLines.get(file.path);
-    if (lines === undefined) continue;
-    const head = exportHead(file.path);
+    if (lines === undefined || declaresNoExports(file.path)) continue;
+    const owners = owningExports(lines, exportHead(file.path));
     for (const site of file.sites) {
-      const [first, ...rest] = site.map((line) =>
-        enclosingExport(lines, line - 1, head),
-      );
+      const [first, ...rest] = site.map((line) => owners[line - 1]);
       if (first === undefined || rest.some((name) => name !== first)) continue;
       if (seen.has(first)) continue;
       seen.add(first);
@@ -89,6 +87,32 @@ function changedSites(
   return files;
 }
 
+/** Data, prose, and image files declare no exports, and a lockfile can run to tens of thousands of lines. */
+const NO_EXPORT_EXTENSIONS: ReadonlyArray<string> = [
+  ".json",
+  ".jsonc",
+  ".yaml",
+  ".yml",
+  ".lock",
+  ".md",
+  ".mdx",
+  ".txt",
+  ".toml",
+  ".csv",
+  ".svg",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".ico",
+];
+
+function declaresNoExports(path: string): boolean {
+  const lower = path.toLowerCase();
+  return NO_EXPORT_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
 function exportHead(path: string): RegExp {
   return (
     EXPORT_HEADS.find((rule) =>
@@ -98,27 +122,24 @@ function exportHead(path: string): RegExp {
 }
 
 /**
- * The exported declaration owning `lineIndex` (0-based): the nearest line
- * above it at column zero that is not blank, a comment, or a closing bracket.
- * A top-level line that is not an exported head, such as a local helper,
- * owns the line and yields nothing.
+ * Each line's owning exported declaration, in one forward pass: the nearest
+ * line at or above it at column zero that is not blank, a comment, or a
+ * closing bracket. A top-level line that is not an exported head, such as a
+ * local helper, owns the lines below it and yields nothing; a blank or comment
+ * line is owned by nothing.
  */
-function enclosingExport(
+function owningExports(
   lines: ReadonlyArray<string>,
-  lineIndex: number,
   head: RegExp,
-): string | undefined {
-  const own = lines[lineIndex]?.trim();
-  if (own === undefined || own === "" || isComment(own)) return undefined;
-  for (let index = lineIndex; index >= 0; index -= 1) {
-    const text = lines[index] ?? "";
+): ReadonlyArray<string | undefined> {
+  let owner: string | undefined;
+  return lines.map((text) => {
     const trimmed = text.trim();
-    if (text !== text.trimStart() || trimmed === "" || isComment(trimmed))
-      continue;
-    if (/^[}\])]/.test(trimmed)) continue;
-    return head.exec(text)?.[1];
-  }
-  return undefined;
+    if (trimmed === "" || isComment(trimmed)) return undefined;
+    if (text === text.trimStart() && !/^[}\])]/.test(trimmed))
+      owner = head.exec(text)?.[1];
+    return owner;
+  });
 }
 
 function isComment(trimmed: string): boolean {

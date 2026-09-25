@@ -133,6 +133,13 @@ describe("enclosingDeclaration", () => {
     ).toBe("computeScope");
   });
 
+  it("reads a 500 KB minified line without backtracking across it", () => {
+    const minified = `  a(${"):".repeat(250_000)}`;
+    const started = performance.now();
+    expect(enclosingDeclaration([minified], 0)).toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it("names an arrow component and a Go method", () => {
     expect(
       enclosingDeclaration(

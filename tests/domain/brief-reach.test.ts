@@ -234,6 +234,43 @@ describe("candidateReachSymbols with head files", () => {
     },
   );
 
+  it.each([
+    {
+      path: "package-lock.json",
+      head: "{",
+      body: '    "node_modules/pkg": { "version": "1.0.0" },',
+      expected: [],
+    },
+    {
+      path: "src/generated/table.ts",
+      head: "export const table = {",
+      body: '  entry: "value",',
+      expected: ["table"],
+    },
+  ])(
+    "reads a 50,000-line all-added $path in one pass",
+    ({ path, head: firstLine, body, expected }) => {
+      const lines = [
+        firstLine,
+        ...Array.from({ length: 50_000 }, () => body),
+        "}",
+      ];
+      const added = patch(
+        `diff --git a/${path} b/${path}`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/${path}`,
+        `@@ -0,0 +1,${String(lines.length)} @@`,
+        ...lines.map((line) => `+${line}`),
+      );
+      const started = performance.now();
+      const kept = candidateReachSymbols(added, [], new Map([[path, lines]]));
+      // Walking up from every line to the one column-zero line took seconds here.
+      expect(performance.now() - started).toBeLessThan(1_000);
+      expect(kept).toEqual(expected);
+    },
+  );
+
   it("orders declared names, then enclosing exports, then model-only names under the cap", () => {
     const declared = Array.from(
       { length: 19 },
