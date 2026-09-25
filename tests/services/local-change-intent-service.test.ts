@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -37,7 +39,15 @@ describe("LocalChangeIntentService.set", () => {
 
     expect(await service.set({ profileId, reviewId, intent })).toEqual({
       _tag: "ok",
-      value: { changeIntent: intent },
+      value: {
+        changeIntent: {
+          intent,
+          setting: {
+            kind: "text",
+            sha256: createHash("sha256").update(intent.markdown).digest("hex"),
+          },
+        },
+      },
     });
     expect(
       value(await harness.reviews.load(profileId, reviewId)).changeIntent,

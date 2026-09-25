@@ -13,6 +13,7 @@ import { parseRepoRelativePath } from "../../src/domain/ids";
 import type { InsightType } from "../../src/domain/insight-record";
 import { ok } from "../../src/domain/result";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
+import { parseWorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import {
   InsightRunCoordinator,
   type InsightInvoker,
@@ -252,6 +253,35 @@ describe("Change intent in an Analysis run", () => {
       ).toMatchObject({ _tag: "err", error: { reason: "not_found" } });
     },
   );
+
+  it("projects the intent and the one the Analysis ran against in a workbench the renderer accepts", async () => {
+    const review = await intentReview({});
+    await review.setIntent({
+      kind: "text",
+      markdown: "Reject a negative total.",
+    });
+    await review.run();
+
+    const workbench = parseWorkbenchResponse(
+      JSON.parse(
+        JSON.stringify(
+          value(
+            await review.harness.opening.refresh(profileId, review.reviewId),
+          ),
+        ),
+      ),
+    );
+
+    const digest = sha256("Reject a negative total.");
+    expect(workbench?.changeIntent?.setting).toEqual({
+      kind: "text",
+      sha256: digest,
+    });
+    expect(workbench?.insights.analysis.retained?.changeIntent).toEqual({
+      kind: "text",
+      sha256: digest,
+    });
+  });
 
   it("runs a Brief whatever the spec file, since only Analysis reads the intent", async () => {
     const review = await intentReview({});
