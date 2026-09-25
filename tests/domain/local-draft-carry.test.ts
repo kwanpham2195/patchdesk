@@ -111,7 +111,11 @@ describe("carryLocalDraft", () => {
       ...boundDraft,
       sessionId: next,
       anchor: { ...loopAnchor, startLine: 4, line: 4 },
-      carry: { state: "unchanged", sessionId: next },
+      carry: {
+        state: "unchanged",
+        sessionId: next,
+        notedLines: loopAnchor.selectedLines,
+      },
     });
   });
 
@@ -129,7 +133,11 @@ describe("carryLocalDraft", () => {
         ...loopAnchor,
         selectedLines: ["  for (let i = 0; i < values.length; i += 1) {"],
       },
-      carry: { state: "changed", sessionId: next },
+      carry: {
+        state: "changed",
+        sessionId: next,
+        notedLines: loopAnchor.selectedLines,
+      },
     });
   });
 
@@ -142,7 +150,11 @@ describe("carryLocalDraft", () => {
 
     expect(carried).toMatchObject({
       findingId: boundDraft.findingId,
-      carry: { state: "changed", sessionId: next },
+      carry: {
+        state: "changed",
+        sessionId: next,
+        notedLines: loopAnchor.selectedLines,
+      },
     });
     expect(carried).not.toHaveProperty("suggestion");
   });
@@ -153,7 +165,11 @@ describe("carryLocalDraft", () => {
     const { suggestion: _dropped, ...withoutSuggestion } = boundDraft;
     expect(carried).toEqual({
       ...withoutSuggestion,
-      carry: { state: "needs_attention", sessionId: next },
+      carry: {
+        state: "needs_attention",
+        sessionId: next,
+        notedLines: loopAnchor.selectedLines,
+      },
     });
   });
 
@@ -164,7 +180,11 @@ describe("carryLocalDraft", () => {
 
     expect(carried).toEqual({
       ...loopNote,
-      carry: { state: "needs_attention", sessionId: next },
+      carry: {
+        state: "needs_attention",
+        sessionId: next,
+        notedLines: loopAnchor.selectedLines,
+      },
     });
   });
 
@@ -209,6 +229,116 @@ describe("carryLocalDraft", () => {
 
     expect(carried).toMatchObject({ carry: { state: "unchanged" } });
     expect(carried).not.toHaveProperty("suggestion");
+  });
+
+  it("keeps a note whose line was reverted marked changed and placed when an unrelated edit refreshes again", () => {
+    const letters = value(parseRepoRelativePath("letters.txt"));
+    // Line 4 of `a`..`g` changed to `D` when the note was written.
+    const note: MaintainerNote = {
+      ...loopNote,
+      anchor: {
+        path: letters,
+        side: "new",
+        startLine: 4,
+        line: 4,
+        selectedLines: ["D"],
+        before: ["b", "c"],
+        after: ["e", "f"],
+      },
+    };
+    const reverted = new Map([[letters, "a\nb\nc\nd\ne\nf\ng\n"]]);
+    // The agent reverted line 4, so letters.txt left the patch; the second Refresh follows an edit to another file.
+    const unrelatedPatch = [
+      "diff --git a/other.txt b/other.txt",
+      "--- a/other.txt",
+      "+++ b/other.txt",
+      "@@ -1 +1 @@",
+      "-one",
+      "+two",
+      "",
+    ].join("\n");
+    const third = session("cccccccc");
+
+    const first = carryLocalDraft(note, {
+      sessionId: next,
+      patch: "",
+      files: reverted,
+    });
+    const second = carryLocalDraft(first, {
+      sessionId: third,
+      patch: unrelatedPatch,
+      files: reverted,
+    });
+
+    expect(first).toMatchObject({ carry: { state: "changed" } });
+    expect(second).toMatchObject({
+      sessionId: third,
+      anchor: { startLine: 4, line: 4, selectedLines: ["d"] },
+      carry: { state: "changed", sessionId: third },
+    });
+  });
+
+  it("moves an untouched line whose hunk merged with a nearby edit as unchanged", () => {
+    const lines = value(parseRepoRelativePath("lines.txt"));
+    const base = Array.from(
+      { length: 20 },
+      (_, index) => `l${String(index + 1)}`,
+    );
+    // Written when only line 5 had changed: line 7 was the hunk's second-last context line.
+    const note: MaintainerNote = {
+      ...loopNote,
+      anchor: {
+        path: lines,
+        side: "new",
+        startLine: 7,
+        line: 7,
+        selectedLines: ["l7"],
+        before: ["L5", "l6"],
+        after: ["l8"],
+      },
+    };
+    const edited = base.map((line) =>
+      line === "l5" ? "L5" : line === "l11" ? "L11" : line,
+    );
+    // Line 11 changed too, so the two hunks merged and line 7's context gained `l9`.
+    const merged = [
+      "diff --git a/lines.txt b/lines.txt",
+      "--- a/lines.txt",
+      "+++ b/lines.txt",
+      "@@ -2,13 +2,13 @@",
+      " l2",
+      " l3",
+      " l4",
+      "-l5",
+      "+L5",
+      " l6",
+      " l7",
+      " l8",
+      " l9",
+      " l10",
+      "-l11",
+      "+L11",
+      " l12",
+      " l13",
+      " l14",
+      "",
+    ].join("\n");
+
+    const carried = carryLocalDraft(note, {
+      sessionId: next,
+      patch: merged,
+      files: new Map([[lines, `${edited.join("\n")}\n`]]),
+    });
+
+    expect(carried).toMatchObject({
+      sessionId: next,
+      anchor: { startLine: 7, line: 7, selectedLines: ["l7"] },
+      carry: {
+        state: "unchanged",
+        sessionId: next,
+        notedLines: ["l7"],
+      },
+    });
   });
 
   it("leaves an applied Finding draft as it is", () => {

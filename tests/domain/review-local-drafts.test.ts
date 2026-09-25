@@ -223,11 +223,11 @@ describe("Local drafts on a Review", () => {
       added(localReview(), {
         ...draft("finding-bound"),
         appliedAt: removedAt,
-        carry: { state: "changed", sessionId },
+        carry: { state: "changed", sessionId, notedLines: [] },
       }),
       {
         ...note("Name this total."),
-        carry: { state: "needs_attention", sessionId },
+        carry: { state: "needs_attention", sessionId, notedLines: [] },
       },
     );
     const stored = structuredClone(serializeReview(review));
