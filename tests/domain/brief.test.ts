@@ -260,6 +260,9 @@ describe("insightOutputGuidance", () => {
       "Give a state tree only when the patch adds, removes, or rewires a named state of a lifecycle, such as a write, a run, a session, or a review.",
     );
     expect(guidance).toContain(
+      "never a boolean toggle such as expanded, open, or selected, and never a variable name.",
+    );
+    expect(guidance).toContain(
       "Give a contract tree only when the patch changes an exported signature, type, or field that callers outside the patch depend on.",
     );
     expect(guidance).toContain(

@@ -55,6 +55,8 @@ kind badge that reads `state` or `contract`. A state view reads:
 +  → confirmed on reconcile match
 ```
 
+A state is one value of a single status field, never a boolean UI toggle or a variable name: in a trial on PR #441, `gpt-6-luna` drew `expanded` toggles as a state tree until the prompt said so.
+
 A generated Mermaid state diagram for `state` is deferred. Rows cannot draw
 a cycle as an edge, so a flow with many back-transitions may read poorly;
 Patchdesk adds a diagram only when a trial on real pull requests shows that.
