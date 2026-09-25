@@ -102,6 +102,8 @@ const storedReachSchema = v.strictObject({
       outsideCallerFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
       outsidePaths: v.array(v.pipe(v.string(), v.minLength(1))),
       insidePR: v.boolean(),
+      // Briefs retained before the Blast radius view lack it; they read as `changed` so no name is hidden.
+      status: v.optional(v.picklist(["new", "changed"])),
     }),
   ),
   surfaces: v.array(
@@ -222,9 +224,10 @@ export function parseStoredBrief(
 }
 
 /**
- * Rebuilds the Reach block. Only `surface.path` needs rewriting: valibot infers
+ * Rebuilds the Reach block. `surface.path` is rewritten because valibot infers
  * an optional key as `string | undefined`, which an `exactOptionalPropertyTypes`
- * target reads as a present key holding `undefined`.
+ * target reads as a present key holding `undefined`; a missing symbol `status`
+ * reads as `changed`.
  */
 function storedReach(
   stored: v.InferOutput<typeof storedReachSchema> | undefined,
@@ -232,6 +235,10 @@ function storedReach(
   if (stored === undefined) return undefined;
   return {
     ...stored,
+    symbols: stored.symbols.map((symbol) => ({
+      ...symbol,
+      status: symbol.status ?? "changed",
+    })),
     surfaces: stored.surfaces.map((entry) => ({
       surface: entry.surface,
       ...definedProps({ path: entry.path }),

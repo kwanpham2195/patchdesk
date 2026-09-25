@@ -2,8 +2,8 @@ import { classifyChangedPath } from "./change-scope";
 import { tokenizeUnifiedPatch } from "./unified-patch";
 
 /*
- * The Brief reader draws this block under the heading "Reach": what depends on
- * the changed code, one hop out, by text match.
+ * The Brief reader draws this block under the heading "Blast radius": what
+ * depends on the changed code, one hop out, by text match.
  *
  * Nothing here asks a model for a number. A model may propose symbol names; a
  * name survives only when it is a plausible identifier that actually appears on
@@ -23,7 +23,7 @@ const MAX_REACH_SYMBOL_LENGTH = 80;
  */
 const MAX_COUNTED_REACH_SYMBOLS = 12;
 /** How many outside paths one symbol names before the rest become a count. */
-export const MAX_REACH_OUTSIDE_PATHS = 5;
+export const MAX_REACH_OUTSIDE_PATHS = 20;
 
 /**
  * An `export`-shaped declaration head, used both for the fallback when a model
@@ -52,6 +52,8 @@ export type BriefReachSymbol = {
   readonly outsidePaths: ReadonlyArray<string>;
   /** True when the name is also named by a file this pull request changes. */
   readonly insidePR: boolean;
+  /** `new` when the patch declares the name only on added lines, so nothing outside it can depend on it yet. */
+  readonly status: "new" | "changed";
 };
 
 /** One surface the changed paths either cross or do not; an unlit surface is still reported. */
@@ -294,6 +296,17 @@ export function removedSymbols(patch: string): ReadonlyArray<string> {
   return declaredNames(patch, "removed")
     .filter((name) => !appearsAsWholeWord(added, name))
     .slice(0, MAX_COUNTED_REACH_SYMBOLS);
+}
+
+/**
+ * Names the patch declares on added lines and never on removed ones. Any other
+ * counted name existed before this pull request, so it reads as `changed`.
+ */
+export function newlyDeclaredNames(patch: string): ReadonlySet<string> {
+  const before = new Set(declaredNames(patch, "removed"));
+  return new Set(
+    declaredNames(patch, "added").filter((name) => !before.has(name)),
+  );
 }
 
 /**

@@ -4,6 +4,7 @@ import type { CommandRunner } from "../adapters/github/command-runner";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import {
   briefReachFiles,
+  newlyDeclaredNames,
   removedSymbols,
   summarizeReach,
   MAX_REACH_OUTSIDE_PATHS,
@@ -114,6 +115,7 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
 
   const files = briefReachFiles(input.patch);
   const changedPaths = new Set(files.map((file) => file.path));
+  const newNames = newlyDeclaredNames(input.patch);
   const symbols: Array<BriefReachSymbol> = [];
   for (const name of input.symbols) {
     const matches = await searchSymbol(input, worktree, name, deadline);
@@ -124,6 +126,7 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
       outsideCallerFiles: outside.length,
       outsidePaths: outside.slice(0, MAX_REACH_OUTSIDE_PATHS),
       insidePR: outside.length < matches.paths.length,
+      status: newNames.has(name) ? "new" : "changed",
     });
   }
 

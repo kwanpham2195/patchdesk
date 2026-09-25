@@ -123,7 +123,7 @@ const generatedAtFormatter = new Intl.DateTimeFormat(undefined, {
 
 /**
  * The read side of one retained Brief: the change's structure -- Flow, Shape,
- * Start here, and Reach -- rather than prose about it (ADR 0040). It states
+ * Start here, and Blast radius -- rather than prose about it (ADR 0040). It states
  * no verdict and no finding; those stay in Analysis.
  */
 export function BriefReader({
@@ -161,7 +161,7 @@ export function BriefReader({
         {brief.reach === undefined ? (
           brief.reachUnavailable === undefined ? null : (
             <p className="text-xs text-muted-foreground">
-              Reach was not counted:{" "}
+              Blast radius was not counted:{" "}
               {BRIEF_REACH_UNAVAILABLE_LABELS[brief.reachUnavailable]}.
             </p>
           )
