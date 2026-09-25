@@ -229,6 +229,10 @@ export function useReviewDiffModel({
             annotation.pendingReviewThread === undefined
               ? ""
               : `${annotation.pendingReviewThread.nodeId}\u0000${annotation.pendingReviewThread.threadId}\u0000${annotation.pendingReviewThread.body}`,
+            // An edited note keeps its id, and a closed Review drops its actions.
+            annotation.localNote === undefined
+              ? ""
+              : `${annotation.localNote.text}\u0000${annotation.localNote.onEdit === undefined ? "" : "editable"}`,
             annotation.conversationThread === undefined
               ? ""
               : JSON.stringify([

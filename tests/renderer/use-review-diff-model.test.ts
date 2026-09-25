@@ -109,4 +109,56 @@ describe("useReviewDiffModel", () => {
       "internal/errors_test.go",
     ]);
   });
+
+  it("hands CodeView a new item version when a note's text is edited in place", () => {
+    desktop = installDesktopDouble({});
+    const viewer: RefObject<CodeViewHandle<
+      ReviewInlineAnnotation | undefined
+    > | null> = { current: null };
+    const note = (text: string): ReviewInlineAnnotation => ({
+      id: "local-note:note-1",
+      path: "docs/README.md",
+      start: 1,
+      end: 1,
+      side: "new",
+      severity: "note",
+      title: "Note",
+      explanation: "",
+      localNote: {
+        noteId: "note-1",
+        path: "docs/README.md",
+        startLine: 1,
+        line: 1,
+        text,
+      },
+    });
+    const { result, rerender } = renderHook(
+      ({
+        annotations,
+      }: {
+        annotations: ReadonlyArray<ReviewInlineAnnotation>;
+      }) =>
+        useReviewDiffModel({
+          patch: fullPatch,
+          parsedFiles: parseReviewDiff(fullPatch).files,
+          selectedPath: "docs/README.md",
+          selectedRange: undefined,
+          annotations,
+          preferences: { fileMode: "all" },
+          collapsedPaths: new Set(),
+          expandUnchanged: false,
+          themePreferences: { light: "pierre-light", dark: "pierre-dark" },
+          sourceSession: undefined,
+          virtualized: false,
+          viewer,
+          onActiveFileChange: undefined,
+        }),
+      { initialProps: { annotations: [note("Before")] } },
+    );
+    const before = result.current.items[0]?.version;
+
+    rerender({ annotations: [note("After")] });
+
+    expect(result.current.items[0]?.version).not.toBe(before);
+  });
 });
