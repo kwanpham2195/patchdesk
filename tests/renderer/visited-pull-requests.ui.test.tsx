@@ -151,7 +151,9 @@ function renderColumn(options: {
   readonly rows: ReadonlyArray<RawJsonValue>;
   readonly destination?: AppDestination;
   readonly onNavigate?: (destination: AppDestination) => void;
-  readonly onOpenLocalReview?: (row: SidebarLocalReviewRow) => void;
+  readonly onOpenLocalReview?: (
+    row: SidebarLocalReviewRow,
+  ) => Promise<string | undefined>;
 }): void {
   desktop = installDesktopDouble({
     "/v1/sidebar/reviews": () => success({ rows: options.rows, unreadable: 0 }),
@@ -160,7 +162,7 @@ function renderColumn(options: {
     <LoadedColumn
       destination={options.destination ?? { kind: "dashboard" }}
       onNavigate={options.onNavigate ?? (() => undefined)}
-      onOpenLocalReview={options.onOpenLocalReview ?? (() => undefined)}
+      onOpenLocalReview={options.onOpenLocalReview ?? (async () => undefined)}
     />,
   );
 }
@@ -169,7 +171,9 @@ function renderColumn(options: {
 function LoadedColumn(props: {
   readonly destination: AppDestination;
   readonly onNavigate: (destination: AppDestination) => void;
-  readonly onOpenLocalReview: (row: SidebarLocalReviewRow) => void;
+  readonly onOpenLocalReview: (
+    row: SidebarLocalReviewRow,
+  ) => Promise<string | undefined>;
 }): React.JSX.Element {
   const state = useVisitedPullRequestRows("profile-1", 0);
   return (
@@ -304,7 +308,7 @@ describe("VisitedPullRequests", () => {
   it("reopens a local row through the local open path rather than navigating", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
-    const onOpenLocalReview = vi.fn();
+    const onOpenLocalReview = vi.fn(async () => undefined);
     renderColumn({ rows: [titled, local], onNavigate, onOpenLocalReview });
 
     await user.click(

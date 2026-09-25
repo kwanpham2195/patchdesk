@@ -60,12 +60,10 @@ import { parseGitHubHost } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { sameRepositoryIdentity } from "../../domain/repository-identity";
 import { definedProps } from "../../domain/defined-props";
-import {
-  localReviewSourceInput,
-  useInboxReviewOpening,
-} from "./flows/use-inbox-review-opening";
+import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
+import { localReviewSourceInput } from "./local-review-reopen";
 import type { SidebarLocalReviewRow } from "./sidebar-contracts";
-import { requestJson } from "./api-client";
+import { isApiErrorCode, requestJson } from "./api-client";
 import { appLog } from "./lib/logger";
 
 export type { ReviewWorkbenchLoader };
@@ -291,21 +289,29 @@ function AppContent({
   const { openLocalReview, openPullRequestByRef, reportOpenError } =
     reviewOpening;
   const openLocalReviewFromSidebar = useCallback(
-    (row: SidebarLocalReviewRow): void => {
+    async (row: SidebarLocalReviewRow): Promise<string | undefined> => {
       // The leave-confirmation holds a destination, not an open, so a guarded
       // click parks the Review's own route, which loads it as stored.
       if (navigationState !== "clear") {
         navigate({ kind: "workbench", reviewId: row.reviewId });
-        return;
+        return undefined;
       }
-      void openLocalReview(row, localReviewSourceInput(row.source)).catch(
-        (cause: unknown) => {
-          navigate({ kind: "dashboard" });
-          reportOpenError(
-            cause instanceof Error ? cause.message : "Could not open review.",
-          );
-        },
-      );
+      try {
+        await openLocalReview(row, localReviewSourceInput(row.source));
+        return undefined;
+      } catch (cause) {
+        const message =
+          cause instanceof Error ? cause.message : "Could not open review.";
+        // A branch switch is fixed in the checkout, so the row says so where the maintainer is.
+        if (
+          cause instanceof Error &&
+          isApiErrorCode(cause.cause, "branch_mismatch")
+        )
+          return message;
+        navigate({ kind: "dashboard" });
+        reportOpenError(message);
+        return undefined;
+      }
     },
     [navigate, navigationState, openLocalReview, reportOpenError],
   );

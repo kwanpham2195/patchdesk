@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
 
+import { InlineError } from "@/components/ui/inline-error";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatExactTime, formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,14 @@ import {
   type SidebarReviewRow,
 } from "@/sidebar-contracts";
 import type { AppDestination } from "@/routes";
+
+/**
+ * Reopens a local Review through the local open path, which reads the
+ * checkout again (ADR 0050). Resolves to a refusal to show under the row.
+ */
+export type LocalReviewReopen = (
+  row: SidebarLocalReviewRow,
+) => Promise<string | undefined>;
 
 /**
  * The pull requests and local Reviews the maintainer has opened in the active
@@ -31,8 +40,7 @@ export function VisitedPullRequests({
   readonly state: VisitedPullRequestRows;
   readonly destination: AppDestination;
   readonly onNavigate: (destination: AppDestination) => void;
-  /** Reopens a local Review through the local open path, which reads the checkout again (ADR 0050). */
-  readonly onOpenLocalReview: (row: SidebarLocalReviewRow) => void;
+  readonly onOpenLocalReview: LocalReviewReopen;
   /** The active workspace's label for the header strip; undefined while a switch is in flight. */
   readonly workspaceLabel: string | undefined;
   /** The workspace's GitHub host; the rows carry none, and a watched mark needs it. */
@@ -40,6 +48,9 @@ export function VisitedPullRequests({
 }): React.JSX.Element {
   const watch = useWatchedPullRequests();
   const [activeReviewId, setActiveReviewId] = useState<string | undefined>();
+  const [refusal, setRefusal] = useState<
+    { readonly reviewId: string; readonly message: string } | undefined
+  >();
 
   const openReviewId =
     destination.kind === "workbench" ? destination.reviewId : undefined;
@@ -123,15 +134,25 @@ export function VisitedPullRequests({
                       }
                       onFocus={() => setActiveReviewId(row.reviewId)}
                       onOpen={() => {
-                        if (isSidebarLocalReviewRow(row))
-                          onOpenLocalReview(row);
-                        else
+                        setRefusal(undefined);
+                        if (!isSidebarLocalReviewRow(row)) {
                           onNavigate({
                             kind: "workbench",
                             reviewId: row.reviewId,
                           });
+                          return;
+                        }
+                        void onOpenLocalReview(row).then((message) => {
+                          if (message !== undefined)
+                            setRefusal({ reviewId: row.reviewId, message });
+                        });
                       }}
                     />
+                    {refusal?.reviewId === row.reviewId ? (
+                      <InlineError className="px-2.5 pb-1.5 text-[11px]">
+                        {refusal.message}
+                      </InlineError>
+                    ) : null}
                   </Fragment>
                 ),
               )

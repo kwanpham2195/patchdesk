@@ -54,13 +54,22 @@ export type ReviewSource = PullRequestReviewSource | LocalReviewSource;
  * be abbreviated until git resolves it.
  */
 export type LocalReviewSourceRequest =
-  | { readonly kind: "working_tree" }
+  | {
+      readonly kind: "working_tree";
+      /** Set when reopening a stored working-tree Review, so a branch switch refuses instead of opening another Review. */
+      readonly expectedHead?: ExpectedWorkingTreeHead;
+    }
   | {
       readonly kind: "branch";
       readonly branch: LocalBranchName;
       readonly baseBranch: LocalBranchName;
     }
   | { readonly kind: "commit"; readonly commit: GitShaPrefix };
+
+/** The `HEAD` a working-tree open expects: a named branch, or detached. */
+type ExpectedWorkingTreeHead =
+  | { readonly kind: "branch"; readonly branch: LocalBranchName }
+  | { readonly kind: "detached" };
 
 /** True when both values name the same source spec, so they key the same Review. */
 export function sameReviewSource(
