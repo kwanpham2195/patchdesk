@@ -50,3 +50,22 @@ tools.
   only for reads.
 - An integration that lets the agent read the drafts and answer them directly
   (an MCP server, #463) is a separate decision with its own ADR.
+
+## Change intent (#467)
+
+> **Added 2026-09-26** (maintainer in chat).
+
+A local Review may hold a **Change intent**: the spec the agent was given,
+as Markdown the maintainer enters or as a repository-relative spec file.
+
+- **Analysis owns the check.** The intent goes into the Analysis run input
+  as the change's stated goal, and the existing stated-goal check applies: a
+  goal the patch misses, or a change the intent does not mention, is a P2
+  Finding. The Analysis result records the intent it ran against.
+- **Brief is unchanged.** The Brief keeps ADR 0040's hunk-only manifest, and
+  Walkthrough does not read the intent either.
+- **A spec file is read from the Local snapshot**, the session's head commit,
+  so an edit to the working tree after the snapshot does not reach the run.
+- **An unreadable spec file refuses the start.** A missing, non-text, or
+  over-64 KiB spec file refuses the Analysis with a named reason; Analysis
+  never runs against an intent it could not read.

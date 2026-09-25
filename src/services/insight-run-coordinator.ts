@@ -63,6 +63,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { InsightRecovery } from "./insight-recovery";
 import type { ReviewContextPackService } from "./review-context-pack-service";
+import type { ChangeIntentUnreadable } from "./change-intent-resolution";
 import { InsightRunExecutor } from "./insight-run-executor";
 import {
   InsightActivityBuffer,
@@ -148,7 +149,20 @@ export type InsightCoordinatorFailure =
   | "storage_unavailable"
   | "not_active"
   | "stale_request"
-  | "not_available";
+  | "not_available"
+  /** An Analysis on a local Review whose spec-file Change intent cannot be read (#467). */
+  | "change_intent_file_missing"
+  | "change_intent_file_too_large"
+  | "change_intent_file_not_text";
+
+const changeIntentRefusal = {
+  file_missing: "change_intent_file_missing",
+  file_too_large: "change_intent_file_too_large",
+  file_not_text: "change_intent_file_not_text",
+} as const satisfies Record<
+  ChangeIntentUnreadable["reason"],
+  InsightCoordinatorFailure
+>;
 
 export type Active = {
   readonly runId: InsightRunId;
@@ -295,21 +309,33 @@ export class InsightRunCoordinator {
       );
     const hash = parseContentHash(await contentHash(session.value.patchPath));
     if (hash._tag === "err") return err("storage_unavailable");
+    const record = await this.insights.load(
+      input.profileId,
+      input.reviewId,
+      input.type,
+    );
+    // Refused before the pack step, which may rewrite the Change intent a running Analysis has yet to read.
+    if (record._tag === "ok" && record.value.activeRun !== undefined)
+      return err("already_running");
     // The context pack is built here, not at prepare, and this runs under
     // `withReviewLock` so concurrent runs on one Review cannot build twice.
     // It precedes `beginInsightRun` so a failed build leaves no started run.
     const pack = await this.contextPack.ensure({
       session: session.value,
       patchHash: hash.value,
+      changeIntent:
+        input.type === "analysis"
+          ? { _tag: "Read", intent: review.value.changeIntent }
+          : { _tag: "Unread" },
     });
-    if (pack._tag === "err") return err("storage_unavailable");
+    if (pack._tag === "err")
+      return err(
+        pack.error._tag === "ChangeIntentUnreadable"
+          ? changeIntentRefusal[pack.error.reason]
+          : "storage_unavailable",
+      );
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "err") return err("storage_unavailable");
-    const record = await this.insights.load(
-      input.profileId,
-      input.reviewId,
-      input.type,
-    );
     const token = record._tag === "ok" ? record.value.nextToken : 1;
     const runId = parseInsightRunId(
       `insight-${input.type}-${token}-${session.value.key.headSha.slice(0, 12)}-${input.reviewId}`,
@@ -334,6 +360,7 @@ export class InsightRunCoordinator {
           reasoning: input.reasoning,
           language: input.language,
           startedAt: timestamp.value,
+          ...definedProps({ changeIntent: pack.value.changeIntent }),
         }),
     });
     if (started._tag === "err")

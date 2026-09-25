@@ -1,5 +1,11 @@
 import * as v from "valibot";
 
+import {
+  changeIntentSchema,
+  parseChangeIntent,
+  sameChangeIntent,
+  type ChangeIntent,
+} from "./change-intent";
 import { definedProps } from "./defined-props";
 import {
   createReviewId,
@@ -135,6 +141,8 @@ export type Review<Source extends ReviewSource = ReviewSource> = {
   readonly lastLooked?: LastLooked;
   /** A local Review's draft list (ADR 0050); never present on a pull request Review, absent when empty. */
   readonly localDrafts?: ReadonlyArray<LocalDraft>;
+  /** A local Review's Change intent (#467); never present on a pull request Review. Every move to a new session keeps it. */
+  readonly changeIntent?: ChangeIntent;
 };
 
 /**
@@ -249,6 +257,7 @@ const reviewV2Schema = v.strictObject({
     }),
   ),
   localDrafts: v.optional(v.array(storedLocalDraftSchema)),
+  changeIntent: v.optional(changeIntentSchema),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -570,6 +579,22 @@ export function markLocalDraftsApplied(
   };
 }
 
+/** Set or clear a local Review's Change intent; setting the one it holds changes nothing. */
+export function setChangeIntent(
+  review: Review<LocalReviewSource>,
+  intent: ChangeIntent | undefined,
+  updatedAt: IsoTimestamp,
+): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  if (sameChangeIntent(review.changeIntent, intent)) return ok(review);
+  const { changeIntent: _replaced, ...rest } = review;
+  return ok({
+    ...rest,
+    ...definedProps({ changeIntent: intent }),
+    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
+  });
+}
+
 /** Remove one Local draft; removing a draft that is not listed changes nothing. */
 export function removeLocalDraft(
   review: Review<LocalReviewSource>,
@@ -653,6 +678,7 @@ function parseReviewBase(
     | "lastOpenedAt"
     | "lastLooked"
     | "localDrafts"
+    | "changeIntent"
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
@@ -709,12 +735,19 @@ function parseReviewBase(
       : source.value.kind === "pull_request" || raw.localDrafts.length === 0
         ? invalid()
         : parseStoredLocalDrafts(raw.localDrafts);
+  const changeIntent =
+    raw.changeIntent === undefined
+      ? ok(undefined)
+      : source.value.kind === "pull_request"
+        ? invalid()
+        : parseChangeIntent(raw.changeIntent);
   if (
     representedRemote._tag === "err" ||
     status._tag === "err" ||
     lastOpenedAt._tag === "err" ||
     lastLooked._tag === "err" ||
-    localDrafts._tag === "err"
+    localDrafts._tag === "err" ||
+    changeIntent._tag === "err"
   )
     return invalid();
 
@@ -729,6 +762,7 @@ function parseReviewBase(
       lastOpenedAt: lastOpenedAt.value,
       lastLooked: lastLooked.value,
       localDrafts: localDrafts.value,
+      changeIntent: changeIntent.value,
     }),
     status: status.value,
     createdAt: createdAt.value,

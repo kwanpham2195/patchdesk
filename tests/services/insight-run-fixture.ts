@@ -28,7 +28,9 @@ import type { LocalReviewSource } from "../../src/domain/review-source";
 import { ok, type Result } from "../../src/domain/result";
 import type { DesktopNotifier } from "../../src/services/desktop-notifier";
 import type { BriefReachComputer } from "../../src/services/brief-reach-service";
+import { CommandRunner } from "../../src/adapters/github/command-runner";
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import type { InsightProviderCatalog } from "../../src/services/insight-provider-catalog";
 import { ReviewContextPackService } from "../../src/services/review-context-pack-service";
 import { ReviewContextService } from "../../src/services/review-context-service";
@@ -109,6 +111,7 @@ export function contextPackFixture(
       },
       context: new ReviewContextService(),
       paths,
+      git: createReadOnlyGitExecutor(new CommandRunner()),
     }),
   };
 }

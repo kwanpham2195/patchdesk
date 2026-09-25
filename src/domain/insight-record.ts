@@ -1,5 +1,10 @@
 import * as v from "valibot";
 
+import {
+  changeIntentProvenanceSchema,
+  parseChangeIntentProvenance,
+  type ChangeIntentProvenance,
+} from "./change-intent";
 import { definedProps } from "./defined-props";
 import {
   parseContentHash,
@@ -43,12 +48,16 @@ export type InsightRun = {
   readonly language: InsightLanguage;
   readonly status: "queued" | "running" | "cancelling";
   readonly startedAt: IsoTimestamp;
+  /** The Change intent an Analysis run was started against (#467). */
+  readonly changeIntent?: ChangeIntentProvenance;
 };
 export type RetainedInsight<T> = {
   readonly runId: InsightRunId;
   readonly revision: InsightRevision;
   readonly generatedAt: IsoTimestamp;
   readonly provenance: InsightProvenance;
+  /** The Change intent the Analysis ran against; absent when the Review had none. */
+  readonly changeIntent?: ChangeIntentProvenance;
   readonly value: T;
 };
 /** A retained Insight with its provider-shaped value withheld. See `InsightStore.load`. */
@@ -142,6 +151,7 @@ const retainedEnvelopeSchema = v.strictObject({
     // A result retained before Insights had a language was written in English.
     language: v.optional(v.picklist(INSIGHT_LANGUAGES), "en"),
   }),
+  changeIntent: v.optional(changeIntentProvenanceSchema),
   value: v.unknown(),
 });
 
@@ -168,6 +178,10 @@ export function parseRetainedInsight<T>(
   const provider = parseInsightProvider(envelope.output.provenance.provider);
   const reasoning = parseInsightReasoning(envelope.output.provenance.reasoning);
   const value = parseValue(envelope.output.value);
+  const changeIntent =
+    envelope.output.changeIntent === undefined
+      ? ok(undefined)
+      : parseChangeIntentProvenance(envelope.output.changeIntent);
   if (
     runId._tag === "err" ||
     sessionId._tag === "err" ||
@@ -176,7 +190,8 @@ export function parseRetainedInsight<T>(
     generatedAt._tag === "err" ||
     provider._tag === "err" ||
     reasoning._tag === "err" ||
-    value._tag === "err"
+    value._tag === "err" ||
+    changeIntent._tag === "err"
   )
     return err(undefined);
   return ok({
@@ -193,6 +208,7 @@ export function parseRetainedInsight<T>(
       reasoning: reasoning.value,
       language: envelope.output.provenance.language,
     },
+    ...definedProps({ changeIntent: changeIntent.value }),
     value: value.value,
   });
 }
@@ -223,6 +239,7 @@ export function beginInsightRun(
     readonly reasoning: InsightReasoning;
     readonly language: InsightLanguage;
     readonly startedAt: IsoTimestamp;
+    readonly changeIntent?: ChangeIntentProvenance;
   },
 ): Result<InsightRecord<unknown>, "already_running"> {
   if (record.activeRun !== undefined) return err("already_running");

@@ -1,5 +1,9 @@
 import * as v from "valibot";
 
+import {
+  changeIntentProvenanceSchema,
+  parseChangeIntentProvenance,
+} from "../../domain/change-intent";
 import { definedProps } from "../../domain/defined-props";
 import {
   parseContentHash,
@@ -57,6 +61,7 @@ const activeRunFields = {
   language: v.optional(v.picklist(INSIGHT_LANGUAGES), "en"),
   status: v.picklist(["queued", "running", "cancelling"]),
   startedAt: v.pipe(v.string(), v.isoTimestamp()),
+  changeIntent: v.optional(changeIntentProvenanceSchema),
 };
 const activeRunSchemaV2 = v.strictObject({
   ...activeRunFields,
@@ -361,12 +366,17 @@ function parseActiveRun(
   const headSha = parseGitSha(input.revision.headSha);
   const patchHash = parseContentHash(input.revision.patchHash);
   const startedAt = parseIsoTimestamp(input.startedAt);
+  const changeIntent =
+    input.changeIntent === undefined
+      ? ok(undefined)
+      : parseChangeIntentProvenance(input.changeIntent);
   if (
     id._tag === "err" ||
     sessionId._tag === "err" ||
     headSha._tag === "err" ||
     patchHash._tag === "err" ||
-    startedAt._tag === "err"
+    startedAt._tag === "err" ||
+    changeIntent._tag === "err"
   )
     return invalidRead();
   const provider = input.provider;
@@ -385,6 +395,7 @@ function parseActiveRun(
     language: input.language,
     status: input.status,
     startedAt: startedAt.value,
+    ...definedProps({ changeIntent: changeIntent.value }),
   });
 }
 

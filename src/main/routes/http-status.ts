@@ -80,6 +80,9 @@ const insightFailureStatuses: InsightFailureStatuses = {
   not_active: 409,
   stale_request: 409,
   not_available: 409,
+  change_intent_file_missing: 409,
+  change_intent_file_too_large: 409,
+  change_intent_file_not_text: 409,
   catalog_unavailable: 503,
   storage_unavailable: 503,
 };
