@@ -8,6 +8,7 @@ import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
+import type { LocalApplyControls } from "../flows/use-local-apply";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
 import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
@@ -20,6 +21,7 @@ type InsightReaderBuilderInput = {
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
   readonly addFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly addAllFindings?: AddAllFindingsControls;
+  readonly localApply?: LocalApplyControls;
   readonly dismissFinding: (
     finding: AnalysisFinding,
     reason: string,
@@ -80,6 +82,7 @@ export function buildInsightReaders({
   onFinishWithAnalysisSummary,
   addFinding,
   addAllFindings,
+  localApply,
   dismissFinding,
   analysisVerification,
   walkthroughProgress,
@@ -176,7 +179,11 @@ export function buildInsightReaders({
         workbench.review.status === "open"
           ? {
               onDismissFinding: dismissFinding,
-              ...definedProps({ onAddFinding: addFinding, addAllFindings }),
+              ...definedProps({
+                onAddFinding: addFinding,
+                addAllFindings,
+                localApply,
+              }),
             }
           : {})}
       />

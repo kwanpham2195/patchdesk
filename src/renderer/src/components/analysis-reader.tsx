@@ -21,12 +21,14 @@ import {
   type CheckStatus,
 } from "../analysis-headline";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
+import type { LocalApplyControls } from "../flows/use-local-apply";
 import { AnalysisAddAllFindings } from "./analysis-add-all-findings";
 import { AnalysisDismissedFindingRow } from "./analysis-dismissed-finding-row";
 import {
   AnalysisFindingRow,
   type FindingActionState,
 } from "./analysis-finding-row";
+import { LocalApplyBar } from "./local-apply-bar";
 import { ReviewWorkbenchFindingNavigationContext } from "./review-workbench-finding-navigation";
 import { GeneratedMarkdown } from "./generated-markdown";
 import { ReviewVerdictIcon } from "./review-verdict-icon";
@@ -86,6 +88,8 @@ export type AnalysisReaderProps = {
   readonly verification?: AnalysisVerificationControls;
   /** Batch Add; offered only alongside `onAddFinding`. */
   readonly addAllFindings?: AddAllFindingsControls;
+  /** Apply suggestion on a working-tree local Review (ADR 0050). */
+  readonly localApply?: LocalApplyControls;
 };
 
 /** Decision-first read-side view of one retained Analysis result. */
@@ -103,6 +107,7 @@ export function AnalysisReader({
   fixPromptContext,
   verification,
   addAllFindings,
+  localApply,
 }: AnalysisReaderProps): React.JSX.Element {
   const admittedFindingIds = useRef<Set<string>>(new Set());
   const [findingActions, setFindingActions] = useState<
@@ -189,6 +194,9 @@ export function AnalysisReader({
         }
         actionsDisabled={batchProgress !== undefined}
         actionError={findingErrors.get(finding.id)}
+        {...definedProps({
+          applySelection: applySelectionFor(localApply, finding.id),
+        })}
         {...(evidencePatch === undefined ? {} : { evidencePatch })}
         {...(onOpenFindingInDiff === undefined ? {} : { onOpenFindingInDiff })}
         {...(onAddFinding === undefined
@@ -283,6 +291,9 @@ export function AnalysisReader({
           </CardContent>
         ) : (
           <CardContent className="flex flex-col gap-2">
+            {localApply === undefined ? null : (
+              <LocalApplyBar controls={localApply} findings={result.findings} />
+            )}
             <ul className="flex flex-col gap-2">
               {(lowerSeverityFindings.length === 0 ||
               highSeverityFindings.length === 0
@@ -371,6 +382,21 @@ export function AnalysisReader({
       )}
     </section>
   );
+}
+
+/** A row's Apply checkbox; absent outside a working-tree Review. */
+function applySelectionFor(
+  localApply: LocalApplyControls | undefined,
+  findingId: string,
+) {
+  if (localApply === undefined) return undefined;
+  return {
+    selected: localApply.selectedIds.has(findingId),
+    disabled:
+      localApply.pending || localApply.blocked || localApply.lock !== undefined,
+    onChange: (selected: boolean) =>
+      localApply.setSelected(findingId, selected),
+  };
 }
 
 function AnalysisVerdictCard({
