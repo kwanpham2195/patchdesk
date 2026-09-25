@@ -713,11 +713,12 @@ export function briefOwnershipTree(
 /**
  * States the Brief's citation status alone (ADR 0040). A surviving citation
  * only proves its hunk exists in the diff, not that the step it supports is
- * right, so the line claims no more than "found".
+ * right, so the line claims no more than "found". A partial status also counts
+ * rejected Ownership and Start here paths, so it cannot blame hunks alone.
  */
 export function briefCitationStatusLine(brief: Brief): string {
   if (brief.citationStatus === "partially_verified")
-    return "some cited hunks not found in the diff";
+    return "some citations or file paths could not be matched to the diff";
   const cited = (nodes: ReadonlyArray<BriefFlowNodeEntry>): boolean =>
     nodes.some((node) => node.citations.length > 0 || cited(node.children));
   return brief.flow?.trees.some((tree) => cited(tree.nodes)) === true

@@ -857,9 +857,9 @@ describe("brief citation labels", () => {
       "all cited hunks found in the diff",
     ],
     [
-      "a citation was dropped",
+      "a citation or path was dropped",
       { ...briefValue, citationStatus: "partially_verified" as const },
-      "some cited hunks not found in the diff",
+      "some citations or file paths could not be matched to the diff",
     ],
     [
       "the Brief has no Flow to cite from",
