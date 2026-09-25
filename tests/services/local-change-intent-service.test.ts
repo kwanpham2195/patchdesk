@@ -64,6 +64,21 @@ describe("LocalChangeIntentService.set", () => {
     ).not.toHaveProperty("changeIntent");
   });
 
+  it("refuses text holding a credential, and stores nothing", async () => {
+    const { harness, reviewId, service } = await intentHarness();
+
+    expect(
+      await service.set({
+        profileId,
+        reviewId,
+        intent: { kind: "text", markdown: `Call with ghp_${"a".repeat(36)}.` },
+      }),
+    ).toEqual({ _tag: "err", error: { reason: "change_intent_sensitive" } });
+    expect(
+      value(await harness.reviews.load(profileId, reviewId)),
+    ).not.toHaveProperty("changeIntent");
+  });
+
   it("refuses a pull request Review", async () => {
     const { harness, workbench, service } = await intentHarness();
     const pullRequest = createReview({

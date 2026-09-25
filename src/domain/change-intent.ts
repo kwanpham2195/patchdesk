@@ -28,7 +28,7 @@ export const changeIntentSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("file"), path: v.string() }),
 ]);
 
-/** Text must hold more than whitespace and fit the byte bound; a path must stay inside the repository. */
+/** Text must hold more than whitespace and fit the byte bound; a path must stay inside the repository and name no `.` segment. */
 export function parseChangeIntent(
   raw: v.InferOutput<typeof changeIntentSchema>,
 ): Result<ChangeIntent, InvalidChangeIntent> {
@@ -39,7 +39,7 @@ export function parseChangeIntent(
       : ok({ kind: "text", markdown: raw.markdown });
   }
   const path = parseRepoRelativePath(raw.path);
-  return path._tag === "ok"
+  return path._tag === "ok" && !raw.path.split("/").includes(".")
     ? ok({ kind: "file", path: path.value })
     : err({ _tag: "InvalidChangeIntent" });
 }
@@ -54,10 +54,11 @@ export function sameChangeIntent(
     : b.kind === "file" && a.path === b.path;
 }
 
-/** A Change intent with the Markdown an Analysis run reads for it. */
+/** A Change intent with the Markdown an Analysis run reads for it, and that Markdown's sha256. */
 export type ResolvedChangeIntent = {
   readonly intent: ChangeIntent;
   readonly markdown: string;
+  readonly sha256: ContentHash;
 };
 
 export const CHANGE_INTENT_HEADING = "## Change intent";
@@ -90,6 +91,15 @@ export type ChangeIntentProvenance =
       readonly path: RepoRelativePath;
       readonly sha256: ContentHash;
     };
+
+/** What an Analysis run records about the Change intent it reads. */
+export function changeIntentProvenance(
+  resolved: ResolvedChangeIntent,
+): ChangeIntentProvenance {
+  return resolved.intent.kind === "text"
+    ? { kind: "text", sha256: resolved.sha256 }
+    : { kind: "file", path: resolved.intent.path, sha256: resolved.sha256 };
+}
 
 export const changeIntentProvenanceSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("text"), sha256: v.string() }),

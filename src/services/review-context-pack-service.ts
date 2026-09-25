@@ -8,6 +8,7 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import {
   CHANGE_INTENT_HEADING,
+  changeIntentProvenance,
   renderChangeIntentSection,
   type ChangeIntent,
   type ChangeIntentProvenance,
@@ -24,7 +25,6 @@ import {
 } from "../domain/review-session";
 import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import {
-  changeIntentProvenance,
   resolveChangeIntent,
   type ChangeIntentUnreadable,
 } from "./change-intent-resolution";
@@ -102,13 +102,14 @@ export class ReviewContextPackService {
     const sessionId = input.session.id;
     const resolved = await this.resolve(input.session, input.changeIntent);
     if (resolved._tag === "err") return resolved;
-    const changeIntent =
-      resolved.value === undefined
-        ? undefined
-        : changeIntentProvenance(resolved.value);
-    if (resolved.value !== undefined && changeIntent === undefined)
-      return err({ _tag: "ContextPackUnavailable" });
-    const provenance = ok(definedProps({ changeIntent }));
+    const provenance = ok(
+      definedProps({
+        changeIntent:
+          resolved.value === undefined
+            ? undefined
+            : changeIntentProvenance(resolved.value),
+      }),
+    );
     if (
       await this.isUsable(
         input.session,

@@ -1,3 +1,4 @@
+import { containsSensitiveData } from "../adapters/storage/json-file";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ChangeIntent } from "../domain/change-intent";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
@@ -19,6 +20,8 @@ export type ChangeIntentFailure = {
     | "terminal"
     /** A pull request Review, which never holds a Change intent. */
     | "not_applicable"
+    /** The text holds a credential-shaped value, which Patchdesk never stores. */
+    | "change_intent_sensitive"
     | "storage";
 };
 
@@ -45,6 +48,11 @@ export class LocalChangeIntentService {
   async set(
     request: ChangeIntentRequest,
   ): Promise<Result<ChangeIntentState, ChangeIntentFailure>> {
+    if (
+      request.intent?.kind === "text" &&
+      containsSensitiveData(request.intent.markdown)
+    )
+      return err({ reason: "change_intent_sensitive" });
     const key = `${request.profileId}:${request.reviewId}`;
     if (!this.dependencies.coordinator.acquire(key))
       return err({ reason: "in_progress" });
