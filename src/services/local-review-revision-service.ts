@@ -91,6 +91,11 @@ export class LocalReviewRevisionService {
       "--binary",
       "--no-ext-diff",
       "--no-textconv",
+      // The patch parser needs a/ and b/ paths from the repository root with no escape codes, whatever the maintainer's diff config says.
+      "--no-color",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      "--no-relative",
       revision.baseSha,
       revision.headSha,
     ]);
