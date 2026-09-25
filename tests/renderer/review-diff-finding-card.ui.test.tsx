@@ -229,6 +229,24 @@ describe("inline card body context", () => {
   );
 });
 
+describe("finding card", () => {
+  it("renders inline code in the title and explanation as code", () => {
+    renderAnnotationCard(
+      {
+        title: "`BRIEF_RESULT_CONTRACT` may now be unused",
+        explanation: "The patch removes the import from `src/brief.ts`.",
+      },
+      {},
+    );
+
+    const code = [...document.querySelectorAll("code")].map(
+      (element) => element.textContent,
+    );
+    expect(code).toEqual(["BRIEF_RESULT_CONTRACT", "src/brief.ts"]);
+    expect(document.body.textContent).not.toContain("`");
+  });
+});
+
 describe("failed pending-review write card", () => {
   it("wraps the complete failure and offers Edit draft for a safe rejection", async () => {
     const onEdit = vi.fn();
