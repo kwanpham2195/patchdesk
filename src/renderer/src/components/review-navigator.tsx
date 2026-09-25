@@ -161,7 +161,7 @@ export function ReviewNavigator({
         </div>
         <TabsContent
           value="files"
-          className="min-h-0 flex-1 overflow-hidden p-3"
+          className="min-h-0 flex-1 overflow-hidden px-1 py-3"
           keepMounted
         >
           {browseFiles.length === 0 ? (

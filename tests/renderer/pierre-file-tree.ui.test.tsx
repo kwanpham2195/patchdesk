@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -108,24 +108,26 @@ describe("PierreFileTree", () => {
     ).toBeNull();
   });
 
-  it("titles the tree with the full path of the hovered row", () => {
+  it("shows the hovered row's untruncated name in a tooltip", async () => {
     const nested: PierreFileTreeItem = {
       ...fileA,
-      path: "docs/product-description/review-workbench/analysis.md",
+      path: "docs/product-description/review-workbench/sidebar-variant-a-tree.md",
     };
     const { container } = render(
       <PierreFileTree files={[nested, fileB]} onSelect={() => {}} />,
     );
     const tree = treeContainer(container);
     const row = tree.shadowRoot?.querySelector(
-      '[data-item-path="docs/product-description/review-workbench/"]',
+      '[data-item-path="docs/product-description/review-workbench/sidebar-variant-a-tree.md"]',
     );
-    if (row == null) throw new Error("Expected the flattened folder row");
+    if (row == null) throw new Error("Expected the nested file row");
 
     fireEvent.pointerOver(row, { composed: true });
 
-    expect(tree.getAttribute("title")).toBe(
-      "docs/product-description/review-workbench",
-    );
+    expect(
+      (await screen.findByText("sidebar-variant-a-tree.md")).closest(
+        '[data-slot="tooltip-content"]',
+      ),
+    ).not.toBeNull();
   });
 });

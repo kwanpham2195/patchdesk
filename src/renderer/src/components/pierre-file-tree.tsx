@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import type { FileTreeOptions, GitStatus } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 
+import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
+
 import type { FileChangeStats } from "@/review-diff-data";
 import {
   describeFileFindingCount,
@@ -94,15 +96,14 @@ function buildFindingToneTreeStyle(
     .join(" ");
 }
 
-/** The full path of the tree row under the pointer; folder paths drop their trailing slash. */
-function hoveredRowPath(event: React.PointerEvent<HTMLElement>) {
-  const row = event.nativeEvent
+/** The tree row under the pointer, found through the tree's shadow root. */
+function hoveredRow(event: React.PointerEvent<HTMLElement>) {
+  return event.nativeEvent
     .composedPath()
     .find(
       (target): target is Element =>
         target instanceof Element && target.hasAttribute("data-item-path"),
     );
-  return row?.getAttribute("data-item-path")?.replace(/\/$/, "");
 }
 
 function PierreFileTreeModel({
@@ -113,7 +114,10 @@ function PierreFileTreeModel({
 }: PierreFileTreeProps): React.JSX.Element {
   const activePathStyleRef = useRef<HTMLStyleElement | null>(null);
   const findingToneStyleRef = useRef<HTMLStyleElement | null>(null);
-  const [hoveredPath, setHoveredPath] = useState<string | undefined>();
+  const [hoveredRowElement, setHoveredRowElement] = useState<Element>();
+  // The row's accessible name is its untruncated label: a file name or a flattened folder chain.
+  const hoveredLabel =
+    hoveredRowElement?.getAttribute("aria-label") ?? undefined;
   const [appearance, setAppearance] = useState<"light" | "dark">(() =>
     document.documentElement.dataset.appearance === "light" ? "light" : "dark",
   );
@@ -212,42 +216,58 @@ function PierreFileTreeModel({
       window.removeEventListener("patchdesk:appearance", onAppearance);
   }, []);
   return (
-    <FileTree
-      model={model}
-      aria-label="Changed files"
-      data-active-path={activePath}
-      data-theme={appearance}
-      // The library renders rows with no title, and a host title shows for anything inside its shadow root.
-      title={hoveredPath}
-      onPointerOver={(event) => setHoveredPath(hoveredRowPath(event))}
-      style={
-        // SAFETY: every "--trees-*-override" below is a custom property;
-        // CSSProperties doesn't declare custom-property keys, but any
-        // `--name: string` entry is valid inline-style CSS. @pierre/trees
-        // reads them from the host element's computed style.
-        {
-          colorScheme: appearance,
-          height: "100%",
-          minHeight: 0,
-          // Without these the tree paints its own library greys inside the
-          // app's card panel, leaving a grey slab with white margins.
-          "--trees-bg-override": "var(--card)",
-          "--trees-fg-override": "var(--foreground)",
-          "--trees-fg-muted-override": "var(--muted-foreground)",
-          "--trees-selected-bg-override": "var(--accent)",
-          "--trees-selected-fg-override": "var(--accent-foreground)",
-          "--trees-accent-override": "var(--primary)",
-          "--trees-border-color-override": "var(--border)",
-          "--trees-input-bg-override": "var(--background)",
-          "--trees-git-added-color-override": "light-dark(#007a5e, #5eead4)",
-          "--trees-git-deleted-color-override": "light-dark(#be123c, #ff8580)",
-          "--trees-git-ignored-color-override": "light-dark(#64748b, #a8a8ae)",
-          "--trees-git-modified-color-override": "light-dark(#006f93, #68cdf2)",
-          "--trees-git-renamed-color-override": "light-dark(#806000, #ffe38a)",
-          "--trees-git-untracked-color-override":
-            "light-dark(#007a5e, #5eead4)",
-        } as React.CSSProperties
-      }
-    />
+    <>
+      <FileTree
+        model={model}
+        aria-label="Changed files"
+        data-active-path={activePath}
+        data-theme={appearance}
+        // The library renders rows with no title, so the full name shows in a tooltip anchored to the row.
+        onPointerOver={(event) => setHoveredRowElement(hoveredRow(event))}
+        onPointerLeave={() => setHoveredRowElement(undefined)}
+        style={
+          // SAFETY: every "--trees-*-override" below is a custom property;
+          // CSSProperties doesn't declare custom-property keys, but any
+          // `--name: string` entry is valid inline-style CSS. @pierre/trees
+          // reads them from the host element's computed style.
+          {
+            colorScheme: appearance,
+            height: "100%",
+            minHeight: 0,
+            // The panel already pads the tree, so the library's 16px inset only narrows the rows.
+            "--trees-padding-inline-override": "6px",
+            // Without these the tree paints its own library greys inside the
+            // app's card panel, leaving a grey slab with white margins.
+            "--trees-bg-override": "var(--card)",
+            "--trees-fg-override": "var(--foreground)",
+            "--trees-fg-muted-override": "var(--muted-foreground)",
+            "--trees-selected-bg-override": "var(--accent)",
+            "--trees-selected-fg-override": "var(--accent-foreground)",
+            "--trees-accent-override": "var(--primary)",
+            "--trees-border-color-override": "var(--border)",
+            "--trees-input-bg-override": "var(--background)",
+            "--trees-git-added-color-override": "light-dark(#007a5e, #5eead4)",
+            "--trees-git-deleted-color-override":
+              "light-dark(#be123c, #ff8580)",
+            "--trees-git-ignored-color-override":
+              "light-dark(#64748b, #a8a8ae)",
+            "--trees-git-modified-color-override":
+              "light-dark(#006f93, #68cdf2)",
+            "--trees-git-renamed-color-override":
+              "light-dark(#806000, #ffe38a)",
+            "--trees-git-untracked-color-override":
+              "light-dark(#007a5e, #5eead4)",
+          } as React.CSSProperties
+        }
+      />
+      <Tooltip open={hoveredLabel !== undefined}>
+        <TooltipContent
+          anchor={hoveredRowElement}
+          className="max-w-md break-all"
+        >
+          {hoveredLabel}
+        </TooltipContent>
+      </Tooltip>
+    </>
   );
 }
