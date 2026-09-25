@@ -19,6 +19,8 @@ export type LocalBranchName = Brand<string, "LocalBranchName">;
 export type ReviewId = Brand<string, "ReviewId">;
 export type ReviewSessionId = Brand<string, "ReviewSessionId">;
 export type FindingId = Brand<string, "FindingId">;
+/** A maintainer note's identity on its local Review's Local draft list. */
+export type LocalNoteId = Brand<string, "LocalNoteId">;
 /** An opaque GitHub GraphQL review-thread node identifier. */
 export type GitHubThreadId = Brand<string, "GitHubThreadId">;
 /** GitHub REST pull-request review identifier (serialized integer). */
@@ -205,6 +207,17 @@ export function parseFindingId(
   input: unknown,
 ): Result<FindingId, InvalidDomainValue> {
   return parseSafeSlug<"FindingId">(input, "findingId");
+}
+
+export function parseLocalNoteId(
+  input: unknown,
+): Result<LocalNoteId, InvalidDomainValue> {
+  return parseSafeSlug<"LocalNoteId">(input, "localNoteId");
+}
+
+/** A new maintainer note identifier from a random UUID the caller supplies. */
+export function createLocalNoteId(uuid: string): LocalNoteId {
+  return brand(`note-${uuid}`);
 }
 
 /** Parse an opaque GitHub review-thread node identifier. */

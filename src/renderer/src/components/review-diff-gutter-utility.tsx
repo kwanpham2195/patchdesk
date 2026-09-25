@@ -19,7 +19,7 @@ export function renderReviewDiffGutterUtility(
 ): React.JSX.Element | null {
   if (localCommentAuthoring?.enabled !== true || item.type !== "diff")
     return null;
-  const baseTitle = `Add comment on ${item.id}`;
+  const baseTitle = `${localCommentAuthoring.kind === "note" ? "Add note" : "Add comment"} on ${item.id}`;
   return (
     <button
       type="button"

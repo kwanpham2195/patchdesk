@@ -8,6 +8,7 @@ import type {
 } from "./review-diff-view";
 import type { ReviewerPickerActions } from "./reviewer-picker";
 import type { ChangeBaseBranchActions } from "./change-base-branch-dialog";
+import type { LocalNoteControls } from "../flows/use-local-drafts";
 import type {
   DirectSummaryReviewProjection,
   WorkbenchResponse,
@@ -32,6 +33,8 @@ export type ReviewWorkbenchActions = {
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
   readonly loadSinceReviewDiff: () => Promise<SinceReviewDiffResponse>;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
+  /** Edit and Remove on a local Review's maintainer notes in the diff (ADR 0051). */
+  readonly localNotes?: LocalNoteControls;
   readonly pendingReviewComposer?: PendingReviewComposerActions;
   readonly directSummary?: {
     readonly busy: boolean;

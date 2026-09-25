@@ -12,20 +12,25 @@ import {
   type FindingId,
   type InsightRunId,
   type IsoTimestamp,
+  type LocalNoteId,
+  type RepoRelativePath,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { sameInsightRevision } from "../domain/insight-record";
 import {
+  parseMaintainerNoteText,
   projectLocalDraft,
   type LocalDraft,
   type LocalDraftEntry,
+  type MaintainerNote,
 } from "../domain/local-draft";
 import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import {
   addLocalDraft,
+  editMaintainerNote,
   isLocalReview,
   removeLocalDraft,
   type Review,
@@ -35,12 +40,31 @@ import type { LocalReviewSource } from "../domain/review-source";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
-/** Identity only: the main process reads the Finding, its anchor, and its suggestion itself. */
-export type LocalDraftRequest = {
+type ReviewKey = {
   readonly profileId: WorkspaceProfileId;
   readonly reviewId: ReviewId;
+};
+
+/** Identity only: the main process reads the Finding, its anchor, and its suggestion itself. */
+export type LocalDraftRequest = ReviewKey & {
   readonly runId: InsightRunId;
   readonly findingId: FindingId;
+};
+
+/** A new maintainer note: the lines the maintainer selected and the text; the main process fingerprints the anchor. */
+export type LocalNoteRequest = ReviewKey & {
+  readonly anchor: {
+    readonly path: RepoRelativePath;
+    readonly side: "new" | "old";
+    readonly startLine: number;
+    readonly line: number;
+  };
+  readonly text: string;
+};
+
+export type LocalNoteEditRequest = ReviewKey & {
+  readonly noteId: LocalNoteId;
+  readonly text: string;
 };
 
 export type LocalDraftFailure = {
@@ -48,8 +72,10 @@ export type LocalDraftFailure = {
     | "in_progress"
     | "not_found"
     | "terminal"
-    /** Not a local Review, or the Finding is not a current, open, Mapped Finding. */
+    /** Not a local Review; the Finding is not a current, open, Mapped Finding; or a note's lines are not in the current patch. */
     | "not_applicable"
+    /** A note's text is empty or longer than the comment limit. */
+    | "invalid_input"
     | "storage";
 };
 
@@ -63,12 +89,13 @@ type LocalDraftDependencies = {
   readonly insights: Pick<InsightStore, "loadTyped">;
   readonly coordinator: Pick<ReviewOperationCoordinator, "acquire" | "release">;
   readonly now: () => IsoTimestamp;
+  readonly createNoteId: () => LocalNoteId;
 };
 
 /**
- * Add to draft and Remove on a local Review (ADR 0050 "Local drafts"): a local
- * store write under the Review coordinator. No freshness gate, because
- * nothing outside Patchdesk changes.
+ * Add to draft, maintainer notes, and Remove on a local Review (ADR 0050
+ * "Local drafts", ADR 0051): a local store write under the Review
+ * coordinator. No freshness gate, because nothing outside Patchdesk changes.
  */
 export class LocalDraftService {
   constructor(private readonly dependencies: LocalDraftDependencies) {}
@@ -78,8 +105,9 @@ export class LocalDraftService {
   ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
     return this.locked(request, async (review) => {
       const draft = await this.draftFor(review, request);
-      if (draft._tag === "err") return draft;
-      return ok(addLocalDraft(review, draft.value));
+      return draft._tag === "err"
+        ? draft
+        : openReviewChange(addLocalDraft(review, draft.value));
     });
   }
 
@@ -88,7 +116,55 @@ export class LocalDraftService {
     request: LocalDraftRequest,
   ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
     return this.locked(request, async (review) =>
-      ok(removeLocalDraft(review, request, this.dependencies.now())),
+      openReviewChange(
+        removeLocalDraft(review, request, this.dependencies.now()),
+      ),
+    );
+  }
+
+  /** A note on lines of the current session's patch; lines the patch does not show are refused. */
+  addNote(
+    request: LocalNoteRequest,
+  ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
+    const text = parseMaintainerNoteText(request.text);
+    if (text._tag === "err")
+      return Promise.resolve(err({ reason: "invalid_input" }));
+    return this.locked(request, async (review) => {
+      const note = await this.noteFor(review, request, text.value);
+      return note._tag === "err"
+        ? note
+        : openReviewChange(addLocalDraft(review, note.value));
+    });
+  }
+
+  editNote(
+    request: LocalNoteEditRequest,
+  ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
+    const text = parseMaintainerNoteText(request.text);
+    if (text._tag === "err")
+      return Promise.resolve(err({ reason: "invalid_input" }));
+    return this.locked(request, async (review) =>
+      openReviewChange(
+        editMaintainerNote(review, {
+          noteId: request.noteId,
+          text: text.value,
+          updatedAt: this.dependencies.now(),
+        }),
+      ),
+    );
+  }
+
+  removeNote(
+    request: ReviewKey & { readonly noteId: LocalNoteId },
+  ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
+    return this.locked(request, async (review) =>
+      openReviewChange(
+        removeLocalDraft(
+          review,
+          { noteId: request.noteId },
+          this.dependencies.now(),
+        ),
+      ),
     );
   }
 
@@ -109,15 +185,10 @@ export class LocalDraftService {
   }
 
   private async locked(
-    request: LocalDraftRequest,
+    request: ReviewKey,
     change: (
       review: Review<LocalReviewSource>,
-    ) => Promise<
-      Result<
-        Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }>,
-        LocalDraftFailure
-      >
-    >,
+    ) => Promise<Result<Review<LocalReviewSource>, LocalDraftFailure>>,
   ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
     const key = `${request.profileId}:${request.reviewId}`;
     if (!this.dependencies.coordinator.acquire(key))
@@ -135,8 +206,7 @@ export class LocalDraftService {
       if (!isLocalReview(review)) return err({ reason: "not_applicable" });
       const changed = await change(review);
       if (changed._tag === "err") return changed;
-      if (changed.value._tag === "err") return err({ reason: "terminal" });
-      const next = changed.value.value;
+      const next = changed.value;
       if (next !== review) {
         const saved = await this.dependencies.reviews.save(
           next,
@@ -150,6 +220,34 @@ export class LocalDraftService {
     } finally {
       this.dependencies.coordinator.release(key);
     }
+  }
+
+  private async noteFor(
+    review: Review<LocalReviewSource>,
+    request: LocalNoteRequest,
+    text: string,
+  ): Promise<Result<MaintainerNote, LocalDraftFailure>> {
+    const session = await this.dependencies.sessions.load(
+      request.profileId,
+      review.currentSessionId,
+    );
+    if (session._tag === "err") return err({ reason: "storage" });
+    const patch = await readFile(session.value.patchPath, "utf8").catch(
+      () => undefined,
+    );
+    if (patch === undefined) return err({ reason: "storage" });
+    const anchor = fingerprintPatchAnchor(patch, request.anchor);
+    if (anchor === undefined) return err({ reason: "not_applicable" });
+    const now = this.dependencies.now();
+    return ok({
+      author: "maintainer",
+      noteId: this.dependencies.createNoteId(),
+      sessionId: session.value.id,
+      anchor,
+      text,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   /**
@@ -239,4 +337,17 @@ export class LocalDraftService {
       addedAt: this.dependencies.now(),
     });
   }
+}
+
+/** A Local draft change the Review domain refused, as the failure the route answers with. */
+function openReviewChange(
+  changed: Result<
+    Review<LocalReviewSource>,
+    { readonly _tag: "ReviewTerminal" | "NoteNotFound" }
+  >,
+): Result<Review<LocalReviewSource>, LocalDraftFailure> {
+  if (changed._tag === "ok") return changed;
+  return err({
+    reason: changed.error._tag === "NoteNotFound" ? "not_found" : "terminal",
+  });
 }

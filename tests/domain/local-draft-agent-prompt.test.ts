@@ -5,10 +5,14 @@ import {
   parseFindingId,
   parseInsightRunId,
   parseIsoTimestamp,
+  parseLocalNoteId,
   parseRepoRelativePath,
   parseReviewSessionId,
 } from "../../src/domain/ids";
-import type { LocalDraft } from "../../src/domain/local-draft";
+import type {
+  FindingDraft,
+  MaintainerNote,
+} from "../../src/domain/local-draft";
 import { renderLocalDraftsAsAgentPrompt } from "../../src/domain/local-draft-agent-prompt";
 import type { Result } from "../../src/domain/result";
 
@@ -17,25 +21,28 @@ function value<T>(result: Result<T, unknown>): T {
   return result.value;
 }
 
+const sessionId = value(
+  parseReviewSessionId(
+    "github.com__octo-org__patchdesk__local-working_tree-main__sha-abcdef12__base-12345678__0123456789ab",
+  ),
+);
+const at = value(parseIsoTimestamp("2026-09-25T00:00:00.000Z"));
+
 function draft(
-  overrides: Pick<LocalDraft, "title" | "comment"> & {
+  overrides: Pick<FindingDraft, "title" | "comment"> & {
     readonly path: string;
     readonly startLine: number;
     readonly line: number;
     readonly side?: "new" | "old";
     readonly suggestion?: string;
   },
-): LocalDraft {
+): FindingDraft {
   return {
     findingId: value(parseFindingId("finding-1")),
     analysisRunId: value(
       parseInsightRunId("insight-analysis-1-aaaaaaaaaaaa-run"),
     ),
-    sessionId: value(
-      parseReviewSessionId(
-        "github.com__octo-org__patchdesk__local-working_tree-main__sha-abcdef12__base-12345678__0123456789ab",
-      ),
-    ),
+    sessionId,
     anchor: {
       path: value(parseRepoRelativePath(overrides.path)),
       side: overrides.side ?? "new",
@@ -53,12 +60,32 @@ function draft(
           ? undefined
           : { code: overrides.suggestion },
     }),
-    addedAt: value(parseIsoTimestamp("2026-09-25T00:00:00.000Z")),
+    addedAt: at,
+  };
+}
+
+function note(path: string, line: number, text: string): MaintainerNote {
+  return {
+    author: "maintainer",
+    noteId: value(parseLocalNoteId("note-1")),
+    sessionId,
+    anchor: {
+      path: value(parseRepoRelativePath(path)),
+      side: "new",
+      startLine: line,
+      line,
+      selectedLines: [],
+      before: [],
+      after: [],
+    },
+    text,
+    createdAt: at,
+    updatedAt: at,
   };
 }
 
 describe("renderLocalDraftsAsAgentPrompt", () => {
-  it("lists each draft's lines, comment, and suggestion in the order drafted", () => {
+  it("lists Finding drafts and maintainer notes in file then line order, a note without a suggestion", () => {
     const prompt = renderLocalDraftsAsAgentPrompt([
       draft({
         title: "lastItem reads past the end",
@@ -76,6 +103,7 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
         line: 12,
         side: "old",
       }),
+      note("src/items.ts", 1, "Keep the empty-list case explicit.\n"),
     ]);
 
     expect(prompt).toBe(
@@ -86,7 +114,19 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
         "",
         "## Comments",
         "",
-        "### 1. lastItem reads past the end",
+        "### 1. Removed guard",
+        "",
+        "- File: `src/guard.ts:10-12` (line numbers before the change)",
+        "",
+        "The deleted check still protects callers.",
+        "",
+        "### 2. Note from the maintainer",
+        "",
+        "- File: `src/items.ts:1`",
+        "",
+        "Keep the empty-list case explicit.",
+        "",
+        "### 3. lastItem reads past the end",
         "",
         "- File: `src/items.ts:2`",
         "",
@@ -97,12 +137,6 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
         "```",
         "  return items[items.length - 1];",
         "```",
-        "",
-        "### 2. Removed guard",
-        "",
-        "- File: `src/guard.ts:10-12` (line numbers before the change)",
-        "",
-        "The deleted check still protects callers.",
       ].join("\n"),
     );
   });

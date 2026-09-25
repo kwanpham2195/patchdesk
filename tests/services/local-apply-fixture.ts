@@ -14,6 +14,7 @@ import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
 import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
 import {
+  createLocalNoteId,
   parseContentHash,
   parseFindingId,
   parseGitHubHost,
@@ -99,7 +100,7 @@ export type LocalApplyHarness = {
   readonly reviews: ReviewStore;
   readonly operations: LocalApplyOperationStore;
   readonly insights: InsightStore;
-  /** Add to draft and Remove over the same stores and Review coordinator. */
+  /** Add to draft, maintainer notes, and Remove over the same stores and Review coordinator; note ids count up from `note-fixture-1`. */
   readonly drafts: LocalDraftService;
   readonly coordinator: ReviewOperationCoordinator;
   readonly logs: ReadonlyArray<LogEntryInput>;
@@ -148,6 +149,7 @@ export async function localApplyHarness(
     ),
   );
   const sessions = new ReviewSessionStore(paths);
+  let notes = 0;
   const reviews = new ReviewStore(paths);
   const insights = new InsightStore(paths);
   const operations = new LocalApplyOperationStore(paths);
@@ -224,6 +226,7 @@ export async function localApplyHarness(
       insights,
       coordinator,
       now: () => now,
+      createNoteId: () => createLocalNoteId(`fixture-${String(++notes)}`),
     }),
     coordinator,
     logs,

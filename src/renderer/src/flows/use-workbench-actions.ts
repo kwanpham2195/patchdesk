@@ -13,6 +13,7 @@ import {
   loadReviewSinceReviewDiff,
 } from "./review-workbench-commit-diff";
 import type { DirectConversationActions } from "./use-direct-conversation-actions";
+import type { LocalNoteControls } from "./use-local-drafts";
 import type { PendingReviewActionsResult } from "./use-pending-review-actions";
 import type { ReviewMetadataActions } from "./use-review-metadata-actions";
 import type { ReviewObservationResult } from "./use-review-observation";
@@ -35,6 +36,8 @@ export type WorkbenchActionsInput = {
   readonly capabilities: WorkbenchWriteCapabilities;
   readonly metadata: ReviewMetadataActions;
   readonly conversation: DirectConversationActions;
+  /** A local Review's maintainer notes; the diff composer adds one instead of a GitHub comment. */
+  readonly localNotes: LocalNoteControls | undefined;
   readonly observation: Pick<
     ReviewObservationResult,
     "refresh" | "refreshError" | "refreshing" | "runDetect"
@@ -60,6 +63,7 @@ export function useWorkbenchActions({
   capabilities,
   metadata,
   conversation,
+  localNotes,
   observation,
   merge,
   pendingReviewComposer,
@@ -120,8 +124,15 @@ export function useWorkbenchActions({
               if (path._tag === "ok") void path;
             },
           }
-        : undefined,
-    [canWriteDirectConversation, saveInlineComment],
+        : localNotes === undefined
+          ? undefined
+          : {
+              enabled: true,
+              kind: "note",
+              onSave: ({ path, startLine, line, side, body }) =>
+                localNotes.add({ path, startLine, line, side }, body),
+            },
+    [canWriteDirectConversation, localNotes, saveInlineComment],
   );
   const conversationActions = useMemo(
     () =>
@@ -189,6 +200,7 @@ export function useWorkbenchActions({
         refreshError: refreshError ? (true as const) : undefined,
         merge: githubWritesLocked ? undefined : merge,
         localCommentAuthoring,
+        localNotes,
         pendingReviewComposer: githubWritesLocked
           ? undefined
           : pendingReviewComposer,
@@ -213,6 +225,7 @@ export function useWorkbenchActions({
       loadCommitDiff,
       loadSinceReviewDiff,
       localCommentAuthoring,
+      localNotes,
       merge,
       pendingReview,
       pendingReviewComposer,

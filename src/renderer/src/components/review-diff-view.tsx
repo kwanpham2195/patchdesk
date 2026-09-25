@@ -47,6 +47,7 @@ import type {
   ReviewConversationActions,
 } from "./conversation-thread-card";
 import { InlineCommentComposer } from "./review-diff-authoring";
+import type { LocalNoteCardProps } from "./local-note-card";
 import { renderReviewDiffGutterUtility } from "./review-diff-gutter-utility";
 import {
   EMPTY_BODY_CONTEXT,
@@ -143,18 +144,11 @@ export type ReviewInlineAnnotation = {
   };
   readonly conversationThread?: ConversationThreadCardData;
   readonly localComposer?: LocalComposerConfig;
+  /** A maintainer note on a local Review, from the Review record (ADR 0051). */
+  readonly localNote?: LocalNoteCardProps;
 };
 
-type LocalComposerConfig = {
-  readonly path: string;
-  readonly startLine: number;
-  readonly line: number;
-  readonly side: "new" | "old";
-  readonly onCancel: () => void;
-  readonly initialBody?: string;
-  readonly onSave: (body: string) => Promise<void>;
-  readonly pendingReview?: PendingReviewComposerActions;
-};
+type LocalComposerConfig = React.ComponentProps<typeof InlineCommentComposer>;
 type PendingReviewWriteConfig = {
   readonly localId: string;
   readonly status: "sending" | "failed";
@@ -190,6 +184,8 @@ export type PendingReviewComposerActions = {
 
 export type LocalCommentAuthoring = {
   readonly enabled: boolean;
+  /** A local Review's composer saves a maintainer note to the Review record, never to GitHub (ADR 0051). */
+  readonly kind?: "note";
   readonly canAuthor?: (input: LocalCommentLocation) => boolean;
   /** Reports the exact current diff range before a composer is opened. */
   readonly onSelectionChange?: (input: LocalCommentLocation) => void;

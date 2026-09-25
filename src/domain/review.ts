@@ -14,23 +14,25 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
-  type FindingId,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
   type GitSha,
-  type InsightRunId,
   type IsoTimestamp,
+  type LocalNoteId,
   type PullRequestNumber,
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "./ids";
 import {
-  isDraftOfFinding,
+  isLocalDraftOf,
+  isMaintainerNote,
   parseStoredLocalDrafts,
   storedLocalDraftSchema,
   type LocalDraft,
+  type LocalDraftTarget,
+  type MaintainerNote,
 } from "./local-draft";
 import { err, ok, type Result } from "./result";
 import type { ReviewSessionKey } from "./review-session";
@@ -481,8 +483,8 @@ export function markReviewTerminal(
 }
 
 /**
- * Add one Finding to a local Review's draft list (ADR 0050). A Finding already
- * drafted keeps its entry, so adding twice is one draft.
+ * Add one Local draft to a local Review's list (ADR 0050, ADR 0051). A Finding
+ * already drafted keeps its entry, so adding twice is one draft.
  */
 export function addLocalDraft(
   review: Review<LocalReviewSource>,
@@ -490,31 +492,59 @@ export function addLocalDraft(
 ): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
   const drafts = review.localDrafts ?? [];
-  if (
-    drafts.some((entry) =>
-      isDraftOfFinding(entry, {
-        runId: draft.analysisRunId,
-        findingId: draft.findingId,
-      }),
-    )
-  )
-    return ok(review);
+  const target = isMaintainerNote(draft)
+    ? { noteId: draft.noteId }
+    : { runId: draft.analysisRunId, findingId: draft.findingId };
+  if (drafts.some((entry) => isLocalDraftOf(entry, target))) return ok(review);
   return ok({
     ...review,
     localDrafts: [...drafts, draft],
-    updatedAt: laterTimestamp(review.updatedAt, draft.addedAt),
+    updatedAt: laterTimestamp(
+      review.updatedAt,
+      isMaintainerNote(draft) ? draft.createdAt : draft.addedAt,
+    ),
+  });
+}
+
+/** Replace one maintainer note's text; a Finding draft is never edited (ADR 0051). */
+export function editMaintainerNote(
+  review: Review<LocalReviewSource>,
+  edit: {
+    readonly noteId: LocalNoteId;
+    readonly text: string;
+    readonly updatedAt: IsoTimestamp;
+  },
+): Result<
+  Review<LocalReviewSource>,
+  { readonly _tag: "ReviewTerminal" | "NoteNotFound" }
+> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  const drafts = review.localDrafts ?? [];
+  const note = drafts.find(
+    (entry): entry is MaintainerNote =>
+      isMaintainerNote(entry) && entry.noteId === edit.noteId,
+  );
+  if (note === undefined) return err({ _tag: "NoteNotFound" });
+  if (note.text === edit.text) return ok(review);
+  const updatedAt = laterTimestamp(review.updatedAt, edit.updatedAt);
+  return ok({
+    ...review,
+    localDrafts: drafts.map((entry) =>
+      entry === note ? { ...note, text: edit.text, updatedAt } : entry,
+    ),
+    updatedAt,
   });
 }
 
 /** Remove one Local draft; removing a draft that is not listed changes nothing. */
 export function removeLocalDraft(
   review: Review<LocalReviewSource>,
-  finding: { readonly runId: InsightRunId; readonly findingId: FindingId },
+  target: LocalDraftTarget,
   updatedAt: IsoTimestamp,
 ): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
   const drafts = review.localDrafts ?? [];
-  const kept = drafts.filter((entry) => !isDraftOfFinding(entry, finding));
+  const kept = drafts.filter((entry) => !isLocalDraftOf(entry, target));
   if (kept.length === drafts.length) return ok(review);
   const { localDrafts: _removed, ...rest } = review;
   return ok({

@@ -15,9 +15,9 @@ import {
 import { InlineError } from "./ui/inline-error";
 
 /**
- * A local Review's Local draft list (ADR 0050): the maintainer's feedback for
- * the coding agent, including drafts from an earlier session, which stay
- * listed until removed.
+ * A local Review's Local draft list (ADR 0050, ADR 0051): Findings and the
+ * maintainer's notes as feedback for the coding agent, including drafts from
+ * an earlier session, which stay listed until removed.
  */
 export function LocalDraftsCard({
   controls,
@@ -31,7 +31,7 @@ export function LocalDraftsCard({
         <CardTitle>Local drafts</CardTitle>
         <CardDescription>
           {count === 0
-            ? "Add a finding to draft to collect your feedback for the coding agent."
+            ? "Select diff lines to add a note, or add a finding to draft, to collect your feedback for the coding agent."
             : `${String(count)} ${count === 1 ? "draft" : "drafts"} for the coding agent`}
         </CardDescription>
         {count === 0 ? null : (
@@ -57,18 +57,24 @@ export function LocalDraftsCard({
                   : `${entry.path}:${String(entry.startLine)}-${String(entry.line)}`;
               return (
                 <li
-                  key={localDraftKey(entry.analysisRunId, entry.findingId)}
+                  key={localDraftKey(entry)}
                   className="flex items-center justify-between gap-3 rounded-md border px-2 py-1.5"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm">
-                      <GeneratedMarkdownInline markdown={entry.title} />
+                      {entry.kind === "note" ? (
+                        entry.text
+                      ) : (
+                        <GeneratedMarkdownInline markdown={entry.title} />
+                      )}
                     </p>
                     <p className="truncate font-mono text-xs text-muted-foreground">
                       {location}
                     </p>
                   </div>
-                  {entry.suggests ? (
+                  {entry.kind === "note" ? (
+                    <Badge variant="outline">Note</Badge>
+                  ) : entry.suggests ? (
                     <Badge variant="outline">Suggestion</Badge>
                   ) : null}
                   <Button
@@ -77,9 +83,7 @@ export function LocalDraftsCard({
                     aria-label={`Remove ${location} from drafts`}
                     disabled={
                       !controls.canRemove ||
-                      controls.pending.has(
-                        localDraftKey(entry.analysisRunId, entry.findingId),
-                      )
+                      controls.pending.has(localDraftKey(entry))
                     }
                     onClick={() => void controls.remove(entry)}
                   >

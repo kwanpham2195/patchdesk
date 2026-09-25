@@ -258,6 +258,12 @@ export function useReviewConversationOverlays({
             }
           : undefined;
       if (anchor === undefined) return;
+      // A note is saved to the Review record, which then renders it; a refusal keeps the composer open with its text.
+      if (localCommentAuthoring.kind === "note") {
+        await localCommentAuthoring.onSave({ ...anchor, body });
+        clearAuthoring();
+        return;
+      }
       const fingerprint = fingerprintPatchAnchor(patch, anchor);
       const localId = `local-${Date.now().toString(36)}-${localIdCounter.current}`;
       localIdCounter.current += 1;
@@ -436,7 +442,10 @@ export function useReviewConversationOverlays({
         ...definedProps({ initialBody: authoringInitialBody }),
         onCancel: clearAuthoring,
         onSave: saveAuthoring,
-        ...definedProps({ pendingReview: wrappedPendingReview }),
+        ...definedProps({
+          pendingReview: wrappedPendingReview,
+          kind: localCommentAuthoring.kind,
+        }),
       },
     };
   }, [
@@ -444,6 +453,7 @@ export function useReviewConversationOverlays({
     authoringInitialBody,
     clearAuthoring,
     localCommentAuthoring?.enabled,
+    localCommentAuthoring?.kind,
     pendingReviewComposer,
     saveAuthoring,
     submitPendingWrite,

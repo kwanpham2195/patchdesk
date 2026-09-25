@@ -113,12 +113,16 @@ export function AccessiblePatch({
                       }) === false
                     )
                       return null;
+                    const action =
+                      localCommentAuthoring.kind === "note"
+                        ? "Add note"
+                        : "Add comment";
                     return (
                       <button
                         type="button"
                         className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-label={`Add comment on ${path}`}
-                        title={`Add comment on ${path} line ${lineNumber}`}
+                        aria-label={`${action} on ${path}`}
+                        title={`${action} on ${path} line ${lineNumber}`}
                         onClick={() => onAuthorLine?.(path, lineNumber, side)}
                       >
                         +

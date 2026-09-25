@@ -9,6 +9,7 @@ import { useWorkbenchActions } from "./use-workbench-actions";
 import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useAddAllFindings } from "./use-add-all-findings";
 import { useLocalApply } from "./use-local-apply";
+import { useLocalDrafts } from "./use-local-drafts";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
 import { usePendingReviewActions } from "./use-pending-review-actions";
@@ -157,6 +158,8 @@ export function ReviewWorkbenchFlow({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
   });
+  // One owner for the Insights tab's Local drafts card and the Diff tab's notes.
+  const localDrafts = useLocalDrafts({ workbench, onWorkbenchPatch });
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
 
@@ -182,6 +185,7 @@ export function ReviewWorkbenchFlow({
     },
     metadata,
     conversation,
+    localNotes: localDrafts?.notes,
     observation: { runDetect, refresh, refreshing, refreshError },
     merge: mergeAction,
     pendingReviewComposer:
@@ -219,6 +223,7 @@ export function ReviewWorkbenchFlow({
               onWorkbenchPatch={onWorkbenchPatch}
               onReprepare={requestReprepare}
               {...(localApply === undefined ? {} : { localApply })}
+              {...(localDrafts === undefined ? {} : { localDrafts })}
               {...(writeRecovery.githubWritesLocked
                 ? {}
                 : {

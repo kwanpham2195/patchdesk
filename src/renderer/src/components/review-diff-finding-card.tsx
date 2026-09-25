@@ -15,12 +15,13 @@ import {
   GeneratedMarkdown,
   GeneratedMarkdownInline,
 } from "./generated-markdown";
+import { LocalNoteCard } from "./local-note-card";
 import type { PullRequestBodyContext } from "./pull-request-description";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-/** Renders one diff annotation: composer, pending, conversation, local comment, or a finding card. */
+/** Renders one diff annotation: composer, pending, conversation, maintainer note, local comment, or a finding card. */
 export function renderReviewDiffAnnotation(
   annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>,
   decorateConversationThread: (
@@ -67,6 +68,8 @@ export function renderReviewDiffAnnotation(
       />
     );
   }
+  if (finding.localNote !== undefined)
+    return <LocalNoteCard {...finding.localNote} />;
   if (finding.localComment !== undefined) {
     return (
       <LocalCommentThread
