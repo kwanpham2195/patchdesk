@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, stat, utimes } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -190,10 +190,7 @@ export class LocalReviewRevisionService {
     indexPath: string,
     scratchIndexPath: string,
   ): Promise<Result<GitSha, LocalReviewRevisionFailure>> {
-    const copied = await copyFile(indexPath, scratchIndexPath).then(
-      () => true,
-      () => false,
-    );
+    const copied = await copyIndexKeepingMtime(indexPath, scratchIndexPath);
     // A repository whose index was never written snapshots from an empty one.
     if (!copied && (await exists(indexPath)))
       return err({ _tag: "LocalGitFailed" });
@@ -302,6 +299,25 @@ export class LocalReviewRevisionService {
     return read._tag === "ok"
       ? parseGitShaOrUndefined(read.value.stdout.trim())
       : undefined;
+  }
+}
+
+/**
+ * Git rereads an entry's content only when its mtime is not older than the
+ * index file's own mtime (racy git). A copy stamped "now" would hide a
+ * same-size edit made in the same second as the last index write.
+ */
+async function copyIndexKeepingMtime(
+  indexPath: string,
+  copyPath: string,
+): Promise<boolean> {
+  try {
+    const original = await stat(indexPath);
+    await copyFile(indexPath, copyPath);
+    await utimes(copyPath, original.atime, original.mtime);
+    return true;
+  } catch {
+    return false;
   }
 }
 

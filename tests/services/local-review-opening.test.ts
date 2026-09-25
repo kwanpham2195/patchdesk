@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -220,6 +227,30 @@ describe("LocalReviewOpening", () => {
     expect(patch).toContain("diff --git a/tracked.txt b/tracked.txt");
     expect(patch).toContain("+++ b/tracked.txt");
     expect(patch).not.toContain("\u001b");
+  });
+
+  it("records a same-size edit that git can only detect by content", async () => {
+    const { root, repositoryPath } = await checkout();
+    // With ctime ignored, an edit that keeps a file's size and mtime is found only by
+    // git's racy-entry check, which trusts the index file's own mtime.
+    git(repositoryPath, "config", "core.trustctime", "false");
+    const tracked = join(repositoryPath, "tracked.txt");
+    const indexed = await stat(tracked);
+    await writeFile(tracked, "two\n");
+    await utimes(tracked, indexed.atime, indexed.mtime);
+    await utimes(
+      join(repositoryPath, ".git", "index"),
+      indexed.atime,
+      indexed.mtime,
+    );
+
+    const patch = value(
+      await (
+        await opening(root, repositoryPath)
+      ).open({ profileId, repository, request: workingTree }),
+    ).fullPatch;
+
+    expect(patch).toContain("+two");
   });
 
   it("refuses a working tree whose index holds a merge conflict", async () => {
