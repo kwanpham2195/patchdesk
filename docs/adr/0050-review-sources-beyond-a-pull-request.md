@@ -147,6 +147,17 @@ original file and code context under **Needs attention**, and handoff skips it
 until the maintainer removes it or it maps again. This is ADR 0002's rule. No
 draft is ever discarded by Refresh.
 
+> **Note, 2026-09-25 (#452, ADR 0051 "Addressed or not"):** as built, a draft
+> has three outcomes on every move to a new session. It moves when its
+> fingerprint maps to exactly one location in the new patch, or when its
+> surrounding lines are each found exactly once in the new version of the
+> file, around at least one line; a draft placed by its surrounding lines
+> moves to the lines between them even when those lines left the patch. Its
+> state is **changed since your note** when the lines under it differ from the
+> lines the maintainer saw when writing it, or it was already changed, and
+> **unchanged** otherwise. Any other draft needs attention and keeps its
+> original file, lines, and session. No draft is discarded.
+
 ## Git writes the main process may perform
 
 This is the complete list. Anything else is a new decision.
