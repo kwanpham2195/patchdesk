@@ -57,7 +57,7 @@ On success the dialog closes and the Review workbench replaces the Pull requests
 - The heading names the source: `Working tree on <branch>`, `Working tree on detached HEAD`, `Branch <branch> against <base>`, or `Commit <first eight characters>`.
 - The tab strip shows Diff and Insights; there is no Conversation tab.
 - The header shows the Scope gauge and a line with the repository and the revision it represents: `Local snapshot <first eight characters> · read from the local checkout` for a working tree, `Branch tip <…>` for a branch, and `Commit <…>` for a commit. It makes no claim about GitHub: there is no freshness label or checked time, no Checks or Merge chips, no Open on GitHub or Watch button, no Start a review or Finish review button, and no Refresh button.
-- The Diff tab behaves as described in [Files, diff, and navigation](../review-workbench/files-diff-and-navigation.md), including expanding unchanged context around a hunk. Its Commits section lists no commits, its Threads section lists no threads, and selecting lines offers no inline comment.
+- The Diff tab behaves as described in [Files, diff, and navigation](../review-workbench/files-diff-and-navigation.md), including expanding unchanged context around a hunk. Its Commits section lists no commits, its Threads section lists no threads, and selecting lines opens a note composer instead of an inline comment; see [Maintainer notes](#maintainer-notes).
 - The Insights tab runs Brief, Walkthrough, and Analysis as described in [Insights on a local Review](#insights-on-a-local-review).
 
 Opening the same source again with unchanged content lands on the same Review session. An edit to any file, or a new `HEAD`, prepares a new session, and the same Review moves to it.
@@ -87,13 +87,13 @@ What differs is what a local Review has no source for:
 
 ## Local drafts
 
-A local Review reviews a coding agent's work before any pull request exists. The Findings the maintainer wants the agent to address go to a **Local draft** list kept on the Review (ADR 0050), and the list is copied to the agent as one prompt.
+A local Review reviews a coding agent's work before any pull request exists. The Findings the maintainer wants the agent to address, and the maintainer's own notes on diff lines, go to a **Local draft** list kept on the Review (ADR 0050, ADR 0051), and the list is copied to the agent as one prompt.
 
 On a local Review with a current Analysis, every open, mapped Finding shows **Add to draft**. Pressing it adds the Finding to the list; the row then shows a `Drafted` badge and **Remove from draft**, and Dismiss is no longer offered on it. Adding the same Finding twice keeps one entry. The Analysis card counts a drafted Finding as handled, the same as a dismissed one: one drafted and one dismissed Finding read `2 of 2 handled`.
 
-The **Local drafts** card below the Findings names the count (`1 draft for the coding agent`) and lists each draft by title and `path:line`, with a `Suggestion` badge when the Finding's suggestion resolved in the session's patch, and a **Remove** button. With no drafts it reads `Add a finding to draft to collect your feedback for the coding agent.`
+The **Local drafts** card below the Findings names the count (`1 draft for the coding agent`) and lists each draft by title (a note by its text) and `path:line`, with a `Suggestion` badge when the Finding's suggestion resolved in the session's patch or a `Note` badge on a maintainer note, and a **Remove** button. With no drafts it reads `Select diff lines to add a note, or add a finding to draft, to collect your feedback for the coding agent.` The card sits under the Findings; with no Analysis, the Analysis view shows it under Generate analysis once the list has at least one draft.
 
-With at least one draft, the card offers **Copy as agent prompt**. It copies one Markdown prompt composed in the main process: the heading `# Address review comments`, a one-line instruction to address each comment, then under `## Comments` one numbered section per draft in the order drafted. Each section has the draft's title, a `File:` line naming `path:line` or `path:start-end` (noting old-side line numbers), its comment, and, when it has one, its suggestion in a fenced block after `Suggested replacement for path:line:`. The button reads `Copied` once the clipboard write succeeds, and `The drafts could not be copied.` appears under it when it fails. The layout follows the Analysis card's Copy as markdown prompt.
+With at least one draft, the card offers **Copy as agent prompt**. It copies one Markdown prompt composed in the main process: the heading `# Address review comments`, a one-line instruction to address each comment, then under `## Comments` one numbered section per draft, ordered by file path and then line. Each section has the draft's title (`Note from the maintainer` for a note), a `File:` line naming `path:line` or `path:start-end` (noting old-side line numbers), its comment or note text, and, when a Finding draft has one, its suggestion in a fenced block after `Suggested replacement for path:line:`. The button reads `Copied` once the clipboard write succeeds, and `The drafts could not be copied.` appears under it when it fails. The layout follows the Analysis card's Copy as markdown prompt.
 
 Adding and removing write only the Review record in the app's data folder. They read nothing from the checkout and are not refused when the working tree has changed since the session. Each draft stores the Finding's location, the diff lines around it, its comment (the suggested comment, or the explanation), its suggestion, and the session, Analysis run, and Finding it came from, so it stays readable after the Analysis is replaced.
 
@@ -104,6 +104,23 @@ Drafts belong to the Review, not the session. Opening the Review again lists the
 | Another action on the Review is running           | `Another action on this review is running. Try again when it finishes.`           |
 | The Finding is no longer current, mapped, or open | `This finding can no longer be drafted. Run Analysis again on the current files.` |
 | Any other failure                                 | `The draft list was not changed.`                                                 |
+
+### Maintainer notes
+
+On a local Review's Diff tab, clicking a line number, dragging across line numbers, or pressing the `+` in the gutter opens a **Note composer** under the lines, headed `path:line · a note for the coding agent`. **Add note** (or ⌘/Ctrl+Enter) saves it; Escape or **Cancel** closes the composer, asking `Discard this note?` when it holds text. **Add note** stays disabled while the text is blank. On a merged or closed Review the composer does not open.
+
+A saved note appears inline under its lines with a `Note` badge, its text, **Edit note**, and **Remove note**, and it is listed in the Local drafts card. **Edit note** turns the card into a text field with **Save note** and **Cancel**; ⌘/Ctrl+Enter saves and Escape cancels. A Finding draft offers no edit (ADR 0051).
+
+A note is stored with its lines, the diff lines around them, its text, and the session it was written against. The main process checks the lines against the session's patch, so a refused note keeps the composer open with its text and the reason under it. Adding, editing, and removing a note write only the Review record, like the other Local draft actions.
+
+A note is shown inline only on the session it was written against. After a change to the working tree opens a new session, the note stays listed in the Local drafts card and in the agent prompt, and it is removed from there (#452 moves drafts onto the new session).
+
+| Cause                                        | Sentence under the note's text field                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Another action on the Review is running      | `Another action on this review is running. Try again when it finishes.`              |
+| The lines are not in the session's patch     | `These lines are not in the current diff. Refresh the review and select them again.` |
+| The note was removed before the edit arrived | `This note was removed. Refresh the review.`                                         |
+| Any other failure                            | `The note was not saved.`                                                            |
 
 ## Copy Brief as PR description
 
@@ -193,13 +210,13 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - Live pass on 2026-09-25 over CDP 9233 (#450): on a working-tree Review of the Patchdesk checkout with an untracked probe file, Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P2 Finding anchored to the probe file's line 9 with no Add to review command, and Brief (medium) rendered Flow, Shape, Blast radius counted at the snapshot SHA, and Start here. The header read `Local snapshot 66316662 · read from the local checkout`. Walkthrough was not run live.
 - Brief's Blast radius heading reads "what this PR could affect" on a local Review, which is pull-request wording.
 - The Analysis prompt still asks the model to review a pull request and check its description; changing prompt text needs its own review.
-- That selecting lines offers no inline comment was checked in code, not live.
 - Refresh of a local Review and moving Local drafts to a new session are not built (#452). Commit, Push, Open PR, and handoff to a pull request Review were dropped on 2026-09-25.
 - Live pass on 2026-09-25 over CDP 9233 (#451): a working-tree Review of the Patchdesk checkout with an untracked probe file; Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P1 Finding at `tmp-local-review-probe.ts:3` with a suggestion. Apply was refused with the changed-tree sentence after the probe was edited, and after the edit was undone and the Review reopened, Apply changed exactly line 3; `git status --short` and the index `shasum` were identical before and after.
 - Live pass on 2026-09-25 over CDP 9233 (#451 Local drafts): a working-tree Review with an untracked probe file; Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P1 and a P2 Finding. Add to draft on the P1 stored one draft with its fingerprint and suggestion in `review.json`; opening the Review again listed it; Dismiss on the P2 read `2 of 2 handled`; Remove emptied the list and removed `localDrafts` from the record. Copy as markdown prompt copied the P1. After a caller was added to the probe, a Brief (medium) with a call tree copied as a PR description with each step cited as `tmp-local-drafts-probe.ts:1`: the untracked file is one hunk starting at line 1.
 - Live pass on 2026-09-25 over CDP 9233 (#451 agent prompt): after a new Analysis run, one drafted Finding copied as an agent prompt with its `path:line` and comment; that run's Finding carried no suggestion, so the fenced suggestion block was checked in `tests/domain/local-draft-agent-prompt.test.ts`, not live. The pass also showed the Apply bar on an Analysis whose Findings carry no suggestion.
 - A draft from an earlier session staying listed after the session changes was checked in `tests/services/local-draft-service.test.ts`, not live.
 - The outcome-unknown lock and Check files were checked in service and component tests, not live: interrupting the app between the two marks cannot be timed by hand.
+- Live pass on 2026-09-25 over CDP 9233 (#462 maintainer notes): a working-tree Review with an untracked probe file and no Analysis. A note on `notes-probe.ts:3` rendered inline, was edited in place, was still inline after opening the Review again, and copied as `### 2. Note from the maintainer` beside a note from an earlier session; Remove in the card and Remove note inline emptied the list and removed `localDrafts` from `review.json`. Dragging across line numbers over CDP opened the composer on the last line only, so a range note was checked in `tests/services/local-draft-service.test.ts`, not live.
 - The empty-patch workbench, the conflict refusal, the branch and commit sources, and the failure sentences were checked in service and component tests, not live.
 - Managed refs and worktrees of local sessions are not removed after a successful open; cleanup is not described here because it does not exist yet.
 
