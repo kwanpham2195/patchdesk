@@ -56,8 +56,9 @@ On success the dialog closes and the Review workbench replaces the Pull requests
 
 - The heading names the source: `Working tree on <branch>`, `Working tree on detached HEAD`, `Branch <branch> against <base>`, or `Commit <first eight characters>`.
 - The tab strip shows Diff and Insights; there is no Conversation tab.
-- The header shows the Scope gauge and a line with the repository, the first eight characters of the head, the freshness label, and when it was checked. There are no Checks or Merge chips, no Open on GitHub or Watch button, no Start a review or Finish review button, and no Refresh button.
-- The Diff tab behaves as described in [Files, diff, and navigation](../review-workbench/files-diff-and-navigation.md), including expanding unchanged context around a hunk. Its Commits section lists no commits and its Threads section lists no threads.
+- The header shows the Scope gauge and a line with the repository and the revision it represents: `Local snapshot <first eight characters> · read from the local checkout` for a working tree, `Branch tip <…>` for a branch, and `Commit <…>` for a commit. It makes no claim about GitHub: there is no freshness label or checked time, no Checks or Merge chips, no Open on GitHub or Watch button, no Start a review or Finish review button, and no Refresh button.
+- The Diff tab behaves as described in [Files, diff, and navigation](../review-workbench/files-diff-and-navigation.md), including expanding unchanged context around a hunk. Its Commits section lists no commits, its Threads section lists no threads, and selecting lines offers no inline comment.
+- The Insights tab runs Brief, Walkthrough, and Analysis as described in [Insights on a local Review](#insights-on-a-local-review).
 
 Opening the same source again with unchanged content lands on the same Review session. An edit to any file, or a new `HEAD`, prepares a new session, and the same Review moves to it.
 
@@ -71,6 +72,18 @@ On failure the dialog stays open with a `Review not opened` alert that gives the
 | Any other read, storage, or worktree failure                                           | `Patchdesk could not read the local checkout.`              |
 
 The fields keep their values, and pressing Open review again retries.
+
+## Insights on a local Review
+
+Brief, Walkthrough, and Analysis run on a local Review from the same run dialog, with the same provider, model, effort, and language choices, as on a pull request Review. Each run is bound to the local session's head, base, and patch hash, so a run on a working tree analyzes the Local snapshot, including untracked files. A result is retained and read back the same way; a later session makes it Outdated.
+
+What differs is what a local Review has no source for:
+
+- The model's context carries the repository's rule files and the changed-file list, but no pull request comments and no check results. Patchdesk makes no GitHub read to start the run.
+- Analysis shows its Findings and their evidence hunks, with Dismiss. There is no Add to review, no Add all, no Finish with the Analysis summary, and no CI badge, because a local Review has no pull request to write to or checks to report. A Finding's status reads Unavailable.
+- Walkthrough shows no discussion note, because a local Review has no Conversation.
+- Brief draws Flow, Shape, Blast radius, and Start here. Blast radius counts names by text search at the session head, which for a working tree is the Local snapshot, so a name the uncommitted change adds is found. Brief has no Description vs diff block for any Review (ADR 0040), and no citation names a commit.
+- A settled run posts no desktop notification.
 
 ## Variants
 
@@ -104,7 +117,7 @@ The fields keep their values, and pressing Open review again retries.
 
 **GitHub permissions and write authority.** No GitHub read or write happens. The checkout is read; the only writes to the repository are the snapshot objects, the managed ref, and the worktree registration.
 
-**Network, local tools, and Insight providers.** Only local `git` is needed.
+**Network, local tools, and Insight providers.** Opening needs only local `git`. An Insight run needs its provider, as on a pull request Review, and no GitHub access.
 
 **Concurrent operations and locking.** The Review lock and the profile lock serialize openings of the same Review and preparations in the same profile.
 
@@ -127,10 +140,12 @@ The fields keep their values, and pressing Open review again retries.
 ## Open questions and verification
 
 - Live pass on 2026-09-25 over CDP 9233: a working-tree Review on the Patchdesk checkout showed an untracked probe file as NEW on the Diff tab; `shasum` of the checkout's index and `git status --short` were identical before and after; opening again with unchanged content left one session.
-- The header's freshness label reads `Up to date with GitHub` on a local Review, which is wrong for a source GitHub never saw. Wording and freshness for local Reviews belong to #450.
-- The Insights tab is shown, but an Insight run on a local Review is refused until #450; what the tab shows on that refusal was not checked.
+- Live pass on 2026-09-25 over CDP 9233 (#450): on a working-tree Review of the Patchdesk checkout with an untracked probe file, Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P2 Finding anchored to the probe file's line 9 with no Add to review command, and Brief (medium) rendered Flow, Shape, Blast radius counted at the snapshot SHA, and Start here. The header read `Local snapshot 66316662 · read from the local checkout`. Walkthrough was not run live.
+- Brief's Blast radius heading reads "what this PR could affect", and Analysis shows `0 of 1 handled` and an Unavailable status beside each Finding; both are pull-request wording on a local Review. Finding actions for local Reviews belong to #451.
+- The Analysis prompt still asks the model to review a pull request and check its description; changing prompt text needs its own review.
+- That selecting lines offers no inline comment was checked in code, not live.
 - Refresh of a local Review, and Apply, Commit, Push, and Open PR, are not built (#451, #452).
 - The empty-patch workbench, the conflict refusal, the branch and commit sources, and the failure sentences were checked in service and component tests, not live.
 - Managed refs and worktrees of local sessions are not removed after a successful open; cleanup is not described here because it does not exist yet.
 
-Drafted from Patchdesk application source commit `502acfd8`. The live pass ran on `88434b1b`, which lacks two later fixes: the patch command's config-proof flags (`eaa6f3e0`) and the index copy that keeps its mtime (`502acfd8`).
+Drafted from Patchdesk application source commit `502acfd8`; the Insights section from `7d9a660a`. The live pass ran on `88434b1b`, which lacks two later fixes: the patch command's config-proof flags (`eaa6f3e0`) and the index copy that keeps its mtime (`502acfd8`).

@@ -146,7 +146,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 
 - `review-workbench-controller.ts` is the facade for opening and loading a Review.
 - `review-session-preparation.ts` prepares one immutable session: fetch the PR, fetch the canonical diff, write the patch, and create the represented-review worktree. `review-preparation-journal.ts` makes preparation resumable.
-- `review-context-pack-service.ts` builds the model context pack (`context.json`, `review-input.md`, `debug.json`) when an Insight run first needs it, under the review lock that serializes runs. It needs no journal: a pack that does not name the session's current patch hash is rebuilt.
+- `review-context-pack-service.ts` builds the model context pack (`context.json`, `review-input.md`, `debug.json`) when an Insight run first needs it, under the review lock that serializes runs. A local Review's pack carries no comments or checks and makes no GitHub read (ADR 0050). It needs no journal: a pack that does not name the session's current patch hash is rebuilt.
 - `review-refresh-service.ts` separates revision refresh from PR reconciliation (ADR "Separate PR reconciliation from revision refresh and merge confirmation").
 - `review-workbench-projection.ts` assembles the projection the renderer displays.
 - `review-operation-coordinator.ts` serializes every mutation or reconciliation for one Review.
