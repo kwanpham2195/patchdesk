@@ -4,6 +4,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { definedProps } from "../../src/domain/defined-props";
 import type { BriefReach } from "../../src/renderer/src/brief-contracts";
 import { ReachBlock } from "../../src/renderer/src/components/brief-reach-block";
 
@@ -163,7 +164,11 @@ describe("ReachBlock", () => {
     const changed = screen.getByRole("region", {
       name: "Changed and mentioned elsewhere",
     });
+    // Stored without mention sites, the name and summary fall back to files.
     expect(within(changed).getByText("7 source · 2 tests")).toBeTruthy();
+    expect(
+      screen.getByText(/^9 files could be affected · 7 source, 2 tests/),
+    ).toBeTruthy();
     // The first five drawn paths are source files; both test files are past the cut.
     expect(
       within(changed).queryByText("review-lock-invariant-rows.ts"),
@@ -178,6 +183,79 @@ describe("ReachBlock", () => {
     ).toBeTruthy();
     expect(
       within(changed).getByText("review-lock-invariant-services.ts"),
+    ).toBeTruthy();
+  });
+
+  it("shows where each name is mentioned, by function and kind, and leads the summary with calls", () => {
+    const at = (
+      path: string,
+      line: number,
+      kind: "call" | "type" | "import" | "other",
+      enclosing?: string,
+    ) => ({
+      path,
+      line,
+      kind,
+      ...definedProps({ enclosing }),
+    });
+    render(
+      <ReachBlock
+        headSha={HEAD_SHA}
+        reach={reach({
+          symbols: [
+            {
+              name: "ReviewRefreshService",
+              outsideCallerFiles: 3,
+              outsidePaths: [
+                "src/main/local-api.ts",
+                "src/services/review-workbench-controller.ts",
+                "tests/services/review-refresh.test.ts",
+              ],
+              insidePR: true,
+              status: "changed",
+              mentionCount: 5,
+              // Stored import before call, so the reader has to order the sites.
+              mentions: [
+                at("src/main/local-api.ts", 3, "import"),
+                at("src/main/local-api.ts", 40, "call", "startLocalApi"),
+                at(
+                  "src/services/review-workbench-controller.ts",
+                  12,
+                  "type",
+                  "ReviewWorkbenchController",
+                ),
+                at(
+                  "src/services/review-workbench-controller.ts",
+                  80,
+                  "call",
+                  "ReviewWorkbenchController.refresh",
+                ),
+                at("tests/services/review-refresh.test.ts", 10, "call"),
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    const changed = screen.getByRole("region", {
+      name: "Changed and mentioned elsewhere",
+    });
+    // The test file's call counts once, as a test.
+    expect(
+      within(changed).getByText("2 calls · 1 type-only · 1 import · 1 test"),
+    ).toBeTruthy();
+    expect(
+      within(
+        within(changed).getByRole("list", { name: "Mentions in local-api.ts" }),
+      )
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["startLocalApicallL40", "top levelimportL3"]);
+    expect(
+      screen.getByText(
+        "2 functions call something this PR changed · 1 type-only mention · in main, services",
+      ),
     ).toBeTruthy();
   });
 

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -54,9 +54,16 @@ const runner = (reply: (argv: ReadonlyArray<string>) => GitReply) => {
   };
 };
 
-/** The grep line shape `git grep --count` prints: `<rev>:<path>:<count>`. */
-const grepLine = (path: string, count: number) =>
-  `${headSha}:${path}:${String(count)}\n`;
+/** `count` matching lines in the shape `git grep --null --line-number` prints: `<rev>:<path>\0<line>\0<text>`. */
+const grepLine = (
+  path: string,
+  count: number,
+  text = "updateThreadComment()",
+) =>
+  Array.from(
+    { length: count },
+    (_, index) => `${headSha}:${path}\0${String(index + 1)}\0${text}\n`,
+  ).join("");
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-brief-reach-"));
@@ -130,7 +137,8 @@ describe("computeBriefReach", () => {
       "grep",
       "--fixed-strings",
       "--word-regexp",
-      "--count",
+      "--line-number",
+      "--null",
       "-e",
       "updateThreadComment",
       headSha,
@@ -143,7 +151,72 @@ describe("computeBriefReach", () => {
     ]);
   });
 
-  it("stores up to twenty outside paths per name and keeps the true file count", async () => {
+  it("records each outside mention's line, kind, and enclosing declaration", async () => {
+    const { paths, worktree } = await fixture();
+    const caller = [
+      'import { updateThreadComment } from "../adapters/writer";',
+      "",
+      "export class ConversationRoutes {",
+      "  async reply(id: string): Promise<void> {",
+      "    await updateThreadComment(id);",
+      "  }",
+      "}",
+    ];
+    await mkdir(join(worktree, "src/main"), { recursive: true });
+    await writeFile(
+      join(worktree, "src/main/conversation-routes.ts"),
+      caller.join("\n"),
+    );
+    const matched = (line: number) =>
+      `${headSha}:src/main/conversation-routes.ts\0${String(line)}\0${caller[line - 1] ?? ""}\n`;
+
+    const outcome = await computeBriefReach({
+      profileId,
+      sessionId,
+      worktree,
+      headSha,
+      patch: PATCH,
+      symbols: ["updateThreadComment"],
+      paths,
+      runner: runner((argv) => {
+        if (argv.includes("rev-parse")) return ok(`${headSha}\n`);
+        if (argv.includes("updateThreadComment"))
+          return ok(matched(1) + matched(5));
+        return err({ _tag: "CommandFailed", stderr: "" });
+      }),
+    });
+
+    expect(outcome).toMatchObject({
+      _tag: "ok",
+      value: {
+        symbols: [
+          {
+            name: "updateThreadComment",
+            outsideCallerFiles: 1,
+            mentionCount: 2,
+            // Calls are kept and listed before imports.
+            mentions: [
+              {
+                path: "src/main/conversation-routes.ts",
+                line: 5,
+                kind: "call",
+                enclosing: "ConversationRoutes.reply",
+              },
+              {
+                path: "src/main/conversation-routes.ts",
+                line: 1,
+                kind: "import",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const [symbol] = outcome._tag === "ok" ? outcome.value.symbols : [];
+    expect(symbol?.mentions?.[1]?.enclosing).toBeUndefined();
+  });
+
+  it("stores up to twenty outside paths and thirty mention sites per name and keeps the true counts", async () => {
     const { paths, worktree } = await fixture();
     const outsidePaths = Array.from(
       { length: 25 },
@@ -160,7 +233,7 @@ describe("computeBriefReach", () => {
       runner: runner((argv) =>
         argv.includes("rev-parse")
           ? ok(`${headSha}\n`)
-          : ok(outsidePaths.map((path) => grepLine(path, 1)).join("")),
+          : ok(outsidePaths.map((path) => grepLine(path, 2)).join("")),
       ),
     });
 
@@ -172,10 +245,13 @@ describe("computeBriefReach", () => {
             name: "updateThreadComment",
             outsideCallerFiles: 25,
             outsidePaths: outsidePaths.slice(0, 20),
+            mentionCount: 50,
           },
         ],
       },
     });
+    const [symbol] = outcome._tag === "ok" ? outcome.value.symbols : [];
+    expect(symbol?.mentions).toHaveLength(30);
   });
 
   it("excludes prose from the caller count: a Markdown mention is not a caller", async () => {

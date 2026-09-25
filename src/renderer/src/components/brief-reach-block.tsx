@@ -5,6 +5,7 @@ import { definedProps } from "../../../domain/defined-props";
 import {
   briefBlastRadius,
   briefBlastRadiusFootnote,
+  type BlastRadiusFile,
   type BlastRadiusFolder,
   type BlastRadiusName,
   type BriefReach,
@@ -23,8 +24,9 @@ const SURFACES_LABEL = "Surfaces crossed";
 
 /**
  * The Blast radius view: what this PR could affect in files it does not
- * change. Every count came from a `git grep` in the main process, and the
- * footer says so, because a mention is not a call.
+ * change, down to the function that mentions each name. Every count came from
+ * a `git grep` in the main process, and the footer says so, because a mention
+ * is not a call.
  */
 export function ReachBlock({
   reach,
@@ -203,19 +205,57 @@ function FolderList({
           className="contents"
         >
           <span className="whitespace-nowrap">{group.folder}</span>
-          <ul className="flex min-w-0 flex-wrap gap-x-1.5">
-            {group.files.map((file) => (
-              <li
-                key={file}
-                className="whitespace-nowrap text-foreground not-first:before:mr-1.5 not-first:before:text-muted-foreground not-first:before:content-['·']"
-              >
-                {file}
-              </li>
-            ))}
-          </ul>
+          {group.files.some((file) => file.sites.length > 0) ? (
+            <ul className="flex min-w-0 flex-col gap-0.5">
+              {group.files.map((file) => (
+                <SiteFile key={file.name} file={file} />
+              ))}
+            </ul>
+          ) : (
+            <ul className="flex min-w-0 flex-wrap gap-x-1.5">
+              {group.files.map((file) => (
+                <li
+                  key={file.name}
+                  className="whitespace-nowrap text-foreground not-first:before:mr-1.5 not-first:before:text-muted-foreground not-first:before:content-['·']"
+                >
+                  {file.name}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ))}
     </div>
+  );
+}
+
+/** One file and the sites in it that mention the name: where, what kind, which line. */
+function SiteFile({
+  file,
+}: {
+  readonly file: BlastRadiusFile;
+}): React.JSX.Element {
+  return (
+    <li className="flex min-w-0 flex-col">
+      <span className="whitespace-nowrap text-foreground">{file.name}</span>
+      {file.sites.length === 0 ? null : (
+        <ul
+          aria-label={`Mentions in ${file.name}`}
+          className="flex flex-col pl-3"
+        >
+          {file.sites.map((site) => (
+            <li
+              key={`${String(site.line)}:${site.kind}`}
+              className="flex min-w-0 gap-x-2"
+            >
+              <span className="truncate text-foreground">{site.label}</span>
+              <span>{site.kind}</span>
+              <span className="tabular-nums">L{site.line}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
