@@ -207,7 +207,7 @@ export function isMaintainerNote(draft: LocalDraft): draft is MaintainerNote {
 }
 
 /** A Finding draft is keyed by the Finding it came from: one Analysis run and one Finding id. */
-export function isDraftOfFinding(
+function isDraftOfFinding(
   draft: LocalDraft,
   finding: { readonly runId: InsightRunId; readonly findingId: FindingId },
 ): boolean {

@@ -34,9 +34,3 @@ export const localDraftListSchema = v.strictObject({
 });
 
 export type LocalDraftEntry = v.InferOutput<typeof localDraftEntrySchema>;
-
-/** A maintainer note as the workbench lists it. */
-export type LocalNoteEntry = Extract<
-  LocalDraftEntry,
-  { readonly kind: "note" }
->;
