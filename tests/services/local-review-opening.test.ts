@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CommandRunner } from "../../src/adapters/github/command-runner";
 import { InsightStore } from "../../src/adapters/storage/insight-store";
+import { LocalApplyOperationStore } from "../../src/adapters/storage/local-apply-operation-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
@@ -146,6 +147,7 @@ async function opening(
     paths,
     new ReviewWriteOperationStore(paths),
     new ViewedFilesStore(paths, { write: () => undefined }),
+    new LocalApplyOperationStore(paths),
   );
   return new LocalReviewOpening(
     {

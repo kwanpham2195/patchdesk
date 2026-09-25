@@ -9,18 +9,37 @@ import type {
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
 import {
+  isLocalReview,
   isPullRequestReview,
+  markReviewRevisionChanged,
   sessionRepresentsReview,
   type PullRequestReview,
+  type Review,
 } from "../domain/review";
 import {
   isPullRequestReviewSession,
+  sameReviewRevision,
+  type LocalReviewSession,
   type PullRequestReviewSession,
 } from "../domain/review-session";
+import {
+  sameReviewSource,
+  type LocalReviewSource,
+  type LocalReviewSourceRequest,
+} from "../domain/review-source";
+import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { ContentHash, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import { contentHash } from "./review-artifact-hash";
+import {
+  parseContentHash,
+  parseGitShaPrefix,
+  type ContentHash,
+  type IsoTimestamp,
+  type ReviewId,
+  type WorkspaceProfileId,
+} from "../domain/ids";
+import { casesHandled, err, ok, type Result } from "../domain/result";
+import type { LocalReviewRevisionService } from "./local-review-revision-service";
+import { contentHash, hashReviewArtifactContent } from "./review-artifact-hash";
 
 export type ReviewWriteGateFailure = {
   readonly reason: "not_found" | "storage" | "stale" | "terminal" | "not_fresh";
@@ -75,6 +94,34 @@ export type CurrentReviewSession = {
   readonly session: PullRequestReviewSession;
 };
 
+/** A local Review whose source still resolves to its session's revision. */
+export type FreshLocalReview = {
+  readonly profile: WorkspaceProfileConfig;
+  readonly review: Review<LocalReviewSource>;
+  readonly session: LocalReviewSession;
+  /** The profile repository's checkout the source was recomputed from. */
+  readonly localPath: string;
+};
+
+export type LocalWriteGateFailure = {
+  readonly reason:
+    | ReviewWriteGateFailure["reason"]
+    /** Recomputing the source gave another revision; the Review is now RevisionChanged. */
+    | "revision_changed"
+    /** The checkout could not be read, or the profile no longer lists it with a `localPath`. */
+    | "checkout_unavailable";
+};
+
+/** What the gate needs to recompute a local source and record that it moved. */
+export type LocalFreshnessSources = {
+  readonly revisions: Pick<
+    LocalReviewRevisionService,
+    "resolve" | "renderPatch"
+  >;
+  readonly reviews: Pick<ReviewStore, "save">;
+  readonly now: () => IsoTimestamp;
+};
+
 export type ReviewWriteExpectation = {
   readonly sessionId: PullRequestReviewSession["id"];
   readonly headSha: PullRequestReviewSession["key"]["headSha"];
@@ -92,6 +139,7 @@ export class ReviewWriteGate {
       ReviewObservationJournalStore,
       "load"
     >,
+    private readonly localSources: LocalFreshnessSources,
   ) {}
 
   /** Resolve the stable Review owner before recovery mutates session evidence. */
@@ -159,8 +207,7 @@ export class ReviewWriteGate {
       return err({ reason: "storage" });
     const value = review.value;
     if (value.status._tag === "Terminal") return err({ reason: "terminal" });
-    // Freshness of a local Review is proven by recomputing its source, which
-    // this gate does not do yet; until it does, no local write can pass.
+    // A local Review is Fresh only by recomputing its source: `requireFreshLocal`.
     if (!isPullRequestReview(value)) return err({ reason: "not_fresh" });
     if (
       value.representedRemote === undefined ||
@@ -213,5 +260,132 @@ export class ReviewWriteGate {
       session: session.value,
       snapshot: snapshot.value,
     });
+  }
+
+  /**
+   * The local branch of the freshness gate (ADR 0050 "Freshness"): the source
+   * is recomputed from the checkout immediately before the write, with no
+   * cache. A different head/base pair is rendered and hashed so the Review
+   * records `RevisionChanged` with the observed identity, and the write is
+   * refused. The caller holds the Review lock, since this may save the Review.
+   */
+  async requireFreshLocal(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    expected: ReviewWriteExpectation,
+  ): Promise<Result<FreshLocalReview, LocalWriteGateFailure>> {
+    const [profile, review] = await Promise.all([
+      this.profiles.load(profileId),
+      this.reviews.load(profileId, reviewId),
+    ]);
+    if (profile._tag === "err" && profile.error.reason === "not_found")
+      return err({ reason: "not_found" });
+    if (review._tag === "err" && review.error.reason === "not_found")
+      return err({ reason: "not_found" });
+    if (profile._tag === "err" || review._tag === "err")
+      return err({ reason: "storage" });
+    const value = review.value;
+    if (!isLocalReview(value)) return err({ reason: "stale" });
+    if (value.status._tag === "Terminal") return err({ reason: "terminal" });
+    if (value.identity.profileId !== profileId || value.id !== reviewId)
+      return err({ reason: "stale" });
+    if (value.freshness._tag !== "Fresh") return err({ reason: "not_fresh" });
+    const session = await this.sessions.load(profileId, value.currentSessionId);
+    if (session._tag === "err")
+      return session.error.reason === "not_found"
+        ? err({ reason: "not_found" })
+        : err({ reason: "storage" });
+    if (
+      isPullRequestReviewSession(session.value) ||
+      session.value.id !== value.currentSessionId ||
+      !sessionRepresentsReview(value, session.value) ||
+      expected.sessionId !== session.value.id ||
+      expected.headSha !== session.value.key.headSha
+    )
+      return err({ reason: "stale" });
+    const patchHash = await contentHash(session.value.patchPath).catch(
+      () => undefined,
+    );
+    if (patchHash === undefined || patchHash !== expected.patchHash)
+      return err({ reason: "stale" });
+    const localPath = profile.value.repos.find((candidate) =>
+      sameRepositoryIdentity(candidate, value.identity),
+    )?.localPath;
+    if (localPath === undefined) return err({ reason: "checkout_unavailable" });
+    const request = localSourceRequest(value.identity.source);
+    if (request === undefined) return err({ reason: "storage" });
+    const current = await this.localSources.revisions.resolve(
+      profileId,
+      localPath,
+      request,
+    );
+    if (current._tag === "err")
+      return err({
+        reason:
+          current.error._tag === "LocalRevisionNotFound"
+            ? "revision_changed"
+            : "checkout_unavailable",
+      });
+    if (
+      sameReviewSource(current.value.source, value.identity.source) &&
+      sameReviewRevision(current.value.revision, session.value.key)
+    )
+      return ok({
+        profile: profile.value,
+        review: value,
+        session: session.value,
+        localPath,
+      });
+    const patch = await this.localSources.revisions.renderPatch(
+      localPath,
+      current.value.revision,
+    );
+    const canonicalPatchHash =
+      patch._tag === "ok"
+        ? parseContentHash(hashReviewArtifactContent(patch.value))
+        : undefined;
+    // Without the new patch's hash the evidence is incomplete, so the Review is left as it was.
+    if (canonicalPatchHash?._tag === "ok") {
+      const detectedAt = this.localSources.now();
+      await this.localSources.reviews.save(
+        markReviewRevisionChanged(
+          value,
+          {
+            detectedAt,
+            identity: {
+              ...current.value.revision,
+              canonicalPatchHash: canonicalPatchHash.value,
+            },
+          },
+          detectedAt,
+        ),
+        value.updatedAt,
+      );
+    }
+    return err({ reason: "revision_changed" });
+  }
+}
+
+/** The request that recomputes a stored local source from its checkout. */
+function localSourceRequest(
+  source: LocalReviewSource,
+): LocalReviewSourceRequest | undefined {
+  switch (source.kind) {
+    case "working_tree":
+      return { kind: "working_tree" };
+    case "branch":
+      return {
+        kind: "branch",
+        branch: source.branch,
+        baseBranch: source.baseBranch,
+      };
+    case "commit": {
+      const commit = parseGitShaPrefix(source.commitSha);
+      return commit._tag === "ok"
+        ? { kind: "commit", commit: commit.value }
+        : undefined;
+    }
+    default:
+      return casesHandled(source);
   }
 }

@@ -121,6 +121,17 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["repository_not_local", 404],
   ["revision_not_found", 404],
   ["unmerged_index", 409],
+  // Apply suggestion on a local Review (ADR 0050): refusals the maintainer resolves by reopening or checking.
+  ["revision_changed", 409],
+  ["not_working_tree", 409],
+  ["apply_locked", 409],
+  ["in_progress", 409],
+  ["not_applicable", 409],
+  ["overlapping", 409],
+  ["path_refused", 409],
+  ["file_changed", 409],
+  ["check_failed", 409],
+  ["checkout_unavailable", 503],
   ["stale_head", 409],
   ["terminal", 409],
   // A caller abandoned a provider activation. The request-owning renderer

@@ -863,6 +863,11 @@ const workbenchProjectionSchema = v.strictObject({
   mergeReadiness: mergeReadinessSchema,
   mergeReasons: v.optional(v.array(mergeReasonSchema)),
   remoteWriteRecovery: v.optional(remoteWriteRecoverySchema),
+  localApply: v.optional(
+    v.strictObject({
+      state: v.picklist(["outcome_unknown", "check_required"]),
+    }),
+  ),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export type RemoteWriteRecovery = v.InferOutput<

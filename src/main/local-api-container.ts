@@ -13,6 +13,7 @@ import type {
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
 import { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
 import { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
@@ -51,7 +52,7 @@ import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { LocalReviewOpening } from "../services/local-review-opening";
-import { LocalReviewRevisionService } from "../services/local-review-revision-service";
+import { LocalApplyService } from "../services/local-apply-service";
 import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
@@ -79,6 +80,7 @@ export type LocalApiContainer = {
   readonly recovery: ReviewRecoveryService;
   readonly reviewWorkbench: ReviewWorkbenchSeam;
   readonly localReviewOpening: LocalReviewOpening;
+  readonly localApply: LocalApplyService;
   readonly reviewDiffSources: ReviewDiffSourceService;
   readonly mergeWrites: MergeWriteController | undefined;
   readonly inlineConversations: InlineConversationService;
@@ -119,6 +121,7 @@ export async function buildLocalApiContainer(
     credentials,
     github,
     readOnlyGit,
+    localRevisions,
     resolveGitHubCli,
     diagnostics,
     profiles,
@@ -160,6 +163,7 @@ export async function buildLocalApiContainer(
   const reviewOperations =
     configuration.reviewOperations ?? new ReviewOperationCoordinator();
   const reviewWriteOperations = new ReviewWriteOperationStore(paths);
+  const localApplyOperations = new LocalApplyOperationStore(paths);
 
   const recovery = new ReviewRecoveryService(profiles, sessions, systemNow, {
     paths,
@@ -214,6 +218,7 @@ export async function buildLocalApiContainer(
     paths,
     reviewWriteOperations,
     viewedFiles,
+    localApplyOperations,
   );
   const inlineConversations = new InlineConversationService(
     reviewWriteGate,
@@ -457,7 +462,7 @@ export async function buildLocalApiContainer(
     new LocalReviewSessionPreparation({
       profiles,
       sessions,
-      revisions: new LocalReviewRevisionService(readOnlyGit, paths),
+      revisions: localRevisions,
       worktrees: new ReviewWorktreeService(
         paths,
         readOnlyGit,
@@ -474,6 +479,21 @@ export async function buildLocalApiContainer(
     { reviews, artifacts: storageArtifacts, coordinator: reviewOperations },
     systemNow,
   );
+  const localApply = new LocalApplyService({
+    gate: reviewWriteGate,
+    operations: localApplyOperations,
+    insights,
+    reviews,
+    profiles,
+    opening: localReviewOpening,
+    coordinator: reviewOperations,
+    git: readOnlyGit,
+    paths,
+    logs,
+    now: systemNow,
+  });
+  // An Apply the previous run left unsettled is decided from file hashes before any request arrives.
+  await localApply.recoverAll();
   const merger =
     configuration.mergeWriter ??
     (isGitHubMergeWriter(github) ? github : undefined);
@@ -515,6 +535,7 @@ export async function buildLocalApiContainer(
       recovery,
       reviewWorkbench,
       localReviewOpening,
+      localApply,
       reviewDiffSources,
       mergeWrites,
       inlineConversations,

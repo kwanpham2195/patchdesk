@@ -171,6 +171,17 @@ export class PatchdeskPaths {
     );
   }
 
+  /** The one Apply suggestion write on a local Review, retained until its file hashes settle it (ADR 0050). */
+  localApplyOperationFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "local-apply-operation.json",
+    );
+  }
+
   reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
     return join(this.reviewDirectory(profileId, reviewId), "review.json");
   }
@@ -339,6 +350,11 @@ export class PatchdeskPaths {
       profileId,
       "local-snapshots",
     );
+  }
+
+  /** Holds the patch file each Apply hands to `git apply`; each is removed after its write. */
+  localApplyScratchDirectory(profileId: WorkspaceProfileId): string {
+    return join(this.cacheDirectory(), "profiles", profileId, "local-apply");
   }
 
   worktreeRootDirectory(profileId: WorkspaceProfileId): string {
