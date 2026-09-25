@@ -299,6 +299,28 @@ describe("LocalReviewOpening", () => {
     expect(projection.fullPatch).toContain("+one");
   });
 
+  it("refuses a commit prefix that git resolves to a branch of the same name", async () => {
+    const { root, repositoryPath } = await checkout();
+    const rootSha = git(repositoryPath, "rev-parse", "HEAD");
+    await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
+    git(repositoryPath, "commit", "-q", "-am", "second");
+    const prefix = rootSha.slice(0, 7);
+    git(repositoryPath, "branch", prefix, "HEAD");
+
+    const opened = await (
+      await opening(root, repositoryPath)
+    ).open({
+      profileId,
+      repository,
+      request: { kind: "commit", commit: value(parseGitShaPrefix(prefix)) },
+    });
+
+    expect(opened).toEqual({
+      _tag: "err",
+      error: { reason: "revision_not_found" },
+    });
+  });
+
   it("compares a branch with its merge base, not with the base branch tip", async () => {
     const { root, repositoryPath } = await checkout();
     git(repositoryPath, "checkout", "-q", "-b", "feature/local");
