@@ -11,8 +11,7 @@ import { matchUnifiedHunkHeader } from "./unified-patch";
  * "Handoff"): Flow, Shape, Blast radius, then Start here, in the order the
  * reader draws them. Every citation is written as `path:line`, a hunk at its
  * new-side start line. Only the citations the reader shows as chips are
- * written, and one that names no hunk location is dropped. The Open PR body
- * is seeded from this same function (#455).
+ * written, and one that names no hunk location is dropped.
  */
 export function renderBriefAsPullRequestDescription(
   brief: NormalizedBrief,

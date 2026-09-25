@@ -21,6 +21,7 @@ import {
   type LocalDraft,
   type LocalDraftEntry,
 } from "../domain/local-draft";
+import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import {
@@ -89,6 +90,22 @@ export class LocalDraftService {
     return this.locked(request, async (review) =>
       ok(removeLocalDraft(review, request, this.dependencies.now())),
     );
+  }
+
+  /** The Local drafts as one prompt for the coding agent; a read, so it takes no lock. */
+  async agentPrompt(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<{ readonly markdown: string }, LocalDraftFailure>> {
+    const loaded = await this.dependencies.reviews.load(profileId, reviewId);
+    if (loaded._tag === "err")
+      return err({
+        reason: loaded.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    if (!isLocalReview(loaded.value)) return err({ reason: "not_applicable" });
+    return ok({
+      markdown: renderLocalDraftsAsAgentPrompt(loaded.value.localDrafts ?? []),
+    });
   }
 
   private async locked(

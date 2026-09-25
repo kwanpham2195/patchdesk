@@ -97,6 +97,7 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/local-apply/recover",
   "POST /v1/reviews/local-drafts/add",
   "POST /v1/reviews/local-drafts/remove",
+  "POST /v1/reviews/local-drafts/agent-prompt",
   "GET /v1/insight-providers",
   "POST /v1/insight-providers/codex/models",
   "POST /v1/reviews/load",
