@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { ChevronRightIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { definedProps } from "../../../domain/defined-props";
 import {
@@ -14,6 +15,17 @@ const LIT_SURFACE =
 const UNLIT_SURFACE =
   "inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground";
 
+const SURFACES_LABEL = "Surfaces crossed";
+
+/** A list row as one entry of the Reach block, marked empty when it names nothing. */
+function listSection(row: BriefReachRow) {
+  return {
+    label: row.label,
+    empty: row.items.length === 0,
+    node: <ReachListRow key={row.label} row={row} />,
+  };
+}
+
 /**
  * The Reach block: what depends on the changed code, one hop out. Every count
  * came from a `git grep` in the main process, and the footer says so, because a
@@ -27,33 +39,65 @@ export function ReachBlock({
   readonly headSha: string;
 }): React.JSX.Element {
   const rows = useMemo(() => briefReachRows(reach), [reach]);
+  const [emptyExpanded, setEmptyExpanded] = useState(false);
+  const surfacesRow = (
+    <ReachRow
+      key="surfaces"
+      label={SURFACES_LABEL}
+      hint="each flag cites its path"
+    >
+      <div className="flex flex-wrap gap-1.5">
+        {reach.surfaces.map((surface) => (
+          <span
+            key={surface.surface}
+            className={surface.path === undefined ? UNLIT_SURFACE : LIT_SURFACE}
+          >
+            {surface.surface}
+            {surface.path === undefined ? null : (
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {surface.path}
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
+    </ReachRow>
+  );
+  const sections = [
+    listSection(rows.contracts),
+    {
+      label: SURFACES_LABEL,
+      empty: reach.surfaces.every((surface) => surface.path === undefined),
+      node: surfacesRow,
+    },
+    listSection(rows.untested),
+    listSection(rows.removed),
+  ];
+  const empty = sections.filter((section) => section.empty);
   return (
     <section aria-label="Reach" className="flex min-w-0 flex-col gap-2">
       {/* The method line at the foot of this block already states the hop
           count and that the counts came from a text search. */}
       <h3 className="text-sm font-medium">Reach</h3>
-      <ReachListRow row={rows.contracts} />
-      <ReachRow label="Surfaces crossed" hint="each flag cites its path">
-        <div className="flex flex-wrap gap-1.5">
-          {reach.surfaces.map((surface) => (
-            <span
-              key={surface.surface}
-              className={
-                surface.path === undefined ? UNLIT_SURFACE : LIT_SURFACE
-              }
-            >
-              {surface.surface}
-              {surface.path === undefined ? null : (
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {surface.path}
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      </ReachRow>
-      <ReachListRow row={rows.untested} />
-      <ReachListRow row={rows.removed} />
+      {sections
+        .filter((section) => !section.empty)
+        .map((section) => section.node)}
+      {/* A row that found nothing still costs a full card, so they fold into one line until asked for. */}
+      {empty.length === 0 ? null : (
+        <button
+          type="button"
+          aria-expanded={emptyExpanded}
+          onClick={() => setEmptyExpanded((expanded) => !expanded)}
+          className="flex items-center gap-1.5 self-start rounded-sm text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronRightIcon
+            aria-hidden
+            className={`size-3.5 shrink-0 transition-transform ${emptyExpanded ? "rotate-90" : ""}`}
+          />
+          Nothing found: {empty.map((section) => section.label).join(" · ")}
+        </button>
+      )}
+      {emptyExpanded ? empty.map((section) => section.node) : null}
       <p className="text-[11px] text-muted-foreground">
         {briefReachMethodLine(reach, headSha)}
       </p>

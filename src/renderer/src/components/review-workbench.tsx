@@ -51,6 +51,7 @@ import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
 } from "./review-workbench-finding-navigation";
+import type { InsightRunDialogType } from "./insight-run-dialog";
 import { countFindingsByPath } from "../review-finding-counts";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
 import { ReviewWorkbenchHeader } from "./review-workbench-header";
@@ -424,10 +425,6 @@ export function ReviewWorkbench({
     },
     [commitWorkbenchPosition],
   );
-  const findingNavigation = useMemo(
-    () => ({ openFindingInDiff, findingFocusRequest }),
-    [findingFocusRequest, openFindingInDiff],
-  );
   // The readiness card lists every counted finding; the reader lands on the first.
   const reviewFindings = useCallback(
     (findingIds: ReadonlyArray<string>): void => {
@@ -463,6 +460,63 @@ export function ReviewWorkbench({
   });
   const sincePatch =
     sinceReview.state._tag === "Ready" ? sinceReview.state.patch : undefined;
+  // A Brief's file stands for the whole represented revision, so every narrower view gives way to the full diff.
+  const leaveSinceReview = sinceReview.control?.onChange;
+  const openFileInDiff = useCallback(
+    (path: string): void => {
+      clearScopeBucket();
+      leaveSinceReview?.(false);
+      selectSection("files");
+      setSelectedThreadId(undefined);
+      setSelectedRange(undefined);
+      commitWorkbenchPosition({
+        activeTab: "diff",
+        section: "files",
+        selectedPath: path,
+      });
+      setActivePath(path);
+    },
+    [
+      clearScopeBucket,
+      commitWorkbenchPosition,
+      leaveSinceReview,
+      selectSection,
+      setActivePath,
+      setSelectedRange,
+      setSelectedThreadId,
+    ],
+  );
+  // The Insights slot unmounts while the Diff tab shows, so its reader choice lives here, keyed by session.
+  const [rememberedInsight, setRememberedInsight] = useState<
+    | { readonly sessionId: string; readonly insight: InsightRunDialogType }
+    | undefined
+  >(undefined);
+  const sessionId = model.session.id;
+  const rememberInsight = useCallback(
+    (insight: InsightRunDialogType): void =>
+      setRememberedInsight({ sessionId, insight }),
+    [sessionId],
+  );
+  const lastInsight =
+    rememberedInsight?.sessionId === sessionId
+      ? rememberedInsight.insight
+      : undefined;
+  const findingNavigation = useMemo(
+    () => ({
+      openFindingInDiff,
+      openFileInDiff,
+      findingFocusRequest,
+      lastInsight,
+      rememberInsight,
+    }),
+    [
+      findingFocusRequest,
+      lastInsight,
+      openFileInDiff,
+      openFindingInDiff,
+      rememberInsight,
+    ],
+  );
   // A commit slice and the since-review diff both show a narrower patch than the Review, so comments map back onto the full patch.
   const narrowedDiff =
     selectedCommitSha !== undefined || sincePatch !== undefined;

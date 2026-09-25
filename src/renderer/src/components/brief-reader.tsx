@@ -132,6 +132,7 @@ export function BriefReader({
   regenerateDisabled = false,
   walkthroughStatus,
   onOpenWalkthrough,
+  diffOpenerFor,
 }: {
   readonly retained: RetainedBrief;
   /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
@@ -143,6 +144,8 @@ export function BriefReader({
   readonly walkthroughStatus: BriefInsight["status"];
   /** Absent on a merged or closed Review with no current Walkthrough, where the only offer would be a run the service refuses. */
   readonly onOpenWalkthrough?: () => void;
+  /** Returns how to open a path in the Diff tab, or undefined when that Diff does not show it; absent when the Diff shows another revision. */
+  readonly diffOpenerFor?: (path: string) => (() => void) | undefined;
 }): React.JSX.Element {
   const brief = retained.value;
   return (
@@ -170,7 +173,7 @@ export function BriefReader({
           <StartHereCard
             startHere={brief.startHere}
             walkthroughStatus={walkthroughStatus}
-            {...definedProps({ onOpenWalkthrough })}
+            {...definedProps({ onOpenWalkthrough, diffOpenerFor })}
           />
         )}
         {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
@@ -222,10 +225,12 @@ function StartHereCard({
   startHere,
   walkthroughStatus,
   onOpenWalkthrough,
+  diffOpenerFor,
 }: {
   readonly startHere: BriefStartHere;
   readonly walkthroughStatus: BriefInsight["status"];
   readonly onOpenWalkthrough?: () => void;
+  readonly diffOpenerFor?: (path: string) => (() => void) | undefined;
 }): React.JSX.Element {
   return (
     <section
@@ -237,27 +242,42 @@ function StartHereCard({
         <GeneratedMarkdownInline markdown={startHere.lead} />
       </p>
       <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-xs text-muted-foreground">
-        {startHere.order.map((entry) => (
-          <li key={entry.path} className="min-w-0">
-            {/* Each segment wraps as one box, so a line breaks after a separator and file names stay whole where they fit. */}
-            <span className="font-mono text-foreground">
-              {entry.path.split("/").map((segment, index, segments) => (
-                <span
-                  key={index}
-                  className="inline-block max-w-full break-words"
-                >
-                  {index === segments.length - 1 ? segment : `${segment}/`}
-                </span>
-              ))}
+        {startHere.order.map((entry) => {
+          const open = diffOpenerFor?.(entry.path);
+          // Each segment wraps as one box, so a line breaks after a separator and file names stay whole where they fit.
+          // Text decoration does not reach into inline-block boxes, so each segment draws its own link underline.
+          const segments = entry.path.split("/").map((segment, index, all) => (
+            <span
+              key={index}
+              className={`inline-block max-w-full break-words ${open === undefined ? "" : "underline decoration-muted-foreground/50 underline-offset-2 group-hover:decoration-foreground"}`}
+            >
+              {index === all.length - 1 ? segment : `${segment}/`}
             </span>
-            {entry.why === undefined ? null : (
-              <>
-                {" "}
-                — <GeneratedMarkdownInline markdown={entry.why} />
-              </>
-            )}
-          </li>
-        ))}
+          ));
+          return (
+            <li key={entry.path} className="min-w-0">
+              {open === undefined ? (
+                <span className="font-mono text-foreground">{segments}</span>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`Open ${entry.path} in Diff`}
+                  title="Open in Diff"
+                  className="group text-left align-top font-mono text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={open}
+                >
+                  {segments}
+                </button>
+              )}
+              {entry.why === undefined ? null : (
+                <>
+                  {" "}
+                  — <GeneratedMarkdownInline markdown={entry.why} />
+                </>
+              )}
+            </li>
+          );
+        })}
       </ol>
       {onOpenWalkthrough === undefined ? null : (
         <Button
@@ -284,14 +304,27 @@ function OwnershipBlock({
   readonly ownership: BriefOwnership;
 }): React.JSX.Element {
   const tree = useMemo(() => briefOwnershipTree(ownership), [ownership]);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   return (
     <section aria-label="Shape" className="flex min-w-0 flex-col gap-2">
-      <h3 className="flex items-baseline gap-2 text-sm font-medium">
-        Shape
-        <span className="text-xs font-normal text-muted-foreground">
-          who owns what after the change
-        </span>
-      </h3>
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="flex items-baseline gap-2 text-sm font-medium">
+          Shape
+          <span className="text-xs font-normal text-muted-foreground">
+            who owns what after the change
+          </span>
+        </h3>
+        {ownership.notes.length === 0 ? null : (
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-expanded={notesExpanded}
+            onClick={() => setNotesExpanded((expanded) => !expanded)}
+          >
+            {notesExpanded ? "Shorten notes" : "Show full notes"}
+          </Button>
+        )}
+      </div>
       <div className="flex min-w-0 flex-col gap-2 rounded-md border p-3 font-mono text-xs">
         {tree.map((group) => (
           <div key={group.directory} className="flex min-w-0 flex-col">
@@ -299,7 +332,11 @@ function OwnershipBlock({
               {group.directory === "" ? "./" : group.directory}
             </span>
             {group.files.map((row) => (
-              <OwnershipRow key={row.path} row={row} />
+              <OwnershipRow
+                key={row.path}
+                row={row}
+                noteExpanded={notesExpanded}
+              />
             ))}
             {group.hidden === 0 ? null : (
               <span className="pl-4 text-muted-foreground">
@@ -316,8 +353,10 @@ function OwnershipBlock({
 /** One file of the tree. The glyph carries the status; the title spells it out. */
 function OwnershipRow({
   row,
+  noteExpanded,
 }: {
   readonly row: BriefOwnershipRow;
+  readonly noteExpanded: boolean;
 }): React.JSX.Element {
   const mark = OWNERSHIP_STATUS_MARKS[row.status];
   return (
@@ -328,7 +367,9 @@ function OwnershipRow({
       <span className={mark.className}>{mark.glyph}</span>
       <span className="shrink-0">{row.name}</span>
       {row.note === undefined ? null : (
-        <span className="min-w-0 truncate font-sans text-muted-foreground">
+        <span
+          className={`min-w-0 font-sans text-muted-foreground ${noteExpanded ? "break-words" : "truncate"}`}
+        >
           {row.note}
         </span>
       )}

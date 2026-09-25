@@ -191,6 +191,7 @@ export function InsightsSlot({
     selectedInsight,
     setSelectedInsight,
     openFindingInDiff,
+    openFileInDiff,
   } = useInsightSelection(initialDetail, workbench.insights);
   const {
     walkthroughFocused,
@@ -278,6 +279,7 @@ export function InsightsSlot({
       addFinding: onAddFinding,
       addAllFindings,
       onOpenFindingInDiff: openFindingInDiff,
+      onOpenFileInDiff: openFileInDiff,
       // The Brief points at the Walkthrough rather than duplicating it: read the current one, or start one while the Review is open.
       onOpenWalkthrough:
         workbench.insights.walkthrough.status === "current"
