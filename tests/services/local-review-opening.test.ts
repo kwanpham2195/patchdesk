@@ -99,6 +99,10 @@ async function checkout(): Promise<{
 async function opening(
   root: string,
   localPath: string | undefined,
+  seams: {
+    readonly coordinator?: ReviewOperationCoordinator;
+    readonly onResolved?: () => void;
+  } = {},
 ): Promise<LocalReviewOpening> {
   const paths = PatchdeskPaths.forTest(join(root, "app"));
   const profiles = new ProfileStore(paths);
@@ -144,9 +148,20 @@ async function opening(
     new ViewedFilesStore(paths, { write: () => undefined }),
   );
   return new LocalReviewOpening(
-    preparation,
+    {
+      resolve: async (request) => {
+        const resolved = await preparation.resolve(request);
+        seams.onResolved?.();
+        return resolved;
+      },
+      prepare: (resolved) => preparation.prepare(resolved),
+    },
     projection,
-    { reviews, artifacts, coordinator: new ReviewOperationCoordinator() },
+    {
+      reviews,
+      artifacts,
+      coordinator: seams.coordinator ?? new ReviewOperationCoordinator(),
+    },
     () => now,
   );
 }
@@ -210,6 +225,47 @@ describe("LocalReviewOpening", () => {
     expect(edited.session.id).not.toBe(first.session.id);
     expect(edited.review.id).toBe(first.review.id);
     expect(edited.fullPatch).toContain("+second");
+  });
+
+  it("moves the Review to the checkout as it is once the Review lock is free", async () => {
+    const { root, repositoryPath } = await checkout();
+    await writeFile(join(repositoryPath, "untracked.txt"), "first\n");
+    const coordinator = new ReviewOperationCoordinator();
+    let resolvedOnce: () => void = () => undefined;
+    const service = await opening(root, repositoryPath, {
+      coordinator,
+      onResolved: () => resolvedOnce(),
+    });
+    const reviewId = value(
+      await service.open({ profileId, repository, request: workingTree }),
+    ).review.id;
+    let releaseLock: () => void = () => undefined;
+    const held = coordinator.withReviewLock(
+      profileId,
+      reviewId,
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLock = resolve;
+        }),
+    );
+    const unlockedReadDone = new Promise<void>((resolve) => {
+      resolvedOnce = resolve;
+    });
+
+    const waiting = service.open({
+      profileId,
+      repository,
+      request: workingTree,
+    });
+    await unlockedReadDone;
+    // The checkout changes after the unlocked read, while this open waits for the lock.
+    await writeFile(join(repositoryPath, "untracked.txt"), "second\n");
+    releaseLock();
+    await held;
+    const opened = value(await waiting);
+
+    expect(opened.fullPatch).toContain("+second");
+    expect(opened.fullPatch).not.toContain("+first");
   });
 
   it("writes a/ and b/ paths with no colour whatever the maintainer's diff config says", async () => {

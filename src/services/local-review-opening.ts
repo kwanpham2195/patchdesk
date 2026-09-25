@@ -1,6 +1,10 @@
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { ReviewStore } from "../adapters/storage/review-store";
-import { createReviewId, type IsoTimestamp } from "../domain/ids";
+import {
+  createReviewId,
+  type IsoTimestamp,
+  type ReviewId,
+} from "../domain/ids";
 import { casesHandled, err, type Result } from "../domain/result";
 import {
   createReview,
@@ -57,23 +61,48 @@ export class LocalReviewOpening {
   async open(
     request: LocalReviewOpenRequest,
   ): Promise<Result<ReviewWorkbenchProjection, LocalReviewOpenFailure>> {
-    // Reading the source decides the Review id: a working tree is keyed by the branch `HEAD` names.
+    // A branch switch between the unlocked read and the locked one keys
+    // another Review, so the open starts once more under that Review's lock.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      // Reading the source decides the Review id: a working tree is keyed by the branch `HEAD` names.
+      const resolved = await this.preparation.resolve(request);
+      if (resolved._tag === "err")
+        return err(mapPreparationFailure(resolved.error));
+      const reviewId = createReviewId(resolved.value.identity);
+      const opened = await this.lifecycle.coordinator.withReviewLock(
+        request.profileId,
+        reviewId,
+        () => this.openLocked(request, reviewId),
+      );
+      if (opened !== undefined) return opened;
+    }
+    return err({ reason: "storage" });
+  }
+
+  /**
+   * Reads the source again and moves the Review to that session. The caller
+   * holds the Review lock for `reviewId`, because a snapshot read before the
+   * lock can be older than a session another open saved meanwhile (#451).
+   * Undefined when the checkout now keys a different Review.
+   */
+  async openLocked(
+    request: LocalReviewOpenRequest,
+    reviewId: ReviewId,
+  ): Promise<
+    Result<ReviewWorkbenchProjection, LocalReviewOpenFailure> | undefined
+  > {
     const resolved = await this.preparation.resolve(request);
     if (resolved._tag === "err")
       return err(mapPreparationFailure(resolved.error));
-    const reviewId = createReviewId(resolved.value.identity);
-    return this.lifecycle.coordinator.withReviewLock(
-      request.profileId,
-      reviewId,
-      () => this.openUnlocked(resolved.value),
-    );
+    if (createReviewId(resolved.value.identity) !== reviewId) return undefined;
+    return this.moveToSession(resolved.value, reviewId);
   }
 
-  private async openUnlocked(
+  private async moveToSession(
     resolved: ResolvedLocalReview,
+    reviewId: ReviewId,
   ): Promise<Result<ReviewWorkbenchProjection, LocalReviewOpenFailure>> {
     const { profileId } = resolved.identity;
-    const reviewId = createReviewId(resolved.identity);
     const session = await this.preparation.prepare(resolved);
     if (session._tag === "err")
       return err(mapPreparationFailure(session.error));
