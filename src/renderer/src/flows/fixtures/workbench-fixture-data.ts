@@ -417,7 +417,7 @@ export function canonicalWorkbenchModel(
         host: data.pullRequest.ref.host,
         owner: data.pullRequest.ref.owner,
         repo: data.pullRequest.ref.repo,
-        prNumber: data.pullRequest.ref.number,
+        source: { kind: "pull_request", prNumber: data.pullRequest.ref.number },
         headSha,
       },
     },

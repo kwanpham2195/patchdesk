@@ -12,6 +12,8 @@ export type GitHubOwner = Brand<string, "GitHubOwner">;
 export type GitHubRepoName = Brand<string, "GitHubRepoName">;
 export type PullRequestNumber = Brand<number, "PullRequestNumber">;
 export type GitSha = Brand<string, "GitSha">;
+/** A full or abbreviated lower-case commit SHA a maintainer typed; git resolves it to a `GitSha`. */
+export type GitShaPrefix = Brand<string, "GitShaPrefix">;
 /** A local branch short name that `git check-ref-format --branch` would accept. */
 export type LocalBranchName = Brand<string, "LocalBranchName">;
 export type ReviewId = Brand<string, "ReviewId">;
@@ -45,6 +47,7 @@ const safeSlug = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 export const GITHUB_LOGIN_MAX_LENGTH = 39;
 const hostSyntax = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
 const shaSyntax = /^[a-f0-9]{40,64}$/;
+const shaPrefixSyntax = /^[a-f0-9]{4,64}$/;
 /** The readable Review source segment: `pr-<n>` or `local-<kind>-<slug>` (ADR 0050). */
 const reviewSourceSegment = String.raw`(?:pr-[1-9]\d*|local-(?:working_tree|branch|commit)-[a-zA-Z0-9._-]+)`;
 const reviewIdSyntax = new RegExp(
@@ -145,6 +148,21 @@ export function parseGitSha(
     !shaSyntax.test(input)
   ) {
     return err({ _tag: "InvalidDomainValue", field: "gitSha" });
+  }
+
+  return ok(brand(input));
+}
+
+/** Parse a full or abbreviated commit SHA, as `git log --oneline` prints it. */
+export function parseGitShaPrefix(
+  input: unknown,
+): Result<GitShaPrefix, InvalidDomainValue> {
+  if (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw boundary input before applying the SHA prefix syntax invariant.
+    typeof input !== "string" ||
+    !shaPrefixSyntax.test(input)
+  ) {
+    return err({ _tag: "InvalidDomainValue", field: "gitShaPrefix" });
   }
 
   return ok(brand(input));

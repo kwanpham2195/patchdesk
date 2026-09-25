@@ -1,4 +1,6 @@
 import * as v from "valibot";
+
+import { reviewSourceSchema } from "./review-source";
 import {
   mergeReadinessSchema,
   parseMergeReceipt,
@@ -433,7 +435,7 @@ const workbenchSessionSchema = v.strictObject({
   key: v.strictObject({
     profileId: v.pipe(v.string(), v.minLength(1)),
     ...repositoryIdentityFields,
-    prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    source: reviewSourceSchema,
     headSha: v.pipe(v.string(), v.minLength(7)),
   }),
 });

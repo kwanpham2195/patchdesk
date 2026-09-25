@@ -110,7 +110,7 @@ describe("ReviewWorkbenchProjectionService analysis finding lock", () => {
       freshness: { _tag: "Fresh" },
     });
     if (result._tag !== "ok") throw new Error("expected an ok projection");
-    return result.value.analysisReviewActions.findings[findingId]?.state;
+    return result.value.analysisReviewActions?.findings[findingId]?.state;
   }
 
   const pending: PendingReviewState = {

@@ -2,6 +2,7 @@ import { definedProps } from "../../../domain/defined-props";
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { workbenchPullRequestNumber } from "../review-source";
 import type { CanonicalReviewOverview } from "./pr-overview-sheet";
 import type { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 import type { ReviewWorkbenchActions } from "./review-workbench";
@@ -46,7 +47,9 @@ export function buildOverview({
 }): CanonicalReviewOverview {
   return {
     repository,
-    prNumber: model.session.key.prNumber,
+    ...definedProps({
+      prNumber: workbenchPullRequestNumber(model.session.key.source),
+    }),
     title,
     summary:
       retainedAnalysis?.value.summary ??

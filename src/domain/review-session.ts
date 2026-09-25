@@ -119,3 +119,23 @@ export function createReviewSession(input: {
     }),
   };
 }
+
+/** Constructs a local session; its patch hash is the hash of the patch as written (ADR 0050). */
+export function createLocalReviewSession(input: {
+  readonly key: ReviewSessionKey<LocalReviewSource>;
+  readonly patchPath: AbsolutePath;
+  readonly canonicalPatchHash: ContentHash;
+  readonly worktree: ReviewWorktreeRef;
+  readonly createdAt: IsoTimestamp;
+}): LocalReviewSession {
+  return {
+    schemaVersion: 6,
+    id: createReviewSessionId(input.key),
+    key: input.key,
+    patchPath: input.patchPath,
+    canonicalPatchHash: input.canonicalPatchHash,
+    worktree: input.worktree,
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+  };
+}

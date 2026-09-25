@@ -331,6 +331,16 @@ export class PatchdeskPaths {
     );
   }
 
+  /** Holds the temporary index copies a Local snapshot is built in; each is removed after its snapshot. */
+  localSnapshotScratchDirectory(profileId: WorkspaceProfileId): string {
+    return join(
+      this.cacheDirectory(),
+      "profiles",
+      profileId,
+      "local-snapshots",
+    );
+  }
+
   worktreeRootDirectory(profileId: WorkspaceProfileId): string {
     return join(
       this.cacheDirectory(),

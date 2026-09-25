@@ -447,7 +447,7 @@ function createProjection(
         host: session.key.host,
         owner: session.key.owner,
         repo: session.key.repo,
-        prNumber: session.key.source.prNumber,
+        source: session.key.source,
         headSha: session.key.headSha,
       },
     },

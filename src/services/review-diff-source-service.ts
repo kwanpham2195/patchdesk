@@ -118,11 +118,10 @@ export class ReviewDiffSourceService {
       return ok({ state: "unavailable", reason: "path_unavailable" });
     }
 
-    // Full-file sources resolve through the pull request's managed refs; a local source has none yet (ADR 0050).
-    if (
-      !isPullRequestReviewSession(session.value) ||
-      session.value.pr.baseSha === undefined
-    ) {
+    // A pull request resolves through its fetched managed refs; a local
+    // session's head and base SHAs are already objects in the checkout.
+    const pullRequest = isPullRequestReviewSession(session.value);
+    if (pullRequest && session.value.pr.baseSha === undefined) {
       return ok({ state: "unavailable", reason: "revision_unavailable" });
     }
 
@@ -135,11 +134,15 @@ export class ReviewDiffSourceService {
     const newAbsent = /^\+\+\+ \/dev\/null$/m.test(rawFilePatch);
     const oldRef = oldAbsent
       ? undefined
-      : await this.resolveMergeBase(session.value);
+      : pullRequest
+        ? await this.resolveMergeBase(session.value)
+        : ok(session.value.key.baseSha);
     if (oldRef !== undefined && oldRef._tag === "err") {
       return ok({ state: "unavailable", reason: "github_read" });
     }
-    const headRef = `refs/patchdesk/reviews/${session.value.key.profileId}/${session.value.id}/head`;
+    const headRef = pullRequest
+      ? `refs/patchdesk/reviews/${session.value.key.profileId}/${session.value.id}/head`
+      : session.value.key.headSha;
     const [oldResult, newResult] = await Promise.all([
       oldRef === undefined
         ? Promise.resolve(undefined)

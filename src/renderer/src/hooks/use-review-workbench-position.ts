@@ -33,7 +33,7 @@ export function useReviewWorkbenchPosition({
   initialState,
   onPositionCommitted,
 }: {
-  readonly model: Pick<WorkbenchResponse, "commits" | "revision">;
+  readonly model: Pick<WorkbenchResponse, "commits" | "revision" | "session">;
   readonly initialState?: ReviewWorkbenchInitialState;
   readonly onPositionCommitted?: (state: WorkbenchPosition) => void;
 }): ReviewWorkbenchPositionState {
@@ -45,10 +45,12 @@ export function useReviewWorkbenchPosition({
   // A Review with no saved position opens on Conversation: the description and
   // the discussion are what a reviewer reads before any code. A Review that
   // carries a position reopens exactly where it was left, so this fallback
-  // only decides the very first visit.
+  // only decides the very first visit. A local Review has no Conversation.
+  const openingTab: WorkbenchActiveTab =
+    model.session.key.source.kind === "pull_request" ? "conversation" : "diff";
   const [activeTab, setActiveTab] = useState<WorkbenchActiveTab>(
     initialState?.activeTab ??
-      (initialState?.section === "insights" ? "insights" : "conversation"),
+      (initialState?.section === "insights" ? "insights" : openingTab),
   );
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
     initialState?.selectedPath,
@@ -134,7 +136,7 @@ export function useReviewWorkbenchPosition({
     setSelectedPath(undefined);
     setActivePath(undefined);
     setSection("files");
-    setActiveTab("conversation");
+    setActiveTab(openingTab);
   }
   return {
     section,

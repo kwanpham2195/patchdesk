@@ -16,6 +16,7 @@ import {
   type MergeReceipt,
   type WorkbenchResponse,
 } from "../renderer-contracts";
+import { workbenchPullRequestNumber } from "../review-source";
 import type { RunDirectCommand } from "./use-review-observation";
 
 function pullRequestExternalRef(
@@ -24,7 +25,9 @@ function pullRequestExternalRef(
   const host = parseGitHubHost(model.session.key.host);
   const owner = parseGitHubOwner(model.session.key.owner);
   const repo = parseGitHubRepoName(model.session.key.repo);
-  const number = parsePullRequestNumber(model.session.key.prNumber);
+  const number = parsePullRequestNumber(
+    workbenchPullRequestNumber(model.session.key.source),
+  );
   if (
     host._tag === "err" ||
     owner._tag === "err" ||
@@ -70,11 +73,13 @@ export function useReviewMergeAction({
   const [confirmedRefreshRequired, setConfirmedRefreshRequired] =
     useState(false);
   const externalPullRequest = pullRequestExternalRef(workbench);
+  // A local Review cannot merge; only a pull request has a number to merge.
   const mergeActionBase =
-    (workbench.review.status === "open" &&
+    externalPullRequest !== undefined &&
+    ((workbench.review.status === "open" &&
       workbench.revision.freshness === "fresh" &&
       workbench.revision.patchHash !== undefined) ||
-    (workbench.review.status === "merged" && confirmedRefreshRequired)
+      (workbench.review.status === "merged" && confirmedRefreshRequired))
       ? {
           // SAFETY: the workbench projection's `mergeReadiness` is the wire
           // serialization of a domain `MergeReadiness` value that only ever
@@ -85,10 +90,10 @@ export function useReviewMergeAction({
           readiness: workbench.mergeReadiness as MergeReadiness,
           context: {
             repo: `${workbench.session.key.owner}/${workbench.session.key.repo}`,
-            prNumber: workbench.session.key.prNumber,
+            prNumber: externalPullRequest.number,
             title:
               workbench.pullRequest?.title ??
-              `Pull request #${workbench.session.key.prNumber}`,
+              `Pull request #${externalPullRequest.number}`,
             base: workbench.pullRequest?.baseBranch ?? "unknown",
             head: workbench.pullRequest?.headBranch ?? "unknown",
             headSha: workbench.revision.reviewedHeadSha,

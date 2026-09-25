@@ -24,6 +24,7 @@ import type {
 } from "../domain/ids";
 import type { ReviewLocalCheckoutWarning } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
 
 export type GitReadExecutor = {
@@ -160,6 +161,93 @@ export class ReviewWorktreeService {
         warning: "local_checkout_unavailable",
       });
     }
+    const checkedOut = await this.checkOutManagedHead({
+      repositoryPath,
+      profileId: input.profileId,
+      sessionId: input.sessionId,
+      localPath: input.localPath,
+      headRef,
+      markerRefs: { baseRef, headRef },
+      ...definedProps({ replaceExisting: input.replaceExisting }),
+    });
+    if (checkedOut._tag === "ok")
+      return ok({ mode: "worktree", path: checkedOut.value, baseRef, headRef });
+    // The existing worktree still stands when only its replacement failed.
+    if (checkedOut.error === "replace_failed")
+      return err({ _tag: "WorktreeStorageUnavailable" });
+    await this.deleteManagedRef(repositoryPath, baseRef);
+    await this.deleteManagedRef(repositoryPath, headRef);
+    return checkedOut.error === "worktree_add_failed"
+      ? ok({ mode: "metadata_only", warning: "local_checkout_unavailable" })
+      : err({ _tag: "WorktreeStorageUnavailable" });
+  }
+
+  /**
+   * Pins a local source's head SHA under `refs/patchdesk/local/` and checks
+   * it out detached under the app cache (ADR 0050). Unlike a pull request,
+   * a local source cannot fall back to a metadata-only Review: the checkout
+   * it failed to read is the source itself.
+   */
+  async prepareLocal(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly sessionId: ReviewSessionId;
+    readonly localPath: string;
+    readonly headSha: GitSha;
+  }): Promise<Result<{ readonly path: string }, WorktreeFailure>> {
+    let repositoryPath: string;
+    try {
+      repositoryPath = await realpath(input.localPath);
+    } catch {
+      return err({ _tag: "GitWorktreeFailed" });
+    }
+    const headRef = localSessionHeadRef(input.profileId, input.sessionId);
+    const pinned = await this.git.run([
+      "git",
+      "-C",
+      repositoryPath,
+      "update-ref",
+      headRef,
+      input.headSha,
+    ]);
+    if (pinned._tag === "err") return err({ _tag: "GitWorktreeFailed" });
+    const checkedOut = await this.checkOutManagedHead({
+      repositoryPath,
+      profileId: input.profileId,
+      sessionId: input.sessionId,
+      localPath: input.localPath,
+      headRef,
+      markerRefs: { headRef },
+    });
+    if (checkedOut._tag === "ok") return ok({ path: checkedOut.value });
+    await this.deleteManagedRef(repositoryPath, headRef);
+    return err({
+      _tag:
+        checkedOut.error === "worktree_add_failed"
+          ? "GitWorktreeFailed"
+          : "WorktreeStorageUnavailable",
+    });
+  }
+
+  /**
+   * The one owner of `git worktree add --detach` and the ownership marker for
+   * both source kinds. A worktree whose marker already names this session is
+   * reused. The caller deletes its managed refs when this fails.
+   */
+  private async checkOutManagedHead(input: {
+    readonly repositoryPath: string;
+    readonly profileId: WorkspaceProfileId;
+    readonly sessionId: ReviewSessionId;
+    readonly localPath: string;
+    readonly headRef: string;
+    readonly markerRefs: {
+      readonly baseRef?: string;
+      readonly headRef: string;
+    };
+    readonly replaceExisting?: boolean;
+  }): Promise<
+    Result<string, "worktree_add_failed" | "replace_failed" | "storage">
+  > {
+    const { repositoryPath } = input;
     const path = this.paths.worktreeDirectory(input.profileId, input.sessionId);
     let existing = await this.matchesMetadata(
       path,
@@ -173,81 +261,66 @@ export class ReviewWorktreeService {
         targetPath: path,
         localPath: input.localPath,
       });
-      if (removed._tag === "err")
-        return err({ _tag: "WorktreeStorageUnavailable" });
+      if (removed._tag === "err") return err("replace_failed");
       existing = false;
     }
-    if (!existing) {
-      try {
-        await mkdir(dirname(path), { recursive: true });
-      } catch {
-        // Nothing was created on disk yet — a filesystem failure here is a
-        // storage problem, not a reason to degrade the Review, so this fails
-        // closed instead of falling back to metadata-only.
-        await this.deleteManagedRef(repositoryPath, baseRef);
-        await this.deleteManagedRef(repositoryPath, headRef);
-        return err({ _tag: "WorktreeStorageUnavailable" });
-      }
-      // A stale worktree registration can block the fresh `add` call; clear it
-      // first so the user never has to clean it up by hand.
-      await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
-      const added = await this.git.run([
-        "git",
-        "-C",
-        repositoryPath,
-        "worktree",
-        "add",
-        "--detach",
-        path,
-        headRef,
-      ]);
-      if (added._tag === "err") {
-        await this.deleteManagedRef(repositoryPath, baseRef);
-        await this.deleteManagedRef(repositoryPath, headRef);
-        return ok({
-          mode: "metadata_only",
-          warning: "local_checkout_unavailable",
-        });
-      }
-      try {
-        await mkdir(path, { recursive: true });
-        // Deliberately not `writeAtomicFile` (M5): this marker lives inside a
-        // git worktree, where `git worktree remove` refuses to run over any
-        // untracked file. This code already knows to `unlink(joinMetadata(path))`
-        // by its fixed name before removing the worktree; a temp-then-rename
-        // write would risk leaving a randomly-named `.tmp` sibling behind on a
-        // crash that this cleanup path can't find by name, newly blocking
-        // `git worktree remove` in a way plain `writeFile` never could. A
-        // write that throws here is already handled: `matchesMetadata`'s
-        // JSON.parse fails closed, and the `catch` below calls
-        // `removeCreatedWorktree`/`cleanup` to tear down the whole worktree.
-        // A crash mid-write is not the same case: nothing runs to tear the
-        // worktree down then. Atomicity would not help there either -- a
-        // crash during the write itself leaves no marker under either
-        // scheme -- and it would add a new failure mode of its own: an
-        // orphaned `.tmp` file in a directory that must stay clean of
-        // anything Git doesn't expect.
-        await writeFile(
-          joinMetadata(path),
-          JSON.stringify({
-            profileId: input.profileId,
-            sessionId: input.sessionId,
-            baseRef,
-            headRef,
-          }),
-          "utf8",
-        );
-      } catch {
-        // The worktree registration exists but its ownership marker doesn't:
-        // `cleanup` can never prove ownership of it, so it must be removed
-        // here, before returning, or it leaks forever.
-        await this.removeCreatedWorktree(repositoryPath, path);
-        await this.deleteManagedRef(repositoryPath, baseRef);
-        await this.deleteManagedRef(repositoryPath, headRef);
-        return err({ _tag: "WorktreeStorageUnavailable" });
-      }
+    if (existing) return ok(path);
+    try {
+      await mkdir(dirname(path), { recursive: true });
+    } catch {
+      // Nothing was created on disk yet — a filesystem failure here is a
+      // storage problem, not a reason to degrade the Review.
+      return err("storage");
     }
-    return ok({ mode: "worktree", path, baseRef, headRef });
+    // A stale worktree registration can block the fresh `add` call; clear it
+    // first so the user never has to clean it up by hand.
+    await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
+    const added = await this.git.run([
+      "git",
+      "-C",
+      repositoryPath,
+      "worktree",
+      "add",
+      "--detach",
+      path,
+      input.headRef,
+    ]);
+    if (added._tag === "err") return err("worktree_add_failed");
+    try {
+      await mkdir(path, { recursive: true });
+      // Deliberately not `writeAtomicFile` (M5): this marker lives inside a
+      // git worktree, where `git worktree remove` refuses to run over any
+      // untracked file. This code already knows to `unlink(joinMetadata(path))`
+      // by its fixed name before removing the worktree; a temp-then-rename
+      // write would risk leaving a randomly-named `.tmp` sibling behind on a
+      // crash that this cleanup path can't find by name, newly blocking
+      // `git worktree remove` in a way plain `writeFile` never could. A
+      // write that throws here is already handled: `matchesMetadata`'s
+      // JSON.parse fails closed, and the `catch` below calls
+      // `removeCreatedWorktree` to tear down the whole worktree.
+      // A crash mid-write is not the same case: nothing runs to tear the
+      // worktree down then. Atomicity would not help there either -- a
+      // crash during the write itself leaves no marker under either
+      // scheme -- and it would add a new failure mode of its own: an
+      // orphaned `.tmp` file in a directory that must stay clean of
+      // anything Git doesn't expect.
+      await writeFile(
+        joinMetadata(path),
+        JSON.stringify({
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          ...input.markerRefs,
+        }),
+        "utf8",
+      );
+    } catch {
+      // The worktree registration exists but its ownership marker doesn't:
+      // `cleanup` can never prove ownership of it, so it must be removed
+      // here, before returning, or it leaks forever.
+      await this.removeCreatedWorktree(repositoryPath, path);
+      return err("storage");
+    }
+    return ok(path);
   }
 
   /**
@@ -379,6 +452,14 @@ export class ReviewWorktreeService {
       return false;
     }
   }
+}
+
+/** The managed ref a local session's head is pinned under (ADR 0050 "The Local snapshot"). */
+function localSessionHeadRef(
+  profileId: WorkspaceProfileId,
+  sessionId: ReviewSessionId,
+): string {
+  return `refs/patchdesk/local/${profileId}/${sessionId}/head`;
 }
 
 function joinMetadata(path: string): string {

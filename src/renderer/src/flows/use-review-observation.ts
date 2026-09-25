@@ -142,6 +142,8 @@ export function useReviewObservation({
   const runDetect = useCallback(async (): Promise<void> => {
     const wb = workbenchRef.current;
     if (wb.review.status !== "open") return;
+    // Detection reads GitHub; a local Review's freshness is decided when it is read (ADR 0050).
+    if (wb.session.key.source.kind !== "pull_request") return;
     if (document.visibilityState !== "visible") return;
     const generation = generationRef.current;
     if (

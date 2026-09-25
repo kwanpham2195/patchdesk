@@ -117,6 +117,10 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["revision_conflict", 409],
   ["operation_active", 409],
   ["operation_expired", 404],
+  // A local Review source: the repository has no checkout in the profile, or git has no such revision.
+  ["repository_not_local", 404],
+  ["revision_not_found", 404],
+  ["unmerged_index", 409],
   ["stale_head", 409],
   ["terminal", 409],
   // A caller abandoned a provider activation. The request-owning renderer

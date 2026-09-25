@@ -14,6 +14,7 @@ import {
   pullRequestPageUrl,
 } from "../external-links";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { workbenchPullRequestNumber } from "../review-source";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { blockedMergeChip, mergeBlockerLabels } from "./merge-readiness-items";
@@ -73,13 +74,18 @@ export function ReviewWorkbenchHeader({
     blockedChip?.accessibleName ?? mergeText.toLowerCase();
   // GitHub stops reporting checks once a pull request is merged or closed, so an unknown result there is expected, not a warning.
   const showChecksChip = !(terminal && model.checks.overall === "unknown");
+  // A local Review has no pull request: no checks, merge, GitHub link, or Refresh until #452.
+  const pullRequestNumber = workbenchPullRequestNumber(
+    model.session.key.source,
+  );
+  const local = pullRequestNumber === undefined;
   return (
     <header
       data-review-workbench-toolbar
       className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-3"
     >
       <h1 className="min-w-0 text-lg font-semibold" title={title}>
-        #{model.session.key.prNumber} {title}
+        {local ? title : `#${pullRequestNumber} ${title}`}
       </h1>
       {/* Chips always take their own row so the header keeps one layout for every PR state and title length. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -101,7 +107,7 @@ export function ReviewWorkbenchHeader({
               <ScopeGauge scope={model.scope} size="mini" />
             </span>
           )}
-          {showChecksChip ? (
+          {showChecksChip && !local ? (
             <Button
               variant="outline"
               size="xs"
@@ -116,39 +122,43 @@ export function ReviewWorkbenchHeader({
               {checksText}
             </Button>
           ) : null}
-          <Button
-            variant="outline"
-            size="xs"
-            className={cn(
-              "hover:bg-destructive/20 hover:text-destructive",
-              mergePillColor(mergeStatus),
-            )}
-            onClick={() => openOverview("merge_readiness")}
-            aria-label={`Open PR overview: merge ${mergeAccessibleName}`}
-          >
-            {mergeIcon(mergeStatus)}
-            Merge · {mergeText}
-          </Button>
+          {local ? null : (
+            <Button
+              variant="outline"
+              size="xs"
+              className={cn(
+                "hover:bg-destructive/20 hover:text-destructive",
+                mergePillColor(mergeStatus),
+              )}
+              onClick={() => openOverview("merge_readiness")}
+              aria-label={`Open PR overview: merge ${mergeAccessibleName}`}
+            >
+              {mergeIcon(mergeStatus)}
+              Merge · {mergeText}
+            </Button>
+          )}
         </div>
         <div
           className="flex flex-wrap items-center gap-2"
           role="group"
           aria-label="Pull request actions"
         >
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={externalPullRequest === undefined}
-            onClick={() => {
-              if (externalPullRequest !== undefined)
-                void openPullRequestExternalUrl(
-                  pullRequestPageUrl(externalPullRequest).toString(),
-                  externalPullRequest,
-                );
-            }}
-          >
-            <ExternalLink data-icon="inline-start" /> Open on GitHub
-          </Button>
+          {local ? null : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={externalPullRequest === undefined}
+              onClick={() => {
+                if (externalPullRequest !== undefined)
+                  void openPullRequestExternalUrl(
+                    pullRequestPageUrl(externalPullRequest).toString(),
+                    externalPullRequest,
+                  );
+              }}
+            >
+              <ExternalLink data-icon="inline-start" /> Open on GitHub
+            </Button>
+          )}
           {externalPullRequest === undefined || terminal ? null : (
             <WatchPullRequestButton
               pullRequest={externalPullRequest}
@@ -157,7 +167,7 @@ export function ReviewWorkbenchHeader({
               onTerminalRefusal={() => void actions.detectUpdates()}
             />
           )}
-          {actions.pendingReview === undefined || terminal ? null : (
+          {actions.pendingReview === undefined || terminal || local ? null : (
             <PendingReviewHeaderAction
               pendingReview={actions.pendingReview}
               onOpenSummary={() => setSummaryDialogOpen(true)}
@@ -192,10 +202,16 @@ export function ReviewWorkbenchHeader({
       <div className="flex min-h-6 items-center gap-1">
         <p
           className="text-xs text-muted-foreground"
-          title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}
+          title={
+            local
+              ? repository
+              : `${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`
+          }
         >
-          {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
-          {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
+          {repository} ·{" "}
+          {local
+            ? null
+            : `${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"} · `}
           {model.revision.reviewedHeadSha.slice(0, 8)}
           {/* A merged or closed Review is never refreshed, so its freshness and updates notice would only age. */}
           {terminal ? null : (
@@ -217,7 +233,7 @@ export function ReviewWorkbenchHeader({
             </span>
           ) : null}
         </p>
-        {terminal ? null : (
+        {terminal || local ? null : (
           // A renderer reload loads the stored projection; only the explicit
           // refresh action replaces represented GitHub state.
           <Button

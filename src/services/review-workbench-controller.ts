@@ -18,6 +18,7 @@ import {
 } from "../domain/ids";
 import {
   createReview,
+  isLocalReview,
   markReviewLeft,
   markReviewOpened,
 } from "../domain/review";
@@ -478,6 +479,18 @@ export class ReviewWorkbenchController {
   private async projectStableUnlocked(
     review: Review,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    // A local Review has no GitHub snapshot or observation journal; it projects its session alone.
+    if (isLocalReview(review)) {
+      const projected = await this.projection.loadLocal({
+        profileId: review.identity.profileId,
+        sessionId: review.currentSessionId,
+        refreshedAt: review.updatedAt,
+        freshness: review.freshness,
+      });
+      return projected._tag === "err"
+        ? err(mapProjectionFailure(projected.error))
+        : projected;
+    }
     const journal = await this.lifecycle.journals.load(
       review.identity.profileId,
       review.id,
