@@ -69,7 +69,7 @@ export function renderChangeIntentSection(
   const source =
     resolved.intent.kind === "text"
       ? "text entered by the maintainer"
-      : `spec file \`${resolved.intent.path}\` in the Local snapshot`;
+      : `spec file \`${resolved.intent.path}\` at the reviewed revision`;
   return [
     CHANGE_INTENT_HEADING,
     "",

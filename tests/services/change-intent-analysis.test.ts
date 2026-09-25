@@ -161,7 +161,7 @@ describe("Change intent in an Analysis run", () => {
     expect(await review.run()).toMatchObject({ status: "completed" });
 
     expect(review.reviewInputs[0]).toContain(
-      "Source: spec file `spec.md` in the Local snapshot\n\nBEGIN CHANGE INTENT\nGoal: add a guard.\nEND CHANGE INTENT",
+      "Source: spec file `spec.md` at the reviewed revision\n\nBEGIN CHANGE INTENT\nGoal: add a guard.\nEND CHANGE INTENT",
     );
     expect(review.reviewInputs[0]).not.toContain("remove the guard");
     expect((await review.retainedAnalysis())?.changeIntent).toEqual({
