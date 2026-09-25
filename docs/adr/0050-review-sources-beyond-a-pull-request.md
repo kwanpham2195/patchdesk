@@ -1,5 +1,10 @@
 # Review sources beyond a pull request
 
+> **Superseded in part by ADR 0051** (2026-09-25): Commit, Push, Open PR, and
+> the Handoff section are not built; local review is for reviewing a coding
+> agent's work, and Local drafts are copied to the agent as a prompt. The
+> sections below are kept as decided.
+>
 > **Status: Accepted** (2026-09-25). Implemented by #449-#456. Adds a second Review source beside the pull request.
 > Extends ADR 0035 (durable intent, outcome-unknown lock, read-only
 > reconciliation) to four new write kinds, three of them git writes. ADR 0014
