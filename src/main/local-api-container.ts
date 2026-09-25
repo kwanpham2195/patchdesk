@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { buildLocalApiStores, type LocalApiStores } from "./local-api-stores";
 import { createAvatarFetcher } from "./avatar-fetcher";
 import {
@@ -55,6 +57,7 @@ import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { LocalReviewOpening } from "../services/local-review-opening";
 import { LocalApplyService } from "../services/local-apply-service";
 import { LocalDraftService } from "../services/local-draft-service";
+import { createLocalNoteId } from "../domain/ids";
 import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
@@ -547,6 +550,7 @@ export async function buildLocalApiContainer(
         insights,
         coordinator: reviewOperations,
         now: systemNow,
+        createNoteId: () => createLocalNoteId(randomUUID()),
       }),
       retainedInsights: insights,
       reviewDiffSources,

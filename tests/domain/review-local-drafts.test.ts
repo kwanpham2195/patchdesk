@@ -10,15 +10,21 @@ import {
   parseInsightRunId,
   parseIsoTimestamp,
   parseLocalBranchName,
+  parseLocalNoteId,
   parsePullRequestNumber,
   parseRepoRelativePath,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
-import type { LocalDraft } from "../../src/domain/local-draft";
+import type {
+  FindingDraft,
+  LocalDraft,
+  MaintainerNote,
+} from "../../src/domain/local-draft";
 import type { Result } from "../../src/domain/result";
 import {
   addLocalDraft,
   createReview,
+  editMaintainerNote,
   parseReview,
   removeLocalDraft,
   serializeReview,
@@ -66,7 +72,7 @@ function localReview(): Review<LocalReviewSource> {
   });
 }
 
-function draft(findingId: string): LocalDraft {
+function draft(findingId: string): FindingDraft {
   return {
     findingId: must(parseFindingId(findingId)),
     analysisRunId: runId,
@@ -84,6 +90,31 @@ function draft(findingId: string): LocalDraft {
     comment: "The loop reads one element past the end.",
     suggestion: { code: "  for (let i = 0; i < n; i += 1) {" },
     addedAt,
+  };
+}
+
+const noteId = must(parseLocalNoteId("note-1"));
+
+function note(text: string): MaintainerNote {
+  return {
+    author: "maintainer",
+    noteId,
+    sessionId: localReview().currentSessionId,
+    anchor: {
+      path: must(parseRepoRelativePath("src/sum.ts")),
+      side: "new",
+      startLine: 2,
+      line: 3,
+      selectedLines: [
+        "  let total = 0;",
+        "  for (let i = 0; i <= n; i += 1) {",
+      ],
+      before: ["export function sum(n: number) {"],
+      after: ["    total += i;", "  }"],
+    },
+    text,
+    createdAt: addedAt,
+    updatedAt: addedAt,
   };
 }
 
@@ -123,9 +154,7 @@ describe("Local drafts on a Review", () => {
       ),
     );
 
-    expect(one.localDrafts?.map((entry) => entry.findingId)).toEqual([
-      "finding-name",
-    ]);
+    expect(one.localDrafts).toEqual([draft("finding-name")]);
     expect(none).not.toHaveProperty("localDrafts");
     expect(serializeReview(none)).not.toHaveProperty("localDrafts");
   });
@@ -147,8 +176,52 @@ describe("Local drafts on a Review", () => {
     ).toBe(review);
   });
 
-  it("round-trips a local Review's drafts through its stored form", () => {
-    const review = added(localReview(), draft("finding-bound"));
+  it("edits a maintainer note's text and keeps the Finding draft beside it unchanged", () => {
+    const review = added(
+      added(localReview(), draft("finding-bound")),
+      note("Name this total."),
+    );
+
+    const edited = must(
+      editMaintainerNote(review, {
+        noteId,
+        text: "Rename total to sum.",
+        updatedAt: removedAt,
+      }),
+    );
+
+    expect(edited.localDrafts).toEqual([
+      draft("finding-bound"),
+      { ...note("Rename total to sum."), updatedAt: edited.updatedAt },
+    ]);
+    expect(Date.parse(edited.updatedAt)).toBeGreaterThan(
+      Date.parse(review.updatedAt),
+    );
+    expect(
+      editMaintainerNote(edited, {
+        noteId: must(parseLocalNoteId("note-gone")),
+        text: "Anything",
+        updatedAt: removedAt,
+      }),
+    ).toEqual({ _tag: "err", error: { _tag: "NoteNotFound" } });
+  });
+
+  it("removes a maintainer note by its id", () => {
+    const review = added(
+      added(localReview(), draft("finding-bound")),
+      note("Name this total."),
+    );
+
+    const removed = must(removeLocalDraft(review, { noteId }, removedAt));
+
+    expect(removed.localDrafts).toEqual([draft("finding-bound")]);
+  });
+
+  it("round-trips a local Review's Finding draft and maintainer note through its stored form", () => {
+    const review = added(
+      added(localReview(), draft("finding-bound")),
+      note("Name this total."),
+    );
     const stored = structuredClone(serializeReview(review));
 
     expect(parseReview(stored)).toEqual({ _tag: "ok", value: review });
@@ -167,6 +240,19 @@ describe("Local drafts on a Review", () => {
       { ...entry, anchor: { ...entry.anchor, startLine: 4, line: 3 } },
     ],
     ["an empty suggestion", { ...entry, suggestion: { code: "" } }],
+    [
+      "a Finding draft marked as a maintainer's",
+      { ...entry, author: "maintainer" },
+    ],
+    ["a note with blank text", { ...structuredClone(note("  \n ")) }],
+    [
+      "a note with an unknown field",
+      { ...structuredClone(note("Keep")), title: "Extra" },
+    ],
+    [
+      "a note without its id",
+      (({ noteId: _id, ...rest }) => rest)(structuredClone(note("Keep"))),
+    ],
   ])("refuses a stored Review with %s", (_case, corrupt) => {
     expect(parseReview({ ...stored, localDrafts: [corrupt] })).toEqual({
       _tag: "err",

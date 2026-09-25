@@ -42,6 +42,7 @@ import {
   annotationsInPatch,
   buildAnnotations,
   buildConversationAnnotations,
+  buildLocalNoteAnnotations,
   buildPendingReviewAnnotations,
   buildReadOnlyConversationAnnotations,
   type MappedFinding,
@@ -206,6 +207,7 @@ function createHeadSideCommentAuthoring(
   };
   return {
     enabled: true,
+    ...definedProps({ kind: base.kind }),
     canAuthor: (location) => fullPatchAnchor(location) !== undefined,
     onSelectionChange: (location) => {
       if (fullPatchAnchor(location) !== undefined)
@@ -593,9 +595,22 @@ export function ReviewWorkbench({
       ),
     [conversationAnnotations, pendingReviewAnnotations],
   );
+  const { localDrafts, session } = model;
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
-    () => buildAnnotations(findings, conversationThreadEntries),
-    [conversationThreadEntries, findings],
+    () => [
+      ...buildAnnotations(findings, conversationThreadEntries),
+      ...buildLocalNoteAnnotations(
+        { localDrafts, session },
+        actions.localNotes,
+      ),
+    ],
+    [
+      actions.localNotes,
+      conversationThreadEntries,
+      findings,
+      localDrafts,
+      session,
+    ],
   );
   const sinceAnnotations = useMemo(
     () =>

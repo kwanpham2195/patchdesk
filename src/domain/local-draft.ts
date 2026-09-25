@@ -6,11 +6,13 @@ import {
   parseFindingId,
   parseInsightRunId,
   parseIsoTimestamp,
+  parseLocalNoteId,
   parseRepoRelativePath,
   parseReviewSessionId,
   type FindingId,
   type InsightRunId,
   type IsoTimestamp,
+  type LocalNoteId,
   type ReviewSessionId,
 } from "./ids";
 import { err, ok, type Result } from "./result";
@@ -20,9 +22,9 @@ import type { FindingSuggestedReplacement } from "./review-result";
  * One Finding a maintainer added to a local Review's draft list (ADR 0050
  * "Local drafts"), kept readable without the Analysis it came from: the
  * anchor fingerprint to map it into a later patch, and the comment and
- * suggestion the agent prompt carries.
+ * suggestion the agent prompt carries. Not editable.
  */
-export type LocalDraft = {
+export type FindingDraft = {
   readonly findingId: FindingId;
   readonly analysisRunId: InsightRunId;
   /** The session whose patch the anchor was fingerprinted against. */
@@ -36,43 +38,90 @@ export type LocalDraft = {
   readonly addedAt: IsoTimestamp;
 };
 
-/** What the workbench lists for one Local draft; the comment and suggestion stay in the main process. */
-export type LocalDraftEntry = {
-  readonly findingId: FindingId;
-  readonly analysisRunId: InsightRunId;
+/** A note the maintainer wrote on diff lines of a local Review (ADR 0051); the maintainer may edit its text. */
+export type MaintainerNote = {
+  readonly author: "maintainer";
+  readonly noteId: LocalNoteId;
+  /** The session whose patch the anchor was fingerprinted against. */
   readonly sessionId: ReviewSessionId;
-  readonly path: string;
-  readonly side: "new" | "old";
-  readonly startLine: number;
-  readonly line: number;
-  readonly title: string;
-  readonly suggests: boolean;
+  readonly anchor: ReviewAnchorFingerprint;
+  readonly text: string;
+  readonly createdAt: IsoTimestamp;
+  readonly updatedAt: IsoTimestamp;
 };
+
+/** One entry of a local Review's Local draft list: feedback for the coding agent. */
+export type LocalDraft = FindingDraft | MaintainerNote;
+
+/** What names one Local draft for removal: its Finding, or its note id. */
+export type LocalDraftTarget =
+  | { readonly runId: InsightRunId; readonly findingId: FindingId }
+  | { readonly noteId: LocalNoteId };
+
+/** What the workbench lists for one Local draft. A Finding draft's comment and suggestion stay in the main process; a note's text is shown and edited inline. */
+export type LocalDraftEntry =
+  | {
+      readonly kind: "finding";
+      readonly findingId: FindingId;
+      readonly analysisRunId: InsightRunId;
+      readonly sessionId: ReviewSessionId;
+      readonly path: string;
+      readonly side: "new" | "old";
+      readonly startLine: number;
+      readonly line: number;
+      readonly title: string;
+      readonly suggests: boolean;
+    }
+  | {
+      readonly kind: "note";
+      readonly noteId: LocalNoteId;
+      readonly sessionId: ReviewSessionId;
+      readonly path: string;
+      readonly side: "new" | "old";
+      readonly startLine: number;
+      readonly line: number;
+      readonly text: string;
+    };
 
 export type InvalidLocalDraft = { readonly _tag: "InvalidLocalDraft" };
 
+/** GitHub's comment body limit; a note is feedback of the same kind. */
+export const MAX_MAINTAINER_NOTE_LENGTH = 65_536;
+
 const lineNumber = v.pipe(v.number(), v.integer(), v.minValue(1));
 const nonEmpty = v.pipe(v.string(), v.minLength(1));
-
-/** The stored form of one Local draft; unknown fields are refused. */
-export const storedLocalDraftSchema = v.strictObject({
-  findingId: nonEmpty,
-  analysisRunId: nonEmpty,
-  sessionId: nonEmpty,
-  anchor: v.strictObject({
-    path: nonEmpty,
-    side: v.picklist(["new", "old"]),
-    startLine: lineNumber,
-    line: lineNumber,
-    selectedLines: v.array(v.string()),
-    before: v.array(v.string()),
-    after: v.array(v.string()),
-  }),
-  title: nonEmpty,
-  comment: nonEmpty,
-  suggestion: v.optional(v.strictObject({ code: nonEmpty })),
-  addedAt: nonEmpty,
+const storedAnchorSchema = v.strictObject({
+  path: nonEmpty,
+  side: v.picklist(["new", "old"]),
+  startLine: lineNumber,
+  line: lineNumber,
+  selectedLines: v.array(v.string()),
+  before: v.array(v.string()),
+  after: v.array(v.string()),
 });
+
+/** The stored form of one Local draft; unknown fields are refused. A Finding draft has no `author`. */
+export const storedLocalDraftSchema = v.union([
+  v.strictObject({
+    findingId: nonEmpty,
+    analysisRunId: nonEmpty,
+    sessionId: nonEmpty,
+    anchor: storedAnchorSchema,
+    title: nonEmpty,
+    comment: nonEmpty,
+    suggestion: v.optional(v.strictObject({ code: nonEmpty })),
+    addedAt: nonEmpty,
+  }),
+  v.strictObject({
+    author: v.literal("maintainer"),
+    noteId: nonEmpty,
+    sessionId: nonEmpty,
+    anchor: storedAnchorSchema,
+    text: v.pipe(v.string(), v.maxLength(MAX_MAINTAINER_NOTE_LENGTH)),
+    createdAt: nonEmpty,
+    updatedAt: nonEmpty,
+  }),
+]);
 
 type StoredLocalDraft = v.InferOutput<typeof storedLocalDraftSchema>;
 
@@ -82,55 +131,118 @@ export function parseStoredLocalDrafts(
 ): Result<ReadonlyArray<LocalDraft>, InvalidLocalDraft> {
   const drafts: LocalDraft[] = [];
   for (const entry of raw) {
-    const findingId = parseFindingId(entry.findingId);
-    const analysisRunId = parseInsightRunId(entry.analysisRunId);
-    const sessionId = parseReviewSessionId(entry.sessionId);
-    const path = parseRepoRelativePath(entry.anchor.path);
-    const addedAt = parseIsoTimestamp(entry.addedAt);
-    if (
-      findingId._tag === "err" ||
-      analysisRunId._tag === "err" ||
-      sessionId._tag === "err" ||
-      path._tag === "err" ||
-      addedAt._tag === "err" ||
-      entry.anchor.line < entry.anchor.startLine
-    )
-      return err({ _tag: "InvalidLocalDraft" });
-    drafts.push({
-      findingId: findingId.value,
-      analysisRunId: analysisRunId.value,
-      sessionId: sessionId.value,
-      anchor: { ...entry.anchor, path: path.value },
-      title: entry.title,
-      comment: entry.comment,
-      ...definedProps({ suggestion: entry.suggestion }),
-      addedAt: addedAt.value,
-    });
+    const draft = parseStoredLocalDraft(entry);
+    if (draft === undefined) return err({ _tag: "InvalidLocalDraft" });
+    drafts.push(draft);
   }
   return ok(drafts);
 }
 
-/** A draft is keyed by the Finding it came from: one Analysis run and one Finding id. */
+function parseStoredLocalDraft(
+  entry: StoredLocalDraft,
+): LocalDraft | undefined {
+  const sessionId = parseReviewSessionId(entry.sessionId);
+  const path = parseRepoRelativePath(entry.anchor.path);
+  if (
+    sessionId._tag === "err" ||
+    path._tag === "err" ||
+    entry.anchor.line < entry.anchor.startLine
+  )
+    return undefined;
+  const anchor = { ...entry.anchor, path: path.value };
+  if ("author" in entry) {
+    const noteId = parseLocalNoteId(entry.noteId);
+    const text = parseMaintainerNoteText(entry.text);
+    const createdAt = parseIsoTimestamp(entry.createdAt);
+    const updatedAt = parseIsoTimestamp(entry.updatedAt);
+    if (
+      noteId._tag === "err" ||
+      text._tag === "err" ||
+      createdAt._tag === "err" ||
+      updatedAt._tag === "err"
+    )
+      return undefined;
+    return {
+      author: "maintainer",
+      noteId: noteId.value,
+      sessionId: sessionId.value,
+      anchor,
+      text: text.value,
+      createdAt: createdAt.value,
+      updatedAt: updatedAt.value,
+    };
+  }
+  const findingId = parseFindingId(entry.findingId);
+  const analysisRunId = parseInsightRunId(entry.analysisRunId);
+  const addedAt = parseIsoTimestamp(entry.addedAt);
+  if (
+    findingId._tag === "err" ||
+    analysisRunId._tag === "err" ||
+    addedAt._tag === "err"
+  )
+    return undefined;
+  return {
+    findingId: findingId.value,
+    analysisRunId: analysisRunId.value,
+    sessionId: sessionId.value,
+    anchor,
+    title: entry.title,
+    comment: entry.comment,
+    ...definedProps({ suggestion: entry.suggestion }),
+    addedAt: addedAt.value,
+  };
+}
+
+/** A note's text: anything but whitespace, within the comment length limit. */
+export function parseMaintainerNoteText(
+  text: string,
+): Result<string, InvalidLocalDraft> {
+  return text.trim().length === 0 || text.length > MAX_MAINTAINER_NOTE_LENGTH
+    ? err({ _tag: "InvalidLocalDraft" })
+    : ok(text);
+}
+
+export function isMaintainerNote(draft: LocalDraft): draft is MaintainerNote {
+  return "author" in draft;
+}
+
+/** A Finding draft is keyed by the Finding it came from: one Analysis run and one Finding id. */
 export function isDraftOfFinding(
-  draft: Pick<LocalDraft, "analysisRunId" | "findingId">,
+  draft: LocalDraft,
   finding: { readonly runId: InsightRunId; readonly findingId: FindingId },
 ): boolean {
   return (
+    !isMaintainerNote(draft) &&
     draft.analysisRunId === finding.runId &&
     draft.findingId === finding.findingId
   );
 }
 
+export function isLocalDraftOf(
+  draft: LocalDraft,
+  target: LocalDraftTarget,
+): boolean {
+  return "noteId" in target
+    ? isMaintainerNote(draft) && draft.noteId === target.noteId
+    : isDraftOfFinding(draft, target);
+}
+
 export function projectLocalDraft(draft: LocalDraft): LocalDraftEntry {
-  return {
-    findingId: draft.findingId,
-    analysisRunId: draft.analysisRunId,
+  const location = {
     sessionId: draft.sessionId,
     path: draft.anchor.path,
     side: draft.anchor.side,
     startLine: draft.anchor.startLine,
     line: draft.anchor.line,
-    title: draft.title,
-    suggests: draft.suggestion !== undefined,
   };
+  return isMaintainerNote(draft)
+    ? { kind: "note", noteId: draft.noteId, ...location, text: draft.text }
+    : {
+        kind: "finding",
+        findingId: draft.findingId,
+        analysisRunId: draft.analysisRunId,
+        ...location,
+        title: draft.title,
+        suggests: draft.suggestion !== undefined,
+      };
 }

@@ -9,6 +9,7 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { ConversationThreadCardData } from "./conversation-thread-card";
+import type { LocalNoteControls } from "../flows/use-local-drafts";
 
 /** The mapped Analysis findings the diff renders as inline annotations. */
 export type MappedFinding = NonNullable<
@@ -103,6 +104,50 @@ export function buildPendingReviewAnnotations(
       },
     ];
   });
+}
+
+/**
+ * A local Review's maintainer notes fingerprinted against the current session,
+ * as diff annotations. A note from an earlier session has lines numbered for
+ * another patch, so only the Local drafts card lists it.
+ */
+export function buildLocalNoteAnnotations(
+  model: Pick<WorkbenchResponse, "localDrafts" | "session">,
+  notes: LocalNoteControls | undefined,
+): ReadonlyArray<ReviewInlineAnnotation> {
+  return (model.localDrafts ?? []).flatMap((entry) =>
+    entry.kind !== "note" || entry.sessionId !== model.session.id
+      ? []
+      : [
+          {
+            id: `local-note:${entry.noteId}`,
+            path: entry.path,
+            start: entry.startLine,
+            end: entry.line,
+            side: entry.side,
+            severity: "note",
+            title: "Note",
+            explanation: "",
+            localNote: {
+              noteId: entry.noteId,
+              path: entry.path,
+              startLine: entry.startLine,
+              line: entry.line,
+              text: entry.text,
+              ...definedProps({
+                onEdit:
+                  notes === undefined
+                    ? undefined
+                    : (text: string) => notes.edit(entry.noteId, text),
+                onRemove:
+                  notes === undefined
+                    ? undefined
+                    : () => notes.remove(entry.noteId),
+              }),
+            },
+          },
+        ],
+  );
 }
 
 /** Every inline annotation the diff renders: findings, then conversation threads. */

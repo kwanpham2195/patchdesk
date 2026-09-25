@@ -1,21 +1,42 @@
 import * as v from "valibot";
 
-/** One Local draft as the workbench lists it (`LocalDraftEntry` in `src/domain/local-draft.ts`). */
-export const localDraftEntrySchema = v.strictObject({
-  findingId: v.pipe(v.string(), v.minLength(1)),
-  analysisRunId: v.pipe(v.string(), v.minLength(1)),
-  sessionId: v.pipe(v.string(), v.minLength(1)),
-  path: v.pipe(v.string(), v.minLength(1)),
+const nonEmpty = v.pipe(v.string(), v.minLength(1));
+const lineNumber = v.pipe(v.number(), v.integer(), v.minValue(1));
+const location = {
+  sessionId: nonEmpty,
+  path: nonEmpty,
   side: v.picklist(["new", "old"]),
-  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  title: v.pipe(v.string(), v.minLength(1)),
-  suggests: v.boolean(),
-});
+  startLine: lineNumber,
+  line: lineNumber,
+};
 
-/** What Add to draft and Remove answer with: the whole list after the change. */
+/** One Local draft as the workbench lists it (`LocalDraftEntry` in `src/domain/local-draft.ts`). */
+export const localDraftEntrySchema = v.variant("kind", [
+  v.strictObject({
+    kind: v.literal("finding"),
+    findingId: nonEmpty,
+    analysisRunId: nonEmpty,
+    ...location,
+    title: nonEmpty,
+    suggests: v.boolean(),
+  }),
+  v.strictObject({
+    kind: v.literal("note"),
+    noteId: nonEmpty,
+    ...location,
+    text: nonEmpty,
+  }),
+]);
+
+/** What every Local draft command answers with: the whole list after the change. */
 export const localDraftListSchema = v.strictObject({
   localDrafts: v.array(localDraftEntrySchema),
 });
 
 export type LocalDraftEntry = v.InferOutput<typeof localDraftEntrySchema>;
+
+/** A maintainer note as the workbench lists it. */
+export type LocalNoteEntry = Extract<
+  LocalDraftEntry,
+  { readonly kind: "note" }
+>;

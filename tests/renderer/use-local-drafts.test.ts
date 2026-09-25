@@ -19,6 +19,7 @@ import {
 
 const ADD = "/v1/reviews/local-drafts/add";
 const REMOVE = "/v1/reviews/local-drafts/remove";
+const NOTE_ADD = "/v1/reviews/local-drafts/notes/add";
 let restore: (() => void) | undefined;
 
 afterEach(() => {
@@ -28,6 +29,7 @@ afterEach(() => {
 });
 
 const drafted: LocalDraftEntry = {
+  kind: "finding",
   findingId: "finding-1",
   analysisRunId: "insight-analysis-1-fixture",
   sessionId: "session-a",
@@ -125,6 +127,57 @@ describe("useLocalDrafts", () => {
 
     expect(result.current?.error).toBeDefined();
     expect(onWorkbenchPatch).not.toHaveBeenCalled();
+  });
+
+  it("adds a note by its lines and text, and a refused note rejects with the reason and keeps the list", async () => {
+    const note: LocalDraftEntry = {
+      kind: "note",
+      noteId: "note-1",
+      sessionId: "session-a",
+      path: "src/a.ts",
+      side: "new",
+      startLine: 1,
+      line: 2,
+      text: "Guard the empty case.",
+    };
+    const answers = [
+      success({ localDrafts: [note] }),
+      failure({ error: "not_applicable" }, 409),
+    ];
+    const double = installDesktopDouble({
+      [NOTE_ADD]: () => answers.shift() ?? failure({ error: "storage" }, 503),
+    });
+    restore = double.restore;
+    const { result, onWorkbenchPatch } = renderDrafts(localReview([]));
+    const location = { path: "src/a.ts", side: "new" as const, line: 2 };
+
+    await act(async () =>
+      result.current?.notes?.add(
+        { ...location, startLine: 1 },
+        "Guard the empty case.",
+      ),
+    );
+    let refusal: unknown;
+    await act(async () => {
+      await result.current?.notes
+        ?.add({ ...location, startLine: 40, line: 40 }, "Too far.")
+        .catch((cause: unknown) => {
+          refusal = cause;
+        });
+    });
+
+    expect(callBody(double.request.mock.calls[0]?.[0])).toEqual({
+      profileId: "profile",
+      reviewId: "review-42",
+      path: "src/a.ts",
+      side: "new",
+      startLine: 1,
+      line: 2,
+      text: "Guard the empty case.",
+    });
+    expect(onWorkbenchPatch).toHaveBeenCalledTimes(1);
+    expect(onWorkbenchPatch).toHaveBeenCalledWith({ localDrafts: [note] });
+    expect(refusal).toBeInstanceOf(Error);
   });
 
   it("offers nothing on a pull request Review", () => {

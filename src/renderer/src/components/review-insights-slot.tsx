@@ -36,7 +36,8 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { LocalApplyControls } from "../flows/use-local-apply";
-import { useLocalDrafts } from "../flows/use-local-drafts";
+import type { LocalDraftControls } from "../flows/use-local-drafts";
+import { LocalDraftsCard } from "./local-drafts-card";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 import {
   INSIGHT_LANGUAGE_LABELS,
@@ -178,6 +179,7 @@ export function InsightsSlot({
   onAddFinding,
   addAllFindings,
   localApply,
+  localDrafts,
   onFinishWithAnalysisSummary,
 }: {
   readonly workbench: WorkbenchResponse;
@@ -188,6 +190,8 @@ export function InsightsSlot({
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly addAllFindings?: AddAllFindingsControls;
   readonly localApply?: LocalApplyControls;
+  /** A local Review's Local draft list (ADR 0050, ADR 0051). */
+  readonly localDrafts?: LocalDraftControls;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
 }): React.JSX.Element {
   const {
@@ -232,7 +236,6 @@ export function InsightsSlot({
     analysis: workbench.insights.analysis,
     onWorkbenchPatch,
   });
-  const localDrafts = useLocalDrafts({ workbench, onWorkbenchPatch });
   const walkthroughProgress = useWalkthroughProgress({
     profileId,
     reviewId,
@@ -417,6 +420,13 @@ export function InsightsSlot({
                   onRun: reviewOpen ? () => openRunDialog("run") : undefined,
                 })}
               />
+            ) : null}
+            {/* The Analysis reader lists the drafts itself; without an Analysis, notes still need their list. */}
+            {selectedInsight === "analysis" &&
+            workbench.insights.analysis.retained === undefined &&
+            localDrafts !== undefined &&
+            localDrafts.entries.length > 0 ? (
+              <LocalDraftsCard controls={localDrafts} />
             ) : null}
             {retainedReader === null ? null : (
               <div

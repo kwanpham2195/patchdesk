@@ -26,6 +26,7 @@ afterEach(() => {
 });
 
 const drafted = {
+  kind: "finding" as const,
   findingId: "finding-1",
   analysisRunId: "insight-analysis-1-fixture",
   sessionId: "session-a",

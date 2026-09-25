@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
 import { isApiErrorCode, requestJson } from "../api-client";
+import type { LocalCommentLocation } from "../components/review-diff-view";
 import {
   localDraftListSchema,
   type LocalDraftEntry,
@@ -10,7 +11,14 @@ import {
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewWorkbenchPatch } from "./use-review-observation";
 
-/** The Local draft list of one local Review and its Add to draft and Remove commands (ADR 0050). */
+/** Maintainer notes on a local Review (ADR 0051). Each command rejects with a message its form shows beside the text. */
+export type LocalNoteControls = {
+  readonly add: (location: LocalCommentLocation, text: string) => Promise<void>;
+  readonly edit: (noteId: string, text: string) => Promise<void>;
+  readonly remove: (noteId: string) => Promise<void>;
+};
+
+/** The Local draft list of one local Review and its commands (ADR 0050, ADR 0051). */
 export type LocalDraftControls = {
   readonly entries: ReadonlyArray<LocalDraftEntry>;
   /** Findings of the retained Analysis run that are drafted. */
@@ -22,10 +30,8 @@ export type LocalDraftControls = {
   readonly pending: ReadonlySet<string>;
   readonly error?: string;
   readonly add: (findingId: string) => Promise<void>;
-  readonly remove: (entry: {
-    readonly analysisRunId: string;
-    readonly findingId: string;
-  }) => Promise<void>;
+  /** Remove from the Local drafts card; a failure shows as `error`. */
+  readonly remove: (entry: LocalDraftEntry) => Promise<void>;
   /** The drafts as one prompt for the coding agent, composed by the main process. */
   readonly loadAgentPrompt: () => Promise<string>;
   /** One Finding row's toggle: Add to draft, or Remove once drafted. */
@@ -34,13 +40,27 @@ export type LocalDraftControls = {
     readonly pending: boolean;
     readonly onToggle?: () => void;
   };
+  /** Absent once the Review is merged or closed. */
+  readonly notes?: LocalNoteControls;
 };
+
+/** What a command names beside the Review: a Finding, a note's lines and text, or a note. */
+type LocalDraftCommand =
+  | { readonly runId: string; readonly findingId: string }
+  | (LocalCommentLocation & { readonly text: string })
+  | { readonly noteId: string; readonly text?: string };
 
 const agentPromptSchema = v.strictObject({ markdown: v.string() });
 
-/** One draft's identity: its Analysis run and Finding. */
-export function localDraftKey(runId: string, findingId: string): string {
-  return `${runId}\n${findingId}`;
+/** One draft's identity: its Analysis run and Finding, or its note id. */
+export function localDraftKey(
+  entry:
+    | { readonly analysisRunId: string; readonly findingId: string }
+    | { readonly noteId: string },
+): string {
+  return "noteId" in entry
+    ? `note\n${entry.noteId}`
+    : `${entry.analysisRunId}\n${entry.findingId}`;
 }
 
 function failureMessage(cause: unknown): string {
@@ -51,10 +71,21 @@ function failureMessage(cause: unknown): string {
   return "The draft list was not changed.";
 }
 
+function noteFailureMessage(cause: unknown): string {
+  if (isApiErrorCode(cause, "in_progress"))
+    return "Another action on this review is running. Try again when it finishes.";
+  if (isApiErrorCode(cause, "not_applicable"))
+    return "These lines are not in the current diff. Refresh the review and select them again.";
+  if (isApiErrorCode(cause, "not_found"))
+    return "This note was removed. Refresh the review.";
+  return "The note was not saved.";
+}
+
 /**
- * Owns the Local draft list on a local Review. Each command names the Finding
- * only; the main process reads its anchor, comment, and suggestion. Undefined
- * on a pull request Review, which drafts into GitHub instead.
+ * Owns the Local draft list on a local Review. A Finding command names the
+ * Finding only, and a note command names its lines and text; the main process
+ * reads or fingerprints every anchor. Undefined on a pull request Review,
+ * which drafts into GitHub instead.
  */
 export function useLocalDrafts({
   workbench,
@@ -69,30 +100,26 @@ export function useLocalDrafts({
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
 
-  const send = useCallback(
+  /** Posts one command and applies the list it answers with; throws when it was refused. */
+  const post = useCallback(
     async (
-      action: "add" | "remove",
-      runId: string,
-      findingId: string,
+      key: string,
+      path: string,
+      command: LocalDraftCommand,
     ): Promise<void> => {
-      const key = localDraftKey(runId, findingId);
       if (pendingRef.current.has(key)) return;
       pendingRef.current.add(key);
       setPending(new Set(pendingRef.current));
-      setError(undefined);
       try {
         const parsed = v.safeParse(
           localDraftListSchema,
-          await requestJson(`/v1/reviews/local-drafts/${action}`, {
+          await requestJson(path, {
             method: "POST",
-            body: { profileId, reviewId, runId, findingId },
+            body: { profileId, reviewId, ...command },
           }),
         );
-        if (parsed.success)
-          onWorkbenchPatch({ localDrafts: parsed.output.localDrafts });
-        else setError("The draft list was not changed.");
-      } catch (cause: unknown) {
-        setError(failureMessage(cause));
+        if (!parsed.success) throw new Error("Unexpected Local draft response");
+        onWorkbenchPatch({ localDrafts: parsed.output.localDrafts });
       } finally {
         pendingRef.current.delete(key);
         setPending(new Set(pendingRef.current));
@@ -101,19 +128,77 @@ export function useLocalDrafts({
     [onWorkbenchPatch, profileId, reviewId],
   );
 
+  const sendFinding = useCallback(
+    async (
+      action: "add" | "remove",
+      runId: string,
+      findingId: string,
+    ): Promise<void> => {
+      setError(undefined);
+      try {
+        await post(
+          localDraftKey({ analysisRunId: runId, findingId }),
+          `/v1/reviews/local-drafts/${action}`,
+          { runId, findingId },
+        );
+      } catch (cause: unknown) {
+        setError(failureMessage(cause));
+      }
+    },
+    [post],
+  );
+
+  const notes = useMemo<LocalNoteControls>(() => {
+    const send = async (
+      key: string,
+      path: string,
+      command: LocalDraftCommand,
+    ): Promise<void> => {
+      try {
+        await post(key, path, command);
+      } catch (cause: unknown) {
+        throw new Error(noteFailureMessage(cause));
+      }
+    };
+    return {
+      add: (location, text) =>
+        send("note\nnew", "/v1/reviews/local-drafts/notes/add", {
+          ...location,
+          text,
+        }),
+      edit: (noteId, text) =>
+        send(localDraftKey({ noteId }), "/v1/reviews/local-drafts/notes/edit", {
+          noteId,
+          text,
+        }),
+      remove: (noteId) =>
+        send(
+          localDraftKey({ noteId }),
+          "/v1/reviews/local-drafts/notes/remove",
+          { noteId },
+        ),
+    };
+  }, [post]);
+
   const runId = workbench.insights.analysis.retained?.runId;
   const add = useCallback(
     async (findingId: string): Promise<void> => {
-      if (runId !== undefined) await send("add", runId, findingId);
+      if (runId !== undefined) await sendFinding("add", runId, findingId);
     },
-    [runId, send],
+    [runId, sendFinding],
   );
   const remove = useCallback(
-    (entry: {
-      readonly analysisRunId: string;
-      readonly findingId: string;
-    }): Promise<void> => send("remove", entry.analysisRunId, entry.findingId),
-    [send],
+    async (entry: LocalDraftEntry): Promise<void> => {
+      if (entry.kind === "finding") {
+        await sendFinding("remove", entry.analysisRunId, entry.findingId);
+        return;
+      }
+      setError(undefined);
+      await notes.remove(entry.noteId).catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : undefined);
+      });
+    },
+    [notes, sendFinding],
   );
 
   const loadAgentPrompt = useCallback(async (): Promise<string> => {
@@ -137,7 +222,9 @@ export function useLocalDrafts({
     workbench.insights.analysis.status === "current";
   const draftedFindingIds = new Set(
     entries.flatMap((entry) =>
-      entry.analysisRunId === runId ? [entry.findingId] : [],
+      entry.kind === "finding" && entry.analysisRunId === runId
+        ? [entry.findingId]
+        : [],
     ),
   );
   return {
@@ -155,17 +242,18 @@ export function useLocalDrafts({
       return {
         drafted,
         pending:
-          runId !== undefined && pending.has(localDraftKey(runId, findingId)),
+          runId !== undefined &&
+          pending.has(localDraftKey({ analysisRunId: runId, findingId })),
         ...definedProps({
           onToggle:
             !allowed || runId === undefined
               ? undefined
               : drafted
-                ? () => void remove({ analysisRunId: runId, findingId })
+                ? () => void sendFinding("remove", runId, findingId)
                 : () => void add(findingId),
         }),
       };
     },
-    ...definedProps({ error }),
+    ...definedProps({ error, notes: reviewOpen ? notes : undefined }),
   };
 }

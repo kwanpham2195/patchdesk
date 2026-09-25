@@ -266,6 +266,7 @@ export function InlineCommentComposer({
   onCancel,
   onSave,
   pendingReview,
+  kind,
 }: {
   readonly path: string;
   readonly startLine: number;
@@ -275,7 +276,10 @@ export function InlineCommentComposer({
   readonly onCancel: () => void;
   readonly onSave: (body: string) => Promise<void>;
   readonly pendingReview?: PendingReviewComposerActions;
+  /** A maintainer note on a local Review, saved to the Review record (ADR 0051). */
+  readonly kind?: "note";
 }): React.JSX.Element {
+  const note = kind === "note";
   type ComposerAction = "comment" | "start" | "add" | "comment-now";
   const [body, setBody] = useState(initialBody);
   const [pendingAction, setPendingAction] = useState<ComposerAction>();
@@ -330,7 +334,9 @@ export function InlineCommentComposer({
   const cancel = (): void => {
     if (
       body.trim().length > 0 &&
-      !window.confirm("Discard this unsent comment?")
+      !window.confirm(
+        note ? "Discard this note?" : "Discard this unsent comment?",
+      )
     )
       return;
     onCancel();
@@ -345,16 +351,18 @@ export function InlineCommentComposer({
   return (
     <section
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm"
-      aria-label="Inline comment composer"
+      aria-label={note ? "Note composer" : "Inline comment composer"}
     >
       <p className="text-xs text-muted-foreground">
         {path}:{startLine}
         {line === startLine ? "" : `–${line}`} ·{" "}
-        {pendingState === "pending"
-          ? "joins your pending review on GitHub"
-          : pendingState === "none"
-            ? "publishes to GitHub"
-            : "GitHub write is paused"}
+        {note
+          ? "a note for the coding agent"
+          : pendingState === "pending"
+            ? "joins your pending review on GitHub"
+            : pendingState === "none"
+              ? "publishes to GitHub"
+              : "GitHub write is paused"}
       </p>
       <Field
         className="mt-2"
@@ -363,7 +371,7 @@ export function InlineCommentComposer({
       >
         <Textarea
           autoFocus
-          aria-label="Inline comment"
+          aria-label={note ? "Note" : "Inline comment"}
           aria-invalid={error !== undefined || undefined}
           aria-describedby={error === undefined ? undefined : errorId}
           value={body}
@@ -382,7 +390,11 @@ export function InlineCommentComposer({
               void run(keyboardAction, startOrAdd);
             }
           }}
-          placeholder="Write an inline comment"
+          placeholder={
+            note
+              ? "Write a note for the coding agent"
+              : "Write an inline comment"
+          }
           disabled={writeDisabled || busy}
         />
         <FieldError id={errorId}>{error}</FieldError>
@@ -396,8 +408,11 @@ export function InlineCommentComposer({
           >
             {pendingAction === "comment" ? (
               <>
-                <Spinner data-icon="inline-start" /> Commenting…
+                <Spinner data-icon="inline-start" />{" "}
+                {note ? "Adding…" : "Commenting…"}
               </>
+            ) : note ? (
+              "Add note"
             ) : (
               "Comment"
             )}
@@ -456,7 +471,8 @@ export function InlineCommentComposer({
         </Button>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Press ⌘/Ctrl+Enter to comment. Escape cancels.
+        Press ⌘/Ctrl+Enter to {note ? "add the note" : "comment"}. Escape
+        cancels.
       </p>
     </section>
   );
