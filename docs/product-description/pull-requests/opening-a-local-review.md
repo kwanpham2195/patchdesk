@@ -80,10 +80,36 @@ Brief, Walkthrough, and Analysis run on a local Review from the same run dialog,
 What differs is what a local Review has no source for:
 
 - The model's context carries the repository's rule files and the changed-file list, but no pull request comments and no check results. Patchdesk makes no GitHub read to start the run.
-- Analysis shows its Findings and their evidence hunks, with Dismiss. There is no Add to review, no Add all, no Finish with the Analysis summary, and no CI badge, because a local Review has no pull request to write to or checks to report. On a working tree, a Finding that carries a suggestion offers an Apply checkbox in place of its status; any other Finding's status reads Unavailable. See [Apply suggestions to the working tree](#apply-suggestions-to-the-working-tree).
+- Analysis shows its Findings and their evidence hunks, with Dismiss and Copy as markdown prompt. There is no Add to review, no Add all, no Finish with the Analysis summary, and no CI badge, because a local Review has no pull request to write to or checks to report. A mapped Finding offers Add to draft instead; see [Local drafts](#local-drafts). On a working tree, a Finding that carries a suggestion also offers an Apply checkbox; see [Apply suggestions to the working tree](#apply-suggestions-to-the-working-tree). A Finding that is not mapped to the diff reads Unavailable.
 - Walkthrough shows no discussion note, because a local Review has no Conversation.
-- Brief draws Flow, Shape, Blast radius, and Start here. Blast radius counts names by text search at the session head, which for a working tree is the Local snapshot, so a name the uncommitted change adds is found. Brief has no Description vs diff block for any Review (ADR 0040), and no citation names a commit.
+- Brief draws Flow, Shape, Blast radius, and Start here. Blast radius counts names by text search at the session head, which for a working tree is the Local snapshot, so a name the uncommitted change adds is found. Brief has no Description vs diff block for any Review (ADR 0040), and no citation names a commit. A current Brief offers **Copy as PR description** in its Provenance card; see [Copy Brief as PR description](#copy-brief-as-pr-description).
 - A settled run posts no desktop notification.
+
+## Local drafts
+
+A local Review has no pull request, so no GitHub pending review can hold a comment yet. Its Findings go to a **Local draft** list kept on the Review instead (ADR 0050).
+
+On a local Review with a current Analysis, every open, mapped Finding shows **Add to draft**. Pressing it adds the Finding to the list; the row then shows a `Drafted` badge and **Remove from draft**, and Dismiss is no longer offered on it. Adding the same Finding twice keeps one entry. The Analysis card counts a drafted Finding as handled, the same as a dismissed one: one drafted and one dismissed Finding read `2 of 2 handled`.
+
+The **Local drafts** card below the Findings names the count (`1 draft for the pull request`) and lists each draft by title and `path:line`, with a `Suggestion` badge when the Finding's suggestion resolved in the session's patch, and a **Remove** button. With no drafts it reads `Add a finding to draft to keep it for the pull request.`
+
+Adding and removing write only the Review record in the app's data folder. They read nothing from the checkout and are not refused when the working tree has changed since the session. Each draft stores the Finding's location, the diff lines around it, its comment (the suggested comment, or the explanation), its suggestion, and the session, Analysis run, and Finding it came from, so it stays readable after the Analysis is replaced.
+
+Drafts belong to the Review, not the session. Opening the Review again lists them. After Apply or any change that opens a new session, drafts from the earlier session stay listed and removable; the earlier Analysis reads Outdated and offers no Add to draft. Moving drafts onto a new session is not built (#452).
+
+| Cause                                             | Sentence in the Local drafts card                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Another action on the Review is running           | `Another action on this review is running. Try again when it finishes.`           |
+| The Finding is no longer current, mapped, or open | `This finding can no longer be drafted. Run Analysis again on the current files.` |
+| Any other failure                                 | `The draft list was not changed.`                                                 |
+
+## Copy Brief as PR description
+
+A current Brief on a local Review shows **Copy as PR description** under Regenerate in its Provenance card. Pressing it asks the main process for the retained Brief as Markdown and copies it; the button reads `Copied` for a moment once the clipboard write succeeds, and `The description could not be copied.` appears under it when it fails. An Outdated Brief does not offer it.
+
+The Markdown has, in order: one `### <Kind>: <title>` section per Flow view with its tree in a `diff` fence, `## Shape` with each changed file's status, line counts, and note, `## Blast radius` with the names mentioned outside the change, removed names still mentioned, and changed files no test mentions, and `## Start here` with the lead and the reading order. A section with nothing to say is left out.
+
+Each Flow step that shows citation chips in the reader carries its hunks as `(path:line)`, the line being the hunk's first line on the new side; a hunk of a deleted file is written as its path alone. A citation with no hunk location is left out. The same text will seed the Open PR body (#455).
 
 ## Apply suggestions to the working tree
 
@@ -163,11 +189,13 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 
 - Live pass on 2026-09-25 over CDP 9233: a working-tree Review on the Patchdesk checkout showed an untracked probe file as NEW on the Diff tab; `shasum` of the checkout's index and `git status --short` were identical before and after; opening again with unchanged content left one session.
 - Live pass on 2026-09-25 over CDP 9233 (#450): on a working-tree Review of the Patchdesk checkout with an untracked probe file, Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P2 Finding anchored to the probe file's line 9 with no Add to review command, and Brief (medium) rendered Flow, Shape, Blast radius counted at the snapshot SHA, and Start here. The header read `Local snapshot 66316662 · read from the local checkout`. Walkthrough was not run live.
-- Brief's Blast radius heading reads "what this PR could affect", and Analysis shows `0 of 1 handled` and an Unavailable status beside each Finding; both are pull-request wording on a local Review. Finding actions for local Reviews belong to #451.
+- Brief's Blast radius heading reads "what this PR could affect" on a local Review, which is pull-request wording.
 - The Analysis prompt still asks the model to review a pull request and check its description; changing prompt text needs its own review.
 - That selecting lines offers no inline comment was checked in code, not live.
-- Refresh of a local Review, and Commit, Push, and Open PR, are not built (#452). Local drafts, Add to draft, and the copy actions of #451 are not built yet.
+- Refresh of a local Review, moving Local drafts to a new session, and Commit, Push, and Open PR, are not built (#452, #455).
 - Live pass on 2026-09-25 over CDP 9233 (#451): a working-tree Review of the Patchdesk checkout with an untracked probe file; Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P1 Finding at `tmp-local-review-probe.ts:3` with a suggestion. Apply was refused with the changed-tree sentence after the probe was edited, and after the edit was undone and the Review reopened, Apply changed exactly line 3; `git status --short` and the index `shasum` were identical before and after.
+- Live pass on 2026-09-25 over CDP 9233 (#451 Local drafts): a working-tree Review with an untracked probe file; Analysis (Codex CLI account, `gpt-6-luna`, high) returned a P1 and a P2 Finding. Add to draft on the P1 stored one draft with its fingerprint and suggestion in `review.json`; opening the Review again listed it; Dismiss on the P2 read `2 of 2 handled`; Remove emptied the list and removed `localDrafts` from the record. Copy as markdown prompt copied the P1. After a caller was added to the probe, a Brief (medium) with a call tree copied as a PR description with each step cited as `tmp-local-drafts-probe.ts:1`: the untracked file is one hunk starting at line 1.
+- A draft from an earlier session staying listed after the session changes was checked in `tests/services/local-draft-service.test.ts`, not live.
 - The outcome-unknown lock and Check files were checked in service and component tests, not live: interrupting the app between the two marks cannot be timed by hand.
 - The empty-patch workbench, the conflict refusal, the branch and commit sources, and the failure sentences were checked in service and component tests, not live.
 - Managed refs and worktrees of local sessions are not removed after a successful open; cleanup is not described here because it does not exist yet.
