@@ -40,6 +40,17 @@ const PATCH = [
   "",
 ].join("\n");
 
+/** Adds `updateThreadComment` and removes nothing, so it is the one counted name. */
+const ADDED_PATCH = [
+  "diff --git a/src/adapters/writer.ts b/src/adapters/writer.ts",
+  "--- a/src/adapters/writer.ts",
+  "+++ b/src/adapters/writer.ts",
+  "@@ -1,1 +1,2 @@",
+  "+export function updateThreadComment(id: string) {",
+  " }",
+  "",
+].join("\n");
+
 /** One `git` invocation the service made, and the reply a test stands in for it. */
 type GitReply = Result<string, CommandFailure>;
 
@@ -100,7 +111,7 @@ describe("computeBriefReach", () => {
       worktree,
       headSha,
       patch: PATCH,
-      symbols: ["updateThreadComment"],
+      proposed: [],
       paths,
       runner: fake,
     });
@@ -110,7 +121,13 @@ describe("computeBriefReach", () => {
       value: {
         method: "text_match",
         hop: 1,
+        // `updateComment` is declared on a removed line, so it is counted too.
         symbols: [
+          {
+            name: "updateComment",
+            outsideCallerFiles: 1,
+            status: "changed",
+          },
           {
             name: "updateThreadComment",
             outsideCallerFiles: 2,
@@ -129,7 +146,7 @@ describe("computeBriefReach", () => {
       },
     });
     // The service searches the resolved real path, never the candidate it was handed.
-    expect(fake.calls[1]).toEqual([
+    expect(fake.calls[2]).toEqual([
       "git",
       "--no-replace-objects",
       "-C",
@@ -149,6 +166,76 @@ describe("computeBriefReach", () => {
       ":(exclude)*.rst",
       ":(exclude)docs/",
     ]);
+  });
+
+  it("counts an existing export whose body the patch changes, with its outside mentions", async () => {
+    const { paths, worktree } = await fixture();
+    const servicePath = "src/services/review-refresh-service.ts";
+    await mkdir(join(worktree, "src/services"), { recursive: true });
+    await writeFile(
+      join(worktree, servicePath),
+      [
+        "export class ReviewRefreshService {",
+        "  async refresh(id: string) {",
+        "    return this.load(id, { fresh: true });",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    const bodyOnly = [
+      `diff --git a/${servicePath} b/${servicePath}`,
+      `--- a/${servicePath}`,
+      `+++ b/${servicePath}`,
+      "@@ -3 +3 @@",
+      "-    return this.load(id);",
+      "+    return this.load(id, { fresh: true });",
+      "",
+    ].join("\n");
+
+    const outcome = await computeBriefReach({
+      profileId,
+      sessionId,
+      worktree,
+      headSha,
+      patch: bodyOnly,
+      proposed: [],
+      paths,
+      runner: runner((argv) => {
+        if (argv.includes("rev-parse")) return ok(`${headSha}\n`);
+        if (argv.includes("ReviewRefreshService"))
+          return ok(
+            grepLine(servicePath, 1, "export class ReviewRefreshService {") +
+              grepLine(
+                "src/main/local-api-container.ts",
+                1,
+                "  const refresh = new ReviewRefreshService(dependencies);",
+              ),
+          );
+        return err({ _tag: "CommandFailed", stderr: "" });
+      }),
+    });
+
+    expect(outcome).toMatchObject({
+      _tag: "ok",
+      value: {
+        symbols: [
+          {
+            name: "ReviewRefreshService",
+            status: "changed",
+            insidePR: true,
+            outsideCallerFiles: 1,
+            outsidePaths: ["src/main/local-api-container.ts"],
+            mentions: [
+              {
+                path: "src/main/local-api-container.ts",
+                line: 1,
+                kind: "call",
+              },
+            ],
+          },
+        ],
+      },
+    });
   });
 
   it("records each outside mention's line, kind, and enclosing declaration", async () => {
@@ -175,8 +262,8 @@ describe("computeBriefReach", () => {
       sessionId,
       worktree,
       headSha,
-      patch: PATCH,
-      symbols: ["updateThreadComment"],
+      patch: ADDED_PATCH,
+      proposed: [],
       paths,
       runner: runner((argv) => {
         if (argv.includes("rev-parse")) return ok(`${headSha}\n`);
@@ -227,8 +314,8 @@ describe("computeBriefReach", () => {
       sessionId,
       worktree,
       headSha,
-      patch: PATCH,
-      symbols: ["updateThreadComment"],
+      patch: ADDED_PATCH,
+      proposed: [],
       paths,
       runner: runner((argv) =>
         argv.includes("rev-parse")
@@ -272,8 +359,8 @@ describe("computeBriefReach", () => {
       sessionId,
       worktree,
       headSha,
-      patch: PATCH,
-      symbols: ["updateThreadComment"],
+      patch: ADDED_PATCH,
+      proposed: [],
       paths,
       runner: fake,
     });
@@ -310,7 +397,7 @@ describe("computeBriefReach", () => {
       worktree,
       headSha,
       patch: PATCH,
-      symbols: ["updateThreadComment"],
+      proposed: [],
       paths,
       runner: runner((argv) =>
         argv.includes("rev-parse")
@@ -323,6 +410,7 @@ describe("computeBriefReach", () => {
       _tag: "ok",
       value: {
         symbols: [
+          { name: "updateComment", outsideCallerFiles: 0, insidePR: false },
           {
             name: "updateThreadComment",
             outsideCallerFiles: 0,
@@ -343,7 +431,7 @@ describe("computeBriefReach", () => {
         worktree,
         headSha,
         patch: PATCH,
-        symbols: ["updateThreadComment"],
+        proposed: [],
         paths,
         runner: runner((argv) =>
           argv.includes("rev-parse")
@@ -363,7 +451,7 @@ describe("computeBriefReach", () => {
         worktree,
         headSha,
         patch: PATCH,
-        symbols: ["updateThreadComment"],
+        proposed: [],
         paths,
         runner: runner((argv) =>
           argv.includes("rev-parse")
@@ -387,7 +475,7 @@ describe("computeBriefReach", () => {
         worktree: outside,
         headSha,
         patch: PATCH,
-        symbols: ["updateThreadComment"],
+        proposed: [],
         paths,
         runner: fake,
       }),
@@ -404,7 +492,7 @@ describe("computeBriefReach", () => {
         worktree,
         headSha,
         patch: PATCH,
-        symbols: ["updateThreadComment"],
+        proposed: [],
         paths,
         runner: runner(() => ok(`${"c".repeat(40)}\n`)),
       }),

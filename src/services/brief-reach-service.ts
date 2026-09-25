@@ -6,6 +6,7 @@ import { isPathContained } from "../adapters/storage/path-containment";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import {
   briefReachFiles,
+  candidateReachSymbols,
   newlyDeclaredNames,
   removedSymbols,
   summarizeReach,
@@ -31,7 +32,7 @@ import type { ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
  * The Reach block's counts, from `git grep` over the represented worktree.
  *
  * The model never writes a number: it proposes names, `candidateReachSymbols`
- * keeps only the ones the patch itself carries, and every count here is one
+ * keeps only the ones the patch itself changes, and every count here is one
  * `git grep` against the immutable head tree. The search is one hop and
  * text-only, which is why the reader labels it "text match".
  *
@@ -64,8 +65,8 @@ export type BriefReachRequest = {
   readonly worktree: string;
   readonly headSha: string;
   readonly patch: string;
-  /** Already filtered by `candidateReachSymbols`; each is a plain identifier. */
-  readonly symbols: ReadonlyArray<string>;
+  /** The child's proposed names, unfiltered; `candidateReachSymbols` decides which are counted. */
+  readonly proposed: ReadonlyArray<string>;
   readonly signal?: AbortSignal;
 };
 
@@ -127,12 +128,17 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
   const files = briefReachFiles(input.patch);
   const changedPaths = new Set(files.map((file) => file.path));
   const newNames = newlyDeclaredNames(input.patch);
+  const headLines = await readWorktreeFiles(worktree, [...changedPaths]);
   const searched: Array<{
     readonly name: string;
     readonly outside: ReadonlyArray<MatchedLine>;
     readonly insidePR: boolean;
   }> = [];
-  for (const name of input.symbols) {
+  for (const name of candidateReachSymbols(
+    input.patch,
+    input.proposed,
+    headLines,
+  )) {
     const matches = await searchSymbol(input, worktree, name, deadline);
     if (matches._tag === "unavailable") return matches;
     const outside = matches.lines.filter(
@@ -174,8 +180,9 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
   const removedSites = removed.map(keep);
   const symbolSites = searched.map(keep);
   const fileLines = await readWorktreeFiles(worktree, [
-    ...removedSites.flat(),
-    ...symbolSites.flat(),
+    ...new Set(
+      [...removedSites.flat(), ...symbolSites.flat()].map((site) => site.path),
+    ),
   ]);
   const mentions = (sites: ReadonlyArray<RankedSite> | undefined) =>
     (sites ?? []).map((site) => mentionAt(site, fileLines.get(site.path)));
@@ -310,19 +317,22 @@ function mentionAt(
 }
 
 /**
- * Each kept site's file, read once. A file that cannot be read inside the
- * worktree leaves its sites without an enclosing name rather than failing the
- * block.
+ * Each path's lines, read once. A file that cannot be read inside the worktree
+ * is left out, so it adds no enclosing names rather than failing the block.
  */
 async function readWorktreeFiles(
   worktree: string,
-  sites: ReadonlyArray<RankedSite>,
-): Promise<ReadonlyMap<string, ReadonlyArray<string> | undefined>> {
-  const paths = [...new Set(sites.map((site) => site.path))];
+  paths: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, ReadonlyArray<string>>> {
   const contents = await Promise.all(
     paths.map((path) => readWorktreeLines(worktree, path)),
   );
-  return new Map(paths.map((path, index) => [path, contents[index]]));
+  const files = new Map<string, ReadonlyArray<string>>();
+  paths.forEach((path, index) => {
+    const lines = contents[index];
+    if (lines !== undefined) files.set(path, lines);
+  });
+  return files;
 }
 
 async function readWorktreeLines(
