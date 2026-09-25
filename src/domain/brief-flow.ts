@@ -34,7 +34,7 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  * `rejected` counts citation failures only -- a discarded alias, and an
  * `added`/`removed` node left with zero surviving hunk citations (kept, but
  * counted as an unverified claim, not a dropped one). Every other cap below
- * (the per-tree node cap, the depth cap, a whitespace-only label, an
+ * (the per-tree node cap, the depth cut, a whitespace-only label, an
  * all-unchanged tree, a repeat-kind tree, a surviving tree past
  * `MAX_FLOW_TREES`) is silent, the same way `normalizeBriefStartHere`'s
  * five-file cap and an unmatched Start here path are silent.
@@ -107,7 +107,7 @@ export function patchTouchesUiComponents(
 // Exported so `insightOutputGuidance("brief")` states each Flow limit once, in the schema's own number.
 /** Kept trees per Brief, at most one per kind -- past this, Flow starts reading as the whole diff again. */
 export const MAX_FLOW_TREES = 3;
-/** Kept node depth; a root node is depth 1. Enforced by the schema itself (see `flowNodeSchema`), so the matching check in `walkFlowNodes` is belt-and-braces. */
+/** Kept node depth; a root node is depth 1. `walkFlowNodes` drops every node below it. */
 export const MAX_FLOW_DEPTH = 3;
 /** Pre-order nodes visited per tree before the rest of that tree is dropped. */
 export const MAX_FLOW_NODES_PER_TREE = 15;
@@ -132,11 +132,8 @@ const MAX_FLOW_ALIAS_LENGTH = 16;
  * infers a present-but-`undefined` value, which `exactOptionalPropertyTypes`
  * would otherwise reject on the `?:` modifier alone.
  *
- * This type stays recursive on purpose, even though the schema below is not:
- * a value bounded to `MAX_FLOW_DEPTH` levels (the schema's own guarantee)
- * still satisfies this wider, unbounded type, because `children` is optional
- * at every level -- so `walkFlowNodes` can walk any of the three concrete
- * depths through one shared parameter type.
+ * This type stays recursive so `walkFlowNodes` can take every concrete depth
+ * of the bounded schema below through one parameter type.
  */
 type BriefFlowNodeOutput = {
   readonly label: string;
@@ -151,19 +148,11 @@ type BriefFlowNodeOutput = {
  * at that level, because no value can ever satisfy `v.never()` and an empty
  * array has no element to check against it.
  *
- * Called three times below, nested by hand, this bounds the whole schema to
- * `MAX_FLOW_DEPTH` levels without a `v.lazy` self-reference: `safeParse`
- * against it cannot recurse past depth 3, and the schema carries no cycle a
- * JSON-schema conversion for a provider would have to represent as
- * `$ref`/`$defs`. A proposal nested past `MAX_FLOW_DEPTH` fails to parse at
- * all (the deepest level's `children` is provably empty), which rejects the
- * whole Brief as malformed -- see `normalizeBrief` in `brief.ts`. That is a
- * deliberate trade against keeping the rest of the Brief: the cap is stated
- * to the model (`insightOutputGuidance("brief")`), and `v.unknown()` -- the
- * only escape hatch with any precedent in this codebase
- * (`insight-record.ts`, `narrative-walkthrough.ts`) -- is used there only for
- * opaque passthrough values, never to validate a structural shape
- * permissively, so it is not a sound substitute for a real leaf schema here.
+ * Nested by hand six levels deep below, without a `v.lazy`
+ * self-reference, so `safeParse` cannot recurse without bound and a provider's
+ * JSON-schema conversion needs no `$ref`/`$defs`. A proposal nested past
+ * six levels still rejects the whole Brief as malformed (see
+ * `normalizeBrief` in `brief.ts`).
  */
 function flowNodeSchema<ChildSchema extends v.GenericSchema>(
   childSchema: ChildSchema,
@@ -187,12 +176,14 @@ function flowNodeSchema<ChildSchema extends v.GenericSchema>(
   });
 }
 
-/** Depth 3, the deepest level `MAX_FLOW_DEPTH` allows: its `children` can only be empty. */
-const briefFlowLeafOutputSchema = flowNodeSchema(v.never());
-/** Depth 2: its `children` are depth-3 leaves. */
-const briefFlowMidOutputSchema = flowNodeSchema(briefFlowLeafOutputSchema);
-/** Depth 1, a tree's own root nodes: their `children` are depth-2 nodes. */
-const briefFlowNodeOutputSchema = flowNodeSchema(briefFlowMidOutputSchema);
+/** Depth 6, the deepest raw level the schema accepts -- past `MAX_FLOW_DEPTH` because models nest a level too deep, and the Brief keeps the cut tree rather than failing. Its `children` can only be empty. */
+const briefFlowDepth6OutputSchema = flowNodeSchema(v.never());
+const briefFlowDepth5OutputSchema = flowNodeSchema(briefFlowDepth6OutputSchema);
+const briefFlowDepth4OutputSchema = flowNodeSchema(briefFlowDepth5OutputSchema);
+const briefFlowDepth3OutputSchema = flowNodeSchema(briefFlowDepth4OutputSchema);
+const briefFlowDepth2OutputSchema = flowNodeSchema(briefFlowDepth3OutputSchema);
+/** Depth 1, a tree's own root nodes. */
+const briefFlowNodeOutputSchema = flowNodeSchema(briefFlowDepth2OutputSchema);
 
 /**
  * The Flow keys a Brief child may return: up to `MAX_FLOW_TREES_INPUT`
@@ -276,7 +267,7 @@ function resolveFlowCitations(
 
 /**
  * Walks one tree's proposed nodes in pre-order, applying, in this order: the
- * `MAX_FLOW_NODES_PER_TREE` cap, the `MAX_FLOW_DEPTH` cap, the label cap,
+ * `MAX_FLOW_NODES_PER_TREE` cap, the `MAX_FLOW_DEPTH` cut, the label cap,
  * and finally -- for `added`/`removed` nodes only -- the rule that a changed
  * step left with no surviving hunk citation still keeps its place, but
  * counts toward `rejected` as an unverified claim. `unchanged` nodes need no
@@ -284,7 +275,7 @@ function resolveFlowCitations(
  * unknown alias still counts toward `rejected`.
  *
  * Only citation failures count toward `rejected`; the node cap, the depth
- * cap, and a whitespace-only label are silent.
+ * cut, and a whitespace-only label are silent.
  */
 function walkFlowNodes(
   rawNodes: ReadonlyArray<BriefFlowNodeOutput>,
@@ -296,9 +287,6 @@ function walkFlowNodes(
   for (const raw of rawNodes) {
     ctx.visited += 1;
     if (ctx.visited > MAX_FLOW_NODES_PER_TREE) continue;
-    // Belt-and-braces: a schema-conformant `rawNodes` can never actually
-    // reach depth 4, since the schema itself is bounded to `MAX_FLOW_DEPTH`.
-    if (depth > MAX_FLOW_DEPTH) continue;
 
     // A whitespace-only label cannot fail `v.minLength(1)` on the raw
     // string, so it is checked here instead, after collapsing and
@@ -313,7 +301,12 @@ function walkFlowNodes(
       ctx.rejected += 1;
     }
 
-    const children = walkFlowNodes(raw.children ?? [], depth + 1, byAlias, ctx);
+    // The depth cut is presentation only, so nodes below it are never walked:
+    // their citations are not resolved and they spend none of the node cap.
+    const children =
+      depth < MAX_FLOW_DEPTH
+        ? walkFlowNodes(raw.children ?? [], depth + 1, byAlias, ctx)
+        : [];
     kept.push({
       label,
       change: raw.change,
@@ -358,8 +351,8 @@ function normalizeFlowTitle(rawTitle: string): string {
  * `added`/`removed` node left with zero surviving hunk citations. Every
  * other cap here is silent, the same way `normalizeBriefStartHere`'s
  * five-file cap and an unmatched Start here path are silent: the per-tree
- * node cap, the `MAX_FLOW_DEPTH` cap (also enforced by the schema itself,
- * see `flowNodeSchema`), a whitespace-only label, a tree with no surviving
+ * node cap, the `MAX_FLOW_DEPTH` cut (the schema accepts deeper input up to
+ * six levels), a whitespace-only label, a tree with no surviving
  * changed node, a second surviving tree of a kind already kept, a surviving
  * tree past `MAX_FLOW_TREES`, and a `component` tree dropped for touching no
  * UI file in `changedPaths` (see `patchTouchesUiComponents`).
