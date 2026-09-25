@@ -37,6 +37,7 @@ import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import { LocalApplyService } from "../../src/services/local-apply-service";
+import { LocalDraftService } from "../../src/services/local-draft-service";
 import { LocalReviewOpening } from "../../src/services/local-review-opening";
 import { LocalReviewRevisionService } from "../../src/services/local-review-revision-service";
 import { LocalReviewSessionPreparation } from "../../src/services/local-review-session-preparation";
@@ -98,6 +99,8 @@ export type LocalApplyHarness = {
   readonly reviews: ReviewStore;
   readonly operations: LocalApplyOperationStore;
   readonly insights: InsightStore;
+  /** Add to draft and Remove over the same stores and Review coordinator. */
+  readonly drafts: LocalDraftService;
   readonly logs: ReadonlyArray<LogEntryInput>;
   readonly open: (
     request?: LocalReviewSourceRequest,
@@ -214,6 +217,13 @@ export async function localApplyHarness(
     reviews,
     operations,
     insights,
+    drafts: new LocalDraftService({
+      reviews,
+      sessions,
+      insights,
+      coordinator,
+      now: () => now,
+    }),
     logs,
     open: async (request = { kind: "working_tree" }) =>
       value(await opening.open({ profileId, repository, request })),

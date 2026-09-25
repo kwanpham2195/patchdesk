@@ -18,9 +18,11 @@ import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-o
 import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import type { ReviewWriteIntentTag } from "../domain/review-write-operation";
 import {
+  isLocalReview,
   sessionRepresentsReview,
   type ReviewFreshness,
 } from "../domain/review";
+import { projectLocalDraft, type LocalDraftEntry } from "../domain/local-draft";
 import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
 import type {
   CheckSummary,
@@ -157,6 +159,8 @@ export type ReviewWorkbenchProjection = {
   readonly localApply?: {
     readonly state: "outcome_unknown" | "check_required";
   };
+  /** Present exactly on a local Review, empty when nothing is drafted (ADR 0050 "Local drafts"). */
+  readonly localDrafts?: ReadonlyArray<LocalDraftEntry>;
 };
 
 /** A patch file's contents plus the identity a cached hash of them is keyed on. */
@@ -701,6 +705,9 @@ export class ReviewWorkbenchProjectionService {
             : localApply.value?.state === "CheckRequired"
               ? { state: "check_required" as const }
               : undefined,
+        localDrafts: isLocalReview(stableReview.value)
+          ? (stableReview.value.localDrafts ?? []).map(projectLocalDraft)
+          : undefined,
         localCheckout: projectLocalCheckoutWarning(
           session.localCheckoutWarning,
         ),

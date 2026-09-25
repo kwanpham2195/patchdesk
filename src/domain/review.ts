@@ -14,16 +14,24 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
+  type FindingId,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
   type GitSha,
+  type InsightRunId,
   type IsoTimestamp,
   type PullRequestNumber,
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "./ids";
+import {
+  isDraftOfFinding,
+  parseStoredLocalDrafts,
+  storedLocalDraftSchema,
+  type LocalDraft,
+} from "./local-draft";
 import { err, ok, type Result } from "./result";
 import type { ReviewSessionKey } from "./review-session";
 import {
@@ -121,6 +129,8 @@ export type Review<Source extends ReviewSource = ReviewSource> = {
   readonly lastOpenedAt?: IsoTimestamp;
   /** What the maintainer had in front of them when they last left this Review. */
   readonly lastLooked?: LastLooked;
+  /** A local Review's draft list (ADR 0050); never present on a pull request Review, absent when empty. */
+  readonly localDrafts?: ReadonlyArray<LocalDraft>;
 };
 
 /**
@@ -234,6 +244,7 @@ const reviewV2Schema = v.strictObject({
       seenThrough: v.optional(v.string()),
     }),
   ),
+  localDrafts: v.optional(v.array(storedLocalDraftSchema)),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -469,6 +480,50 @@ export function markReviewTerminal(
   };
 }
 
+/**
+ * Add one Finding to a local Review's draft list (ADR 0050). A Finding already
+ * drafted keeps its entry, so adding twice is one draft.
+ */
+export function addLocalDraft(
+  review: Review<LocalReviewSource>,
+  draft: LocalDraft,
+): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  const drafts = review.localDrafts ?? [];
+  if (
+    drafts.some((entry) =>
+      isDraftOfFinding(entry, {
+        runId: draft.analysisRunId,
+        findingId: draft.findingId,
+      }),
+    )
+  )
+    return ok(review);
+  return ok({
+    ...review,
+    localDrafts: [...drafts, draft],
+    updatedAt: laterTimestamp(review.updatedAt, draft.addedAt),
+  });
+}
+
+/** Remove one Local draft; removing a draft that is not listed changes nothing. */
+export function removeLocalDraft(
+  review: Review<LocalReviewSource>,
+  finding: { readonly runId: InsightRunId; readonly findingId: FindingId },
+  updatedAt: IsoTimestamp,
+): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  const drafts = review.localDrafts ?? [];
+  const kept = drafts.filter((entry) => !isDraftOfFinding(entry, finding));
+  if (kept.length === drafts.length) return ok(review);
+  const { localDrafts: _removed, ...rest } = review;
+  return ok({
+    ...rest,
+    ...definedProps({ localDrafts: kept.length === 0 ? undefined : kept }),
+    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
+  });
+}
+
 function laterTimestamp(
   previous: IsoTimestamp,
   requested: IsoTimestamp,
@@ -533,6 +588,7 @@ function parseReviewBase(
     | "title"
     | "lastOpenedAt"
     | "lastLooked"
+    | "localDrafts"
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
@@ -582,11 +638,19 @@ function parseReviewBase(
     raw.lastLooked === undefined
       ? ok(undefined)
       : parseLastLooked(raw.lastLooked);
+  // Drafts belong to a local Review only, and an empty list is stored as no list.
+  const localDrafts =
+    raw.localDrafts === undefined
+      ? ok(undefined)
+      : source.value.kind === "pull_request" || raw.localDrafts.length === 0
+        ? invalid()
+        : parseStoredLocalDrafts(raw.localDrafts);
   if (
     representedRemote._tag === "err" ||
     status._tag === "err" ||
     lastOpenedAt._tag === "err" ||
-    lastLooked._tag === "err"
+    lastLooked._tag === "err" ||
+    localDrafts._tag === "err"
   )
     return invalid();
 
@@ -600,6 +664,7 @@ function parseReviewBase(
       title: raw.title,
       lastOpenedAt: lastOpenedAt.value,
       lastLooked: lastLooked.value,
+      localDrafts: localDrafts.value,
     }),
     status: status.value,
     createdAt: createdAt.value,

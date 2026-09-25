@@ -9,6 +9,7 @@ import {
   viewerLoginSchema,
 } from "./review-write-receipts";
 import { briefInsightSchema } from "./brief-contracts";
+import { localDraftEntrySchema } from "./local-draft-contracts";
 import {
   insightFields,
   insightRunActivitySchema,
@@ -868,6 +869,7 @@ const workbenchProjectionSchema = v.strictObject({
       state: v.picklist(["outcome_unknown", "check_required"]),
     }),
   ),
+  localDrafts: v.optional(v.array(localDraftEntrySchema)),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export type RemoteWriteRecovery = v.InferOutput<

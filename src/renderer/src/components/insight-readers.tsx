@@ -1,3 +1,5 @@
+import * as v from "valibot";
+
 import { definedProps } from "../../../domain/defined-props";
 import type { ParsedPatchFile } from "../../../domain/patch";
 import { BriefReader } from "./brief-reader";
@@ -5,10 +7,12 @@ import { renderAnalysisReviewSummary } from "../analysis-review-summary";
 import { AnalysisReader } from "./analysis-reader";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
+import { requestJson } from "../api-client";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { LocalApplyControls } from "../flows/use-local-apply";
+import type { LocalDraftControls } from "../flows/use-local-drafts";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
 import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
@@ -22,6 +26,7 @@ type InsightReaderBuilderInput = {
   readonly addFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly addAllFindings?: AddAllFindingsControls;
   readonly localApply?: LocalApplyControls;
+  readonly localDrafts?: LocalDraftControls;
   readonly dismissFinding: (
     finding: AnalysisFinding,
     reason: string,
@@ -75,6 +80,25 @@ export function walkthroughDiscussionState(
   return "available";
 }
 
+const briefDescriptionSchema = v.strictObject({ markdown: v.string() });
+
+/** The retained Brief of one run as Markdown, composed by the main process. */
+async function loadBriefPullRequestDescription(body: {
+  readonly profileId: string;
+  readonly reviewId: string;
+  readonly runId: string;
+}): Promise<string> {
+  const parsed = v.safeParse(
+    briefDescriptionSchema,
+    await requestJson("/v1/reviews/insights/brief/pull-request-description", {
+      method: "POST",
+      body,
+    }),
+  );
+  if (!parsed.success) throw new Error("Unexpected PR description response");
+  return parsed.output.markdown;
+}
+
 export function buildInsightReaders({
   workbench,
   patchFiles,
@@ -83,6 +107,7 @@ export function buildInsightReaders({
   addFinding,
   addAllFindings,
   localApply,
+  localDrafts,
   dismissFinding,
   analysisVerification,
   walkthroughProgress,
@@ -157,6 +182,7 @@ export function buildInsightReaders({
           : {})}
         fixPromptContext={fixPromptContext}
         verification={analysisVerification}
+        {...definedProps({ localDrafts })}
         canFinishWithAnalysisSummary={
           workbench.analysisReviewActions?.canFinishWithAnalysisSummary ?? false
         }
@@ -244,6 +270,7 @@ export function buildInsightReaders({
           ],
         )
       : undefined;
+  const briefRunId = briefRetained?.runId;
   const retainedBrief =
     selectedInsight === "brief" && briefRetained !== undefined ? (
       <BriefReader
@@ -255,6 +282,20 @@ export function buildInsightReaders({
         regenerateDisabled={!runEnabled}
         walkthroughStatus={workbench.insights.walkthrough.status}
         {...definedProps({ onOpenWalkthrough })}
+        {...definedProps({
+          // A local Review has no description yet; its Brief seeds one (ADR 0050 "Handoff").
+          loadPullRequestDescription:
+            pullRequestReview ||
+            workbench.insights.brief?.status !== "current" ||
+            briefRunId === undefined
+              ? undefined
+              : () =>
+                  loadBriefPullRequestDescription({
+                    profileId: workbench.session.key.profileId,
+                    reviewId: workbench.review.id,
+                    runId: briefRunId,
+                  }),
+        })}
         {...(briefDiffPaths === undefined || onOpenFileInDiff === undefined
           ? {}
           : {

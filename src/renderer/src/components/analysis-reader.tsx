@@ -22,6 +22,7 @@ import {
 } from "../analysis-headline";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { LocalApplyControls } from "../flows/use-local-apply";
+import type { LocalDraftControls } from "../flows/use-local-drafts";
 import { AnalysisAddAllFindings } from "./analysis-add-all-findings";
 import { AnalysisDismissedFindingRow } from "./analysis-dismissed-finding-row";
 import {
@@ -29,6 +30,7 @@ import {
   type FindingActionState,
 } from "./analysis-finding-row";
 import { LocalApplyBar } from "./local-apply-bar";
+import { LocalDraftsCard } from "./local-drafts-card";
 import { ReviewWorkbenchFindingNavigationContext } from "./review-workbench-finding-navigation";
 import { GeneratedMarkdown } from "./generated-markdown";
 import { ReviewVerdictIcon } from "./review-verdict-icon";
@@ -90,6 +92,8 @@ export type AnalysisReaderProps = {
   readonly addAllFindings?: AddAllFindingsControls;
   /** Apply suggestion on a working-tree local Review (ADR 0050). */
   readonly localApply?: LocalApplyControls;
+  /** A local Review's Local draft list; its Remove works on an outdated Analysis too. */
+  readonly localDrafts?: LocalDraftControls;
 };
 
 /** Decision-first read-side view of one retained Analysis result. */
@@ -108,6 +112,7 @@ export function AnalysisReader({
   verification,
   addAllFindings,
   localApply,
+  localDrafts,
 }: AnalysisReaderProps): React.JSX.Element {
   const admittedFindingIds = useRef<Set<string>>(new Set());
   const [findingActions, setFindingActions] = useState<
@@ -119,7 +124,11 @@ export function AnalysisReader({
     record: recordFindingError,
   } = useFindingErrors(result, findingStatuses);
   const verifiedSteps = verification?.checkedSteps ?? new Set<number>();
-  const unhandledFindings = unhandledAnalysisFindings(result, findingStatuses);
+  const unhandledFindings = unhandledAnalysisFindings(
+    result,
+    findingStatuses,
+    localDrafts?.draftedFindingIds,
+  );
   const handledProgress = `${result.findings.length - unhandledFindings.length} of ${result.findings.length} handled`;
   const highSeverityFindings = result.findings.filter(isHighSeverity);
   const lowerSeverityFindings = result.findings.filter(
@@ -196,6 +205,7 @@ export function AnalysisReader({
         actionError={findingErrors.get(finding.id)}
         {...definedProps({
           applySelection: applySelectionFor(localApply, finding.id),
+          draft: localDrafts?.forFinding(finding.id),
         })}
         {...(evidencePatch === undefined ? {} : { evidencePatch })}
         {...(onOpenFindingInDiff === undefined ? {} : { onOpenFindingInDiff })}
@@ -323,6 +333,10 @@ export function AnalysisReader({
           </CardContent>
         )}
       </Card>
+
+      {localDrafts === undefined ? null : (
+        <LocalDraftsCard controls={localDrafts} />
+      )}
 
       <Card size="sm">
         <CardHeader>

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   briefFlowAsDiffText,
   briefFlowKindLabel,
-} from "../../src/renderer/src/brief-flow-text";
+} from "../../src/domain/brief-flow-text";
 import type { BriefFlowNode } from "../../src/renderer/src/brief-contracts";
 
 /** A Flow node fixture with no citations, since the diff text never carries them. */

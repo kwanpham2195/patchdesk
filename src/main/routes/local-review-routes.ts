@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import {
   array,
   literal,
@@ -10,6 +10,7 @@ import {
   string,
   variant,
   type InferOutput,
+  type SafeParseResult,
 } from "valibot";
 
 import {
@@ -33,7 +34,7 @@ import {
   reviewWriteExpectationSchema,
 } from "./pending-review-command";
 
-/** Opening a local Review on a profile repository's checkout, and applying suggestions to it (ADR 0050). */
+/** Opening a local Review on a profile repository's checkout, applying suggestions to it, and its Local drafts (ADR 0050). */
 export function registerLocalReviewRoutes(
   app: Hono,
   container: LocalApiContainer,
@@ -98,6 +99,24 @@ export function registerLocalReviewRoutes(
     );
   });
 
+  // Identity only: the main process reads the Finding, its anchor, and its suggestion (ADR 0050 "Local drafts").
+  app.post("/v1/reviews/local-drafts/add", async (context) =>
+    localDraftResponse(
+      context,
+      container,
+      "add",
+      safeParse(localDraftSchema, await jsonBody(context)),
+    ),
+  );
+  app.post("/v1/reviews/local-drafts/remove", async (context) =>
+    localDraftResponse(
+      context,
+      container,
+      "remove",
+      safeParse(localDraftSchema, await jsonBody(context)),
+    ),
+  );
+
   // Reads file hashes only; it never applies again.
   app.post("/v1/reviews/local-apply/recover", async (context) => {
     const parsed = safeParse(localApplyRecoverSchema, await jsonBody(context));
@@ -112,6 +131,45 @@ export function registerLocalReviewRoutes(
     );
   });
 }
+
+async function localDraftResponse(
+  context: Context,
+  container: LocalApiContainer,
+  action: "add" | "remove",
+  parsed: SafeParseResult<typeof localDraftSchema>,
+): Promise<Response> {
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const runId = parseInsightRunId(parsed.output.runId);
+  const findingId = parseFindingId(parsed.output.findingId);
+  if (
+    profileId._tag === "err" ||
+    reviewId._tag === "err" ||
+    runId._tag === "err" ||
+    findingId._tag === "err"
+  )
+    return context.json({ error: "invalid_input" }, 400);
+  const request = {
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    runId: runId.value,
+    findingId: findingId.value,
+  };
+  return response(
+    context,
+    action === "add"
+      ? await container.localDrafts.add(request)
+      : await container.localDrafts.remove(request),
+  );
+}
+
+const localDraftSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  runId: pipe(string(), minLength(1)),
+  findingId: pipe(string(), minLength(1)),
+});
 
 const localApplySchema = strictObject({
   profileId: pipe(string(), minLength(1)),
