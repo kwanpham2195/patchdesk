@@ -63,7 +63,7 @@ The commit object Patchdesk writes to record a working tree: every staged, unsta
 _Avoid_: Stash, WIP commit, temp commit
 
 **Local draft**:
-A Finding a maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent: the list is copied to the agent as one prompt and never becomes a GitHub comment (ADR 0051). It moves across Refresh only when its anchor maps unambiguously.
+A Finding a maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent: the list is copied to the agent as one prompt and never becomes a GitHub comment (ADR 0051). Each move to a new session carries it as unchanged, changed since the note, or needs attention; it is never discarded, and one whose Finding was applied stays listed but leaves the prompt.
 _Avoid_: Local comment, queued finding, offline draft
 
 **Represented-review worktree**:
