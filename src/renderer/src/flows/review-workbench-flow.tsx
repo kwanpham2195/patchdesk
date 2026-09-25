@@ -11,6 +11,7 @@ import { useAddAllFindings } from "./use-add-all-findings";
 import { useLocalApply } from "./use-local-apply";
 import { useLocalDrafts } from "./use-local-drafts";
 import { useLocalRefresh } from "./use-local-refresh";
+import { useChangeIntent } from "./use-change-intent";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
 import { usePendingReviewActions } from "./use-pending-review-actions";
@@ -162,6 +163,7 @@ export function ReviewWorkbenchFlow({
   // One owner for the Insights tab's Local drafts card and the Diff tab's notes.
   const localDrafts = useLocalDrafts({ workbench, onWorkbenchPatch });
   // A local Review refreshes from the checkout, not from GitHub (#452).
+  const changeIntent = useChangeIntent({ workbench, onWorkbenchPatch });
   const localRefresh = useLocalRefresh({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
@@ -192,6 +194,7 @@ export function ReviewWorkbenchFlow({
     metadata,
     conversation,
     localNotes: localDrafts?.notes,
+    changeIntent,
     observation:
       localRefresh === undefined
         ? { runDetect, refresh, refreshing, refreshError }

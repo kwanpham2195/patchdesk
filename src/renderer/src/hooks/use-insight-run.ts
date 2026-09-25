@@ -7,6 +7,10 @@ import {
 } from "react";
 
 import { requestJson } from "../api-client";
+import {
+  changeIntentRunRefusal,
+  type ChangeIntentRunRefusal,
+} from "../change-intent-copy";
 import { useLatestCommitted } from "./use-latest-committed";
 import { definedProps } from "../../../domain/defined-props";
 import type {
@@ -24,7 +28,12 @@ import {
 /** The Insight types a run can be started for; the wire contract owns the list. */
 export type InsightRunType = InsightRunResponse["type"];
 type InsightRunState = InsightRunResponse["status"] | "idle" | "error";
-type InsightRunRequestFailure = "start" | "cancel" | "status";
+/** A start the main process refused over a local Review's spec file names why (#467). */
+type InsightRunRequestFailure =
+  | "start"
+  | "cancel"
+  | "status"
+  | ChangeIntentRunRefusal;
 
 export type InsightRunController = {
   readonly status: InsightRunState;
@@ -210,10 +219,10 @@ export function useInsightRun(input: {
           setStatus(parsed.status);
           onAccepted?.();
         })
-        .catch(() => {
+        .catch((cause: unknown) => {
           if (!mountedRef.current || generationRef.current !== generation)
             return;
-          setRequestFailure("start");
+          setRequestFailure(changeIntentRunRefusal(cause) ?? "start");
           setStatus("error");
         })
         .finally(() => {

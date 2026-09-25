@@ -13,6 +13,7 @@ import {
   loadReviewSinceReviewDiff,
 } from "./review-workbench-commit-diff";
 import type { DirectConversationActions } from "./use-direct-conversation-actions";
+import type { ChangeIntentControls } from "./use-change-intent";
 import type { LocalNoteControls } from "./use-local-drafts";
 import type { PendingReviewActionsResult } from "./use-pending-review-actions";
 import type { ReviewMetadataActions } from "./use-review-metadata-actions";
@@ -38,6 +39,7 @@ export type WorkbenchActionsInput = {
   readonly conversation: DirectConversationActions;
   /** A local Review's maintainer notes; the diff composer adds one instead of a GitHub comment. */
   readonly localNotes: LocalNoteControls | undefined;
+  readonly changeIntent: ChangeIntentControls | undefined;
   readonly observation: Pick<
     ReviewObservationResult,
     "refresh" | "refreshError" | "refreshing" | "runDetect"
@@ -64,6 +66,7 @@ export function useWorkbenchActions({
   metadata,
   conversation,
   localNotes,
+  changeIntent,
   observation,
   merge,
   pendingReviewComposer,
@@ -201,6 +204,7 @@ export function useWorkbenchActions({
         merge: githubWritesLocked ? undefined : merge,
         localCommentAuthoring,
         localNotes,
+        changeIntent,
         pendingReviewComposer: githubWritesLocked
           ? undefined
           : pendingReviewComposer,
@@ -217,6 +221,7 @@ export function useWorkbenchActions({
     [
       assigneeActions,
       baseBranchActions,
+      changeIntent,
       conversationActions,
       directSummary,
       draftStateAction,

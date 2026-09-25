@@ -44,24 +44,31 @@ import {
   INSIGHT_PROVIDER_LABELS,
 } from "../insight-contracts";
 import { RelativeTime } from "./relative-time";
+import type { InsightRunController } from "../hooks/use-insight-run";
+import {
+  analysisChangeIntentLine,
+  changeIntentRunRefusalMessage,
+} from "../change-intent-copy";
 
 function insightRequestFailureMessage(
   insightName: string,
-  requestFailure: "start" | "cancel" | "status" | undefined,
+  requestFailure: InsightRunController["requestFailure"],
 ): string | undefined {
+  if (requestFailure === undefined) return undefined;
   if (requestFailure === "start")
     return `${insightName} could not start. Check the run options and try again.`;
   if (requestFailure === "cancel")
     return `${insightName} cancel failed; still running. Try again.`;
   if (requestFailure === "status")
     return `${insightName} status refresh failed; still running.`;
-  return undefined;
+  return changeIntentRunRefusalMessage(requestFailure);
 }
 /** The selected document's retained time, provider, and model, drawn muted at the right end of the tab strip. */
 function InsightDocumentMeta({
   retained,
   selectedInsight,
   selectedIsOutdated,
+  workbench,
 }: {
   readonly retained:
     | Readonly<{
@@ -77,8 +84,17 @@ function InsightDocumentMeta({
     | undefined;
   readonly selectedInsight: InsightRunDialogType;
   readonly selectedIsOutdated: boolean;
+  readonly workbench: WorkbenchResponse;
 }): React.JSX.Element | null {
   if (retained === undefined) return null;
+  // The Change intent a local Review's Analysis ran against (#467).
+  const changeIntentLine =
+    selectedInsight === "analysis"
+      ? analysisChangeIntentLine(
+          workbench.insights.analysis.retained?.changeIntent,
+          workbench.changeIntent,
+        )
+      : undefined;
   // The Brief draws its own Provenance card, so only the other readers state the provider and model here.
   const provenance =
     selectedInsight === "brief" ? undefined : retained.provenance;
@@ -95,6 +111,7 @@ function InsightDocumentMeta({
       {language === undefined || language === "en"
         ? null
         : ` · ${INSIGHT_LANGUAGE_LABELS[language]}`}
+      {changeIntentLine === undefined ? null : ` · ${changeIntentLine}`}
     </p>
   );
 }
@@ -348,6 +365,7 @@ export function InsightsSlot({
                   retained={selectedRetained}
                   selectedInsight={selectedInsight}
                   selectedIsOutdated={selectedIsOutdated}
+                  workbench={workbench}
                 />
                 <InsightHeaderAction
                   running={selectedRunning}
