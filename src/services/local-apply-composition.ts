@@ -72,7 +72,9 @@ export async function loadVerifiedEdits(
     if (
       finding === undefined ||
       code === undefined ||
-      finding.disposition === "dismissed"
+      record.value.dismissals?.some(
+        (dismissal) => dismissal.findingId === findingId,
+      ) === true
     )
       return err({ reason: "not_applicable" });
     const target = resolveSuggestionTarget(patch, finding);
