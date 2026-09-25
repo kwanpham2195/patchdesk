@@ -139,6 +139,7 @@ export function insightOutputGuidance(
     "",
     "STATE",
     "Give a state tree only when the patch adds, removes, or rewires a named state of a lifecycle, such as a write, a run, a session, or a review.",
+    'A state is one value of a single status field, such as pending in status: "pending" | "confirmed" | "failed"; never a boolean toggle such as expanded, open, or selected, and never a variable name.',
     "Each root is one state name as written in the code, such as pending or confirmed.",
     "The children of a state are its outgoing transitions, each written as → <next state> on <event>, such as → failed on timeout.",
     "List each state once as a root, even when a transition leads back to it.",
