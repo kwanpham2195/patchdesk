@@ -142,6 +142,7 @@ pull-requests/
   filters-pagination-and-refresh.md   GitHub filters, pages, manual refresh, and freshness
   repository-listing.md               rows, indicators, and recommended actions
   opening-a-review.md                 preparation, progress, failure, and workbench entry
+  opening-a-local-review.md           working tree, branch, or commit Review from a local checkout
 
 review-workbench/
   conversation-and-metadata.md        PR conversation plus reviewers, assignees, and labels
@@ -188,6 +189,7 @@ Status is one of `not started`, `drafted`, or `verified`. A document is `verifie
 | pull-requests/filters-pagination-and-refresh.md | drafted |
 | pull-requests/repository-listing.md             | drafted |
 | pull-requests/opening-a-review.md               | drafted |
+| pull-requests/opening-a-local-review.md         | drafted |
 | review-workbench/conversation-and-metadata.md   | drafted |
 | review-workbench/files-diff-and-navigation.md   | drafted |
 | review-workbench/inline-conversations.md        | drafted |

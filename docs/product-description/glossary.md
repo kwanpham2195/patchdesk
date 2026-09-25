@@ -62,6 +62,12 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Review session.** The local work for a Review, anchored to one pinned pull-request revision. A later revision creates or moves the Review to a different session rather than changing what the earlier session represented.
 
+**Review source.** What a Review's patch is computed from: a pull request, the working tree against `HEAD`, a local branch against its merge base with a base branch, or one commit against its parent. Every source but a pull request makes a *local Review*.
+
+**Local Review.** A Review of a working tree, branch, or commit in a local checkout the workspace profile lists, opened before any pull request exists. It has no Conversation, checks, merge, or pending review.
+
+**Local snapshot.** The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, committed with a fixed identity so the same content always has the same SHA. The maintainer's index and branches never see it.
+
 **Represented revision.** The exact head, base, and canonical patch identity a Review session presents. User-visible evidence and Insights remain bound to it.
 
 **Represented-review worktree.** Patchdesk's immutable checkout for a Review session's represented revision. It is separate from the maintainer's checkout and is available only to bounded, read-only review inspection.
