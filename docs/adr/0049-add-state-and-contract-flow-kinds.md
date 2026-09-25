@@ -26,6 +26,15 @@ Flow gains two kinds:
   one per line, as written in the patch. The old signature is marked removed
   and the new one added.
 
+A contract tree cites hunks on its root only. Patchdesk moves any citation
+on a signature or field row up to the root and draws the chips there; a
+changed row counts as cited when its root cites a hunk. The rows of one
+export are checked together, so their evidence belongs to the export. Per-row
+chips repeated the same hunk on every field, and one row cited the hunk that
+adds a destructured parameter instead of the neighbouring hunk with its type.
+The guidance also asks for no contract tree for a test file, a fixture, or a
+new export that no code outside the patch calls.
+
 Both kinds use the same node shape as the other three: a label, an `added`,
 `removed`, or `unchanged` marker, hunk citations, and children up to three
 levels deep. The same caps apply. Flow still keeps at most one tree per kind

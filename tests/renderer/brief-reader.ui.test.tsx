@@ -537,6 +537,71 @@ describe("BriefReader", () => {
     ).toBeTruthy();
   });
 
+  it("keeps a contract tree's chip on its exported name and never marks its uncited rows", () => {
+    const contractFlow = {
+      trees: [
+        {
+          kind: "contract" as const,
+          title: "Draft saving",
+          nodes: [
+            {
+              label: "saveDraft",
+              change: "unchanged" as const,
+              citations: [
+                {
+                  alias: "h1",
+                  kind: "hunk" as const,
+                  label: "@@ -1 +1 @@",
+                  path: "src/a.ts",
+                },
+              ],
+              children: [
+                {
+                  label: "(draft, opts): Promise<SaveResult>",
+                  change: "added" as const,
+                  citations: [],
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const base = retained();
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={{
+          ...base,
+          value: {
+            ...briefValue,
+            flow: contractFlow,
+            citedHunks: { h1: HUNK_PATCH },
+          },
+        }}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Flow" });
+    const rootRow = within(region).getByText("saveDraft").closest("div");
+    if (rootRow === null) throw new Error("Expected the root row's div");
+    expect(
+      within(rootRow).getByRole("button", { name: "Show hunk a.ts · h1" }),
+    ).toBeTruthy();
+    const fieldRow = within(region)
+      .getByText("(draft, opts): Promise<SaveResult>")
+      .closest("div");
+    if (fieldRow === null) throw new Error("Expected the field row's div");
+    expect(
+      within(fieldRow).queryByRole("button", { name: /Show hunk/ }),
+    ).toBeNull();
+    expect(
+      within(fieldRow).queryByTitle("No hunk cited for this step"),
+    ).toBeNull();
+  });
+
   it("draws a root flush-left and its children's guides nested within its subtree", () => {
     render(
       <BriefReader
