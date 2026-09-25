@@ -266,9 +266,9 @@ export function briefReachRows(reach: BriefReach): BriefReachRows {
       })),
     },
     untested: {
-      label: "Untested reach",
-      hint: "changed code with no test in this PR",
-      empty: "Every changed file has a test in this PR.",
+      label: "No matching test",
+      hint: "no changed test file matches it by name, folder, or mention",
+      empty: "Every changed file matches a changed test file.",
       items: reach.untested.map((item) => ({
         name: item.path,
         hot: true,
@@ -380,12 +380,16 @@ export function briefOwnershipTree(
 }
 
 /**
- * States the Brief's citation status alone (ADR 0040): there is no Goal or
- * Assumption count left to add to it, since Flow keeps an uncited step,
- * muted, rather than demoting it to a lower-confidence line.
+ * States the Brief's citation status alone (ADR 0040). A surviving citation
+ * only proves its hunk exists in the diff, not that the step it supports is
+ * right, so the line claims no more than "found".
  */
 export function briefCitationStatusLine(brief: Brief): string {
-  return brief.citationStatus === "verified"
-    ? "all citations verified"
-    : "some citations could not be verified";
+  if (brief.citationStatus === "partially_verified")
+    return "some cited hunks not found in the diff";
+  const cited = (nodes: ReadonlyArray<BriefFlowNodeEntry>): boolean =>
+    nodes.some((node) => node.citations.length > 0 || cited(node.children));
+  return brief.flow?.trees.some((tree) => cited(tree.nodes)) === true
+    ? "all cited hunks found in the diff"
+    : "no hunks cited";
 }

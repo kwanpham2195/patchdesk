@@ -35,6 +35,8 @@ type InsightReaderBuilderInput = {
   readonly runEnabled: boolean;
   /** Opens the Diff tab at a mapped finding's lines; absent outside the workbench. */
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
+  /** Opens one file in the full Review diff; absent outside the workbench. */
+  readonly onOpenFileInDiff?: (path: string) => void;
 };
 /**
  * Says whether a retained Walkthrough can show inline discussion, and if not,
@@ -82,6 +84,7 @@ export function buildInsightReaders({
   analysisVerification,
   walkthroughProgress,
   onOpenFindingInDiff,
+  onOpenFileInDiff,
   walkthroughFocused,
   setWalkthroughFocused,
   onRegenerateBrief,
@@ -216,6 +219,20 @@ export function buildInsightReaders({
       />
     ) : null;
   const briefRetained = workbench.insights.brief?.retained;
+  // The Diff tab shows the reviewed head, so only a Brief of that same revision can point into it.
+  const briefDiffPaths =
+    onOpenFileInDiff !== undefined &&
+    workbench.insights.brief?.status === "current" &&
+    briefRetained?.headSha === workbench.revision.reviewedHeadSha &&
+    workbench.fullPatch !== undefined
+      ? new Map(
+          // New paths go last so a rename chain cannot map one file's name onto another file.
+          [
+            ...patchFiles.map((file) => [file.oldPath, file.newPath] as const),
+            ...patchFiles.map((file) => [file.newPath, file.newPath] as const),
+          ],
+        )
+      : undefined;
   const retainedBrief =
     selectedInsight === "brief" && briefRetained !== undefined ? (
       <BriefReader
@@ -227,6 +244,16 @@ export function buildInsightReaders({
         regenerateDisabled={!runEnabled}
         walkthroughStatus={workbench.insights.walkthrough.status}
         {...definedProps({ onOpenWalkthrough })}
+        {...(briefDiffPaths === undefined || onOpenFileInDiff === undefined
+          ? {}
+          : {
+              diffOpenerFor: (path: string) => {
+                const diffPath = briefDiffPaths.get(path);
+                return diffPath === undefined
+                  ? undefined
+                  : () => onOpenFileInDiff(diffPath);
+              },
+            })}
       />
     ) : null;
   return retainedAnalysis ?? retainedWalkthrough ?? retainedBrief;

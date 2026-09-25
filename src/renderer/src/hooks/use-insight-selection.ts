@@ -19,17 +19,23 @@ export function useInsightSelection(
   initialDetail: InsightRunDialogType | undefined,
   insights: WorkbenchResponse["insights"],
 ) {
-  // A saved detail wins; otherwise land on the first Insight with content so
-  // the reader does not open on an empty Generate prompt (#350).
+  const findingNavigation = useContext(ReviewWorkbenchFindingNavigationContext);
+  // The reader left for the Diff wins, then a saved detail; otherwise land on
+  // the first Insight with content so the reader does not open on an empty
+  // Generate prompt (#350).
   const [initialInsight] = useState<InsightRunDialogType>(
     () =>
+      findingNavigation?.lastInsight ??
       initialDetail ??
       LANDING_ORDER.find((type) => insights[type]?.retained !== undefined) ??
       "brief",
   );
   const [selectedInsight, setSelectedInsight] =
     useState<InsightRunDialogType>(initialInsight);
-  const findingNavigation = useContext(ReviewWorkbenchFindingNavigationContext);
+  const rememberInsight = findingNavigation?.rememberInsight;
+  useEffect(() => {
+    rememberInsight?.(selectedInsight);
+  }, [rememberInsight, selectedInsight]);
   const findingFocusRequest = findingNavigation?.findingFocusRequest;
   const handledFindingFocusToken = useRef<number>(0);
   // A Diff card's "Open in Analysis" lands here: select the Analysis reader,
@@ -59,5 +65,6 @@ export function useInsightSelection(
     selectedInsight,
     setSelectedInsight,
     openFindingInDiff: findingNavigation?.openFindingInDiff,
+    openFileInDiff: findingNavigation?.openFileInDiff,
   };
 }

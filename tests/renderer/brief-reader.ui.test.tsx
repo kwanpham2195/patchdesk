@@ -263,7 +263,7 @@ describe("BriefReader", () => {
     expect(screen.getByRole("region", { name: "Shape" })).toBeTruthy();
   });
 
-  it("renders the four Reach rows and states how the counts were made", () => {
+  it("renders the Reach rows that found something and states how the counts were made", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -279,12 +279,55 @@ describe("BriefReader", () => {
     expect(
       screen.getByRole("region", { name: "Surfaces crossed" }),
     ).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Untested reach" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "No matching test" }),
+    ).toBeTruthy();
     expect(
       screen.getByRole("region", { name: "Removed, still referenced" }),
     ).toBeTruthy();
     expect(screen.getByText(/one hop out from the diff/)).toBeTruthy();
     expect(screen.getByText(/not a call graph/)).toBeTruthy();
+  });
+
+  it("folds the Reach rows that found nothing into one summary until it is opened", async () => {
+    const user = userEvent.setup();
+    const base = retained();
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={{
+          ...base,
+          value: {
+            ...briefValue,
+            reach: {
+              ...REACH,
+              surfaces: [{ surface: "Public API" }],
+              untested: [],
+            },
+          },
+        }}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Changed contracts" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Surfaces crossed" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "No matching test" }),
+    ).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Nothing found/ }));
+
+    expect(
+      screen.getByRole("region", { name: "Surfaces crossed" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "No matching test" }),
+    ).toBeTruthy();
   });
 
   it("omits the Reach block and says why when the search could not answer", () => {
@@ -689,13 +732,23 @@ describe("brief citation labels", () => {
     );
   });
 
-  it("states the citation status alone (ADR 0040)", () => {
-    expect(briefCitationStatusLine(briefValue)).toBe("all citations verified");
-    expect(
-      briefCitationStatusLine({
-        ...briefValue,
-        citationStatus: "partially_verified",
-      }),
-    ).toBe("some citations could not be verified");
+  it.each([
+    [
+      "every cited hunk was found",
+      briefValue,
+      "all cited hunks found in the diff",
+    ],
+    [
+      "a citation was dropped",
+      { ...briefValue, citationStatus: "partially_verified" as const },
+      "some cited hunks not found in the diff",
+    ],
+    [
+      "the Brief has no Flow to cite from",
+      { snapshot: briefValue.snapshot, citationStatus: "verified" as const },
+      "no hunks cited",
+    ],
+  ])("claims only what was found when %s", (_, brief, line) => {
+    expect(briefCitationStatusLine(brief)).toBe(line);
   });
 });

@@ -57,6 +57,33 @@ describe("useInsightSelection", () => {
     expect(result.current.selectedInsight).toBe(expected);
   });
 
+  it("returns from the Diff to the reader the reviewer left, over a restored detail, and records each new choice", () => {
+    const remembered: Array<string> = [];
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <ReviewWorkbenchFindingNavigationContext.Provider
+        value={{
+          openFindingInDiff: () => undefined,
+          openFileInDiff: () => undefined,
+          findingFocusRequest: undefined,
+          lastInsight: "brief",
+          rememberInsight: (insight) => remembered.push(insight),
+        }}
+      >
+        {children}
+      </ReviewWorkbenchFindingNavigationContext.Provider>
+    );
+    const { result } = renderHook(
+      () => useInsightSelection("walkthrough", analysisOnly),
+      { wrapper },
+    );
+
+    expect(result.current.selectedInsight).toBe("brief");
+
+    act(() => result.current.setSelectedInsight("analysis"));
+
+    expect(remembered.at(-1)).toBe("analysis");
+  });
+
   it("focuses each new finding request once and leaves the same request dismissed", () => {
     function addFindingRow(findingId: string) {
       const row = document.createElement("div");
@@ -75,7 +102,10 @@ describe("useInsightSelection", () => {
       <ReviewWorkbenchFindingNavigationContext.Provider
         value={{
           openFindingInDiff: () => undefined,
+          openFileInDiff: () => undefined,
           findingFocusRequest: request,
+          lastInsight: undefined,
+          rememberInsight: () => undefined,
         }}
       >
         {children}
