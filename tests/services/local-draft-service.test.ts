@@ -139,6 +139,21 @@ describe("LocalDraftService", () => {
     });
   });
 
+  it("refuses a draft change while another operation holds the Review and stores nothing", async () => {
+    const { harness, request } = await draftedReview();
+    const key = `${profileId}:${request.reviewId}`;
+    expect(harness.coordinator.acquire(key)).toBe(true);
+
+    const refused = await harness.drafts.add(request);
+    harness.coordinator.release(key);
+
+    expect(refused).toEqual({ _tag: "err", error: { reason: "in_progress" } });
+    const stored = value(
+      await harness.reviews.load(profileId, request.reviewId),
+    );
+    expect(stored.localDrafts).toBeUndefined();
+  });
+
   it("refuses a dismissed Finding", async () => {
     const { harness, request } = await draftedReview();
     value(

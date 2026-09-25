@@ -101,6 +101,7 @@ export type LocalApplyHarness = {
   readonly insights: InsightStore;
   /** Add to draft and Remove over the same stores and Review coordinator. */
   readonly drafts: LocalDraftService;
+  readonly coordinator: ReviewOperationCoordinator;
   readonly logs: ReadonlyArray<LogEntryInput>;
   readonly open: (
     request?: LocalReviewSourceRequest,
@@ -224,6 +225,7 @@ export async function localApplyHarness(
       coordinator,
       now: () => now,
     }),
+    coordinator,
     logs,
     open: async (request = { kind: "working_tree" }) =>
       value(await opening.open({ profileId, repository, request })),
