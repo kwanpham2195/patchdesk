@@ -95,6 +95,17 @@ const storedFlowTreeSchema = v.strictObject({
 const storedFlowSchema = v.strictObject({
   trees: v.pipe(v.array(storedFlowTreeSchema), v.minLength(1)),
 });
+const storedReachMentionSchema = v.strictObject({
+  path: v.pipe(v.string(), v.minLength(1)),
+  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  enclosing: v.optional(v.pipe(v.string(), v.minLength(1))),
+  kind: v.picklist(["call", "type", "import", "other"]),
+});
+// Briefs retained before mention sites existed lack both; the reader then draws files.
+const storedReachMentionFields = {
+  mentions: v.optional(v.array(storedReachMentionSchema)),
+  mentionCount: v.optional(storedLineCountSchema),
+};
 const storedReachSchema = v.strictObject({
   symbols: v.array(
     v.strictObject({
@@ -104,6 +115,7 @@ const storedReachSchema = v.strictObject({
       insidePR: v.boolean(),
       // Briefs retained before the Blast radius view lack it; they read as `changed` so no name is hidden.
       status: v.optional(v.picklist(["new", "changed"])),
+      ...storedReachMentionFields,
     }),
   ),
   surfaces: v.array(
@@ -122,6 +134,7 @@ const storedReachSchema = v.strictObject({
     v.strictObject({
       name: v.pipe(v.string(), v.minLength(1)),
       paths: v.array(v.pipe(v.string(), v.minLength(1))),
+      ...storedReachMentionFields,
     }),
   ),
   method: v.literal("text_match"),
@@ -226,8 +239,8 @@ export function parseStoredBrief(
 /**
  * Rebuilds the Reach block. `surface.path` is rewritten because valibot infers
  * an optional key as `string | undefined`, which an `exactOptionalPropertyTypes`
- * target reads as a present key holding `undefined`; a missing symbol `status`
- * reads as `changed`.
+ * target reads as a present key holding `undefined`, and mention sites are
+ * rebuilt for the same reason; a missing symbol `status` reads as `changed`.
  */
 function storedReach(
   stored: v.InferOutput<typeof storedReachSchema> | undefined,
@@ -236,14 +249,41 @@ function storedReach(
   return {
     ...stored,
     symbols: stored.symbols.map((symbol) => ({
-      ...symbol,
+      name: symbol.name,
+      outsideCallerFiles: symbol.outsideCallerFiles,
+      outsidePaths: symbol.outsidePaths,
+      insidePR: symbol.insidePR,
       status: symbol.status ?? "changed",
+      ...storedMentions(symbol),
+    })),
+    removedStillReferenced: stored.removedStillReferenced.map((item) => ({
+      name: item.name,
+      paths: item.paths,
+      ...storedMentions(item),
     })),
     surfaces: stored.surfaces.map((entry) => ({
       surface: entry.surface,
       ...definedProps({ path: entry.path }),
     })),
   };
+}
+
+/** Rebuilds a name's mention sites, dropping the keys a legacy Brief never wrote. */
+function storedMentions(stored: {
+  readonly mentions?:
+    | ReadonlyArray<v.InferOutput<typeof storedReachMentionSchema>>
+    | undefined;
+  readonly mentionCount?: number | undefined;
+}) {
+  return definedProps({
+    mentions: stored.mentions?.map((mention) => ({
+      path: mention.path,
+      line: mention.line,
+      kind: mention.kind,
+      ...definedProps({ enclosing: mention.enclosing }),
+    })),
+    mentionCount: stored.mentionCount,
+  });
 }
 
 /**

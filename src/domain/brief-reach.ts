@@ -1,3 +1,4 @@
+import type { BriefReachMention } from "./brief-reach-mentions";
 import { classifyChangedPath } from "./change-scope";
 import { tokenizeUnifiedPatch } from "./unified-patch";
 
@@ -54,6 +55,16 @@ export type BriefReachSymbol = {
   readonly insidePR: boolean;
   /** `new` when the patch declares the name only on added lines, so nothing outside it can depend on it yet. */
   readonly status: "new" | "changed";
+} & BriefReachMentions;
+
+/**
+ * The outside lines that name a symbol, calls first, cut to the site caps;
+ * `mentionCount` is every outside line before the cut. Both are absent on a
+ * Brief retained before mention sites existed, which the reader draws as files.
+ */
+type BriefReachMentions = {
+  readonly mentions?: ReadonlyArray<BriefReachMention>;
+  readonly mentionCount?: number;
 };
 
 /** One surface the changed paths either cross or do not; an unlit surface is still reported. */
@@ -73,7 +84,7 @@ export type BriefReachUntested = {
 export type BriefReachRemoved = {
   readonly name: string;
   readonly paths: ReadonlyArray<string>;
-};
+} & BriefReachMentions;
 
 /**
  * The Reach block. `method` and `hop` are stored beside the counts so the

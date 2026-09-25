@@ -64,6 +64,19 @@ const briefStartHereSchema = v.strictObject({
  * process, never by the model, and `method`/`hop` travel with the counts so the
  * reader's footer can state how they were made.
  */
+/** One outside line naming a Blast radius name; mirrors `BriefReachMention` in `src/domain/brief-reach-mentions.ts`. */
+const briefReachMentionSchema = v.strictObject({
+  path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
+  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  enclosing: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+  kind: v.picklist(["call", "type", "import", "other"]),
+});
+// Briefs retained before mention sites existed lack both; the reader then draws today's file list.
+const briefReachMentionFields = {
+  mentions: v.optional(v.array(briefReachMentionSchema)),
+  mentionCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+};
+
 const briefReachSchema = v.strictObject({
   symbols: v.array(
     v.strictObject({
@@ -75,6 +88,7 @@ const briefReachSchema = v.strictObject({
       insidePR: v.boolean(),
       // Briefs retained before the Blast radius view lack it; the reader treats them as `changed` so no name is hidden.
       status: v.optional(v.picklist(["new", "changed"])),
+      ...briefReachMentionFields,
     }),
   ),
   surfaces: v.array(
@@ -93,6 +107,7 @@ const briefReachSchema = v.strictObject({
     v.strictObject({
       name: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
       paths: v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
+      ...briefReachMentionFields,
     }),
   ),
   method: v.literal("text_match"),
@@ -213,6 +228,7 @@ export type Brief = v.InferOutput<typeof briefSchema>;
 export type BriefCitation = v.InferOutput<typeof briefCitationSchema>;
 export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
 export type BriefReach = v.InferOutput<typeof briefReachSchema>;
+type BriefReachMention = v.InferOutput<typeof briefReachMentionSchema>;
 export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;
 export type BriefFlow = v.InferOutput<typeof briefFlowSchema>;
 export type BriefFlowNode = v.InferOutput<typeof briefFlowNodeSchema>;
@@ -234,13 +250,27 @@ export type BriefReachRow = {
   readonly empty: string;
 };
 
+/** One place a file mentions a name: the declaration it sits in, its kind, and its line. */
+type BlastRadiusSite = {
+  /** The enclosing declaration, or `top level`. */
+  readonly label: string;
+  readonly kind: BriefReachMention["kind"];
+  readonly line: number;
+};
+
+/** One file under a folder, with the sites that mention the name; empty for a Brief stored before sites existed. */
+export type BlastRadiusFile = {
+  readonly name: string;
+  readonly sites: ReadonlyArray<BlastRadiusSite>;
+};
+
 /** One folder of a name's outside paths: the folder is printed once, its file names after it. */
 export type BlastRadiusFolder = {
   /** Ends in `/`; `./` for a file at the repository root. */
   readonly folder: string;
   /** A folder can hold both source and test files; each side gets its own group. */
   readonly tests: boolean;
-  readonly files: ReadonlyArray<string>;
+  readonly files: ReadonlyArray<BlastRadiusFile>;
 };
 
 /** One name in a Blast radius group, with its outside paths already grouped and cut. */
@@ -249,11 +279,11 @@ export type BlastRadiusName = {
   readonly count: string;
   /** Every stored path, source folders before test folders. */
   readonly folders: ReadonlyArray<BlastRadiusFolder>;
-  /** The first `MAX_COLLAPSED_PATHS` of `folders`, drawn until the reader asks for more. */
+  /** The first `MAX_COLLAPSED_PATHS` sites (or files, without sites) of `folders`, drawn until the reader asks for more. */
   readonly collapsed: ReadonlyArray<BlastRadiusFolder>;
-  /** Stored paths `collapsed` leaves out. */
+  /** Stored sites or files `collapsed` leaves out. */
   readonly hidden: number;
-  /** Files the search counted past the stored paths. */
+  /** Sites or files the search counted past the stored ones. */
   readonly unlisted: number;
 };
 
@@ -277,6 +307,9 @@ const MAX_SUMMARY_AREAS = 3;
 const files = (count: number) =>
   `${String(count)} ${count === 1 ? "file" : "files"}`;
 
+const plural = (count: number, one: string, many: string) =>
+  `${String(count)} ${count === 1 ? one : many}`;
+
 const isTestPath = (path: string) =>
   classifyChangedPath({ path, additions: 0, deletions: 0 }) === "tests";
 
@@ -294,13 +327,39 @@ function sourceTestSplit(paths: ReadonlyArray<string>, separator: string) {
     .join(separator);
 }
 
+/** `5 calls · 2 type-only · 2 tests`: source sites by kind, then every test site once. */
+function mentionKindSplit(mentions: ReadonlyArray<BriefReachMention>): string {
+  const source = mentions.filter((mention) => !isTestPath(mention.path));
+  const count = (kind: BriefReachMention["kind"]) =>
+    source.filter((mention) => mention.kind === kind).length;
+  const tests = mentions.length - source.length;
+  return [
+    { total: count("call"), one: "call", many: "calls" },
+    { total: count("type"), one: "type-only", many: "type-only" },
+    { total: count("import"), one: "import", many: "imports" },
+    { total: count("other"), one: "other", many: "other" },
+    { total: tests, one: "test", many: "tests" },
+  ]
+    .filter((part) => part.total !== 0)
+    .map((part) => plural(part.total, part.one, part.many))
+    .join(" · ");
+}
+
+const MENTION_KIND_ORDER: ReadonlyArray<BriefReachMention["kind"]> = [
+  "call",
+  "type",
+  "import",
+  "other",
+];
+
 /** Groups paths by folder, source folders first, keeping first-seen order within each side. */
 function groupByFolder(
   paths: ReadonlyArray<string>,
+  mentions: ReadonlyArray<BriefReachMention>,
 ): ReadonlyArray<BlastRadiusFolder> {
   const groups = new Map<
     string,
-    { folder: string; tests: boolean; files: Array<string> }
+    { folder: string; tests: boolean; files: Array<BlastRadiusFile> }
   >();
   const ordered = [
     ...paths.filter((path) => !isTestPath(path)),
@@ -312,14 +371,39 @@ function groupByFolder(
     const tests = isTestPath(path);
     const key = `${String(tests)}:${folder}`;
     const group = groups.get(key) ?? { folder, tests, files: [] };
-    group.files.push(path.slice(cut + 1));
+    group.files.push({
+      name: path.slice(cut + 1),
+      sites: sitesIn(path, mentions),
+    });
     groups.set(key, group);
   }
   return [...groups.values()];
 }
 
-/** The first `limit` files across `folders`, in the order they are drawn. */
-function firstFiles(
+/** One file's sites, calls first, then type, import, and other, each by line. */
+function sitesIn(
+  path: string,
+  mentions: ReadonlyArray<BriefReachMention>,
+): ReadonlyArray<BlastRadiusSite> {
+  return mentions
+    .filter((mention) => mention.path === path)
+    .sort(
+      (a, b) =>
+        MENTION_KIND_ORDER.indexOf(a.kind) -
+          MENTION_KIND_ORDER.indexOf(b.kind) || a.line - b.line,
+    )
+    .map((mention) => ({
+      label: mention.enclosing ?? "top level",
+      kind: mention.kind,
+      line: mention.line,
+    }));
+}
+
+/** A file draws as its sites, or as one row when it has none. */
+const fileUnits = (file: BlastRadiusFile) => Math.max(1, file.sites.length);
+
+/** The first `limit` sites (or bare files) across `folders`, in the order they are drawn. */
+function firstUnits(
   folders: ReadonlyArray<BlastRadiusFolder>,
   limit: number,
 ): ReadonlyArray<BlastRadiusFolder> {
@@ -327,51 +411,132 @@ function firstFiles(
   let left = limit;
   for (const group of folders) {
     if (left === 0) break;
-    kept.push({ ...group, files: group.files.slice(0, left) });
-    left -= Math.min(left, group.files.length);
+    const keptFiles: Array<BlastRadiusFile> = [];
+    for (const file of group.files) {
+      if (left === 0) break;
+      keptFiles.push({ ...file, sites: file.sites.slice(0, left) });
+      left -= Math.min(left, fileUnits(file));
+    }
+    kept.push({ ...group, files: keptFiles });
   }
   return kept;
 }
 
-function blastRadiusName(
-  name: string,
-  paths: ReadonlyArray<string>,
-  total: number,
-  count: string,
-): BlastRadiusName {
-  const folders = groupByFolder(paths);
+/** One name's view; `mentions` is absent on a Brief stored before sites existed. */
+function blastRadiusName(entry: {
+  readonly name: string;
+  readonly paths: ReadonlyArray<string>;
+  readonly totalFiles: number;
+  readonly mentions: ReadonlyArray<BriefReachMention> | undefined;
+  readonly mentionCount: number | undefined;
+  readonly fileCount: string;
+}): BlastRadiusName {
+  const mentions = entry.mentions ?? [];
+  const folders =
+    entry.mentions === undefined
+      ? groupByFolder(entry.paths, [])
+      : groupByFolder(
+          [...new Set(mentions.map((mention) => mention.path))],
+          mentions,
+        );
+  const units = folders
+    .flatMap((group) => group.files)
+    .reduce((total, file) => total + fileUnits(file), 0);
   return {
-    name,
-    count,
+    name: entry.name,
+    count:
+      entry.mentions === undefined
+        ? entry.fileCount
+        : mentionKindSplit(mentions),
     folders,
-    collapsed: firstFiles(folders, MAX_COLLAPSED_PATHS),
-    hidden: Math.max(0, paths.length - MAX_COLLAPSED_PATHS),
-    unlisted: Math.max(0, total - paths.length),
+    collapsed: firstUnits(folders, MAX_COLLAPSED_PATHS),
+    hidden: Math.max(0, units - MAX_COLLAPSED_PATHS),
+    unlisted:
+      entry.mentions === undefined
+        ? Math.max(0, entry.totalFiles - entry.paths.length)
+        : Math.max(
+            0,
+            (entry.mentionCount ?? mentions.length) - mentions.length,
+          ),
   };
 }
 
-/** The first two path segments of each file's folder, most mentioned first. */
-function areas(paths: ReadonlyArray<string>): string {
-  const counts = new Map<string, number>();
-  for (const path of paths) {
-    const segments = path.split("/").slice(0, -1);
-    const area = segments.length === 0 ? "./" : segments.slice(0, 2).join("/");
-    counts.set(area, (counts.get(area) ?? 0) + 1);
-  }
-  const ranked = [...counts].sort((a, b) => b[1] - a[1]).map(([area]) => area);
-  const shown = ranked.slice(0, MAX_SUMMARY_AREAS).join(", ");
-  return ranked.length > MAX_SUMMARY_AREAS ? `${shown}, …` : shown;
+/** The first two path segments of a file's folder. */
+function areaOf(path: string): string {
+  const segments = path.split("/").slice(0, -1);
+  return segments.length === 0 ? "./" : segments.slice(0, 2).join("/");
 }
+
+/** Path prefixes of the layers `docs/architecture.md` names. */
+const LAYER_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+  ["src/main/", "main"],
+  ["src/services/", "services"],
+  ["src/renderer/", "renderer"],
+  ["src/adapters/", "adapters"],
+  ["src/domain/", "domain"],
+  ["runtime/", "runtime"],
+];
+
+/** A path's architecture layer, or its area in a repository without those layers. */
+function layerOf(path: string): string {
+  return (
+    LAYER_PREFIXES.find(([prefix]) => path.startsWith(prefix))?.[1] ??
+    areaOf(path)
+  );
+}
+
+/** Labels most frequent first, cut to `MAX_SUMMARY_AREAS`. */
+function ranked(labels: ReadonlyArray<string>): string {
+  const counts = new Map<string, number>();
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+  const order = [...counts].sort((a, b) => b[1] - a[1]).map(([label]) => label);
+  const shown = order.slice(0, MAX_SUMMARY_AREAS).join(", ");
+  return order.length > MAX_SUMMARY_AREAS ? `${shown}, …` : shown;
+}
+
+const NOTHING_MENTIONED = "Nothing outside this PR mentions what it changed.";
 
 function blastRadiusSummary(
   paths: ReadonlyArray<string>,
   someUnlisted: boolean,
 ): string {
-  if (paths.length === 0)
-    return "Nothing outside this PR mentions what it changed.";
+  if (paths.length === 0) return NOTHING_MENTIONED;
   const source = paths.filter((path) => !isTestPath(path));
   const lead = `${someUnlisted ? "At least " : ""}${files(paths.length)} could be affected`;
-  return `${lead} · ${sourceTestSplit(paths, ", ")} · in ${areas(source.length === 0 ? paths : source)}`;
+  return `${lead} · ${sourceTestSplit(paths, ", ")} · in ${ranked((source.length === 0 ? paths : source).map(areaOf))}`;
+}
+
+/** The summary by mention site: functions that call a changed name lead, then type-only mentions, then the layers they sit in. */
+function mentionSummary(
+  mentions: ReadonlyArray<BriefReachMention>,
+  someUnlisted: boolean,
+): string {
+  const source = mentions.filter((mention) => !isTestPath(mention.path));
+  const callers = new Set(
+    source.flatMap((mention) =>
+      mention.kind === "call"
+        ? [`${mention.path}\0${mention.enclosing ?? ""}`]
+        : [],
+    ),
+  ).size;
+  const types = source.filter((mention) => mention.kind === "type").length;
+  const parts = [
+    callers === 0
+      ? undefined
+      : `${plural(callers, "function calls", "functions call")} something this PR changed`,
+    types === 0
+      ? undefined
+      : plural(types, "type-only mention", "type-only mentions"),
+  ].filter((part) => part !== undefined);
+  if (parts.length === 0)
+    parts.push(
+      source.length === 0
+        ? plural(mentions.length, "test mention", "test mentions")
+        : plural(source.length, "mention", "mentions"),
+    );
+  if (source.length > 0)
+    parts.push(`in ${ranked(source.map((mention) => layerOf(mention.path)))}`);
+  return `${someUnlisted ? "At least " : ""}${parts.join(" · ")}`;
 }
 
 /**
@@ -380,23 +545,27 @@ function blastRadiusSummary(
  */
 export function briefBlastRadius(reach: BriefReach): BriefBlastRadius {
   const removed = reach.removedStillReferenced.map((item) =>
-    blastRadiusName(
-      item.name,
-      item.paths,
-      item.paths.length,
-      files(item.paths.length),
-    ),
+    blastRadiusName({
+      name: item.name,
+      paths: item.paths,
+      totalFiles: item.paths.length,
+      mentions: item.mentions,
+      mentionCount: item.mentionCount,
+      fileCount: files(item.paths.length),
+    }),
   );
   const mentioned = reach.symbols
     .filter((symbol) => symbol.outsideCallerFiles > 0)
     .sort((a, b) => b.outsideCallerFiles - a.outsideCallerFiles);
   const changed = mentioned.map((symbol) =>
-    blastRadiusName(
-      symbol.name,
-      symbol.outsidePaths,
-      symbol.outsideCallerFiles,
-      sourceTestSplit(symbol.outsidePaths, " · "),
-    ),
+    blastRadiusName({
+      name: symbol.name,
+      paths: symbol.outsidePaths,
+      totalFiles: symbol.outsideCallerFiles,
+      mentions: symbol.mentions,
+      mentionCount: symbol.mentionCount,
+      fileCount: sourceTestSplit(symbol.outsidePaths, " · "),
+    }),
   );
   const quiet = reach.symbols.filter(
     (symbol) => symbol.outsideCallerFiles === 0,
@@ -410,15 +579,26 @@ export function briefBlastRadius(reach: BriefReach): BriefBlastRadius {
   ]
     .filter((part) => part !== undefined)
     .join(", ");
-  const affected = new Set([
-    ...reach.removedStillReferenced.flatMap((item) => item.paths),
-    ...mentioned.flatMap((symbol) => symbol.outsidePaths),
-  ]);
+  const listed = [...reach.removedStillReferenced, ...mentioned];
+  const mentions = listed.flatMap((item) => item.mentions ?? []);
+  const someUnlisted = [...removed, ...changed].some(
+    (name) => name.unlisted > 0,
+  );
+  // A Brief stored before mention sites existed, or one whose site budget ran out, is summarised by file.
+  const bySite =
+    mentions.length > 0 && listed.every((item) => item.mentions !== undefined);
   return {
-    summary: blastRadiusSummary(
-      [...affected],
-      changed.some((name) => name.unlisted > 0),
-    ),
+    summary: bySite
+      ? mentionSummary(mentions, someUnlisted)
+      : blastRadiusSummary(
+          [
+            ...new Set([
+              ...reach.removedStillReferenced.flatMap((item) => item.paths),
+              ...mentioned.flatMap((symbol) => symbol.outsidePaths),
+            ]),
+          ],
+          changed.some((name) => name.unlisted > 0),
+        ),
     removed,
     changed,
     quiet: {

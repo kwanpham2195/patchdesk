@@ -1,6 +1,8 @@
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import { join } from "node:path";
 
 import type { CommandRunner } from "../adapters/github/command-runner";
+import { isPathContained } from "../adapters/storage/path-containment";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import {
   briefReachFiles,
@@ -13,6 +15,15 @@ import {
   type BriefReachSymbol,
   type BriefReachUnavailableReason,
 } from "../domain/brief-reach";
+import {
+  enclosingDeclaration,
+  mentionKind,
+  MAX_MENTIONS_PER_NAME,
+  MAX_MENTIONS_TOTAL,
+  MENTION_KIND_ORDER,
+  type BriefReachMention,
+  type BriefReachMentionKind,
+} from "../domain/brief-reach-mentions";
 import { definedProps } from "../domain/defined-props";
 import type { ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
 
@@ -21,7 +32,7 @@ import type { ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
  *
  * The model never writes a number: it proposes names, `candidateReachSymbols`
  * keeps only the ones the patch itself carries, and every count here is one
- * `git grep --count` against the immutable head tree. The search is one hop and
+ * `git grep` against the immutable head tree. The search is one hop and
  * text-only, which is why the reader labels it "text match".
  *
  * Nothing here throws and nothing here fails a Brief. A worktree that cannot be
@@ -116,31 +127,79 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
   const files = briefReachFiles(input.patch);
   const changedPaths = new Set(files.map((file) => file.path));
   const newNames = newlyDeclaredNames(input.patch);
-  const symbols: Array<BriefReachSymbol> = [];
+  const searched: Array<{
+    readonly name: string;
+    readonly outside: ReadonlyArray<MatchedLine>;
+    readonly insidePR: boolean;
+  }> = [];
   for (const name of input.symbols) {
     const matches = await searchSymbol(input, worktree, name, deadline);
     if (matches._tag === "unavailable") return matches;
-    const outside = matches.paths.filter((path) => !changedPaths.has(path));
-    symbols.push({
+    const outside = matches.lines.filter(
+      (line) => !changedPaths.has(line.path),
+    );
+    searched.push({
       name,
-      outsideCallerFiles: outside.length,
-      outsidePaths: outside.slice(0, MAX_REACH_OUTSIDE_PATHS),
-      insidePR: outside.length < matches.paths.length,
-      status: newNames.has(name) ? "new" : "changed",
+      outside,
+      insidePR: outside.length < matches.lines.length,
     });
   }
 
-  const removedStillReferenced: Array<BriefReachRemoved> = [];
+  const removed: Array<{
+    readonly name: string;
+    readonly outside: ReadonlyArray<MatchedLine>;
+  }> = [];
   for (const name of removedSymbols(input.patch)) {
     const matches = await searchSymbol(input, worktree, name, deadline);
     if (matches._tag === "unavailable") return matches;
-    const outside = matches.paths.filter((path) => !changedPaths.has(path));
-    if (outside.length === 0) continue;
-    removedStillReferenced.push({
-      name,
-      paths: outside.slice(0, MAX_REACH_OUTSIDE_PATHS),
-    });
+    const outside = matches.lines.filter(
+      (line) => !changedPaths.has(line.path),
+    );
+    if (outside.length > 0) removed.push({ name, outside });
   }
+
+  // Removed names spend the shared site budget first: they are what breaks.
+  let budget = MAX_MENTIONS_TOTAL;
+  const keep = (item: {
+    readonly name: string;
+    readonly outside: ReadonlyArray<MatchedLine>;
+  }) => {
+    const kept = rankedSites(item.name, item.outside).slice(
+      0,
+      Math.min(MAX_MENTIONS_PER_NAME, budget),
+    );
+    budget -= kept.length;
+    return kept;
+  };
+  const removedSites = removed.map(keep);
+  const symbolSites = searched.map(keep);
+  const fileLines = await readWorktreeFiles(worktree, [
+    ...removedSites.flat(),
+    ...symbolSites.flat(),
+  ]);
+  const mentions = (sites: ReadonlyArray<RankedSite> | undefined) =>
+    (sites ?? []).map((site) => mentionAt(site, fileLines.get(site.path)));
+
+  const removedStillReferenced: Array<BriefReachRemoved> = removed.map(
+    (item, index) => ({
+      name: item.name,
+      paths: distinctPaths(item.outside).slice(0, MAX_REACH_OUTSIDE_PATHS),
+      mentions: mentions(removedSites[index]),
+      mentionCount: item.outside.length,
+    }),
+  );
+  const symbols: Array<BriefReachSymbol> = searched.map((item, index) => {
+    const paths = distinctPaths(item.outside);
+    return {
+      name: item.name,
+      outsideCallerFiles: paths.length,
+      outsidePaths: paths.slice(0, MAX_REACH_OUTSIDE_PATHS),
+      insidePR: item.insidePR,
+      status: newNames.has(item.name) ? "new" : "changed",
+      mentions: mentions(symbolSites[index]),
+      mentionCount: item.outside.length,
+    };
+  });
 
   return {
     _tag: "ok",
@@ -148,9 +207,16 @@ async function countReach(input: BriefReachInput): Promise<BriefReachOutcome> {
   };
 }
 
-/** Every file of the head tree that names `name` as a whole word, or why the search stopped. */
+/** One line of the head tree that names a symbol as a whole word. */
+type MatchedLine = {
+  readonly path: string;
+  readonly line: number;
+  readonly text: string;
+};
+
+/** Every line of the head tree that names `name` as a whole word, or why the search stopped. */
 type SymbolMatches =
-  | { readonly _tag: "matched"; readonly paths: ReadonlyArray<string> }
+  | { readonly _tag: "matched"; readonly lines: ReadonlyArray<MatchedLine> }
   | BriefReachUnavailable;
 
 async function searchSymbol(
@@ -168,7 +234,8 @@ async function searchSymbol(
       "grep",
       "--fixed-strings",
       "--word-regexp",
-      "--count",
+      "--line-number",
+      "--null",
       "-e",
       name,
       input.headSha,
@@ -177,27 +244,98 @@ async function searchSymbol(
     ],
     Math.min(MAX_SEARCH_MS, remaining),
   );
-  if (output._tag === "empty") return { _tag: "matched", paths: [] };
+  if (output._tag === "empty") return { _tag: "matched", lines: [] };
   if (output._tag !== "found") return unavailable(searchFailure(output._tag));
-  return { _tag: "matched", paths: matchedPaths(output.stdout, input.headSha) };
+  return { _tag: "matched", lines: matchedLines(output.stdout, input.headSha) };
+}
+
+/** A minified line can run to megabytes; the kind rules only need its start. */
+const MAX_CLASSIFIED_LINE_LENGTH = 500;
+
+/**
+ * `git grep --null --line-number` prints `<rev>:<path>\0<line>\0<text>` per
+ * matching line; the NULs keep a colon in a path from splitting it.
+ */
+function matchedLines(stdout: string, rev: string): ReadonlyArray<MatchedLine> {
+  const lines: Array<MatchedLine> = [];
+  for (const record of stdout.split("\n")) {
+    const [location, lineNumber, ...rest] = record.split("\0");
+    if (location === undefined || !location.startsWith(`${rev}:`)) continue;
+    const line = Number(lineNumber);
+    if (!Number.isInteger(line) || line <= 0) continue;
+    lines.push({
+      path: location.slice(rev.length + 1),
+      line,
+      text: rest.join("\0").slice(0, MAX_CLASSIFIED_LINE_LENGTH),
+    });
+  }
+  return lines;
+}
+
+function distinctPaths(lines: ReadonlyArray<MatchedLine>): Array<string> {
+  return [...new Set(lines.map((line) => line.path))];
+}
+
+/** A matched line with the kind its text reads as. */
+type RankedSite = MatchedLine & { readonly kind: BriefReachMentionKind };
+
+/** Every matched line of one name, calls first, so a cap keeps the calls. */
+function rankedSites(
+  name: string,
+  lines: ReadonlyArray<MatchedLine>,
+): ReadonlyArray<RankedSite> {
+  return lines
+    .map((line) => ({ ...line, kind: mentionKind(line.text, name) }))
+    .sort(
+      (a, b) =>
+        MENTION_KIND_ORDER.indexOf(a.kind) - MENTION_KIND_ORDER.indexOf(b.kind),
+    );
+}
+
+function mentionAt(
+  site: RankedSite,
+  lines: ReadonlyArray<string> | undefined,
+): BriefReachMention {
+  return {
+    path: site.path,
+    line: site.line,
+    kind: site.kind,
+    ...definedProps({
+      enclosing:
+        lines === undefined
+          ? undefined
+          : enclosingDeclaration(lines, site.line - 1),
+    }),
+  };
 }
 
 /**
- * `git grep --count` prints one `<rev>:<path>:<count>` line per matching file.
- * A path may itself contain a colon, so the count is split from the right.
+ * Each kept site's file, read once. A file that cannot be read inside the
+ * worktree leaves its sites without an enclosing name rather than failing the
+ * block.
  */
-function matchedPaths(stdout: string, rev: string): ReadonlyArray<string> {
-  const paths: Array<string> = [];
-  for (const line of stdout.split("\n")) {
-    if (!line.startsWith(`${rev}:`)) continue;
-    const rest = line.slice(rev.length + 1);
-    const cut = rest.lastIndexOf(":");
-    if (cut <= 0) continue;
-    const count = Number(rest.slice(cut + 1));
-    if (!Number.isInteger(count) || count <= 0) continue;
-    paths.push(rest.slice(0, cut));
+async function readWorktreeFiles(
+  worktree: string,
+  sites: ReadonlyArray<RankedSite>,
+): Promise<ReadonlyMap<string, ReadonlyArray<string> | undefined>> {
+  const paths = [...new Set(sites.map((site) => site.path))];
+  const contents = await Promise.all(
+    paths.map((path) => readWorktreeLines(worktree, path)),
+  );
+  return new Map(paths.map((path, index) => [path, contents[index]]));
+}
+
+async function readWorktreeLines(
+  worktree: string,
+  path: string,
+): Promise<ReadonlyArray<string> | undefined> {
+  try {
+    const real = await realpath(join(worktree, path));
+    if (!isPathContained(worktree, real)) return undefined;
+    return (await readFile(real, "utf8")).split("\n");
+  } catch {
+    return undefined;
   }
-  return paths;
 }
 
 /** How one `git` run ended, in the three shapes this service distinguishes. */
