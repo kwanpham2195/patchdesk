@@ -35,10 +35,11 @@ all three with the provider, model, and reasoning level you choose.
 
 ### Brief finds the reading path
 
-Brief maps the shape and reach of a pull request, explains what each changed
-area owns, and recommends where to start reading.
+Brief maps the shape of a pull request, explains what each changed area owns,
+shows what it could affect in files it doesn't change, and links each
+recommended file straight into the Diff.
 
-![Patchdesk Brief mapping the shape and reach of a pull request](docs/assets/insight-brief.png)
+![Patchdesk Brief showing the shape and blast radius of a pull request](docs/assets/insight-brief.png)
 
 ### Walkthrough explains the implementation
 
@@ -66,7 +67,7 @@ Each Insight stays attached to the pull-request revision it analyzed. Brief,
 Walkthrough, and Analysis remain separate results, ready to revisit throughout
 the review.
 
-![Choosing a provider, model, and reasoning level for an Insight](docs/assets/insight-run-dialog.png)
+![Choosing a provider, model, reasoning level, and language for an Insight](docs/assets/insight-run-dialog.png)
 
 ## Review the whole pull request in one place
 
