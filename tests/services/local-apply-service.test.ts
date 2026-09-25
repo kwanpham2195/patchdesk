@@ -3,13 +3,15 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseLocalBranchName } from "../../src/domain/ids";
+import { parseFindingId, parseLocalBranchName } from "../../src/domain/ids";
+import { dismissInsightFinding } from "../../src/domain/insight-record";
 import { err } from "../../src/domain/result";
 import {
   applyRequest,
   cleanupLocalApplyRoots,
   git,
   localApplyHarness,
+  now,
   profileId,
   retainAnalysis,
   suggestionFinding,
@@ -139,6 +141,37 @@ describe("LocalApplyService", () => {
     );
 
     expect(refused).toEqual(err({ reason: "overlapping" }));
+    expect(
+      await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
+    ).toBe(probe);
+  });
+
+  it("refuses a dismissed Finding and writes nothing", async () => {
+    const harness = await localApplyHarness();
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    value(
+      await harness.insights.mutate({
+        profileId,
+        reviewId: workbench.review.id,
+        type: "analysis",
+        now,
+        operation: (record) =>
+          dismissInsightFinding(
+            record,
+            value(parseFindingId("finding-bound")),
+            "Accepted risk",
+            now,
+          ),
+      }),
+    );
+
+    const refused = await harness.service.apply(
+      applyRequest(workbench, runId, ["finding-bound"]),
+    );
+
+    expect(refused).toEqual(err({ reason: "not_applicable" }));
     expect(
       await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
     ).toBe(probe);
