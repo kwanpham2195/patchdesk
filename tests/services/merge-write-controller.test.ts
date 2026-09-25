@@ -167,6 +167,8 @@ class RecordingReviewWriteGate extends ReviewWriteGate {
       { load: async () => ok(session) },
       { load: async () => ok(snapshot) },
       { load: async () => ok(undefined) },
+      // SAFETY: a pull request merge never reaches the local freshness branch, so no member of it is called.
+      {} as never,
     );
     this.profileValue = profile;
     this.reviewValue = review;

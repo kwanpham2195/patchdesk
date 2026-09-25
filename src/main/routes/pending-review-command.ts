@@ -65,7 +65,7 @@ type PendingReviewCommandDto =
       readonly confirmation: true;
     };
 
-const reviewWriteExpectationSchema = object({
+export const reviewWriteExpectationSchema = object({
   sessionId: string(),
   headSha: string(),
   patchHash: string(),
@@ -296,7 +296,7 @@ function parsePendingReviewCommandDto(
       };
 }
 
-function parseReviewWriteExpectation(
+export function parseReviewWriteExpectation(
   input: InferOutput<typeof reviewWriteExpectationSchema>,
 ): ReviewWriteExpectation | undefined {
   const sessionId = parseReviewSessionId(input.sessionId);

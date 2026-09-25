@@ -14,6 +14,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
 import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import type { ReviewWriteIntentTag } from "../domain/review-write-operation";
 import {
@@ -152,6 +153,10 @@ export type ReviewWorkbenchProjection = {
   readonly mergeReadiness: MergeReadiness;
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
   readonly remoteWriteRecovery?: RemoteWriteRecoveryProjection;
+  /** An Apply on this local Review whose outcome is not settled; further Applies wait for a check (ADR 0050). */
+  readonly localApply?: {
+    readonly state: "outcome_unknown" | "check_required";
+  };
 };
 
 /** A patch file's contents plus the identity a cached hash of them is keyed on. */
@@ -230,6 +235,10 @@ export class ReviewWorkbenchProjectionService {
     private readonly paths: PatchdeskPaths,
     private readonly writeOperations: Pick<ReviewWriteOperationStore, "load">,
     private readonly viewedFiles: Pick<ViewedFilesStore, "load">,
+    private readonly localApplyOperations: Pick<
+      LocalApplyOperationStore,
+      "load"
+    >,
   ) {
     this.retainedInsights = new RetainedInsightReader(
       this.sessions,
@@ -581,15 +590,16 @@ export class ReviewWorkbenchProjectionService {
       storedInsights.value.briefArtifactStatus,
     );
     const reviewId = createReviewId(session.key);
-    const [stableReview, activeWrite] = await Promise.all([
+    const [stableReview, activeWrite, localApply] = await Promise.all([
       this.reviews.load(session.key.profileId, reviewId),
       this.writeOperations.load(session.key.profileId, reviewId),
+      this.localApplyOperations.load(session.key.profileId, reviewId),
     ]);
     if (stableReview._tag === "err")
       return stableReview.error.reason === "not_found"
         ? err({ _tag: "ReviewNotFound" })
         : err({ _tag: "SessionStorageUnavailable" });
-    if (activeWrite._tag === "err")
+    if (activeWrite._tag === "err" || localApply._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
     if (
       stableReview.value.id !== reviewId ||
@@ -685,6 +695,12 @@ export class ReviewWorkbenchProjectionService {
               },
       }),
       ...definedProps({
+        localApply:
+          localApply.value?.state === "OutcomeUnknown"
+            ? { state: "outcome_unknown" as const }
+            : localApply.value?.state === "CheckRequired"
+              ? { state: "check_required" as const }
+              : undefined,
         localCheckout: projectLocalCheckoutWarning(
           session.localCheckoutWarning,
         ),

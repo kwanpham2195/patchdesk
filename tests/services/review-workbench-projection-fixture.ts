@@ -203,6 +203,7 @@ export function fixture(
       paths,
       writeOperations as never,
       viewedFiles as never,
+      { load: async () => ok(undefined) },
     ),
     profiles,
     sessions,

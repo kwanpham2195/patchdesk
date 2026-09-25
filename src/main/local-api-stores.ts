@@ -40,6 +40,7 @@ import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { ReviewWriteGate } from "../services/review-write-gate";
+import { LocalReviewRevisionService } from "../services/local-review-revision-service";
 import type { GitReadExecutor } from "../services/review-worktree-service";
 import { parseWorkspaceProfileId } from "../domain/ids";
 import { err, ok } from "../domain/result";
@@ -152,6 +153,7 @@ export type LocalApiStores = {
   readonly credentials: GitHubCredentials;
   readonly github: GitHubReader;
   readonly readOnlyGit: GitReadExecutor;
+  readonly localRevisions: LocalReviewRevisionService;
   readonly resolveGitHubCli: () => Promise<string | undefined>;
   readonly diagnostics: ReviewDiagnosticService;
   readonly profiles: ProfileStore;
@@ -230,12 +232,14 @@ export async function buildLocalApiStores(
   const remoteReviews = new ReviewRemoteStore(paths);
   const observationJournals = new ReviewObservationJournalStore(paths);
   const recentWriteJournals = new RecentWriteJournalStore(paths, logs);
+  const localRevisions = new LocalReviewRevisionService(readOnlyGit, paths);
   const reviewWriteGate = new ReviewWriteGate(
     profiles,
     reviews,
     sessions,
     remoteReviews,
     observationJournals,
+    { revisions: localRevisions, reviews, now: systemNow },
   );
   const storageArtifacts = new ReviewArtifactStorage(paths, systemNow);
   const lifecycleGate =
@@ -273,6 +277,7 @@ export async function buildLocalApiStores(
       credentials,
       github,
       readOnlyGit,
+      localRevisions,
       resolveGitHubCli,
       diagnostics,
       profiles,

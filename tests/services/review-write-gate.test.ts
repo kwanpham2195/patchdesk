@@ -181,9 +181,14 @@ describe("ReviewWriteGate", () => {
     };
     await reviews.save(review);
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-    const gate = new ReviewWriteGate(profiles, reviews, sessions, remote, {
-      load: async () => ok(undefined),
-    } as never);
+    const gate = new ReviewWriteGate(
+      profiles,
+      reviews,
+      sessions,
+      remote,
+      { load: async () => ok(undefined) } as never,
+      {} as never,
+    );
     await expect(
       gate.requireFresh(profileId, review.id),
     ).resolves.toMatchObject({
@@ -332,6 +337,7 @@ describe("ReviewWriteGate revision agreement", () => {
       { load: async () => ok({ id: "session-1", key: sessionKey }) } as never,
       { load: async () => ok(snapshot) } as never,
       { load: async () => ok(undefined) } as never,
+      {} as never,
     );
   }
 
