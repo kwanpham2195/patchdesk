@@ -127,7 +127,7 @@ describe("PierreFileTree", () => {
     expect(onSelect).toHaveBeenCalledWith("src/a.ts");
   });
 
-  it("shows the hovered row's untruncated name in a tooltip", async () => {
+  it("shows the hovered row's untruncated name in a tooltip beside the row", async () => {
     const nested: PierreFileTreeItem = {
       ...fileA,
       path: "docs/product-description/review-workbench/sidebar-variant-a-tree.md",
@@ -143,10 +143,12 @@ describe("PierreFileTree", () => {
 
     fireEvent.pointerOver(row, { composed: true });
 
-    expect(
-      (await screen.findByText("sidebar-variant-a-tree.md")).closest(
-        '[data-slot="tooltip-content"]',
-      ),
-    ).not.toBeNull();
+    const tooltip = (
+      await screen.findByText("sidebar-variant-a-tree.md")
+    ).closest('[data-slot="tooltip-content"]');
+    expect(tooltip).not.toBeNull();
+    // Above the row, a top row's tooltip covers the navigator's tab header
+    // (#448). jsdom has no layout, so collision handling may flip it left.
+    expect(["left", "right"]).toContain(tooltip?.getAttribute("data-side"));
   });
 });

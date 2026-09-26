@@ -45,8 +45,11 @@ export function escapeCssAttributeValue(value: string): string {
  */
 export const GIT_STATUS_LABEL_TREE_STYLE = `[data-item-git-status] > [data-item-section="content"] { color: var(--trees-fg); }`;
 
-/** In a PR diff every folder contains a change, so the library's folder dot carries nothing. */
-export const FOLDER_GIT_DOT_TREE_STYLE = `[data-item-contains-git-change="true"]:not([data-item-git-status]) > [data-item-section="git"] > * { display: none; }`;
+/**
+ * In a PR diff every folder contains a change, so the library's folder dot
+ * carries nothing; dropping its lane gives the folder name that width (#448).
+ */
+export const FOLDER_GIT_DOT_TREE_STYLE = `[data-item-type="folder"]:not([data-item-git-status]) > [data-item-section="git"] { display: none; }`;
 
 /**
  * Clips a flattened folder row from the left as one path, so
@@ -71,14 +74,18 @@ export const FLATTENED_PATH_TREE_STYLE = [
  * The library hard-codes a middle truncation split at the extension, which
  * shows the stem's shared prefix and turns sibling files into identical
  * `sidebar-variant…tsx` rows. The trailing LRM keeps the stem's final `.` on
- * the right inside the RTL box. `text-overflow` drops whole glyphs and draws
- * the ellipsis against the text; the library's overlaid marker covered a
- * clipped glyph at a varying offset, so it is hidden here.
+ * the right inside the RTL box. `text-overflow` cannot draw the ellipsis
+ * here: for Latin text in an RTL box Chromium drops whole glyphs and leaves
+ * the gap before the ellipsis, shifting the name right of its siblings (#448).
+ * The library's own marker shows only while the name overflows, so it moves
+ * to the left edge in the text colour, and a wider fade softens the glyph
+ * clipped beside it.
  */
 export const FILE_NAME_TREE_STYLE = [
-  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { direction: rtl; overflow: hidden; text-overflow: ellipsis; }`,
+  `[data-truncate-segment-priority="2"] { --truncate-marker-fade-width: 0.6em; --truncate-middle-marker-opacity: 100%; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { direction: rtl; overflow: hidden; }`,
   `[data-truncate-segment-priority="2"] [data-truncate-content="visible"]::after { content: "\\200E"; }`,
-  `[data-truncate-segment-priority="2"] [data-truncate-marker-cell] { display: none; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-marker] { left: 0; right: auto; }`,
 ].join(" ");
 
 /**

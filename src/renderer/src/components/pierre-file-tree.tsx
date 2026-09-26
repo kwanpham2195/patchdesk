@@ -277,8 +277,10 @@ function PierreFileTreeModel({
         }
       />
       <Tooltip open={hoveredLabel !== undefined}>
+        {/* Beside the row: above it, a top row's tooltip covers the navigator's tab header (#448). */}
         <TooltipContent
           anchor={hoveredRowElement}
+          side="right"
           className="max-w-md break-all"
         >
           {hoveredLabel}
