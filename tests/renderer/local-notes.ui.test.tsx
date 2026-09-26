@@ -160,7 +160,7 @@ describe("Maintainer notes on a local Review", () => {
     expect(list.textContent).toContain("Guard the empty case.");
     await user.click(
       within(list).getByRole("button", {
-        name: "Remove src/a.ts:1 from drafts",
+        name: "Remove note at src/a.ts:1 from drafts",
       }),
     );
     await waitFor(() =>
