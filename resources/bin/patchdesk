@@ -6,13 +6,19 @@
 set -eu
 
 self="$0"
+hops=0
 while [ -L "$self" ]; do
-  target="$(readlink "$self")"
+  hops=$((hops + 1))
+  if [ "$hops" -gt 40 ]; then
+    echo "patchdesk: too many symbolic links resolving $0" >&2
+    exit 1
+  fi
+  target="$(readlink -- "$self")"
   case "$target" in
     /*) self="$target" ;;
-    *) self="$(dirname "$self")/$target" ;;
+    *) self="$(dirname -- "$self")/$target" ;;
   esac
 done
-resources="$(cd "$(dirname "$self")/.." && pwd -P)"
+resources="$(CDPATH='' cd -- "$(dirname -- "$self")/.." && pwd -P)"
 
 ELECTRON_RUN_AS_NODE=1 exec "$resources/../MacOS/Patchdesk" "$resources/mcp-shim/index.js" "$@"

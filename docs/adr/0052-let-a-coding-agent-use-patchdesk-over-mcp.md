@@ -327,6 +327,10 @@ status in the route and one tool error in the dispatcher:
 - Invalid arguments never reach a service: the shim validates with the
   derived JSON Schema (JSON-RPC `-32602`) and the app re-validates with the
   Valibot schema (`invalid_input`); a disagreement is a bug a test catches.
+- Amended 2026-09-26 (slice 2): the v2 SDK does not answer bad arguments
+  with JSON-RPC `-32602`. It returns a tool result with `isError: true` and
+  an "Input validation error…" text block; the app's `invalid_input`
+  re-check is unchanged.
 - A service refusal is a tool result with `isError: true`,
   `structuredContent: { error, message, retryAfterMs? }`, and one text block
   with the same message, so both eras and both clients show it. `error` is
