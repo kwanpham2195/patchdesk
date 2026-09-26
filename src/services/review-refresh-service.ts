@@ -484,7 +484,7 @@ export class ReviewRefreshService {
     return projected._tag === "ok" ? projected : err({ reason: "storage" });
   }
 
-  /** Reconciles pending-review state after artifact preparation and before a durable Prepared operation is recorded. */
+  /** Reconciles pending-review state on the session the saved Review names; call it after `savePreparedReviewUnlocked`. */
   async reconcilePendingReviewUnlocked(
     prepared: PreparedReviewRefresh,
   ): Promise<void> {
