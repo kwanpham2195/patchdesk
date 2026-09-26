@@ -57,6 +57,7 @@ import type { PendingReviewState } from "../domain/pending-review";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { AppLogService } from "./app-log-service";
 import type { AvatarSyncService } from "./avatar-sync-service";
+import type { ReviewRetention } from "./review-retention";
 
 export type ReviewRefreshFailure = {
   readonly reason:
@@ -100,6 +101,7 @@ export type ReviewRefreshDependencies = {
   >;
   readonly recentWrites: Pick<RecentWriteJournalStore, "clear">;
   readonly operationCoordinator: ReviewOperationCoordinator;
+  readonly retention: Pick<ReviewRetention, "pruneSuperseded">;
   /** Local diagnostic log stream; best effort, never gates a refresh. Wire-visible failures stay collapsed to "storage" — this only makes the underlying cause observable in `patchdesk.jsonl`. */
   readonly log?: Pick<AppLogService, "write">;
   /**
@@ -129,6 +131,8 @@ export type PreparedReviewRefresh = {
   readonly expectedUpdatedAt: IsoTimestamp;
   readonly nextReview: Review;
   readonly sessionId: ReviewSessionId;
+  /** True when `sessionId` is a new session the Review moves to, leaving its current one superseded. */
+  readonly movesSession: boolean;
   readonly snapshotHash: ContentHash;
   readonly snapshot: ReviewRemoteSnapshot;
   readonly selectedSession: PullRequestReviewSession;
@@ -429,6 +433,7 @@ export class ReviewRefreshService {
       expectedUpdatedAt: review.updatedAt,
       nextReview: authoritative,
       sessionId,
+      movesSession: sessionId !== review.currentSessionId,
       snapshotHash: savedCandidate.value.snapshotHash,
       snapshot: candidate,
       selectedSession,
@@ -490,7 +495,7 @@ export class ReviewRefreshService {
     });
   }
 
-  /** CAS-saves a prepared Review without projecting it, for durable operation execution and recovery. */
+  /** CAS-saves a prepared Review without projecting it, for durable operation execution and recovery. The caller must hold the Review coordinator lock. */
   async savePreparedReviewUnlocked(
     prepared: PreparedReviewRefresh,
   ): Promise<Result<void, PreparedReviewCommitFailure>> {
@@ -509,6 +514,9 @@ export class ReviewRefreshService {
     // representedRemote, so the own-write journal has nothing left to
     // protect. A clear failure must not fail the refresh itself.
     await this.dependencies.recentWrites.clear(profileId, reviewId);
+    // Under the caller's Review lock (#478); best effort, as retention records its own failures.
+    if (prepared.movesSession)
+      await this.dependencies.retention.pruneSuperseded(profileId, reviewId);
     return ok(undefined);
   }
 

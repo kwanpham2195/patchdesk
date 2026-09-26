@@ -362,6 +362,7 @@ export async function buildLocalApiContainer(
     preparation: reviewPreparation,
     now: systemNow,
     operationCoordinator: reviewOperations,
+    retention: reviewRetention,
     pendingReview: pendingReviews,
     recentWrites: recentWriteJournals,
     log: logs,

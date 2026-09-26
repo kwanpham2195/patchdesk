@@ -64,6 +64,7 @@ const prepared: PreparedReviewRefresh = {
   expectedUpdatedAt: review.updatedAt,
   nextReview,
   sessionId: review.currentSessionId,
+  movesSession: false,
   snapshotHash: must(parseContentHash("d".repeat(64))),
   // SAFETY: this service test's refresh double never reads in-memory projection inputs after preparation; only the durable next Review fields are under test.
   snapshot: {} as ReviewRemoteSnapshot,
