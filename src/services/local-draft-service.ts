@@ -236,8 +236,6 @@ export class LocalDraftService {
   > {
     const review = await this.loadLocal(profileId, reviewId);
     if (review._tag === "err") return review;
-    const page = pageLocalDrafts(review.value.localDrafts ?? [], cursor);
-    if (page._tag === "err") return page;
     const session = await this.dependencies.sessions.load(
       profileId,
       review.value.currentSessionId,
@@ -250,14 +248,23 @@ export class LocalDraftService {
       patch === undefined
         ? undefined
         : parseContentHash(hashReviewArtifactContent(patch));
+    const described = describeReviewSession(
+      reviewId,
+      session.value,
+      patchHash?._tag === "ok" ? patchHash.value : undefined,
+    );
+    const page = pageLocalDrafts(
+      review.value.localDrafts ?? [],
+      cursor,
+      (listed, prompted) => ({
+        ...described,
+        localDrafts: listed.map(projectFeedbackEntry),
+        markdown: renderLocalDraftsAsAgentPrompt(prompted),
+      }),
+    );
+    if (page._tag === "err") return page;
     return ok({
-      ...describeReviewSession(
-        reviewId,
-        session.value,
-        patchHash?._tag === "ok" ? patchHash.value : undefined,
-      ),
-      localDrafts: page.value.drafts.map(projectFeedbackEntry),
-      markdown: renderLocalDraftsAsAgentPrompt(page.value.drafts),
+      ...page.value.page,
       ...definedProps({ nextCursor: page.value.nextCursor }),
     });
   }
