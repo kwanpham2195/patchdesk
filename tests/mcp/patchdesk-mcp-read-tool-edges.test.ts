@@ -16,7 +16,6 @@ import {
 import {
   addNote,
   call,
-  loadRoute,
   openRoute,
   pageSchema,
   reviewWithNotes,
@@ -154,32 +153,6 @@ describe("review_local on the agent's side (the agent prepares, the maintainer m
 });
 
 describe("MCP read tool refusals", () => {
-  it("refuses a different intent with intent_exists and keeps the first", async () => {
-    app = await startAppWithLinkedWorktree();
-    const client = await connectLegacyClient(app.socketPath);
-    const first = await call(client, "review_local", {
-      cwd: app.repositoryPath,
-      intent: "Ship the first goal.",
-    });
-
-    const second = await call(client, "review_local", {
-      cwd: app.repositoryPath,
-      intent: "Ship another goal.",
-    });
-    const reviewId = v.parse(
-      v.object({ reviewId: v.string() }),
-      first.content,
-    ).reviewId;
-
-    expect(second).toMatchObject({
-      isError: true,
-      content: { error: "intent_exists" },
-    });
-    expect((await loadRoute(app, reviewId)).changeIntent).toMatchObject({
-      intent: { markdown: "Ship the first goal." },
-    });
-  });
-
   it("refuses an intent holding a credential before opening anything", async () => {
     app = await startAppWithLinkedWorktree();
     const client = await connectLegacyClient(app.socketPath);

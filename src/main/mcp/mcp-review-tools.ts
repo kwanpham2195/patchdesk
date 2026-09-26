@@ -45,9 +45,16 @@ import {
   type LocalReviewOpened,
 } from "../../services/review-session-description";
 
-/** What `review_local` answers; `intentKept` is present when the call sent an intent. */
+/**
+ * What `review_local` answers. The intent fields are present when the call
+ * sent an intent; a refused intent is reported beside the opened Review,
+ * because the Review exists either way (#513).
+ */
 export type ReviewLocalResult = LocalReviewOpened & {
+  readonly intentRecorded?: boolean;
   readonly intentKept?: boolean;
+  readonly intentRefused?: AgentIntentFailure["reason"];
+  readonly intentMessage?: string;
 };
 
 export type McpReviewToolServices = {
@@ -97,7 +104,7 @@ const refusalMessages = {
   not_applicable:
     "This is a pull request Review. These tools read local Reviews only.",
   intent_exists:
-    "The Review already has a different Change intent, which Patchdesk keeps. Call review_local without intent, or ask the maintainer to change it in Patchdesk.",
+    "The Review already has a different Change intent, which Patchdesk keeps. Ask the maintainer to change it in Patchdesk if yours should replace it.",
   change_intent_sensitive:
     "The intent holds what looks like a credential, which Patchdesk never stores. Remove it and try again.",
   stale_cursor:
@@ -217,15 +224,21 @@ export async function reviewLocal(
           reviewId: opened.value.review.id,
           markdown: input.intent,
         });
-  if (recorded?._tag === "err") return err(refusal(recorded.error.reason));
   const described = await describeOpenedLocalReview(
     services.sessions,
     opened.value,
   );
   if (described._tag === "err") return err(refusal("storage"));
+  if (recorded === undefined) return ok(described.value);
   return ok({
     ...described.value,
-    ...definedProps({ intentKept: recorded?.value.intentKept }),
+    ...(recorded._tag === "ok"
+      ? { intentRecorded: true, intentKept: recorded.value.intentKept }
+      : {
+          intentRecorded: false,
+          intentRefused: recorded.error.reason,
+          intentMessage: refusalMessages[recorded.error.reason],
+        }),
   });
 }
 

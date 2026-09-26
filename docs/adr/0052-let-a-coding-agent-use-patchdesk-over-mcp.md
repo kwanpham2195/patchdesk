@@ -214,6 +214,14 @@ Patchdesk, and reads `get_insight` when the user resumes it. A local Review's
 detection answer carries the session's requests, so the bar of a Review the
 window stays focused on shows a new request at the next detection.
 
+Amended 2026-09-26 (#513): a `review_local` intent step that refuses or
+fails no longer turns the call into an error, because the Review is already
+open. The result carries the Review with `intentRecorded: false`,
+`intentRefused` (`intent_exists`, `in_progress`, `storage`, or another
+Change intent reason), and `intentMessage`; the Review is not moved. A
+recorded or kept intent returns `intentRecorded: true` with `intentKept`.
+The credential check still runs before anything is opened.
+
 Amended 2026-09-26 (slice 4): `get_insight` reports `awaiting_approval` or
 `declined` from the current session's request until a run of that type is
 active on the session or has retained a result generated after the request.
