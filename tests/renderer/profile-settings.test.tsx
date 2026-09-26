@@ -376,13 +376,18 @@ describe("watchlist toggling", () => {
     await vi.waitFor(() =>
       expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/watchlist",
-        method: "POST",
+        method: "PUT",
         body: {
           profileId: "acme",
-          host: "github.com",
-          owner: "octo-org",
-          repo: "patchdesk",
-          localPath: "/workspace/acme/patchdesk",
+          add: [
+            {
+              host: "github.com",
+              owner: "octo-org",
+              repo: "patchdesk",
+              localPath: "/workspace/acme/patchdesk",
+            },
+          ],
+          remove: [],
         },
       }),
     );
@@ -414,12 +419,17 @@ describe("watchlist toggling", () => {
     await vi.waitFor(() =>
       expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/watchlist",
-        method: "DELETE",
+        method: "PUT",
         body: {
           profileId: "acme",
-          host: "github.com",
-          owner: "octo-org",
-          repo: "watched-repo",
+          add: [],
+          remove: [
+            {
+              host: "github.com",
+              owner: "octo-org",
+              repo: "watched-repo",
+            },
+          ],
         },
       }),
     );

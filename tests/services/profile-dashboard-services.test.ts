@@ -361,7 +361,7 @@ describe("profile settings and dashboard services", () => {
     });
   });
 
-  it("adds a watched repository to the workspace the request names, not the selected one", async () => {
+  it("applies a watchlist batch to the workspace the request names, not the selected one", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-watchlist-named-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
@@ -386,19 +386,31 @@ describe("profile settings and dashboard services", () => {
       // between `POST /v1/profiles/select` resolving and the reload landing.
       await controller.selectProfile(otherProfile.id);
 
-      const added = await controller.addWatchlistRepo({
+      const updated = await controller.updateWatchlist({
         profileId: profile.id,
-        host: "github.com",
-        owner: "octo-org",
-        repo: "new-repo",
-        localPath: "/workspace/new-repo",
+        add: [
+          {
+            host: "github.com",
+            owner: "octo-org",
+            repo: "new-repo",
+            localPath: "/workspace/new-repo",
+          },
+          { host: "github.com", owner: "octo-org", repo: "other-repo" },
+        ],
+        remove: [{ host: "github.com", owner: "octo-org", repo: "patchdesk" }],
       });
 
-      expect(added).toMatchObject({
+      expect(updated).toMatchObject({
+        _tag: "ok",
+        value: { id: "acme" },
+      });
+      expect(await store.load(profile.id)).toMatchObject({
         _tag: "ok",
         value: {
-          id: "acme",
-          repos: [{ repo: "patchdesk" }, { repo: "new-repo" }],
+          repos: [
+            { repo: "new-repo", localPath: "/workspace/new-repo" },
+            { repo: "other-repo" },
+          ],
         },
       });
       expect(await store.load(otherProfile.id)).toMatchObject({
@@ -414,7 +426,7 @@ describe("profile settings and dashboard services", () => {
     }
   });
 
-  it("refuses a watchlist removal for a workspace id it does not know", async () => {
+  it("refuses a watchlist batch for a workspace id it does not know", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-watchlist-unknown-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
@@ -427,16 +439,55 @@ describe("profile settings and dashboard services", () => {
         paths,
       );
 
-      const removed = await controller.removeWatchlistRepo({
+      const removed = await controller.updateWatchlist({
         profileId: "gone",
-        host: "github.com",
-        owner: "octo-org",
-        repo: "patchdesk",
+        add: [],
+        remove: [{ host: "github.com", owner: "octo-org", repo: "patchdesk" }],
       });
 
       expect(removed).toEqual({
         _tag: "err",
         error: { _tag: "DashboardControllerFailure", reason: "not_found" },
+      });
+      expect(await store.load(profile.id)).toMatchObject({
+        _tag: "ok",
+        value: { repos: [{ repo: "patchdesk" }] },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("saves nothing from a watchlist batch that carries one invalid entry", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-watchlist-invalid-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      await store.save(profile);
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+      );
+
+      const updated = await controller.updateWatchlist({
+        profileId: profile.id,
+        add: [
+          { host: "github.com", owner: "octo-org", repo: "new-repo" },
+          {
+            host: "github.com",
+            owner: "octo-org",
+            repo: "bad-path",
+            localPath: "relative/path",
+          },
+        ],
+        remove: [{ host: "github.com", owner: "octo-org", repo: "patchdesk" }],
+      });
+
+      expect(updated).toEqual({
+        _tag: "err",
+        error: { _tag: "DashboardControllerFailure", reason: "invalid_input" },
       });
       expect(await store.load(profile.id)).toMatchObject({
         _tag: "ok",
@@ -604,7 +655,7 @@ describe("dashboard service", () => {
     });
   });
 
-  it("excludes watched repository identities from ready roots", async () => {
+  it("lists watched repositories alongside unwatched ones", async () => {
     const service = new DashboardService(
       originFinder([
         {
@@ -622,7 +673,19 @@ describe("dashboard service", () => {
 
     await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
       _tag: "ok",
-      value: [{ root: "/workspace", state: "ready", repositories: [] }],
+      value: [
+        {
+          root: "/workspace",
+          state: "ready",
+          repositories: [
+            expect.objectContaining({
+              owner: "octo-org",
+              repo: "patchdesk",
+              localPath: "/workspace/patchdesk",
+            }),
+          ],
+        },
+      ],
     });
   });
 

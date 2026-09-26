@@ -214,17 +214,8 @@ export function registerDashboardRoutes(
       );
     }),
   );
-  app.post("/v1/watchlist", async (context) =>
-    response(
-      context,
-      await dashboard.addWatchlistRepo(await jsonBody(context)),
-    ),
-  );
-  app.delete("/v1/watchlist", async (context) =>
-    response(
-      context,
-      await dashboard.removeWatchlistRepo(await jsonBody(context)),
-    ),
+  app.put("/v1/watchlist", async (context) =>
+    response(context, await dashboard.updateWatchlist(await jsonBody(context))),
   );
 
   app.get("/v1/watchlist/suggestions", async (context) =>

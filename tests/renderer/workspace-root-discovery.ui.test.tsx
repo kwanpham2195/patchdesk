@@ -164,13 +164,18 @@ describe("workspace root discovery", () => {
     await vi.waitFor(() =>
       expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/watchlist",
-        method: "POST",
+        method: "PUT",
         body: {
           profileId: "acme",
-          host: "github.com",
-          owner: "octo-org",
-          repo: "ready-repo",
-          localPath: "/ready/ready-repo",
+          add: [
+            {
+              host: "github.com",
+              owner: "octo-org",
+              repo: "ready-repo",
+              localPath: "/ready/ready-repo",
+            },
+          ],
+          remove: [],
         },
       }),
     );
