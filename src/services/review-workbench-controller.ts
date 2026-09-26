@@ -33,6 +33,10 @@ import type { RecentReviewWrite } from "../domain/recent-review-write";
 import type { ReviewObservationService } from "./review-observation-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewCommitService } from "./review-commit-service";
+import type {
+  LocalBranchMismatch,
+  LocalReviewOpening,
+} from "./local-review-opening";
 import { err, ok, type Result } from "../domain/result";
 import type {
   PrepareReviewSessionFailure,
@@ -87,6 +91,7 @@ export class ReviewWorkbenchController {
       >;
       readonly coordinator: Pick<ReviewOperationCoordinator, "withReviewLock">;
       readonly commits: ReviewCommitService;
+      readonly localCheckout: Pick<LocalReviewOpening, "branchMismatch">;
       /** Local diagnostic log stream; best effort, never gates a request. Wire-visible failures stay collapsed to their existing reason — this only makes the underlying cause observable in `patchdesk.jsonl`. */
       readonly logs?: Pick<AppLogService, "write">;
     },
@@ -531,7 +536,12 @@ export class ReviewWorkbenchController {
   async load(
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `load` re-parses every domain value itself.
     input: unknown,
-  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+  ): Promise<
+    Result<
+      ReviewWorkbenchProjection,
+      ReviewWorkbenchFailure | LocalBranchMismatch
+    >
+  > {
     const profileId = parseWorkspaceProfileId(
       readObjectField(input, "profileId"),
     );
@@ -559,9 +569,14 @@ export class ReviewWorkbenchController {
             reason:
               review.error.reason === "not_found" ? "not_found" : "storage",
           });
-        return recordOpen
-          ? this.projectOpenedUnlocked(review.value, undefined)
-          : this.projectStableUnlocked(review.value);
+        if (!recordOpen) return this.projectStableUnlocked(review.value);
+        if (isLocalReview(review.value)) {
+          const mismatch = await this.lifecycle.localCheckout.branchMismatch(
+            review.value,
+          );
+          if (mismatch !== undefined) return err(mismatch);
+        }
+        return this.projectOpenedUnlocked(review.value, undefined);
       },
     );
   }

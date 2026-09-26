@@ -186,3 +186,30 @@ export function response(
         statusForReason(result.error.reason),
       );
 }
+
+/**
+ * `response`, except that a working-tree branch refusal names the checkout's
+ * branch (null when detached) so the renderer can say which one to switch to.
+ */
+export function localReviewResponse(
+  context: Context,
+  result:
+    | { readonly _tag: "ok"; readonly value: unknown }
+    | {
+        readonly _tag: "err";
+        readonly error: {
+          readonly reason: string;
+          readonly currentBranch?: string;
+        };
+      },
+): Response {
+  return result._tag === "err" && result.error.reason === "branch_mismatch"
+    ? context.json(
+        {
+          error: result.error.reason,
+          currentBranch: result.error.currentBranch ?? null,
+        },
+        409,
+      )
+    : response(context, result);
+}

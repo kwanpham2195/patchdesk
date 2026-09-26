@@ -42,7 +42,7 @@ import { MAX_MAINTAINER_NOTE_LENGTH } from "../../domain/local-draft";
 import { ok } from "../../domain/result";
 import type { LocalReviewSourceRequest } from "../../domain/review-source";
 import type { LocalApiContainer } from "../local-api-container";
-import { response } from "./http-status";
+import { localReviewResponse, response } from "./http-status";
 import { jsonBody } from "./json-body";
 import {
   parseReviewWriteExpectation,
@@ -75,16 +75,7 @@ export function registerLocalReviewRoutes(
       repository: { host: host.value, owner: owner.value, repo: repo.value },
       request,
     });
-    // The refusal names the checkout's branch so the renderer can say which one to switch to.
-    if (opened._tag === "err" && opened.error.reason === "branch_mismatch")
-      return context.json(
-        {
-          error: opened.error.reason,
-          currentBranch: opened.error.currentBranch ?? null,
-        },
-        409,
-      );
-    return response(context, opened);
+    return localReviewResponse(context, opened);
   });
 
   // Reads the stored source from the checkout again; a changed one moves the Review and its drafts to a new session (#452).
@@ -99,18 +90,7 @@ export function registerLocalReviewRoutes(
       profileId.value,
       reviewId.value,
     );
-    if (
-      refreshed._tag === "err" &&
-      refreshed.error.reason === "branch_mismatch"
-    )
-      return context.json(
-        {
-          error: refreshed.error.reason,
-          currentBranch: refreshed.error.currentBranch ?? null,
-        },
-        409,
-      );
-    return response(context, refreshed);
+    return localReviewResponse(context, refreshed);
   });
 
   // Identity only: the main process derives every range and replacement (ADR 0048).
