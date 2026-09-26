@@ -18,6 +18,7 @@ The architecture has three layers of authority:
 
 ```mermaid
 flowchart TB
+Throwaway line for the #526 filter check.
     subgraph Electron
         direction TB
         subgraph Renderer["Renderer process (sandboxed React)"]
