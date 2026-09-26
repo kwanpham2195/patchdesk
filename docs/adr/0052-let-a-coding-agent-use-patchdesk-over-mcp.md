@@ -46,6 +46,12 @@ the app, and the maintainer stays the reviewer. The agent reads what the
 maintainer drafted or wrote and never posts a review of its own. Delegation
 mode (the agent submits its own Analysis) is cut, not deferred.
 
+Amended 2026-09-26: "performs no git write" was wrong. `review_local` and
+`refresh_review` take the Local snapshot (ADR 0050), which writes git
+objects, a `refs/patchdesk/local/` ref, and a cache worktree. The server
+changes no branch, index, or working-tree file, and Apply stays a button in
+the app. The tool descriptions say so.
+
 ### Protocol and SDK (verified 2026-09-26)
 
 Patchdesk targets the stateless revision, 2026-07-28, with the v2 TypeScript
