@@ -332,6 +332,60 @@ describe("LocalApplyService refusals that write nothing", () => {
     ).toBeUndefined();
   });
 
+  // A CRLF file's lines end in `\r`, so they never match the patch's lines; the line-ending reason must win (#497).
+  it("names line-ending conversion for a file already holding CRLF line endings", async () => {
+    const harness = await localApplyHarness();
+    git(harness.repositoryPath, "config", "core.autocrlf", "true");
+    const crlfProbe = probe.replaceAll("\n", "\r\n");
+    await writeFile(join(harness.repositoryPath, "probe.ts"), crlfProbe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+
+    const refused = await harness.service.apply(
+      applyRequest(workbench, runId, ["finding-bound"]),
+    );
+
+    expect(refused).toEqual(err({ reason: "working_tree_conversion" }));
+    expect(
+      await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
+    ).toBe(crlfProbe);
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+  });
+
+  it("refuses a suggestion identical to the current lines as already applied", async () => {
+    let writes = 0;
+    const harness = await localApplyHarness(async (argv, run) => {
+      if (isApplyWrite(argv)) writes += 1;
+      return run();
+    });
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const unchangedFix = suggestionFinding(
+      "finding-same",
+      "probe.ts",
+      { start: 8, end: 8 },
+      "export const last = 1;",
+    );
+    const runId = await retainAnalysis(harness.insights, workbench, [
+      unchangedFix,
+    ]);
+
+    const refused = await harness.service.apply(
+      applyRequest(workbench, runId, ["finding-same"]),
+    );
+
+    expect(refused).toEqual(err({ reason: "already_applied" }));
+    expect(writes).toBe(0);
+    expect(
+      await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
+    ).toBe(probe);
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+  });
+
   it.each([
     {
       name: "git apply --check refuses",
