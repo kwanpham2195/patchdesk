@@ -137,7 +137,7 @@ export const localReviewFailureKinds = {
  * an edit moves the Review to a new one, carrying its Local drafts (#452).
  */
 export class LocalReviewOpening {
-  /** When each Review's last agent refresh started, in this process: the limit only bounds snapshot cost. */
+  /** When each Review's last prepared agent refresh started, in this process: the limit only bounds snapshot cost. */
   private readonly agentRefreshStartedAt = new Map<string, number>();
 
   constructor(
@@ -304,6 +304,9 @@ export class LocalReviewOpening {
   ): Promise<Result<LocalReviewPrepared, LocalReviewAgentRefreshFailure>> {
     const key = `${profileId}:${reviewId}`;
     const startedAt = Date.parse(this.now());
+    for (const [refreshed, at] of this.agentRefreshStartedAt)
+      if (startedAt - at >= AGENT_REFRESH_INTERVAL_MS)
+        this.agentRefreshStartedAt.delete(refreshed);
     const previous = this.agentRefreshStartedAt.get(key);
     if (
       previous !== undefined &&
@@ -316,10 +319,13 @@ export class LocalReviewOpening {
     if (!this.lifecycle.coordinator.acquire(key))
       return err({ reason: "in_progress" });
     try {
-      this.agentRefreshStartedAt.set(key, startedAt);
       const resolved = await this.resolveStoredSource(profileId, reviewId);
       if (resolved._tag === "err") return resolved;
-      return await this.recordPrepared(resolved.value, reviewId);
+      const prepared = await this.recordPrepared(resolved.value, reviewId);
+      // Only a prepared snapshot starts the window, so a refusal can be retried at once.
+      if (prepared._tag === "ok")
+        this.agentRefreshStartedAt.set(key, startedAt);
+      return prepared;
     } finally {
       this.lifecycle.coordinator.release(key);
     }
@@ -530,6 +536,7 @@ export class LocalReviewOpening {
       stored?.updatedAt,
     );
     if (saved._tag === "err") return err({ reason: "storage" });
+    this.agentRefreshStartedAt.delete(`${profileId}:${reviewId}`);
     // Awaited under this Review lock, so no other open of the Review moves it meanwhile (#474).
     // Best effort: the retention service records its own failures.
     await this.lifecycle.retention.pruneSuperseded(profileId, reviewId);

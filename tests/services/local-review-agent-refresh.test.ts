@@ -200,6 +200,36 @@ describe("LocalReviewOpening.prepareForAgent", () => {
     expect(due._tag).toBe("ok");
   });
 
+  it("starts no 10 s window for a refused agent refresh, so the retry after fixing the checkout runs at once", async () => {
+    const harness = await localApplyHarness();
+    const { probe, reviewId } = await notedReview(harness);
+    git(harness.repositoryPath, "checkout", "-q", "-b", "other");
+    const refused = await harness.opening.prepareForAgent(profileId, reviewId);
+    git(harness.repositoryPath, "checkout", "-q", "main");
+    await writeFile(probe, probeContent(1));
+
+    const retried = await harness.opening.prepareForAgent(profileId, reviewId);
+
+    expect(refused).toMatchObject({
+      _tag: "err",
+      error: { reason: "branch_mismatch" },
+    });
+    expect(retried).toMatchObject({ _tag: "ok", value: { changed: true } });
+  });
+
+  it("lets the agent refresh again at once after the maintainer's Refresh moved the Review", async () => {
+    const harness = await localApplyHarness();
+    const { probe, reviewId } = await notedReview(harness);
+    await writeFile(probe, probeContent(1));
+    value(await harness.opening.prepareForAgent(profileId, reviewId));
+    value(await harness.opening.refresh(profileId, reviewId));
+    await writeFile(probe, probeContent(2));
+
+    const next = await harness.opening.prepareForAgent(profileId, reviewId);
+
+    expect(next).toMatchObject({ _tag: "ok", value: { changed: true } });
+  });
+
   it("keeps the prepared session through the retention sweep and removes the superseded one", async () => {
     const harness = await localApplyHarness();
     const { probe, workbench, reviewId } = await notedReview(harness);
