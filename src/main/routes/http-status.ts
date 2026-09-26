@@ -188,7 +188,9 @@ export function serviceResponse<Reason extends string>(
           readonly currentBranch?: string;
         };
       },
-  kinds: FailureKinds<NoInfer<Reason>>,
+  // A bare `string` reason would make the table an index signature, and a
+  // reason missing from it would answer 200; a closed union is required.
+  kinds: string extends Reason ? never : FailureKinds<NoInfer<Reason>>,
 ): Response {
   if (result._tag === "ok") return context.json(result.value);
   const { reason, currentBranch } = result.error;
