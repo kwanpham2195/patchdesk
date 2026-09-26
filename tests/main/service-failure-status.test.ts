@@ -40,6 +40,7 @@ const changeIntentStatuses = {
 
 const localDraftStatuses = {
   invalid_input: 400,
+  draft_sensitive: 400,
   not_found: 404,
   in_progress: 409,
   terminal: 409,

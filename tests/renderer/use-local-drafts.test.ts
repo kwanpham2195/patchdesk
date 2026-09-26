@@ -182,6 +182,23 @@ describe("useLocalDrafts", () => {
     expect(refusal).toBeInstanceOf(Error);
   });
 
+  it("rejects a note holding a credential with the credential reason and keeps the list", async () => {
+    restore = installDesktopDouble({
+      [NOTE_ADD]: () => failure({ error: "draft_sensitive" }, 400),
+    }).restore;
+    const { result, onWorkbenchPatch } = renderDrafts(localReview([]));
+
+    await act(async () => {
+      await expect(
+        result.current?.notes?.add(
+          { path: "src/a.ts", side: "new", startLine: 1, line: 1 },
+          "Token leaked.",
+        ),
+      ).rejects.toThrow("looks like a credential");
+    });
+    expect(onWorkbenchPatch).not.toHaveBeenCalled();
+  });
+
   it("offers nothing on a pull request Review", () => {
     restore = installDesktopDouble({}).restore;
 

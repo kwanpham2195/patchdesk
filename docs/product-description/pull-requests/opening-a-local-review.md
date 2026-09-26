@@ -133,6 +133,7 @@ Drafts belong to the Review, not the session. Opening the Review again lists the
 | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Another action on the Review is running                                                   | `Another action on this review is running. Try again when it finishes.`                                               |
 | The Finding is no longer current, mapped, or open, or the Review moved to another session | `The review changed or this finding can no longer be drafted. Press Refresh, then run Analysis on the current files.` |
+| The Finding's comment or suggestion holds what looks like a credential                    | `This finding's comment contains what looks like a credential, which Patchdesk never stores.`                         |
 | Any other failure                                                                         | `The draft list was not changed.`                                                                                     |
 
 ### Maintainer notes
@@ -141,7 +142,7 @@ On a local Review's Diff tab, clicking a line number, dragging across line numbe
 
 A saved note appears inline under its lines with a `Note` badge, its text, **Edit note**, and **Remove note**, and it is listed in the Local drafts card. **Edit note** turns the card into a text field with **Save note** and **Cancel**; ⌘/Ctrl+Enter saves and Escape cancels. A Finding draft offers no edit (ADR 0051).
 
-A note is stored with its lines, the diff lines around them, its text, and the session it was written against. The main process checks the lines against the session's patch, so a refused note keeps the composer open with its text and the reason under it. Adding, editing, and removing a note write only the Review record, like the other Local draft actions.
+A note is stored with its lines, the diff lines around them, its text, and the session it was written against. The main process checks the lines against the session's patch and refuses text holding what looks like a credential, so a refused note keeps the composer open with its text and the reason under it. Adding, editing, and removing a note write only the Review record, like the other Local draft actions.
 
 A note is shown inline only on the session its anchor belongs to. Refresh carries it to the new session when its lines can be placed there, and the inline card then shows its state badge; a note under Needs attention is listed only in the Local drafts card.
 
@@ -150,6 +151,7 @@ A note is shown inline only on the session its anchor belongs to. Refresh carrie
 | Another action on the Review is running                                          | `Another action on this review is running. Try again when it finishes.`                               |
 | The lines are not in the session's patch, or the Review moved to another session | `The review changed or these lines are not in the current diff. Press Refresh and select them again.` |
 | The note was removed before the edit arrived                                     | `This note was removed. Press Refresh.`                                                               |
+| The text holds what looks like a credential, which Patchdesk never stores        | `The note contains what looks like a credential. Remove it and save again.`                           |
 | Any other failure                                                                | `The note was not saved.`                                                                             |
 
 ## Refresh

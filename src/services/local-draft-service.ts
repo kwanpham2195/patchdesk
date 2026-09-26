@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { containsSensitiveData } from "../adapters/storage/json-file";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
@@ -96,12 +97,20 @@ export type LocalDraftFailure = {
     | "not_applicable"
     /** A note's text is empty or longer than the comment limit. */
     | "invalid_input"
+    /** The draft holds a credential-shaped value, which Patchdesk never stores. */
+    | "draft_sensitive"
     | "storage";
+};
+
+/** What a read of the Local drafts can refuse with; a read never writes, so never `draft_sensitive`. */
+type LocalDraftReadFailure = {
+  readonly reason: "not_found" | "not_applicable" | "storage";
 };
 
 /** How each Local draft refusal is classified (ADR 0052 "Error model"). */
 export const localDraftFailureKinds = {
   invalid_input: "invalid",
+  draft_sensitive: "invalid",
   stale_cursor: "conflict",
   not_found: "not_found",
   in_progress: "conflict",
@@ -232,7 +241,7 @@ export class LocalDraftService {
     reviewId: ReviewId,
     cursor?: string,
   ): Promise<
-    Result<LocalFeedback, LocalDraftFailure | LocalFeedbackPageFailure>
+    Result<LocalFeedback, LocalDraftReadFailure | LocalFeedbackPageFailure>
   > {
     const review = await this.loadLocal(profileId, reviewId);
     if (review._tag === "err") return review;
@@ -273,7 +282,7 @@ export class LocalDraftService {
   async agentPrompt(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<{ readonly markdown: string }, LocalDraftFailure>> {
+  ): Promise<Result<{ readonly markdown: string }, LocalDraftReadFailure>> {
     const review = await this.loadLocal(profileId, reviewId);
     return review._tag === "ok"
       ? ok({
@@ -287,7 +296,7 @@ export class LocalDraftService {
   private async loadLocal(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<Review<LocalReviewSource>, LocalDraftFailure>> {
+  ): Promise<Result<Review<LocalReviewSource>, LocalDraftReadFailure>> {
     const loaded = await this.dependencies.reviews.load(profileId, reviewId);
     if (loaded._tag === "err")
       return err({
@@ -325,6 +334,9 @@ export class LocalDraftService {
       const changed = await change(review);
       if (changed._tag === "err") return changed;
       const next = changed.value;
+      // The store would refuse the whole Review; naming the reason lets the maintainer edit the secret out (#487).
+      if (next !== review && containsSensitiveData(next.localDrafts))
+        return err({ reason: "draft_sensitive" });
       if (next !== review) {
         const saved = await this.dependencies.reviews.save(
           next,
