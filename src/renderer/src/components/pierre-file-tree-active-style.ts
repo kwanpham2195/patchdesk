@@ -74,17 +74,23 @@ export const FLATTENED_PATH_TREE_STYLE = [
  * The library hard-codes a middle truncation split at the extension, which
  * shows the stem's shared prefix and turns sibling files into identical
  * `sidebar-variant…tsx` rows. The trailing LRM keeps the stem's final `.` on
- * the right inside the RTL box. `text-overflow` cannot draw the ellipsis
- * here: for Latin text in an RTL box Chromium drops whole glyphs and leaves
- * the gap before the ellipsis, shifting the name right of its siblings (#448).
- * The library's own marker shows only while the name overflows, so it moves
- * to the left edge in the text colour, and a wider fade softens the glyph
- * clipped beside it.
+ * the right inside the RTL box. The hidden copy the library measures overflow
+ * with gets it too, so kerning gives both copies the same width.
+ *
+ * The maintainer wants every truncated name's "…" at the same left edge and
+ * no cut or faded letter beside it (#448, decided 2026-09-27). Chromium's
+ * `text-overflow` drops whole glyphs but draws its ellipsis against the text,
+ * away from the edge. So the box keeps `text-overflow` for the whole-glyph cut
+ * with its own ellipsis transparent (the ellipsis takes the box's style, the
+ * name its inline element's), and the library's marker, shown only while the
+ * name overflows, draws the "…" at the left edge. A gap under one letter wide
+ * can remain between the "…" and the name.
  */
 export const FILE_NAME_TREE_STYLE = [
-  `[data-truncate-segment-priority="2"] { --truncate-marker-fade-width: 0.6em; --truncate-middle-marker-opacity: 100%; }`,
-  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { direction: rtl; overflow: hidden; }`,
-  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"]::after { content: "\\200E"; }`,
+  `[data-truncate-segment-priority="2"] { --truncate-marker-fade-width: 0px; --truncate-middle-marker-opacity: 100%; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-grid] > :has(> [data-truncate-content="visible"]) { direction: rtl; overflow: hidden; text-overflow: ellipsis; -webkit-text-fill-color: transparent; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { display: inline; -webkit-text-fill-color: currentColor; }`,
+  `[data-truncate-segment-priority="2"] [data-truncate-content]::after { content: "\\200E"; }`,
   `[data-truncate-segment-priority="2"] [data-truncate-marker] { left: 0; right: auto; }`,
 ].join(" ");
 
