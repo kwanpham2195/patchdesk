@@ -66,6 +66,12 @@ export type ReviewIdentity<Source extends ReviewSource = ReviewSource> = {
   readonly source: Source;
 };
 
+/** The wire form of a request that names one Review and nothing else. */
+export const reviewRequestSchema = v.strictObject({
+  profileId: v.pipe(v.string(), v.minLength(1)),
+  reviewId: v.pipe(v.string(), v.minLength(1)),
+});
+
 /** The identity of a Review on a GitHub pull request. */
 export type PullRequestReviewIdentity = ReviewIdentity<PullRequestReviewSource>;
 

@@ -195,6 +195,77 @@ function invalidSource(): Result<
   return err({ _tag: "InvalidReviewSource" });
 }
 
+const nonEmpty = v.pipe(v.string(), v.minLength(1));
+
+/** The wire form of the local source a maintainer asks to open; `parseLocalReviewSourceRequest` applies the name, SHA, and path rules. */
+export const localReviewSourceRequestSchema = v.variant("kind", [
+  v.strictObject({
+    kind: v.literal("working_tree"),
+    expectedHead: v.optional(
+      v.variant("kind", [
+        v.strictObject({ kind: v.literal("branch"), branch: nonEmpty }),
+        v.strictObject({ kind: v.literal("detached") }),
+      ]),
+    ),
+    checkout: v.optional(nonEmpty),
+  }),
+  v.strictObject({
+    kind: v.literal("branch"),
+    branch: nonEmpty,
+    baseBranch: nonEmpty,
+    checkout: v.optional(nonEmpty),
+  }),
+  v.strictObject({
+    kind: v.literal("commit"),
+    commit: nonEmpty,
+    checkout: v.optional(nonEmpty),
+  }),
+]);
+
+type LocalReviewSourceRequestInput = v.InferOutput<
+  typeof localReviewSourceRequestSchema
+>;
+
+/** The source request with its checkout, which must be an absolute path (#489). */
+export function parseLocalReviewSourceRequest(
+  raw: LocalReviewSourceRequestInput,
+): LocalReviewSourceRequest | undefined {
+  const spec = parseSourceRequestSpec(raw);
+  if (spec === undefined || raw.checkout === undefined) return spec;
+  const checkout = parseAbsolutePath(raw.checkout);
+  return checkout._tag === "ok"
+    ? { ...spec, checkout: checkout.value }
+    : undefined;
+}
+
+function parseSourceRequestSpec(
+  raw: LocalReviewSourceRequestInput,
+): LocalReviewSourceRequest | undefined {
+  if (raw.kind === "working_tree") {
+    if (raw.expectedHead === undefined) return { kind: "working_tree" };
+    if (raw.expectedHead.kind === "detached")
+      return { kind: "working_tree", expectedHead: { kind: "detached" } };
+    const expected = parseLocalBranchName(raw.expectedHead.branch);
+    return expected._tag === "ok"
+      ? {
+          kind: "working_tree",
+          expectedHead: { kind: "branch", branch: expected.value },
+        }
+      : undefined;
+  }
+  if (raw.kind === "commit") {
+    const commit = parseGitShaPrefix(raw.commit.toLowerCase());
+    return commit._tag === "ok"
+      ? { kind: "commit", commit: commit.value }
+      : undefined;
+  }
+  const branch = parseLocalBranchName(raw.branch);
+  const baseBranch = parseLocalBranchName(raw.baseBranch);
+  return branch._tag === "ok" && baseBranch._tag === "ok"
+    ? { kind: "branch", branch: branch.value, baseBranch: baseBranch.value }
+    : undefined;
+}
+
 /**
  * The request that reads a stored local source from the checkout again. A
  * working tree names the `HEAD` it was opened on, so a branch switch is

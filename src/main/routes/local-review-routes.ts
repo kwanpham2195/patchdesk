@@ -2,37 +2,27 @@ import type { Context, Hono } from "hono";
 import {
   array,
   integer,
-  literal,
   maxLength,
-  nullable,
   minLength,
   minValue,
   number,
-  optional,
   picklist,
   pipe,
   safeParse,
   strictObject,
   string,
-  variant,
   type InferOutput,
   type SafeParseResult,
 } from "valibot";
 
-import {
-  changeIntentSchema,
-  parseChangeIntent,
-} from "../../domain/change-intent";
+import { parseChangeIntent } from "../../domain/change-intent";
 import {
   checkoutFolderName,
-  parseAbsolutePath,
   parseFindingId,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
-  parseGitShaPrefix,
   parseInsightRunId,
-  parseLocalBranchName,
   parseLocalNoteId,
   parseRepoRelativePath,
   parseReviewId,
@@ -42,11 +32,18 @@ import {
 } from "../../domain/ids";
 import { MAX_MAINTAINER_NOTE_LENGTH } from "../../domain/local-draft";
 import { ok } from "../../domain/result";
-import type { LocalReviewSourceRequest } from "../../domain/review-source";
-import type { LocalApiContainer } from "../local-api-container";
-import { changeIntentFailureKinds } from "../../services/local-change-intent-service";
+import { reviewRequestSchema } from "../../domain/review";
+import { parseLocalReviewSourceRequest } from "../../domain/review-source";
+import {
+  changeIntentFailureKinds,
+  changeIntentRequestSchema,
+} from "../../services/local-change-intent-service";
 import { localDraftFailureKinds } from "../../services/local-draft-service";
-import { localReviewFailureKinds } from "../../services/local-review-opening";
+import {
+  localReviewFailureKinds,
+  localReviewOpenRequestSchema,
+} from "../../services/local-review-opening";
+import type { LocalApiContainer } from "../local-api-container";
 import { response, serviceResponse } from "./http-status";
 import { jsonBody } from "./json-body";
 import {
@@ -60,13 +57,16 @@ export function registerLocalReviewRoutes(
   container: LocalApiContainer,
 ): void {
   app.post("/v1/reviews/open-local", async (context) => {
-    const parsed = safeParse(localReviewOpenSchema, await jsonBody(context));
+    const parsed = safeParse(
+      localReviewOpenRequestSchema,
+      await jsonBody(context),
+    );
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const host = parseGitHubHost(parsed.output.host);
     const owner = parseGitHubOwner(parsed.output.owner);
     const repo = parseGitHubRepoName(parsed.output.repo);
-    const request = parseSourceRequest(parsed.output.source);
+    const request = parseLocalReviewSourceRequest(parsed.output.source);
     if (
       profileId._tag === "err" ||
       host._tag === "err" ||
@@ -118,7 +118,7 @@ export function registerLocalReviewRoutes(
 
   // Reads the stored source from the checkout again; a changed one moves the Review and its drafts to a new session (#452).
   app.post("/v1/reviews/local-refresh", async (context) => {
-    const parsed = safeParse(reviewIdentitySchema, await jsonBody(context));
+    const parsed = safeParse(reviewRequestSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -240,7 +240,10 @@ export function registerLocalReviewRoutes(
 
   // Sets the Change intent, or clears it with `intent: null` (#467); the Analysis start reads a spec file.
   app.post("/v1/reviews/local-intent", async (context) => {
-    const parsed = safeParse(localIntentSchema, await jsonBody(context));
+    const parsed = safeParse(
+      changeIntentRequestSchema,
+      await jsonBody(context),
+    );
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -266,7 +269,7 @@ export function registerLocalReviewRoutes(
   });
 
   app.post("/v1/reviews/local-drafts/agent-prompt", async (context) => {
-    const parsed = safeParse(reviewIdentitySchema, await jsonBody(context));
+    const parsed = safeParse(reviewRequestSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -281,7 +284,7 @@ export function registerLocalReviewRoutes(
 
   // Reads file hashes only; it never applies again.
   app.post("/v1/reviews/local-apply/recover", async (context) => {
-    const parsed = safeParse(reviewIdentitySchema, await jsonBody(context));
+    const parsed = safeParse(reviewRequestSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -385,85 +388,3 @@ const localApplySchema = strictObject({
   findingIds: pipe(array(string()), minLength(1), maxLength(50)),
   expected: reviewWriteExpectationSchema,
 });
-
-/** Names one Review and nothing else. */
-const reviewIdentitySchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  reviewId: pipe(string(), minLength(1)),
-});
-
-const localIntentSchema = strictObject({
-  ...reviewIdentitySchema.entries,
-  intent: nullable(changeIntentSchema),
-});
-
-const nonEmpty = pipe(string(), minLength(1));
-const localReviewOpenSchema = strictObject({
-  profileId: nonEmpty,
-  host: nonEmpty,
-  owner: nonEmpty,
-  repo: nonEmpty,
-  source: variant("kind", [
-    strictObject({
-      kind: literal("working_tree"),
-      expectedHead: optional(
-        variant("kind", [
-          strictObject({ kind: literal("branch"), branch: nonEmpty }),
-          strictObject({ kind: literal("detached") }),
-        ]),
-      ),
-      checkout: optional(nonEmpty),
-    }),
-    strictObject({
-      kind: literal("branch"),
-      branch: nonEmpty,
-      baseBranch: nonEmpty,
-      checkout: optional(nonEmpty),
-    }),
-    strictObject({
-      kind: literal("commit"),
-      commit: nonEmpty,
-      checkout: optional(nonEmpty),
-    }),
-  ]),
-});
-
-/** The source request with its checkout, which must be an absolute path (#489). */
-function parseSourceRequest(
-  raw: InferOutput<typeof localReviewOpenSchema>["source"],
-): LocalReviewSourceRequest | undefined {
-  const spec = parseSourceSpec(raw);
-  if (spec === undefined || raw.checkout === undefined) return spec;
-  const checkout = parseAbsolutePath(raw.checkout);
-  return checkout._tag === "ok"
-    ? { ...spec, checkout: checkout.value }
-    : undefined;
-}
-
-function parseSourceSpec(
-  raw: InferOutput<typeof localReviewOpenSchema>["source"],
-): LocalReviewSourceRequest | undefined {
-  if (raw.kind === "working_tree") {
-    if (raw.expectedHead === undefined) return { kind: "working_tree" };
-    if (raw.expectedHead.kind === "detached")
-      return { kind: "working_tree", expectedHead: { kind: "detached" } };
-    const expected = parseLocalBranchName(raw.expectedHead.branch);
-    return expected._tag === "ok"
-      ? {
-          kind: "working_tree",
-          expectedHead: { kind: "branch", branch: expected.value },
-        }
-      : undefined;
-  }
-  if (raw.kind === "commit") {
-    const commit = parseGitShaPrefix(raw.commit.toLowerCase());
-    return commit._tag === "ok"
-      ? { kind: "commit", commit: commit.value }
-      : undefined;
-  }
-  const branch = parseLocalBranchName(raw.branch);
-  const baseBranch = parseLocalBranchName(raw.baseBranch);
-  return branch._tag === "ok" && baseBranch._tag === "ok"
-    ? { kind: "branch", branch: branch.value, baseBranch: baseBranch.value }
-    : undefined;
-}

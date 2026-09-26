@@ -1,12 +1,28 @@
+import { nullable, strictObject } from "valibot";
+
 import { containsSensitiveData } from "../adapters/storage/json-file";
 import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ChangeIntent, ChangeIntentView } from "../domain/change-intent";
+import {
+  changeIntentSchema,
+  type ChangeIntent,
+  type ChangeIntentView,
+} from "../domain/change-intent";
 import type { FailureKinds } from "../domain/failure-kind";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
-import { isLocalReview, setChangeIntent } from "../domain/review";
+import {
+  isLocalReview,
+  reviewRequestSchema,
+  setChangeIntent,
+} from "../domain/review";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+
+/** The wire form of `set`'s request; `intent: null` clears the Change intent. */
+export const changeIntentRequestSchema = strictObject({
+  ...reviewRequestSchema.entries,
+  intent: nullable(changeIntentSchema),
+});
 
 /** `intent` undefined clears the Change intent. */
 export type ChangeIntentRequest = {
