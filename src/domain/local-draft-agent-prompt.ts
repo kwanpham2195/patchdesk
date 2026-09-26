@@ -36,7 +36,7 @@ export function renderLocalDraftsAsAgentPrompt(
     drafts.length === 0
       ? "No review comments."
       : [...drafts]
-          .sort(byFileThenLine)
+          .sort(compareLocalDraftsByFileThenLine)
           .map((draft, index) => renderDraft(draft, index + 1))
           .join("\n\n");
   return [
@@ -46,7 +46,11 @@ export function renderLocalDraftsAsAgentPrompt(
   ].join("\n\n");
 }
 
-function byFileThenLine(left: LocalDraft, right: LocalDraft): number {
+/** File then line order, the order the prompt and `get_feedback`'s pages list drafts in. */
+export function compareLocalDraftsByFileThenLine(
+  left: LocalDraft,
+  right: LocalDraft,
+): number {
   if (left.anchor.path !== right.anchor.path)
     return left.anchor.path < right.anchor.path ? -1 : 1;
   return (

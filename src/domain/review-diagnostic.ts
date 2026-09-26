@@ -10,6 +10,7 @@ const diagnosticCategorySchema = v.picklist([
   "migration",
   "cleanup",
   "walkthrough",
+  "mcp",
 ]);
 
 const diagnosticEventSchema = v.strictObject({

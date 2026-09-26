@@ -81,6 +81,8 @@ export type LocalApiContainer = {
   /** The Insight run lifecycle, built over `github`; absent leaves the Insight routes unavailable. */
   readonly insights: InsightCoordinatorSeam | undefined;
   readonly sessions: LocalApiStores["sessions"];
+  /** Review records by profile; the MCP tools read another profile's to refuse `profile_changed`. */
+  readonly reviews: LocalApiStores["reviews"];
   readonly storageManagement: LocalApiStores["storageManagement"];
   recordProfileReloadFailure(phase: string): Promise<void>;
   readonly configuredProfiles: ReadonlyArray<WorkspaceProfileConfig>;
@@ -568,6 +570,7 @@ export async function buildLocalApiContainer(
       github,
       insights: insightCoordinator,
       sessions,
+      reviews,
       storageManagement,
       recordProfileReloadFailure,
       configuredProfiles: configuredProfiles.value,

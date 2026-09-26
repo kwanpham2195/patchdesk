@@ -21,7 +21,11 @@ import {
   mcpSocketBounds,
   type McpSocketBounds,
 } from "../../src/mcp/socket-protocol";
-import { mcpToolManifest, mcpToolNames } from "../../src/mcp/tool-manifest";
+import {
+  mcpToolManifest,
+  mcpToolNames,
+  type McpToolName,
+} from "../../src/mcp/tool-manifest";
 import {
   exchangeSocketLine,
   shortTemporaryDirectory,
@@ -37,21 +41,32 @@ afterEach(async () => {
 
 const listRepositoriesLine = `${JSON.stringify({ tool: "list_repositories", arguments: {} })}\n`;
 
-/** A tool table whose one tool records each call and answers with `reply`. */
+/** A tool table whose tools record each call and answer with `reply`. */
 function recordingTools(reply: McpToolReply = emptyListing()) {
   const calls: Array<string> = [];
-  return {
-    calls,
-    tools: {
-      list_repositories: {
-        schema: mcpToolManifest.list_repositories.inputSchema,
-        async call() {
-          calls.push("list_repositories");
-          return reply;
-        },
-      },
+  const record = (name: McpToolName) => async () => {
+    calls.push(name);
+    return reply;
+  };
+  const tools: McpToolTable = {
+    list_repositories: {
+      schema: mcpToolManifest.list_repositories.inputSchema,
+      call: record("list_repositories"),
+    },
+    review_local: {
+      schema: mcpToolManifest.review_local.inputSchema,
+      call: record("review_local"),
+    },
+    get_insight: {
+      schema: mcpToolManifest.get_insight.inputSchema,
+      call: record("get_insight"),
+    },
+    get_feedback: {
+      schema: mcpToolManifest.get_feedback.inputSchema,
+      call: record("get_feedback"),
     },
   };
+  return { calls, tools };
 }
 
 function emptyListing(label = "ACME"): McpToolReply {
@@ -260,14 +275,25 @@ describe("MCP tool dispatcher", () => {
   });
 
   it("names exactly the tools the shim's manifest registers", () => {
+    const unavailable = async () => err({ reason: "storage" as const });
+    const unreadable = async () =>
+      err({
+        _tag: "StorageFailure" as const,
+        operation: "read" as const,
+        reason: "io" as const,
+      });
     const table = createMcpToolTable({
-      dashboard: {
-        activeProfile: async () =>
-          err({ _tag: "DashboardControllerFailure", reason: "storage" }),
-      },
+      dashboard: { savedProfiles: unavailable },
       localReviewOpening: {
-        listCheckouts: async () => err({ reason: "storage" }),
+        listCheckouts: unavailable,
+        findCheckout: unavailable,
+        open: unavailable,
       },
+      localChangeIntent: { recordAgentIntent: unavailable },
+      localDrafts: { feedback: unavailable },
+      reviewWorkbench: { load: unavailable },
+      sessions: { load: unreadable },
+      reviews: { load: unreadable },
     });
 
     expect(Object.keys(table).sort()).toEqual([...mcpToolNames].sort());

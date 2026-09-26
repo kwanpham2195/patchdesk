@@ -6,6 +6,7 @@ import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-
 import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   createReviewId,
+  type AbsolutePath,
   type IsoTimestamp,
   type LocalBranchName,
   type RepoRelativePath,
@@ -110,7 +111,7 @@ export class LocalReviewOpening {
   constructor(
     private readonly preparation: Pick<
       LocalReviewSessionPreparation,
-      "resolve" | "prepare" | "listCheckouts"
+      "resolve" | "prepare" | "listCheckouts" | "findCheckout"
     >,
     private readonly projection: Pick<
       ReviewWorkbenchProjectionService,
@@ -176,6 +177,25 @@ export class LocalReviewOpening {
     return listed._tag === "ok"
       ? listed
       : err(mapPreparationFailure(listed.error));
+  }
+
+  /** The profile repository and checkout an agent's working directory is in (ADR 0052 `review_local`). */
+  async findCheckout(
+    profileId: WorkspaceProfileId,
+    directory: AbsolutePath,
+  ): Promise<
+    Result<
+      {
+        readonly repository: LocalReviewOpenRequest["repository"];
+        readonly checkout: AbsolutePath;
+      },
+      LocalReviewOpenFailure
+    >
+  > {
+    const found = await this.preparation.findCheckout(profileId, directory);
+    return found._tag === "ok"
+      ? found
+      : err(mapPreparationFailure(found.error));
   }
 
   /**

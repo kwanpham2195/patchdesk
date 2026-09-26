@@ -12,7 +12,10 @@ import { hasMatchingAppCapability } from "./app-capability";
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import { buildLocalApiContainer, type LogWriter } from "./local-api-container";
 import type { LocalApiConfiguration } from "./local-api-configuration";
-import { createMcpToolTable } from "./mcp/mcp-tool-dispatcher";
+import {
+  createMcpRefusalRecorder,
+  createMcpToolTable,
+} from "./mcp/mcp-tool-dispatcher";
 import {
   startMcpSocketListener,
   type McpSocketListenOutcome,
@@ -108,6 +111,7 @@ export async function startLocalApiServer(
           socketPath: configuration.mcpSocketPath,
           tools: createMcpToolTable(container),
           logs,
+          recordRefusal: createMcpRefusalRecorder(container),
         });
 
   const retentionScheduler = startRetentionSweepScheduler({

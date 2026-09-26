@@ -58,17 +58,26 @@ export type McpAppFixture = {
   readonly socketPath: string;
   readonly repositoryPath: string;
   readonly linkedPath: string;
+  readonly paths: PatchdeskPaths;
   /** What `GET /v1/reviews/local-checkouts` answers for the local repository. */
   routeCheckouts(): Promise<string>;
+  /** One local API call, as the renderer makes it; `json` is the request body and the answer is parsed JSON. */
+  route(
+    path: string,
+    json?: string,
+  ): Promise<{ readonly status: number; readonly body: unknown }>;
   stop(): Promise<void>;
 };
 
 /**
  * The local API with its MCP socket on a profile that has one local
  * repository, checked out on `main` with a linked worktree on
- * `feat/linked`, and one repository with no `localPath`.
+ * `feat/linked`, and one repository with no `localPath`. `profiles: "none"`
+ * saves no profile; `"two"` adds an `other` profile with the same repository.
  */
-export async function startAppWithLinkedWorktree(): Promise<McpAppFixture> {
+export async function startAppWithLinkedWorktree(
+  options: { readonly profiles?: "none" | "one" | "two" } = {},
+): Promise<McpAppFixture> {
   const root = await shortTemporaryDirectory();
   const repositoryPath = join(root, "repo");
   const linkedPath = join(root, "linked");
@@ -96,7 +105,14 @@ export async function startAppWithLinkedWorktree(): Promise<McpAppFixture> {
     ],
   });
   if (profile._tag === "err") throw new Error("Invalid profile fixture");
-  await new ProfileStore(paths).save(profile.value);
+  const profiles = options.profiles ?? "one";
+  if (profiles !== "none") await new ProfileStore(paths).save(profile.value);
+  if (profiles === "two")
+    await new ProfileStore(paths).save({
+      ...profile.value,
+      id: "other",
+      label: "Other",
+    });
   const socketPath = join(root, "app", "mcp", "patchdesk.sock");
   const started = await startLocalApiServer({
     capability,
@@ -124,6 +140,20 @@ export async function startAppWithLinkedWorktree(): Promise<McpAppFixture> {
         { headers: { Origin: origin, "X-Patchdesk-Capability": capability } },
       );
       return await response.text();
+    },
+    paths,
+    async route(path, json) {
+      const headers = new Headers({
+        Origin: origin,
+        "X-Patchdesk-Capability": capability,
+      });
+      if (json !== undefined) headers.set("Content-Type", "application/json");
+      const response = await fetch(new URL(path, server.url), {
+        method: json === undefined ? "GET" : "POST",
+        headers,
+        body: json ?? null,
+      });
+      return { status: response.status, body: await response.json() };
     },
     async stop() {
       await server.stop();

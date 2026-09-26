@@ -434,16 +434,43 @@ export class DashboardController {
   > {
     const profiles = await this.listProfiles();
     if (profiles._tag === "err") return profiles;
+    const active = await this.selectedOrFirst(profiles.value);
+    return active === undefined ? failure("not_found") : ok(active);
+  }
+
+  /**
+   * The active profile among the saved ones, and all of them. Unlike
+   * `activeProfile` it never runs the first-run `gh` detection, which may save
+   * a profile: an MCP tool reads the workspace and never writes it (ADR 0052).
+   */
+  async savedProfiles(): Promise<
+    Result<
+      {
+        readonly active: WorkspaceProfileConfig;
+        readonly saved: ReadonlyArray<WorkspaceProfileConfig>;
+      },
+      { readonly reason: "no_profile" | "storage" }
+    >
+  > {
+    const saved = await this.profiles.list();
+    if (saved._tag === "err") return err({ reason: "storage" });
+    const active = await this.selectedOrFirst(saved.value);
+    return active === undefined
+      ? err({ reason: "no_profile" })
+      : ok({ active, saved: saved.value });
+  }
+
+  private async selectedOrFirst(
+    profiles: ReadonlyArray<WorkspaceProfileConfig>,
+  ): Promise<WorkspaceProfileConfig | undefined> {
     const config = await this.profiles.loadConfig();
     const selected =
       config._tag === "ok"
-        ? profiles.value.find(
+        ? profiles.find(
             (profile) => profile.id === config.value.lastSelectedProfileId,
           )
         : undefined;
-    const first = profiles.value[0];
-    if (selected !== undefined) return ok(selected);
-    return first === undefined ? failure("not_found") : ok(first);
+    return selected ?? profiles[0];
   }
 }
 

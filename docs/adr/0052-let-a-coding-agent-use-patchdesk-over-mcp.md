@@ -340,6 +340,12 @@ status in the route and one tool error in the dispatcher:
   when it connects but gets no reply within 30 s, the connection closes
   first, or the reply is malformed. `app_not_running` stays the connect
   failure.
+- Amended 2026-09-26 (slice 3): every tool refuses `no_profile` when no
+  workspace profile is saved. Tools read the saved profiles and never run
+  the first-run `gh` account detection, which may save one.
+- Amended 2026-09-26 (slice 3): `get_feedback` refuses `stale_cursor` when
+  the drafts changed since the cursor was issued (start again without a
+  cursor), and `invalid_input` for a cursor Patchdesk did not issue.
 - `in_progress` means the Review lock is held; the message says to retry
   when it finishes, as the UI does.
 - A tool never returns a stack, a path outside the checkout, or another

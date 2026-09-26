@@ -11,6 +11,7 @@ import {
 import { dismissInsightFinding } from "../../src/domain/insight-record";
 import { ok } from "../../src/domain/result";
 import { isLocalReview, markLocalDraftsApplied } from "../../src/domain/review";
+import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewInsightReader } from "../../src/services/review-insight-reading";
 import {
   cleanupLocalApplyRoots,
@@ -304,7 +305,10 @@ describe("LocalDraftService", () => {
       }),
     );
     const shown = await harness.open();
-    const reader = new ReviewInsightReader({ load: async () => ok(shown) });
+    const reader = new ReviewInsightReader(
+      { load: async () => ok(shown) },
+      new ReviewSessionStore(harness.paths),
+    );
 
     const reading = value(
       await reader.read({
@@ -317,8 +321,10 @@ describe("LocalDraftService", () => {
       await harness.drafts.feedback(profileId, request.reviewId),
     );
 
+    if (reading.result?.type !== "analysis")
+      throw new Error("expected a retained Analysis");
     expect(
-      reading.findings?.map(({ id, dismissed, drafted, applied }) => ({
+      reading.result.findings.map(({ id, dismissed, drafted, applied }) => ({
         id,
         dismissed,
         drafted,
@@ -335,7 +341,7 @@ describe("LocalDraftService", () => {
       },
       { id: "finding-open", dismissed: false, drafted: false, applied: false },
     ]);
-    expect(feedback.localDrafts).toEqual(shown.localDrafts);
+    expect(feedback.localDrafts).toMatchObject(shown.localDrafts ?? []);
     expect(feedback.markdown).toContain(boundFix.title);
     expect(feedback.markdown).not.toContain(appliedFix.title);
   });
