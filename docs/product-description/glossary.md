@@ -72,7 +72,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Local draft.** A Finding the maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent, copied as one prompt or read over MCP, and never becomes a GitHub comment.
 
-**Coding agent.** A terminal agent, such as Claude Code or Codex, that edits a checkout and reaches Patchdesk through the `patchdesk mcp` command. It can open and refresh a local Review, ask for Insights, and read results and Local drafts; it cannot run an Insight, Apply, or change the maintainer's notes.
+**Coding agent.** A terminal agent, such as Claude Code or Codex, that edits a checkout and reaches Patchdesk through the `patchdesk mcp` command. It can open and refresh a local Review, ask for Insights, and read results and Local drafts; its tools cannot run an Insight, Apply, or change the maintainer's notes.
 
 **Agent run request.** A coding agent's request for one Insight on a local Review's current session. It spends nothing by itself: it waits on the Agent requests bar until the maintainer presses Run, which opens the ordinary Insight run dialog, or Decline, which is final for that session.
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-A terminal coding agent, such as Claude Code or Codex, can use Patchdesk as its review desk through the `patchdesk mcp` command (ADR 0052). The agent opens a _local Review_ of its own change, asks for an _Insight_, reads the result, and reads the notes the maintainer drafted. The maintainer stays the reviewer: every Insight run waits for their **Run**, and only their **Refresh** moves the Review to the agent's newer changes. The agent never presses Apply, never edits the maintainer's notes, and never writes to GitHub. The feature is available whenever Patchdesk is running with a saved _workspace profile_ and the agent's client has the command registered; the [user guide](../../user-guide.md#use-patchdesk-from-a-coding-agent-mcp) owns installing and registering it.
+A terminal coding agent, such as Claude Code or Codex, can use Patchdesk as its review desk through the `patchdesk mcp` command (ADR 0052). The agent opens a _local Review_ of its own change, asks for an _Insight_, reads the result, and reads the notes the maintainer drafted. The maintainer stays the reviewer: every Insight run waits for their **Run**, and only their **Refresh** moves the Review to the agent's newer changes. The tools cannot press Apply, edit the maintainer's notes, commit, or write to GitHub. The feature is available whenever Patchdesk is running with a saved _workspace profile_ and the agent's client has the command registered; the [user guide](../../user-guide.md#use-patchdesk-from-a-coding-agent-mcp) owns installing and registering it.
 
 ## The simple case
 
