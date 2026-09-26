@@ -206,6 +206,26 @@ describe("Insight run context pack", () => {
     expect(await readFile(reviewInputPath, "utf8")).toBe(built);
   });
 
+  it("rebuilds a pack whose review input has the pre-#495 header", async () => {
+    const value = await fixture(completes);
+    const reviewInputPath = value.paths.preparedReviewInputFile(
+      profileId,
+      value.session.id,
+    );
+    await run(value);
+    const built = await readFile(reviewInputPath, "utf8");
+    // What a build before #495 left: the same patch hash and goal section.
+    await writeFile(
+      reviewInputPath,
+      `# PR review input\n\nPR: octo-org/patchdesk#42\n${built.slice(built.indexOf("Head: "))}`,
+    );
+
+    await run(value);
+
+    expect(value.contextPack.commentReads).toBe(2);
+    expect(await readFile(reviewInputPath, "utf8")).toBe(built);
+  });
+
   it("lists a git-quoted changed path in the built pack", async () => {
     // Git C-quotes any path with a non-ASCII byte, so the `+++ b/` prefix
     // test this list used to run never matched one and the file went

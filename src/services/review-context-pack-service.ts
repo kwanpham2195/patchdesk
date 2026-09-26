@@ -31,7 +31,10 @@ import {
   resolveChangeIntent,
   type ChangeIntentUnreadable,
 } from "./change-intent-resolution";
-import type { ReviewContextService } from "./review-context-service";
+import {
+  REVIEW_INPUT_HEADING,
+  type ReviewContextService,
+} from "./review-context-service";
 import { exists } from "./review-preparation-journal";
 import type { GitReadExecutor } from "./review-worktree-service";
 
@@ -236,8 +239,9 @@ export class ReviewContextPackService {
    * A pack is usable only when all three files are present and `context.json`
    * parses and names this session's current patch hash. A pack interrupted
    * mid-build fails one of those, and a pack left by an earlier revision
-   * fails the hash. For Analysis, `review-input.md` must also end with the
-   * section of the stated goal, or hold none when there is none.
+   * fails the hash. A `review-input.md` without the current heading predates
+   * #495 and is rebuilt. For Analysis, it must also end with the section of
+   * the stated goal, or hold none when there is none.
    */
   private async isUsable(
     session: ReviewSession,
@@ -261,12 +265,16 @@ export class ReviewContextPackService {
     const parsed = v.safeParse(packIdentitySchema, stored.value);
     if (!parsed.success || parsed.output.patch.sha256 !== patchHash)
       return false;
-    if (changeIntent._tag === "Unread") return true;
     const reviewInput = await readFile(
       this.dependencies.paths.preparedReviewInputFile(profileId, session.id),
       "utf8",
     ).catch(() => undefined);
-    if (reviewInput === undefined) return false;
+    if (
+      reviewInput === undefined ||
+      !reviewInput.startsWith(REVIEW_INPUT_HEADING)
+    )
+      return false;
+    if (changeIntent._tag === "Unread") return true;
     // The header lines hold no heading, so the first one starts the goal section.
     const start = reviewInput.indexOf("\n## ");
     const section = start < 0 ? undefined : reviewInput.slice(start + 1);
