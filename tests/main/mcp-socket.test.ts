@@ -6,7 +6,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { err, ok } from "../../src/domain/result";
-import { parseWorkspaceProfileId } from "../../src/domain/ids";
+import {
+  parseGitSha,
+  parseReviewId,
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+} from "../../src/domain/ids";
+import type { Result } from "../../src/domain/result";
 import type { LogEntryInput } from "../../src/domain/log-entry";
 import {
   startMcpSocketListener,
@@ -34,6 +40,11 @@ import {
 } from "./mcp-app-fixture";
 
 const cleanups: Array<() => Promise<void>> = [];
+
+function fixtureValue<T>(result: Result<T, unknown>): T {
+  if (result._tag === "ok") return result.value;
+  throw new Error("Invalid test fixture");
+}
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -296,6 +307,55 @@ describe("MCP socket listener (ADR 0052)", () => {
 
     expect(reply).toMatchObject({ ok: false, error: "storage" });
   });
+
+  it.each([
+    { name: "an opened Review", intent: {} },
+    {
+      name: "an opened Review whose intent was refused",
+      intent: {
+        intentRecorded: false,
+        intentRefused: "intent_exists" as const,
+        intentMessage: "The Review already has a different Change intent.",
+      },
+    },
+  ])(
+    "logs the reviewId review_local returned for $name, without the intent",
+    async ({ intent }) => {
+      const socketPath = join(await socketDirectory(), "patchdesk.sock");
+      const reviewId = fixtureValue(
+        parseReviewId(
+          "github.com__acme__app__local-working_tree-main__review-542b32b51ff5",
+        ),
+      );
+      const opened: McpToolReply = ok({
+        reviewId,
+        sessionId: fixtureValue(
+          parseReviewSessionId(
+            "github.com__acme__app__local-working_tree-main__sha-7b8013e2__base-3691942d__dae722d0d200",
+          ),
+        ),
+        headSha: fixtureValue(parseGitSha("a".repeat(40))),
+        baseSha: fixtureValue(parseGitSha("b".repeat(40))),
+        title: "Working tree on main",
+        changedFiles: [],
+        retainedInsights: [],
+        ...intent,
+      });
+      const logs: Array<LogEntryInput> = [];
+      await (
+        await startListener(socketPath, recordingTools(opened).tools, logs)
+      ).listening;
+
+      await exchangeSocketLine(
+        socketPath,
+        `${JSON.stringify({ tool: "review_local", arguments: { cwd: "/tmp/app", intent: "Secret task text" } })}\n`,
+      );
+
+      const called = logs.find((entry) => entry.message === "tool called");
+      expect(called?.meta).toMatchObject({ tool: "review_local", reviewId });
+      expect(JSON.stringify(called)).not.toContain("Secret task text");
+    },
+  );
 
   it("answers an unknown tool with invalid_input and calls nothing", async () => {
     const socketPath = join(await socketDirectory(), "patchdesk.sock");
