@@ -23,7 +23,20 @@ ships inside the app and runs on Electron's own Node.
 
 ## Install
 
-Either download the `.dmg` by hand or install through Homebrew.
+For a fresh install without Homebrew, run the shell installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh
+```
+
+You can [read the installer](../scripts/install-release.sh) before running it.
+It checks the latest release ZIP against the release's SHA-256 digest, installs
+Patchdesk in `/Applications`, and links `patchdesk` in `/usr/local/bin`. It may
+request an administrator password. It refuses to replace an existing app or
+command. If the downloaded app has a quarantine flag, it clears that flag
+because the current release is not notarized.
+
+You can also install through Homebrew or download the `.dmg` by hand.
 
 **From the `.dmg`:**
 
@@ -31,27 +44,23 @@ Either download the `.dmg` by hand or install through Homebrew.
    [Releases page](https://github.com/kwanpham2195/patchdesk/releases).
 2. Open the `.dmg` and drag Patchdesk into Applications.
 
-The build is not signed with an Apple Developer ID or notarized. The first
-time you open Patchdesk, macOS reports Patchdesk.app as damaged and offers
-only Move to Trash. Clear the quarantine flag macOS adds to downloads, once,
-from a terminal, then open it normally:
+The current release is not signed with an Apple Developer ID or notarized, so
+macOS reports Patchdesk.app as damaged on the first launch. Clear the
+quarantine flag macOS adds to downloads, then open Patchdesk:
 
 ```bash
-xattr -cr /Applications/Patchdesk.app
+xattr -dr com.apple.quarantine /Applications/Patchdesk.app
 ```
 
 **With Homebrew:**
 
 ```bash
-brew trust --tap kwanpham2195/patchdesk
 brew install --cask kwanpham2195/patchdesk/patchdesk
-xattr -dr com.apple.quarantine /Applications/Patchdesk.app
 ```
 
-Homebrew loads casks from a tap that is not its own only after you trust it,
-which is what `brew trust` does. The `xattr` line clears the same quarantine
-flag as above, because the app is not notarized. Later versions install with
-`brew upgrade --cask patchdesk`.
+Installing by the fully qualified cask name trusts only this cask. Before the
+first launch, run the same `xattr` command shown above. Later
+versions install with `brew upgrade --cask patchdesk`.
 
 Opening Patchdesk a second time while it is already running quits the new
 copy right away; the existing window comes to the front instead.

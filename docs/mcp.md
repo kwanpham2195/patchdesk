@@ -71,9 +71,10 @@ Patchdesk bundles the command at
 `Patchdesk.app/Contents/Resources/bin/patchdesk`. It runs on the Node that
 ships inside the app, so there is nothing else to install.
 
-The Homebrew cask links it onto your PATH as `patchdesk`, in
-`$(brew --prefix)/bin` (`/opt/homebrew/bin` on Apple Silicon). For a disk
-image install, link it yourself:
+The [shell installer](../scripts/install-release.sh) links it as
+`/usr/local/bin/patchdesk`. The Homebrew cask links it in
+`$(brew --prefix)/bin` (`/opt/homebrew/bin` on Apple Silicon). Make sure that
+directory is on your PATH. For a disk-image install, link it yourself:
 
 ```bash
 ln -s /Applications/Patchdesk.app/Contents/Resources/bin/patchdesk /usr/local/bin/patchdesk
