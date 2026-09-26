@@ -13,7 +13,10 @@ import {
   describeRepositoryCheckout,
   type RepositoryCheckoutDescription,
 } from "../../services/local-checkout";
-import type { LocalReviewOpenFailure } from "../../services/local-review-opening";
+import type {
+  LocalReviewOpenFailure,
+  LocalReviewPrepared,
+} from "../../services/local-review-opening";
 import type { ReviewDiagnosticService } from "../../services/review-diagnostic-service";
 import {
   ReviewInsightReader,
@@ -34,6 +37,7 @@ import {
   getFeedback,
   getInsight,
   readActiveProfile,
+  refreshReview,
   reviewLocal,
   type McpReviewToolServices,
   type ReviewLocalResult,
@@ -46,7 +50,11 @@ type ListRepositoriesResult = {
 };
 
 export type McpToolReply = Result<
-  ListRepositoriesResult | ReviewLocalResult | InsightReading | LocalFeedback,
+  | ListRepositoriesResult
+  | ReviewLocalResult
+  | LocalReviewPrepared
+  | InsightReading
+  | LocalFeedback,
   McpToolRefusal
 >;
 
@@ -94,6 +102,10 @@ export function createMcpToolTable(services: McpToolServices): McpToolTable {
     review_local: {
       schema: mcpToolManifest.review_local.inputSchema,
       call: (input) => reviewLocal(tools, input),
+    },
+    refresh_review: {
+      schema: mcpToolManifest.refresh_review.inputSchema,
+      call: (input) => refreshReview(tools, input),
     },
     get_insight: {
       schema: mcpToolManifest.get_insight.inputSchema,

@@ -25,8 +25,9 @@ import type {
 } from "../../services/local-draft-service";
 import type { LocalFeedbackPageFailure } from "../../services/local-feedback-page";
 import type {
-  LocalReviewOpenFailure,
+  LocalReviewAgentRefreshFailure,
   LocalReviewOpening,
+  LocalReviewPrepared,
 } from "../../services/local-review-opening";
 import type {
   InsightReading,
@@ -47,7 +48,7 @@ export type McpReviewToolServices = {
   readonly dashboard: Pick<DashboardController, "savedProfiles">;
   readonly localReviewOpening: Pick<
     LocalReviewOpening,
-    "listCheckouts" | "findCheckout" | "openForAgent"
+    "listCheckouts" | "findCheckout" | "openForAgent" | "prepareForAgent"
   >;
   readonly localChangeIntent: Pick<
     LocalChangeIntentService,
@@ -60,7 +61,7 @@ export type McpReviewToolServices = {
 };
 
 type ServiceReason =
-  | LocalReviewOpenFailure["reason"]
+  | LocalReviewAgentRefreshFailure["reason"]
   | AgentIntentFailure["reason"]
   | InsightReadingFailure["reason"]
   | LocalFeedbackPageFailure["reason"]
@@ -82,6 +83,8 @@ const refusalMessages = {
   branch_mismatch: "The checkout is now on another branch than the Review.",
   in_progress:
     "Another Patchdesk command holds this Review. Retry when it finishes.",
+  rate_limited:
+    "This Review was refreshed less than 10 seconds ago. Retry after retryAfterMs.",
   terminal: "This Review is closed.",
   not_applicable:
     "This is a pull request Review. These tools read local Reviews only.",
@@ -101,6 +104,22 @@ const refusalMessages = {
 
 function refusal(reason: ServiceReason): McpToolRefusal {
   return { error: reason, message: refusalMessages[reason] };
+}
+
+/** A refresh refusal; `branch_mismatch` names the branch the checkout is on, and `rate_limited` carries when to retry. */
+function agentRefreshRefusal(
+  failure: LocalReviewAgentRefreshFailure,
+): McpToolRefusal {
+  if (failure.reason === "rate_limited")
+    return { ...refusal("rate_limited"), retryAfterMs: failure.retryAfterMs };
+  if (failure.reason !== "branch_mismatch") return refusal(failure.reason);
+  return {
+    error: "branch_mismatch",
+    message:
+      failure.currentBranch === undefined
+        ? "The checkout's HEAD is detached, so it is not on the branch this Review reads. Check that branch out again, then retry."
+        : `The checkout is now on branch ${failure.currentBranch}, not the branch this Review reads. Check that branch out again, or call review_local to review ${failure.currentBranch}.`,
+  };
 }
 
 /**
@@ -197,6 +216,27 @@ export async function reviewLocal(
     ...described.value,
     ...definedProps({ intentKept: recorded?.value.intentKept }),
   });
+}
+
+/** `refresh_review`: `LocalReviewOpening.prepareForAgent`, which prepares the checkout's content without moving the Review. */
+export async function refreshReview(
+  services: McpReviewToolServices,
+  input: ToolInput<"refresh_review">,
+): Promise<Result<LocalReviewPrepared, McpToolRefusal>> {
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const reviewId = parseReviewId(input.reviewId);
+  if (reviewId._tag === "err") return err(refusal("invalid_input"));
+  const prepared = await services.localReviewOpening.prepareForAgent(
+    profiles.value.active.id,
+    reviewId.value,
+  );
+  if (prepared._tag === "ok") return prepared;
+  return err(
+    prepared.error.reason === "not_found"
+      ? await missingReviewRefusal(services, profiles.value, reviewId.value)
+      : agentRefreshRefusal(prepared.error),
+  );
 }
 
 /** `get_insight`: reads through `ReviewInsightReader`, over the projection the workbench displays. */

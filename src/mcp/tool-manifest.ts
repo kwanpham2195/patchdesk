@@ -23,7 +23,7 @@ export const mcpToolManifest = {
   },
   review_local: {
     description:
-      "Open the Patchdesk Review of the checkout that contains cwd, so the maintainer reviews your change in Patchdesk. A new Review reads the checkout as it is now; an existing one is returned on the session the maintainer sees, and refresh_review (not yet available) reads newer changes. It performs no git write. Returns the reviewId, the session (sessionId, headSha, baseSha, patchHash), the changed files, and which Insights are retained. intent is the task you were given, as Markdown; it is recorded only when the Review has no Change intent. intentKept is false when this call recorded the intent, and true when the Review already held the same text.",
+      "Open the Patchdesk Review of the checkout that contains cwd, so the maintainer reviews your change in Patchdesk. A new Review reads the checkout as it is now; an existing one is returned on the session the maintainer sees, and refresh_review reads newer changes. It performs no git write. Returns the reviewId, the session (sessionId, headSha, baseSha, patchHash), the changed files, and which Insights are retained. intent is the task you were given, as Markdown; it is recorded only when the Review has no Change intent. intentKept is false when this call recorded the intent, and true when the Review already held the same text.",
     inputSchema: v.strictObject({
       cwd: v.pipe(
         v.string(),
@@ -60,6 +60,17 @@ export const mcpToolManifest = {
         ),
       ),
     }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  refresh_review: {
+    description:
+      "Read the checkout of a local Review again after you changed it, and prepare those changes for the maintainer. The Review stays on the session the maintainer sees, and Patchdesk shows them Updates available; their Refresh moves the Review to the prepared session and carries their notes. It performs no git write. Returns changed: false when the checkout still matches the Review's session, else changed: true with preparedSessionId. One call per Review every 10 seconds; an earlier one is refused rate_limited with retryAfterMs.",
+    inputSchema: v.strictObject({ reviewId }),
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

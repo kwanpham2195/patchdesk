@@ -57,6 +57,10 @@ function recordingTools(reply: McpToolReply = emptyListing()) {
       schema: mcpToolManifest.review_local.inputSchema,
       call: record("review_local"),
     },
+    refresh_review: {
+      schema: mcpToolManifest.refresh_review.inputSchema,
+      call: record("refresh_review"),
+    },
     get_insight: {
       schema: mcpToolManifest.get_insight.inputSchema,
       call: record("get_insight"),
@@ -330,6 +334,7 @@ describe("MCP tool dispatcher", () => {
         listCheckouts: unavailable,
         findCheckout: unavailable,
         openForAgent: unavailable,
+        prepareForAgent: unavailable,
       },
       localChangeIntent: { recordAgentIntent: unavailable },
       localDrafts: { feedback: unavailable },
