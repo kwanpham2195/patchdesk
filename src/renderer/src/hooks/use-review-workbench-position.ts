@@ -88,24 +88,31 @@ export function useReviewWorkbenchPosition({
   const [previousRevision, setPreviousRevision] = useState(
     model.revision.reviewedHeadSha,
   );
-  const loadCommit = useCallback(
-    (sha: string): void => {
-      commitWorkbenchPosition({ activeTab: "diff", section: "commits" });
-      setSelectedCommitSha(sha);
-      setSelectedThreadId(undefined);
-      setSelectedRange(undefined);
-    },
-    [commitWorkbenchPosition],
-  );
-  const selectSection = useCallback(
+  // A section, a commit slice included, is a way into the diff, not a file
+  // choice. Dropping the path hands the selection back to DiffWorkbench's
+  // uncontrolled fallback, and the header, the tree and the pane stop naming
+  // one file (#535).
+  const commitSection = useCallback(
     (next: ReviewNavigatorSection): void => {
-      // A section is a way into the diff, not a file choice. Dropping the path
-      // here hands the selection back to DiffWorkbench's uncontrolled fallback,
-      // and the header, the tree and the pane stop naming one file.
       const position: WorkbenchPosition = { activeTab: "diff", section: next };
       commitWorkbenchPosition(
         selectedPath === undefined ? position : { ...position, selectedPath },
       );
+    },
+    [commitWorkbenchPosition, selectedPath],
+  );
+  const loadCommit = useCallback(
+    (sha: string): void => {
+      commitSection("commits");
+      setSelectedCommitSha(sha);
+      setSelectedThreadId(undefined);
+      setSelectedRange(undefined);
+    },
+    [commitSection],
+  );
+  const selectSection = useCallback(
+    (next: ReviewNavigatorSection): void => {
+      commitSection(next);
       if (next !== "commits") {
         setSelectedCommitSha(undefined);
       }
@@ -116,13 +123,7 @@ export function useReviewWorkbenchPosition({
       )
         loadCommit(model.commits[0].sha);
     },
-    [
-      commitWorkbenchPosition,
-      loadCommit,
-      model.commits,
-      selectedCommitSha,
-      selectedPath,
-    ],
+    [commitSection, loadCommit, model.commits, selectedCommitSha],
   );
   const selectCommit = useCallback(
     (sha: string): void => {

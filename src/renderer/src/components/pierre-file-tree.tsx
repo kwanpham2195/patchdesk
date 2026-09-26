@@ -96,8 +96,8 @@ function buildFindingToneTreeStyle(
     .join(" ");
 }
 
-/** The tree row under the pointer, found through the tree's shadow root. */
-function hoveredRow(event: React.PointerEvent<HTMLElement>) {
+/** The tree row an event targets, found through the tree's shadow root. */
+function eventRow(event: React.SyntheticEvent<HTMLElement>) {
   return event.nativeEvent
     .composedPath()
     .find(
@@ -223,7 +223,23 @@ function PierreFileTreeModel({
         data-active-path={activePath}
         data-theme={appearance}
         // The library renders rows with no title, so the full name shows in a tooltip anchored to the row.
-        onPointerOver={(event) => setHoveredRowElement(hoveredRow(event))}
+        onPointerOver={(event) => setHoveredRowElement(eventRow(event))}
+        // The library reports selection changes only, so a click on the row it already holds selected would show nothing (#535).
+        // Capture runs before the row's own handler, while the selection still reads as it was.
+        onClickCapture={(event) => {
+          const row = eventRow(event);
+          const path = row?.getAttribute("data-item-path");
+          if (
+            path == null ||
+            row?.getAttribute("data-item-type") !== "file" ||
+            event.shiftKey ||
+            event.metaKey ||
+            event.ctrlKey
+          )
+            return;
+          const selected = model.getSelectedPaths();
+          if (selected.length === 1 && selected[0] === path) onSelect(path);
+        }}
         onPointerLeave={() => setHoveredRowElement(undefined)}
         style={
           // SAFETY: every "--trees-*-override" below is a custom property;

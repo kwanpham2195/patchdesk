@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   PierreFileTree,
@@ -106,6 +106,25 @@ describe("PierreFileTree", () => {
         '[data-item-path="src/b.ts"] [data-item-section="decoration"] > span',
       ),
     ).toBeNull();
+  });
+
+  it("reports a click on the row the tree already holds selected (#535)", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <PierreFileTree
+        files={[fileA, fileB]}
+        activePath="src/a.ts"
+        onSelect={onSelect}
+      />,
+    );
+    const row = treeContainer(container).shadowRoot?.querySelector(
+      '[data-item-path="src/a.ts"]',
+    );
+    if (row == null) throw new Error("Expected the src/a.ts row");
+
+    fireEvent.click(row);
+
+    expect(onSelect).toHaveBeenCalledWith("src/a.ts");
   });
 
   it("shows the hovered row's untruncated name in a tooltip", async () => {
