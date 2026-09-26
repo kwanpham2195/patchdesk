@@ -29,6 +29,7 @@ import {
   projectLocalDraft,
   type LocalDraft,
   type LocalDraftEntry,
+  type LocalDraftState,
   type MaintainerNote,
 } from "../domain/local-draft";
 import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
@@ -115,8 +116,16 @@ export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;
 };
 
-/** A draft as the workbench lists it; a Finding draft adds its comment and verified suggestion. */
-type LocalFeedbackEntry = LocalDraftEntry & {
+/** Omits `state` from each member of a union, keeping the members apart. */
+type WithoutState<Entry> = Entry extends unknown ? Omit<Entry, "state"> : never;
+
+/**
+ * A draft as the workbench lists it, with a state always present: `current`
+ * for a draft written on the Review's current session, which the workbench
+ * leaves unlabelled. A Finding draft adds its comment and verified suggestion.
+ */
+type LocalFeedbackEntry = WithoutState<LocalDraftEntry> & {
+  readonly state: LocalDraftState | "current";
   readonly comment?: string;
   readonly suggestion?: string;
 };
@@ -443,7 +452,10 @@ export class LocalDraftService {
 }
 
 function projectFeedbackEntry(draft: LocalDraft): LocalFeedbackEntry {
-  const entry = projectLocalDraft(draft);
+  const projected = projectLocalDraft(draft);
+  // A draft carries no state until the Review first moves to a new session, so it was written on the current one.
+  const state: LocalFeedbackEntry["state"] = projected.state ?? "current";
+  const entry = { ...projected, state };
   if (isMaintainerNote(draft)) return entry;
   return {
     ...entry,

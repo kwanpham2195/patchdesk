@@ -78,7 +78,7 @@ export const mcpToolManifest = {
   },
   get_feedback: {
     description:
-      "Read the review comments the maintainer drafted on a local Review, 25 per page in file and line order, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against and whether its lines changed since. Pass nextCursor to read the next page.",
+      "Read the review comments the maintainer drafted on a local Review, 25 per page in file and line order, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Pass nextCursor to read the next page.",
     inputSchema: v.strictObject({
       reviewId,
       cursor: v.optional(
