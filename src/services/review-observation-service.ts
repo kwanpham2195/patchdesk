@@ -40,6 +40,7 @@ import type {
   PendingReviewState,
 } from "../domain/pending-review";
 import {
+  isLocalReview,
   isPullRequestReview,
   markReviewRevisionChanged,
   markReviewTerminal,
@@ -187,6 +188,8 @@ export class ReviewObservationService {
       input.profileId,
       input.reviewId,
       async () => {
+        const local = await this.observeLocal(input);
+        if (local !== undefined) return local;
         const recovered = await this.recoverUnlocked(input);
         if (recovered._tag === "err") return recovered;
         if (recovered.value._tag === "Unavailable") return recovered;
@@ -208,6 +211,28 @@ export class ReviewObservationService {
           ),
         });
       },
+    );
+  }
+
+  /**
+   * A local Review reads no GitHub: it has changed only once an agent's
+   * refresh prepared a session and marked it RevisionChanged (ADR 0052).
+   * Undefined for a pull request Review or an unreadable one.
+   */
+  private async observeLocal(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<Result<ReviewObservation, ReviewObservationFailure> | undefined> {
+    const review = await this.dependencies.reviews.load(
+      input.profileId,
+      input.reviewId,
+    );
+    if (review._tag === "err" || !isLocalReview(review.value)) return undefined;
+    const detectedAt = this.dependencies.now();
+    return ok(
+      review.value.freshness._tag === "RevisionChanged"
+        ? { _tag: "RevisionChanged", detectedAt }
+        : { _tag: "Unchanged", detectedAt },
     );
   }
 
