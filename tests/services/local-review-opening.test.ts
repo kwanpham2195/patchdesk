@@ -538,7 +538,7 @@ describe("LocalReviewOpening", () => {
     expect(git(repositoryPath, "count-objects", "-v")).toBe(objectsBefore);
   });
 
-  it("refuses a patch over git's output cap, naming the largest changed files and writing no session", async () => {
+  it("refuses a patch over git's output cap, naming the largest changed files and leaving no session, ref, or worktree", async () => {
     const { root, repositoryPath } = await checkout();
     await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
     await mkdir(join(repositoryPath, "generated"));
@@ -569,6 +569,11 @@ describe("LocalReviewOpening", () => {
     await expect(
       readdir(paths.profileWorkbenchesDirectory(profileId)),
     ).rejects.toThrow();
+    expect(git(repositoryPath, "for-each-ref", "refs/patchdesk")).toBe("");
+    const worktrees = git(repositoryPath, "worktree", "list", "--porcelain")
+      .split("\n")
+      .filter((line) => line.startsWith("worktree "));
+    expect(worktrees).toHaveLength(1);
   });
 
   it("compares a root commit with the empty tree", async () => {
