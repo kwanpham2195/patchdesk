@@ -11,7 +11,10 @@ import type { RefObject } from "react";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
-import { reviewContextControl } from "@/review-context-control";
+import {
+  reviewContextControl,
+  type RenderedContext,
+} from "@/review-context-control";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
 import { toDiffLineAnnotation } from "../review-diff-annotations";
@@ -369,21 +372,22 @@ export function useReviewDiffModel({
     void hydrateFiles(hydrationPaths);
   }, [hydrateFiles, hydrationPaths]);
 
-  const hasExpandableRenderedFile = useMemo(
-    () =>
-      items.some((item) => {
-        if (item.type !== "diff") return false;
-        const hydrated = hydratedFiles.get(item.id);
-        return hydrated !== undefined && !hydrated.isPartial;
-      }),
-    [hydratedFiles, items],
-  );
+  const renderedContext = useMemo((): RenderedContext => {
+    const hydrated = items.map((item) =>
+      item.type === "diff" ? hydratedFiles.get(item.id) : undefined,
+    );
+    if (hydrated.some((file) => file !== undefined && !file.isPartial))
+      return "expandable";
+    return hydrated.every((file) => file !== undefined)
+      ? "nothing_to_expand"
+      : "unknown";
+  }, [hydratedFiles, items]);
   const contextControl = reviewContextControl({
     hasSourceSession:
       hydrationSourceSession?.profileId !== undefined &&
       hydrationSourceSession?.sessionId !== undefined,
     status: contextStatus,
-    hasExpandableRenderedFile,
+    renderedContext,
     expanded: expandUnchanged,
     unavailableReason:
       selectedPath === undefined

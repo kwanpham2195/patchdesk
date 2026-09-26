@@ -494,7 +494,8 @@ function ranked(labels: ReadonlyArray<string>): string {
   return order.length > MAX_SUMMARY_AREAS ? `${shown}, …` : shown;
 }
 
-const NOTHING_MENTIONED = "Nothing outside this PR mentions what it changed.";
+const NOTHING_MENTIONED =
+  "Nothing outside the changed files mentions a changed name.";
 
 function blastRadiusSummary(
   paths: ReadonlyArray<string>,
@@ -523,7 +524,7 @@ function mentionSummary(
   const parts = [
     callers === 0
       ? undefined
-      : `${plural(callers, "function calls", "functions call")} something this PR changed`,
+      : `${plural(callers, "function calls", "functions call")} a changed name`,
     types === 0
       ? undefined
       : plural(types, "type-only mention", "type-only mentions"),
@@ -602,7 +603,7 @@ export function briefBlastRadius(reach: BriefReach): BriefBlastRadius {
     removed,
     changed,
     quiet: {
-      label: `${String(quiet.length)} ${quiet.length === 1 ? "name" : "names"} nothing outside this PR mentions (${quietSplit})`,
+      label: `${String(quiet.length)} ${quiet.length === 1 ? "name" : "names"} nothing outside the changed files mentions (${quietSplit})`,
       names: quiet.map((symbol) => symbol.name),
     },
     untested: {

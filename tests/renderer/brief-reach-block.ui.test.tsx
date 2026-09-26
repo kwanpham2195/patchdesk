@@ -101,7 +101,7 @@ describe("ReachBlock", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /^3 names nothing outside this PR mentions \(3 new\)/,
+        name: /^3 names nothing outside the changed files mentions \(3 new\)/,
       }),
     );
 
@@ -136,7 +136,7 @@ describe("ReachBlock", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /^3 names nothing outside this PR mentions \(2 new, 1 changed\)/,
+        name: /^3 names nothing outside the changed files mentions \(2 new, 1 changed\)/,
       }),
     ).toBeTruthy();
   });
@@ -254,7 +254,7 @@ describe("ReachBlock", () => {
     ).toEqual(["startLocalApicallL40", "top levelimportL3"]);
     expect(
       screen.getByText(
-        "2 functions call something this PR changed · 1 type-only mention · in main, services",
+        "2 functions call a changed name · 1 type-only mention · in main, services",
       ),
     ).toBeTruthy();
   });
@@ -288,7 +288,7 @@ describe("ReachBlock", () => {
     // An unmentioned legacy name is folded and counted as changed.
     expect(
       screen.getByRole("button", {
-        name: /^1 name nothing outside this PR mentions \(1 changed\)/,
+        name: /^1 name nothing outside the changed files mentions \(1 changed\)/,
       }),
     ).toBeTruthy();
   });

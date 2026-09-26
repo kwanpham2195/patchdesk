@@ -23,7 +23,7 @@ const FOLD_BUTTON =
 const SURFACES_LABEL = "Surfaces crossed";
 
 /**
- * The Blast radius view: what this PR could affect in files it does not
+ * The Blast radius view: what the change could affect in files it does not
  * change, down to the function that mentions each name. Every count came from
  * a `git grep` in the main process, and the footer says so, because a mention
  * is not a call.
@@ -78,7 +78,7 @@ export function ReachBlock({
       <h3 className="flex items-baseline gap-2 text-sm font-medium">
         Blast radius
         <span className="text-xs font-normal text-muted-foreground">
-          what this PR could affect in files it doesn't change
+          what the change could affect in files it doesn't touch
         </span>
       </h3>
       <div className="flex min-w-0 flex-col gap-3 rounded-md border p-3 text-xs">
@@ -259,7 +259,7 @@ function SiteFile({
   );
 }
 
-/** Names nothing outside this PR mentions: they cannot break anything there, so they fold into one line. */
+/** Names nothing outside the changed files mentions: they cannot break anything there, so they fold into one line. */
 function QuietNames({
   label,
   names,

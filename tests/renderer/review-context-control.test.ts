@@ -8,7 +8,7 @@ describe("reviewContextControl", () => {
       reviewContextControl({
         hasSourceSession: true,
         status: "ready",
-        hasExpandableRenderedFile: true,
+        renderedContext: "expandable",
         expanded: false,
       }),
     ).toEqual({
@@ -23,7 +23,7 @@ describe("reviewContextControl", () => {
       reviewContextControl({
         hasSourceSession: true,
         status: "loading",
-        hasExpandableRenderedFile: false,
+        renderedContext: "unknown",
         expanded: false,
       }),
     ).toMatchObject({ disabled: true, label: "Loading context" });
@@ -34,7 +34,7 @@ describe("reviewContextControl", () => {
       reviewContextControl({
         hasSourceSession: false,
         status: "idle",
-        hasExpandableRenderedFile: false,
+        renderedContext: "unknown",
         expanded: false,
       }),
     ).toEqual({
@@ -49,7 +49,7 @@ describe("reviewContextControl", () => {
       reviewContextControl({
         hasSourceSession: true,
         status: "unavailable",
-        hasExpandableRenderedFile: false,
+        renderedContext: "unknown",
         expanded: false,
         unavailableReason: "github_read",
       }),
@@ -59,5 +59,16 @@ describe("reviewContextControl", () => {
       description:
         "Patchdesk could not load unchanged context from the saved review revisions",
     });
+  });
+
+  it("keeps Context disabled without calling it unavailable when every shown file is added or deleted", () => {
+    expect(
+      reviewContextControl({
+        hasSourceSession: true,
+        status: "ready",
+        renderedContext: "nothing_to_expand",
+        expanded: false,
+      }),
+    ).toMatchObject({ disabled: true, label: "Context" });
   });
 });
