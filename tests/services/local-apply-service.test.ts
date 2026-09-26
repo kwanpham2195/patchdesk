@@ -484,6 +484,71 @@ describe("LocalApplyService after confirmation", () => {
     expect(prompt).not.toContain(boundFix.title);
   });
 
+  // Only a selection that changes no bytes at all is already applied (#497).
+  it("applies a selection mixing an already-applied suggestion with a real one and marks both drafts applied", async () => {
+    const harness = await localApplyHarness();
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    await writeFile(
+      join(harness.repositoryPath, "second.ts"),
+      "export const second = 1;\n",
+    );
+    const workbench = await harness.open();
+    const unchangedFix = suggestionFinding(
+      "finding-same",
+      "probe.ts",
+      { start: 8, end: 8 },
+      "export const last = 1;",
+    );
+    const secondFix = suggestionFinding(
+      "finding-second",
+      "second.ts",
+      { start: 1, end: 1 },
+      "export const second = 2;",
+    );
+    const runId = await retainAnalysis(harness.insights, workbench, [
+      unchangedFix,
+      secondFix,
+    ]);
+    for (const findingId of ["finding-same", "finding-second"])
+      value(
+        await harness.drafts.add({
+          profileId,
+          reviewId: workbench.review.id,
+          sessionId: workbench.session.id,
+          runId,
+          findingId: value(parseFindingId(findingId)),
+        }),
+      );
+
+    const applied = value(
+      await harness.service.apply(
+        applyRequest(workbench, runId, ["finding-same", "finding-second"]),
+      ),
+    );
+
+    expect(applied.status).toBe("applied");
+    expect(
+      await readFile(join(harness.repositoryPath, "second.ts"), "utf8"),
+    ).toBe("export const second = 2;\n");
+    expect(
+      await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
+    ).toBe(probe);
+    const next = applied.status === "applied" ? applied.workbench : undefined;
+    expect(next?.localDrafts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          findingId: "finding-same",
+          state: "applied",
+        }),
+        expect.objectContaining({
+          findingId: "finding-second",
+          state: "applied",
+        }),
+      ]),
+    );
+    expect(next?.localDrafts).toHaveLength(2);
+  });
+
   it("reports a confirmed Apply as applied and leaves no lock when the next session cannot be prepared", async () => {
     const harness = await localApplyHarness(undefined, {
       opening: () => ({
