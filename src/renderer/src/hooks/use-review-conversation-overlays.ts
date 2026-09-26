@@ -197,37 +197,22 @@ export function useReviewConversationOverlays({
     });
   }, [annotations]);
 
-  // A draft's card renders only on lines this diff shows, and its composer opens only where a comment is allowed.
-  const draftLinesAvailable = useCallback(
-    (location: LocalCommentLocation): boolean => {
-      const path = parseRepoRelativePath(location.path);
-      return (
-        path._tag === "ok" &&
-        fingerprintPatchAnchor(patch, { ...location, path: path.value }) !==
-          undefined &&
-        localCommentAuthoring?.canAuthor?.(location) !== false
-      );
-    },
-    [localCommentAuthoring, patch],
-  );
-  // A failed draft whose lines Refresh removed has nowhere to show its card, so it waits for a new line instead.
+  // A failed draft whose lines Refresh removed from the full diff waits for a new line. A narrowed view (Scope bucket,
+  // commit slice, since-review) only hides a card whose lines it does not show; it never strands the draft.
+  const fullPatch = pendingReviewDrafts?.fullPatch ?? patch;
   const { strandedWrite, shownPendingWrites } = useMemo(() => {
     const stranded: Array<PendingReviewWrite> = [];
     const shown: Array<PendingReviewWrite> = [];
     for (const overlay of pendingWriteOverlays) {
-      const linesGone =
-        overlay._tag === "failed" &&
-        localCommentAuthoring?.enabled === true &&
-        !draftLinesAvailable({
-          path: overlay.path,
-          startLine: overlay.start,
-          line: overlay.end,
-          side: overlay.side,
-        });
-      (linesGone ? stranded : shown).push(overlay);
+      const reviewedText = anchoredText(fullPatch, overlay);
+      if (reviewedText === undefined) {
+        if (overlay._tag === "failed") stranded.push(overlay);
+      } else if (anchoredText(patch, overlay) === reviewedText) {
+        shown.push(overlay);
+      }
     }
     return { strandedWrite: stranded[0], shownPendingWrites: shown };
-  }, [draftLinesAvailable, localCommentAuthoring, pendingWriteOverlays]);
+  }, [fullPatch, patch, pendingWriteOverlays]);
   const recoverableDraftBody = orphanedDraftBody ?? strandedWrite?.body;
   const releaseRecoverableDraft = useCallback((): void => {
     if (orphanedDraftBody !== undefined) {
@@ -514,7 +499,7 @@ export function useReviewConversationOverlays({
       );
       if (
         localCommentAuthoring?.enabled === true &&
-        draftLinesAvailable(location)
+        localCommentAuthoring.canAuthor?.(location) !== false
       ) {
         localCommentAuthoring.onSelectionChange?.(location);
         setAuthoringInitialBody(candidate.body);
@@ -535,7 +520,6 @@ export function useReviewConversationOverlays({
       viewer.current?.clearSelectedLines();
     },
     [
-      draftLinesAvailable,
       localCommentAuthoring,
       pendingWriteOverlays,
       setOrphanedDraftBody,
@@ -825,6 +809,21 @@ export function useReviewConversationOverlays({
     beginAuthoring,
     decorateConversationThread,
   };
+}
+
+/** The text of a draft's lines in `patch`, or undefined when `patch` does not show them. */
+function anchoredText(
+  patch: string,
+  write: PendingReviewWrite,
+): string | undefined {
+  const path = parseRepoRelativePath(write.path);
+  if (path._tag !== "ok") return undefined;
+  return fingerprintPatchAnchor(patch, {
+    path: path.value,
+    startLine: write.start,
+    line: write.end,
+    side: write.side,
+  })?.selectedLines.join("\n");
 }
 
 /**

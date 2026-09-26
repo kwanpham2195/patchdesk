@@ -12,10 +12,11 @@ import userEvent, {
 } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { changeScopeFromPatch } from "../../src/domain/change-scope";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import { bridge, Refusal, restoreBridge } from "./review-workbench-bridge";
-import { pending, projection } from "./review-workbench-fixtures";
+import { pending, projection, sha } from "./review-workbench-fixtures";
 
 /**
  * A safely refused inline draft outlives the Diff tab, which unmounts on a tab
@@ -28,9 +29,38 @@ const NEW_HEAD = "c".repeat(40);
 const NEW_HEAD_PATCH =
   "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -2,2 +2,2 @@\n two\n-old\n+newer\n";
 
+const DOCS_DIFF =
+  "diff --git a/docs/guide.md b/docs/guide.md\n--- a/docs/guide.md\n+++ b/docs/guide.md\n@@ -1 +1 @@\n-old\n+new\n";
+// The head commit, so the slice takes comments: a draft stranded there could be restored onto the guide.
+const DOCS_COMMIT = {
+  sha,
+  message: "Touch the guide",
+  author: "author",
+  authoredAt: "2026-08-01T00:00:00.000Z",
+  isHead: true,
+};
+
 function review(): WorkbenchResponse {
   // SAFETY: `pending("none")` is a wider fixture shape than the strict `pendingReview` union.
   return projection({ pendingReview: pending("none") as never });
+}
+
+/** src/a.ts and docs/guide.md in two Scope buckets, and a head commit that touched only the guide. */
+function reviewWithDocs(): WorkbenchResponse {
+  const base = review();
+  const fullPatch = `${base.fullPatch ?? ""}${DOCS_DIFF}`;
+  const scope = changeScopeFromPatch(fullPatch);
+  return {
+    ...base,
+    fullPatch,
+    // The wire type the projection carries is mutable; the domain's is not.
+    scope: { ...scope, buckets: [...scope.buckets] },
+    commits: [DOCS_COMMIT],
+  };
+}
+
+function failedCard(): HTMLElement | null {
+  return screen.queryByRole("article", { name: "Pending review write failed" });
 }
 
 function refreshedToNewHead(): WorkbenchResponse {
@@ -103,6 +133,16 @@ beforeEach(() => {
       return { updatesAvailable: false };
     if (input.path === "/v1/reviews/pending-review/command")
       return new Refusal(422, { error: "github_rejected" });
+    if (input.path === "/v1/reviews/commit-diff")
+      return {
+        commit: DOCS_COMMIT,
+        position: 1,
+        total: 1,
+        patch: DOCS_DIFF,
+        fileCount: 1,
+        additions: 1,
+        deletions: 1,
+      };
     throw new Error(input.path);
   });
 });
@@ -153,5 +193,51 @@ describe("a refused inline draft in the mounted workbench", () => {
       ).toBe("Draft kept across a new head"),
     );
     expect(screen.queryByRole("region", { name: "Saved draft" })).toBeNull();
+  });
+
+  it("hides it while a Scope bucket hides its file, without offering it elsewhere, and shows it again when the bucket clears", async () => {
+    const user = setupCodeViewUser();
+    render(flow(reviewWithDocs()));
+    await refuseDraftOnDiff(user, "Draft kept through a Scope filter");
+
+    screen.getByRole("button", { name: "Scope filter" }).focus();
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("menuitemradio", { name: /Docs/ }));
+    await waitFor(() => expect(failedCard()).toBeNull());
+    expect(screen.queryByRole("region", { name: "Saved draft" })).toBeNull();
+
+    screen.getByRole("button", { name: "Scope filter" }).focus();
+    await user.keyboard("{Enter}");
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "Clear scope" }),
+    );
+    expect(
+      (
+        await screen.findByRole("article", {
+          name: "Pending review write failed",
+        })
+      ).textContent,
+    ).toContain("Draft kept through a Scope filter");
+  });
+
+  it("hides it in a commit slice that lacks its lines, and shows it again back on the full diff", async () => {
+    const user = setupCodeViewUser();
+    render(flow(reviewWithDocs()));
+    await refuseDraftOnDiff(user, "Draft kept through a commit slice");
+
+    await user.click(screen.getByRole("tab", { name: /^Commits/ }));
+    await user.click(screen.getByRole("button", { name: /Touch the guide/ }));
+    await screen.findByText(/1 of 1/);
+    expect(failedCard()).toBeNull();
+    expect(screen.queryByRole("region", { name: "Saved draft" })).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "Browse" }));
+    expect(
+      (
+        await screen.findByRole("article", {
+          name: "Pending review write failed",
+        })
+      ).textContent,
+    ).toContain("Draft kept through a commit slice");
   });
 });

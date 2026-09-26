@@ -37,6 +37,16 @@ const PATCH = [
   " const c = 3;",
   "",
 ].join("\n");
+// A narrowed view (a Scope bucket or a commit slice) that shows another file and not the draft's lines.
+const OTHER_FILE_PATCH = [
+  "diff --git a/src/b.ts b/src/b.ts",
+  "--- a/src/b.ts",
+  "+++ b/src/b.ts",
+  "@@ -1 +1 @@",
+  "-old",
+  "+new",
+  "",
+].join("\n");
 // Refresh moved the change down the file: line 2 is no longer in the diff, and the added line is now 6.
 const REFRESHED_PATCH = [
   "diff --git a/src/a.ts b/src/a.ts",
@@ -143,7 +153,7 @@ function renderPendingOverlays(
           patch,
           onStartReview,
           canAuthor,
-          usePendingReviewDrafts("review-a"),
+          usePendingReviewDrafts("review-a", patch),
         ),
       ),
     { initialProps: { patch: PATCH } },
@@ -153,19 +163,22 @@ function renderPendingOverlays(
 /** The workbench's drafts on their own, so the diff can unmount and mount again beneath them. */
 function renderWorkbenchDrafts() {
   return renderHook(
-    ({ reviewId }: { reviewId: string }) => usePendingReviewDrafts(reviewId),
+    ({ reviewId }: { reviewId: string }) =>
+      usePendingReviewDrafts(reviewId, PATCH),
     { initialProps: { reviewId: "review-a" } },
   );
 }
 
+/** Mounts a diff showing `shownPatch`, the full Review diff unless a view narrows it. */
 function mountDiff(
   workbench: ReturnType<typeof renderWorkbenchDrafts>,
   onStartReview: (body: string) => Promise<void> = rejectedStart,
+  shownPatch: string = PATCH,
 ) {
   return renderHook(() =>
     useReviewConversationOverlays(
       pendingOverlaysInput(
-        PATCH,
+        shownPatch,
         onStartReview,
         () => true,
         workbench.result.current,
@@ -444,6 +457,66 @@ describe("pending-review drafts held by the workbench", () => {
     expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([
       "Draft sent before a tab switch",
     ]);
+  });
+
+  it("keeps a failed draft out of a narrowed view that hides its lines, and shows it again in the full diff", async () => {
+    const workbench = renderWorkbenchDrafts();
+    await rejectPendingDraft(mountDiff(workbench), "Draft on src/a.ts");
+
+    const narrowed = mountDiff(workbench, rejectedStart, OTHER_FILE_PATCH);
+    expect(failedDraftBodies(narrowed.result.current)).toEqual([]);
+    expect(narrowed.result.current.draftRecovery).toBeUndefined();
+    act(() =>
+      narrowed.result.current.beginAccessibleAuthoring(
+        "src/b.ts",
+        1,
+        "additions",
+      ),
+    );
+    expect(
+      narrowed.result.current.localComposerAnnotation?.localComposer
+        ?.initialBody,
+    ).toBeUndefined();
+    narrowed.unmount();
+
+    expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([
+      "Draft on src/a.ts",
+    ]);
+  });
+
+  it("does not record a write that settles after another Review opened", async () => {
+    const workbench = renderWorkbenchDrafts();
+    let refuse: () => void = () => undefined;
+    const diff = mountDiff(
+      workbench,
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          refuse = () => reject(rejection());
+        }),
+    );
+    act(() =>
+      diff.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+    );
+    const start =
+      diff.result.current.localComposerAnnotation?.localComposer?.pendingReview
+        ?.onStartReview;
+    if (start === undefined) throw new Error("expected Start a review");
+    let sending: Promise<void> = Promise.resolve();
+    act(() => {
+      sending = start(
+        { path: PATH, startLine: 2, line: 2, side: "new" },
+        "Draft for Review A",
+      );
+    });
+
+    diff.unmount();
+    workbench.rerender({ reviewId: "review-b" });
+    await act(async () => {
+      refuse();
+      await sending;
+    });
+
+    expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([]);
   });
 
   it("drops a Review's drafts when another Review opens", async () => {
