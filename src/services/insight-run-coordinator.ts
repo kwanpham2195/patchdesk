@@ -59,6 +59,7 @@ import type {
   FindingReviewSource,
   PendingReviewAnchor,
 } from "../domain/pending-review";
+import type { Review } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -178,7 +179,20 @@ export type InsightCoordinatorFailure =
   | "change_intent_file_missing"
   | "change_intent_file_too_large"
   | "change_intent_file_not_text"
-  | "change_intent_file_sensitive";
+  | "change_intent_file_sensitive"
+  /** Run named an agent run request that is no longer awaiting approval (ADR 0052). */
+  | "request_not_awaiting";
+
+/**
+ * What approving an agent run request adds to a start, run inside the start's
+ * Review lock so a Decline cannot land between the check and the link (ADR 0052).
+ */
+export type InsightStartHooks = {
+  /** Refuses the start before anything is built; undefined admits it. */
+  readonly admit: (review: Review) => "request_not_awaiting" | undefined;
+  /** Runs once the run has begun and before it can settle; it cannot undo the run. */
+  readonly started: (review: Review, runId: InsightRunId) => Promise<void>;
+};
 
 /** How each Insight refusal is classified, wherever it surfaces (ADR 0052 "Error model"). */
 export const insightFailureKinds = {
@@ -195,6 +209,7 @@ export const insightFailureKinds = {
   change_intent_file_too_large: "conflict",
   change_intent_file_not_text: "conflict",
   change_intent_file_sensitive: "conflict",
+  request_not_awaiting: "conflict",
   catalog_unavailable: "unavailable",
   storage_unavailable: "unavailable",
 } as const satisfies FailureKinds<InsightCoordinatorFailure>;
@@ -296,14 +311,16 @@ export class InsightRunCoordinator {
 
   async start(
     input: InsightCoordinatorInput,
+    hooks?: InsightStartHooks,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
-      this.startUnlocked(input),
+      this.startUnlocked(input, hooks),
     );
   }
 
   private async startUnlocked(
     input: InsightCoordinatorInput,
+    hooks: InsightStartHooks | undefined,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const review = await this.reviews.load(input.profileId, input.reviewId);
     if (review._tag === "err") {
@@ -316,6 +333,8 @@ export class InsightRunCoordinator {
       return err("not_found");
     }
     if (review.value.status._tag === "Terminal") return err("terminal_review");
+    const refused = hooks?.admit(review.value);
+    if (refused !== undefined) return err(refused);
     const provider = input.provider ?? "pi";
     let model = input.model;
     if (provider === "pi") {
@@ -412,6 +431,7 @@ export class InsightRunCoordinator {
       return started.error === "already_running"
         ? err("already_running")
         : err("storage_unavailable");
+    await hooks?.started(review.value, runId.value);
     const controller = new AbortController();
     this.active.set(runId.value, { runId: runId.value, controller });
     // Pi's child writes one result at exit, so a Pi run keeps today's panel instead of a trace.

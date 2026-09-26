@@ -61,6 +61,7 @@ const insightStatuses = {
   change_intent_file_too_large: 409,
   change_intent_file_not_text: 409,
   change_intent_file_sensitive: 409,
+  request_not_awaiting: 409,
   catalog_unavailable: 503,
   storage_unavailable: 503,
 } satisfies Record<InsightCoordinatorFailure, number>;
@@ -170,7 +171,8 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
       // SAFETY: the route under test reaches only the supplied service seam.
       registerInsightRoutes(app, {
         configuration: {},
-        insights: { start: async () => err(reason) },
+        insights: {},
+        agentRunRequests: { startRun: async () => err(reason) },
       } as never);
 
       const answered = await post(app, "/v1/reviews/insights/analysis/run", {

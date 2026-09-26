@@ -23,6 +23,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
+import { definedProps } from "../../domain/defined-props";
 import { err } from "../../domain/result";
 import {
   agentRunDeclineRequestSchema,
@@ -203,11 +204,11 @@ const insightFindingSchema = strictObject({
   reason: optional(pipe(string(), minLength(1), maxLength(500))),
 });
 
-/** Starts a run; with `requestId` the start also approves that agent run request. */
+/** Starts a run, approving the awaiting agent run request of its type; `requestId` names the one the maintainer approved. */
 async function insightRunResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
-  agentRunRequests: Pick<AgentRunRequestService, "approve">,
+  agentRunRequests: Pick<AgentRunRequestService, "startRun">,
   type: InsightType,
 ): Promise<Response> {
   if (coordinator === undefined)
@@ -227,7 +228,7 @@ async function insightRunResponse(
     requestId?._tag === "err"
   )
     return context.json({ error: "invalid_input" }, 400);
-  const input = {
+  const result = await agentRunRequests.startRun(coordinator, {
     profileId: profileId.value,
     reviewId: reviewId.value,
     type,
@@ -235,21 +236,9 @@ async function insightRunResponse(
     model: parsed.output.model,
     reasoning: parsed.output.reasoning,
     language: parsed.output.language,
-  };
-  const result =
-    requestId === undefined
-      ? await coordinator.start(input)
-      : await agentRunRequests.approve(coordinator, {
-          ...input,
-          requestId: requestId.value,
-        });
-  if (result._tag === "ok") return context.json(result.value, 202);
-  return context.json(
-    { error: result.error },
-    result.error === "request_not_awaiting"
-      ? 409
-      : insightFailureStatus(result.error),
-  );
+    ...definedProps({ requestId: requestId?.value }),
+  });
+  return insightResultResponse(context, result, 202);
 }
 
 async function insightCancelResponse(

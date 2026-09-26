@@ -604,6 +604,7 @@ export async function buildLocalApiContainer(
         coordinator: reviewOperations,
         now: systemNow,
         createRequestId: () => createAgentRunRequestId(randomUUID()),
+        logs,
         ...definedProps({ notifier: configuration.desktopNotifier }),
       }),
       retainedInsights: insights,
