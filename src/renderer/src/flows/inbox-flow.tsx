@@ -231,11 +231,13 @@ export function InboxFlow({
   // path shares and which renders inside the inbox chrome, not instead of it.
   if (state === "empty" && (dashboard.profile.repos?.length ?? 0) === 0)
     return (
-      <div className="mx-auto max-w-[112rem]">
-        <WorkspaceFirstRun
-          dashboard={dashboard}
-          onWorkspaceReload={onWorkspaceReload}
-        />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto max-w-[112rem]">
+          <WorkspaceFirstRun
+            dashboard={dashboard}
+            onWorkspaceReload={onWorkspaceReload}
+          />
+        </div>
       </div>
     );
 
@@ -552,11 +554,13 @@ function BootstrapOutcome({
   // screen has nothing to show yet, and read as a second thing to do.
   if (state === "empty")
     return (
-      <div className="mx-auto max-w-[112rem]">
-        <WorkspaceFirstRun
-          dashboard={undefined}
-          onWorkspaceReload={onWorkspaceReload}
-        />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto max-w-[112rem]">
+          <WorkspaceFirstRun
+            dashboard={undefined}
+            onWorkspaceReload={onWorkspaceReload}
+          />
+        </div>
       </div>
     );
   return (
