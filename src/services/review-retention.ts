@@ -321,7 +321,7 @@ export class ReviewRetention {
       return review.error.reason === "not_found"
         ? ok(undefined)
         : err({ _tag: "StorageUnavailable" });
-    // The running-state rule keeps only an Open Review's current session.
+    // The running-state rule keeps only an Open Review's current and prepared sessions.
     if (review.value.status._tag !== "Open") return ok(undefined);
     if (
       profile._tag === "err" ||

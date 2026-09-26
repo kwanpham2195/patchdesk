@@ -134,6 +134,8 @@ export async function localApplyHarness(
     ) => Pick<LocalReviewOpening, "openLocked">;
     /** The clock retention ages a Review by; every other clock stays at `now`. */
     readonly retentionNow?: () => IsoTimestamp;
+    /** The clock the opening service rate-limits an agent's refresh by. */
+    readonly openingNow?: () => IsoTimestamp;
   } = {},
 ): Promise<LocalApplyHarness> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-local-apply-"));
@@ -234,7 +236,7 @@ export async function localApplyHarness(
         now: () => now,
       }),
     },
-    () => now,
+    seams.openingNow ?? (() => now),
   );
   const service = new LocalApplyService({
     gate: new ReviewWriteGate(
