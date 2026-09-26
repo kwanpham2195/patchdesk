@@ -350,6 +350,8 @@ describe("LocalDraftService", () => {
   describe("maintainer notes", () => {
     const probePath = value(parseRepoRelativePath("probe.ts"));
     const noteId = value(parseLocalNoteId("note-fixture-1"));
+    // Assembled at runtime so the source holds no token a secret scanner would flag.
+    const leakedToken = `The agent printed ghp_${"a".repeat(36)} in the log.`;
 
     async function notedReview() {
       const harness = await localApplyHarness();
@@ -446,6 +448,12 @@ describe("LocalDraftService", () => {
         " \n ",
         "invalid_input",
       ],
+      [
+        "a credential-shaped value",
+        { path: probePath, side: "new" as const, startLine: 2, line: 2 },
+        leakedToken,
+        "draft_sensitive",
+      ],
     ])(
       "refuses a note on %s and stores nothing",
       async (_case, anchor, text, reason) => {
@@ -489,6 +497,32 @@ describe("LocalDraftService", () => {
         { _tag: "err", error: { reason: "in_progress" } },
         { _tag: "err", error: { reason: "in_progress" } },
       ]);
+      const stored = value(await harness.reviews.load(profileId, key.reviewId));
+      expect(stored.localDrafts).toMatchObject([
+        { noteId, text: "Off by one." },
+      ]);
+    });
+
+    it("refuses editing a note to hold a credential-shaped value and keeps the stored text", async () => {
+      const { harness, key } = await notedReview();
+      value(
+        await harness.drafts.addNote({
+          ...key,
+          anchor: { path: probePath, side: "new", startLine: 3, line: 3 },
+          text: "Off by one.",
+        }),
+      );
+
+      const edit = await harness.drafts.editNote({
+        ...key,
+        noteId,
+        text: leakedToken,
+      });
+
+      expect(edit).toEqual({
+        _tag: "err",
+        error: { reason: "draft_sensitive" },
+      });
       const stored = value(await harness.reviews.load(profileId, key.reviewId));
       expect(stored.localDrafts).toMatchObject([
         { noteId, text: "Off by one." },

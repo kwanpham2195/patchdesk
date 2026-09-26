@@ -69,6 +69,8 @@ function failureMessage(cause: unknown): string {
     return "Another action on this review is running. Try again when it finishes.";
   if (isApiErrorCode(cause, "not_applicable"))
     return "The review changed or this finding can no longer be drafted. Press Refresh, then run Analysis on the current files.";
+  if (isApiErrorCode(cause, "draft_sensitive"))
+    return "This finding's comment contains what looks like a credential, which Patchdesk never stores.";
   return "The draft list was not changed.";
 }
 
@@ -79,6 +81,8 @@ function noteFailureMessage(cause: unknown): string {
     return "The review changed or these lines are not in the current diff. Press Refresh and select them again.";
   if (isApiErrorCode(cause, "not_found"))
     return "This note was removed. Press Refresh.";
+  if (isApiErrorCode(cause, "draft_sensitive"))
+    return "The note contains what looks like a credential. Remove it and save again.";
   return "The note was not saved.";
 }
 
