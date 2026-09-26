@@ -559,6 +559,7 @@ function AppContent({
         destination={destination.kind}
         {...reviewIdField}
         {...bootRestoreMissingField}
+        onStoredReviewRefused={returnToDashboard}
         {...dashboardField}
         {...inboxField}
         state={state}

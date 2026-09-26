@@ -62,3 +62,19 @@ export function branchMismatchMessage(
       : "Detach HEAD";
   return `The checkout is on ${current}. ${action} to reopen this review.`;
 }
+
+/**
+ * The sentence for a stored working-tree Review whose load was refused for a
+ * branch switch (#477). Only the checkout's branch is known there, since the
+ * load names the Review by id. Undefined for any other failure.
+ */
+export function storedBranchMismatchMessage(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this reads one refusal off it.
+  cause: unknown,
+): string | undefined {
+  if (!(cause instanceof PatchdeskApiError)) return undefined;
+  const body = v.safeParse(branchMismatchBodySchema, cause.responseBody);
+  if (!body.success) return undefined;
+  const current = body.output.currentBranch ?? "a detached HEAD";
+  return `The checkout is on ${current}. Switch back to the branch this review was opened on to reopen it.`;
+}

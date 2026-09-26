@@ -7,7 +7,10 @@ import {
   pullRequestIdentityKey,
 } from "../renderer-contracts";
 import type { InboxResponse } from "../renderer-contracts";
-import { branchMismatchMessage } from "../local-review-reopen";
+import {
+  branchMismatchMessage,
+  storedBranchMismatchMessage,
+} from "../local-review-reopen";
 import type { Dashboard, WorkbenchPayload } from "../renderer-models";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
@@ -56,6 +59,8 @@ export type InboxReviewOpeningControls = {
      * Review the maintainer never asked for in this session.
      */
     onMissingRecord?: () => void,
+    /** Called after the refusal of a working-tree Review whose checkout is on another branch, so the route is left. */
+    onBranchMismatch?: () => void,
   ) => Promise<void>;
   /** Opens a local Review on the Selected repository; rejects with the sentence the source picker shows. */
   readonly openLocalReview: (
@@ -201,6 +206,7 @@ export function useInboxReviewOpening({
       reviewId: string,
       isActive: () => boolean,
       onMissingRecord?: () => void,
+      onBranchMismatch?: () => void,
     ): Promise<void> => {
       const githubHost = dashboard?.profile.githubHost ?? "github.com";
       if (dashboardProfileIdRef.current !== profileId) return;
@@ -257,11 +263,17 @@ export function useInboxReviewOpening({
           return;
         }
         const detail = cause instanceof Error ? cause.message : String(cause);
+        const branchMismatch = storedBranchMismatchMessage(cause);
         setOpenErrorByProfile((openErrors) => {
           const next = new Map(openErrors);
-          next.set(profileId, `Could not open the saved review. ${detail}`);
+          next.set(
+            profileId,
+            branchMismatch ?? `Could not open the saved review. ${detail}`,
+          );
           return next;
         });
+        // Only the checkout can fix a branch switch, so the route is left and the next launch does not retry it.
+        if (branchMismatch !== undefined) onBranchMismatch?.();
       } finally {
         if (operationsRef.current.get(operationKey) === operation) {
           storedReviewWaitersRef.current.delete(operationKey);
