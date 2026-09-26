@@ -203,6 +203,7 @@ export async function localApplyHarness(
       worktrees,
       artifacts,
       paths,
+      git: interceptedGit,
       lifecycleGate,
       now: () => now,
     }),
@@ -239,7 +240,7 @@ export async function localApplyHarness(
       // A local Review never reads a GitHub snapshot or observation journal.
       { load: async () => ok(undefined as never) },
       { load: async () => ok(undefined) },
-      { revisions, reviews, now: () => now },
+      { revisions, reviews, now: () => now, git: interceptedGit, paths },
     ),
     operations: seams.operations?.(operations) ?? operations,
     insights,

@@ -19,7 +19,6 @@ import {
   type LocalApplyRecoveryDecision,
 } from "../domain/local-apply-operation";
 import { definedProps } from "../domain/defined-props";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, type Review } from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
@@ -37,6 +36,7 @@ import {
   markLocalApplyDraftsApplied,
   observeLocalApplyFiles,
 } from "./local-apply-settlement";
+import { resolveLocalReviewCheckout } from "./local-checkout";
 import type { LocalReviewOpening } from "./local-review-opening";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewWorkbenchProjection } from "./review-workbench-projection";
@@ -198,7 +198,7 @@ export class LocalApplyService {
       request.expected,
     );
     if (fresh._tag === "err") return fresh;
-    const { review, session, localPath } = fresh.value;
+    const { review, session, checkoutPath } = fresh.value;
     if (review.identity.source.kind !== "working_tree")
       return err({ reason: "not_working_tree" });
     const edits = await loadVerifiedEdits(
@@ -209,7 +209,7 @@ export class LocalApplyService {
     if (edits._tag === "err") return edits;
     const composed = await composeLocalApply(
       this.dependencies.git,
-      localPath,
+      checkoutPath,
       edits.value,
     );
     if (composed._tag === "err") return composed;
@@ -403,13 +403,19 @@ export class LocalApplyService {
     )
       return err({ reason: "storage" });
     const localReview = review.value;
-    const localPath = profile.value.repos.find((candidate) =>
-      sameRepositoryIdentity(candidate, localReview.identity),
-    )?.localPath;
+    const checkout = await resolveLocalReviewCheckout(
+      this.dependencies,
+      profile.value,
+      localReview.identity,
+      localReview.identity.source.checkout,
+    );
     const root =
-      localPath === undefined
+      checkout._tag === "err"
         ? undefined
-        : await resolveCheckoutRoot(this.dependencies.git, localPath);
+        : await resolveCheckoutRoot(
+            this.dependencies.git,
+            checkout.value.checkoutPath,
+          );
     const observed =
       root === undefined
         ? operation.files.map(() => undefined)

@@ -83,7 +83,7 @@ export class LocalApplySettlement {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly sessionId: ReviewSessionId;
-    readonly localPath: string;
+    readonly checkoutPath: string;
   }): Promise<void> {
     const stored = await this.dependencies.operations.load(
       input.profileId,
@@ -100,7 +100,7 @@ export class LocalApplySettlement {
       return;
     const root = await resolveCheckoutRoot(
       this.dependencies.git,
-      input.localPath,
+      input.checkoutPath,
     );
     const decision = decideLocalApplyRecovery(
       operation.files,

@@ -27,7 +27,7 @@ import {
   sameReviewSource,
   type LocalReviewSource,
 } from "../domain/review-source";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
+import { definedProps } from "../domain/defined-props";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import {
   parseContentHash,
@@ -37,6 +37,10 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
+import {
+  resolveLocalReviewCheckout,
+  type LocalCheckoutReads,
+} from "./local-checkout";
 import type { LocalReviewRevisionService } from "./local-review-revision-service";
 import { contentHash, hashReviewArtifactContent } from "./review-artifact-hash";
 
@@ -98,8 +102,8 @@ export type FreshLocalReview = {
   readonly profile: WorkspaceProfileConfig;
   readonly review: Review<LocalReviewSource>;
   readonly session: LocalReviewSession;
-  /** The profile repository's checkout the source was recomputed from. */
-  readonly localPath: string;
+  /** The checkout the source was recomputed from. */
+  readonly checkoutPath: string;
 };
 
 export type LocalWriteGateFailure = {
@@ -112,7 +116,7 @@ export type LocalWriteGateFailure = {
 };
 
 /** What the gate needs to recompute a local source and record that it moved. */
-export type LocalFreshnessSources = {
+export type LocalFreshnessSources = LocalCheckoutReads & {
   readonly revisions: Pick<
     LocalReviewRevisionService,
     "resolve" | "renderPatch"
@@ -307,15 +311,19 @@ export class ReviewWriteGate {
     );
     if (patchHash === undefined || patchHash !== expected.patchHash)
       return err({ reason: "stale" });
-    const localPath = profile.value.repos.find((candidate) =>
-      sameRepositoryIdentity(candidate, value.identity),
-    )?.localPath;
-    if (localPath === undefined) return err({ reason: "checkout_unavailable" });
     const request = reopenLocalSourceRequest(value.identity.source);
     if (request === undefined) return err({ reason: "storage" });
+    const checkout = await resolveLocalReviewCheckout(
+      this.localSources,
+      profile.value,
+      value.identity,
+      request.checkout,
+    );
+    if (checkout._tag === "err") return err({ reason: "checkout_unavailable" });
+    const { checkoutPath } = checkout.value;
     const current = await this.localSources.revisions.resolve(
       profileId,
-      localPath,
+      checkoutPath,
       request,
     );
     if (current._tag === "err")
@@ -325,18 +333,22 @@ export class ReviewWriteGate {
             ? "revision_changed"
             : "checkout_unavailable",
       });
+    const currentSource = {
+      ...current.value.source,
+      ...definedProps({ checkout: checkout.value.checkout }),
+    };
     if (
-      sameReviewSource(current.value.source, value.identity.source) &&
+      sameReviewSource(currentSource, value.identity.source) &&
       sameReviewRevision(current.value.revision, session.value.key)
     )
       return ok({
         profile: profile.value,
         review: value,
         session: session.value,
-        localPath,
+        checkoutPath,
       });
     const patch = await this.localSources.revisions.renderPatch(
-      localPath,
+      checkoutPath,
       current.value.revision,
     );
     const canonicalPatchHash =

@@ -13,12 +13,12 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { mapConcurrent } from "../domain/map-concurrent";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import { configuredLocalPath } from "./local-checkout";
 import { isLocalSourceGone } from "./local-source-presence";
 import { exists, ReviewPreparationJournal } from "./review-preparation-journal";
 import type {
@@ -135,9 +135,7 @@ export class LocalReviewRetention {
       return review.error.reason === "not_found" ? "kept" : "failed";
     if (profile._tag === "err") return "failed";
     if (!isLocalReview(review.value)) return "kept";
-    const localPath = profile.value.repos.find((repository) =>
-      sameRepositoryIdentity(repository, review.value.identity),
-    )?.localPath;
+    const localPath = configuredLocalPath(profile.value, review.value.identity);
     const lastUsed = review.value.lastOpenedAt ?? review.value.updatedAt;
     const abandoned =
       localPath !== undefined &&
@@ -312,9 +310,7 @@ export class LocalReviewRetention {
       insightSessions === undefined
     )
       return err({ _tag: "StorageUnavailable" });
-    const localPath = profile.value.repos.find((repository) =>
-      sameRepositoryIdentity(repository, review.value.identity),
-    )?.localPath;
+    const localPath = configuredLocalPath(profile.value, review.value.identity);
     // Without the checkout, the worktree and its ref cannot be removed through Git.
     if (localPath === undefined) return ok(undefined);
     // One session at a time: `git update-ref` and `git worktree` contend on the repository's locks.
