@@ -4,6 +4,7 @@ import { containsSensitiveData } from "../adapters/storage/json-file";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   changeIntentSchema,
+  parseChangeIntent,
   type ChangeIntent,
   type ChangeIntentView,
 } from "../domain/change-intent";
@@ -47,6 +48,24 @@ export type ChangeIntentFailure = {
 export type AgentIntentFailure =
   | ChangeIntentFailure
   | { readonly reason: "intent_exists" };
+
+/**
+ * Checks an agent's intent text before anything is opened, so a refused
+ * intent leaves no Review behind: empty or over the byte bound, or holding a
+ * credential-shaped value Patchdesk never stores.
+ */
+export function checkAgentIntentText(
+  markdown: string,
+): Result<
+  void,
+  { readonly reason: "invalid_input" | "change_intent_sensitive" }
+> {
+  if (parseChangeIntent({ kind: "text", markdown })._tag === "err")
+    return err({ reason: "invalid_input" });
+  return containsSensitiveData(markdown)
+    ? err({ reason: "change_intent_sensitive" })
+    : ok(undefined);
+}
 
 /** How each Change intent refusal is classified (ADR 0052 "Error model"). */
 export const changeIntentFailureKinds = {

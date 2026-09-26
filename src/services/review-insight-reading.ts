@@ -1,4 +1,5 @@
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
 import { renderBriefAsPullRequestDescription } from "../domain/brief-pull-request-description";
 import { definedProps } from "../domain/defined-props";
 import type {
@@ -16,6 +17,7 @@ import { findingDraftStates } from "../domain/local-draft";
 import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { ReviewResult } from "../domain/review-result";
 import { casesHandled, err, ok, type Result } from "../domain/result";
+import { isLocalReview } from "../domain/review";
 import type { LocalBranchMismatch } from "./local-review-opening";
 import {
   describeProjectedSession,
@@ -95,6 +97,7 @@ export class ReviewInsightReader {
   constructor(
     private readonly workbench: Pick<ReviewWorkbenchController, "load">,
     private readonly sessions: Pick<ReviewSessionStore, "load">,
+    private readonly reviews: Pick<ReviewStore, "load">,
   ) {}
 
   async read(request: {
@@ -102,13 +105,18 @@ export class ReviewInsightReader {
     readonly reviewId: ReviewId;
     readonly type: InsightType;
   }): Promise<Result<InsightReading, InsightReadingFailure>> {
+    // The kind is read first, so a pull request Review is never projected for the agent.
+    const review = await this.reviews.load(request.profileId, request.reviewId);
+    if (review._tag === "err")
+      return err({
+        reason: review.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    if (!isLocalReview(review.value)) return err({ reason: "not_applicable" });
     const projected = await this.workbench.load({
       profileId: request.profileId,
       reviewId: request.reviewId,
     });
     if (projected._tag === "err") return projected;
-    if (projected.value.session.key.source.kind === "pull_request")
-      return err({ reason: "not_applicable" });
     const session = await describeProjectedSession(
       this.sessions,
       projected.value,

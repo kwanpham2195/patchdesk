@@ -308,6 +308,7 @@ describe("LocalDraftService", () => {
     const reader = new ReviewInsightReader(
       { load: async () => ok(shown) },
       new ReviewSessionStore(harness.paths),
+      harness.reviews,
     );
 
     const reading = value(

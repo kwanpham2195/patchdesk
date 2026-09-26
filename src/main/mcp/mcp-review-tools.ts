@@ -2,7 +2,6 @@ import type { InferOutput } from "valibot";
 
 import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
 import type { ReviewStore } from "../../adapters/storage/review-store";
-import { parseChangeIntent } from "../../domain/change-intent";
 import { definedProps } from "../../domain/defined-props";
 import {
   parseAbsolutePath,
@@ -15,9 +14,10 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import type { McpToolRefusal } from "../../mcp/socket-protocol";
 import type { mcpToolManifest } from "../../mcp/tool-manifest";
 import type { DashboardController } from "../../services/dashboard-controller";
-import type {
-  AgentIntentFailure,
-  LocalChangeIntentService,
+import {
+  checkAgentIntentText,
+  type AgentIntentFailure,
+  type LocalChangeIntentService,
 } from "../../services/local-change-intent-service";
 import type {
   LocalDraftService,
@@ -158,12 +158,10 @@ export async function reviewLocal(
   if (profiles._tag === "err") return profiles;
   const profileId = profiles.value.active.id;
   const directory = parseAbsolutePath(input.cwd);
+  if (directory._tag === "err") return err(refusal("invalid_input"));
   const intent =
-    input.intent === undefined
-      ? undefined
-      : parseChangeIntent({ kind: "text", markdown: input.intent });
-  if (directory._tag === "err" || intent?._tag === "err")
-    return err(refusal("invalid_input"));
+    input.intent === undefined ? undefined : checkAgentIntentText(input.intent);
+  if (intent?._tag === "err") return err(refusal(intent.error.reason));
   const found = await services.localReviewOpening.findCheckout(
     profileId,
     directory.value,

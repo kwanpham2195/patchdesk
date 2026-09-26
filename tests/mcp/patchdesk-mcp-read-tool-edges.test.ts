@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { rm, writeFile } from "node:fs/promises";
+import { readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as v from "valibot";
@@ -178,6 +178,24 @@ describe("MCP read tool refusals", () => {
     expect((await loadRoute(app, reviewId)).changeIntent).toMatchObject({
       intent: { markdown: "Ship the first goal." },
     });
+  });
+
+  it("refuses an intent holding a credential before opening anything", async () => {
+    app = await startAppWithLinkedWorktree();
+    const client = await connectLegacyClient(app.socketPath);
+
+    const refused = await call(client, "review_local", {
+      cwd: app.repositoryPath,
+      intent: `Call with ghp_${"a".repeat(36)}.`,
+    });
+
+    expect(refused).toMatchObject({
+      isError: true,
+      content: { error: "change_intent_sensitive" },
+    });
+    await expect(
+      readdir(app.paths.profileWorkbenchesDirectory(profileId)),
+    ).rejects.toThrow();
   });
 
   it("refuses a directory outside every profile checkout with checkout_not_found and lists it in diagnostics", async () => {
