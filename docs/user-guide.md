@@ -303,7 +303,7 @@ your project's `CLAUDE.md` or `AGENTS.md`:
 
 - When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
 - To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
-- When I say "check Patchdesk", call `get_feedback`, address every comment, then call `refresh_review` and tell me the changes are ready.
+- When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback`; address every Finding and comment, then call `refresh_review` and tell me the changes are ready.
 - Do not commit until I say the review is done.
 ```
 
