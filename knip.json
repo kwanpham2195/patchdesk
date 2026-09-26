@@ -9,7 +9,8 @@
         "scripts/**/*.mjs",
         "tests/**/*.{ts,tsx}"
       ],
-      "ignore": ["src/renderer/src/components/ui/**"]
+      "ignore": ["src/renderer/src/components/ui/**"],
+      "ignoreBinaries": ["ditto"]
     },
     "runtime/insight": {
       "entry": ["scripts/*.mjs", "tests/**/*.ts"],
