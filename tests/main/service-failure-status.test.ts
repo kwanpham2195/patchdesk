@@ -259,6 +259,17 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
         largestPaths: ["node_modules/", "build/"],
       },
     },
+    {
+      name: "patch-size refusal names the largest changed files",
+      failure: {
+        reason: "patch_too_large",
+        largestFiles: ["pnpm-lock.yaml", "dist/app.js"],
+      },
+      body: {
+        error: "patch_too_large",
+        largestFiles: ["pnpm-lock.yaml", "dist/app.js"],
+      },
+    },
   ])("a local $name", async ({ failure, body }) => {
     const app = new Hono();
     // SAFETY: the route under test reaches only the supplied service seam.
