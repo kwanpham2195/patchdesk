@@ -141,6 +141,7 @@
     ],
     "files": [
       "out/**",
+      "!out/main/mcp-shim.js",
       "package.json"
     ],
     "directories": {
