@@ -86,6 +86,23 @@ AI Insights sit inside a complete GitHub review workflow:
 
 <p align="center"><em>Files, commits, scope, threads, and the rendered diff stay together.</em></p>
 
+## Review your coding agent's work
+
+Patchdesk also reviews changes that are not on GitHub yet: the working tree,
+a branch, or a commit in your checkout. Claude Code or Codex can hand you
+their work over MCP:
+
+1. The agent opens a local Review of its change and asks for an Analysis.
+2. You press **Run** in Patchdesk. Nothing spends your model account without
+   that click.
+3. You leave notes on diff lines, then tell the agent "check Patchdesk".
+4. The agent reads your notes, fixes the code, and asks you to refresh. Your
+   notes follow the code to the new revision.
+
+The agent cannot Apply a suggestion, commit, edit your notes, or reach GitHub
+through Patchdesk. [Connect a coding agent](#connect-a-coding-agent) shows
+the setup.
+
 ## Local-first by design
 
 Patchdesk runs on your Mac and connects to GitHub through your authenticated
@@ -136,10 +153,38 @@ pnpm install:mac
 For development commands and project conventions, read
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+### Connect a coding agent
+
+The Homebrew install puts the `patchdesk` command on your PATH. Register it
+with your agent, then check the connection with Patchdesk open:
+
+```bash
+claude mcp add patchdesk -- patchdesk mcp
+codex mcp add patchdesk -- patchdesk mcp
+patchdesk mcp --check
+```
+
+Your agent uses the tools when its instructions tell it to. Copy this into
+your project's `CLAUDE.md` or `AGENTS.md`:
+
+```markdown
+## Review in Patchdesk
+
+- When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
+- To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
+- When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback`; address every Finding and comment, then call `refresh_review` and tell me the changes are ready.
+- Do not commit until I say the review is done.
+```
+
+Review before the agent commits: after a commit, a working-tree Review of a
+clean tree shows an empty diff. The
+[user guide](docs/user-guide.md#use-patchdesk-from-a-coding-agent-mcp) covers
+a disk-image install, troubleshooting, and each tool.
+
 ## Learn more
 
 - [User guide](docs/user-guide.md) covers first run, review workflows,
-  Insights, providers, storage, and current limits.
+  Insights, providers, coding agents over MCP, storage, and current limits.
 - [Product description](docs/product-description/README.md) documents the app
   screen by screen.
 - [Architecture](docs/architecture.md) explains the application layers and
