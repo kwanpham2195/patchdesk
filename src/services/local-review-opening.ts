@@ -6,7 +6,6 @@ import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-
 import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   createReviewId,
-  parseContentHash,
   type AbsolutePath,
   type ContentHash,
   type GitSha,
@@ -39,7 +38,6 @@ import {
 import type { LocalReviewSession } from "../domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
 import type { LocalApplySettlement } from "./local-apply-settlement";
-import { contentHash } from "./review-artifact-hash";
 import type {
   LocalReviewOpenRequest,
   LocalReviewPreparationFailure,
@@ -139,6 +137,8 @@ export const localReviewFailureKinds = {
 export class LocalReviewOpening {
   /** When each Review's last prepared agent refresh started, in this process: the limit only bounds snapshot cost. */
   private readonly agentRefreshStartedAt = new Map<string, number>();
+  /** The Reviews an agent's refresh is reading now; a second one is refused rather than run beside it. */
+  private readonly agentRefreshing = new Set<string>();
 
   constructor(
     private readonly preparation: Pick<
@@ -282,9 +282,9 @@ export class LocalReviewOpening {
     if (!this.lifecycle.coordinator.acquire(key))
       return err({ reason: "in_progress" });
     try {
-      const resolved = await this.resolveStoredSource(profileId, reviewId);
-      if (resolved._tag === "err") return resolved;
-      return await this.moveToSession(resolved.value, reviewId);
+      const read = await this.resolveStoredSource(profileId, reviewId);
+      if (read._tag === "err") return read;
+      return await this.moveToSession(read.value.resolved, reviewId);
     } finally {
       this.lifecycle.coordinator.release(key);
     }
@@ -296,7 +296,8 @@ export class LocalReviewOpening {
    * Review, its drafts, and `lastOpenedAt` as they are. The prepared session
    * is recorded so the header shows Updates available and retention keeps it;
    * the maintainer's Refresh then moves to it. Content equal to the current
-   * session clears an earlier prepared session.
+   * session clears an earlier prepared session. The snapshot runs outside the
+   * Review lock, so the maintainer's commands are not refused meanwhile.
    */
   async prepareForAgent(
     profileId: WorkspaceProfileId,
@@ -316,18 +317,30 @@ export class LocalReviewOpening {
         reason: "rate_limited",
         retryAfterMs: previous + AGENT_REFRESH_INTERVAL_MS - startedAt,
       });
-    if (!this.lifecycle.coordinator.acquire(key))
-      return err({ reason: "in_progress" });
+    if (this.agentRefreshing.has(key)) return err({ reason: "in_progress" });
+    this.agentRefreshing.add(key);
     try {
-      const resolved = await this.resolveStoredSource(profileId, reviewId);
-      if (resolved._tag === "err") return resolved;
-      const prepared = await this.recordPrepared(resolved.value, reviewId);
+      const read = await this.resolveStoredSource(profileId, reviewId);
+      if (read._tag === "err") return read;
+      // Keyed by content and run under the profile lock, so it needs no Review lock.
+      const session = await this.preparation.prepare(read.value.resolved);
+      if (session._tag === "err")
+        return err(mapPreparationFailure(session.error));
+      const prepared = await this.lifecycle.coordinator.withReviewLock(
+        profileId,
+        reviewId,
+        () =>
+          this.recordPrepared(
+            read.value.resolved,
+            read.value.stored.currentSessionId,
+          ),
+      );
       // Only a prepared snapshot starts the window, so a refusal can be retried at once.
       if (prepared._tag === "ok")
         this.agentRefreshStartedAt.set(key, startedAt);
       return prepared;
     } finally {
-      this.lifecycle.coordinator.release(key);
+      this.agentRefreshing.delete(key);
     }
   }
 
@@ -358,7 +371,15 @@ export class LocalReviewOpening {
   private async resolveStoredSource(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<ResolvedLocalReview, LocalReviewRefreshFailure>> {
+  ): Promise<
+    Result<
+      {
+        readonly stored: Review<LocalReviewSource>;
+        readonly resolved: ResolvedLocalReview;
+      },
+      LocalReviewRefreshFailure
+    >
+  > {
     const stored = await this.lifecycle.reviews.load(profileId, reviewId);
     if (stored._tag === "err")
       return err({
@@ -379,36 +400,42 @@ export class LocalReviewOpening {
     if (mismatch !== undefined) return err(mismatch);
     if (createReviewId(resolved.value.identity) !== reviewId)
       return err({ reason: "storage" });
-    return resolved;
+    return ok({ stored: stored.value, resolved: resolved.value });
   }
 
-  /** Prepares the resolved content's session and records it on the Review without moving it. The caller holds the Review lock. */
+  /**
+   * Records the resolved content's session on the Review without moving it.
+   * The caller holds the Review lock and read the checkout while the Review
+   * was on `readOn`; content read before a move to other content is refused
+   * `in_progress`, so the agent reads the checkout again.
+   */
   private async recordPrepared(
     resolved: ResolvedLocalReview,
-    reviewId: ReviewId,
-  ): Promise<Result<LocalReviewPrepared, LocalReviewOpenFailure>> {
+    readOn: ReviewSessionId,
+  ): Promise<Result<LocalReviewPrepared, LocalReviewRefreshFailure>> {
     const { profileId } = resolved.identity;
+    const reviewId = createReviewId(resolved.identity);
+    // Instant for the session prepared before the lock; it rebuilds a worktree retention removed meanwhile.
     const session = await this.preparation.prepare(resolved);
     if (session._tag === "err")
       return err(mapPreparationFailure(session.error));
     const { headSha, baseSha } = session.value.key;
-    const patchHash = parseContentHash(
-      await contentHash(session.value.patchPath),
-    );
-    if (patchHash._tag === "err") return err({ reason: "storage" });
-    // Read after the preparation, as a move does, so the save carries every draft written meanwhile.
+    const patchHash = session.value.canonicalPatchHash;
+    if (patchHash === undefined) return err({ reason: "storage" });
     const stored = await this.lifecycle.reviews.load(profileId, reviewId);
     if (stored._tag === "err" || !isLocalReview(stored.value))
       return err({ reason: "storage" });
     const review = stored.value;
     const changed = session.value.id !== review.currentSessionId;
+    if (changed && review.currentSessionId !== readOn)
+      return err({ reason: "in_progress" });
     const now = this.now();
     const next = changed
       ? review.preparedSessionId === session.value.id
         ? undefined
         : recordPreparedLocalSession(review, {
             sessionId: session.value.id,
-            identity: { headSha, baseSha, canonicalPatchHash: patchHash.value },
+            identity: { headSha, baseSha, canonicalPatchHash: patchHash },
             detectedAt: now,
           })
       : review.preparedSessionId === undefined &&
@@ -438,7 +465,7 @@ export class LocalReviewOpening {
       }),
       headSha,
       baseSha,
-      patchHash: patchHash.value,
+      patchHash,
     });
   }
 

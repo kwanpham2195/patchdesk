@@ -78,6 +78,32 @@ async function notedReview(harness: LocalApplyHarness) {
   return { probe, workbench, reviewId };
 }
 
+/** Holds the first preparation the opening service runs once armed, and says when it is held. */
+function preparationHold() {
+  let armed = false;
+  let reachedResolve!: () => void;
+  let releaseResolve!: () => void;
+  const reached = new Promise<void>((resolve) => {
+    reachedResolve = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    releaseResolve = resolve;
+  });
+  return {
+    arm: () => {
+      armed = true;
+    },
+    reached,
+    release: releaseResolve,
+    afterPrepare: async () => {
+      if (!armed) return;
+      armed = false;
+      reachedResolve();
+      await released;
+    },
+  };
+}
+
 describe("LocalReviewOpening.prepareForAgent", () => {
   it("prepares an edited checkout's session and leaves the Review on its session with its drafts and open time", async () => {
     const harness = await localApplyHarness();
@@ -228,6 +254,128 @@ describe("LocalReviewOpening.prepareForAgent", () => {
     const next = await harness.opening.prepareForAgent(profileId, reviewId);
 
     expect(next).toMatchObject({ _tag: "ok", value: { changed: true } });
+  });
+
+  it("lets the maintainer save a note while an agent refresh is between its snapshot and its save", async () => {
+    const hold = preparationHold();
+    const harness = await localApplyHarness(undefined, {
+      afterPrepare: hold.afterPrepare,
+    });
+    const { probe, workbench, reviewId } = await notedReview(harness);
+    await writeFile(probe, probeContent(1));
+    hold.arm();
+    const refreshing = harness.opening.prepareForAgent(profileId, reviewId);
+    await hold.reached;
+
+    const noted = await harness.drafts.addNote({
+      profileId,
+      reviewId,
+      sessionId: workbench.session.id,
+      anchor: { path, side: "new", startLine: 5, line: 5 },
+      text: "Explain v5.",
+    });
+    hold.release();
+    const prepared = value(await refreshing);
+
+    expect(noted._tag).toBe("ok");
+    const stored = value(await harness.reviews.load(profileId, reviewId));
+    expect(stored.localDrafts).toHaveLength(2);
+    expect(stored.currentSessionId).toBe(workbench.session.id);
+    expect(stored.preparedSessionId).toBe(prepared.preparedSessionId);
+  });
+
+  it("refuses a second agent refresh of the Review while the first is reading the checkout", async () => {
+    const hold = preparationHold();
+    const harness = await localApplyHarness(undefined, {
+      afterPrepare: hold.afterPrepare,
+    });
+    const { probe, reviewId } = await notedReview(harness);
+    await writeFile(probe, probeContent(1));
+    hold.arm();
+    const first = harness.opening.prepareForAgent(profileId, reviewId);
+    await hold.reached;
+
+    const second = await harness.opening.prepareForAgent(profileId, reviewId);
+    hold.release();
+
+    expect(second).toEqual({ _tag: "err", error: { reason: "in_progress" } });
+    expect((await first)._tag).toBe("ok");
+  });
+
+  it("records nothing when the maintainer's Refresh moved the Review to the same content during the agent refresh", async () => {
+    const hold = preparationHold();
+    const harness = await localApplyHarness(undefined, {
+      afterPrepare: hold.afterPrepare,
+    });
+    const { probe, reviewId } = await notedReview(harness);
+    await writeFile(probe, probeContent(1));
+    hold.arm();
+    const refreshing = harness.opening.prepareForAgent(profileId, reviewId);
+    await hold.reached;
+
+    const moved = value(await harness.opening.refresh(profileId, reviewId));
+    hold.release();
+    const prepared = value(await refreshing);
+
+    expect(prepared).toMatchObject({
+      changed: false,
+      sessionId: moved.session.id,
+    });
+    const stored = value(await harness.reviews.load(profileId, reviewId));
+    expect(stored.preparedSessionId).toBeUndefined();
+    expect(stored.freshness._tag).toBe("Fresh");
+  });
+
+  it("refuses an agent refresh whose snapshot the maintainer's Refresh moved past, recording nothing", async () => {
+    const hold = preparationHold();
+    const harness = await localApplyHarness(undefined, {
+      afterPrepare: hold.afterPrepare,
+    });
+    const { probe, reviewId } = await notedReview(harness);
+    await writeFile(probe, probeContent(1));
+    hold.arm();
+    const refreshing = harness.opening.prepareForAgent(profileId, reviewId);
+    await hold.reached;
+    await writeFile(probe, probeContent(2));
+
+    const moved = value(await harness.opening.refresh(profileId, reviewId));
+    hold.release();
+    const prepared = await refreshing;
+
+    expect(prepared).toEqual({ _tag: "err", error: { reason: "in_progress" } });
+    const stored = value(await harness.reviews.load(profileId, reviewId));
+    expect(stored.currentSessionId).toBe(moved.session.id);
+    expect(stored.preparedSessionId).toBeUndefined();
+  });
+
+  it("prunes the first prepared session when a second agent refresh prepares newer content", async () => {
+    let clock = now;
+    const harness = await localApplyHarness(undefined, {
+      openingNow: () => clock,
+    });
+    const { probe, workbench, reviewId } = await notedReview(harness);
+    await writeFile(probe, probeContent(1));
+    const first = value(
+      await harness.opening.prepareForAgent(profileId, reviewId),
+    );
+    await writeFile(probe, probeContent(2));
+    clock = later(10_000);
+
+    const second = value(
+      await harness.opening.prepareForAgent(profileId, reviewId),
+    );
+
+    const firstId = first.preparedSessionId;
+    const secondId = second.preparedSessionId;
+    if (firstId === undefined || secondId === undefined)
+      throw new Error("nothing prepared");
+    expect(secondId).not.toBe(firstId);
+    expect([...localRefs(harness.repositoryPath)].sort()).toEqual(
+      [sessionRef(workbench.session.id), sessionRef(secondId)].sort(),
+    );
+    expect(
+      await present(harness.paths.worktreeDirectory(profileId, firstId)),
+    ).toBe(false);
   });
 
   it("keeps the prepared session through the retention sweep and removes the superseded one", async () => {
