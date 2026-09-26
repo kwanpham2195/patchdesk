@@ -179,6 +179,7 @@ export async function buildLocalApiContainer(
   const reviewOperations =
     configuration.reviewOperations ?? new ReviewOperationCoordinator();
   const reviewWriteOperations = new ReviewWriteOperationStore(paths);
+  const refreshOperationStore = new RefreshOperationStore(paths);
   const localApplyOperations = new LocalApplyOperationStore(paths);
   const reviewRetention = new ReviewRetention({
     paths,
@@ -189,6 +190,7 @@ export async function buildLocalApiContainer(
     mergeOperations: new MergeOperationStore(paths),
     localApplyOperations,
     writeOperations: reviewWriteOperations,
+    refreshOperations: refreshOperationStore,
     worktrees,
     artifacts: storageArtifacts,
     git: readOnlyGit,
@@ -390,7 +392,7 @@ export async function buildLocalApiContainer(
     },
   });
   const refreshOperations = new RefreshOperationService({
-    operations: new RefreshOperationStore(paths),
+    operations: refreshOperationStore,
     reviews,
     refresh: reviewRefresh,
     coordinator: reviewOperations,

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CommandRunner } from "../../src/adapters/github/command-runner";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import { RefreshOperationStore } from "../../src/adapters/storage/refresh-operation-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
 import {
@@ -249,6 +250,37 @@ describe("ReviewRetention of pull request Reviews", () => {
     expect(await present(harness.paths.patchFile(profileId, current.id))).toBe(
       true,
     );
+  });
+
+  it("keeps the superseded session a Prepared Refresh names", async () => {
+    const harness = await localApplyHarness();
+    const pushed = await pushedPullRequest(harness, 1);
+    const [opened] = pushed.sessions;
+    if (opened === undefined) throw new Error("fixture sessions");
+    value(
+      await new RefreshOperationStore(harness.paths).save({
+        operationId: "refresh-fixture",
+        profileId,
+        reviewId: pushed.review.id,
+        expectedUpdatedAt: pushed.review.updatedAt,
+        startedAt: now,
+        state: {
+          _tag: "Prepared",
+          nextReview: { ...pushed.review, currentSessionId: opened.id },
+          sessionId: opened.id,
+          snapshotHash: patchHash,
+        },
+      }),
+    );
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await present(harness.paths.patchFile(profileId, opened.id))).toBe(
+      true,
+    );
+    expect(
+      await present(harness.paths.worktreeDirectory(profileId, opened.id)),
+    ).toBe(true);
   });
 
   it("keeps a superseded session while its Analysis run is active", async () => {

@@ -9,6 +9,7 @@ import { LocalApplyOperationStore } from "../../src/adapters/storage/local-apply
 import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import { RefreshOperationStore } from "../../src/adapters/storage/refresh-operation-store";
 import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
@@ -190,6 +191,7 @@ export async function localApplyHarness(
     mergeOperations: new MergeOperationStore(paths),
     localApplyOperations: operations,
     writeOperations: new ReviewWriteOperationStore(paths),
+    refreshOperations: new RefreshOperationStore(paths),
     worktrees,
     artifacts,
     git: interceptedGit,

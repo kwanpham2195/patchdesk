@@ -35,7 +35,7 @@ Retention windows are fixed constants in the first version. They may become user
 > **Note, 2026-09-26 (#478):** an Open pull request Review kept every session it moved past after a push until it became Terminal. The superseded-session rule of the #474 note now covers every Open Review, local or pull request. As built:
 >
 > - A Refresh that moves a pull request Review to a new session prunes the ones it moved past under the Review lock it already holds; a Refresh that keeps the session prunes nothing. The background sweep prunes every Open Review.
-> - A superseded session is kept while it has running state. A session a retained Insight names keeps its record and patch and loses its worktree and refs.
+> - A superseded session is kept while it has running state, or while a Refresh operation left Prepared names it, since recovering that Refresh makes it current. A session a retained Insight names keeps its record and patch and loses its worktree and refs.
 > - A Review keeps every session while it has a recorded GitHub write operation, or while any of its sessions holds an in-flight or outcome-unknown pending-review or summary write, so ADR 0035 recovery finds what it reads.
 > - A Terminal Review is not pruned; the 14-day rule above removes it.
 > - When the profile no longer names the repository's checkout, a superseded session with a worktree is kept, since only Git can remove the worktree; one without a worktree is removed.

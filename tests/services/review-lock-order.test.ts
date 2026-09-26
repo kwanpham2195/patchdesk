@@ -273,6 +273,7 @@ function reviewRetention(
       },
       localApplyOperations: { load: async () => err({ reason: "io" }) },
       writeOperations: { load: async () => ok(undefined) },
+      refreshOperations: { load: async () => err({ reason: "not_found" }) },
       lifecycleGate: gate,
       coordinator,
       now: () => at,
