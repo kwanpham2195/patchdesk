@@ -2,8 +2,8 @@ import * as v from "valibot";
 
 import { casesHandled } from "../../domain/result";
 
-/** A local Review source (ADR 0050), as the workbench and a sidebar row carry it. */
-export const localReviewSourceSchema = v.variant("kind", [
+/** A local Review source (ADR 0050), as the workbench carries it. */
+const localReviewSourceSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("working_tree"),
     branch: v.optional(v.pipe(v.string(), v.minLength(1))),

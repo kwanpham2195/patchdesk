@@ -92,17 +92,29 @@ function review(input: {
   };
 }
 
-/** A working-tree Review on `branch`, opened at `lastOpenedAt`. */
-function localReview(branch: string, lastOpenedAt: string): Review {
+/** A working-tree Review on `branch`, or a branch Review against main, opened at `lastOpenedAt`. */
+function localReview(
+  branch: string,
+  lastOpenedAt: string,
+  options: {
+    readonly kind?: "working_tree" | "branch";
+    readonly repo?: string;
+  } = {},
+): Review {
+  const branchName = must(parseLocalBranchName(branch));
   const identity: ReviewIdentity = {
     profileId,
     host,
     owner,
-    repo,
-    source: {
-      kind: "working_tree",
-      branch: must(parseLocalBranchName(branch)),
-    },
+    repo: must(parseGitHubRepoName(options.repo ?? "patchdesk")),
+    source:
+      options.kind === "branch"
+        ? {
+            kind: "branch",
+            branch: branchName,
+            baseBranch: must(parseLocalBranchName("main")),
+          }
+        : { kind: "working_tree", branch: branchName },
   };
   return {
     ...createReview({
@@ -246,54 +258,86 @@ describe("SidebarListingService.list", () => {
     expect(numbers(listing.rows).at(-1)).toBe(6);
   });
 
-  it("lists a local Review with its source spec and recorded open, and no pull request number", async () => {
+  it("projects a repository's local Reviews as one row, whatever their branch or source, beside an unchanged pull request row", async () => {
+    const mainTree = localReview("main", "2026-03-01T00:00:00.000Z");
+    const featTree = localReview("feat/x", "2026-03-03T00:00:00.000Z");
+    const featBranch = localReview("feat/x", "2026-03-02T00:00:00.000Z", {
+      kind: "branch",
+    });
     const value = service(
       ok({
-        reviews: [localReview("feat/x", "2026-03-01T00:00:00.000Z")],
+        reviews: [
+          mainTree,
+          review({
+            number: 7,
+            updatedAt: createdAt,
+            lastOpenedAt: "2026-03-04T00:00:00.000Z",
+            title: "Add the sidebar",
+          }),
+          featTree,
+          featBranch,
+        ],
         unreadable: 0,
       }),
     );
 
     const listing = must(await value.listed.list(profileId));
 
-    const row = listing.rows.at(0);
-    expect(row).toMatchObject({
+    expect(listing.rows).toHaveLength(2);
+    expect(listing.rows.at(0)).toMatchObject({
+      number: 7,
+      title: "Add the sidebar",
+      lastOpenedAt: "2026-03-04T00:00:00.000Z",
+    });
+    const local = listing.rows.at(1);
+    expect(local).toMatchObject({
       host: "github.com",
       owner: "octo-org",
       repo: "patchdesk",
-      source: { kind: "working_tree", branch: "feat/x" },
-      lastOpenedAt: "2026-03-01T00:00:00.000Z",
-      sortedAt: "2026-03-01T00:00:00.000Z",
+      lastOpenedAt: "2026-03-03T00:00:00.000Z",
+      sortedAt: "2026-03-03T00:00:00.000Z",
     });
-    expect(Object.hasOwn(row ?? {}, "number")).toBe(false);
+    expect(
+      local !== undefined && "reviewIds" in local
+        ? [...local.reviewIds].sort()
+        : [],
+    ).toEqual([featBranch.id, featTree.id, mainTree.id].sort());
+    // The row names no source and no branch: the checkout decides that at the click.
+    expect(Object.hasOwn(local ?? {}, "source")).toBe(false);
+    expect(Object.hasOwn(local ?? {}, "number")).toBe(false);
   });
 
-  it("orders pull request and local Reviews together under one twenty-row cap", async () => {
-    // Day 1..25 alternate between the two kinds, so the newest twenty are days 25..6.
-    const reviews = Array.from({ length: 25 }, (_unused, index) => {
-      const opened = `2026-06-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`;
-      return index % 2 === 0
-        ? localReview(`day-${index + 1}`, opened)
-        : review({
-            number: index + 1,
-            updatedAt: createdAt,
-            lastOpenedAt: opened,
-          });
-    });
+  it("counts each repository's local row once toward the twenty-row cap", async () => {
+    const day = (value: number): string =>
+      `2026-06-${String(value).padStart(2, "0")}T00:00:00.000Z`;
+    const pullRequests = Array.from({ length: 21 }, (_unused, index) =>
+      review({
+        number: index + 1,
+        updatedAt: createdAt,
+        lastOpenedAt: day(index + 1),
+      }),
+    );
+    const reviews = [
+      ...pullRequests,
+      localReview("a-1", day(22)),
+      localReview("a-2", day(23)),
+      localReview("a-3", day(30)),
+      localReview("b-1", day(24), { repo: "herdr" }),
+      localReview("b-2", day(25), { repo: "herdr" }),
+    ];
     const value = service(ok({ reviews, unreadable: 0 }));
 
     const listing = must(await value.listed.list(profileId));
 
+    // Two local rows, then the eighteen newest pull requests, #21 down to #4.
     expect(listing.rows).toHaveLength(20);
-    expect(listing.rows.map((row) => row.sortedAt.slice(8, 10))).toEqual(
-      Array.from({ length: 20 }, (_unused, index) =>
-        String(25 - index).padStart(2, "0"),
-      ),
+    expect(listing.rows.slice(0, 2)).toMatchObject([
+      { repo: "patchdesk", sortedAt: day(30) },
+      { repo: "herdr", sortedAt: day(25) },
+    ]);
+    expect(numbers(listing.rows.slice(2))).toEqual(
+      Array.from({ length: 18 }, (_unused, index) => 21 - index),
     );
-    expect(listing.rows.at(0)).toMatchObject({
-      source: { kind: "working_tree", branch: "day-25" },
-    });
-    expect(listing.rows.at(1)).toMatchObject({ number: 24 });
   });
 
   it("records a diagnostic for unreadable records and still returns the readable rows", async () => {

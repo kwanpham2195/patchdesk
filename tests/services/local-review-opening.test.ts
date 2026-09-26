@@ -43,6 +43,7 @@ import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
 import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
+import { SidebarListingService } from "../../src/services/sidebar-listing-service";
 
 const roots: string[] = [];
 const now = value(parseIsoTimestamp("2026-09-25T00:00:00.000Z"));
@@ -277,6 +278,51 @@ describe("LocalReviewOpening", () => {
     expect(git(repositoryPath, "for-each-ref", "refs/patchdesk")).toBe(
       refsBefore,
     );
+  });
+
+  it("opens the switched-to branch's own Review from the repository's sidebar row, and the first one on switching back", async () => {
+    const { root, repositoryPath } = await checkout();
+    const service = await opening(root, repositoryPath);
+    const onMain = value(
+      await service.open({ profileId, repository, request: workingTree }),
+    );
+    git(repositoryPath, "checkout", "-q", "-b", "other");
+    await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
+
+    // The row's open names no branch (#479), so the checkout decides which Review opens.
+    const onOther = await service.open({
+      profileId,
+      repository,
+      request: workingTree,
+    });
+
+    expect(onOther._tag).toBe("ok");
+    const otherReviewId = value(onOther).review.id;
+    expect(otherReviewId).not.toBe(onMain.review.id);
+    expect(value(onOther).session.key.source).toEqual({
+      kind: "working_tree",
+      branch: "other",
+    });
+    const listing = value(
+      await new SidebarListingService({
+        reviews: new ReviewStore(PatchdeskPaths.forTest(join(root, "app"))),
+        diagnostics: {
+          record: async () => {
+            throw new Error("no record is unreadable");
+          },
+        },
+      }).list(profileId),
+    );
+    expect(listing.rows).toHaveLength(1);
+    expect(listing.rows.at(0)).toMatchObject({
+      reviewIds: expect.arrayContaining([onMain.review.id, otherReviewId]),
+    });
+
+    git(repositoryPath, "checkout", "-q", "main");
+    const back = value(
+      await service.open({ profileId, repository, request: workingTree }),
+    );
+    expect(back.review.id).toBe(onMain.review.id);
   });
 
   it("moves the Review to the checkout as it is once the Review lock is free", async () => {

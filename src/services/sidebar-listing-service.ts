@@ -10,11 +10,11 @@ import type {
   WorkspaceProfileId,
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
-import type { Review } from "../domain/review";
+import { isLocalReview, type Review } from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
-/** How many visited Reviews the sidebar shows, pull request and local together. */
+/** How many rows the sidebar shows; a repository's local row counts once. */
 const SIDEBAR_ROW_LIMIT = 20;
 
 /**
@@ -47,23 +47,27 @@ type SidebarPullRequestRow = {
 };
 
 /**
- * One visited local Review (ADR 0050). It carries the source spec so a click
- * can reopen it through the local open path; the renderer names it from the
- * same spec, so no title is stored.
+ * One repository with at least one visited local Review (#479). A click opens
+ * the working tree of the branch checked out at that moment, so the row names
+ * no source and no branch. `reviewIds` holds every local Review of the
+ * repository, so the row reads as selected while any of them is open.
  */
-type SidebarLocalReviewRow = {
-  readonly reviewId: ReviewId;
+type SidebarLocalRepositoryRow = {
   readonly host: GitHubHost;
   readonly owner: GitHubOwner;
   readonly repo: GitHubRepoName;
-  readonly source: LocalReviewSource;
+  readonly reviewIds: ReadonlyArray<ReviewId>;
+  /** The newest of the repository's local Reviews' ordering instants. */
   readonly sortedAt: IsoTimestamp;
+  /** The newest recorded open among them; absent when none was recorded. */
   readonly lastOpenedAt?: IsoTimestamp;
 };
 
 /** The sidebar's rows, plus how many stored Reviews could not be read. */
 export type SidebarListing = {
-  readonly rows: ReadonlyArray<SidebarPullRequestRow | SidebarLocalReviewRow>;
+  readonly rows: ReadonlyArray<
+    SidebarPullRequestRow | SidebarLocalRepositoryRow
+  >;
   readonly unreadable: number;
 };
 
@@ -75,8 +79,9 @@ export type SidebarListingDependencies = {
 };
 
 /**
- * Projects one workspace profile's visited Reviews, pull request and local,
- * into the sidebar's rows, most recently opened first.
+ * Projects one workspace profile's visited Reviews into the sidebar's rows,
+ * most recently opened first: one row per pull request, and one per
+ * repository for its local Reviews, whatever their branch or source.
  *
  * `ReviewStore.list` has no index: it opens every review file under the
  * profile, so this runs on demand for one profile rather than eagerly or
@@ -94,10 +99,24 @@ export class SidebarListingService {
     const { reviews, unreadable } = listing.value;
     if (unreadable > 0) await this.recordUnreadable(profileId, unreadable);
 
-    const rows = [...reviews]
-      .sort((left, right) => sortedAt(right).localeCompare(sortedAt(left)))
-      .slice(0, SIDEBAR_ROW_LIMIT)
-      .map(sidebarRow);
+    const pullRequestRows: SidebarPullRequestRow[] = [];
+    const localReviews = new Map<string, LocalReviewGroup>();
+    for (const review of reviews) {
+      if (!isLocalReview(review)) {
+        const row = pullRequestRow(review);
+        if (row !== undefined) pullRequestRows.push(row);
+        continue;
+      }
+      const { host, owner, repo } = review.identity;
+      const key = JSON.stringify([host, owner, repo]);
+      localReviews.set(key, [review, ...(localReviews.get(key) ?? [])]);
+    }
+    const rows = [
+      ...pullRequestRows,
+      ...[...localReviews.values()].map(localRepositoryRow),
+    ]
+      .sort((left, right) => right.sortedAt.localeCompare(left.sortedAt))
+      .slice(0, SIDEBAR_ROW_LIMIT);
     return ok({ rows, unreadable });
   }
 
@@ -119,20 +138,9 @@ export class SidebarListingService {
   }
 }
 
-function sidebarRow(
-  review: Review,
-): SidebarPullRequestRow | SidebarLocalReviewRow {
-  const { source, host, owner, repo } = review.identity;
-  if (source.kind !== "pull_request")
-    return {
-      reviewId: review.id,
-      host,
-      owner,
-      repo,
-      source,
-      ...definedProps({ lastOpenedAt: review.lastOpenedAt }),
-      sortedAt: sortedAt(review),
-    };
+function pullRequestRow(review: Review): SidebarPullRequestRow | undefined {
+  const { source, owner, repo } = review.identity;
+  if (source.kind !== "pull_request") return undefined;
   return {
     reviewId: review.id,
     owner,
@@ -146,6 +154,38 @@ function sidebarRow(
       lastOpenedAt: review.lastOpenedAt,
     }),
     sortedAt: sortedAt(review),
+  };
+}
+
+type LocalReviewGroup = readonly [
+  Review<LocalReviewSource>,
+  ...ReadonlyArray<Review<LocalReviewSource>>,
+];
+
+/** One repository's local Reviews as one row, dated by the newest of them. */
+function localRepositoryRow(
+  reviews: LocalReviewGroup,
+): SidebarLocalRepositoryRow {
+  const [first, ...rest] = reviews;
+  const newest = rest.reduce(
+    (latest, review) => (sortedAt(review) > sortedAt(latest) ? review : latest),
+    first,
+  );
+  const lastOpenedAt = reviews
+    .flatMap((review) => review.lastOpenedAt ?? [])
+    .reduce<IsoTimestamp | undefined>(
+      (latest, opened) =>
+        latest === undefined || opened > latest ? opened : latest,
+      undefined,
+    );
+  const { host, owner, repo } = newest.identity;
+  return {
+    host,
+    owner,
+    repo,
+    reviewIds: reviews.map((review) => review.id),
+    sortedAt: sortedAt(newest),
+    ...definedProps({ lastOpenedAt }),
   };
 }
 

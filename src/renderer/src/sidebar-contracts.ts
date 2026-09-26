@@ -1,7 +1,5 @@
 import * as v from "valibot";
 
-import { localReviewSourceSchema } from "./review-source";
-
 const sidebarPullRequestRowSchema = v.strictObject({
   reviewId: v.pipe(v.string(), v.minLength(1)),
   owner: v.pipe(v.string(), v.minLength(1)),
@@ -25,14 +23,16 @@ const sidebarPullRequestRowSchema = v.strictObject({
   ),
 });
 
-// A local Review (ADR 0050). The row is named from `source`, and `host` is
-// what the local open route needs to reopen it.
-const sidebarLocalReviewRowSchema = v.strictObject({
-  reviewId: v.pipe(v.string(), v.minLength(1)),
+// One repository's local Reviews (#479). `host` is what the local open route
+// needs, and `reviewIds` names every local Review the row stands for.
+const sidebarLocalRepositoryRowSchema = v.strictObject({
   host: v.pipe(v.string(), v.minLength(1)),
   owner: v.pipe(v.string(), v.minLength(1)),
   repo: v.pipe(v.string(), v.minLength(1)),
-  source: localReviewSourceSchema,
+  reviewIds: v.pipe(
+    v.array(v.pipe(v.string(), v.minLength(1))),
+    v.minLength(1),
+  ),
   sortedAt: v.pipe(v.string(), v.minLength(1)),
   lastOpenedAt: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
@@ -42,7 +42,7 @@ const sidebarLocalReviewRowSchema = v.strictObject({
 // `v.strictObject` parsed with `v.safeParse`.
 export const sidebarReviewsResponseSchema = v.strictObject({
   rows: v.array(
-    v.union([sidebarPullRequestRowSchema, sidebarLocalReviewRowSchema]),
+    v.union([sidebarPullRequestRowSchema, sidebarLocalRepositoryRowSchema]),
   ),
   // How many stored Reviews the route could not read. A diagnostic the main
   // process already recorded; the column draws nothing for it.
@@ -56,13 +56,31 @@ export type SidebarReviewRow = SidebarReviewsResponse["rows"][number];
 export type SidebarPullRequestRow = v.InferOutput<
   typeof sidebarPullRequestRowSchema
 >;
-export type SidebarLocalReviewRow = v.InferOutput<
-  typeof sidebarLocalReviewRowSchema
+export type SidebarLocalRepositoryRow = v.InferOutput<
+  typeof sidebarLocalRepositoryRowSchema
 >;
 
-/** Narrows a sidebar row to a local Review, which has a source spec and no pull request number. */
-export function isSidebarLocalReviewRow(
+/** Narrows a sidebar row to a repository's local row, which has no pull request number. */
+export function isSidebarLocalRepositoryRow(
   row: SidebarReviewRow,
-): row is SidebarLocalReviewRow {
-  return "source" in row;
+): row is SidebarLocalRepositoryRow {
+  return "reviewIds" in row;
+}
+
+/** A key unique among the listed rows: a pull request row's Review id, or a local row's repository. */
+export function sidebarRowKey(row: SidebarReviewRow): string {
+  return isSidebarLocalRepositoryRow(row)
+    ? `local:${row.host}/${row.owner}/${row.repo}`
+    : row.reviewId;
+}
+
+/** Whether the row stands for the open Review; a local row covers each of its repository's local Reviews. */
+export function sidebarRowShowsReview(
+  row: SidebarReviewRow,
+  reviewId: string | undefined,
+): boolean {
+  if (reviewId === undefined) return false;
+  return isSidebarLocalRepositoryRow(row)
+    ? row.reviewIds.includes(reviewId)
+    : row.reviewId === reviewId;
 }

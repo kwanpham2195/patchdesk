@@ -22,7 +22,7 @@ import {
 } from "../../../domain/pull-request";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
 import {
-  isSidebarLocalReviewRow,
+  isSidebarLocalRepositoryRow,
   type SidebarReviewRow,
 } from "@/sidebar-contracts";
 import type { AppDestination } from "@/routes";
@@ -325,8 +325,8 @@ function pullRequestSearchResults(
   const needle = query.toLowerCase();
   if (needle === "") return [];
   return visitedRows.flatMap((row) => {
-    // A local Review has no pull request to open by reference.
-    if (isSidebarLocalReviewRow(row)) return [];
+    // A local row has no pull request to open by reference.
+    if (isSidebarLocalRepositoryRow(row)) return [];
     if (row.title?.toLowerCase().includes(needle) !== true) return [];
     const parsed = parsePullRequestRef({ ...row, host });
     if (parsed._tag === "err") return [];

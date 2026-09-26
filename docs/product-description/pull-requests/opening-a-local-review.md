@@ -235,7 +235,7 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 
 **Review revision and freshness.** The session pins a head and base as [Review session and revision](../foundations/review-session-and-revision.md) describes for pull requests. For a working tree the head is the Local snapshot and the base is `HEAD`; for a branch, the tip and the merge base; for a commit, the commit and its first parent. Opening recomputes the source, so a just-opened local Review is Fresh.
 
-**Local persistence and recovery.** The Review, its session, the patch, and the worktree are stored with the pull-request Reviews and recovered by the same journal. A saved destination naming a local Review reopens the stored session at launch without reading the checkout again. A local Review does not appear in the Visited pull requests column or in the Repository listing.
+**Local persistence and recovery.** The Review, its session, the patch, and the worktree are stored with the pull-request Reviews and recovered by the same journal. A saved destination naming a local Review reopens the stored session at launch without reading the checkout again. A local Review does not appear in the Repository listing. The [Visited pull requests](../foundations/visited-pull-requests.md) column shows one row per repository with local Reviews; its click opens the working tree of the branch the checkout is on now, so it reaches only working-tree Reviews. A branch or commit Review is reopened from this picker: the same source opens the same Review with its drafts.
 
 **GitHub permissions and write authority.** No GitHub read or write happens. The checkout is read; the only writes to the repository are the snapshot objects, the managed ref, and the worktree registration.
 
@@ -252,6 +252,7 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 ## Edge cases
 
 - A detached `HEAD` opens a Review named `Working tree on detached HEAD`, distinct from every branch's working-tree Review.
+- Switching branch and opening the working tree again, from this picker or the column's local row, opens that branch's own working-tree Review with its own drafts; switching back reopens the first one. Drafts never cross branches.
 - A working tree with no changes opens a session whose patch is empty.
 - A root commit opens with every file as NEW.
 - Two branches whose names differ only in characters that cannot appear in a folder name still open two different Reviews.

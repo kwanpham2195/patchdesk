@@ -2,7 +2,7 @@ import * as v from "valibot";
 
 import { PatchdeskApiError } from "./api-client";
 import type { LocalReviewSourceInput } from "./flows/use-inbox-review-opening";
-import type { SidebarLocalReviewRow } from "./sidebar-contracts";
+import type { WorkbenchReviewSource } from "./review-source";
 import { casesHandled } from "../../domain/result";
 
 /**
@@ -11,7 +11,7 @@ import { casesHandled } from "../../domain/result";
  * refused rather than opening the current branch's Review.
  */
 export function localReviewSourceInput(
-  source: SidebarLocalReviewRow["source"],
+  source: Exclude<WorkbenchReviewSource, { readonly kind: "pull_request" }>,
 ): LocalReviewSourceInput {
   switch (source.kind) {
     case "working_tree":

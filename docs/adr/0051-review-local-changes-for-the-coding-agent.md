@@ -73,3 +73,14 @@ as Markdown the maintainer enters or as a repository-relative spec file.
   Analysis gets its description, as read when the session was prepared, in
   the same part of the run input, so the stated-goal check runs for both
   sources.
+
+## One sidebar row per repository (#479)
+
+> **Added 2026-09-26** (maintainer decision in #479).
+
+The sidebar lists one local row per repository with local Reviews, counted
+once toward its 20 rows, in place of #461's row per Review. The row opens the
+working tree of the branch checked out now, so a branch switch opens that
+branch's own Review. Review identity is unchanged: working-tree Reviews stay
+per branch, so drafts never cross branches. Branch and commit Reviews leave
+the sidebar and are reopened from the Local review picker.
