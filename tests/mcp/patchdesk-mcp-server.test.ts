@@ -68,4 +68,18 @@ describe("patchdesk mcp without the app", () => {
       error: "app_not_running",
     });
   });
+
+  it("describes no tool as free of git writes, because the Local snapshot writes git objects, refs, and a worktree", async () => {
+    const client = await connectLegacyClient(
+      "/tmp/pd-mcp-missing/patchdesk.sock",
+    );
+
+    const listed = await client.listTools();
+
+    expect(
+      listed.tools
+        .filter((tool) => /no git write/i.test(tool.description ?? ""))
+        .map((tool) => tool.name),
+    ).toEqual([]);
+  });
 });
