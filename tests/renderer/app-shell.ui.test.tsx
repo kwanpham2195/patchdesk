@@ -344,21 +344,21 @@ describe("AppShell visited pull requests toggle", () => {
     );
 
     const collapse = screen.getByRole("button", {
-      name: "Collapse the pull requests you have opened",
+      name: "Collapse the reviews you have opened",
     });
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
     expect(
       document.getElementById(collapse.getAttribute("aria-controls") ?? ""),
     ).toBe(
       screen.getByRole("complementary", {
-        name: "Pull requests you have opened",
+        name: "Reviews you have opened",
       }),
     );
 
     await user.click(collapse);
 
     const expand = screen.getByRole("button", {
-      name: "Expand the pull requests you have opened",
+      name: "Expand the reviews you have opened",
     });
     expect(expand.getAttribute("aria-expanded")).toBe("false");
   });

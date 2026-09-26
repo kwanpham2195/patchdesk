@@ -187,7 +187,7 @@ describe("VisitedPullRequests", () => {
     renderColumn({ rows: [] });
 
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     // The empty column explains itself in prose; the wording is the
     // component's to change.
@@ -200,7 +200,7 @@ describe("VisitedPullRequests", () => {
 
     await screen.findByRole("button", { name: /#125/ });
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     // The label is the one truncatable string with no other hover fallback.
     const label = within(column).getByTitle("Personal");
@@ -224,7 +224,7 @@ describe("VisitedPullRequests", () => {
     const fallback = await screen.findByRole("button", { name: /#412/ });
     expect(fallback.textContent).toContain("#412");
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     expect(column.textContent).not.toContain("kwanpham2195/patchdesk");
   });
@@ -239,7 +239,7 @@ describe("VisitedPullRequests", () => {
       "herdr#7",
     );
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     // The owner distinguishes nothing here, so it costs width for nothing.
     expect(column.textContent).not.toContain("kwanpham2195");
@@ -354,7 +354,7 @@ describe("VisitedPullRequests", () => {
     const second = screen.getByRole("button", { name: /#412/ });
     const last = screen.getByRole("button", { name: /#300/ });
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     const tabStops = (): ReadonlyArray<HTMLElement> =>
       within(column)
@@ -390,7 +390,7 @@ describe("VisitedPullRequests", () => {
 
     const open = await screen.findByRole("button", { name: /#412/ });
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     expect(
       within(column)
@@ -473,7 +473,7 @@ describe("VisitedPullRequests", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     expect(headings(column)).toEqual([
       "Today",
@@ -503,7 +503,7 @@ describe("VisitedPullRequests", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     expect(headings(column)).toEqual(["Today", "Yesterday", "Earlier"]);
     // Every row is drawn, whether or not it could print an age.
@@ -519,7 +519,7 @@ describe("VisitedPullRequests", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const column = screen.getByRole("complementary", {
-      name: "Pull requests you have opened",
+      name: "Reviews you have opened",
     });
     expect(headings(column)).toEqual(["Today", "Earlier"]);
   });

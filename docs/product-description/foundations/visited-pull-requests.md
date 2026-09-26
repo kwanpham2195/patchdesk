@@ -43,7 +43,7 @@ A local row stands for every local Review of one repository checkout, whatever i
 
 A Review stored before Patchdesk recorded opens has no title and no open time. Its row uses the reference as its label and shows no age, and it is ordered by the time its record was last updated until the next time it is opened.
 
-The column has three settled states besides its rows. With no Review in the workspace it says `Opened pull requests appear here.` When the local read fails it says `Could not load recent pull requests.` and offers no Retry. Until the first read answers, the list is blank, with no loading indicator.
+The column has three settled states besides its rows. With no Review in the workspace it says `Pull requests and local reviews you open appear here.` When the local read fails it says `Could not load recent reviews.` and offers no Retry. Until the first read answers, the list is blank, with no loading indicator.
 
 While a workspace switch is in flight, and on a fresh install before the first account save creates a workspace, the header strip has no label and the list is blank.
 
@@ -59,7 +59,7 @@ A local row opens the working tree through the same path as **Open review** in t
 
 A row has no select step and no pending state of its own, unlike a [Pull requests row](../pull-requests/opening-a-review.md), which shows `Opening…` while it works.
 
-The collapse toggle is the first control in the titlebar. Its label reads `Collapse the pull requests you have opened` or `Expand the pull requests you have opened`. Pressing it hides or shows the whole column at once, with no narrow rail left behind, and saves the choice immediately. Expanding reads the list again.
+The collapse toggle is the first control in the titlebar. Its label reads `Collapse the reviews you have opened` or `Expand the reviews you have opened`. Pressing it hides or shows the whole column at once, with no narrow rail left behind, and saves the choice immediately. Expanding reads the list again.
 
 ### While the action runs
 
