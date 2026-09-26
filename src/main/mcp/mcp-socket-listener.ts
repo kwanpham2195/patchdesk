@@ -319,8 +319,12 @@ async function answerLine(
     serialized = serializeReply(err(storageFailure), bounds);
   }
   const durationMs = Math.round(performance.now() - startedAt);
+  // `review_local` names no Review in its arguments; the one it opened is in its result (#522).
   const reviewId = parseReviewId(
-    readObjectField(request.output.arguments, "reviewId"),
+    readObjectField(request.output.arguments, "reviewId") ??
+      (reply._tag === "ok"
+        ? readObjectField(reply.value, "reviewId")
+        : undefined),
   );
   options.logs.write({
     process: "main",
