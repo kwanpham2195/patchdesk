@@ -123,7 +123,6 @@ export function AnalysisReader({
     clear: clearFindingError,
     record: recordFindingError,
   } = useFindingErrors(result, findingStatuses);
-  const verifiedSteps = verification?.checkedSteps ?? new Set<number>();
   const unhandledFindings = unhandledAnalysisFindings(
     result,
     findingStatuses,
@@ -348,44 +347,10 @@ export function AnalysisReader({
       </Card>
 
       {result.validationPlan.length === 0 ? null : (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>Verification</CardTitle>
-            <CardDescription>
-              {verifiedSteps.size} of {result.validationPlan.length} checked.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {verification?.saveFailed === true ? (
-              <InlineError className="pb-2">
-                Verification ticks could not be saved.
-              </InlineError>
-            ) : null}
-            <div className="flex flex-col gap-3">
-              {result.validationPlan.map((step, index) => {
-                const id = `analysis-verification-${index}`;
-                return (
-                  <Field key={step} orientation="horizontal">
-                    <Checkbox
-                      id={id}
-                      checked={verifiedSteps.has(index)}
-                      disabled={verification === undefined}
-                      onCheckedChange={(checked) =>
-                        verification?.setStepChecked(index, checked)
-                      }
-                    />
-                    <FieldLabel
-                      htmlFor={id}
-                      className="text-sm leading-relaxed font-normal"
-                    >
-                      <GeneratedMarkdown markdown={step} />
-                    </FieldLabel>
-                  </Field>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        <AnalysisVerificationCard
+          plan={result.validationPlan}
+          verification={verification}
+        />
       )}
 
       {supportingDetailCount === 0 ? null : (
@@ -411,6 +376,57 @@ function applySelectionFor(
     onChange: (selected: boolean) =>
       localApply.setSelected(findingId, selected),
   };
+}
+
+/** The Analysis verification plan, each step a checkbox ticked locally. */
+function AnalysisVerificationCard({
+  plan,
+  verification,
+}: {
+  readonly plan: ReadonlyArray<string>;
+  readonly verification: AnalysisVerificationControls | undefined;
+}): React.JSX.Element {
+  const verifiedSteps = verification?.checkedSteps ?? new Set<number>();
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Verification</CardTitle>
+        <CardDescription>
+          {verifiedSteps.size} of {plan.length} checked.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {verification?.saveFailed === true ? (
+          <InlineError className="pb-2">
+            Verification ticks could not be saved.
+          </InlineError>
+        ) : null}
+        <div className="flex flex-col gap-3">
+          {plan.map((step, index) => {
+            const id = `analysis-verification-${index}`;
+            return (
+              <Field key={step} orientation="horizontal">
+                <Checkbox
+                  id={id}
+                  checked={verifiedSteps.has(index)}
+                  disabled={verification === undefined}
+                  onCheckedChange={(checked) =>
+                    verification?.setStepChecked(index, checked)
+                  }
+                />
+                <FieldLabel
+                  htmlFor={id}
+                  className="text-sm leading-relaxed font-normal"
+                >
+                  <GeneratedMarkdown markdown={step} />
+                </FieldLabel>
+              </Field>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function AnalysisVerdictCard({
