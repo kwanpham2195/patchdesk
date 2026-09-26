@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { canonicalPatchFlags } from "../process/git-patch-flags";
 import type { CommandFailure, CommandRunner } from "./command-runner";
 import {
   commandTimeoutMs,
@@ -142,7 +143,7 @@ export class GitHubDiffReader {
           "-C",
           input.fetchedRefs.repositoryPath,
           "diff",
-          "--no-ext-diff",
+          ...canonicalPatchFlags,
           `${input.fetchedRefs.baseRef}...${input.fetchedRefs.headRef}`,
         ],
         timeoutMs: commandTimeoutMs,
