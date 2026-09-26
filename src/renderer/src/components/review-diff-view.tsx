@@ -38,6 +38,7 @@ import {
   type SinceReviewControl,
 } from "./review-diff-toolbar";
 import { useReviewDiffRegionName } from "../hooks/use-review-diff-region-name";
+import type { PendingReviewDrafts } from "../hooks/use-pending-review-drafts";
 import {
   SplitViewFallbackContext,
   useSplitViewFallback,
@@ -206,9 +207,7 @@ export type LocalCommentAuthoringSaveInput = {
   readonly fingerprint?: ReviewAnchorFingerprint;
   readonly body: string;
 };
-// Re-exported for callers (e.g. diff-workbench.tsx) that historically import
-// this type from the diff-view module; the type itself now lives with the
-// shared conversation thread card.
+// The type lives with the shared conversation thread card; callers such as diff-workbench.tsx import it from here.
 export type { ReviewConversationActions };
 
 type ReviewDiffViewProps = {
@@ -239,11 +238,11 @@ type ReviewDiffViewProps = {
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   /** GitHub pending-review composer actions; drives the inline action split. */
   readonly pendingReviewComposer?: PendingReviewComposerActions;
+  /** Kept by the workbench so a failed draft outlives this view (#526); pending-review actions need it. */
+  readonly pendingReviewDrafts?: PendingReviewDrafts;
   /** Direct GitHub conversation actions; the surface wraps them to apply published mutations locally. */
   readonly conversationActions?: ReviewConversationActions;
-  /** What an inline card's Markdown resolves its images and links against.
-   * Absent on the surfaces that render no GitHub-authored body -- the
-   * walkthrough, the brief's hunk preview, and finding evidence. */
+  /** What an inline card's Markdown resolves images and links against; absent where no GitHub-authored body renders. */
   readonly bodyContext?: PullRequestBodyContext;
   /** Drives the toolbar Scope picker; absent where the diff cannot be filtered by bucket. */
   readonly scopeFilter?: ScopeFilterControl | undefined;
@@ -276,6 +275,7 @@ function ReviewDiffSurface({
   virtualized = true,
   localCommentAuthoring,
   pendingReviewComposer,
+  pendingReviewDrafts,
   conversationActions,
   bodyContext = EMPTY_BODY_CONTEXT,
   scopeFilter,
@@ -301,6 +301,7 @@ function ReviewDiffSurface({
     viewer,
     localCommentAuthoring,
     pendingReviewComposer,
+    pendingReviewDrafts,
     conversationActions,
   });
   const {

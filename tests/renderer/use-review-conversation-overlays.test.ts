@@ -9,7 +9,14 @@ import type {
   LocalCommentAuthoring,
   ReviewInlineAnnotation,
 } from "../../src/renderer/src/components/review-diff-view";
-import { useReviewConversationOverlays } from "../../src/renderer/src/hooks/use-review-conversation-overlays";
+import {
+  useReviewConversationOverlays,
+  type ReviewConversationOverlays,
+} from "../../src/renderer/src/hooks/use-review-conversation-overlays";
+import {
+  usePendingReviewDrafts,
+  type PendingReviewDrafts,
+} from "../../src/renderer/src/hooks/use-pending-review-drafts";
 
 /**
  * The two id spaces one published comment lives in: the create receipt carries
@@ -28,6 +35,17 @@ const PATCH = [
   " const a = 1;",
   "+const b = 2;",
   " const c = 3;",
+  "",
+].join("\n");
+// Refresh moved the change down the file: line 2 is no longer in the diff, and the added line is now 6.
+const REFRESHED_PATCH = [
+  "diff --git a/src/a.ts b/src/a.ts",
+  "--- a/src/a.ts",
+  "+++ b/src/a.ts",
+  "@@ -5,2 +5,2 @@",
+  " const e = 5;",
+  "-const f = 6;",
+  "+const f = 7;",
   "",
 ].join("\n");
 
@@ -80,39 +98,94 @@ function renderOverlays(
         viewer: { current: null },
         localCommentAuthoring: { enabled: true, onSave },
         pendingReviewComposer: undefined,
+        pendingReviewDrafts: undefined,
         conversationActions: undefined,
       }),
     { initialProps: { annotations: initialAnnotations } },
   );
 }
 
+function pendingOverlaysInput(
+  patch: string,
+  onStartReview: (body: string) => Promise<void>,
+  canAuthor: (line: number) => boolean,
+  pendingReviewDrafts: PendingReviewDrafts,
+): Parameters<typeof useReviewConversationOverlays>[0] {
+  return {
+    patch,
+    annotations: [],
+    viewer: { current: null },
+    localCommentAuthoring: {
+      enabled: true,
+      canAuthor: (location) => canAuthor(location.line),
+      onSave: async () => undefined,
+    },
+    pendingReviewComposer: {
+      state: { state: "none" },
+      busy: false,
+      onStartReview: async (_anchor, body) => onStartReview(body),
+      onAddReviewComment: async () => undefined,
+    },
+    pendingReviewDrafts,
+    conversationActions: undefined,
+  };
+}
+
+/** The diff and the workbench's drafts in one render, the way a mounted Diff tab sees them. */
 function renderPendingOverlays(
   onStartReview: (body: string) => Promise<void>,
   canAuthor: (line: number) => boolean = () => true,
 ) {
+  return renderHook(
+    ({ patch }: { patch: string }) =>
+      useReviewConversationOverlays(
+        pendingOverlaysInput(
+          patch,
+          onStartReview,
+          canAuthor,
+          usePendingReviewDrafts("review-a"),
+        ),
+      ),
+    { initialProps: { patch: PATCH } },
+  );
+}
+
+/** The workbench's drafts on their own, so the diff can unmount and mount again beneath them. */
+function renderWorkbenchDrafts() {
+  return renderHook(
+    ({ reviewId }: { reviewId: string }) => usePendingReviewDrafts(reviewId),
+    { initialProps: { reviewId: "review-a" } },
+  );
+}
+
+function mountDiff(
+  workbench: ReturnType<typeof renderWorkbenchDrafts>,
+  onStartReview: (body: string) => Promise<void> = rejectedStart,
+) {
   return renderHook(() =>
-    useReviewConversationOverlays({
-      patch: PATCH,
-      annotations: [],
-      viewer: { current: null },
-      localCommentAuthoring: {
-        enabled: true,
-        canAuthor: (location) => canAuthor(location.line),
-        onSave: async () => undefined,
-      },
-      pendingReviewComposer: {
-        state: { state: "none" },
-        busy: false,
-        onStartReview: async (_anchor, body) => onStartReview(body),
-        onAddReviewComment: async () => undefined,
-      },
-      conversationActions: undefined,
-    }),
+    useReviewConversationOverlays(
+      pendingOverlaysInput(
+        PATCH,
+        onStartReview,
+        () => true,
+        workbench.result.current,
+      ),
+    ),
+  );
+}
+
+function failedDraftBodies(overlays: ReviewConversationOverlays) {
+  return overlays.displayedAnnotations.flatMap((annotation) =>
+    annotation.pendingReviewWrite?.status === "failed"
+      ? [annotation.pendingReviewWrite.body]
+      : [],
   );
 }
 
 async function rejectPendingDraft(
-  rendered: ReturnType<typeof renderPendingOverlays>,
+  rendered: {
+    readonly result: { readonly current: ReviewConversationOverlays };
+  },
   body: string,
 ): Promise<void> {
   act(() =>
@@ -297,15 +370,10 @@ describe("pending-review draft recovery", () => {
   });
 
   it("keeps a failed draft whose lines Refresh removed and restores it on a newly selected line", async () => {
-    let refreshed = false;
-    const rendered = renderPendingOverlays(
-      rejectedStart,
-      (line) => !refreshed || line !== 2,
-    );
+    const rendered = renderPendingOverlays(rejectedStart);
     await rejectPendingDraft(rendered, "Draft whose lines went away");
 
-    refreshed = true;
-    rendered.rerender();
+    rendered.rerender({ patch: REFRESHED_PATCH });
 
     expect(
       rendered.result.current.displayedAnnotations.some(
@@ -314,7 +382,7 @@ describe("pending-review draft recovery", () => {
     ).toBe(false);
     expect(rendered.result.current.draftRecovery).toBeDefined();
     act(() =>
-      rendered.result.current.beginAccessibleAuthoring(PATH, 3, "additions"),
+      rendered.result.current.beginAccessibleAuthoring(PATH, 6, "additions"),
     );
     expect(
       rendered.result.current.localComposerAnnotation?.localComposer
@@ -324,18 +392,13 @@ describe("pending-review draft recovery", () => {
   });
 
   it("drops a failed draft whose lines Refresh removed when the maintainer dismisses it", async () => {
-    let refreshed = false;
-    const rendered = renderPendingOverlays(
-      rejectedStart,
-      (line) => !refreshed || line !== 2,
-    );
+    const rendered = renderPendingOverlays(rejectedStart);
     await rejectPendingDraft(rendered, "Draft to drop");
-    refreshed = true;
-    rendered.rerender();
+    rendered.rerender({ patch: REFRESHED_PATCH });
 
     act(() => rendered.result.current.draftRecovery?.onDismiss());
     act(() =>
-      rendered.result.current.beginAccessibleAuthoring(PATH, 3, "additions"),
+      rendered.result.current.beginAccessibleAuthoring(PATH, 6, "additions"),
     );
 
     expect(rendered.result.current.draftRecovery).toBeUndefined();
@@ -346,12 +409,64 @@ describe("pending-review draft recovery", () => {
   });
 });
 
-async function rejectedStart(): Promise<void> {
-  throw new PatchdeskApiError(
+describe("pending-review drafts held by the workbench", () => {
+  it("shows a draft refused while the diff was unmounted once the diff mounts again", async () => {
+    const workbench = renderWorkbenchDrafts();
+    let refuse: () => void = () => undefined;
+    const first = mountDiff(
+      workbench,
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          refuse = () => reject(rejection());
+        }),
+    );
+    act(() =>
+      first.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+    );
+    const start =
+      first.result.current.localComposerAnnotation?.localComposer?.pendingReview
+        ?.onStartReview;
+    if (start === undefined) throw new Error("expected Start a review");
+    let sending: Promise<void> = Promise.resolve();
+    act(() => {
+      sending = start(
+        { path: PATH, startLine: 2, line: 2, side: "new" },
+        "Draft sent before a tab switch",
+      );
+    });
+
+    first.unmount();
+    await act(async () => {
+      refuse();
+      await sending;
+    });
+
+    expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([
+      "Draft sent before a tab switch",
+    ]);
+  });
+
+  it("drops a Review's drafts when another Review opens", async () => {
+    const workbench = renderWorkbenchDrafts();
+    await rejectPendingDraft(mountDiff(workbench), "Draft on Review A");
+
+    workbench.rerender({ reviewId: "review-b" });
+    expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([]);
+    workbench.rerender({ reviewId: "review-a" });
+    expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([]);
+  });
+});
+
+function rejection(): PatchdeskApiError {
+  return new PatchdeskApiError(
     "github_rejected",
     422,
     false,
     "rejected-write",
     "A pending review already exists.",
   );
+}
+
+async function rejectedStart(): Promise<void> {
+  throw rejection();
 }

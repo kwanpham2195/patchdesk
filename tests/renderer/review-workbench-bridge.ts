@@ -7,6 +7,7 @@ import type {
   LocalApiDesktopRequest,
 } from "../../src/main/ipc-contract";
 import {
+  failure,
   installDesktopDouble,
   type DesktopDouble,
 } from "./fake-desktop-response";
@@ -56,6 +57,14 @@ export type WorkbenchBridgeHandler = (input: {
   // oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above
 }) => Promise<unknown> | unknown;
 
+/** A handler returns this to answer with the local API's refusal instead of a success. */
+export class Refusal {
+  constructor(
+    readonly status: number,
+    readonly body: RawJsonValue,
+  ) {}
+}
+
 let installed: DesktopDouble | undefined;
 
 /**
@@ -67,14 +76,18 @@ export function bridge(
 ): Mock<(input: DesktopRequest) => Promise<DesktopResponse>> {
   const route = async (
     input: LocalApiDesktopRequest,
-  ): Promise<DesktopResponse> => ({
-    ok: true,
-    status: 200,
-    correlationId: input.path,
-    // SAFETY: every fixture body in these tests is JSON data; the handler's
-    // return type is `unknown` only because each test shapes its own payload.
-    body: (await handler(input)) as RawJsonValue | undefined,
-  });
+  ): Promise<DesktopResponse> => {
+    const answer = await handler(input);
+    if (answer instanceof Refusal) return failure(answer.body, answer.status);
+    return {
+      ok: true,
+      status: 200,
+      correlationId: input.path,
+      // SAFETY: every fixture body in these tests is JSON data; the handler's
+      // return type is `unknown` only because each test shapes its own payload.
+      body: answer as RawJsonValue | undefined,
+    };
+  };
   installed = installDesktopDouble(
     Object.fromEntries(WORKBENCH_PATHS.map((path) => [path, route])),
   );

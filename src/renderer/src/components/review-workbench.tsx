@@ -70,6 +70,7 @@ import { useSinceReviewMode } from "../hooks/use-since-review-mode";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
 import type { ViewedFilesControls } from "../hooks/use-viewed-files";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
+import { usePendingReviewDrafts } from "../hooks/use-pending-review-drafts";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
@@ -341,6 +342,8 @@ export function ReviewWorkbench({
     model,
     ...definedProps({ initialState, onPositionCommitted }),
   });
+  // The Diff tab unmounts on a tab switch and remounts on a new head, so its failed drafts live here (#526).
+  const pendingReviewDrafts = usePendingReviewDrafts(model.review.id);
   const { scopeFilteredPaths, scopeFilter, clearScopeBucket } =
     useReviewScopeFilter({
       fullPatch: model.fullPatch,
@@ -890,12 +893,10 @@ export function ReviewWorkbench({
                             : {
                                 localCommentAuthoring: commitCommentAuthoring,
                               })}
-                        {...(actions.pendingReviewComposer === undefined
-                          ? {}
-                          : {
-                              pendingReviewComposer:
-                                actions.pendingReviewComposer,
-                            })}
+                        {...definedProps({
+                          pendingReviewComposer: actions.pendingReviewComposer,
+                        })}
+                        pendingReviewDrafts={pendingReviewDrafts}
                         {...(diffConversationActions === undefined
                           ? {}
                           : { conversationActions: diffConversationActions })}
