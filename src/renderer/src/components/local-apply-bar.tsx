@@ -39,33 +39,11 @@ export function LocalApplyBar({
   readonly evidencePatch: string | undefined;
 }): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
-  // The rule that gives a Finding row its Apply checkbox.
-  const hasApplicableSuggestion = useMemo(
-    () =>
-      evidencePatch !== undefined &&
-      findings.some(
-        (finding) =>
-          (finding.disposition ?? "open") === "open" &&
-          finding.suggestedReplacement !== undefined &&
-          resolveSuggestionTarget(
-            evidencePatch,
-            definedProps({
-              file: finding.file,
-              lineStart: finding.lineStart,
-              lineEnd: finding.lineEnd,
-              diffSide: finding.diffSide,
-            }),
-          ) !== undefined,
-      ),
+  const applicable = useMemo(
+    () => offersApply(findings, evidencePatch),
     [evidencePatch, findings],
   );
-  if (
-    !hasApplicableSuggestion &&
-    controls.lock === undefined &&
-    controls.refusal === undefined &&
-    controls.notice === undefined
-  )
-    return null;
+  if (!applicable && !hasApplyOutcome(controls)) return null;
   const selected = findings.filter((finding) =>
     controls.selectedIds.has(finding.id),
   );
@@ -167,5 +145,36 @@ export function LocalApplyBar({
         </p>
       )}
     </div>
+  );
+}
+
+/** The rule that gives a Finding row its Apply checkbox: open, with a suggestion that resolves in the patch. */
+function offersApply(
+  findings: ReadonlyArray<AnalysisFinding>,
+  evidencePatch: string | undefined,
+): boolean {
+  if (evidencePatch === undefined) return false;
+  return findings.some(
+    (finding) =>
+      (finding.disposition ?? "open") === "open" &&
+      finding.suggestedReplacement !== undefined &&
+      resolveSuggestionTarget(
+        evidencePatch,
+        definedProps({
+          file: finding.file,
+          lineStart: finding.lineStart,
+          lineEnd: finding.lineEnd,
+          diffSide: finding.diffSide,
+        }),
+      ) !== undefined,
+  );
+}
+
+/** An unsettled Apply to check, or a message from the last one, keeps the bar on screen. */
+function hasApplyOutcome(controls: LocalApplyControls): boolean {
+  return (
+    controls.lock !== undefined ||
+    controls.refusal !== undefined ||
+    controls.notice !== undefined
   );
 }
