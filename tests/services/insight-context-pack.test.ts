@@ -4,7 +4,8 @@ import { dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { parseLocalBranchName } from "../../src/domain/ids";
+import { definedProps } from "../../src/domain/defined-props";
+import { parseAbsolutePath, parseLocalBranchName } from "../../src/domain/ids";
 import { ok } from "../../src/domain/result";
 import type { InsightInvocationInput } from "../../src/services/insight-run-coordinator";
 import {
@@ -149,6 +150,44 @@ describe("Insight run context pack", () => {
       "BEGIN PULL REQUEST DESCRIPTION\nAdds a guard to recovery.\nEND PULL REQUEST DESCRIPTION",
     );
   });
+
+  it.each([
+    {
+      name: "a pull request",
+      localSource: undefined,
+      source: "Pull request #42",
+    },
+    {
+      name: "a linked checkout's branch",
+      localSource: {
+        kind: "branch" as const,
+        branch: must(parseLocalBranchName("feat/x")),
+        baseBranch: must(parseLocalBranchName("main")),
+        checkout: must(parseAbsolutePath("/work/linked")),
+      },
+      source: "Branch feat/x against main in linked",
+    },
+  ])(
+    "names $name as the Review source in Analysis input (#495)",
+    async ({ localSource, source }) => {
+      let reviewInput: string | undefined;
+      const value = await fixture(
+        {
+          async invoke(input) {
+            reviewInput = await readFile(input.reviewInputPath ?? "", "utf8");
+            return ok(analysisResult);
+          },
+        },
+        definedProps({ localSource }),
+      );
+
+      await run(value);
+
+      expect(reviewInput).toContain(
+        `# Review input\n\nRepository: octo-org/patchdesk\nSource: ${source}\n`,
+      );
+    },
+  );
 
   it("rebuilds an Analysis pack written without the pull request description", async () => {
     const value = await fixture(completes);

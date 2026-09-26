@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { composeReviewPrompt } from "../../src/services/review-rubric";
 
 const prompt = composeReviewPrompt({
-  reviewInput: "# PR review input",
+  reviewInput: "# Review input",
   context: '{"projectReviewCriteria":[]}',
   fullPatch: "patch",
   language: "en",
@@ -10,6 +10,13 @@ const prompt = composeReviewPrompt({
 
 describe("review rubric", () => {
   it("uses the complete patch", () => expect(prompt).toContain("patch"));
+
+  it("asks for a merge decision on the represented change, whatever its source (#495)", () => {
+    expect(prompt.split("\n")[0]).toBe(
+      "Review the complete represented change and decide whether it should merge.",
+    );
+    expect(prompt).not.toContain("represented pull request");
+  });
 
   it("carries the Analysis writing guidance", () => {
     expect(prompt).toContain("ASD-STE100 / Simplified Technical English");
@@ -43,7 +50,7 @@ describe("review rubric", () => {
   });
 
   it("labels each input section", () => {
-    expect(prompt).toContain("REVIEW INPUT:\n\n# PR review input");
+    expect(prompt).toContain("REVIEW INPUT:\n\n# Review input");
     expect(prompt).toContain(
       'REVIEW CONTEXT DOCUMENT:\n\n{"projectReviewCriteria":[]}',
     );

@@ -729,7 +729,7 @@ describe("buildCodexAnalysisPrompt", () => {
 
   it("carries the shared Analysis prompt and adds no second severity or verdict rule", () => {
     const shared = composeReviewPrompt({
-      reviewInput: "# PR review input",
+      reviewInput: "# Review input",
       context: '{"projectReviewCriteria":[]}',
       fullPatch: "diff --git a/src/a.ts b/src/a.ts",
       language: "en",

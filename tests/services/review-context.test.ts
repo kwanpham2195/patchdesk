@@ -49,7 +49,11 @@ describe("ReviewContextService", () => {
       const result = await service.prepare({
         worktreePath: worktree,
         preparedDirectory: attempt,
-        pr: { title: "Fixture PR", headSha: "abcdef" },
+        pr: {
+          repository: "octo-org/patchdesk",
+          source: "Fixture PR",
+          headSha: "abcdef",
+        },
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
         changedFiles: ["src/a.ts"],
@@ -116,7 +120,11 @@ describe("ReviewContextService", () => {
       const result = await service.prepare({
         worktreePath: worktree,
         preparedDirectory: attempt,
-        pr: { title: "Fixture PR", headSha: "abcdef" },
+        pr: {
+          repository: "octo-org/patchdesk",
+          source: "Fixture PR",
+          headSha: "abcdef",
+        },
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
         changedFiles: ["src/a.ts"],
@@ -153,7 +161,11 @@ describe("ReviewContextService", () => {
       const result = await service.prepare({
         worktreePath: worktree,
         preparedDirectory: attempt,
-        pr: { title: "Fixture PR", headSha: "abcdef" },
+        pr: {
+          repository: "octo-org/patchdesk",
+          source: "Fixture PR",
+          headSha: "abcdef",
+        },
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
         changedFiles: ["src/a.ts"],
@@ -213,7 +225,11 @@ describe("ReviewContextService", () => {
       const result = await new ReviewContextService().prepare({
         worktreePath: worktree,
         preparedDirectory: attempt,
-        pr: { title: "Fixture PR", headSha: "abcdef" },
+        pr: {
+          repository: "octo-org/patchdesk",
+          source: "Fixture PR",
+          headSha: "abcdef",
+        },
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
         changedFiles: [],
@@ -276,7 +292,8 @@ describe("ReviewContextService", () => {
         worktreePath: root,
         preparedDirectory: attempt,
         pr: {
-          title: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789",
+          repository: "octo-org/patchdesk",
+          source: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789",
           headSha: "abcdef",
         },
         comments: { threads: [] },
@@ -304,7 +321,11 @@ describe("ReviewContextService", () => {
       const result = await new ReviewContextService().prepare({
         worktreePath: root,
         preparedDirectory: attempt,
-        pr: { title: "Fixture PR", headSha: "abcdef" },
+        pr: {
+          repository: "octo-org/patchdesk",
+          source: "Fixture PR",
+          headSha: "abcdef",
+        },
         comments: { threads: [] },
         checks: { overall: "passing" },
         changedFiles: [],
@@ -318,7 +339,9 @@ describe("ReviewContextService", () => {
       ).resolves.toContain("Fixture PR");
       await expect(
         readFile(join(attempt, "review-input.md"), "utf8"),
-      ).resolves.toContain("PR review input");
+      ).resolves.toContain(
+        "# Review input\n\nRepository: octo-org/patchdesk\nSource: Fixture PR\nHead: abcdef\nChanged files: 0\n",
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -349,7 +372,11 @@ describe("ReviewContextService", () => {
       const result = await new ReviewContextService().prepare({
         worktreePath: worktree,
         preparedDirectory: attempt,
-        pr: { title: "Fixture PR", headSha: "abcdef" },
+        pr: {
+          repository: "octo-org/patchdesk",
+          source: "Fixture PR",
+          headSha: "abcdef",
+        },
         comments: { threads },
         checks: { overall: "passing", checks },
         changedFiles,

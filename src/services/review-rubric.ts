@@ -43,7 +43,7 @@ export function composeReviewPrompt(input: {
   readonly language: InsightLanguage;
 }): string {
   return [
-    "Review the complete represented pull request and decide whether it should merge.",
+    "Review the complete represented change and decide whether it should merge.",
     insightOutputGuidance("analysis", input.language),
     SEVERITY_RUBRIC,
     FINDING_CONTENT,
