@@ -13,18 +13,20 @@ import * as v from "valibot";
 import type { GitHubCredentials } from "../adapters/github/github-credentials";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { isPathContained } from "../adapters/storage/path-containment";
-import type {
-  GitSha,
-  GitHubHost,
-  GitHubOwner,
-  GitHubRepoName,
-  PullRequestNumber,
-  ReviewSessionId,
-  WorkspaceProfileId,
+import {
+  parseReviewSessionId,
+  type GitSha,
+  type GitHubHost,
+  type GitHubOwner,
+  type GitHubRepoName,
+  type PullRequestNumber,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import type { ReviewLocalCheckoutWarning } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { definedProps } from "../domain/defined-props";
+import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
 
 export type GitReadExecutor = {
@@ -63,6 +65,12 @@ export type WorktreeCleanupInput = {
   readonly sessionId: ReviewSessionId;
   readonly localPath?: string;
   readonly targetPath: string;
+};
+
+/** One ref under `refs/patchdesk/`, and the session whose checkout it pins. */
+export type ManagedRef = {
+  readonly ref: string;
+  readonly sessionId: ReviewSessionId;
 };
 
 /** The managed refs an ownership marker names, which cleanup deletes with the worktree. */
@@ -369,6 +377,51 @@ export class ReviewWorktreeService {
     ref: string,
   ): Promise<void> {
     await this.git.run(["git", "-C", repositoryPath, "update-ref", "-d", ref]);
+  }
+
+  /**
+   * The profile's managed refs in one repository, each with the session it
+   * names. Undefined when the repository cannot be read.
+   */
+  async listManagedRefs(
+    profileId: WorkspaceProfileId,
+    localPath: string,
+  ): Promise<ReadonlyArray<ManagedRef> | undefined> {
+    const repositoryPath = await realpath(localPath).catch(() => undefined);
+    if (repositoryPath === undefined) return undefined;
+    const listed = await this.git.run([
+      "git",
+      "-C",
+      repositoryPath,
+      "for-each-ref",
+      "--format=%(refname)",
+      `refs/patchdesk/local/${profileId}/`,
+      `refs/patchdesk/reviews/${profileId}/`,
+    ]);
+    if (listed._tag === "err") return undefined;
+    return listed.value.stdout.split("\n").flatMap((ref) => {
+      const sessionId = parseReviewSessionId(ref.split("/")[4]);
+      if (sessionId._tag === "err") return [];
+      const owned = [
+        pullRequestSessionRef(profileId, sessionId.value, "base"),
+        pullRequestSessionRef(profileId, sessionId.value, "head"),
+        localSessionHeadRef(profileId, sessionId.value),
+      ];
+      return owned.includes(ref) ? [{ ref, sessionId: sessionId.value }] : [];
+    });
+  }
+
+  /** Deletes managed refs one at a time, then prunes Git's metadata of removed worktrees. */
+  async deleteManagedRefs(
+    localPath: string,
+    refs: ReadonlyArray<ManagedRef>,
+  ): Promise<void> {
+    const repositoryPath = await realpath(localPath).catch(() => undefined);
+    if (repositoryPath === undefined) return;
+    await mapConcurrent(refs, 1, ({ ref }) =>
+      this.deleteManagedRef(repositoryPath, ref),
+    );
+    await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
   }
 
   /**

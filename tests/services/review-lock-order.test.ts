@@ -257,21 +257,23 @@ function localRetention(
   gate: ReviewLifecycleGate,
   coordinator: ReviewOperationCoordinator,
 ): LocalReviewRetention {
+  const localReview = {
+    id: reviewId,
+    identity: { source: { kind: "working_tree" } },
+    updatedAt: at,
+  };
   return new LocalReviewRetention(
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
+      profiles: { load: async () => ok({ id: profileId, repos: [] }) },
       reviews: {
-        list: async () =>
-          ok({
-            reviews: [
-              { id: reviewId, identity: { source: { kind: "working_tree" } } },
-            ],
-            unreadable: 0,
-          }),
+        list: async () => ok({ reviews: [localReview], unreadable: 0 }),
+        load: async () => ok(localReview),
       },
       localApplyOperations: { load: async () => err({ reason: "io" }) },
       lifecycleGate: gate,
       coordinator,
+      now: () => at,
     } as never,
   );
 }
@@ -388,7 +390,8 @@ describe("global lock order: Review lock outer, profile lock inner", () => {
 
     await localRetention(gate, coordinator).sweepProfile(profileId);
 
-    expect(recorder.chains).toEqual(["review", "review>profile"]);
+    // The Review's prune nests inside its Review lock; the orphan-ref pass takes the profile lock alone.
+    expect(recorder.chains).toEqual(["review", "review>profile", "profile"]);
     expect(recorder.violations).toEqual([]);
   });
 
