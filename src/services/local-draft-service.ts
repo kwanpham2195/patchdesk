@@ -103,6 +103,9 @@ export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;
 };
 
+/** What the coding agent reads back: the Local drafts and the prompt they render as. */
+export type LocalFeedback = LocalDraftList & { readonly markdown: string };
+
 type LocalDraftDependencies = {
   readonly reviews: Pick<ReviewStore, "load" | "save">;
   readonly sessions: Pick<ReviewSessionStore, "load">;
@@ -188,20 +191,37 @@ export class LocalDraftService {
     );
   }
 
-  /** The Local drafts as one prompt for the coding agent; a read, so it takes no lock. */
-  async agentPrompt(
+  /**
+   * The Local drafts as the workbench lists them, each with its carry state,
+   * and the prompt Copy as agent prompt puts on the clipboard (ADR 0052
+   * `get_feedback`). A read, so it takes no lock.
+   */
+  async feedback(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<{ readonly markdown: string }, LocalDraftFailure>> {
+  ): Promise<Result<LocalFeedback, LocalDraftFailure>> {
     const loaded = await this.dependencies.reviews.load(profileId, reviewId);
     if (loaded._tag === "err")
       return err({
         reason: loaded.error.reason === "not_found" ? "not_found" : "storage",
       });
     if (!isLocalReview(loaded.value)) return err({ reason: "not_applicable" });
+    const drafts = loaded.value.localDrafts ?? [];
     return ok({
-      markdown: renderLocalDraftsAsAgentPrompt(loaded.value.localDrafts ?? []),
+      localDrafts: drafts.map(projectLocalDraft),
+      markdown: renderLocalDraftsAsAgentPrompt(drafts),
     });
+  }
+
+  /** The Local drafts as one prompt for the coding agent. */
+  async agentPrompt(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<{ readonly markdown: string }, LocalDraftFailure>> {
+    const feedback = await this.feedback(profileId, reviewId);
+    return feedback._tag === "ok"
+      ? ok({ markdown: feedback.value.markdown })
+      : feedback;
   }
 
   private async locked(

@@ -310,3 +310,37 @@ export function projectLocalDraft(draft: LocalDraft): LocalDraftEntry {
         suggests: draft.suggestion !== undefined,
       };
 }
+
+/** A Finding of one Analysis run that has a Local draft: drafted, or applied once Apply wrote its suggestion. */
+export type FindingDraftState = "drafted" | "applied";
+
+/**
+ * The drafted Findings of Analysis run `analysisRunId`, keyed by Finding id.
+ * The workbench's Finding rows and ADR 0052's `get_insight` both read it, so
+ * the agent and the UI never disagree on which Findings are drafted.
+ */
+export function findingDraftStates(
+  entries: ReadonlyArray<
+    | { readonly kind: "note" }
+    | {
+        readonly kind: "finding";
+        readonly findingId: string;
+        readonly analysisRunId: string;
+        readonly state?: LocalDraftState;
+      }
+  >,
+  analysisRunId: string | undefined,
+): ReadonlyMap<string, FindingDraftState> {
+  return new Map(
+    entries.flatMap((entry) =>
+      entry.kind === "finding" && entry.analysisRunId === analysisRunId
+        ? [
+            [
+              entry.findingId,
+              entry.state === "applied" ? "applied" : "drafted",
+            ] as const,
+          ]
+        : [],
+    ),
+  );
+}
