@@ -70,6 +70,14 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Change intent.** The spec a local Review's change is checked against: Markdown the maintainer entered, or a repository-relative spec file read at the reviewed revision. Only Analysis reads it, as the change's stated goal, and an Analysis result names the intent it was checked against.
 
+**Local draft.** A Finding the maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent, copied as one prompt or read over MCP, and never becomes a GitHub comment.
+
+**Coding agent.** A terminal agent, such as Claude Code or Codex, that edits a checkout and reaches Patchdesk through the `patchdesk mcp` command. It can open and refresh a local Review, ask for Insights, and read results and Local drafts; it cannot run an Insight, Apply, or change the maintainer's notes.
+
+**Agent run request.** A coding agent's request for one Insight on a local Review's current session. It spends nothing by itself: it waits on the Agent requests bar until the maintainer presses Run, which opens the ordinary Insight run dialog, or Decline, which is final for that session.
+
+**Prepared session.** A session a coding agent's refresh prepared for newer content in the checkout while the local Review stays on the session the maintainer reads. The header shows Updates available, and the maintainer's Refresh moves the Review to it.
+
 **Represented revision.** The exact head, base, and canonical patch identity a Review session presents. User-visible evidence and Insights remain bound to it.
 
 **Represented-review worktree.** Patchdesk's immutable checkout for a Review session's represented revision. It is separate from the maintainer's checkout and is available only to bounded, read-only review inspection.

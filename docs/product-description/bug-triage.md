@@ -4,11 +4,13 @@ A consolidated record of defects raised by the product documents, the verificati
 
 ## Summary
 
-Twenty-four entries. The eight from the first pass are fixed: one former high-severity work-loss risk and seven former medium-severity correctness, focus, or feedback risks, clustered in workspace setup, switching, and discovery. B-01, B-02, and B-07 have post-fix desktop evidence, and B-08's exact Reply-textarea live rerun remains outstanding.
+Twenty-five entries. The eight from the first pass are fixed: one former high-severity work-loss risk and seven former medium-severity correctness, focus, or feedback risks, clustered in workspace setup, switching, and discovery. B-01, B-02, and B-07 have post-fix desktop evidence, and B-08's exact Reply-textarea live rerun remains outstanding.
 
 The UX pass added sixteen entries after deduplication: seven medium and nine low, none high. Five medium entries were confirmed live and by the independent review: the Workspace authentication banner, the Reviewers control on merged or closed Reviews, the unexplained disabled Generate on those Reviews, the Checks control, and the missing Review worktree. The review marked B-09 to B-12 fix now and B-13 and B-14 as named follow-ups; the rest wait for a decision.
 
 B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issues/185) to [#188](https://github.com/kwanpham2195/patchdesk/issues/188) and are fixed at `737c515c`, as is the raw start-time slip inside B-22; each entry records its fix commit. Eleven remain open: B-13 to B-18, B-20, B-21, and B-23 to B-24, plus B-22's three other slips. The largest remaining cluster is the Visited pull requests column's recovery from removed Review records (B-15, B-16); B-19, the last merged or closed Review entry, is fixed under #348. The open entries are not filed as issues. Every fix here is read from source at `737c515c`; none has post-fix live evidence.
+
+B-25 comes from the 2026-09-26 coding-agent page and is filed as [#491](https://github.com/kwanpham2195/patchdesk/issues/491); ADR 0052 plans to pin a working-tree Review's base as its fix.
 
 | ID   | Title                                                                                    | Severity | Area                               | Resolution or decision        | Issue                                                        |
 | ---- | ---------------------------------------------------------------------------------------- | -------- | ---------------------------------- | ----------------------------- | ------------------------------------------------------------ |
@@ -20,6 +22,7 @@ B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issu
 | B-13 | Context and Preview stay unavailable when the Review worktree is missing                 | medium   | Review workbench / Diff            | fix (named follow-up)         | —                                                            |
 | B-15 | A failed load from a Visited row leaves the destination on the missing Review            | medium   | Visited pull requests column       | fix                           | —                                                            |
 | B-17 | The inline composer shortcut starts a review while its hint says comment                 | medium   | Review workbench / Inline comments | fix                           | —                                                            |
+| B-25 | Local drafts lose their lines after the coding agent commits                             | medium   | Local Review / coding agent        | fix (named follow-up)         | [#491](https://github.com/kwanpham2195/patchdesk/issues/491) |
 | B-02 | Scalar profile validation falls through to a generic request error                       | medium   | Settings / Workspace               | fixed (`8dce9e7`)             | —                                                            |
 | B-03 | Open Review recommendation preempts ready-to-merge action                                | medium   | Pull requests                      | fixed (`b66a0a9`), superseded | —                                                            |
 | B-04 | Stale Review-opening error remains on the first-run screen                               | medium   | First run / Pull requests          | fixed (`8d372ab`)             | —                                                            |
@@ -220,6 +223,17 @@ B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issu
 - **Status:** the hint was confirmed live on 2026-09-14 on `5fe7df3b`; the shortcut was not pressed because it writes to GitHub.
 - **Issue:** —
 
+### B-25: Local drafts lose their lines after the coding agent commits
+
+- **Where the user meets it:** A working-tree local Review the maintainer annotated while a coding agent worked, after the agent commits its change.
+- **What happens / what was expected:** The next Refresh compares the working tree against the new `HEAD`. A clean tree shows an empty diff, and every Local draft reads Needs attention because its lines are no longer in the patch. Expected: the agent's commits stay in the diff and the notes stay on their lines.
+- **Reproduce:** Open a working-tree Review of a checkout with an uncommitted change, add a note on a changed line, commit the change, and press Refresh.
+- **Why (from the code):** `src/services/local-review-revision-service.ts:111-115` reads `HEAD` as a working-tree session's base on every read, so each commit moves the base with it.
+- **Severity:** `medium`. Review notes stop reaching the agent inline once it commits; nothing is lost, and the Local drafts card still lists them.
+- **Decision needed:** `fix`. ADR 0052 "Notes after the agent commits" records a pinned base as the planned change. Until then: review before the agent commits, or open a Branch Review against the base branch.
+- **Raised by:** [A coding agent over MCP](pull-requests/coding-agent-over-mcp.md#known-limits).
+- **Issue:** [#491](https://github.com/kwanpham2195/patchdesk/issues/491)
+
 ## Low
 
 ### B-14: A re-render can cancel heading focus after a destination change
@@ -341,4 +355,4 @@ From the 2026-09-14 UX pass:
 - The stale comment at `src/renderer/src/components/finish-review-dialog.tsx:44`, which says Discard is not offered while the dialog offers Discard review, has no user-visible effect.
 - The blank Visited pull requests column on a fresh install, before the first workspace exists, is unobserved and stays an open question in [Visited pull requests](foundations/visited-pull-requests.md#open-questions-and-verification).
 
-B-09 to B-12 were filed as GitHub issues #185 to #188, all four now closed as completed; no issue or external tracker entry has been created for any other entry. The first pass's source snapshot is `3100615`; the UX pass drafted against `dd613996` and rechecked every entry against `737c515c`.
+B-09 to B-12 were filed as GitHub issues #185 to #188, all four now closed as completed, and B-25 is open as #491; no issue or external tracker entry has been created for any other entry. The first pass's source snapshot is `3100615`; the UX pass drafted against `dd613996` and rechecked every entry against `737c515c`.
