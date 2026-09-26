@@ -91,6 +91,8 @@ export const FILE_NAME_TREE_STYLE = [
   `[data-truncate-segment-priority="2"] [data-truncate-grid] > :has(> [data-truncate-content="visible"]) { direction: rtl; overflow: hidden; text-overflow: ellipsis; -webkit-text-fill-color: transparent; }`,
   `[data-truncate-segment-priority="2"] [data-truncate-content="visible"] { display: inline; -webkit-text-fill-color: currentColor; }`,
   `[data-truncate-segment-priority="2"] [data-truncate-content]::after { content: "\\200E"; }`,
+  // The rtl box that cuts from the start would otherwise reorder a name that begins with digits (535-alpha.md read as alpha.-535md).
+  `[data-truncate-segment-priority="2"] [data-truncate-content] { unicode-bidi: isolate; direction: ltr; }`,
   `[data-truncate-segment-priority="2"] [data-truncate-marker] { left: 0; right: auto; }`,
 ].join(" ");
 
