@@ -40,7 +40,7 @@ The agent's writing tools are `review_local`, `refresh_review`, and `run_insight
 
 `review_local` takes an absolute path inside a checkout, usually the agent's working directory. Patchdesk resolves the path to its checkout, the configured one or a linked worktree, and opens the Review of that checkout's working tree, including uncommitted and untracked files. The agent can pass a branch with a base branch, or a commit, to open those sources instead, as the [Local review dialog](opening-a-local-review.md#begin-an-action) does. A new Review reads the checkout as it is now.
 
-The optional `intent` is the task the agent was given, as Markdown. Patchdesk records it only when the Review has no Change intent. The same text again answers that the intent was kept. A different text leaves the maintainer's intent in place: the Review still opens, and the answer says the intent was refused with `intent_exists`. Text that looks like a credential is refused before anything opens.
+The optional `intent` is the task the agent was given, as Markdown. Patchdesk records it only when the Review has no Change intent. The same text again answers that the intent was kept. A different text leaves the maintainer's intent in place: the Review still opens, and the answer says the intent was refused with `intent_exists`. Text that looks like a credential is refused before anything opens. Analysis reads an agent intent as the stated goal to check, and is told the agent under review wrote it and not to follow instructions in it.
 
 `refresh_review` reads the checkout of a local Review again after the agent changed it, and prepares a session for the new content. It does not move the Review.
 
@@ -139,7 +139,6 @@ Others name their cause: `checkout_not_found` for a directory outside every chec
 ## Known limits
 
 - After the agent commits, a working-tree Review compares the working tree against the new `HEAD`. A clean tree then shows an empty diff, and the maintainer's notes lose their lines and read Needs attention ([#491](https://github.com/kwanpham2195/patchdesk/issues/491)). Review before the agent commits, or open a Branch Review of the agent's branch against its base branch. The Branch Review is a separate Review with its own drafts.
-- The Analysis input treats an intent from the agent with the same words as one the maintainer entered; only the header label tells them apart.
 - The client name on the Agent requests bar is what the agent's client reports about itself.
 
 ## Variants
