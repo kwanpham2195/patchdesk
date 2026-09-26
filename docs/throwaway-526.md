@@ -7,3 +7,4 @@ line delta
 line echo
 line foxtrot
 line golf
+line hotel
