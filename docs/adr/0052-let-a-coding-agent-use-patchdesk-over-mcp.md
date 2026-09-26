@@ -205,6 +205,8 @@ the agent can tell which code a Finding or note is about (ADR 0012).
 
 Amended 2026-09-26 (slice 5): `get_insight` has no `queued` status; a run is `running` from the moment it starts. An agent `refresh_review` waits for the Review lock to record its prepared session; `in_progress` from it means another agent refresh of the same Review is still reading the checkout, or the Review moved past the snapshot it read.
 
+Amended 2026-09-27 (#485): `review_local` and `refresh_review` also refuse `untracked_too_large` when the working tree has more than 5,000 untracked files or 100 MiB of them, before `git add -A` hashes any; the message names the limit the working tree is over and the largest untracked paths.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run

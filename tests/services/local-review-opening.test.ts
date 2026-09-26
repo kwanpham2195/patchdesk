@@ -47,7 +47,10 @@ import { LocalReviewSessionPreparation } from "../../src/services/local-review-s
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
-import type { UntrackedLimits } from "../../src/services/local-untracked-size";
+import type {
+  UntrackedFileSize,
+  UntrackedLimits,
+} from "../../src/services/local-untracked-size";
 import {
   ReviewWorktreeService,
   type GitReadExecutor,
@@ -114,6 +117,7 @@ async function opening(
     readonly coordinator?: ReviewOperationCoordinator;
     readonly onResolved?: () => void;
     readonly untrackedLimits?: UntrackedLimits;
+    readonly untrackedFileSize?: UntrackedFileSize;
     /** Stands in for git answers the fixture cannot produce cheaply, such as output over the cap. */
     readonly git?: (git: GitReadExecutor) => GitReadExecutor;
   } = {},
@@ -145,6 +149,7 @@ async function opening(
       readOnlyGit,
       paths,
       seams.untrackedLimits,
+      seams.untrackedFileSize,
     ),
     worktrees: new ReviewWorktreeService(
       paths,
@@ -194,6 +199,16 @@ async function opening(
 
 function indexBytes(repositoryPath: string): Promise<Buffer> {
   return readFile(join(repositoryPath, ".git", "index"));
+}
+
+/** A file size reader that records every path it is asked about and answers 1 byte. */
+function recordingFileSize() {
+  const paths: string[] = [];
+  const read: UntrackedFileSize = async (path) => {
+    paths.push(path);
+    return 1;
+  };
+  return { read, paths };
 }
 
 /** Untracked files in `node_modules/` (four), `generated/` (two), and `notes.txt`, none ignored. */
@@ -437,15 +452,17 @@ describe("LocalReviewOpening", () => {
     expect(await indexBytes(repositoryPath)).toEqual(indexBefore);
   });
 
-  it("refuses untracked files over the file limit before hashing any, naming the largest untracked paths", async () => {
+  it("refuses untracked files over the file limit before hashing any, naming the largest untracked paths without reading a file size", async () => {
     const { root, repositoryPath } = await checkout();
     await writeUntrackedTree(repositoryPath);
     const objectsBefore = git(repositoryPath, "count-objects", "-v");
     const indexBefore = await indexBytes(repositoryPath);
+    const fileSize = recordingFileSize();
 
     const opened = await (
       await opening(root, repositoryPath, {
         untrackedLimits: { files: 6, bytes: 1024 * 1024 },
+        untrackedFileSize: fileSize.read,
       })
     ).open({ profileId, repository, request: workingTree });
 
@@ -453,11 +470,37 @@ describe("LocalReviewOpening", () => {
       _tag: "err",
       error: {
         reason: "untracked_too_large",
+        exceededLimit: "files",
         largestPaths: ["node_modules/", "generated/", "notes.txt"],
       },
     });
+    expect(fileSize.paths).toEqual([]);
     expect(git(repositoryPath, "count-objects", "-v")).toBe(objectsBefore);
     expect(await indexBytes(repositoryPath)).toEqual(indexBefore);
+  });
+
+  it("refuses untracked files over the size limit, ranking the largest untracked paths by bytes", async () => {
+    const { root, repositoryPath } = await checkout();
+    await writeUntrackedTree(repositoryPath);
+    // 100 bytes outweigh the four files of node_modules/ (16 bytes) and the two of generated/ (13).
+    await writeFile(join(repositoryPath, "notes.txt"), "n".repeat(100));
+    const objectsBefore = git(repositoryPath, "count-objects", "-v");
+
+    const opened = await (
+      await opening(root, repositoryPath, {
+        untrackedLimits: { files: 100, bytes: 64 },
+      })
+    ).open({ profileId, repository, request: workingTree });
+
+    expect(opened).toEqual({
+      _tag: "err",
+      error: {
+        reason: "untracked_too_large",
+        exceededLimit: "bytes",
+        largestPaths: ["notes.txt", "node_modules/", "generated/"],
+      },
+    });
+    expect(git(repositoryPath, "count-objects", "-v")).toBe(objectsBefore);
   });
 
   it("refuses a listing of untracked files over git's output cap, ranking that directory first", async () => {
@@ -468,9 +511,11 @@ describe("LocalReviewOpening", () => {
       argv.includes("--others") &&
       !argv.includes("--directory") &&
       !argv.includes(":(literal)generated/");
+    const fileSize = recordingFileSize();
 
     const opened = await (
       await opening(root, repositoryPath, {
+        untrackedFileSize: fileSize.read,
         git: (real) => ({
           run: async (argv, environment) =>
             overCap(argv)
@@ -484,9 +529,11 @@ describe("LocalReviewOpening", () => {
       _tag: "err",
       error: {
         reason: "untracked_too_large",
+        exceededLimit: "files",
         largestPaths: ["node_modules/", "generated/"],
       },
     });
+    expect(fileSize.paths).toEqual([]);
     expect(git(repositoryPath, "count-objects", "-v")).toBe(objectsBefore);
   });
 

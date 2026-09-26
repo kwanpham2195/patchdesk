@@ -336,7 +336,8 @@ server as failed.
 - **Too many untracked files.** `review_local` and `refresh_review` return
   `untracked_too_large` when the working tree has more than 5,000 untracked
   files or 100 MiB of them, usually an un-ignored `node_modules` or build
-  folder. The message names the largest untracked paths; add them to
+  folder. The message names the limit the working tree is over and the
+  largest untracked paths; add them to
   `.gitignore` or remove them, then call again. Patchdesk stores nothing
   for the refused call.
 - **`patchdesk: command not found` in a terminal.** The link is missing or its

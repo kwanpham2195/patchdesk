@@ -38,6 +38,7 @@ import {
 import type { LocalReviewSession } from "../domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
 import type { LocalApplySettlement } from "./local-apply-settlement";
+import type { UntrackedTooLarge } from "./local-untracked-size";
 import type {
   LocalReviewOpenRequest,
   LocalReviewPreparationFailure,
@@ -64,9 +65,10 @@ export type LocalReviewOpenFailure =
         | "storage"
         | "terminal";
     }
-  /** The working tree's untracked files are over the snapshot limits; `largestPaths` are the ones to ignore (#485). */
+  /** The working tree's untracked files are over the `exceededLimit` snapshot limit; `largestPaths` are the ones to ignore (#485). */
   | {
       readonly reason: "untracked_too_large";
+      readonly exceededLimit: UntrackedTooLarge["exceededLimit"];
       readonly largestPaths: ReadonlyArray<string>;
     }
   /** The checkout's `HEAD` is not the one the request expects; `currentBranch` is absent when it is detached. */
@@ -657,6 +659,7 @@ function mapPreparationFailure(
     case "UntrackedTooLarge":
       return {
         reason: "untracked_too_large",
+        exceededLimit: failure.exceededLimit,
         largestPaths: failure.largestPaths,
       };
     case "LocalRevisionNotFound":

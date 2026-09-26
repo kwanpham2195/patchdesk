@@ -81,10 +81,11 @@ export function storedBranchMismatchMessage(
 
 const untrackedTooLargeBodySchema = v.object({
   error: v.literal("untracked_too_large"),
+  exceededLimit: v.picklist(["files", "bytes"]),
   largestPaths: v.array(v.string()),
 });
 
-/** The sentence for a working tree whose untracked files are over the snapshot limits (#485); undefined for any other failure. */
+/** The sentence for a working tree whose untracked files are over a snapshot limit (#485), naming that limit; undefined for any other failure. */
 export function untrackedTooLargeMessage(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this reads one refusal off it.
   cause: unknown,
@@ -95,5 +96,9 @@ export function untrackedTooLargeMessage(
   const paths = body.output.largestPaths;
   const ignore =
     paths.length === 0 ? "large untracked folders" : paths.join(", ");
-  return `The working tree has too many untracked files to snapshot. Add ${ignore} to .gitignore or remove them, then try again.`;
+  const exceeded =
+    body.output.exceededLimit === "files"
+      ? "more than 5,000 untracked files"
+      : "more than 100 MiB of untracked files";
+  return `The working tree has ${exceeded}, more than Patchdesk snapshots. Add ${ignore} to .gitignore or remove them, then try again.`;
 }

@@ -1,6 +1,7 @@
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 
+import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
 import type { GitReadExecutor } from "./review-worktree-service";
 
@@ -20,66 +21,95 @@ export const localSnapshotUntrackedLimits: UntrackedLimits = {
   bytes: 100 * 1024 * 1024,
 };
 
+/** Reads one file's size in bytes without following a symlink; undefined when the file is gone. */
+export type UntrackedFileSize = (path: string) => Promise<number | undefined>;
+
+export const lstatFileSize: UntrackedFileSize = async (path) =>
+  (await lstat(path).catch(() => undefined))?.size;
+
 /** How many of the largest untracked paths a refusal names. */
 const LARGEST_UNTRACKED_PATH_COUNT = 5;
 /** On a listing over the output cap, only this many untracked directories are listed again to rank them. */
 const RANKED_DIRECTORY_COUNT = 20;
+/** Bounds open file handles while 5,000 files are measured. */
+const FILE_SIZE_CONCURRENCY = 64;
 
 /** The working tree's untracked files are over the snapshot limits (#485). */
 export type UntrackedTooLarge = {
   readonly _tag: "UntrackedTooLarge";
-  /** The outermost untracked directories, or files, holding the most, largest first, relative to the checkout root. */
+  /** Which of the limits the untracked files are over; the file count wins when both are. */
+  readonly exceededLimit: keyof UntrackedLimits;
+  /** The outermost untracked directories, or files, holding the most of that limit, largest first, relative to the checkout root. */
   readonly largestPaths: ReadonlyArray<string>;
 };
 
-type UntrackedSize = { readonly files: number; readonly bytes: number };
+/** A listed untracked path and what it counts toward the exceeded limit. */
+type WeightedPath = readonly [path: string, weight: number];
 
 /**
  * Refuses a working tree whose untracked files are over `limits`, before
- * `add -A` hashes any of them. It reads git and file sizes only. The
- * environment names the snapshot's scratch index, so "untracked" means what
- * `add -A` would add.
+ * `add -A` hashes any of them. It reads git, and file sizes only when the
+ * file count is within its limit. The environment names the snapshot's
+ * scratch index, so "untracked" means what `add -A` would add.
  */
 export async function checkUntrackedSize(
   git: GitReadExecutor,
   repositoryPath: string,
   environment: Readonly<Record<string, string>>,
   limits: UntrackedLimits,
+  fileSize: UntrackedFileSize,
 ): Promise<
   Result<undefined, UntrackedTooLarge | { readonly _tag: "LocalGitFailed" }>
 > {
   const listed = await listUntracked(git, repositoryPath, environment);
   if (listed === undefined) return err({ _tag: "LocalGitFailed" });
   // A listing over the output cap names far more files than `limits.files`.
-  const sizes =
-    listed === "over_cap" || listed.length > limits.files
-      ? undefined
-      : await measureFiles(repositoryPath, listed);
-  if (sizes !== undefined) {
-    const total = sumSizes([...sizes.values()]);
-    if (total.files <= limits.files && total.bytes <= limits.bytes)
-      return ok(undefined);
-  }
-  const overFiles = sizes === undefined || sizes.size > limits.files;
+  if (listed === "over_cap" || listed.length > limits.files)
+    return err({
+      _tag: "UntrackedTooLarge",
+      exceededLimit: "files",
+      largestPaths: await largestUntrackedPaths(
+        git,
+        repositoryPath,
+        environment,
+        listed === "over_cap"
+          ? undefined
+          : listed.map((path): WeightedPath => [path, 1]),
+      ),
+    });
+  const sizes = await mapConcurrent(
+    listed,
+    FILE_SIZE_CONCURRENCY,
+    async (path): Promise<WeightedPath> => [
+      path,
+      // A path removed since the listing adds nothing.
+      (await fileSize(join(repositoryPath, path))) ?? 0,
+    ],
+  );
+  if (sizes.reduce((total, [, bytes]) => total + bytes, 0) <= limits.bytes)
+    return ok(undefined);
   return err({
     _tag: "UntrackedTooLarge",
+    exceededLimit: "bytes",
     largestPaths: await largestUntrackedPaths(
       git,
       repositoryPath,
       environment,
-      listed === "over_cap" ? undefined : listed,
-      overFiles ? "files" : "bytes",
+      sizes,
     ),
   });
 }
 
-/** The outermost untracked entries, ranked by the limit the tree is over. */
+/**
+ * The outermost untracked entries with the largest summed weight of the
+ * `listed` paths inside them. Without a listing, which was over the output
+ * cap, the untracked directories are ranked by how many files they hold.
+ */
 async function largestUntrackedPaths(
   git: GitReadExecutor,
   repositoryPath: string,
   environment: Readonly<Record<string, string>>,
-  files: ReadonlyArray<string> | undefined,
-  rankBy: keyof UntrackedSize,
+  listed: ReadonlyArray<WeightedPath> | undefined,
 ): Promise<ReadonlyArray<string>> {
   // `--directory` collapses a wholly untracked directory to one `dir/` entry, the path to ignore.
   const outermost = await listUntracked(git, repositoryPath, environment, [
@@ -87,39 +117,50 @@ async function largestUntrackedPaths(
     "--no-empty-directory",
   ]);
   if (outermost === undefined || outermost === "over_cap") return [];
-  const ranked = new Map<string, UntrackedSize>();
-  if (files === undefined) {
-    const directories = outermost
-      .filter((path) => path.endsWith("/"))
-      .slice(0, RANKED_DIRECTORY_COUNT);
-    const measured = await Promise.all(
-      directories.map(async (directory) => {
-        const inside = await listUntracked(git, repositoryPath, environment, [
-          "--",
-          `:(literal)${directory}`,
-        ]);
-        if (inside === "over_cap")
-          return [directory, { files: Infinity, bytes: Infinity }] as const;
-        const sizes =
-          inside === undefined
-            ? []
-            : [...(await measureFiles(repositoryPath, inside)).values()];
-        return [directory, sumSizes(sizes)] as const;
-      }),
-    );
-    for (const [directory, size] of measured) ranked.set(directory, size);
-  } else {
-    const entries = new Set(outermost);
-    const sizes = await measureFiles(repositoryPath, files);
-    for (const [path, size] of sizes) {
-      const entry = outermostEntry(entries, path);
-      ranked.set(entry, sumSizes([ranked.get(entry) ?? noSize, size]));
-    }
-  }
+  const ranked =
+    listed === undefined
+      ? await directoryFileCounts(git, repositoryPath, environment, outermost)
+      : weightsByOutermostEntry(new Set(outermost), listed);
   return [...ranked]
-    .sort(([, a], [, b]) => b[rankBy] - a[rankBy] || 0)
+    .sort(([, a], [, b]) => b - a || 0)
     .slice(0, LARGEST_UNTRACKED_PATH_COUNT)
     .map(([path]) => path);
+}
+
+async function directoryFileCounts(
+  git: GitReadExecutor,
+  repositoryPath: string,
+  environment: Readonly<Record<string, string>>,
+  outermost: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, number>> {
+  const directories = outermost
+    .filter((path) => path.endsWith("/"))
+    .slice(0, RANKED_DIRECTORY_COUNT);
+  const counted = await Promise.all(
+    directories.map(async (directory): Promise<WeightedPath> => {
+      const inside = await listUntracked(git, repositoryPath, environment, [
+        "--",
+        `:(literal)${directory}`,
+      ]);
+      return [
+        directory,
+        inside === "over_cap" ? Infinity : (inside?.length ?? 0),
+      ];
+    }),
+  );
+  return new Map(counted);
+}
+
+function weightsByOutermostEntry(
+  entries: ReadonlySet<string>,
+  listed: ReadonlyArray<WeightedPath>,
+): ReadonlyMap<string, number> {
+  const ranked = new Map<string, number>();
+  for (const [path, weight] of listed) {
+    const entry = outermostEntry(entries, path);
+    ranked.set(entry, (ranked.get(entry) ?? 0) + weight);
+  }
+  return ranked;
 }
 
 async function listUntracked(
@@ -146,22 +187,6 @@ async function listUntracked(
   return listed.error._tag === "GitReadOutputExceeded" ? "over_cap" : undefined;
 }
 
-/** Each path's size; a path removed since the listing counts as one empty file. */
-async function measureFiles(
-  repositoryPath: string,
-  paths: ReadonlyArray<string>,
-): Promise<ReadonlyMap<string, UntrackedSize>> {
-  const sizes = await Promise.all(
-    paths.map(async (path) => {
-      const stats = await lstat(join(repositoryPath, path)).catch(
-        () => undefined,
-      );
-      return [path, { files: 1, bytes: stats?.size ?? 0 }] as const;
-    }),
-  );
-  return new Map(sizes);
-}
-
 function outermostEntry(entries: ReadonlySet<string>, path: string): string {
   let end = path.indexOf("/");
   while (end !== -1) {
@@ -170,16 +195,4 @@ function outermostEntry(entries: ReadonlySet<string>, path: string): string {
     end = path.indexOf("/", end + 1);
   }
   return path;
-}
-
-const noSize: UntrackedSize = { files: 0, bytes: 0 };
-
-function sumSizes(sizes: ReadonlyArray<UntrackedSize>): UntrackedSize {
-  return sizes.reduce(
-    (total, size) => ({
-      files: total.files + size.files,
-      bytes: total.bytes + size.bytes,
-    }),
-    noSize,
-  );
 }

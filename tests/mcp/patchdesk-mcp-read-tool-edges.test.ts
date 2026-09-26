@@ -188,7 +188,9 @@ describe("MCP read tool refusals", () => {
       isError: true,
       content: {
         error: "untracked_too_large",
-        message: expect.stringContaining("are build/. Add them to .gitignore"),
+        message: expect.stringMatching(
+          /more than 100 MiB of untracked files.* are build\/\. Add them to \.gitignore/,
+        ),
       },
     });
     await expect(
