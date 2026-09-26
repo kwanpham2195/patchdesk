@@ -10,6 +10,8 @@
 
 - Added local Reviews of a repository's linked worktrees: the **Local review** picker has a **Checkout** select when the repository has worktrees from `git worktree add`, so two agents working in two worktrees of one repository can be reviewed side by side. Each worktree gets its own Review, drafts, and sidebar row named `owner/repo · <folder>`; a worktree's Review is removed by the background sweep once the worktree is gone. #489
 
+- Fixed local Review copy and polish: Blast radius and the sidebar no longer say "PR" or "pull requests" on a local Review; the Diff **Context** control no longer reads **Context unavailable** when every shown file is added or deleted, since a local snapshot has the full contents; the Apply bar is left out when no Finding has a suggestion to apply; the two **Remove** buttons of a note and a Finding draft on the same lines have distinct names; and **Copy as agent prompt**, **Copy as markdown prompt**, and **Copy as PR description** keep a model title with line breaks on its heading line, with Flow views under one `## Flow` section.
+
 - Fixed a Change intent or Local draft saved just before switching Reviews being shown on the Review switched to. #475
 
 - Fixed **Apply** on a local Review staying enabled after it was refused because the working tree changed since the Analysis. It now stays disabled with the reason beside it until Refresh. #476
