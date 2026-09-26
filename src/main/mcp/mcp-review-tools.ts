@@ -35,6 +35,7 @@ import type {
   LocalReviewOpening,
   LocalReviewPrepared,
 } from "../../services/local-review-opening";
+import { localSnapshotUntrackedLimits } from "../../services/local-untracked-size";
 import type {
   InsightReading,
   InsightReadingFailure,
@@ -74,8 +75,11 @@ export type McpReviewToolServices = {
   readonly reviews: Pick<ReviewStore, "load">;
 };
 
+/** Refusals whose message names the checkout's state, built by `localReviewRefusal`. */
+type DetailedLocalReason = "untracked_too_large";
+
 type ServiceReason =
-  | LocalReviewAgentRefreshFailure["reason"]
+  | Exclude<LocalReviewAgentRefreshFailure["reason"], DetailedLocalReason>
   | AgentIntentFailure["reason"]
   | InsightReadingFailure["reason"]
   | LocalFeedbackPageFailure["reason"]
@@ -124,10 +128,23 @@ function refusal(reason: ServiceReason): McpToolRefusal {
   return { error: reason, message: refusalMessages[reason] };
 }
 
-/** A refresh refusal; `branch_mismatch` names the branch the checkout is on, and `rate_limited` carries when to retry. */
-function agentRefreshRefusal(
+/**
+ * An open or refresh refusal; `branch_mismatch` names the branch the checkout
+ * is on, `rate_limited` carries when to retry, and `untracked_too_large`
+ * names the untracked paths to ignore.
+ */
+function localReviewRefusal(
   failure: LocalReviewAgentRefreshFailure,
 ): McpToolRefusal {
+  if (failure.reason === "untracked_too_large")
+    return {
+      error: "untracked_too_large",
+      message: `The working tree has more untracked files than Patchdesk snapshots, over ${localSnapshotUntrackedLimits.files} files or ${localSnapshotUntrackedLimits.bytes / (1024 * 1024)} MiB. ${
+        failure.largestPaths.length === 0
+          ? "Add large untracked directories, such as dependencies or build output,"
+          : `The largest untracked paths are ${failure.largestPaths.join(", ")}. Add them`
+      } to .gitignore or remove them, then try again.`,
+    };
   if (failure.reason === "rate_limited")
     return { ...refusal("rate_limited"), retryAfterMs: failure.retryAfterMs };
   if (failure.reason !== "branch_mismatch") return refusal(failure.reason);
@@ -203,7 +220,7 @@ export async function reviewLocal(
     profileId,
     directory.value,
   );
-  if (found._tag === "err") return err(refusal(found.error.reason));
+  if (found._tag === "err") return err(localReviewRefusal(found.error));
   const request = parseLocalReviewSourceRequest({
     ...(input.source ?? { kind: "working_tree" }),
     checkout: found.value.checkout,
@@ -215,7 +232,7 @@ export async function reviewLocal(
     repository: { host, owner, repo },
     request,
   });
-  if (opened._tag === "err") return err(refusal(opened.error.reason));
+  if (opened._tag === "err") return err(localReviewRefusal(opened.error));
   const recorded =
     input.intent === undefined
       ? undefined
@@ -259,7 +276,7 @@ export async function refreshReview(
   return err(
     prepared.error.reason === "not_found"
       ? await missingReviewRefusal(services, profiles.value, reviewId.value)
-      : agentRefreshRefusal(prepared.error),
+      : localReviewRefusal(prepared.error),
   );
 }
 

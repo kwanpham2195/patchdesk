@@ -16,6 +16,12 @@ import type {
   LocalReviewSource,
   LocalReviewSourceRequest,
 } from "../domain/review-source";
+import {
+  checkUntrackedSize,
+  localSnapshotUntrackedLimits,
+  type UntrackedLimits,
+  type UntrackedTooLarge,
+} from "./local-untracked-size";
 import { exists } from "./review-preparation-journal";
 import type { GitReadExecutor } from "./review-worktree-service";
 
@@ -24,6 +30,7 @@ export type LocalReviewRevisionFailure =
   | { readonly _tag: "UnmergedIndex" }
   /** `HEAD` has no commit, or the branch, base branch, merge base, or commit does not exist. */
   | { readonly _tag: "LocalRevisionNotFound" }
+  | UntrackedTooLarge
   | { readonly _tag: "LocalGitFailed" };
 
 /** A local source spec and the head/base pair it resolved to, before any session exists. */
@@ -50,12 +57,14 @@ const localSnapshotMessage = "Patchdesk local snapshot";
  * Resolves a local Review source to its head and base SHAs from the
  * maintainer's checkout, and renders its patch. The only writes are the ones
  * ADR 0050 lists: blobs from `add -A` into a temporary index copy, and the
- * snapshot tree and commit objects. The maintainer's index is never written.
+ * snapshot tree and commit objects. The maintainer's index is never written,
+ * and untracked files over the limits are refused before `add -A` (#485).
  */
 export class LocalReviewRevisionService {
   constructor(
     private readonly git: GitReadExecutor,
     private readonly paths: PatchdeskPaths,
+    private readonly untrackedLimits: UntrackedLimits = localSnapshotUntrackedLimits,
   ) {}
 
   async resolve(
@@ -197,6 +206,13 @@ export class LocalReviewRevisionService {
     if (unmerged._tag === "err") return err({ _tag: "LocalGitFailed" });
     if (unmerged.value.stdout.trim() !== "")
       return err({ _tag: "UnmergedIndex" });
+    const untracked = await checkUntrackedSize(
+      this.git,
+      repositoryPath,
+      scratchIndex,
+      this.untrackedLimits,
+    );
+    if (untracked._tag === "err") return untracked;
     const added = await this.git.run(
       ["git", "-C", repositoryPath, "add", "-A"],
       scratchIndex,

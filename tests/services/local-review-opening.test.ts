@@ -47,7 +47,11 @@ import { LocalReviewSessionPreparation } from "../../src/services/local-review-s
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
-import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
+import type { UntrackedLimits } from "../../src/services/local-untracked-size";
+import {
+  ReviewWorktreeService,
+  type GitReadExecutor,
+} from "../../src/services/review-worktree-service";
 
 const roots: string[] = [];
 const now = value(parseIsoTimestamp("2026-09-25T00:00:00.000Z"));
@@ -109,6 +113,9 @@ async function opening(
   seams: {
     readonly coordinator?: ReviewOperationCoordinator;
     readonly onResolved?: () => void;
+    readonly untrackedLimits?: UntrackedLimits;
+    /** Stands in for git answers the fixture cannot produce cheaply, such as output over the cap. */
+    readonly git?: (git: GitReadExecutor) => GitReadExecutor;
   } = {},
 ): Promise<LocalReviewOpening> {
   const paths = PatchdeskPaths.forTest(join(root, "app"));
@@ -129,11 +136,16 @@ async function opening(
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
   const artifacts = new ReviewArtifactStorage(paths, () => now);
-  const readOnlyGit = createReadOnlyGitExecutor(new CommandRunner());
+  const productionGit = createReadOnlyGitExecutor(new CommandRunner());
+  const readOnlyGit = seams.git?.(productionGit) ?? productionGit;
   const preparation = new LocalReviewSessionPreparation({
     profiles,
     sessions,
-    revisions: new LocalReviewRevisionService(readOnlyGit, paths),
+    revisions: new LocalReviewRevisionService(
+      readOnlyGit,
+      paths,
+      seams.untrackedLimits,
+    ),
     worktrees: new ReviewWorktreeService(
       paths,
       readOnlyGit,
@@ -182,6 +194,17 @@ async function opening(
 
 function indexBytes(repositoryPath: string): Promise<Buffer> {
   return readFile(join(repositoryPath, ".git", "index"));
+}
+
+/** Untracked files in `node_modules/` (four), `generated/` (two), and `notes.txt`, none ignored. */
+async function writeUntrackedTree(repositoryPath: string): Promise<void> {
+  await mkdir(join(repositoryPath, "node_modules", "pkg"), { recursive: true });
+  await mkdir(join(repositoryPath, "generated"));
+  for (const name of ["a.js", "b.js", "c.js", "d.js"])
+    await writeFile(join(repositoryPath, "node_modules", "pkg", name), name);
+  await writeFile(join(repositoryPath, "generated", "app.js"), "bundle\n");
+  await writeFile(join(repositoryPath, "generated", "app.css"), "styles\n");
+  await writeFile(join(repositoryPath, "notes.txt"), "notes\n");
 }
 
 describe("LocalReviewOpening", () => {
@@ -412,6 +435,59 @@ describe("LocalReviewOpening", () => {
       error: { reason: "unmerged_index" },
     });
     expect(await indexBytes(repositoryPath)).toEqual(indexBefore);
+  });
+
+  it("refuses untracked files over the file limit before hashing any, naming the largest untracked paths", async () => {
+    const { root, repositoryPath } = await checkout();
+    await writeUntrackedTree(repositoryPath);
+    const objectsBefore = git(repositoryPath, "count-objects", "-v");
+    const indexBefore = await indexBytes(repositoryPath);
+
+    const opened = await (
+      await opening(root, repositoryPath, {
+        untrackedLimits: { files: 6, bytes: 1024 * 1024 },
+      })
+    ).open({ profileId, repository, request: workingTree });
+
+    expect(opened).toEqual({
+      _tag: "err",
+      error: {
+        reason: "untracked_too_large",
+        largestPaths: ["node_modules/", "generated/", "notes.txt"],
+      },
+    });
+    expect(git(repositoryPath, "count-objects", "-v")).toBe(objectsBefore);
+    expect(await indexBytes(repositoryPath)).toEqual(indexBefore);
+  });
+
+  it("refuses a listing of untracked files over git's output cap, ranking that directory first", async () => {
+    const { root, repositoryPath } = await checkout();
+    await writeUntrackedTree(repositoryPath);
+    const objectsBefore = git(repositoryPath, "count-objects", "-v");
+    const overCap = (argv: ReadonlyArray<string>) =>
+      argv.includes("--others") &&
+      !argv.includes("--directory") &&
+      !argv.includes(":(literal)generated/");
+
+    const opened = await (
+      await opening(root, repositoryPath, {
+        git: (real) => ({
+          run: async (argv, environment) =>
+            overCap(argv)
+              ? { _tag: "err", error: { _tag: "GitReadOutputExceeded" } }
+              : real.run(argv, environment),
+        }),
+      })
+    ).open({ profileId, repository, request: workingTree });
+
+    expect(opened).toEqual({
+      _tag: "err",
+      error: {
+        reason: "untracked_too_large",
+        largestPaths: ["node_modules/", "generated/"],
+      },
+    });
+    expect(git(repositoryPath, "count-objects", "-v")).toBe(objectsBefore);
   });
 
   it("compares a root commit with the empty tree", async () => {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as v from "valibot";
@@ -165,6 +165,31 @@ describe("MCP read tool refusals", () => {
     expect(refused).toMatchObject({
       isError: true,
       content: { error: "change_intent_sensitive" },
+    });
+    await expect(
+      readdir(app.paths.profileWorkbenchesDirectory(profileId)),
+    ).rejects.toThrow();
+  });
+
+  it("refuses a working tree over the untracked size limit with untracked_too_large naming the folder, opening nothing", async () => {
+    app = await startAppWithLinkedWorktree();
+    const build = join(app.repositoryPath, "build");
+    await mkdir(build);
+    // Sparse, so the 101 MiB the limit reads costs no disk or time.
+    await writeFile(join(build, "bundle.bin"), "");
+    await truncate(join(build, "bundle.bin"), 101 * 1024 * 1024);
+    const client = await connectLegacyClient(app.socketPath);
+
+    const refused = await call(client, "review_local", {
+      cwd: app.repositoryPath,
+    });
+
+    expect(refused).toMatchObject({
+      isError: true,
+      content: {
+        error: "untracked_too_large",
+        message: expect.stringContaining("are build/. Add them to .gitignore"),
+      },
     });
     await expect(
       readdir(app.paths.profileWorkbenchesDirectory(profileId)),

@@ -4,6 +4,7 @@ import { isApiErrorCode, requestJson } from "../api-client";
 import {
   branchMismatchMessage,
   localReviewSourceInput,
+  untrackedTooLargeMessage,
 } from "../local-review-reopen";
 import {
   parseWorkbenchResponse,
@@ -26,6 +27,8 @@ function refreshFailure(
     return "Another action on this review is running. Refresh when it finishes.";
   if (isApiErrorCode(cause, "unmerged_index"))
     return "The working tree has unresolved merge conflicts.";
+  const untracked = untrackedTooLargeMessage(cause);
+  if (untracked !== undefined) return untracked;
   if (isApiErrorCode(cause, "revision_not_found"))
     return "This checkout no longer has the branch, base branch, or commit this review reads.";
   return "Patchdesk could not read the local checkout.";
