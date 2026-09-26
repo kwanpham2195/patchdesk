@@ -144,7 +144,7 @@ export class LocalReviewRetention {
         Date.parse(this.dependencies.now()) -
           RETAIN_ABANDONED_LOCAL_REVIEW_MS &&
       (await isLocalSourceGone(
-        this.dependencies.git,
+        this.dependencies,
         localPath,
         review.value.identity.source,
       ));
