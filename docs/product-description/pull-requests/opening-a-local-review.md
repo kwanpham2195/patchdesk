@@ -183,7 +183,7 @@ A refused Refresh changes nothing: the Review stays on its session with its draf
 
 A current Brief on a local Review shows **Copy as PR description** under Regenerate in its Provenance card. Pressing it asks the main process for the retained Brief as Markdown and copies it; the button reads `Copied` for a moment once the clipboard write succeeds, and `The description could not be copied.` appears under it when it fails. An Outdated Brief does not offer it.
 
-The Markdown has, in order: one `### <Kind>: <title>` section per Flow view with its tree in a `diff` fence, `## Shape` with each changed file's status, line counts, and note, `## Blast radius` with the names mentioned outside the change, removed names still mentioned, and changed files no test mentions, and `## Start here` with the lead and the reading order. A section with nothing to say is left out.
+The Markdown has, in order: `## Flow` with one `### <Kind>: <title>` section per Flow view and its tree in a `diff` fence, `## Shape` with each changed file's status, line counts, and note, `## Blast radius` with the names mentioned outside the change, removed names still mentioned, and changed files no test mentions, and `## Start here` with the lead and the reading order. A section with nothing to say is left out.
 
 Each Flow step that shows citation chips in the reader carries its hunks as `(path:line)`, the line being the hunk's first line on the new side; a hunk of a deleted file is written as its path alone. A citation with no hunk location is left out.
 
