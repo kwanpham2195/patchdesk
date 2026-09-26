@@ -69,3 +69,7 @@ as Markdown the maintainer enters or as a repository-relative spec file.
 - **An unreadable spec file refuses the start.** A missing, non-text, or
   over-64 KiB spec file refuses the Analysis with a named reason; Analysis
   never runs against an intent it could not read.
+- **Pull requests use the same place** (2026-09-26, #470). A pull request
+  Analysis gets its description, as read when the session was prepared, in
+  the same part of the run input, so the stated-goal check runs for both
+  sources.

@@ -5,12 +5,12 @@ import { createHash } from "node:crypto";
 
 import * as v from "valibot";
 
-import {
-  renderChangeIntentSection,
-  type ResolvedChangeIntent,
-} from "../domain/change-intent";
 import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
+import {
+  renderStatedGoalSection,
+  type StatedGoal,
+} from "../domain/stated-goal";
 import {
   containsSensitiveData,
   isNotFound,
@@ -84,8 +84,8 @@ type ContextInput = {
   readonly changedFiles: ReadonlyArray<string>;
   readonly patch: { readonly path: string; readonly sha256: string };
   readonly rulePaths: ReadonlyArray<string>;
-  /** A local Review's Change intent; only `review-input.md` carries it, so Brief and Walkthrough input stays the same. */
-  readonly changeIntent?: ResolvedChangeIntent;
+  /** Only `review-input.md` carries it, so Brief and Walkthrough input stays the same. */
+  readonly statedGoal?: StatedGoal;
 };
 
 /** Keeps the longest prefix of items whose compact JSON fits one byte budget. */
@@ -196,9 +196,9 @@ export class ReviewContextService {
       const reviewInput = `# PR review input\n\nPR: ${input.pr.title}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`;
       const wroteReviewInput = await writeAtomicFile(
         reviewInputPath,
-        input.changeIntent === undefined
+        input.statedGoal === undefined
           ? reviewInput
-          : `${reviewInput}\n${renderChangeIntentSection(input.changeIntent)}`,
+          : `${reviewInput}\n${renderStatedGoalSection(input.statedGoal)}`,
       );
       if (wroteReviewInput._tag === "err")
         return err({ _tag: "ReviewContextFailed" });

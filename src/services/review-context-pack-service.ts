@@ -7,9 +7,7 @@ import { readJsonFile } from "../adapters/storage/json-file";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import {
-  CHANGE_INTENT_HEADING,
   changeIntentProvenance,
-  renderChangeIntentSection,
   type ChangeIntent,
   type ChangeIntentProvenance,
   type ResolvedChangeIntent,
@@ -23,6 +21,10 @@ import {
   type PullRequestReviewSession,
   type ReviewSession,
 } from "../domain/review-session";
+import {
+  renderStatedGoalSection,
+  type StatedGoal,
+} from "../domain/stated-goal";
 import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import {
   resolveChangeIntent,
@@ -37,10 +39,11 @@ export type ReviewContextPackFailure =
   | ChangeIntentUnreadable;
 
 /**
- * Only Analysis reads `review-input.md`, where the Change intent goes. An
- * Analysis start names the Review's intent and gets a pack that holds exactly
- * it; Brief and Walkthrough accept a pack whatever intent it holds, so their
- * starts never rewrite the file under a running Analysis.
+ * Only Analysis reads `review-input.md`, where the stated goal goes: the
+ * Change intent, or a pull request's description. An Analysis start names the
+ * Review's intent and gets a pack that holds exactly its goal; Brief and
+ * Walkthrough accept a pack whatever goal it holds, so their starts never
+ * rewrite the file under a running Analysis.
  */
 export type PackChangeIntent =
   | { readonly _tag: "Unread" }
@@ -110,13 +113,23 @@ export class ReviewContextPackService {
             : changeIntentProvenance(resolved.value),
       }),
     );
+    const statedGoal =
+      input.changeIntent._tag === "Unread"
+        ? undefined
+        : this.statedGoal(input.session, resolved.value);
     if (
       await this.isUsable(
         input.session,
         input.patchHash,
         input.changeIntent._tag === "Unread"
           ? { _tag: "Unread" }
-          : { _tag: "Read", resolved: resolved.value },
+          : {
+              _tag: "Read",
+              section:
+                statedGoal === undefined
+                  ? undefined
+                  : renderStatedGoalSection(statedGoal),
+            },
       )
     )
       return provenance;
@@ -143,7 +156,7 @@ export class ReviewContextPackService {
       ...definedProps({
         comments: pullRequestEvidence.value?.comments,
         checks: pullRequestEvidence.value?.checks,
-        changeIntent: resolved.value,
+        statedGoal,
       }),
       changedFiles: changedFiles(patch),
       patch: { path: input.session.patchPath, sha256: input.patchHash },
@@ -173,6 +186,21 @@ export class ReviewContextPackService {
         ? resolved.error
         : { _tag: "ContextPackUnavailable" },
     );
+  }
+
+  /** A local Review's goal is its Change intent; a pull request's is its description, as read at prepare. */
+  private statedGoal(
+    session: ReviewSession,
+    changeIntent: ResolvedChangeIntent | undefined,
+  ): StatedGoal | undefined {
+    if (changeIntent !== undefined)
+      return { kind: "change_intent", resolved: changeIntent };
+    const description = isPullRequestReviewSession(session)
+      ? session.prContext?.description
+      : undefined;
+    return description === undefined || description.trim() === ""
+      ? undefined
+      : { kind: "pull_request_description", markdown: description };
   }
 
   /** The comments and checks a pull request pack carries; either read failing fails the pack. */
@@ -207,17 +235,14 @@ export class ReviewContextPackService {
    * parses and names this session's current patch hash. A pack interrupted
    * mid-build fails one of those, and a pack left by an earlier revision
    * fails the hash. For Analysis, `review-input.md` must also end with the
-   * section of the resolved Change intent, or hold none when there is none.
+   * section of the stated goal, or hold none when there is none.
    */
   private async isUsable(
     session: ReviewSession,
     patchHash: ContentHash,
     changeIntent:
       | { readonly _tag: "Unread" }
-      | {
-          readonly _tag: "Read";
-          readonly resolved: ResolvedChangeIntent | undefined;
-        },
+      | { readonly _tag: "Read"; readonly section: string | undefined },
   ): Promise<boolean> {
     const { profileId } = session.key;
     const present = await Promise.all([
@@ -240,14 +265,10 @@ export class ReviewContextPackService {
       "utf8",
     ).catch(() => undefined);
     if (reviewInput === undefined) return false;
-    const start = reviewInput.indexOf(`\n${CHANGE_INTENT_HEADING}\n`);
+    // The header lines hold no heading, so the first one starts the goal section.
+    const start = reviewInput.indexOf("\n## ");
     const section = start < 0 ? undefined : reviewInput.slice(start + 1);
-    return (
-      section ===
-      (changeIntent.resolved === undefined
-        ? undefined
-        : renderChangeIntentSection(changeIntent.resolved))
-    );
+    return section === changeIntent.section;
   }
 }
 

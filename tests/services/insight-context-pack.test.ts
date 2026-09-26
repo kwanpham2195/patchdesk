@@ -134,6 +134,39 @@ describe("Insight run context pack", () => {
     });
   });
 
+  it("gives Analysis the pull request description as its stated goal (#470)", async () => {
+    let reviewInput: string | undefined;
+    const value = await fixture({
+      async invoke(input) {
+        reviewInput = await readFile(input.reviewInputPath ?? "", "utf8");
+        return ok(analysisResult);
+      },
+    });
+
+    await run(value);
+
+    expect(reviewInput).toContain(
+      "BEGIN PULL REQUEST DESCRIPTION\nAdds a guard to recovery.\nEND PULL REQUEST DESCRIPTION",
+    );
+  });
+
+  it("rebuilds an Analysis pack written without the pull request description", async () => {
+    const value = await fixture(completes);
+    const reviewInputPath = value.paths.preparedReviewInputFile(
+      profileId,
+      value.session.id,
+    );
+    await run(value);
+    const built = await readFile(reviewInputPath, "utf8");
+    // What a build before #470 left: the same header, no goal section.
+    await writeFile(reviewInputPath, built.slice(0, built.indexOf("\n## ")));
+
+    await run(value);
+
+    expect(value.contextPack.commentReads).toBe(2);
+    expect(await readFile(reviewInputPath, "utf8")).toBe(built);
+  });
+
   it("lists a git-quoted changed path in the built pack", async () => {
     // Git C-quotes any path with a non-ASCII byte, so the `+++ b/` prefix
     // test this list used to run never matched one and the file went

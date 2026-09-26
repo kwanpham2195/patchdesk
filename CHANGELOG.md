@@ -6,6 +6,8 @@
 
 - Added a **Change intent** to a local Review: the task or spec the change was written against, as text or a spec file in the repository. Analysis checks the patch against it and reports a goal the patch misses, or a change the intent does not mention, as a P2 Finding; its details line says which intent it checked and when the intent changed since the run. #471
 
+- Fixed Analysis never receiving the pull request description it is asked to check against the patch: it said the description was absent on every pull request. It now reports a goal the description states and the patch misses, or a change the description does not mention, as a P2 Finding. #470
+
 - Added newer models to choose from for API key Insight runs, among them Claude Opus 5.5 and Fable 5.1, GPT-6 Sol, Luna, and Astra, and Grok 4.7. Providers retired some models, among them the Kimi K2 models on Moonshot and DeepSeek V4 Flash; a saved model that is no longer listed needs picking again in the run dialog.
 
 - Brief Flow can show two new views: **state**, for a change to the values of a status field and the transitions between them, and **contract**, for an exported signature or fields shown old and new. Citation chips now appear only on changed steps, as the hunk alias with the file on hover, in their own column, and long steps stay on one line with the full text on hover. A Flow tree nested deeper than three levels is cut to three levels instead of failing the whole Brief. #445
