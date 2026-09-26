@@ -70,6 +70,9 @@ import { appLog } from "./lib/logger";
 
 export type { ReviewWorkbenchLoader };
 
+/** A repository checkout a sidebar row opens; `checkout` names a linked worktree (#489). */
+type LocalCheckoutTarget = RepositoryIdentity & { readonly checkout?: string };
+
 type FixtureContentComponent = React.ComponentType<{
   readonly hash: string;
   readonly onNavigationStateChange: (state: NavigationState) => void;
@@ -291,17 +294,17 @@ function AppContent({
   const { openLocalReview, openPullRequestByRef, reportOpenError } =
     reviewOpening;
   // The open that waits behind the leave-confirmation for a local row click (#479).
-  const [parkedLocalOpen, setParkedLocalOpen] = useState<RepositoryIdentity>();
+  const [parkedLocalOpen, setParkedLocalOpen] = useState<LocalCheckoutTarget>();
   // Opens the working tree of whichever branch the checkout is on now, so a
   // branch switch lands on that branch's own Review (#479). A refused open
   // calls `leave` before reporting; a parked open has already left.
   const openCurrentWorkingTree = useCallback(
-    async (
-      repository: RepositoryIdentity,
-      leave: () => void,
-    ): Promise<void> => {
+    async (target: LocalCheckoutTarget, leave: () => void): Promise<void> => {
       try {
-        await openLocalReview(repository, { kind: "working_tree" });
+        await openLocalReview(target, {
+          kind: "working_tree",
+          ...definedProps({ checkout: target.checkout }),
+        });
       } catch (cause) {
         leave();
         reportOpenError(
@@ -312,12 +315,13 @@ function AppContent({
     [openLocalReview, reportOpenError],
   );
   const openLocalRepositoryFromSidebar = useCallback(
-    ({ host, owner, repo }: SidebarLocalRepositoryRow): void => {
+    ({ host, owner, repo, checkout }: SidebarLocalRepositoryRow): void => {
+      const target = { host, owner, repo, ...definedProps({ checkout }) };
       if (navigationState !== "clear") {
-        setParkedLocalOpen({ host, owner, repo });
+        setParkedLocalOpen(target);
         return;
       }
-      void openCurrentWorkingTree({ host, owner, repo }, () =>
+      void openCurrentWorkingTree(target, () =>
         navigate({ kind: "dashboard" }),
       );
     },

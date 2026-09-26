@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReviewStore } from "../../src/adapters/storage/review-store";
 import { definedProps } from "../../src/domain/defined-props";
 import {
+  parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -99,9 +100,16 @@ function localReview(
   options: {
     readonly kind?: "working_tree" | "branch";
     readonly repo?: string;
+    readonly checkout?: string;
   } = {},
 ): Review {
   const branchName = must(parseLocalBranchName(branch));
+  const checkout = definedProps({
+    checkout:
+      options.checkout === undefined
+        ? undefined
+        : must(parseAbsolutePath(options.checkout)),
+  });
   const identity: ReviewIdentity = {
     profileId,
     host,
@@ -113,8 +121,9 @@ function localReview(
             kind: "branch",
             branch: branchName,
             baseBranch: must(parseLocalBranchName("main")),
+            ...checkout,
           }
-        : { kind: "working_tree", branch: branchName },
+        : { kind: "working_tree", branch: branchName, ...checkout },
   };
   return {
     ...createReview({
@@ -305,6 +314,31 @@ describe("SidebarListingService.list", () => {
     // The row names no source and no branch: the checkout decides that at the click.
     expect(Object.hasOwn(local ?? {}, "source")).toBe(false);
     expect(Object.hasOwn(local ?? {}, "number")).toBe(false);
+  });
+
+  it("projects each checkout of a repository as its own local row, naming only the linked one (#489)", async () => {
+    const configured = localReview("main", "2026-03-01T00:00:00.000Z");
+    const linked = localReview("feat", "2026-03-02T00:00:00.000Z", {
+      checkout: "/work/pd-ux-pass",
+    });
+    const linkedBranch = localReview("feat", "2026-03-03T00:00:00.000Z", {
+      kind: "branch",
+      checkout: "/work/pd-ux-pass",
+    });
+    const value = service(
+      ok({ reviews: [configured, linked, linkedBranch], unreadable: 0 }),
+    );
+
+    const { rows } = must(await value.listed.list(profileId));
+
+    expect(rows).toHaveLength(2);
+    expect(rows.at(0)).toMatchObject({
+      checkout: "/work/pd-ux-pass",
+      checkoutName: "pd-ux-pass",
+      reviewIds: expect.arrayContaining([linked.id, linkedBranch.id]),
+    });
+    expect(rows.at(1)).toMatchObject({ reviewIds: [configured.id] });
+    expect(Object.hasOwn(rows.at(1) ?? {}, "checkout")).toBe(false);
   });
 
   it("counts each repository's local row once toward the twenty-row cap", async () => {

@@ -19,6 +19,8 @@ import type { RepositoryIdentity } from "../../../domain/repository-identity";
 export type LocalReviewSourceInput =
   | {
       readonly kind: "working_tree";
+      /** A linked worktree to read instead of the configured checkout (#489). */
+      readonly checkout?: string;
       /** Sent by a sidebar reopen: the `HEAD` the stored Review was opened on. */
       readonly expectedHead?:
         | { readonly kind: "branch"; readonly branch: string }
@@ -539,6 +541,8 @@ function localReviewOpenFailure(
     return "This checkout has no such branch, base branch, or commit.";
   if (isApiErrorCode(cause, "repository_not_local"))
     return "This repository has no local checkout in the workspace.";
+  if (isApiErrorCode(cause, "checkout_not_found"))
+    return "This checkout is no longer a worktree of the repository.";
   return "Patchdesk could not read the local checkout.";
 }
 

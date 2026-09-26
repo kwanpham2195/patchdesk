@@ -110,6 +110,52 @@ describe("App visited local Review", () => {
     );
   });
 
+  it("opens the working tree of a linked worktree from its own row (#489)", async () => {
+    const user = userEvent.setup();
+    const linkedRow = {
+      ...repository,
+      checkout: "/work/pd-ux-pass",
+      checkoutName: "pd-ux-pass",
+      reviewIds: ["review-local-linked"],
+      sortedAt: "2026-08-02T00:00:00.000Z",
+    };
+    installed = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profile]),
+        "/v1/inbox": () =>
+          success({
+            profile,
+            inbox: {
+              state: "open",
+              pageSize: 25,
+              rows: [],
+              repositories: [],
+              dataFreshness: "fresh",
+            },
+          }),
+        "/v1/sidebar/reviews": () =>
+          success({ rows: [linkedRow, localRow], unreadable: 0 }),
+        "/v1/reviews/open-local": () => success(asJsonBody(openedLocal)),
+      },
+      { operations: APP_BOOT_OPERATIONS },
+    );
+    render(
+      <App
+        reviewWorkbenchLoader={async () => ({
+          default: () => <h1>Review destination</h1>,
+        })}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /pd-ux-pass/ }));
+
+    await screen.findByRole("heading", { name: "Review destination" });
+    expect(callBody(openLocalRequest(installed))).toMatchObject({
+      source: { kind: "working_tree", checkout: "/work/pd-ux-pass" },
+    });
+  });
+
   it("opens the current working tree once the maintainer leaves a draft for a parked local row click", async () => {
     const double = await leaveDraftForParkedLocalClick(() =>
       success(asJsonBody(openedLocal)),

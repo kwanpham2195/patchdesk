@@ -457,9 +457,10 @@ type VisitedRowLabels = {
  * label; printing the reference again underneath would repeat the number, so
  * that row leaves the age standing alone. The separator belongs to the age, so
  * a row with no recorded open ends its reference at the number. A local
- * row is named by its repository, whatever the scope, and marked "local"
- * where a pull request prints its number; it names no branch, which the
- * checkout can change after the column loaded (#479).
+ * row is named by its repository, whatever the scope, plus the folder of a
+ * linked worktree (#489), and marked "local" where a pull request prints its
+ * number; it names no branch, which the checkout can change after the column
+ * loaded (#479).
  */
 // oxlint-disable-next-line react/only-export-components -- Shared row-label rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedRowLabels(
@@ -470,14 +471,17 @@ export function visitedRowLabels(
       >
     | Pick<
         SidebarLocalRepositoryRow,
-        "owner" | "repo" | "reviewIds" | "lastOpenedAt"
+        "owner" | "repo" | "reviewIds" | "lastOpenedAt" | "checkoutName"
       >,
   scope: VisitedLabelScope,
 ): VisitedRowLabels {
   const separator = row.lastOpenedAt === undefined ? "" : " · ";
   if ("reviewIds" in row)
     return {
-      title: `${row.owner}/${row.repo}`,
+      title:
+        row.checkoutName === undefined
+          ? `${row.owner}/${row.repo}`
+          : `${row.owner}/${row.repo} · ${row.checkoutName}`,
       reference: `local${separator}`,
     };
   const repository = visitedRepositoryLabel(row, scope);
