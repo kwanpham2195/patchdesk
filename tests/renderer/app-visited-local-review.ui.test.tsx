@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -13,8 +19,12 @@ import {
   type DesktopDouble,
   type DesktopRoute,
 } from "./fake-desktop-response";
-import { asJsonBody } from "./inbox-flow-fixtures";
-import { callPath, projection } from "./review-workbench-fixtures";
+import {
+  asJsonBody,
+  inbox as inboxWithRow,
+  openErrorAlert,
+} from "./inbox-flow-fixtures";
+import { callBody, callPath, projection } from "./review-workbench-fixtures";
 
 let installed: DesktopDouble | undefined;
 
@@ -140,5 +150,70 @@ describe("App visited local Review", () => {
       screen.queryByRole("heading", { name: "Review destination" }),
     ).toBeNull();
     expect(screen.queryByText("Could not open review")).toBeNull();
+  });
+
+  it("leaves the route with the checkout's branch named when a parked click is refused after a branch switch", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
+    installed = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profile]),
+        // A listed row puts the inbox chrome, and its notices, on screen.
+        "/v1/inbox": () =>
+          success({
+            ...inboxWithRow,
+            inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
+          }),
+        "/v1/sidebar/reviews": () =>
+          success({
+            rows: [
+              {
+                reviewId: "review-local",
+                ...repository,
+                source: { kind: "working_tree", branch: "feat/449" },
+                sortedAt: "2026-08-01T00:00:00.000Z",
+              },
+            ],
+            unreadable: 0,
+          }),
+        "/v1/reviews/leave": () => success(null),
+        "/v1/reviews/load": (request) =>
+          JSON.stringify(callBody(request)).includes('"review-local"')
+            ? failure({ error: "branch_mismatch", currentBranch: "main" }, 409)
+            : success(asJsonBody(projection())),
+      },
+      { operations: APP_BOOT_OPERATIONS },
+    );
+    render(
+      <App
+        reviewWorkbenchLoader={async () => ({
+          default: (props) => (
+            <button
+              type="button"
+              onClick={() => props.onNavigationStateChange("dirty_draft")}
+            >
+              Hold a draft
+            </button>
+          ),
+        })}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Hold a draft" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /Working tree on feat\/449/ }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Discard changes and leave" }),
+    );
+
+    await waitFor(() => expect(openErrorAlert()).toBeDefined());
+    expect(openErrorAlert()?.textContent).toContain("main");
+    expect(window.localStorage.getItem("patchdesk.destination")).toBe(
+      "dashboard",
+    );
   });
 });
