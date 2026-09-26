@@ -242,6 +242,37 @@ describe("useReviewObservation detection table", () => {
 });
 
 describe("useReviewObservation scheduling", () => {
+  it("shows Updates available on a local Review once a focus detection finds a session an agent prepared", async () => {
+    vi.useFakeTimers();
+    const observed = installObservationDouble({
+      detect: (call) => ({ _tag: call > 1 ? "RevisionChanged" : "Unchanged" }),
+    });
+    const base = projection();
+    // SAFETY: fixture data in the wire shape `parseWorkbenchResponse` accepts; the working-tree source replaces the pull request fields.
+    const local = projection({
+      ...base,
+      session: {
+        ...base.session,
+        key: {
+          ...base.session.key,
+          source: { kind: "working_tree", branch: "main" },
+        },
+      },
+      pullRequest: undefined,
+    } as never);
+    const { patch } = renderObservation(local);
+    await flush();
+    expect(patch).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event("focus"));
+    await flush(FOCUS_DEBOUNCE_MS);
+
+    expect(observed.detectCount()).toBe(2);
+    expect(patch).toHaveBeenCalledWith({
+      revision: { ...local.revision, freshness: "updates_available" },
+    });
+  });
+
   it("coalesces a focus and a visibility change into one detection", async () => {
     vi.useFakeTimers();
     const observed = installObservationDouble({
