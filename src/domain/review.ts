@@ -149,6 +149,11 @@ export type Review<Source extends ReviewSource = ReviewSource> = {
   readonly localDrafts?: ReadonlyArray<LocalDraft>;
   /** A local Review's Change intent (#467); never present on a pull request Review. Every move to a new session keeps it. */
   readonly changeIntent?: ChangeIntent;
+  /**
+   * A local Review's session an agent's `refresh_review` prepared and the
+   * maintainer has not moved to yet (ADR 0052); the move clears it.
+   */
+  readonly preparedSessionId?: ReviewSessionId;
 };
 
 /**
@@ -264,6 +269,7 @@ const reviewV2Schema = v.strictObject({
   ),
   localDrafts: v.optional(v.array(storedLocalDraftSchema)),
   changeIntent: v.optional(storedChangeIntentSchema),
+  preparedSessionId: v.optional(v.string()),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -356,13 +362,41 @@ export function moveLocalReviewToSession(
   },
 ): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  const { preparedSessionId: _moved, ...rest } = review;
   return ok({
-    ...review,
+    ...rest,
     currentSessionId: input.sessionId,
     currentHeadSha: input.headSha,
     freshness: { _tag: "Fresh" },
     updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
     ...definedProps({ localDrafts: input.localDrafts ?? review.localDrafts }),
+  });
+}
+
+/**
+ * Record the session an agent's refresh prepared without moving the Review
+ * to it (ADR 0052): the Review reads RevisionChanged with that session's
+ * revision, so the header shows Updates available and Apply waits until the
+ * maintainer's Refresh moves it.
+ */
+export function recordPreparedLocalSession(
+  review: Review<LocalReviewSource>,
+  prepared: {
+    readonly sessionId: ReviewSessionId;
+    readonly identity: ObservedRevisionIdentity;
+    readonly detectedAt: IsoTimestamp;
+  },
+): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  return ok({
+    ...review,
+    preparedSessionId: prepared.sessionId,
+    freshness: {
+      _tag: "RevisionChanged",
+      detectedAt: prepared.detectedAt,
+      identity: prepared.identity,
+    },
+    updatedAt: laterTimestamp(review.updatedAt, prepared.detectedAt),
   });
 }
 
@@ -685,6 +719,7 @@ function parseReviewBase(
     | "lastLooked"
     | "localDrafts"
     | "changeIntent"
+    | "preparedSessionId"
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
@@ -747,13 +782,20 @@ function parseReviewBase(
       : source.value.kind === "pull_request"
         ? invalid()
         : parseChangeIntent(raw.changeIntent);
+  const preparedSessionId =
+    raw.preparedSessionId === undefined
+      ? ok(undefined)
+      : source.value.kind === "pull_request"
+        ? invalid()
+        : parseReviewSessionId(raw.preparedSessionId);
   if (
     representedRemote._tag === "err" ||
     status._tag === "err" ||
     lastOpenedAt._tag === "err" ||
     lastLooked._tag === "err" ||
     localDrafts._tag === "err" ||
-    changeIntent._tag === "err"
+    changeIntent._tag === "err" ||
+    preparedSessionId._tag === "err"
   )
     return invalid();
 
@@ -769,6 +811,7 @@ function parseReviewBase(
       lastLooked: lastLooked.value,
       localDrafts: localDrafts.value,
       changeIntent: changeIntent.value,
+      preparedSessionId: preparedSessionId.value,
     }),
     status: status.value,
     createdAt: createdAt.value,

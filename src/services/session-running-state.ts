@@ -34,7 +34,7 @@ export type SessionRunningStateDependencies = {
 /**
  * ADR 0020's one definition of a session in motion, which no cleanup may
  * remove: an active preparation journal, the current session of an Open
- * Review, an active Analysis, Walkthrough or Brief run, a locked GitHub write,
+ * Review or the one an agent's refresh prepared for it (ADR 0052), an active Analysis, Walkthrough or Brief run, a locked GitHub write,
  * or an unsettled merge. A session that is not running carries out the Review
  * record this answer was decided from, so a caller does not read it again.
  */
@@ -70,7 +70,8 @@ export async function readSessionRunningState(
   if (
     review._tag === "ok" &&
     review.value.status._tag === "Open" &&
-    review.value.currentSessionId === session.id
+    (review.value.currentSessionId === session.id ||
+      review.value.preparedSessionId === session.id)
   )
     return ok({ running: true });
   // A Brief reads the session's worktree as an Analysis or Walkthrough does.
