@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { requestJson } from "../api-client";
 import type { DiscoveredRepo } from "../workspace-root-discovery-contract";
@@ -17,9 +17,9 @@ export type WatchlistEntry = {
 };
 
 /**
- * Merges discovered repos with already-watched repos so watched repos not
- * returned by `/v1/watchlist/suggestions` (the discovery endpoint excludes
- * anything already in `profile.repos`) still appear, pre-ticked. Discovered
+ * Merges discovered repos with already-watched repos so watched repos
+ * discovery did not find (no checkout under any workspace root) still appear,
+ * pre-ticked. Discovered
  * entries win on key collision; a watched repo with no recorded local path
  * renders with `localPath: ""`.
  */
@@ -98,16 +98,30 @@ export type WatchlistToggleHook = {
   readonly errorsByKey: ReadonlyMap<string, string>;
   readonly draftWatchedByKey: ReadonlyMap<string, boolean>;
   readonly feedback: string | undefined;
-  readonly toggleRepo: (
-    entry: WatchlistEntry,
-    currentlyWatched: boolean,
-  ) => Promise<void>;
+  readonly toggleRepo: (entry: WatchlistEntry, savedWatched: boolean) => void;
+  readonly setWatched: (
+    entries: ReadonlyArray<WatchlistEntry>,
+    watched: boolean,
+    isSavedWatched: (entry: WatchlistEntry) => boolean,
+  ) => void;
 };
 
+type QueuedChange = {
+  readonly entry: WatchlistEntry;
+  readonly watched: boolean;
+};
+
+/** How long a tick waits for the next one before the queued changes are sent together. */
+const WATCHLIST_BATCH_DELAY_MS = 400;
+
 /**
- * Owns repository-scoped pending, draft, and error state for watchlist
- * changes. A synchronous key guard rejects duplicate same-row submissions
- * while allowing requests for different repositories to run concurrently.
+ * Owns the watchlist edits a checklist makes. A tick shows at once as a
+ * draft, joins a queue, and is sent with every other tick made within
+ * `WATCHLIST_BATCH_DELAY_MS` as one `PUT /v1/watchlist`, followed by one
+ * workspace reload; a reload per tick made a long list slow to work through.
+ * Only one batch is in flight at a time, so a later batch never overtakes an
+ * earlier one. A draft stays until the reload shows the saved state, and is
+ * dropped (reverting the row) when its batch fails.
  *
  * `profileId` is the workspace each request edits, sent with it rather than
  * left to the server's selected workspace: a switch flips that selection as
@@ -119,7 +133,10 @@ export function useWatchlistToggle(
   profileId: string | undefined,
   onWorkspaceReload: () => Promise<void>,
 ): WatchlistToggleHook {
-  const pendingKeysRef = useRef(new Set<string>());
+  const draftsRef = useRef(new Map<string, boolean>());
+  const queueRef = useRef(new Map<string, QueuedChange>());
+  const inFlightKeysRef = useRef(new Set<string>());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -130,86 +147,151 @@ export function useWatchlistToggle(
     ReadonlyMap<string, boolean>
   >(() => new Map());
   const [feedback, setFeedback] = useState<string>();
+  // The latest render's values, read by a batch that settles after them.
+  const latest = useRef({ profileId, onWorkspaceReload });
+  useEffect(() => {
+    latest.current = { profileId, onWorkspaceReload };
+  }, [profileId, onWorkspaceReload]);
 
-  const toggleRepo = async (
-    entry: WatchlistEntry,
-    currentlyWatched: boolean,
-  ): Promise<void> => {
-    const key = repositoryKey(entry);
-    if (pendingKeysRef.current.has(key)) return;
-    if (profileId === undefined) {
+  const publishDrafts = (): void =>
+    setDraftWatchedByKey(new Map(draftsRef.current));
+
+  const flush = async (): Promise<void> => {
+    timerRef.current = undefined;
+    if (inFlightKeysRef.current.size > 0) return;
+    const changes = [...queueRef.current.values()];
+    if (changes.length === 0) return;
+    queueRef.current = new Map();
+    const workspaceId = latest.current.profileId;
+    const keys = changes.map((change) => repositoryKey(change.entry));
+    if (workspaceId === undefined) {
       // No loaded workspace means no workspace to name in the request.
-      setErrorsByKey((current) =>
-        new Map(current).set(key, "Workspace still loading."),
-      );
+      for (const key of keys) draftsRef.current.delete(key);
+      publishDrafts();
+      setErrorsByKey((current) => {
+        const next = new Map(current);
+        for (const key of keys) next.set(key, "Workspace still loading.");
+        return next;
+      });
       return;
     }
+    inFlightKeysRef.current = new Set(keys);
+    setPendingKeys((current) => new Set([...current, ...keys]));
+    const added = changes.filter((change) => change.watched);
+    const removed = changes.filter((change) => !change.watched);
+    try {
+      await requestJson("/v1/watchlist", {
+        method: "PUT",
+        body: {
+          profileId: workspaceId,
+          add: added.map(({ entry }) => watchlistAddition(entry)),
+          remove: removed.map(({ entry }) => ({
+            host: entry.host,
+            owner: entry.owner,
+            repo: entry.repo,
+          })),
+        },
+      });
+      setFeedback(watchlistBatchFeedback(added.length, removed.length));
+      await latest.current.onWorkspaceReload();
+    } catch (cause: unknown) {
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : "Patchdesk could not update the watchlist.";
+      setErrorsByKey((current) => {
+        const next = new Map(current);
+        for (const key of keys) next.set(key, message);
+        return next;
+      });
+    } finally {
+      inFlightKeysRef.current = new Set();
+      for (const change of changes) {
+        const key = repositoryKey(change.entry);
+        // A row ticked again while this batch ran keeps its newer draft.
+        if (
+          !queueRef.current.has(key) &&
+          draftsRef.current.get(key) === change.watched
+        )
+          draftsRef.current.delete(key);
+      }
+      publishDrafts();
+      setPendingKeys((current) => {
+        const next = new Set(current);
+        for (const key of keys) next.delete(key);
+        return next;
+      });
+      if (queueRef.current.size > 0 && timerRef.current === undefined)
+        void flush();
+    }
+  };
 
-    pendingKeysRef.current.add(key);
-    setPendingKeys((current) => new Set(current).add(key));
-    setDraftWatchedByKey((current) =>
-      new Map(current).set(key, !currentlyWatched),
-    );
+  const schedule = (delayMs: number): void => {
+    if (timerRef.current !== undefined) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => void flush(), delayMs);
+  };
+
+  const queue = (entry: WatchlistEntry, watched: boolean, saved: boolean) => {
+    const key = repositoryKey(entry);
+    draftsRef.current.set(key, watched);
+    // Ticking a row back to its saved state before its batch leaves cancels it.
+    if (watched === saved && !inFlightKeysRef.current.has(key))
+      queueRef.current.delete(key);
+    else queueRef.current.set(key, { entry, watched });
     setErrorsByKey((current) => {
       if (!current.has(key)) return current;
       const next = new Map(current);
       next.delete(key);
       return next;
     });
-    try {
-      if (currentlyWatched) {
-        await requestJson("/v1/watchlist", {
-          method: "DELETE",
-          body: {
-            profileId,
-            host: entry.host,
-            owner: entry.owner,
-            repo: entry.repo,
-          },
-        });
-        setFeedback(`Removed ${entry.owner}/${entry.repo} from the watchlist.`);
-      } else {
-        await requestJson("/v1/watchlist", {
-          method: "POST",
-          body: {
-            profileId,
-            host: entry.host,
-            owner: entry.owner,
-            repo: entry.repo,
-            localPath: entry.localPath,
-          },
-        });
-        setFeedback(`Added ${entry.owner}/${entry.repo} to the watchlist.`);
-      }
-      await onWorkspaceReload();
-    } catch (cause: unknown) {
-      const message =
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not update the watchlist.";
-      setErrorsByKey((current) => new Map(current).set(key, message));
-    } finally {
-      pendingKeysRef.current.delete(key);
-      setPendingKeys((current) => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
-      setDraftWatchedByKey((current) => {
-        const next = new Map(current);
-        next.delete(key);
-        return next;
-      });
-    }
   };
+
+  useEffect(
+    () => () => {
+      // Closing Settings inside the batch delay still saves the ticks.
+      if (timerRef.current === undefined) return;
+      clearTimeout(timerRef.current);
+      void flush();
+    },
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- unmount-only: `flush` reads refs, never render state.
+    [],
+  );
 
   return {
     pendingKeys,
     errorsByKey,
     draftWatchedByKey,
     feedback,
-    toggleRepo,
+    toggleRepo: (entry, savedWatched) => {
+      const current =
+        draftsRef.current.get(repositoryKey(entry)) ?? savedWatched;
+      queue(entry, !current, savedWatched);
+      publishDrafts();
+      schedule(WATCHLIST_BATCH_DELAY_MS);
+    },
+    setWatched: (entries, watched, isSavedWatched) => {
+      for (const entry of entries) queue(entry, watched, isSavedWatched(entry));
+      publishDrafts();
+      schedule(0);
+    },
   };
+}
+
+/** A watched repository with no recorded checkout is sent without a path. */
+function watchlistAddition(entry: WatchlistEntry): Repo {
+  const repository: Repo = {
+    host: entry.host,
+    owner: entry.owner,
+    repo: entry.repo,
+  };
+  if (entry.localPath === "") return repository;
+  return { ...repository, localPath: entry.localPath };
+}
+
+function watchlistBatchFeedback(added: number, removed: number): string {
+  if (removed === 0) return `Watchlist saved: ${added} added.`;
+  if (added === 0) return `Watchlist saved: ${removed} removed.`;
+  return `Watchlist saved: ${added} added, ${removed} removed.`;
 }
 
 /** Renders the toggle hook's success feedback once for the surrounding card. */
@@ -262,7 +344,6 @@ export function RepositoryChecklist({
           >
             <Checkbox
               className="mt-0.5"
-              disabled={busy}
               checked={currentlyWatched}
               aria-invalid={error === undefined ? undefined : true}
               onCheckedChange={() => onToggle(entry, savedWatched)}

@@ -39,11 +39,11 @@ export function useWorkspaceRootDiscovery(
 ): ApiProbeState<ReadonlyArray<WorkspaceRootDiscovery>> {
   // A JSON key rather than the profile object itself: the dashboard is
   // refetched (and reallocated) on every reload even when nothing this scan
-  // cares about changed.
+  // cares about changed. Watchlist changes are left out: discovery lists
+  // watched repositories too, so ticking one needs no rescan.
   const savedKey = JSON.stringify({
     id: savedProfile?.id,
     workspaceRoots: savedProfile?.workspaceRoots,
-    repos: savedProfile?.repos,
   });
 
   return useApiProbe(

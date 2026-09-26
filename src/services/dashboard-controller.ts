@@ -63,7 +63,6 @@ export type DashboardControllerFailure = {
 // owns that invariant; the schema's job here is only to give a genuine
 // object shape to narrow against, without resorting to `typeof` or a
 // `Record<string, unknown>` dictionary type.
-const rawObjectSchema = v.object({});
 const repoRefInputSchema = v.object({
   host: v.unknown(),
   owner: v.unknown(),
@@ -74,6 +73,10 @@ const watchlistRepoInputSchema = v.object({
   owner: v.unknown(),
   repo: v.unknown(),
   localPath: v.optional(v.unknown()),
+});
+const watchlistBatchInputSchema = v.object({
+  add: v.pipe(v.array(v.unknown()), v.maxLength(1_000)),
+  remove: v.pipe(v.array(v.unknown()), v.maxLength(1_000)),
 });
 const watchlistProfileInputSchema = v.object({
   profileId: v.unknown(),
@@ -350,76 +353,49 @@ export class DashboardController {
   }
 
   /**
-   * Adds one repository to the watchlist of the workspace `profileId`
-   * names, rather than to whichever workspace the server last recorded as
-   * selected. During a workspace switch the selection changes the moment
-   * `POST /v1/profiles/select` resolves, while the Settings Repositories
-   * card keeps rendering the previous workspace's repositories until its
-   * reload lands; a toggle in that window would otherwise add the
-   * repository to the workspace the switch is moving away from.
+   * Applies a batch of watchlist additions and removals to the workspace
+   * `profileId` names, in one profile save, rather than to whichever
+   * workspace the server last recorded as selected. During a workspace switch
+   * the selection changes the moment `POST /v1/profiles/select` resolves,
+   * while the Settings Repositories card keeps rendering the previous
+   * workspace's repositories until its reload lands; a batch sent in that
+   * window would otherwise land in the workspace the switch is moving away
+   * from. Adding a watched repository or removing an unwatched one is a
+   * no-op, so a retried batch settles to the same watchlist.
    */
-  async addWatchlistRepo(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /v1/watchlist`; there is no earlier boundary to run it at.
+  async updateWatchlist(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `PUT /v1/watchlist`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    if (!v.safeParse(rawObjectSchema, input).success)
-      return failure("invalid_input");
+    const parsed = v.safeParse(watchlistBatchInputSchema, input);
+    if (!parsed.success) return failure("invalid_input");
     const profileId = watchlistProfileId(input);
     if (profileId._tag === "err") return profileId;
+    const additions: WatchedRepoConfig[] = [];
+    for (const raw of parsed.output.add) {
+      const addition = watchedRepoToAdd(raw);
+      if (addition._tag === "err") return addition;
+      additions.push(addition.value);
+    }
+    const removals: WatchedRepoRef[] = [];
+    for (const raw of parsed.output.remove) {
+      const removal = repoRef(raw);
+      if (removal._tag === "err") return removal;
+      removals.push(removal.value);
+    }
     const profile = await this.profileById(profileId.value);
     if (profile._tag === "err") return profile;
-    const parsedInput = v.safeParse(watchlistRepoInputSchema, input);
-    if (!parsedInput.success) return failure("invalid_input");
-    const fields = parsedInput.output;
-    const host = parseGitHubHost(fields.host);
-    const owner = parseGitHubOwner(fields.owner);
-    const repo = parseGitHubRepoName(fields.repo);
-    // `localPath` really is optional here: omit it when absent, but once
-    // present it must parse as a genuine absolute path — no longer smuggled
-    // through as `localPath as never`, which previously bypassed validation
-    // entirely and could persist an unusable path.
-    const localPath =
-      fields.localPath === undefined
-        ? undefined
-        : parseAbsolutePath(fields.localPath);
-    if (
-      host._tag === "err" ||
-      owner._tag === "err" ||
-      repo._tag === "err" ||
-      (localPath !== undefined && localPath._tag === "err")
-    )
-      return failure("invalid_input");
-    const repoToAdd: WatchedRepoConfig = {
-      host: host.value,
-      owner: owner.value,
-      repo: repo.value,
-    };
-    const changed = addWatchedRepo(
-      profile.value,
-      localPath === undefined
-        ? repoToAdd
-        : { ...repoToAdd, localPath: localPath.value },
-    );
-    if (changed._tag === "err") return failure("invalid_input");
-    const saved = await this.settings.saveProfile(changed.value);
-    return saved._tag === "ok" ? ok(changed.value) : failure("storage");
-  }
-
-  /** Removes one repository from the watchlist of the workspace `profileId` names, for the reason `addWatchlistRepo` gives. */
-  async removeWatchlistRepo(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser (via `repoRef`) for `DELETE /v1/watchlist`; there is no earlier boundary to run it at.
-    input: unknown,
-  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    const profileId = watchlistProfileId(input);
-    if (profileId._tag === "err") return profileId;
-    const profile = await this.profileById(profileId.value);
-    if (profile._tag === "err") return profile;
-    const ref = repoRef(input);
-    if (ref._tag === "err") return ref;
-    const changed = removeWatchedRepo(profile.value, ref.value);
-    if (changed._tag === "err") return failure("not_found");
-    const saved = await this.settings.saveProfile(changed.value);
-    return saved._tag === "ok" ? ok(changed.value) : failure("storage");
+    let changed = profile.value;
+    for (const removal of removals) {
+      const next = removeWatchedRepo(changed, removal);
+      if (next._tag === "ok") changed = next.value;
+    }
+    for (const addition of additions) {
+      const next = addWatchedRepo(changed, addition);
+      if (next._tag === "ok") changed = next.value;
+    }
+    const saved = await this.settings.saveProfile(changed);
+    return saved._tag === "ok" ? ok(changed) : failure("storage");
   }
 
   /**
@@ -492,6 +468,20 @@ function repoRef(
     : failure("invalid_input");
 }
 /** The workspace both watchlist writes name; required on `POST` and `DELETE /v1/watchlist` alike. */
+function watchedRepoToAdd(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for one `add` entry of `PUT /v1/watchlist`; there is no earlier boundary to run it at.
+  input: unknown,
+): Result<WatchedRepoConfig, DashboardControllerFailure> {
+  const parsed = v.safeParse(watchlistRepoInputSchema, input);
+  if (!parsed.success) return failure("invalid_input");
+  const ref = repoRef(input);
+  if (ref._tag === "err") return ref;
+  if (parsed.output.localPath === undefined) return ok(ref.value);
+  const localPath = parseAbsolutePath(parsed.output.localPath);
+  return localPath._tag === "ok"
+    ? ok({ ...ref.value, localPath: localPath.value })
+    : failure("invalid_input");
+}
 function watchlistProfileId(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the `profileId` both watchlist writes carry; there is no earlier boundary to run it at.
   input: unknown,

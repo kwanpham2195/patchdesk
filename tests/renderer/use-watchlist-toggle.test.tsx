@@ -9,7 +9,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
 
 import {
@@ -50,152 +50,163 @@ afterEach(() => {
 });
 
 describe("useWatchlistToggle", () => {
-  it("synchronously rejects a duplicate toggle for the same repository", async () => {
-    const requestGate = deferredResponse();
-    let requestCount = 0;
-    installWatchlistRoute(() => {
-      requestCount += 1;
-      return requestGate.promise;
-    });
-    const { result } = renderHook(() =>
-      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
-    );
-    let firstRequest: Promise<void> | undefined;
-    let duplicateRequest: Promise<void> | undefined;
-
-    act(() => {
-      firstRequest = result.current.toggleRepo(repoA, false);
-      duplicateRequest = result.current.toggleRepo(repoA, false);
-    });
-
-    expect(requestCount).toBe(1);
-    expect(result.current.pendingKeys).toEqual(new Set([repoAKey]));
-    expect(result.current.draftWatchedByKey.get(repoAKey)).toBe(true);
-
-    await act(async () => {
-      requestGate.resolve(success({}));
-      await requireRequest(firstRequest);
-      await requireRequest(duplicateRequest);
-    });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  it("runs toggles for different repositories concurrently", async () => {
-    const requestGate = deferredResponse();
-    let requestCount = 0;
-    installWatchlistRoute(() => {
-      requestCount += 1;
-      return requestGate.promise;
+  it("sends ticks made close together as one batch for the named workspace, then reloads once", async () => {
+    const bodies: unknown[] = [];
+    let reloads = 0;
+    installWatchlistRoute((input) => {
+      bodies.push(input.body);
+      return success({});
     });
     const { result } = renderHook(() =>
-      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
+      useWatchlistToggle(WORKSPACE_ID, async () => {
+        reloads += 1;
+      }),
     );
-    let firstRequest: Promise<void> | undefined;
-    let secondRequest: Promise<void> | undefined;
 
     act(() => {
-      firstRequest = result.current.toggleRepo(repoA, false);
-      secondRequest = result.current.toggleRepo(repoB, false);
+      result.current.toggleRepo(repoA, false);
+      result.current.toggleRepo(repoB, true);
     });
-
-    expect(requestCount).toBe(2);
-    expect(result.current.pendingKeys).toEqual(new Set([repoAKey, repoBKey]));
     expect(result.current.draftWatchedByKey).toEqual(
       new Map([
         [repoAKey, true],
-        [repoBKey, true],
+        [repoBKey, false],
       ]),
     );
+    expect(bodies).toEqual([]);
 
     await act(async () => {
-      requestGate.resolve(success({}));
-      await Promise.all([
-        requireRequest(firstRequest),
-        requireRequest(secondRequest),
-      ]);
+      await vi.advanceTimersByTimeAsync(1_000);
     });
+
+    expect(bodies).toEqual([
+      {
+        profileId: WORKSPACE_ID,
+        add: [
+          {
+            host: "github.com",
+            owner: "acme",
+            repo: "alpha",
+            localPath: "/workspace/alpha",
+          },
+        ],
+        remove: [{ host: "github.com", owner: "acme", repo: "beta" }],
+      },
+    ]);
+    expect(reloads).toBe(1);
+    expect(result.current.draftWatchedByKey.size).toBe(0);
+    expect(result.current.pendingKeys.size).toBe(0);
   });
 
-  it("names the workspace it was given in both watchlist requests", async () => {
-    const bodies: unknown[] = [];
-    installWatchlistRoute((input) => {
-      bodies.push(input.body);
+  it("sends nothing when a row is ticked back before its batch leaves", async () => {
+    let requests = 0;
+    installWatchlistRoute(() => {
+      requests += 1;
       return success({});
     });
     const { result } = renderHook(() =>
       useWatchlistToggle(WORKSPACE_ID, async () => undefined),
     );
 
+    act(() => {
+      result.current.toggleRepo(repoA, false);
+      result.current.toggleRepo(repoA, false);
+    });
     await act(async () => {
-      await result.current.toggleRepo(repoA, false);
-      await result.current.toggleRepo(repoB, true);
+      await vi.advanceTimersByTimeAsync(1_000);
     });
 
-    expect(bodies).toEqual([
-      {
-        profileId: WORKSPACE_ID,
-        host: "github.com",
-        owner: "acme",
-        repo: "alpha",
-        localPath: "/workspace/alpha",
-      },
-      {
-        profileId: WORKSPACE_ID,
-        host: "github.com",
-        owner: "acme",
-        repo: "beta",
-      },
-    ]);
+    expect(requests).toBe(0);
+    expect(result.current.draftWatchedByKey.get(repoAKey)).toBe(false);
   });
 
-  it("keeps the exact repository pending when requests settle in reverse order", async () => {
+  it("reverts every row of a failed batch and reports the error on each", async () => {
+    installWatchlistRoute(() => failure({ error: "storage" }));
+    const { result } = renderHook(() =>
+      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
+    );
+
+    act(() => {
+      result.current.setWatched([repoA, repoB], true, () => false);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(result.current.draftWatchedByKey.size).toBe(0);
+    expect(result.current.errorsByKey.get(repoAKey)).toBe(
+      "Patchdesk could not save the local review state.",
+    );
+    expect(result.current.errorsByKey.has(repoBKey)).toBe(true);
+  });
+
+  it("holds a tick made during a batch until that batch settles, then sends it", async () => {
     const firstGate = deferredResponse();
-    const secondGate = deferredResponse();
-    const gates = [firstGate, secondGate];
-    let requestCount = 0;
-    installWatchlistRoute(() => {
-      const gate = gates[requestCount];
-      requestCount += 1;
-      if (gate === undefined) throw new Error("Unexpected watchlist request.");
-      return gate.promise;
+    const bodies: unknown[] = [];
+    installWatchlistRoute((input) => {
+      bodies.push(input.body);
+      return bodies.length === 1 ? firstGate.promise : success({});
     });
     const { result } = renderHook(() =>
       useWatchlistToggle(WORKSPACE_ID, async () => undefined),
     );
-    let firstRequest: Promise<void> | undefined;
-    let secondRequest: Promise<void> | undefined;
 
     act(() => {
-      firstRequest = result.current.toggleRepo(repoA, false);
-      secondRequest = result.current.toggleRepo(repoB, false);
+      result.current.setWatched([repoA], true, () => false);
     });
-
     await act(async () => {
-      secondGate.resolve(failure({ error: "storage" }));
-      await requireRequest(secondRequest);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      result.current.toggleRepo(repoB, false);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
     });
 
+    expect(bodies).toHaveLength(1);
     expect(result.current.pendingKeys).toEqual(new Set([repoAKey]));
-    expect(result.current.draftWatchedByKey).toEqual(
-      new Map([[repoAKey, true]]),
-    );
-    expect(result.current.errorsByKey.get(repoBKey)).toBe(
-      "Patchdesk could not save the local review state.",
-    );
 
     await act(async () => {
       firstGate.resolve(success({}));
-      await requireRequest(firstRequest);
+      await vi.advanceTimersByTimeAsync(0);
     });
 
-    expect(result.current.pendingKeys.size).toBe(0);
-    expect(result.current.draftWatchedByKey.size).toBe(0);
-    expect(result.current.errorsByKey.has(repoAKey)).toBe(false);
-    expect(result.current.errorsByKey.has(repoBKey)).toBe(true);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toMatchObject({
+      add: [{ repo: "beta" }],
+      remove: [],
+    });
+  });
+
+  it("still saves ticks when the checklist closes inside the batch delay", async () => {
+    let requests = 0;
+    installWatchlistRoute(() => {
+      requests += 1;
+      return success({});
+    });
+    const { result, unmount } = renderHook(() =>
+      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
+    );
+
+    act(() => {
+      result.current.toggleRepo(repoA, false);
+    });
+    unmount();
+
+    expect(requests).toBe(1);
   });
 });
 
 describe("RepositoryChecklist", () => {
-  it("keeps one live request and failure scoped away from another repository row", async () => {
+  it("keeps one row's batch and failure scoped away from another repository row", async () => {
     const requestGate = deferredResponse();
     installWatchlistRoute(() => requestGate.promise);
 
@@ -208,7 +219,7 @@ describe("RepositoryChecklist", () => {
           pendingKeys={toggle.pendingKeys}
           errorsByKey={toggle.errorsByKey}
           draftWatchedByKey={toggle.draftWatchedByKey}
-          onToggle={(entry, watched) => toggle.toggleRepo(entry, watched)}
+          onToggle={toggle.toggleRepo}
           ariaLabel="Repositories"
         />
       );
@@ -221,16 +232,10 @@ describe("RepositoryChecklist", () => {
 
     fireEvent.click(within(rowA).getByRole("checkbox"));
     expect(
-      within(rowA).getByRole("status", { name: "Updating acme/alpha" }),
+      await within(rowA).findByRole("status", { name: "Updating acme/alpha" }),
     ).toBeTruthy();
-    expect(
-      within(rowA).getByRole("checkbox").hasAttribute("data-disabled"),
-    ).toBe(true);
     expect(within(rowB).queryByRole("status")).toBeNull();
     expect(within(rowB).queryByRole("alert")).toBeNull();
-    expect(
-      within(rowB).getByRole("checkbox").hasAttribute("data-disabled"),
-    ).toBe(false);
     expect(
       within(rowB).getByRole("checkbox").getAttribute("aria-checked"),
     ).toBe("false");
@@ -293,11 +298,4 @@ function deferredResponse(): DeferredDesktopResponse {
       resolvePromise(response);
     },
   };
-}
-
-async function requireRequest(
-  request: Promise<void> | undefined,
-): Promise<void> {
-  if (request === undefined) throw new Error("Expected a watchlist request.");
-  await request;
 }

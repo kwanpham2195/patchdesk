@@ -29,7 +29,7 @@ export type WorkspaceOriginRootResult =
       readonly state: "failed";
       readonly reason: "scan_failed";
     };
-/** One root's repository suggestions after origin parsing and watchlist filtering. */
+/** One root's discovered repositories after origin parsing, watched or not. */
 export type DiscoveredWorkspaceRootResult =
   | {
       readonly root: string;
@@ -47,7 +47,7 @@ export type OriginFinder = {
   ): Promise<ReadonlyArray<WorkspaceOriginRootResult>>;
 };
 
-/** Suggests watchlist candidates from the git origins found under the profile's workspace roots, skipping repositories it already watches. */
+/** Suggests watchlist candidates from the git origins found under the profile's workspace roots, including ones it already watches, so the checklist does not need a rescan after every watchlist change. */
 export class DashboardService {
   constructor(private readonly origins?: OriginFinder) {}
 
@@ -72,7 +72,6 @@ export class DashboardService {
         const parsed = parseGitOrigin(origin.origin, origin.localPath);
         if (
           parsed === undefined ||
-          profile.repos.some((repo) => sameRepositoryIdentity(repo, parsed)) ||
           discovered.some((repo) => sameRepositoryIdentity(repo, parsed))
         )
           continue;

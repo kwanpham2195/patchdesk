@@ -2,6 +2,7 @@ import {
   flattenDiscoveredRepositories,
   type WorkspaceRootDiscovery,
 } from "../workspace-root-discovery-contract";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
@@ -113,12 +114,6 @@ export function RepositoriesCard({
     dashboard?.profile.id,
     onWorkspaceReload,
   );
-  const handleToggle = (
-    entry: WatchlistEntry,
-    currentlyWatched: boolean,
-  ): void => {
-    void watchlistToggle.toggleRepo(entry, currentlyWatched);
-  };
   // The one-line folder prompt belongs to a workspace that has never had a
   // root: any persisted root, or anything typed into the row, answers it.
   const rootRows = editor.rows.workspaceRoots;
@@ -182,6 +177,36 @@ export function RepositoriesCard({
               return (
                 <div className="flex flex-col gap-2">
                   <WorkspaceRootDiscoveryStatus status={status} />
+                  {showsChecklist && visibleEntries.length > 1 ? (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          watchlistToggle.setWatched(
+                            visibleEntries,
+                            true,
+                            isWatched,
+                          )
+                        }
+                      >
+                        Watch all
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          watchlistToggle.setWatched(
+                            visibleEntries,
+                            false,
+                            isWatched,
+                          )
+                        }
+                      >
+                        Watch none
+                      </Button>
+                    </div>
+                  ) : null}
                   {showsChecklist ? (
                     <RepositoryChecklist
                       entries={visibleEntries}
@@ -189,7 +214,7 @@ export function RepositoriesCard({
                       pendingKeys={watchlistToggle.pendingKeys}
                       errorsByKey={watchlistToggle.errorsByKey}
                       draftWatchedByKey={watchlistToggle.draftWatchedByKey}
-                      onToggle={handleToggle}
+                      onToggle={watchlistToggle.toggleRepo}
                       ariaLabel={`Repositories under ${trimmedRoot}`}
                     />
                   ) : null}
@@ -204,7 +229,7 @@ export function RepositoriesCard({
               pendingKeys={watchlistToggle.pendingKeys}
               errorsByKey={watchlistToggle.errorsByKey}
               draftWatchedByKey={watchlistToggle.draftWatchedByKey}
-              onToggle={handleToggle}
+              onToggle={watchlistToggle.toggleRepo}
             />
           )}
         </CardContent>
