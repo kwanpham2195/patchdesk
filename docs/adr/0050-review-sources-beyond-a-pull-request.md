@@ -60,7 +60,11 @@ source.
 > second clone, any other directory, a cache worktree) is refused as
 > `checkout_not_found`. The snapshot, diff and Apply read the named checkout;
 > refs, session worktrees, journals and retention stay on the configured one.
-> Retention treats a named checkout that is no longer listed as a gone source.
+> Retention treats a named checkout that is no longer listed as a gone source;
+> a locked worktree whose directory is missing counts as unknown and is kept.
+> If a profile's `localPath` is re-pointed to a worktree that stored Reviews
+> name, those Reviews stop resolving and are removed by retention like a gone
+> source.
 
 A local Review is keyed by `profileId`, the profile repository
 (`host`/`owner`/`repo`), and the source spec:
