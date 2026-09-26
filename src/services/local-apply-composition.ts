@@ -96,7 +96,7 @@ export async function loadVerifiedEdits(
   return ok(byPath);
 }
 
-/** Checks line-ending conversion, then reads each file's current bytes and computes its expected post-image in memory. */
+/** Checks line-ending conversion, then reads each file's current bytes and computes its expected post-image in memory; refuses as `already_applied` when no file would change. */
 export async function composeLocalApply(
   git: GitReadExecutor,
   checkoutPath: string,
