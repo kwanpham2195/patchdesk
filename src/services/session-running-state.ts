@@ -34,8 +34,9 @@ export type SessionRunningStateDependencies = {
 /**
  * ADR 0020's one definition of a session in motion, which no cleanup may
  * remove: an active preparation journal, the current session of an Open
- * Review or the one an agent's refresh prepared for it (ADR 0052), an active Analysis, Walkthrough or Brief run, a locked GitHub write,
- * or an unsettled merge. A session that is not running carries out the Review
+ * Review or the one an agent's refresh prepared for it (ADR 0052), an active
+ * Analysis, Walkthrough or Brief run, a locked GitHub write, or an unsettled
+ * merge. A session that is not running carries out the Review
  * record this answer was decided from, so a caller does not read it again.
  */
 export async function readSessionRunningState(
