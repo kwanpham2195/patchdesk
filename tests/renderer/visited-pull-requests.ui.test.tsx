@@ -21,7 +21,7 @@ import {
   visitedTerminalMarker,
 } from "../../src/renderer/src/components/visited-pull-requests";
 import { useVisitedPullRequestRows } from "../../src/renderer/src/hooks/use-visited-pull-request-rows";
-import type { SidebarLocalReviewRow } from "../../src/renderer/src/sidebar-contracts";
+import type { SidebarLocalRepositoryRow } from "../../src/renderer/src/sidebar-contracts";
 import { formatExactTime } from "../../src/renderer/src/lib/relative-time";
 import {
   installDesktopDouble,
@@ -136,13 +136,12 @@ const unvisited = {
   terminal: { state: "closed", observedAt: MERGED_OBSERVED_AT },
 } satisfies RawJsonValue;
 
-// A working-tree Review (ADR 0050): named from its source, reopened through the local open path.
+// One repository's local Reviews (#479): a working tree on each of two branches and a branch Review.
 const local = {
-  reviewId: "review-local",
   host: "github.com",
   owner: "kwanpham2195",
   repo: "patchdesk",
-  source: { kind: "working_tree", branch: "feat/x" },
+  reviewIds: ["review-local-main", "review-local-feat", "review-local-branch"],
   sortedAt: OPENED_AT,
   lastOpenedAt: OPENED_AT,
 } satisfies RawJsonValue;
@@ -151,9 +150,7 @@ function renderColumn(options: {
   readonly rows: ReadonlyArray<RawJsonValue>;
   readonly destination?: AppDestination;
   readonly onNavigate?: (destination: AppDestination) => void;
-  readonly onOpenLocalReview?: (
-    row: SidebarLocalReviewRow,
-  ) => Promise<string | undefined>;
+  readonly onOpenLocalReview?: (row: SidebarLocalRepositoryRow) => void;
 }): void {
   desktop = installDesktopDouble({
     "/v1/sidebar/reviews": () => success({ rows: options.rows, unreadable: 0 }),
@@ -162,7 +159,7 @@ function renderColumn(options: {
     <LoadedColumn
       destination={options.destination ?? { kind: "dashboard" }}
       onNavigate={options.onNavigate ?? (() => undefined)}
-      onOpenLocalReview={options.onOpenLocalReview ?? (async () => undefined)}
+      onOpenLocalReview={options.onOpenLocalReview ?? (() => undefined)}
     />,
   );
 }
@@ -171,9 +168,7 @@ function renderColumn(options: {
 function LoadedColumn(props: {
   readonly destination: AppDestination;
   readonly onNavigate: (destination: AppDestination) => void;
-  readonly onOpenLocalReview: (
-    row: SidebarLocalReviewRow,
-  ) => Promise<string | undefined>;
+  readonly onOpenLocalReview: (row: SidebarLocalRepositoryRow) => void;
 }): React.JSX.Element {
   const state = useVisitedPullRequestRows("profile-1", 0);
   return (
@@ -295,34 +290,61 @@ describe("VisitedPullRequests", () => {
     });
   });
 
-  it("names a local row from its source and marks it local where a pull request row prints its number", async () => {
+  it("names a local row by its repository and marks it local where a pull request row prints its number", async () => {
     renderColumn({ rows: [titled, local] });
 
     const row = await screen.findByRole("button", {
-      name: /Working tree on feat\/x/,
+      name: /kwanpham2195\/patchdesk/,
     });
     expect(row.textContent).toContain("local · visited");
     expect(row.textContent).not.toContain("#");
   });
 
-  it("reopens a local row through the local open path rather than navigating", async () => {
+  it("opens a local row through the local open path rather than navigating", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
-    const onOpenLocalReview = vi.fn(async () => undefined);
+    const onOpenLocalReview = vi.fn();
     renderColumn({ rows: [titled, local], onNavigate, onOpenLocalReview });
 
     await user.click(
-      await screen.findByRole("button", { name: /Working tree on feat\/x/ }),
+      await screen.findByRole("button", { name: /kwanpham2195\/patchdesk/ }),
     );
 
     expect(onOpenLocalReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        reviewId: "review-local",
-        source: { kind: "working_tree", branch: "feat/x" },
+        host: "github.com",
+        owner: "kwanpham2195",
+        repo: "patchdesk",
       }),
     );
     expect(onNavigate).not.toHaveBeenCalled();
   });
+
+  it.each(["review-local-main", "review-local-feat", "review-local-branch"])(
+    "marks the local row as the current page while %s is open, and still opens on a click",
+    async (reviewId) => {
+      const user = userEvent.setup();
+      const onOpenLocalReview = vi.fn();
+      renderColumn({
+        rows: [titled, local],
+        destination: { kind: "workbench", reviewId },
+        onOpenLocalReview,
+      });
+
+      const row = await screen.findByRole("button", {
+        name: /kwanpham2195\/patchdesk/,
+      });
+      expect(row.getAttribute("aria-current")).toBe("page");
+      expect(
+        screen
+          .getByRole("button", { name: /#125/ })
+          .getAttribute("aria-current"),
+      ).toBeNull();
+      // The checkout may be on another branch than the Review on screen, so the click still opens.
+      await user.click(row);
+      expect(onOpenLocalReview).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("gives the column one Tab stop and moves between rows with the arrow keys", async () => {
     const user = userEvent.setup();

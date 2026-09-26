@@ -58,12 +58,14 @@ import { inboxFreshnessLabel } from "./inbox-freshness";
 import { firstInboxRequest } from "./inbox-request";
 import { parseGitHubHost } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import { sameRepositoryIdentity } from "../../domain/repository-identity";
+import {
+  sameRepositoryIdentity,
+  type RepositoryIdentity,
+} from "../../domain/repository-identity";
 import { definedProps } from "../../domain/defined-props";
 import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
-import { localReviewSourceInput } from "./local-review-reopen";
-import type { SidebarLocalReviewRow } from "./sidebar-contracts";
-import { isApiErrorCode, requestJson } from "./api-client";
+import type { SidebarLocalRepositoryRow } from "./sidebar-contracts";
+import { requestJson } from "./api-client";
 import { appLog } from "./lib/logger";
 
 export type { ReviewWorkbenchLoader };
@@ -288,32 +290,32 @@ function AppContent({
   });
   const { openLocalReview, openPullRequestByRef, reportOpenError } =
     reviewOpening;
-  const openLocalReviewFromSidebar = useCallback(
-    async (row: SidebarLocalReviewRow): Promise<string | undefined> => {
-      // The leave-confirmation holds a destination, not an open, so a guarded
-      // click parks the Review's own route, which loads it as stored.
-      if (navigationState !== "clear") {
-        navigate({ kind: "workbench", reviewId: row.reviewId });
-        return undefined;
-      }
+  // The open that waits behind the leave-confirmation for a local row click (#479).
+  const [parkedLocalOpen, setParkedLocalOpen] = useState<RepositoryIdentity>();
+  // Opens the working tree of whichever branch the checkout is on now, so a
+  // branch switch lands on that branch's own Review (#479).
+  const openCurrentWorkingTree = useCallback(
+    async (repository: RepositoryIdentity): Promise<void> => {
       try {
-        await openLocalReview(row, localReviewSourceInput(row.source));
-        return undefined;
+        await openLocalReview(repository, { kind: "working_tree" });
       } catch (cause) {
-        const message =
-          cause instanceof Error ? cause.message : "Could not open review.";
-        // A branch switch is fixed in the checkout, so the row says so where the maintainer is.
-        if (
-          cause instanceof Error &&
-          isApiErrorCode(cause.cause, "branch_mismatch")
-        )
-          return message;
         navigate({ kind: "dashboard" });
-        reportOpenError(message);
-        return undefined;
+        reportOpenError(
+          cause instanceof Error ? cause.message : "Could not open review.",
+        );
       }
     },
-    [navigate, navigationState, openLocalReview, reportOpenError],
+    [navigate, openLocalReview, reportOpenError],
+  );
+  const openLocalRepositoryFromSidebar = useCallback(
+    ({ host, owner, repo }: SidebarLocalRepositoryRow): void => {
+      if (navigationState !== "clear") {
+        setParkedLocalOpen({ host, owner, repo });
+        return;
+      }
+      void openCurrentWorkingTree({ host, owner, repo });
+    },
+    [navigationState, openCurrentWorkingTree],
   );
   const openPullRequestFromPalette = useCallback(
     (ref: PullRequestRef): void => {
@@ -360,7 +362,7 @@ function AppContent({
           destination={next}
           navigationBlocked={navigationState !== "clear"}
           onNavigate={navigate}
-          onOpenLocalReview={openLocalReviewFromSidebar}
+          onOpenLocalReview={openLocalRepositoryFromSidebar}
           onOpenSettings={openSettings}
           onOpenDiagnostics={openDiagnostics}
           profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
@@ -423,10 +425,11 @@ function AppContent({
         profileId={dashboard?.profile.id}
       />
       <AlertDialog
-        open={pendingDestination !== undefined}
+        open={pendingDestination !== undefined || parkedLocalOpen !== undefined}
         onOpenChange={(open) => {
-          if (!open && navigationState !== "write_pending")
-            setPendingDestination(undefined);
+          if (open || navigationState === "write_pending") return;
+          setPendingDestination(undefined);
+          setParkedLocalOpen(undefined);
         }}
       >
         <AlertDialogContent>
@@ -452,10 +455,15 @@ function AppContent({
               <AlertDialogAction
                 variant="destructive"
                 onClick={() => {
-                  if (pendingDestination !== undefined)
+                  if (parkedLocalOpen !== undefined) {
+                    // Leaving first unmounts the draft this confirmation discards.
+                    performNavigation({ kind: "dashboard" });
+                    void openCurrentWorkingTree(parkedLocalOpen);
+                  } else if (pendingDestination !== undefined)
                     performNavigation(pendingDestination);
                   setNavigationState("clear");
                   setPendingDestination(undefined);
+                  setParkedLocalOpen(undefined);
                 }}
               >
                 Discard changes and leave

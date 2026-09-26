@@ -1,23 +1,14 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
 import { App } from "../../src/renderer/src/app";
 import { APP_BOOT_OPERATIONS, APP_BOOT_ROUTES } from "./app-boot-routes";
 import {
-  failure,
   installDesktopDouble,
   success,
   type DesktopDouble,
-  type DesktopRoute,
 } from "./fake-desktop-response";
 import {
   asJsonBody,
@@ -43,51 +34,17 @@ const profile = {
 };
 const repository = { host: "github.com", owner: "acme", repo: "widgets" };
 
-/** Boots `App` on the Pull requests screen with one local row in the column. */
-function renderWithLocalRow(
-  source: RawJsonValue,
-  openLocal: DesktopRoute,
-): DesktopDouble {
-  installed = installDesktopDouble(
-    {
-      ...APP_BOOT_ROUTES,
-      "/v1/profiles": () => success([profile]),
-      "/v1/inbox": () =>
-        success({
-          profile,
-          inbox: {
-            state: "open",
-            pageSize: 25,
-            rows: [],
-            repositories: [],
-            dataFreshness: "fresh",
-          },
-        }),
-      "/v1/sidebar/reviews": () =>
-        success({
-          rows: [
-            {
-              reviewId: "review-local",
-              ...repository,
-              source,
-              sortedAt: "2026-08-01T00:00:00.000Z",
-            },
-          ],
-          unreadable: 0,
-        }),
-      "/v1/reviews/open-local": openLocal,
-    },
-    { operations: APP_BOOT_OPERATIONS },
-  );
-  render(
-    <App
-      reviewWorkbenchLoader={async () => ({
-        default: () => <h1>Review destination</h1>,
-      })}
-    />,
-  );
-  return installed;
-}
+// One repository's local row (#479), standing for its working-tree Reviews on two branches.
+const localRow = {
+  ...repository,
+  reviewIds: ["review-local-main", "review-local-feat"],
+  sortedAt: "2026-08-01T00:00:00.000Z",
+};
+
+/** A Review the open-local route answers with, as a local Review of `feat`. */
+const openedLocal = projection({
+  review: { id: "review-local-feat", status: "open" },
+});
 
 /** The one `open-local` request the column sent. */
 function openLocalRequest(
@@ -99,60 +56,59 @@ function openLocalRequest(
 }
 
 describe("App visited local Review", () => {
-  it("reopens a local sidebar row through the local open route", async () => {
+  it("opens the working tree of the checkout's current branch from a repository's local row", async () => {
     const user = userEvent.setup();
-    const source = { kind: "branch", branch: "feat/x", baseBranch: "main" };
-    const double = renderWithLocalRow(source, () =>
-      success(asJsonBody(projection())),
+    installed = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profile]),
+        "/v1/inbox": () =>
+          success({
+            profile,
+            inbox: {
+              state: "open",
+              pageSize: 25,
+              rows: [],
+              repositories: [],
+              dataFreshness: "fresh",
+            },
+          }),
+        "/v1/sidebar/reviews": () =>
+          success({ rows: [localRow], unreadable: 0 }),
+        "/v1/reviews/open-local": () => success(asJsonBody(openedLocal)),
+      },
+      { operations: APP_BOOT_OPERATIONS },
+    );
+    render(
+      <App
+        reviewWorkbenchLoader={async () => ({
+          default: () => <h1>Review destination</h1>,
+        })}
+      />,
     );
 
     await user.click(
-      await screen.findByRole("button", {
-        name: /Branch feat\/x against main/,
-      }),
+      await screen.findByRole("button", { name: /acme\/widgets/ }),
     );
 
     await screen.findByRole("heading", { name: "Review destination" });
-    expect(openLocalRequest(double)).toMatchObject({
-      body: { profileId: "profile", ...repository, source },
+    const request = openLocalRequest(installed);
+    expect(request).toMatchObject({
+      body: { profileId: "profile", ...repository },
     });
+    // No expected branch: the open follows whatever branch the checkout is on.
+    expect(callBody(request)).toMatchObject({
+      source: { kind: "working_tree" },
+    });
+    expect(JSON.stringify(callBody(request)).includes("expectedHead")).toBe(
+      false,
+    );
+    expect(window.localStorage.getItem("patchdesk.destination")).toBe(
+      "workbench:review-local-feat",
+    );
   });
 
-  it("names both branches beside a working-tree row refused after a branch switch, and stays put", async () => {
-    const user = userEvent.setup();
-    const double = renderWithLocalRow(
-      { kind: "working_tree", branch: "feat/449" },
-      () => failure({ error: "branch_mismatch", currentBranch: "main" }, 409),
-    );
-    const column = await screen.findByRole("complementary", {
-      name: "Pull requests you have opened",
-    });
-
-    await user.click(
-      await within(column).findByRole("button", {
-        name: /Working tree on feat\/449/,
-      }),
-    );
-
-    const refusal = await within(column).findByRole("alert");
-    expect(refusal.textContent).toContain("main");
-    expect(refusal.textContent).toContain("feat/449");
-    expect(openLocalRequest(double)).toMatchObject({
-      body: {
-        source: {
-          kind: "working_tree",
-          expectedHead: { kind: "branch", branch: "feat/449" },
-        },
-      },
-    });
-    // The refusal opens nothing and raises no Pull requests screen notice.
-    expect(
-      screen.queryByRole("heading", { name: "Review destination" }),
-    ).toBeNull();
-    expect(screen.queryByText("Could not open review")).toBeNull();
-  });
-
-  it("leaves the route with the checkout's branch named when a parked click is refused after a branch switch", async () => {
+  it("opens the current working tree once the maintainer leaves a draft for a parked local row click", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
     installed = installDesktopDouble(
@@ -166,22 +122,10 @@ describe("App visited local Review", () => {
             inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
           }),
         "/v1/sidebar/reviews": () =>
-          success({
-            rows: [
-              {
-                reviewId: "review-local",
-                ...repository,
-                source: { kind: "working_tree", branch: "feat/449" },
-                sortedAt: "2026-08-01T00:00:00.000Z",
-              },
-            ],
-            unreadable: 0,
-          }),
+          success({ rows: [localRow], unreadable: 0 }),
         "/v1/reviews/leave": () => success(null),
-        "/v1/reviews/load": (request) =>
-          JSON.stringify(callBody(request)).includes('"review-local"')
-            ? failure({ error: "branch_mismatch", currentBranch: "main" }, 409)
-            : success(asJsonBody(projection())),
+        "/v1/reviews/load": () => success(asJsonBody(projection())),
+        "/v1/reviews/open-local": () => success(asJsonBody(openedLocal)),
       },
       { operations: APP_BOOT_OPERATIONS },
     );
@@ -193,7 +137,7 @@ describe("App visited local Review", () => {
               type="button"
               onClick={() => props.onNavigationStateChange("dirty_draft")}
             >
-              Hold a draft
+              Hold a draft on {props.workbench.review.id}
             </button>
           ),
         })}
@@ -201,19 +145,22 @@ describe("App visited local Review", () => {
     );
 
     await user.click(
-      await screen.findByRole("button", { name: "Hold a draft" }),
+      await screen.findByRole("button", { name: "Hold a draft on review-42" }),
     );
     await user.click(
-      await screen.findByRole("button", { name: /Working tree on feat\/449/ }),
+      await screen.findByRole("button", { name: /acme\/widgets/ }),
     );
+    expect(openLocalRequest(installed)).toBeUndefined();
     await user.click(
       await screen.findByRole("button", { name: "Discard changes and leave" }),
     );
 
-    await waitFor(() => expect(openErrorAlert()).toBeDefined());
-    expect(openErrorAlert()?.textContent).toContain("main");
-    expect(window.localStorage.getItem("patchdesk.destination")).toBe(
-      "dashboard",
-    );
+    await screen.findByRole("button", {
+      name: "Hold a draft on review-local-feat",
+    });
+    expect(callBody(openLocalRequest(installed))).toMatchObject({
+      source: { kind: "working_tree" },
+    });
+    expect(openErrorAlert()).toBeUndefined();
   });
 });

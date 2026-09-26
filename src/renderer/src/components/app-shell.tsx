@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   VisitedPullRequests,
-  type LocalReviewReopen,
+  type LocalRepositoryOpen,
 } from "@/components/visited-pull-requests";
 import {
   loadVisitedPullRequestsCollapsed,
@@ -79,7 +79,7 @@ export function AppShell({
   readonly destination: AppDestination;
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
-  readonly onOpenLocalReview: LocalReviewReopen;
+  readonly onOpenLocalReview: LocalRepositoryOpen;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
   readonly onOpenDiagnostics: (opener?: HTMLElement) => void;
   readonly profiles?: ReadonlyArray<ProfileEntry>;

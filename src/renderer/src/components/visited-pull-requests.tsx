@@ -1,28 +1,26 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
 
-import { InlineError } from "@/components/ui/inline-error";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatExactTime, formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import type { VisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
-import { reviewSourceTitle } from "@/review-source";
 import {
-  isSidebarLocalReviewRow,
-  type SidebarLocalReviewRow,
+  isSidebarLocalRepositoryRow,
+  sidebarRowKey,
+  sidebarRowShowsReview,
+  type SidebarLocalRepositoryRow,
   type SidebarPullRequestRow,
   type SidebarReviewRow,
 } from "@/sidebar-contracts";
 import type { AppDestination } from "@/routes";
 
 /**
- * Reopens a local Review through the local open path, which reads the
- * checkout again (ADR 0050). Resolves to a refusal to show under the row.
+ * Opens the working tree of the branch the repository's checkout is on now
+ * (#479), through the local open path, which reads the checkout again.
  */
-export type LocalReviewReopen = (
-  row: SidebarLocalReviewRow,
-) => Promise<string | undefined>;
+export type LocalRepositoryOpen = (row: SidebarLocalRepositoryRow) => void;
 
 /**
  * The pull requests and local Reviews the maintainer has opened in the active
@@ -40,17 +38,14 @@ export function VisitedPullRequests({
   readonly state: VisitedPullRequestRows;
   readonly destination: AppDestination;
   readonly onNavigate: (destination: AppDestination) => void;
-  readonly onOpenLocalReview: LocalReviewReopen;
+  readonly onOpenLocalReview: LocalRepositoryOpen;
   /** The active workspace's label for the header strip; undefined while a switch is in flight. */
   readonly workspaceLabel: string | undefined;
   /** The workspace's GitHub host; the rows carry none, and a watched mark needs it. */
   readonly host?: string;
 }): React.JSX.Element {
   const watch = useWatchedPullRequests();
-  const [activeReviewId, setActiveReviewId] = useState<string | undefined>();
-  const [refusal, setRefusal] = useState<
-    { readonly reviewId: string; readonly message: string } | undefined
-  >();
+  const [activeRowKey, setActiveRowKey] = useState<string | undefined>();
 
   const openReviewId =
     destination.kind === "workbench" ? destination.reviewId : undefined;
@@ -60,19 +55,23 @@ export function VisitedPullRequests({
   const scope: VisitedLabelScope =
     state.kind === "loaded" ? visitedLabelScope(state.rows) : "number";
   const rows = state.kind === "loaded" ? state.rows : [];
+  const selectedRow = rows.find((row) =>
+    sidebarRowShowsReview(row, openReviewId),
+  );
   // Roving tabindex, as on the Pull requests table: the column is one Tab stop.
-  const tabStopReviewId =
-    [activeReviewId, openReviewId].find((reviewId) =>
-      rows.some((row) => row.reviewId === reviewId),
-    ) ?? rows[0]?.reviewId;
+  const tabStopKey =
+    [activeRowKey, selectedRow && sidebarRowKey(selectedRow)].find((key) =>
+      rows.some((row) => sidebarRowKey(row) === key),
+    ) ??
+    (rows[0] && sidebarRowKey(rows[0]));
   const onRowsKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
-    const index = rows.findIndex((row) => row.reviewId === tabStopReviewId);
+    const index = rows.findIndex((row) => sidebarRowKey(row) === tabStopKey);
     const next = rows[index + (event.key === "ArrowDown" ? 1 : -1)];
     if (next === undefined) return;
-    setActiveReviewId(next.reviewId);
-    document.getElementById(`visited-row-${next.reviewId}`)?.focus();
+    setActiveRowKey(sidebarRowKey(next));
+    document.getElementById(`visited-row-${sidebarRowKey(next)}`)?.focus();
   };
 
   return (
@@ -114,7 +113,7 @@ export function VisitedPullRequests({
           {state.kind === "loaded"
             ? withDateHeaders(state.rows, Date.now()).map(
                 ({ row, heading }) => (
-                  <Fragment key={row.reviewId}>
+                  <Fragment key={sidebarRowKey(row)}>
                     {heading === undefined ? null : (
                       // The list already pads its own top, so the first header
                       // does not stack a second gap above it.
@@ -124,35 +123,26 @@ export function VisitedPullRequests({
                     )}
                     <VisitedRow
                       row={row}
-                      selected={row.reviewId === openReviewId}
-                      tabStop={row.reviewId === tabStopReviewId}
+                      selected={row === selectedRow}
+                      tabStop={sidebarRowKey(row) === tabStopKey}
                       scope={scope}
                       watched={
                         host !== undefined &&
-                        !isSidebarLocalReviewRow(row) &&
+                        !isSidebarLocalRepositoryRow(row) &&
                         watch?.isWatched({ ...row, host }) === true
                       }
-                      onFocus={() => setActiveReviewId(row.reviewId)}
+                      onFocus={() => setActiveRowKey(sidebarRowKey(row))}
                       onOpen={() => {
-                        setRefusal(undefined);
-                        if (!isSidebarLocalReviewRow(row)) {
-                          onNavigate({
-                            kind: "workbench",
-                            reviewId: row.reviewId,
-                          });
+                        if (isSidebarLocalRepositoryRow(row)) {
+                          onOpenLocalReview(row);
                           return;
                         }
-                        void onOpenLocalReview(row).then((message) => {
-                          if (message !== undefined)
-                            setRefusal({ reviewId: row.reviewId, message });
+                        onNavigate({
+                          kind: "workbench",
+                          reviewId: row.reviewId,
                         });
                       }}
                     />
-                    {refusal?.reviewId === row.reviewId ? (
-                      <InlineError className="px-2.5 pb-1.5 text-[11px]">
-                        {refusal.message}
-                      </InlineError>
-                    ) : null}
                   </Fragment>
                 ),
               )
@@ -255,10 +245,14 @@ function VisitedRow({
 }): React.JSX.Element {
   const { title, reference } = visitedRowLabels(row, scope);
   const marquee = useTitleMarquee();
+  // A selected pull request row is where navigation would land, so it does
+  // nothing. A local row stays live: its open follows the checkout's branch,
+  // which may differ from the local Review on screen.
+  const inert = selected && !isSidebarLocalRepositoryRow(row);
   return (
     <button
       type="button"
-      id={`visited-row-${row.reviewId}`}
+      id={`visited-row-${sidebarRowKey(row)}`}
       tabIndex={tabStop ? 0 : -1}
       onFocus={(event) => {
         onFocus();
@@ -270,14 +264,13 @@ function VisitedRow({
       onPointerEnter={() => marquee.engage("hover")}
       onPointerLeave={() => marquee.release("hover")}
       aria-current={selected ? "page" : undefined}
-      aria-disabled={selected ? true : undefined}
+      aria-disabled={inert ? true : undefined}
       title={title}
-      // The row already showing is where navigation would land, so it does nothing.
-      onClick={selected ? undefined : onOpen}
+      onClick={inert ? undefined : onOpen}
       className={cn(
         "ui-state-transition relative flex w-full min-w-0 items-start py-1.5 pr-3 pl-2.5 text-left outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-        // The selected row is inert, so it takes no hover fill that would lighten it.
+        // An inert row takes no hover fill that would lighten it.
         selected ? "bg-foreground/10" : "hover:bg-foreground/5",
       )}
     >
@@ -327,7 +320,8 @@ function VisitedRow({
               <span className="sr-only">Watched</span>
             </span>
           ) : null}
-          {isSidebarLocalReviewRow(row) || row.terminal === undefined ? null : (
+          {isSidebarLocalRepositoryRow(row) ||
+          row.terminal === undefined ? null : (
             <TerminalMarker terminal={row.terminal} />
           )}
         </span>
@@ -461,8 +455,9 @@ type VisitedRowLabels = {
  * label; printing the reference again underneath would repeat the number, so
  * that row leaves the age standing alone. The separator belongs to the age, so
  * a row with no recorded open ends its reference at the number. A local
- * Review is named from its source and marked "local" where a pull request
- * prints its number.
+ * row is named by its repository, whatever the scope, and marked "local"
+ * where a pull request prints its number; it names no branch, which the
+ * checkout can change after the column loaded (#479).
  */
 // oxlint-disable-next-line react/only-export-components -- Shared row-label rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedRowLabels(
@@ -471,16 +466,19 @@ export function visitedRowLabels(
         SidebarPullRequestRow,
         "title" | "owner" | "repo" | "number" | "lastOpenedAt"
       >
-    | Pick<SidebarLocalReviewRow, "owner" | "repo" | "source" | "lastOpenedAt">,
+    | Pick<
+        SidebarLocalRepositoryRow,
+        "owner" | "repo" | "reviewIds" | "lastOpenedAt"
+      >,
   scope: VisitedLabelScope,
 ): VisitedRowLabels {
-  const repository = visitedRepositoryLabel(row, scope);
   const separator = row.lastOpenedAt === undefined ? "" : " · ";
-  if ("source" in row)
+  if ("reviewIds" in row)
     return {
-      title: reviewSourceTitle(row.source),
-      reference: `${repository === "" ? "" : `${repository} · `}local${separator}`,
+      title: `${row.owner}/${row.repo}`,
+      reference: `local${separator}`,
     };
+  const repository = visitedRepositoryLabel(row, scope);
   if (row.title === undefined)
     return { title: `${repository}#${row.number}`, reference: "" };
   return {

@@ -6,6 +6,8 @@
 
 - Added a **Change intent** to a local Review: the task or spec the change was written against, as text or a spec file in the repository. Analysis checks the patch against it and reports a goal the patch misses, or a change the intent does not mention, as a P2 Finding; its details line says which intent it checked and when the intent changed since the run. #471
 
+- Changed the sidebar to show one local row per repository, named `owner/repo`, in place of a row for every working tree, branch, and commit Review. Clicking it opens the working tree of the branch checked out now, so after a branch switch it opens that branch's Review with its own drafts rather than refusing; the **Local review** picker reopens branch and commit Reviews. #479
+
 - Fixed a Change intent or Local draft saved just before switching Reviews being shown on the Review switched to. #475
 
 - Fixed **Apply** on a local Review staying enabled after it was refused because the working tree changed since the Analysis. It now stays disabled with the reason beside it until Refresh. #476
