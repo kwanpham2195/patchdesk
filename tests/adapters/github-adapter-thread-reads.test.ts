@@ -65,6 +65,85 @@ describe("GitHubAdapter review-thread reads", () => {
     });
   });
 
+  it("leaves the viewer's pending-review comments out of the published threads", async () => {
+    const fixture = JSON.parse(await payload("get-comments.json"));
+    const submitted =
+      fixture.data.repository.pullRequest.reviewThreads.nodes[0];
+    const comment = (id: string, state: string) => ({
+      ...submitted.comments.nodes[0],
+      id,
+      pullRequestReview: { state },
+    });
+    const thread = (id: string, comments: ReadonlyArray<unknown>) => ({
+      ...submitted,
+      id,
+      comments: { ...submitted.comments, nodes: comments },
+    });
+    fixture.data.repository.pullRequest.reviewThreads.nodes = [
+      thread("thread-submitted", [comment("comment-submitted", "COMMENTED")]),
+      thread("thread-pending", [comment("comment-pending", "PENDING")]),
+      thread("thread-mixed", [
+        comment("comment-root", "COMMENTED"),
+        comment("comment-pending-reply", "PENDING"),
+      ]),
+    ];
+    const adapter = testAdapter(orderedTransport([JSON.stringify(fixture)]));
+
+    const read = await adapter.getPullRequestComments({ profile, pr });
+
+    expect(read._tag).toBe("ok");
+    expect(
+      read._tag === "ok"
+        ? read.value.threads.map((entry) => ({
+            id: entry.id,
+            comments: entry.comments.map((reply) => reply.id),
+          }))
+        : [],
+    ).toEqual([
+      { id: "thread-submitted", comments: ["comment-submitted"] },
+      { id: "thread-mixed", comments: ["comment-root"] },
+    ]);
+  });
+
+  it("leaves a pending reply on a later reply page out of its thread", async () => {
+    const outer = JSON.parse(await payload("get-comments.json"));
+    outer.data.repository.pullRequest.reviewThreads.nodes[0].comments.pageInfo =
+      { hasNextPage: true, endCursor: "replies-page-2" };
+    const replies = {
+      data: {
+        node: {
+          comments: {
+            nodes: [
+              {
+                id: "comment-pending-reply",
+                body: "An unsubmitted reply.",
+                createdAt: "2026-07-16T12:01:00Z",
+                author: { login: "viewer" },
+                pullRequestReview: { state: "PENDING" },
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    };
+    const adapter = testAdapter(
+      orderedTransport([JSON.stringify(outer), JSON.stringify(replies)]),
+    );
+
+    const read = await adapter.getPullRequestComments({ profile, pr });
+
+    expect(read).toMatchObject({
+      _tag: "ok",
+      value: { complete: true, threads: [{ id: "thread-1", complete: true }] },
+    });
+    expect(
+      read._tag === "ok"
+        ? read.value.threads[0]?.comments.map((reply) => reply.id)
+        : [],
+    ).toEqual(["comment-1"]);
+  });
+
   it("paginates review threads and retains their server ordering", async () => {
     const first = JSON.parse(await payload("get-comments.json"));
     const second = structuredClone(first);

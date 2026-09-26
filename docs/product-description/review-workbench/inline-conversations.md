@@ -45,6 +45,8 @@ The keyboard shortcut does not choose Comment now. It runs Add review comment wh
 
 If the pending review's state is unavailable or needs recovery, the text field is disabled, the shortcut does nothing, and the composer says "Pending review unavailable. Check GitHub or refresh."
 
+The maintainer's own pending-review comments never appear as published threads. When the pending review's state is unavailable, a published thread with a pending reply shows only its submitted comments.
+
 ### While the action runs
 
 Submission is admitted synchronously once, including same-tick clicks or ⌘/Ctrl+Enter. The chosen button reads Commenting…, Starting…, or Adding…, and every submit button and Cancel are disabled.

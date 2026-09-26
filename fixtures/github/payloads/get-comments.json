@@ -23,7 +23,8 @@
                     "updatedAt": null,
                     "url": "https://example.test/comment/1",
                     "author": { "login": "reviewer" },
-                    "path": "src/review.ts"
+                    "path": "src/review.ts",
+                    "pullRequestReview": { "state": "COMMENTED" }
                   }
                 ],
                 "pageInfo": { "hasNextPage": false, "endCursor": null }

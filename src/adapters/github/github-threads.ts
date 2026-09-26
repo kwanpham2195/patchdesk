@@ -103,6 +103,9 @@ export class GitHubThreadReader {
         .reviewThreads.nodes) {
         const comments: Array<GitHubComment> = [];
         for (const rawComment of rawThread.comments.nodes) {
+          // GitHub shows the viewer their own unsubmitted comments in review
+          // threads; they belong to the pending review, not the conversation.
+          if (rawComment.pullRequestReview?.state === "PENDING") continue;
           if (totalComments >= maxReviewComments) {
             return ok({
               threads,
@@ -127,6 +130,7 @@ export class GitHubThreadReader {
               )
             : { comments, complete: true };
         totalComments += replies.comments.length - comments.length;
+        if (replies.comments.length === 0) continue;
         const threadId = parseGitHubThreadId(rawThread.id);
         if (threadId._tag === "err") return invalid("get_comments");
         const location = parseLocation(
@@ -207,6 +211,7 @@ export class GitHubThreadReader {
       const parsed = v.safeParse(threadCommentsResponseSchema, response.value);
       if (!parsed.success) return { comments, complete: false };
       for (const rawComment of parsed.output.data.node.comments.nodes) {
+        if (rawComment.pullRequestReview?.state === "PENDING") continue;
         const comment = parseComment(rawComment);
         if (comment._tag === "err") return { comments, complete: false };
         comments.push(comment.value);
