@@ -4,7 +4,7 @@ import { err, ok, type Result } from "../domain/result";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 
 /** ADR 0052 "Feedback size": a page of 25 notes with suggestions stays under Claude Code's 25,000-token cut. */
-export const LOCAL_FEEDBACK_PAGE_SIZE = 25;
+const LOCAL_FEEDBACK_PAGE_SIZE = 25;
 
 export type LocalFeedbackPageFailure = {
   /** `stale_cursor`: the drafts changed since the cursor was issued; `invalid_input`: it is not a cursor Patchdesk issued. */

@@ -1,11 +1,7 @@
 import { tokenizeUnifiedPatch } from "./unified-patch";
 
 /** What the patch did to one changed file. */
-export type PatchChangedFileStatus =
-  | "added"
-  | "removed"
-  | "modified"
-  | "renamed";
+type PatchChangedFileStatus = "added" | "removed" | "modified" | "renamed";
 
 /**
  * One changed file of a patch. `path` is plain text, the new path unless the
