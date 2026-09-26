@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import {
   parseContentHash,
   parseRepoRelativePath,
@@ -14,7 +15,12 @@ import { err, ok, type Result } from "./result";
  * Only Analysis reads it; Brief and Walkthrough do not.
  */
 export type ChangeIntent =
-  | { readonly kind: "text"; readonly markdown: string }
+  | {
+      readonly kind: "text";
+      readonly markdown: string;
+      /** Absent when the maintainer entered it; `agent` when a coding agent sent it over MCP (ADR 0052). */
+      readonly source?: "agent";
+    }
   | { readonly kind: "file"; readonly path: RepoRelativePath };
 
 /** The bound on entered text and on a spec file's bytes, in UTF-8 bytes. */
@@ -22,21 +28,35 @@ export const MAX_CHANGE_INTENT_BYTES = 65_536;
 
 export type InvalidChangeIntent = { readonly _tag: "InvalidChangeIntent" };
 
-/** The wire and stored form of a Change intent; `parseChangeIntent` applies the text and path rules. */
+/** The form the maintainer's editor sends; it cannot claim an agent source. */
 export const changeIntentSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("text"), markdown: v.string() }),
   v.strictObject({ kind: v.literal("file"), path: v.string() }),
 ]);
 
+/** The stored and projected form; `parseChangeIntent` applies the text and path rules. */
+export const storedChangeIntentSchema = v.variant("kind", [
+  v.strictObject({
+    kind: v.literal("text"),
+    markdown: v.string(),
+    source: v.optional(v.literal("agent")),
+  }),
+  v.strictObject({ kind: v.literal("file"), path: v.string() }),
+]);
+
 /** Text must hold more than whitespace and fit the byte bound; a path must stay inside the repository and name no `.` segment. */
 export function parseChangeIntent(
-  raw: v.InferOutput<typeof changeIntentSchema>,
+  raw: v.InferOutput<typeof storedChangeIntentSchema>,
 ): Result<ChangeIntent, InvalidChangeIntent> {
   if (raw.kind === "text") {
     return raw.markdown.trim().length === 0 ||
       new TextEncoder().encode(raw.markdown).length > MAX_CHANGE_INTENT_BYTES
       ? err({ _tag: "InvalidChangeIntent" })
-      : ok({ kind: "text", markdown: raw.markdown });
+      : ok({
+          kind: "text",
+          markdown: raw.markdown,
+          ...definedProps({ source: raw.source }),
+        });
   }
   const path = parseRepoRelativePath(raw.path);
   return path._tag === "ok" && !raw.path.split("/").includes(".")
@@ -50,7 +70,7 @@ export function sameChangeIntent(
 ): boolean {
   if (a === undefined || b === undefined) return a === b;
   return a.kind === "text"
-    ? b.kind === "text" && a.markdown === b.markdown
+    ? b.kind === "text" && a.markdown === b.markdown && a.source === b.source
     : b.kind === "file" && a.path === b.path;
 }
 
@@ -136,7 +156,7 @@ export type ChangeIntentView = {
 };
 
 export const changeIntentViewSchema = v.strictObject({
-  intent: changeIntentSchema,
+  intent: storedChangeIntentSchema,
   setting: v.variant("kind", [
     v.strictObject({ kind: v.literal("text"), sha256: v.string() }),
     v.strictObject({ kind: v.literal("file"), path: v.string() }),

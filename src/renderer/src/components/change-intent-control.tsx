@@ -35,11 +35,15 @@ export function ChangeIntentControl({
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const summary = changeIntentSummary(controls.current);
+  const intent = controls.current?.intent;
   return (
     <div
       className="flex min-w-0 items-center gap-2 text-xs"
       data-review-change-intent
     >
+      {intent?.kind === "text" && intent.source === "agent" ? (
+        <span className="shrink-0 font-medium">Intent from the agent</span>
+      ) : null}
       <span className="min-w-0 truncate text-muted-foreground" title={summary}>
         {summary}
       </span>
