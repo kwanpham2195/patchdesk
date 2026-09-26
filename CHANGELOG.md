@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a one-command macOS installer that verifies the latest release ZIP, installs Patchdesk and its agent command, and stops before replacing an existing installation.
+
 ## 0.0.12 - 2026-09-26
 
 - Added local Reviews for a coding agent's work: open the working tree, a branch, or a commit with **Local review** on the Pull requests screen, or from the sidebar, and review it with Diff, Analysis, Walkthrough, and Brief as for a pull request. Findings and notes on any diff line go to **Local drafts**; **Copy as agent prompt** hands them to the agent as one Markdown prompt with each `path:line`. **Refresh** reads the changes again and marks each draft **Unchanged**, **Changed since your note**, or **Needs attention**. **Apply** writes a Finding's suggestion to the working tree after checking the files have not changed since the Analysis, and **Copy as PR description** on the Brief copies it for your own pull request. Patchdesk does not commit or push. #458 #459 #460 #464 #466 #468 #469
