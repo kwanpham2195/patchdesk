@@ -36,6 +36,7 @@ import type {
   ResolvedLocalReview,
 } from "./local-review-session-preparation";
 import type { LocalReviewRetention } from "./local-review-retention";
+import type { RepositoryCheckout } from "./local-checkout";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
   ReviewWorkbenchProjection,
@@ -80,7 +81,7 @@ export class LocalReviewOpening {
   constructor(
     private readonly preparation: Pick<
       LocalReviewSessionPreparation,
-      "resolve" | "prepare"
+      "resolve" | "prepare" | "listCheckouts"
     >,
     private readonly projection: Pick<
       ReviewWorkbenchProjectionService,
@@ -133,6 +134,19 @@ export class LocalReviewOpening {
       if (opened !== undefined) return opened;
     }
     return err({ reason: "storage" });
+  }
+
+  /** The checkouts a local Review of the repository may be opened in (#489). */
+  async listCheckouts(
+    profileId: WorkspaceProfileId,
+    repository: LocalReviewOpenRequest["repository"],
+  ): Promise<
+    Result<ReadonlyArray<RepositoryCheckout>, LocalReviewOpenFailure>
+  > {
+    const listed = await this.preparation.listCheckouts(profileId, repository);
+    return listed._tag === "ok"
+      ? listed
+      : err(mapPreparationFailure(listed.error));
   }
 
   /**

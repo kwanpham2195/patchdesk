@@ -164,6 +164,7 @@ async function opening(
         return resolved;
       },
       prepare: (resolved) => preparation.prepare(resolved),
+      listCheckouts: (id, target) => preparation.listCheckouts(id, target),
     },
     projection,
     {
@@ -630,5 +631,36 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
           request: workingTreeIn(path),
         }),
       ).toEqual({ _tag: "err", error: { reason: "checkout_not_found" } });
+  });
+
+  it("lists the configured checkout and live linked worktrees, leaving out Patchdesk's worktrees and removed ones", async () => {
+    const { root, repositoryPath, linkedPath } = await linkedCheckout();
+    const detached = join(root, "detached");
+    const removed = join(root, "removed");
+    git(repositoryPath, "worktree", "add", "-q", "--detach", detached);
+    git(repositoryPath, "worktree", "add", "-q", removed, "-b", "gone");
+    await rm(removed, { recursive: true, force: true });
+    const service = await opening(root, repositoryPath);
+    value(await service.open({ profileId, repository, request: workingTree }));
+
+    const listed = value(await service.listCheckouts(profileId, repository));
+
+    expect(listed).toEqual([
+      {
+        path: await realpath(repositoryPath),
+        head: { kind: "branch", branch: "main" },
+        configured: true,
+      },
+      {
+        path: await realpath(detached),
+        head: { kind: "detached" },
+        configured: false,
+      },
+      {
+        path: linkedPath,
+        head: { kind: "branch", branch: "feat" },
+        configured: false,
+      },
+    ]);
   });
 });

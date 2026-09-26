@@ -24,7 +24,7 @@ export type LocalCheckoutReads = {
 };
 
 /** One live checkout of a profile repository, at its resolved top-level. */
-type RepositoryCheckout = {
+export type RepositoryCheckout = {
   readonly path: AbsolutePath;
   readonly head:
     | { readonly kind: "branch"; readonly branch: LocalBranchName }

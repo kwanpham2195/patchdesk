@@ -93,6 +93,7 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/open",
   "POST /v1/reviews/open-merged",
   "POST /v1/reviews/open-local",
+  "GET /v1/reviews/local-checkouts",
   "POST /v1/reviews/local-refresh",
   "POST /v1/reviews/local-apply",
   "POST /v1/reviews/local-apply/recover",

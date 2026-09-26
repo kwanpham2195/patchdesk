@@ -14,6 +14,7 @@ import {
   sessionRepresentsReview,
   type ReviewIdentity,
 } from "../../src/domain/review";
+import { reviewSourceTitle } from "../../src/domain/review-source";
 import {
   createReviewId,
   createReviewSessionId,
@@ -506,5 +507,14 @@ describe("local Review source IDs", () => {
         },
       })._tag,
     ).toBe("err");
+  });
+
+  it("names a checkout's folder in the title of a Review read from it", () => {
+    const configured = reviewSourceTitle(workingTreeIn().source);
+    const linked = reviewSourceTitle(workingTreeIn("/work/linked").source);
+
+    expect(linked).not.toBe(configured);
+    expect(linked.startsWith(configured)).toBe(true);
+    expect(linked.endsWith("linked")).toBe(true);
   });
 });

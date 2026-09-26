@@ -17,13 +17,11 @@ import {
   parseRepoRelativePath,
 } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
+import { reviewSourceTitle } from "../../../domain/review-source";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 
 import type { WorkbenchResponse } from "../renderer-contracts";
-import {
-  reviewSourceTitle,
-  workbenchPullRequestNumber,
-} from "../review-source";
+import { workbenchPullRequestNumber } from "../review-source";
 import { Conversation } from "./conversation";
 import { DiffWorkbench } from "./diff-workbench";
 import { ReviewDiffPane } from "./review-diff-pane";
