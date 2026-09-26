@@ -64,6 +64,11 @@ export type LocalReviewOpenFailure =
         | "storage"
         | "terminal";
     }
+  /** The working tree's untracked files are over the snapshot limits; `largestPaths` are the ones to ignore (#485). */
+  | {
+      readonly reason: "untracked_too_large";
+      readonly largestPaths: ReadonlyArray<string>;
+    }
   /** The checkout's `HEAD` is not the one the request expects; `currentBranch` is absent when it is detached. */
   | {
       readonly reason: "branch_mismatch";
@@ -122,6 +127,7 @@ export const localReviewFailureKinds = {
   checkout_not_found: "not_found",
   revision_not_found: "not_found",
   unmerged_index: "conflict",
+  untracked_too_large: "conflict",
   terminal: "conflict",
   branch_mismatch: "conflict",
   in_progress: "conflict",
@@ -648,6 +654,11 @@ function mapPreparationFailure(
       return { reason: "checkout_not_found" };
     case "UnmergedIndex":
       return { reason: "unmerged_index" };
+    case "UntrackedTooLarge":
+      return {
+        reason: "untracked_too_large",
+        largestPaths: failure.largestPaths,
+      };
     case "LocalRevisionNotFound":
       return { reason: "revision_not_found" };
     case "ProfileUnavailable":

@@ -78,3 +78,22 @@ export function storedBranchMismatchMessage(
   const current = body.output.currentBranch ?? "a detached HEAD";
   return `The checkout is on ${current}. Switch back to the branch this review was opened on to reopen it.`;
 }
+
+const untrackedTooLargeBodySchema = v.object({
+  error: v.literal("untracked_too_large"),
+  largestPaths: v.array(v.string()),
+});
+
+/** The sentence for a working tree whose untracked files are over the snapshot limits (#485); undefined for any other failure. */
+export function untrackedTooLargeMessage(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this reads one refusal off it.
+  cause: unknown,
+): string | undefined {
+  if (!(cause instanceof PatchdeskApiError)) return undefined;
+  const body = v.safeParse(untrackedTooLargeBodySchema, cause.responseBody);
+  if (!body.success) return undefined;
+  const paths = body.output.largestPaths;
+  const ignore =
+    paths.length === 0 ? "large untracked folders" : paths.join(", ");
+  return `The working tree has too many untracked files to snapshot. Add ${ignore} to .gitignore or remove them, then try again.`;
+}

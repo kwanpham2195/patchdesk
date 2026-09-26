@@ -66,12 +66,13 @@ Opening the same source again with unchanged content lands on the same Review se
 
 On failure the dialog stays open with a `Review not opened` alert that gives the reason in one sentence:
 
-| Cause                                                                                  | Sentence                                                    |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| The working tree's index holds an unresolved merge conflict                            | `The working tree has unresolved merge conflicts.`          |
-| The branch, base branch, merge base, or commit does not exist, or `HEAD` has no commit | `This checkout has no such branch, base branch, or commit.` |
-| The repository is no longer in the profile with a local checkout                       | `This repository has no local checkout in the workspace.`   |
-| Any other read, storage, or worktree failure                                           | `Patchdesk could not read the local checkout.`              |
+| Cause                                                                                  | Sentence                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The working tree's index holds an unresolved merge conflict                            | `The working tree has unresolved merge conflicts.`                                                                                                                                  |
+| The working tree has more than 5,000 untracked files, or more than 100 MiB of them     | `The working tree has too many untracked files to snapshot. Add <paths> to .gitignore or remove them, then try again.`, naming up to five of the largest untracked folders or files |
+| The branch, base branch, merge base, or commit does not exist, or `HEAD` has no commit | `This checkout has no such branch, base branch, or commit.`                                                                                                                         |
+| The repository is no longer in the profile with a local checkout                       | `This repository has no local checkout in the workspace.`                                                                                                                           |
+| Any other read, storage, or worktree failure                                           | `Patchdesk could not read the local checkout.`                                                                                                                                      |
 
 The fields keep their values, and pressing Open review again retries.
 
@@ -171,13 +172,14 @@ A note on removed (old-side) lines is placed only by an exact match in the new p
 
 No draft is discarded. A Finding draft keeps its suggestion only when the new patch still holds, at the draft's lines, the exact lines the suggestion replaces, and the suggestion holds no code fence; otherwise the suggestion is dropped and the draft stays. Each draft in the Local drafts card, and each note shown inline, carries a badge: `Unchanged`, `Changed since your note`, `Needs attention`, or `Applied in Patchdesk`. A draft added on the current session has no badge until the next move.
 
-| Cause                                                                              | Sentence under the workbench                                                                |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| A working-tree Review whose checkout is now on another branch or a detached `HEAD` | `The checkout is on <branch>. Switch to <branch> to reopen this review.` (or `Detach HEAD`) |
-| Another action on the Review is running                                            | `Another action on this review is running. Refresh when it finishes.`                       |
-| The working tree's index holds an unresolved merge conflict                        | `The working tree has unresolved merge conflicts.`                                          |
-| The branch, base branch, or commit is gone                                         | `This checkout no longer has the branch, base branch, or commit this review reads.`         |
-| Any other read or storage failure                                                  | `Patchdesk could not read the local checkout.`                                              |
+| Cause                                                                              | Sentence under the workbench                                                                                           |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| A working-tree Review whose checkout is now on another branch or a detached `HEAD` | `The checkout is on <branch>. Switch to <branch> to reopen this review.` (or `Detach HEAD`)                            |
+| Another action on the Review is running                                            | `Another action on this review is running. Refresh when it finishes.`                                                  |
+| The working tree's index holds an unresolved merge conflict                        | `The working tree has unresolved merge conflicts.`                                                                     |
+| The working tree has more than 5,000 untracked files, or more than 100 MiB of them | `The working tree has too many untracked files to snapshot. Add <paths> to .gitignore or remove them, then try again.` |
+| The branch, base branch, or commit is gone                                         | `This checkout no longer has the branch, base branch, or commit this review reads.`                                    |
+| Any other read or storage failure                                                  | `Patchdesk could not read the local checkout.`                                                                         |
 
 A refused Refresh changes nothing: the Review stays on its session with its drafts as they were.
 

@@ -175,7 +175,8 @@ export function response(
  * A service result on the wire: its value, or `{ error: reason }` with the
  * status `kinds` classifies the reason as. A working-tree branch refusal also
  * names the checkout's branch (null when detached) so the renderer can say
- * which one to switch to.
+ * which one to switch to, and an untracked-size refusal names the paths to
+ * ignore.
  */
 export function serviceResponse<Reason extends string>(
   context: Context,
@@ -186,6 +187,7 @@ export function serviceResponse<Reason extends string>(
         readonly error: {
           readonly reason: Reason;
           readonly currentBranch?: string;
+          readonly largestPaths?: ReadonlyArray<string>;
         };
       },
   // A bare `string` reason would make the table an index signature, and a
@@ -193,12 +195,14 @@ export function serviceResponse<Reason extends string>(
   kinds: string extends Reason ? never : FailureKinds<NoInfer<Reason>>,
 ): Response {
   if (result._tag === "ok") return context.json(result.value);
-  const { reason, currentBranch } = result.error;
+  const { reason, currentBranch, largestPaths } = result.error;
   const status: ResponseFailureStatus = failureKindStatuses[kinds[reason]];
-  return reason === "branch_mismatch"
-    ? context.json(
-        { error: reason, currentBranch: currentBranch ?? null },
-        status,
-      )
-    : context.json({ error: reason }, status);
+  if (reason === "branch_mismatch")
+    return context.json(
+      { error: reason, currentBranch: currentBranch ?? null },
+      status,
+    );
+  if (reason === "untracked_too_large")
+    return context.json({ error: reason, largestPaths }, status);
+  return context.json({ error: reason }, status);
 }

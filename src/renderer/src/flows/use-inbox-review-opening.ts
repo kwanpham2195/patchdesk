@@ -10,6 +10,7 @@ import type { InboxResponse } from "../renderer-contracts";
 import {
   branchMismatchMessage,
   storedBranchMismatchMessage,
+  untrackedTooLargeMessage,
 } from "../local-review-reopen";
 import type { Dashboard, WorkbenchPayload } from "../renderer-models";
 import type { PullRequestRef } from "../../../domain/pull-request";
@@ -537,6 +538,8 @@ function localReviewOpenFailure(
 ): string {
   if (isApiErrorCode(cause, "unmerged_index"))
     return "The working tree has unresolved merge conflicts.";
+  const untracked = untrackedTooLargeMessage(cause);
+  if (untracked !== undefined) return untracked;
   if (isApiErrorCode(cause, "revision_not_found"))
     return "This checkout has no such branch, base branch, or commit.";
   if (isApiErrorCode(cause, "repository_not_local"))

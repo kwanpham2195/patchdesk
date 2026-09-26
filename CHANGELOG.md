@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a local Review of a working tree with a large un-ignored folder, such as `node_modules`, failing with "Patchdesk could not read the local checkout" after a long wait. Above 5,000 untracked files or 100 MiB of them, Patchdesk now refuses before storing anything and names the largest untracked folders to add to `.gitignore`, in the **Local review** picker, on **Refresh**, and in the `review_local` and `refresh_review` MCP tools. #485
+
 - Added a one-command macOS installer that verifies the latest release ZIP, installs Patchdesk and its agent command, and stops before replacing an existing installation.
 
 ## 0.0.12 - 2026-09-26
