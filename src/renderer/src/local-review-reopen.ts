@@ -102,3 +102,22 @@ export function untrackedTooLargeMessage(
       : "more than 100 MiB of untracked files";
   return `The working tree has ${exceeded}, more than Patchdesk snapshots. Add ${ignore} to .gitignore or remove them, then try again.`;
 }
+
+const patchTooLargeBodySchema = v.object({
+  error: v.literal("patch_too_large"),
+  largestFiles: v.array(v.string()),
+});
+
+/** The sentence for a local source whose patch is over the git output cap (#493); undefined for any other failure. */
+export function patchTooLargeMessage(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this reads one refusal off it.
+  cause: unknown,
+): string | undefined {
+  if (!(cause instanceof PatchdeskApiError)) return undefined;
+  const body = v.safeParse(patchTooLargeBodySchema, cause.responseBody);
+  if (!body.success) return undefined;
+  const files = body.output.largestFiles;
+  return files.length === 0
+    ? "The change is larger than the 2 MiB patch Patchdesk can read. Leave large generated files out, or review it in smaller parts."
+    : `The change is larger than the 2 MiB patch Patchdesk can read. The largest changes are in ${files.join(", ")}. Leave generated files out, or review it in smaller parts.`;
+}

@@ -284,7 +284,12 @@ export class LocalReviewSessionPreparation {
       resolved.revision,
     );
     if (patch._tag === "err")
-      return this.abort(journal, { _tag: "PreparationUnavailable" });
+      return this.abort(
+        journal,
+        patch.error._tag === "PatchTooLarge"
+          ? patch.error
+          : { _tag: "PreparationUnavailable" },
+      );
     const patchPath = this.dependencies.paths.patchFile(profileId, sessionId);
     if ((await journal.record(patchPath))._tag === "err")
       return this.abort(journal, { _tag: "SessionStorageUnavailable" });

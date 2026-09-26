@@ -177,8 +177,9 @@ export function response(
  * A service result on the wire: its value, or `{ error: reason }` with the
  * status `kinds` classifies the reason as. A working-tree branch refusal also
  * names the checkout's branch (null when detached) so the renderer can say
- * which one to switch to, and an untracked-size refusal names the limit it
- * is over and the paths to ignore.
+ * which one to switch to, an untracked-size refusal names the limit it is
+ * over and the paths to ignore, and a patch-size refusal names the largest
+ * changed files.
  */
 export function serviceResponse<Reason extends string>(
   context: Context,
@@ -191,6 +192,7 @@ export function serviceResponse<Reason extends string>(
           readonly currentBranch?: string;
           readonly exceededLimit?: UntrackedTooLarge["exceededLimit"];
           readonly largestPaths?: ReadonlyArray<string>;
+          readonly largestFiles?: ReadonlyArray<string>;
         };
       },
   // A bare `string` reason would make the table an index signature, and a
@@ -198,7 +200,8 @@ export function serviceResponse<Reason extends string>(
   kinds: string extends Reason ? never : FailureKinds<NoInfer<Reason>>,
 ): Response {
   if (result._tag === "ok") return context.json(result.value);
-  const { reason, currentBranch, exceededLimit, largestPaths } = result.error;
+  const { reason, currentBranch, exceededLimit, largestPaths, largestFiles } =
+    result.error;
   const status: ResponseFailureStatus = failureKindStatuses[kinds[reason]];
   if (reason === "branch_mismatch")
     return context.json(
@@ -207,5 +210,7 @@ export function serviceResponse<Reason extends string>(
     );
   if (reason === "untracked_too_large")
     return context.json({ error: reason, exceededLimit, largestPaths }, status);
+  if (reason === "patch_too_large")
+    return context.json({ error: reason, largestFiles }, status);
   return context.json({ error: reason }, status);
 }

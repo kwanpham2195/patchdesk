@@ -198,6 +198,30 @@ describe("MCP read tool refusals", () => {
     ).rejects.toThrow();
   });
 
+  it("refuses a patch over the output cap with patch_too_large naming the file, opening nothing", async () => {
+    app = await startAppWithLinkedWorktree();
+    await writeFile(
+      join(app.repositoryPath, "bundle.js"),
+      "export const line = 0;\n".repeat(140_000),
+    );
+    const client = await connectLegacyClient(app.socketPath);
+
+    const refused = await call(client, "review_local", {
+      cwd: app.repositoryPath,
+    });
+
+    expect(refused).toMatchObject({
+      isError: true,
+      content: {
+        error: "patch_too_large",
+        message: expect.stringContaining("most changes are bundle.js."),
+      },
+    });
+    await expect(
+      readdir(app.paths.profileWorkbenchesDirectory(profileId)),
+    ).rejects.toThrow();
+  });
+
   it("refuses a directory outside every profile checkout with checkout_not_found and lists it in diagnostics", async () => {
     app = await startAppWithLinkedWorktree();
     const outside = await shortTemporaryDirectory();
