@@ -41,6 +41,7 @@
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs",
     "check:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && node scripts/check-renderer-bundles.mjs",
+    "docs:mcp-tools": "node scripts/generate-mcp-tools-doc.mjs",
     "test:bundle": "pnpm build && pnpm check:bundle",
     "doctor": "react-doctor --scope full",
     "precommit": "node scripts/precommit.mjs",
