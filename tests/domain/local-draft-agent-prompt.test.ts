@@ -192,4 +192,20 @@ describe("renderLocalDraftsAsAgentPrompt", () => {
       ["- File: `src/items.ts:9`", "", "Name this constant."].join("\n"),
     );
   });
+
+  it("keeps a Finding title with line breaks on its heading line", () => {
+    const prompt = renderLocalDraftsAsAgentPrompt([
+      draft({
+        title: "lastItem reads\n\npast  the end",
+        comment: "Use the last valid index.",
+        path: "src/items.ts",
+        startLine: 2,
+        line: 2,
+      }),
+    ]);
+
+    expect(prompt).toContain(
+      "### 1. lastItem reads past the end\n\n- File: `src/items.ts:2`",
+    );
+  });
 });

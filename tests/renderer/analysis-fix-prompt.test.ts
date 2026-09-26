@@ -237,4 +237,18 @@ Rename to_snake_case here.
     );
     expect(prompt).not.toContain("pull request #");
   });
+
+  it("keeps a Finding title with line breaks on its heading line", () => {
+    const [finding] = result.findings;
+    if (finding === undefined) throw new Error("missing fixture finding");
+    const prompt = renderAnalysisFixPrompt({
+      context,
+      result: {
+        ...result,
+        findings: [{ ...finding, title: "Rename\n\n  the  helper" }],
+      },
+    });
+
+    expect(prompt).toContain("### 1. [P2] Rename the helper\n");
+  });
 });

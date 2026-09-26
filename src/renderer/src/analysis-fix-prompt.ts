@@ -1,4 +1,5 @@
 import { withTrailingNewline } from "../../domain/finding-suggestion";
+import { markdownHeadingText } from "../../domain/markdown-heading";
 import type { AnalysisResult } from "./analysis-headline";
 
 export type AnalysisFixPromptContext = {
@@ -81,7 +82,7 @@ function renderFindings(findings: ReadonlyArray<ReviewFinding>): string {
 
 function renderFinding(finding: ReviewFinding, position: number): string {
   const blocks: string[] = [
-    `### ${position}. [${finding.severity}] ${finding.title.trim()}`,
+    `### ${position}. [${finding.severity}] ${markdownHeadingText(finding.title)}`,
   ];
 
   const facts: string[] = [];

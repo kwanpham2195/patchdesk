@@ -221,4 +221,31 @@ describe("renderBriefAsPullRequestDescription", () => {
       ].join("\n"),
     );
   });
+
+  it("keeps a Flow title with line breaks on its heading line", () => {
+    const brief: NormalizedBrief = {
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      flow: {
+        trees: [
+          {
+            kind: "call_tree",
+            title: "Recovery\n\nwrites",
+            nodes: [
+              {
+                label: "recover()",
+                change: "added",
+                citations: [],
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    expect(renderBriefAsPullRequestDescription(brief)).toContain(
+      "### Call tree: Recovery writes\n\n```diff",
+    );
+  });
 });
