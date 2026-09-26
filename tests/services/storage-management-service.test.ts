@@ -88,6 +88,7 @@ async function fixture(
     readonly reviewLoader?: (reviewId: ReviewId) => Result<unknown, unknown>;
     readonly analysis?: unknown;
     readonly walkthrough?: unknown;
+    readonly brief?: unknown;
     readonly merge?: unknown;
     readonly pending?: unknown;
     readonly direct?: unknown;
@@ -201,8 +202,11 @@ async function fixture(
         _review: ReviewId,
         type: InsightType,
       ) {
-        const value =
-          type === "analysis" ? options.analysis : options.walkthrough;
+        const value = {
+          analysis: options.analysis,
+          walkthrough: options.walkthrough,
+          brief: options.brief,
+        }[type];
         return value === undefined ? err({ reason: "not_found" }) : ok(value);
       },
     },
@@ -328,6 +332,16 @@ describe("StorageManagementService", () => {
       expect(value.removeSession).not.toHaveBeenCalled();
     },
   );
+
+  it("protects the session a running Brief reads", async () => {
+    const value = await fixture({
+      brief: { activeRun: { revision: { sessionId } } },
+    });
+    await expect(
+      value.service.discard({ profileId, sessionId }),
+    ).resolves.toEqual({ _tag: "err", error: { _tag: "SessionProtected" } });
+    expect(value.removeSession).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["uncertain pending review", { _tag: "OutcomeUnknown" }, undefined],

@@ -6,13 +6,10 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
-import type { Review } from "../domain/review";
 import {
   isPullRequestReviewSession,
   type ReviewSession,
 } from "../domain/review-session";
-import { isDirectSummaryReviewLocked } from "../domain/direct-summary-review";
-import { isPendingReviewLocked } from "../domain/pending-review";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -28,7 +25,10 @@ import {
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { GitReadExecutor } from "./review-worktree-service";
 import { ReviewLifecycleGate } from "./review-lifecycle-gate";
-import { ReviewPreparationJournal } from "./review-preparation-journal";
+import {
+  readSessionRunningState,
+  type SessionRunningState,
+} from "./session-running-state";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 export type TrashMover = {
@@ -60,14 +60,6 @@ export type StorageDeleteQuarantinedInput = {
   readonly profileId: WorkspaceProfileId;
   readonly entryName: string;
 };
-/** The running-state answer, carrying the Review record that decided it when the session is idle. */
-type SessionRunningState =
-  | { readonly running: true }
-  | {
-      readonly running: false;
-      readonly review: Result<Review, StorageFailure>;
-    };
-
 const RETAIN_TERMINAL_SESSIONS_MS = 14 * 24 * 60 * 60 * 1000;
 const RETAIN_QUARANTINE_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -247,60 +239,11 @@ export class StorageManagementService {
     });
   }
 
-  /**
-   * True while the session is actively in motion and must never be removed.
-   * A session that is not running carries out the Review record this answer
-   * was decided from, so the sweep does not read it a second time.
-   */
   private async isRunningState(
     profileId: WorkspaceProfileId,
     session: ReviewSession,
   ): Promise<Result<SessionRunningState, StorageManagementFailure>> {
-    const preparation = await ReviewPreparationJournal.activeFor(
-      this.deps.paths,
-      profileId,
-      session.id,
-      this.deps.diagnostics,
-    );
-    if (preparation._tag === "err") return err({ _tag: "StorageUnavailable" });
-    if (preparation.value !== undefined) return ok({ running: true });
-    const reviewId = createReviewId(session.key);
-    const [review, analysis, walkthrough, merge] = await Promise.all([
-      this.deps.reviews.load(profileId, reviewId),
-      this.deps.insights.load(profileId, reviewId, "analysis"),
-      this.deps.insights.load(profileId, reviewId, "walkthrough"),
-      this.deps.mergeOperations.load(profileId, session.id),
-    ]);
-    if (
-      [review, analysis, walkthrough, merge].some(
-        (value) => value._tag === "err" && value.error.reason !== "not_found",
-      )
-    )
-      return err({ _tag: "StorageUnavailable" });
-    if (
-      review._tag === "ok" &&
-      review.value.status._tag === "Open" &&
-      review.value.currentSessionId === session.id
-    )
-      return ok({ running: true });
-    if (
-      (analysis._tag === "ok" &&
-        analysis.value.activeRun?.revision.sessionId === session.id) ||
-      (walkthrough._tag === "ok" &&
-        walkthrough.value.activeRun?.revision.sessionId === session.id)
-    )
-      return ok({ running: true });
-    if (
-      isPullRequestReviewSession(session) &&
-      (isPendingReviewLocked(session.pendingReview) ||
-        isDirectSummaryReviewLocked(session.directSummaryReview))
-    )
-      return ok({ running: true });
-    return ok(
-      merge._tag === "ok" && merge.value.state._tag !== "Rejected"
-        ? { running: true }
-        : { running: false, review },
-    );
+    return readSessionRunningState(this.deps, profileId, session);
   }
 
   /**
