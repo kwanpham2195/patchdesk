@@ -514,7 +514,8 @@ function AppContent({
             }
             onWorkbenchPatch={(patch) =>
               setWorkbench((current) => {
-                if (current === undefined) return current;
+                // A write that settles after a Review switch patches only the Review it was sent for (#475).
+                if (current?.review.id !== workbench.review.id) return current;
                 const { insights, ...rest } = patch;
                 const insightsField =
                   insights === undefined
