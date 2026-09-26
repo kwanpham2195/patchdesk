@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import type { Context, Hono } from "hono";
 import {
   array,
@@ -26,6 +24,7 @@ import {
   parseChangeIntent,
 } from "../../domain/change-intent";
 import {
+  checkoutFolderName,
   parseAbsolutePath,
   parseFindingId,
   parseGitHubHost,
@@ -104,7 +103,7 @@ export function registerLocalReviewRoutes(
         ? ok(
             listed.value.map((checkout) => ({
               path: checkout.path,
-              name: basename(checkout.path),
+              name: checkoutFolderName(checkout.path),
               head: checkout.head,
               configured: checkout.configured,
             })),

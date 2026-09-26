@@ -2,6 +2,7 @@ import * as v from "valibot";
 
 import { definedProps } from "./defined-props";
 import {
+  checkoutFolderName,
   parseAbsolutePath,
   parseGitSha,
   parseGitShaPrefix,
@@ -273,7 +274,5 @@ export function reviewSourceTitle(source: ReviewSourceText): string {
 }
 
 function checkoutSuffix(checkout: string | undefined): string {
-  return checkout === undefined
-    ? ""
-    : ` in ${checkout.slice(checkout.lastIndexOf("/") + 1)}`;
+  return checkout === undefined ? "" : ` in ${checkoutFolderName(checkout)}`;
 }
