@@ -37,6 +37,7 @@ import type {
   LocalBranchMismatch,
   LocalReviewOpening,
 } from "./local-review-opening";
+import type { FailureKinds } from "../domain/failure-kind";
 import { err, ok, type Result } from "../domain/result";
 import type {
   PrepareReviewSessionFailure,
@@ -63,6 +64,22 @@ export type ReviewWorkbenchFailure = {
     | "revision_conflict"
     | "not_fresh";
 };
+
+/** How each failure of loading the workbench is classified (ADR 0052 "Error model"). */
+export const reviewWorkbenchFailureKinds = {
+  invalid_input: "invalid",
+  github_auth: "unauthenticated",
+  not_found: "not_found",
+  head_changed: "conflict",
+  terminal: "conflict",
+  revision_conflict: "conflict",
+  not_fresh: "conflict",
+  branch_mismatch: "conflict",
+  github_read: "unavailable",
+  storage: "unavailable",
+} as const satisfies FailureKinds<
+  ReviewWorkbenchFailure["reason"] | LocalBranchMismatch["reason"]
+>;
 export type { ReviewWorkbenchProjection };
 
 /**

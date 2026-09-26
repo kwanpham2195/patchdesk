@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { definedProps } from "../domain/defined-props";
+import type { FailureKinds } from "../domain/failure-kind";
 
 import type { GitSha } from "../domain/ids";
 
@@ -155,6 +156,25 @@ export type InsightCoordinatorFailure =
   | "change_intent_file_too_large"
   | "change_intent_file_not_text"
   | "change_intent_file_sensitive";
+
+/** How each Insight refusal is classified, wherever it surfaces (ADR 0052 "Error model"). */
+export const insightFailureKinds = {
+  invalid_request: "invalid",
+  model_unavailable: "invalid",
+  ownership_mismatch: "forbidden",
+  not_found: "not_found",
+  terminal_review: "conflict",
+  already_running: "conflict",
+  not_active: "conflict",
+  stale_request: "conflict",
+  not_available: "conflict",
+  change_intent_file_missing: "conflict",
+  change_intent_file_too_large: "conflict",
+  change_intent_file_not_text: "conflict",
+  change_intent_file_sensitive: "conflict",
+  catalog_unavailable: "unavailable",
+  storage_unavailable: "unavailable",
+} as const satisfies FailureKinds<InsightCoordinatorFailure>;
 
 const changeIntentRefusal = {
   file_missing: "change_intent_file_missing",

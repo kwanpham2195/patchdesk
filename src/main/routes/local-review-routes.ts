@@ -44,7 +44,10 @@ import { MAX_MAINTAINER_NOTE_LENGTH } from "../../domain/local-draft";
 import { ok } from "../../domain/result";
 import type { LocalReviewSourceRequest } from "../../domain/review-source";
 import type { LocalApiContainer } from "../local-api-container";
-import { localReviewResponse, response } from "./http-status";
+import { changeIntentFailureKinds } from "../../services/local-change-intent-service";
+import { localDraftFailureKinds } from "../../services/local-draft-service";
+import { localReviewFailureKinds } from "../../services/local-review-opening";
+import { response, serviceResponse } from "./http-status";
 import { jsonBody } from "./json-body";
 import {
   parseReviewWriteExpectation,
@@ -77,7 +80,7 @@ export function registerLocalReviewRoutes(
       repository: { host: host.value, owner: owner.value, repo: repo.value },
       request,
     });
-    return localReviewResponse(context, opened);
+    return serviceResponse(context, opened, localReviewFailureKinds);
   });
 
   // The checkouts the open dialog offers: the configured one and its live linked worktrees (#489).
@@ -97,7 +100,7 @@ export function registerLocalReviewRoutes(
       profileId.value,
       { host: host.value, owner: owner.value, repo: repo.value },
     );
-    return response(
+    return serviceResponse(
       context,
       listed._tag === "ok"
         ? ok(
@@ -109,6 +112,7 @@ export function registerLocalReviewRoutes(
             })),
           )
         : listed,
+      localReviewFailureKinds,
     );
   });
 
@@ -124,7 +128,7 @@ export function registerLocalReviewRoutes(
       profileId.value,
       reviewId.value,
     );
-    return localReviewResponse(context, refreshed);
+    return serviceResponse(context, refreshed, localReviewFailureKinds);
   });
 
   // Identity only: the main process derives every range and replacement (ADR 0048).
@@ -191,7 +195,7 @@ export function registerLocalReviewRoutes(
       parsed.output.line < parsed.output.startLine
     )
       return context.json({ error: "invalid_input" }, 400);
-    return response(
+    return serviceResponse(
       context,
       await container.localDrafts.addNote({
         ...key,
@@ -203,6 +207,7 @@ export function registerLocalReviewRoutes(
         },
         text: parsed.output.text,
       }),
+      localDraftFailureKinds,
     );
   });
   app.post("/v1/reviews/local-drafts/notes/edit", async (context) => {
@@ -211,12 +216,13 @@ export function registerLocalReviewRoutes(
     const note = parseNoteKey(parsed.output);
     if (note === undefined)
       return context.json({ error: "invalid_input" }, 400);
-    return response(
+    return serviceResponse(
       context,
       await container.localDrafts.editNote({
         ...note,
         text: parsed.output.text,
       }),
+      localDraftFailureKinds,
     );
   });
   app.post("/v1/reviews/local-drafts/notes/remove", async (context) => {
@@ -225,7 +231,11 @@ export function registerLocalReviewRoutes(
     const note = parseNoteKey(parsed.output);
     if (note === undefined)
       return context.json({ error: "invalid_input" }, 400);
-    return response(context, await container.localDrafts.removeNote(note));
+    return serviceResponse(
+      context,
+      await container.localDrafts.removeNote(note),
+      localDraftFailureKinds,
+    );
   });
 
   // Sets the Change intent, or clears it with `intent: null` (#467); the Analysis start reads a spec file.
@@ -244,13 +254,14 @@ export function registerLocalReviewRoutes(
       intent._tag === "err"
     )
       return context.json({ error: "invalid_input" }, 400);
-    return response(
+    return serviceResponse(
       context,
       await container.localChangeIntent.set({
         profileId: profileId.value,
         reviewId: reviewId.value,
         intent: intent.value,
       }),
+      changeIntentFailureKinds,
     );
   });
 
@@ -261,9 +272,10 @@ export function registerLocalReviewRoutes(
     const reviewId = parseReviewId(parsed.output.reviewId);
     if (profileId._tag === "err" || reviewId._tag === "err")
       return context.json({ error: "invalid_input" }, 400);
-    return response(
+    return serviceResponse(
       context,
       await container.localDrafts.agentPrompt(profileId.value, reviewId.value),
+      localDraftFailureKinds,
     );
   });
 
@@ -295,11 +307,12 @@ async function localDraftResponse(
   if (key === undefined || runId._tag === "err" || findingId._tag === "err")
     return context.json({ error: "invalid_input" }, 400);
   const request = { ...key, runId: runId.value, findingId: findingId.value };
-  return response(
+  return serviceResponse(
     context,
     action === "add"
       ? await container.localDrafts.add(request)
       : await container.localDrafts.remove(request),
+    localDraftFailureKinds,
   );
 }
 
