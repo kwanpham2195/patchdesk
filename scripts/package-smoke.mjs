@@ -5,8 +5,10 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   stat,
+  symlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -73,6 +75,7 @@ if (!executableKind.includes(process.arch))
     `Packaged executable architecture mismatch: ${executableKind.trim()}`,
   );
 await validateCodeSignature(bundle);
+await validatePackagedMcpCheck(bundle);
 
 // Both handoff downloads sit directly in `release/`, beside the unpacked app
 // this smoke reads: the disk image people install from and the zip.
@@ -453,6 +456,56 @@ async function validateCodeSignature(bundle) {
   console.log(
     `Packaged signature: ${details} (sealed and verified). spctl --assess: ${assessment || "no output"}`,
   );
+}
+
+/**
+ * Runs `patchdesk mcp --check` the way a user does, through a symlink to the
+ * packaged launcher, with no app listening. The documented `app_not_running`
+ * refusal proves the launcher follows the link back to the bundle, sets
+ * `ELECTRON_RUN_AS_NODE` itself (the environment here omits it), and that the
+ * bundled shim loads and resolves the default socket path (ADR 0052
+ * "Packaging").
+ *
+ * @param {string} bundle
+ * @returns {Promise<void>}
+ */
+async function validatePackagedMcpCheck(bundle) {
+  // Under /tmp so the socket path stays within macOS's 104-byte limit and the refusal reads ENOENT.
+  const home = await realpath(await mkdtemp("/tmp/patchdesk-mcp-"));
+  try {
+    const command = join(home, "patchdesk");
+    await symlink(join(bundle, "Contents/Resources/bin/patchdesk"), command);
+    let exitCode = 0;
+    let stdout;
+    let stderr;
+    try {
+      ({ stdout, stderr } = await execute(command, ["mcp", "--check"], {
+        env: { HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+        timeout: 60_000,
+      }));
+    } catch (cause) {
+      const failure = Object(cause);
+      exitCode = failure.code;
+      stdout = failure.stdout;
+      stderr = failure.stderr;
+    }
+    const socket = join(home, ".local/share/patchdesk/mcp/patchdesk.sock");
+    const refusal =
+      "app_not_running: Patchdesk is not running. Start Patchdesk and try again. (ENOENT)";
+    if (
+      exitCode !== 1 ||
+      stdout !== `socket: ${socket}\n` ||
+      !String(stderr).split("\n").includes(refusal)
+    )
+      throw new Error(
+        `Packaged patchdesk mcp --check did not refuse app_not_running: ${JSON.stringify({ exitCode, stdout, stderr })}`,
+      );
+    console.log(
+      `Packaged MCP launcher: patchdesk mcp --check exited 1 with "${refusal}"`,
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 }
 
 /**
