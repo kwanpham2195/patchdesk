@@ -731,7 +731,7 @@ it("keeps Reply and Resolve off a published create card even when all global con
 function DiffWithDrafts(
   props: ComponentProps<typeof ReviewDiffView>,
 ): React.JSX.Element {
-  const pendingReviewDrafts = usePendingReviewDrafts("review-a");
+  const pendingReviewDrafts = usePendingReviewDrafts("review-a", props.patch);
   return (
     <ReviewDiffView {...props} pendingReviewDrafts={pendingReviewDrafts} />
   );

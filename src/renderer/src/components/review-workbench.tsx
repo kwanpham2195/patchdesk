@@ -343,7 +343,10 @@ export function ReviewWorkbench({
     ...definedProps({ initialState, onPositionCommitted }),
   });
   // The Diff tab unmounts on a tab switch and remounts on a new head, so its failed drafts live here (#526).
-  const pendingReviewDrafts = usePendingReviewDrafts(model.review.id);
+  const pendingReviewDrafts = usePendingReviewDrafts(
+    model.review.id,
+    model.fullPatch,
+  );
   const { scopeFilteredPaths, scopeFilter, clearScopeBucket } =
     useReviewScopeFilter({
       fullPatch: model.fullPatch,

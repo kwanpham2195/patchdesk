@@ -35,6 +35,8 @@ export type PendingReviewDrafts = {
   /** A failed draft's body whose lines are gone, kept until the maintainer selects a new line or dismisses it. */
   readonly orphanedBody: string | undefined;
   readonly setOrphanedBody: (body: string | undefined) => void;
+  /** The Review's full diff at the current head: a draft's lines are gone only when this lacks them, whatever a narrowed view shows. */
+  readonly fullPatch: string | undefined;
 };
 
 type ReviewDrafts = {
@@ -48,7 +50,10 @@ function emptyDrafts(reviewId: string): ReviewDrafts {
 }
 
 /** Owns the pending-review drafts of the open Review and drops them when another Review opens. */
-export function usePendingReviewDrafts(reviewId: string): PendingReviewDrafts {
+export function usePendingReviewDrafts(
+  reviewId: string,
+  fullPatch: string | undefined,
+): PendingReviewDrafts {
   const [drafts, setDrafts] = useState(() => emptyDrafts(reviewId));
   if (drafts.reviewId !== reviewId) setDrafts(emptyDrafts(reviewId));
   // A write that settles after its Review closed belongs to that Review, so it is not recorded on the next one.
@@ -72,7 +77,7 @@ export function usePendingReviewDrafts(reviewId: string): PendingReviewDrafts {
   );
   const { writes, orphanedBody } = drafts;
   return useMemo(
-    () => ({ writes, updateWrites, orphanedBody, setOrphanedBody }),
-    [orphanedBody, setOrphanedBody, updateWrites, writes],
+    () => ({ writes, updateWrites, orphanedBody, setOrphanedBody, fullPatch }),
+    [fullPatch, orphanedBody, setOrphanedBody, updateWrites, writes],
   );
 }
