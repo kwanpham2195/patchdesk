@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the Diff file tree cutting names badly: truncated names now start at the same edge as the names beside them, folder names that fit are no longer cut, names that start with digits keep their order, and the name tooltip opens beside the row instead of over the Browse, Commits, and Threads tabs. #448
+
 - Fixed a local Review of a working tree with a large un-ignored folder, such as `node_modules`, failing with "Patchdesk could not read the local checkout" after a long wait. Above 5,000 untracked files or 100 MiB of them, Patchdesk now refuses before storing anything, says which limit the working tree is over, and names the largest untracked folders to add to `.gitignore`, in the **Local review** picker, on **Refresh**, and in the `review_local` and `refresh_review` MCP tools. #485
 
 - Fixed a local Review whose patch is over 2 MiB, such as a lockfile or generated file change, failing with "Patchdesk could not read the local checkout". Patchdesk now refuses it, naming the files with the most changes, in the **Local review** picker, on **Refresh**, and in the `review_local` and `refresh_review` MCP tools. #493
