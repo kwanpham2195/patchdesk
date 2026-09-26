@@ -46,6 +46,22 @@ source.
 
 ## Identity
 
+> **Amended 2026-09-26 (#489): a local source names its checkout.** A profile
+> repository has one configured checkout, its `localPath`, and zero or more
+> other checkouts: the live entries of `git worktree list` run from the
+> configured checkout, less Patchdesk's own worktrees under the cache
+> directory. A local source carries an optional `checkout`, the realpath of
+> the picked checkout's top-level, stored only when it is not the configured
+> checkout; absent means the configured checkout, so existing records and
+> ids are unchanged. A named checkout appends `checkout` and its path to the
+> collision hash and prefixes the slug with `<folder>--`, so two checkouts of
+> one branch are two Reviews with their own sessions and managed refs. A path
+> that is not a live worktree of the configured checkout's repository (a
+> second clone, any other directory, a cache worktree) is refused as
+> `checkout_not_found`. The snapshot, diff and Apply read the named checkout;
+> refs, session worktrees, journals and retention stay on the configured one.
+> Retention treats a named checkout that is no longer listed as a gone source.
+
 A local Review is keyed by `profileId`, the profile repository
 (`host`/`owner`/`repo`), and the source spec:
 

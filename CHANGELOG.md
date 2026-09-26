@@ -8,6 +8,8 @@
 
 - Changed the sidebar to show one local row per repository, named `owner/repo`, in place of a row for every working tree, branch, and commit Review. Clicking it opens the working tree of the branch checked out now, so after a branch switch it opens that branch's Review with its own drafts rather than refusing; the **Local review** picker reopens branch and commit Reviews. #479
 
+- Added local Reviews of a repository's linked worktrees: the **Local review** picker has a **Checkout** select when the repository has worktrees from `git worktree add`, so two agents working in two worktrees of one repository can be reviewed side by side. Each worktree gets its own Review, drafts, and sidebar row named `owner/repo · <folder>`; a worktree's Review is removed by the background sweep once the worktree is gone. #489
+
 - Fixed a Change intent or Local draft saved just before switching Reviews being shown on the Review switched to. #475
 
 - Fixed **Apply** on a local Review staying enabled after it was refused because the working tree changed since the Analysis. It now stays disabled with the reason beside it until Refresh. #476
