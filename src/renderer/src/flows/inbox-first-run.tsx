@@ -1,4 +1,5 @@
 import { CircleAlert } from "lucide-react";
+import { Button } from "../components/ui/button";
 import type { Dashboard, Profile } from "../renderer-models";
 import { useWorkspaceProfileEditor } from "./settings-workspace-profile-editor";
 import { useReviewingAsProbe } from "./settings-workspace-reviewing-as";
@@ -13,17 +14,18 @@ const NO_PROFILES: ReadonlyArray<Profile> = [];
  * Settings > Workspace renders, driven by the same editor hook, so setup never
  * hands the user off to the Settings modal.
  *
- * There is no "done" button. Ticking the first repository saves the watchlist
- * and reloads the workspace, and the reloaded profile has a watched repository,
- * which is exactly the condition under which the caller stops rendering this
- * flow.
+ * Ticks save as they are made; Continue, offered once a repository is
+ * watched, is what leaves setup, so the user can pick several first.
  */
 export function WorkspaceFirstRun({
   dashboard,
   onWorkspaceReload,
+  onContinue,
 }: {
   readonly dashboard: Dashboard | undefined;
   readonly onWorkspaceReload: () => Promise<void>;
+  /** Absent before a workspace has loaded, when nothing can be watched yet. */
+  readonly onContinue: (() => void) | undefined;
 }): React.JSX.Element {
   const editor = useWorkspaceProfileEditor({
     dashboard,
@@ -44,6 +46,7 @@ export function WorkspaceFirstRun({
   // are both scoped to a persisted profile, which the domain parser refuses
   // without one.
   const accountChosen = editor.persisted.ghAccount !== "";
+  const watchedCount = dashboard?.profile.repos?.length ?? 0;
 
   return (
     <section
@@ -76,6 +79,11 @@ export function WorkspaceFirstRun({
         <p className="text-sm text-muted-foreground">
           Choose an account first.
         </p>
+      )}
+      {onContinue === undefined || watchedCount === 0 ? null : (
+        <div className="flex justify-end">
+          <Button onClick={onContinue}>Continue</Button>
+        </div>
       )}
     </section>
   );

@@ -2,6 +2,7 @@
 import {
   cleanup,
   fireEvent,
+  render,
   screen,
   waitFor,
   within,
@@ -299,6 +300,58 @@ describe("InboxFlow first run", () => {
       screen.queryByRole("combobox", { name: "Pull request state" }),
     ).toBeNull();
     expect(screen.queryByRole("listbox", { name: "Pull requests" })).toBeNull();
+  });
+
+  it("stays on setup after the first repository is watched, until Continue", async () => {
+    stubPatchdesk({
+      "/v1/environment": READY_ENVIRONMENT,
+      "/v1/watchlist/suggestions": [],
+    });
+    const emptyInbox = { ...inbox, inbox: { ...inbox.inbox, rows: [] } };
+    const flow = (
+      current: Dashboard,
+      state: "empty" | "no_open_prs",
+    ): React.JSX.Element => (
+      <BusyProvider>
+        <InboxFlow
+          destination="dashboard"
+          dashboard={current}
+          // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+          inbox={emptyInbox as never}
+          state={state}
+          refreshStatus="Current"
+          onRefresh={vi.fn()}
+          onSettings={vi.fn()}
+          onOpenWorkbench={vi.fn()}
+        />
+      </BusyProvider>
+    );
+    const { rerender } = render(flow(dashboard, "empty"));
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+
+    // The reload after the first tick: one repository watched.
+    rerender(
+      flow(
+        {
+          ...dashboard,
+          profile: {
+            ...dashboard.profile,
+            repos: [{ host: "github.com", owner: "acme", repo: "alpha" }],
+          },
+        },
+        "no_open_prs",
+      ),
+    );
+    expect(
+      screen.getByRole("region", { name: "Set up your workspace" }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(
+      screen.queryByRole("region", { name: "Set up your workspace" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "More filters" })).toBeTruthy();
   });
 
   it("reports a missing Git only when the environment probe says so", async () => {
