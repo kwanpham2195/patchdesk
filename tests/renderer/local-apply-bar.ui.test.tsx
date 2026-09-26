@@ -152,4 +152,25 @@ describe("Apply suggestions on a working-tree Review", () => {
 
     expect(localApply.check).toHaveBeenCalledTimes(1);
   });
+
+  it("leaves the Apply bar out when no open Finding has a suggestion that resolves", () => {
+    render(
+      <AnalysisReader
+        result={{
+          ...result,
+          findings: [
+            withoutSuggestion,
+            { ...withSuggestion, disposition: "dismissed" as const },
+          ],
+        }}
+        evidencePatch={patch}
+        localApply={controls()}
+      />,
+    );
+
+    expect(screen.getByText("Unchecked input")).toBeTruthy();
+    expect(
+      screen.queryByRole("group", { name: "Apply suggestions" }),
+    ).toBeNull();
+  });
 });

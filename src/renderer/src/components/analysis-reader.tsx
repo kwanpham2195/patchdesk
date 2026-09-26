@@ -301,7 +301,11 @@ export function AnalysisReader({
         ) : (
           <CardContent className="flex flex-col gap-2">
             {localApply === undefined ? null : (
-              <LocalApplyBar controls={localApply} findings={result.findings} />
+              <LocalApplyBar
+                controls={localApply}
+                findings={result.findings}
+                evidencePatch={evidencePatch}
+              />
             )}
             <ul className="flex flex-col gap-2">
               {(lowerSeverityFindings.length === 0 ||
