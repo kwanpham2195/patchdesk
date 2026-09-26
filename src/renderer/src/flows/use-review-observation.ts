@@ -205,6 +205,14 @@ export function useReviewObservation({
           onWorkbenchPatchRef.current({
             review: { ...current.review, status: observation.status },
           });
+        } else if (
+          current.session.key.source.kind !== "pull_request" &&
+          current.revision.freshness === "updates_available"
+        ) {
+          // A local Review answers Unchanged once the agent reverted to the shown content and its marker was cleared.
+          onWorkbenchPatchRef.current({
+            revision: { ...current.revision, freshness: "fresh" },
+          });
         }
         return;
       }

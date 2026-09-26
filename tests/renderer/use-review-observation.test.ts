@@ -241,25 +241,61 @@ describe("useReviewObservation detection table", () => {
   );
 });
 
+/** A working-tree Review in the wire shape, with the given freshness. */
+function localWorkbench(
+  freshness: WorkbenchResponse["revision"]["freshness"],
+): WorkbenchResponse {
+  const base = projection();
+  // SAFETY: fixture data in the wire shape `parseWorkbenchResponse` accepts; the working-tree source replaces the pull request fields.
+  return projection({
+    ...base,
+    session: {
+      ...base.session,
+      key: {
+        ...base.session.key,
+        source: { kind: "working_tree", branch: "main" },
+      },
+    },
+    revision: { ...base.revision, freshness },
+    pullRequest: undefined,
+  } as never);
+}
+
 describe("useReviewObservation scheduling", () => {
+  it("takes a local Review's header back to fresh when detection answers Unchanged after the agent reverted", async () => {
+    vi.useFakeTimers();
+    installObservationDouble({ detect: () => ({ _tag: "Unchanged" }) });
+    const local = localWorkbench("updates_available");
+
+    const { patch } = renderObservation(local);
+    await flush();
+
+    expect(patch).toHaveBeenCalledWith({
+      revision: { ...local.revision, freshness: "fresh" },
+    });
+  });
+
+  it("leaves a pull request Review's Updates available alone when detection answers Unchanged", async () => {
+    vi.useFakeTimers();
+    installObservationDouble({ detect: () => ({ _tag: "Unchanged" }) });
+    const base = projection();
+
+    const { patch } = renderObservation(
+      projection({
+        revision: { ...base.revision, freshness: "updates_available" },
+      }),
+    );
+    await flush();
+
+    expect(patch).not.toHaveBeenCalled();
+  });
+
   it("shows Updates available on a local Review once a focus detection finds a session an agent prepared", async () => {
     vi.useFakeTimers();
     const observed = installObservationDouble({
       detect: (call) => ({ _tag: call > 1 ? "RevisionChanged" : "Unchanged" }),
     });
-    const base = projection();
-    // SAFETY: fixture data in the wire shape `parseWorkbenchResponse` accepts; the working-tree source replaces the pull request fields.
-    const local = projection({
-      ...base,
-      session: {
-        ...base.session,
-        key: {
-          ...base.session.key,
-          source: { kind: "working_tree", branch: "main" },
-        },
-      },
-      pullRequest: undefined,
-    } as never);
+    const local = localWorkbench("fresh");
     const { patch } = renderObservation(local);
     await flush();
     expect(patch).not.toHaveBeenCalled();
