@@ -30,7 +30,10 @@ import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewRefreshService } from "./review-refresh-service";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
-import type { ReviewObservationService } from "./review-observation-service";
+import type {
+  ReviewObservation,
+  ReviewObservationService,
+} from "./review-observation-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewCommitService } from "./review-commit-service";
 import type {
@@ -723,10 +726,37 @@ export class ReviewWorkbenchController {
     readonly reviewId: ReviewId;
     readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
+    const local = await this.lifecycle.coordinator.withReviewLock(
+      input.profileId,
+      input.reviewId,
+      () => this.observeLocal(input),
+    );
+    if (local !== undefined) return ok(local);
     // Pass-through: the durable own-write journal is unioned in by `observe`
     // itself, under the coordinator lock, because a union read before the lock
     // misses a receipt a write path holding the lock has yet to append (#179).
     return this.lifecycle.observation.observe(input);
+  }
+
+  /**
+   * A local Review reads no GitHub: it has changed only once an agent's
+   * refresh prepared a session and marked it RevisionChanged (ADR 0052).
+   * Undefined for a pull request Review, which `observe` reads from GitHub,
+   * and for an unreadable one, which `observe` reports.
+   */
+  private async observeLocal(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<ReviewObservation | undefined> {
+    const review = await this.lifecycle.reviews.load(
+      input.profileId,
+      input.reviewId,
+    );
+    if (review._tag === "err" || !isLocalReview(review.value)) return undefined;
+    const detectedAt = this.now();
+    return review.value.freshness._tag === "RevisionChanged"
+      ? { _tag: "RevisionChanged", detectedAt }
+      : { _tag: "Unchanged", detectedAt };
   }
 
   async refresh(
