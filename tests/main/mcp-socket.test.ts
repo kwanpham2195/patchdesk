@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, rm, stat } from "node:fs/promises";
+import { access, chmod, mkdir, rm, stat } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
 
@@ -105,7 +105,7 @@ describe("MCP socket listener (ADR 0052)", () => {
 
   it("removes a socket a crashed instance left and answers on it", async () => {
     const directory = await socketDirectory();
-    await mkdir(directory, { recursive: true });
+    await mkdir(directory, { recursive: true, mode: 0o700 });
     const socketPath = join(directory, "patchdesk.sock");
     await leaveStaleSocket(socketPath);
     const logs: Array<LogEntryInput> = [];
@@ -194,6 +194,42 @@ describe("MCP socket listener (ADR 0052)", () => {
     });
 
     expect(closed).toBe(true);
+  });
+
+  it("refuses to listen in an existing directory group or others can open", async () => {
+    const directory = await socketDirectory();
+    await mkdir(directory);
+    await chmod(directory, 0o755);
+    const socketPath = join(directory, "patchdesk.sock");
+
+    const listener = await startListener(socketPath, recordingTools().tools);
+
+    expect(await listener.listening).toBe("failed");
+    await expect(access(socketPath)).rejects.toThrow();
+  });
+
+  it("answers storage when the tool's result cannot be serialized", async () => {
+    const socketPath = join(await socketDirectory(), "patchdesk.sock");
+    const id = parseWorkspaceProfileId("acme");
+    if (id._tag === "err") throw new Error("Invalid profile fixture");
+    const unserializable = ok({
+      profile: {
+        id: id.value,
+        get label(): string {
+          throw new Error("unserializable");
+        },
+      },
+      repositories: [],
+    });
+    await (
+      await startListener(socketPath, recordingTools(unserializable).tools)
+    ).listening;
+
+    const reply = JSON.parse(
+      await exchangeSocketLine(socketPath, listRepositoriesLine),
+    );
+
+    expect(reply).toMatchObject({ ok: false, error: "storage" });
   });
 
   it("answers an unknown tool with invalid_input and calls nothing", async () => {
