@@ -59,6 +59,7 @@ import { LocalApplyService } from "../services/local-apply-service";
 import { LocalChangeIntentService } from "../services/local-change-intent-service";
 import { LocalDraftService } from "../services/local-draft-service";
 import { createLocalNoteId } from "../domain/ids";
+import { LocalReviewRetention } from "../services/local-review-retention";
 import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
@@ -86,6 +87,8 @@ export type LocalApiContainer = {
   readonly recovery: ReviewRecoveryService;
   readonly reviewWorkbench: ReviewWorkbenchSeam;
   readonly localReviewOpening: LocalReviewOpening;
+  /** Removes superseded local sessions (#474); the retention scheduler sweeps every profile through it. */
+  readonly localRetention: LocalReviewRetention;
   readonly localApply: LocalApplyService;
   readonly localDrafts: LocalDraftService;
   readonly localChangeIntent: LocalChangeIntentService;
@@ -156,14 +159,16 @@ export async function buildLocalApiContainer(
     configuration.insights === undefined
       ? undefined
       : await configuration.insights(github);
+  // One owner of the managed refs and worktrees for recovery, preparation and retention.
+  const worktrees = new ReviewWorktreeService(
+    paths,
+    readOnlyGit,
+    credentials,
+    resolveGitHubCli,
+  );
   await ReviewPreparationJournal.recover(
     paths,
-    new ReviewWorktreeService(
-      paths,
-      readOnlyGit,
-      credentials,
-      resolveGitHubCli,
-    ),
+    worktrees,
     sessions,
     lifecycleGate,
     diagnostics,
@@ -174,6 +179,20 @@ export async function buildLocalApiContainer(
     configuration.reviewOperations ?? new ReviewOperationCoordinator();
   const reviewWriteOperations = new ReviewWriteOperationStore(paths);
   const localApplyOperations = new LocalApplyOperationStore(paths);
+  const localRetention = new LocalReviewRetention({
+    paths,
+    profiles,
+    reviews,
+    sessions,
+    insights,
+    mergeOperations: new MergeOperationStore(paths),
+    localApplyOperations,
+    worktrees,
+    artifacts: storageArtifacts,
+    lifecycleGate,
+    coordinator: reviewOperations,
+    diagnostics,
+  });
 
   const recovery = new ReviewRecoveryService(profiles, sessions, systemNow, {
     paths,
@@ -208,12 +227,7 @@ export async function buildLocalApiContainer(
     github,
     paths,
     now: systemNow,
-    worktrees: new ReviewWorktreeService(
-      paths,
-      readOnlyGit,
-      credentials,
-      resolveGitHubCli,
-    ),
+    worktrees,
     artifacts: new ReviewArtifactStorage(paths, systemNow),
     lifecycleGate,
     diagnostics,
@@ -459,12 +473,7 @@ export async function buildLocalApiContainer(
       profiles,
       sessions,
       revisions: localRevisions,
-      worktrees: new ReviewWorktreeService(
-        paths,
-        readOnlyGit,
-        credentials,
-        resolveGitHubCli,
-      ),
+      worktrees,
       artifacts: storageArtifacts,
       paths,
       lifecycleGate,
@@ -546,6 +555,7 @@ export async function buildLocalApiContainer(
       recovery,
       reviewWorkbench,
       localReviewOpening,
+      localRetention,
       localApply,
       localDrafts: new LocalDraftService({
         reviews,

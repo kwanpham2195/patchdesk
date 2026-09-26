@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { CommandRunner } from "../../src/adapters/github/command-runner";
 import { InsightStore } from "../../src/adapters/storage/insight-store";
 import { LocalApplyOperationStore } from "../../src/adapters/storage/local-apply-operation-store";
+import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
@@ -40,6 +41,7 @@ import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import { LocalApplyService } from "../../src/services/local-apply-service";
 import { LocalDraftService } from "../../src/services/local-draft-service";
 import { LocalReviewOpening } from "../../src/services/local-review-opening";
+import { LocalReviewRetention } from "../../src/services/local-review-retention";
 import { LocalReviewRevisionService } from "../../src/services/local-review-revision-service";
 import { LocalReviewSessionPreparation } from "../../src/services/local-review-session-preparation";
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
@@ -104,6 +106,7 @@ export type LocalApplyHarness = {
   /** Add to draft, maintainer notes, and Remove over the same stores and Review coordinator; note ids count up from `note-fixture-1`. */
   readonly drafts: LocalDraftService;
   readonly coordinator: ReviewOperationCoordinator;
+  readonly retention: LocalReviewRetention;
   readonly logs: ReadonlyArray<LogEntryInput>;
   readonly open: (
     request?: LocalReviewSourceRequest,
@@ -158,20 +161,35 @@ export async function localApplyHarness(
   const realGit = createReadOnlyGitExecutor(new CommandRunner());
   const revisions = new LocalReviewRevisionService(realGit, paths);
   const coordinator = new ReviewOperationCoordinator();
+  const lifecycleGate = new ReviewLifecycleGate();
+  const worktrees = new ReviewWorktreeService(
+    paths,
+    realGit,
+    { environmentFor: async () => ok({}) },
+    async () => undefined,
+  );
+  const retention = new LocalReviewRetention({
+    paths,
+    profiles,
+    reviews,
+    sessions,
+    insights,
+    mergeOperations: new MergeOperationStore(paths),
+    localApplyOperations: operations,
+    worktrees,
+    artifacts,
+    lifecycleGate,
+    coordinator,
+  });
   const opening = new LocalReviewOpening(
     new LocalReviewSessionPreparation({
       profiles,
       sessions,
       revisions,
-      worktrees: new ReviewWorktreeService(
-        paths,
-        realGit,
-        { environmentFor: async () => ok({}) },
-        async () => undefined,
-      ),
+      worktrees,
       artifacts,
       paths,
-      lifecycleGate: new ReviewLifecycleGate(),
+      lifecycleGate,
       now: () => now,
     }),
     new ReviewWorkbenchProjectionService(
@@ -231,6 +249,7 @@ export async function localApplyHarness(
       createNoteId: () => createLocalNoteId(`fixture-${String(++notes)}`),
     }),
     coordinator,
+    retention,
     logs,
     open: async (request = { kind: "working_tree" }) =>
       value(await opening.open({ profileId, repository, request })),
