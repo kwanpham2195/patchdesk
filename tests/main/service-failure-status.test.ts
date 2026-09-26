@@ -62,6 +62,7 @@ const insightStatuses = {
   change_intent_file_too_large: 409,
   change_intent_file_not_text: 409,
   change_intent_file_sensitive: 409,
+  change_intent_file_filtered: 409,
   request_not_awaiting: 409,
   catalog_unavailable: 503,
   storage_unavailable: 503,
