@@ -2,7 +2,7 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import { fileURLToPath, URL } from "node:url";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Plugin } from "vite";
+import { build, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -46,10 +46,54 @@ function rendererGraphArtifact(): Plugin {
   };
 }
 
+/**
+ * Builds the MCP shim (ADR 0052) as `out/main/mcp-shim.js`, one file with the
+ * MCP SDK and every other import inlined, because packaging stages it alone
+ * outside the asar. A second input to the main build would share chunks with
+ * `electron-main.js` and externalize `dependencies`, so it is a nested build
+ * whose output the main build emits.
+ */
+function mcpShimBundle(): Plugin {
+  return {
+    name: "patchdesk-mcp-shim-bundle",
+    apply: "build",
+    async buildStart() {
+      const output = await build({
+        configFile: false,
+        logLevel: "warn",
+        build: {
+          ssr: "src/mcp/main.ts",
+          target: "node22",
+          write: false,
+          minify: false,
+          rollupOptions: {
+            output: { format: "es", inlineDynamicImports: true },
+          },
+        },
+        ssr: { noExternal: true, target: "node" },
+      });
+      const outputs = Array.isArray(output) ? output : [output];
+      for (const { output: chunks } of outputs.flatMap((entry) =>
+        "output" in entry ? [entry] : [],
+      )) {
+        for (const chunk of chunks) {
+          if (chunk.type !== "chunk") continue;
+          for (const id of chunk.moduleIds) this.addWatchFile(id);
+          this.emitFile({
+            type: "asset",
+            fileName: "mcp-shim.js",
+            source: chunk.code,
+          });
+        }
+      }
+    },
+  };
+}
+
 /** Builds Electron's privileged processes separately from the isolated React renderer. */
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), mcpShimBundle()],
     build: {
       rollupOptions: {
         input: {

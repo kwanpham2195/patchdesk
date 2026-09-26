@@ -12,8 +12,8 @@ dependencies:
     specifier: ^4.13.2
     version: 4.13.2
   valibot:
-    specifier: ^1.1.0
-    version: 1.4.2(typescript@5.9.3)
+    specifier: ^1.5.0
+    version: 1.5.0(typescript@5.9.3)
 
 devDependencies:
   '@base-ui/react':
@@ -28,6 +28,12 @@ devDependencies:
   '@fontsource-variable/inter':
     specifier: 5.3.0
     version: 5.3.0
+  '@modelcontextprotocol/client':
+    specifier: 2.1.0
+    version: 2.1.0
+  '@modelcontextprotocol/server':
+    specifier: 2.1.0
+    version: 2.1.0
   '@oxlint/plugins':
     specifier: 1.78.0
     version: 1.78.0
@@ -67,6 +73,9 @@ devDependencies:
   '@types/react-dom':
     specifier: ^19.1.7
     version: 19.2.3(@types/react@19.2.17)
+  '@valibot/to-json-schema':
+    specifier: 1.8.0
+    version: 1.8.0(valibot@1.5.0)
   '@vitejs/plugin-react':
     specifier: ^5.0.2
     version: 5.2.0(vite@7.3.6)
@@ -1626,6 +1635,34 @@ packages:
     resolution: {integrity: sha512-oYPyv8A4As1yH5Bx+04iQEQxXuIQDe0GKCNSRgao6z8AM9jixXIfP0vsppRLvGf+nKIOb9/LdpWA4YuJiVvESA==}
     dependencies:
       '@chevrotain/types': 11.1.2
+    dev: true
+
+  /@modelcontextprotocol/client@2.1.0:
+    resolution: {integrity: sha512-mDVhoy5WjDb0U+4dQPzLcciC2erSex/GRVQqnoZdiuMoE3YiTZdiS7ezNcFwX4XEOWOaj7jZr0kLYnILnL8orA==}
+    engines: {node: '>=20'}
+    dependencies:
+      '@modelcontextprotocol/core': 2.1.0
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.1
+      jose: 6.2.12
+      pkce-challenge: 5.0.1
+      zod: 4.4.3
+    dev: true
+
+  /@modelcontextprotocol/core@2.1.0:
+    resolution: {integrity: sha512-YdFj5gMRHr0gYNAhTbQDgjLHiEJdIAUYxomhKseUNye7ZGlISQmUoLh2sveFFCiQ7j2YMffT1kgSND0FSfIFjQ==}
+    engines: {node: '>=20'}
+    dependencies:
+      zod: 4.4.3
+    dev: true
+
+  /@modelcontextprotocol/server@2.1.0:
+    resolution: {integrity: sha512-FdvwZU5N03O77Suh35JqjAqq5R1ZTEPFtwu6N4BgBq28qrQtrCnpbLL5U2pwYCuE194jAw0xnlOVmIqhfoYuUQ==}
+    engines: {node: '>=20'}
+    dependencies:
+      '@modelcontextprotocol/core': 2.1.0
+      zod: 4.4.3
     dev: true
 
   /@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2):
@@ -4232,6 +4269,14 @@ packages:
       d3-transition: 3.0.1(d3-selection@3.0.0)
     dev: true
 
+  /@valibot/to-json-schema@1.8.0(valibot@1.5.0):
+    resolution: {integrity: sha512-a0M+uwCuQZEPAo65NYkFSJ14O5c213KoSZmPdoCfuFvUhfULi4T2Z6Tpjv6lTVMW9RoLm74RpRAjNEa43KcN+g==}
+    peerDependencies:
+      valibot: ^1.5.0
+    dependencies:
+      valibot: 1.5.0(typescript@5.9.3)
+    dev: true
+
   /@vitejs/plugin-react@5.2.0(vite@7.3.6):
     resolution: {integrity: sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -5851,6 +5896,18 @@ packages:
     engines: {node: '>=0.10.0'}
     dev: true
 
+  /eventsource-parser@3.1.1:
+    resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
+    engines: {node: '>=18.0.0'}
+    dev: true
+
+  /eventsource@3.0.7:
+    resolution: {integrity: sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==}
+    engines: {node: '>=18.0.0'}
+    dependencies:
+      eventsource-parser: 3.1.1
+    dev: true
+
   /expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
@@ -6515,6 +6572,10 @@ packages:
   /jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+    dev: true
+
+  /jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
     dev: true
 
   /js-tokens@10.0.0:
@@ -7611,6 +7672,11 @@ packages:
   /picomatch@4.0.5:
     resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
     engines: {node: '>=12'}
+    dev: true
+
+  /pkce-challenge@5.0.1:
+    resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
+    engines: {node: '>=16.20.0'}
     dev: true
 
   /pkijs@3.4.0:
@@ -8710,8 +8776,8 @@ packages:
     hasBin: true
     dev: true
 
-  /valibot@1.4.2(typescript@5.9.3):
-    resolution: {integrity: sha512-gjdCvJ6d3RyHAneqxMYMW9QMCwYMb3jpOO0IyHZV1bnRHFBHrX3VkIILt5XYR0WhwHiH7Mty8ovuPZ/O3gamrg==}
+  /valibot@1.5.0(typescript@5.9.3):
+    resolution: {integrity: sha512-nil6AkP2TChWL43Z5uJ6GTxX01CUA+g8LWUM+N/rB9NBbkUMaUsi9PUNzlUPgoKASgmx9f7eGOYpJ04/fSa6FQ==}
     peerDependencies:
       typescript: '>=5'
     peerDependenciesMeta:
@@ -8719,7 +8785,6 @@ packages:
         optional: true
     dependencies:
       typescript: 5.9.3
-    dev: false
 
   /vfile-message@4.0.3:
     resolution: {integrity: sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw==}
