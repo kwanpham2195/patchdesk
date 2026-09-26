@@ -6,31 +6,49 @@ import type {
   GitHubRepoName,
   WorkspaceProfileId,
 } from "../../domain/ids";
+import { definedProps } from "../../domain/defined-props";
 import { err, ok, type Result } from "../../domain/result";
 import type { DashboardController } from "../../services/dashboard-controller";
 import {
   describeRepositoryCheckout,
   type RepositoryCheckoutDescription,
 } from "../../services/local-checkout";
-import type {
-  LocalReviewOpenFailure,
-  LocalReviewOpening,
-} from "../../services/local-review-opening";
+import type { LocalReviewOpenFailure } from "../../services/local-review-opening";
+import type { ReviewDiagnosticService } from "../../services/review-diagnostic-service";
+import {
+  ReviewInsightReader,
+  type InsightReading,
+} from "../../services/review-insight-reading";
+import type { ReviewWorkbenchController } from "../../services/review-workbench-controller";
 import type {
   McpSocketRequest,
   McpToolRefusal,
 } from "../../mcp/socket-protocol";
+import type { LocalFeedback } from "../../services/local-draft-service";
 import {
   isMcpToolName,
   mcpToolManifest,
   type McpToolName,
 } from "../../mcp/tool-manifest";
+import {
+  getFeedback,
+  getInsight,
+  readActiveProfile,
+  reviewLocal,
+  type McpReviewToolServices,
+  type ReviewLocalResult,
+} from "./mcp-review-tools";
 
 /** What `list_repositories` returns: the active profile's repositories that have a `localPath`. */
 type ListRepositoriesResult = {
   readonly profile: { readonly id: WorkspaceProfileId; readonly label: string };
   readonly repositories: ReadonlyArray<LocalRepositoryListing>;
 };
+
+export type McpToolReply = Result<
+  ListRepositoriesResult | ReviewLocalResult | InsightReading | LocalFeedback,
+  McpToolRefusal
+>;
 
 type LocalRepositoryListing = {
   readonly host: GitHubHost;
@@ -41,8 +59,6 @@ type LocalRepositoryListing = {
   /** Why `checkouts` is empty when git could not list them. */
   readonly checkoutError?: LocalReviewOpenFailure["reason"];
 };
-
-export type McpToolReply = Result<ListRepositoriesResult, McpToolRefusal>;
 
 type McpToolEntry<Name extends McpToolName> = {
   readonly schema: (typeof mcpToolManifest)[Name]["inputSchema"];
@@ -56,17 +72,66 @@ export type McpToolTable = {
   readonly [Name in McpToolName]: McpToolEntry<Name>;
 };
 
-type McpToolServices = {
-  readonly dashboard: Pick<DashboardController, "activeProfile">;
-  readonly localReviewOpening: Pick<LocalReviewOpening, "listCheckouts">;
+/** The services the tools call; `insightReader` is built here over the workbench `load` the renderer's route calls. */
+export type McpToolServices = Omit<McpReviewToolServices, "insightReader"> & {
+  readonly reviewWorkbench: Pick<ReviewWorkbenchController, "load">;
 };
 
 export function createMcpToolTable(services: McpToolServices): McpToolTable {
+  const tools: McpReviewToolServices = {
+    ...services,
+    insightReader: new ReviewInsightReader(
+      services.reviewWorkbench,
+      services.sessions,
+    ),
+  };
   return {
     list_repositories: {
       schema: mcpToolManifest.list_repositories.inputSchema,
-      call: () => listRepositories(services),
+      call: () => listRepositories(tools),
     },
+    review_local: {
+      schema: mcpToolManifest.review_local.inputSchema,
+      call: (input) => reviewLocal(tools, input),
+    },
+    get_insight: {
+      schema: mcpToolManifest.get_insight.inputSchema,
+      call: (input) => getInsight(tools, input),
+    },
+    get_feedback: {
+      schema: mcpToolManifest.get_feedback.inputSchema,
+      call: (input) => getFeedback(tools, input),
+    },
+  };
+}
+
+/** A tool call the app refused or failed; `tool` is absent when the request line named none. */
+export type McpRefusedCall = {
+  readonly tool?: string;
+  readonly reason: string;
+  readonly durationMs?: number;
+};
+
+/**
+ * Records refused and failed calls in the active profile's diagnostics, so
+ * Settings → Data & recovery lists them (ADR 0052 "Logging and
+ * diagnostics"). Best effort: with no saved profile there is nowhere to
+ * record, and the call is already in `patchdesk.jsonl`.
+ */
+export function createMcpRefusalRecorder(services: {
+  readonly dashboard: Pick<DashboardController, "savedProfiles">;
+  readonly diagnostics: Pick<ReviewDiagnosticService, "record">;
+}): (refused: McpRefusedCall) => Promise<void> {
+  return async (refused) => {
+    const profiles = await services.dashboard.savedProfiles();
+    if (profiles._tag === "err") return;
+    await services.diagnostics.record({
+      category: "mcp",
+      phase: `${refused.tool ?? "request"} ${refused.reason}`,
+      profileId: profiles.value.active.id,
+      retryable: refused.reason === "in_progress",
+      ...definedProps({ durationMs: refused.durationMs }),
+    });
   };
 }
 
@@ -91,27 +156,17 @@ export async function dispatchMcpTool(
 }
 
 async function listRepositories(
-  services: McpToolServices,
+  services: McpReviewToolServices,
 ): Promise<McpToolReply> {
-  const profile = await services.dashboard.activeProfile();
-  if (profile._tag === "err")
-    return err(
-      profile.error.reason === "not_found"
-        ? {
-            error: "not_found",
-            message: "No workspace profile is configured in Patchdesk.",
-          }
-        : {
-            error: "storage",
-            message: "Patchdesk could not read its workspace profiles.",
-          },
-    );
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const profile = profiles.value.active;
   const repositories = await Promise.all(
-    profile.value.repos.flatMap(({ host, owner, repo, localPath }) =>
+    profile.repos.flatMap(({ host, owner, repo, localPath }) =>
       localPath === undefined
         ? []
         : [
-            describeLocalRepository(services, profile.value.id, {
+            describeLocalRepository(services, profile.id, {
               host,
               owner,
               repo,
@@ -121,13 +176,13 @@ async function listRepositories(
     ),
   );
   return ok({
-    profile: { id: profile.value.id, label: profile.value.label },
+    profile: { id: profile.id, label: profile.label },
     repositories,
   });
 }
 
 async function describeLocalRepository(
-  services: McpToolServices,
+  services: McpReviewToolServices,
   profileId: WorkspaceProfileId,
   repository: Omit<LocalRepositoryListing, "checkouts" | "checkoutError">,
 ): Promise<LocalRepositoryListing> {

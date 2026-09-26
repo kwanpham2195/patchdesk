@@ -7,6 +7,7 @@ import {
   createReviewSessionId,
   parseAbsolutePath,
   parseContentHash,
+  type AbsolutePath,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
@@ -33,6 +34,7 @@ import type {
 import {
   configuredLocalPath,
   listRepositoryCheckouts,
+  findProfileCheckout,
   resolveLocalReviewCheckout,
   type LocalCheckoutFailure,
   type LocalReviewCheckout,
@@ -112,6 +114,13 @@ export class LocalReviewSessionPreparation {
     return checkouts === undefined
       ? err({ _tag: "LocalGitFailed" })
       : ok(checkouts);
+  }
+
+  /** The profile repository and live checkout containing `directory`. */
+  async findCheckout(profileId: WorkspaceProfileId, directory: AbsolutePath) {
+    const profile = await this.loadProfile(profileId);
+    if (profile._tag === "err") return profile;
+    return findProfileCheckout(this.dependencies, profile.value, directory);
   }
 
   /** Reads the source from the checkout the request names; a working tree is snapshotted here. */

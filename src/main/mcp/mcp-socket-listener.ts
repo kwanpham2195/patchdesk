@@ -7,7 +7,9 @@ import * as v from "valibot";
 import type { PatchdeskPaths } from "../../adapters/storage/patchdesk-paths";
 import { whenLoginShellEnvironmentImported } from "../../adapters/process/login-shell-import";
 import { loggableMetaValue } from "../../domain/log-entry";
+import { parseReviewId } from "../../domain/ids";
 import { err } from "../../domain/result";
+import { readObjectField } from "../../services/read-object-field";
 import {
   MCP_SOCKET_ENV,
   mcpSocketBounds,
@@ -20,6 +22,7 @@ import {
 import type { LogWriter } from "../local-api-container";
 import {
   dispatchMcpTool,
+  type McpRefusedCall,
   type McpToolReply,
   type McpToolTable,
 } from "./mcp-tool-dispatcher";
@@ -36,6 +39,8 @@ export type McpSocketListenerOptions = {
   readonly socketPath: () => Promise<string>;
   readonly tools: McpToolTable;
   readonly logs: LogWriter;
+  /** Refused and failed calls also go to the diagnostics Settings lists. */
+  readonly recordRefusal?: (refused: McpRefusedCall) => Promise<void>;
   readonly bounds?: McpSocketBounds;
 };
 
@@ -62,10 +67,25 @@ export function startMcpSocketListener(
 ): McpSocketListener {
   const bounds = options.bounds ?? mcpSocketBounds;
   const connections = new Set<Socket>();
+  // Calls still running when the listener stops; stop waits for them, so no tool or diagnostics write outlives it.
+  const answering = new Set<Promise<void>>();
   const server = createServer((socket) => {
     connections.add(socket);
     socket.once("close", () => connections.delete(socket));
-    answerConnection(socket, options, bounds);
+    answerConnection(socket, options, bounds, (answer) => {
+      const settled = answer.catch((cause: unknown) => {
+        options.logs.write({
+          process: "main",
+          level: "error",
+          topic: "mcp",
+          message: "reply failed",
+          meta: { error: loggableMetaValue(cause) },
+        });
+        socket.destroy();
+      });
+      answering.add(settled);
+      void settled.then(() => answering.delete(settled));
+    });
   });
   const listening = listen(server, options);
   return {
@@ -74,6 +94,7 @@ export function startMcpSocketListener(
       if ((await listening) !== "listening") return;
       for (const socket of connections) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      await Promise.all(answering);
     },
   };
 }
@@ -195,6 +216,7 @@ function answerConnection(
   socket: Socket,
   options: McpSocketListenerOptions,
   bounds: McpSocketBounds,
+  track: (answer: Promise<void>) => void,
 ): void {
   const received: Buffer[] = [];
   let receivedBytes = 0;
@@ -207,29 +229,24 @@ function answerConnection(
     receivedBytes += part.length;
     if (receivedBytes > bounds.maxRequestBytes) {
       socket.off("data", onData);
-      refuse(socket, options, "too_large", {
-        error: "too_large",
-        message: `The request is larger than ${bounds.maxRequestBytes} bytes.`,
-      });
+      track(
+        refuse(socket, options, "too_large", {
+          error: "too_large",
+          message: `The request is larger than ${bounds.maxRequestBytes} bytes.`,
+        }),
+      );
       return;
     }
     if (newline === -1) return;
     socket.off("data", onData);
-    answerLine(
-      socket,
-      options,
-      bounds,
-      Buffer.concat(received).toString("utf8"),
-    ).catch((cause: unknown) => {
-      options.logs.write({
-        process: "main",
-        level: "error",
-        topic: "mcp",
-        message: "reply failed",
-        meta: { error: loggableMetaValue(cause) },
-      });
-      socket.destroy();
-    });
+    track(
+      answerLine(
+        socket,
+        options,
+        bounds,
+        Buffer.concat(received).toString("utf8"),
+      ),
+    );
   };
   socket.on("data", onData);
   socket.on("error", () => socket.destroy());
@@ -245,12 +262,12 @@ async function answerLine(
   try {
     decoded = JSON.parse(line);
   } catch {
-    refuse(socket, options, "invalid_json", invalidRequest);
+    await refuse(socket, options, "invalid_json", invalidRequest);
     return;
   }
   const request = v.safeParse(mcpSocketRequestSchema, decoded);
   if (!request.success) {
-    refuse(socket, options, "invalid_request", invalidRequest);
+    await refuse(socket, options, "invalid_request", invalidRequest);
     return;
   }
   const startedAt = performance.now();
@@ -280,6 +297,10 @@ async function answerLine(
     });
     serialized = serializeReply(err(storageFailure), bounds);
   }
+  const durationMs = Math.round(performance.now() - startedAt);
+  const reviewId = parseReviewId(
+    readObjectField(request.output.arguments, "reviewId"),
+  );
   options.logs.write({
     process: "main",
     level: serialized.outcome === "ok" ? "info" : "warn",
@@ -287,7 +308,8 @@ async function answerLine(
     message: "tool called",
     meta: {
       tool: request.output.tool,
-      durationMs: Math.round(performance.now() - startedAt),
+      ...(reviewId._tag === "ok" && { reviewId: reviewId.value }),
+      durationMs,
       outcome: serialized.outcome,
     },
   });
@@ -300,6 +322,12 @@ async function answerLine(
       meta: { reason: "too_large", direction: "reply" },
     });
   socket.end(serialized.text);
+  if (serialized.outcome !== "ok")
+    await options.recordRefusal?.({
+      tool: request.output.tool,
+      reason: serialized.outcome,
+      durationMs,
+    });
 }
 
 const storageFailure: McpToolRefusal = {
@@ -329,12 +357,12 @@ function serializeReply(reply: McpToolReply, bounds: McpSocketBounds) {
   return { text: `${JSON.stringify(refused)}\n`, outcome: "too_large" };
 }
 
-function refuse(
+async function refuse(
   socket: Socket,
   options: McpSocketListenerOptions,
   reason: "too_large" | "invalid_json" | "invalid_request",
   refusal: McpToolRefusal,
-): void {
+): Promise<void> {
   options.logs.write({
     process: "main",
     level: "warn",
@@ -344,4 +372,5 @@ function refuse(
   });
   const reply: McpSocketReply = { ok: false, ...refusal };
   socket.end(`${JSON.stringify(reply)}\n`);
+  await options.recordRefusal?.({ reason });
 }

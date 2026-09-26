@@ -24,6 +24,7 @@ import {
 } from "../domain/ids";
 import { sameInsightRevision } from "../domain/insight-record";
 import {
+  isMaintainerNote,
   parseMaintainerNoteText,
   projectLocalDraft,
   type LocalDraft,
@@ -42,8 +43,16 @@ import {
 } from "../domain/review";
 import { parseReviewResult } from "../domain/review-result";
 import type { LocalReviewSource } from "../domain/review-source";
+import {
+  pageLocalDrafts,
+  type LocalFeedbackPageFailure,
+} from "./local-feedback-page";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import {
+  describeReviewSession,
+  type ReviewSessionDescription,
+} from "./review-session-description";
 
 /**
  * Every draft write names the session the workbench displays, so a write made
@@ -92,19 +101,32 @@ export type LocalDraftFailure = {
 /** How each Local draft refusal is classified (ADR 0052 "Error model"). */
 export const localDraftFailureKinds = {
   invalid_input: "invalid",
+  stale_cursor: "conflict",
   not_found: "not_found",
   in_progress: "conflict",
   terminal: "conflict",
   not_applicable: "conflict",
   storage: "unavailable",
-} as const satisfies FailureKinds<LocalDraftFailure["reason"]>;
+} as const satisfies FailureKinds<
+  LocalDraftFailure["reason"] | LocalFeedbackPageFailure["reason"]
+>;
 
 export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;
 };
 
-/** What the coding agent reads back: the Local drafts and the prompt they render as. */
-export type LocalFeedback = LocalDraftList & { readonly markdown: string };
+/** A draft as the workbench lists it; a Finding draft adds its comment and verified suggestion. */
+type LocalFeedbackEntry = LocalDraftEntry & {
+  readonly comment?: string;
+  readonly suggestion?: string;
+};
+
+/** What the coding agent reads back (ADR 0052 `get_feedback`): one page of Local drafts, the prompt that page renders as, and the session the Review is on. */
+export type LocalFeedback = ReviewSessionDescription & {
+  readonly localDrafts: ReadonlyArray<LocalFeedbackEntry>;
+  readonly markdown: string;
+  readonly nextCursor?: string;
+};
 
 type LocalDraftDependencies = {
   readonly reviews: Pick<ReviewStore, "load" | "save">;
@@ -192,24 +214,42 @@ export class LocalDraftService {
   }
 
   /**
-   * The Local drafts as the workbench lists them, each with its carry state,
-   * and the prompt Copy as agent prompt puts on the clipboard (ADR 0052
-   * `get_feedback`). A read, so it takes no lock.
+   * One page of the Local drafts as the workbench lists them, each with its
+   * carry state, and the prompt Copy as agent prompt renders for that page
+   * (ADR 0052 `get_feedback`). A read, so it takes no lock.
    */
   async feedback(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<LocalFeedback, LocalDraftFailure>> {
-    const loaded = await this.dependencies.reviews.load(profileId, reviewId);
-    if (loaded._tag === "err")
-      return err({
-        reason: loaded.error.reason === "not_found" ? "not_found" : "storage",
-      });
-    if (!isLocalReview(loaded.value)) return err({ reason: "not_applicable" });
-    const drafts = loaded.value.localDrafts ?? [];
+    cursor?: string,
+  ): Promise<
+    Result<LocalFeedback, LocalDraftFailure | LocalFeedbackPageFailure>
+  > {
+    const review = await this.loadLocal(profileId, reviewId);
+    if (review._tag === "err") return review;
+    const page = pageLocalDrafts(review.value.localDrafts ?? [], cursor);
+    if (page._tag === "err") return page;
+    const session = await this.dependencies.sessions.load(
+      profileId,
+      review.value.currentSessionId,
+    );
+    if (session._tag === "err") return err({ reason: "storage" });
+    const patch = await readFile(session.value.patchPath, "utf8").catch(
+      () => undefined,
+    );
+    const patchHash =
+      patch === undefined
+        ? undefined
+        : parseContentHash(hashReviewArtifactContent(patch));
     return ok({
-      localDrafts: drafts.map(projectLocalDraft),
-      markdown: renderLocalDraftsAsAgentPrompt(drafts),
+      ...describeReviewSession(
+        reviewId,
+        session.value,
+        patchHash?._tag === "ok" ? patchHash.value : undefined,
+      ),
+      localDrafts: page.value.drafts.map(projectFeedbackEntry),
+      markdown: renderLocalDraftsAsAgentPrompt(page.value.drafts),
+      ...definedProps({ nextCursor: page.value.nextCursor }),
     });
   }
 
@@ -218,10 +258,28 @@ export class LocalDraftService {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<{ readonly markdown: string }, LocalDraftFailure>> {
-    const feedback = await this.feedback(profileId, reviewId);
-    return feedback._tag === "ok"
-      ? ok({ markdown: feedback.value.markdown })
-      : feedback;
+    const review = await this.loadLocal(profileId, reviewId);
+    return review._tag === "ok"
+      ? ok({
+          markdown: renderLocalDraftsAsAgentPrompt(
+            review.value.localDrafts ?? [],
+          ),
+        })
+      : review;
+  }
+
+  private async loadLocal(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<Review<LocalReviewSource>, LocalDraftFailure>> {
+    const loaded = await this.dependencies.reviews.load(profileId, reviewId);
+    if (loaded._tag === "err")
+      return err({
+        reason: loaded.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    return isLocalReview(loaded.value)
+      ? ok(loaded.value)
+      : err({ reason: "not_applicable" });
   }
 
   private async locked(
@@ -382,6 +440,16 @@ export class LocalDraftService {
       addedAt: this.dependencies.now(),
     });
   }
+}
+
+function projectFeedbackEntry(draft: LocalDraft): LocalFeedbackEntry {
+  const entry = projectLocalDraft(draft);
+  if (isMaintainerNote(draft)) return entry;
+  return {
+    ...entry,
+    comment: draft.comment,
+    ...definedProps({ suggestion: draft.suggestion?.code }),
+  };
 }
 
 /** A Local draft change the Review domain refused, as the failure the route answers with. */

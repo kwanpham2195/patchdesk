@@ -227,3 +227,36 @@ export async function resolveLocalReviewCheckout(
       : { ...configured, checkoutPath: match.path, checkout: match.path },
   );
 }
+
+/**
+ * The profile repository with a live checkout whose worktree top-level
+ * contains `directory`, and that checkout (ADR 0052 `review_local`). A
+ * repository git cannot list is skipped, so one broken `localPath` does not
+ * hide the others.
+ */
+export async function findProfileCheckout(
+  reads: LocalCheckoutReads,
+  profile: WorkspaceProfileConfig,
+  directory: AbsolutePath,
+): Promise<
+  Result<
+    {
+      readonly repository: WorkspaceProfileConfig["repos"][number];
+      readonly checkout: AbsolutePath;
+    },
+    LocalCheckoutFailure
+  >
+> {
+  const root = await resolveCheckoutRoot(reads.git, directory);
+  if (root === undefined) return err({ _tag: "CheckoutNotInRepository" });
+  for (const repository of profile.repos) {
+    if (repository.localPath === undefined) continue;
+    const checkouts = await listRepositoryCheckouts(
+      reads,
+      repository.localPath,
+    );
+    const match = checkouts?.find((candidate) => candidate.path === root);
+    if (match !== undefined) return ok({ repository, checkout: match.path });
+  }
+  return err({ _tag: "CheckoutNotInRepository" });
+}
