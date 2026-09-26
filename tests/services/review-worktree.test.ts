@@ -666,6 +666,25 @@ describe("ReviewWorktreeService", () => {
       }
     });
 
+    it("keeps a listed managed ref that moved before it was deleted", async () => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+      try {
+        const { local, service } = await preparedLocalSession(root);
+        const listed = await service.listManagedRefs(ids.profileId, local);
+        fixtureGit(local, "commit", "-q", "--allow-empty", "-m", "moved");
+        const [ref] = managedRefs(local);
+        if (ref === undefined) throw new Error("fixture ref missing");
+        fixtureGit(local, "update-ref", ref, "HEAD");
+
+        await service.deleteManagedRefs(local, listed ?? []);
+
+        expect(listed).toHaveLength(1);
+        expect(managedRefs(local)).toEqual([ref]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
     it("never deletes a ref the marker names outside the session's own refs", async () => {
       const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
       try {

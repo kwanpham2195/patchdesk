@@ -70,6 +70,8 @@ export type WorktreeCleanupInput = {
 /** One ref under `refs/patchdesk/`, and the session whose checkout it pins. */
 export type ManagedRef = {
   readonly ref: string;
+  /** The object the ref named when listed; deletion refuses if it has moved since. */
+  readonly sha: string;
   readonly sessionId: ReviewSessionId;
 };
 
@@ -375,8 +377,17 @@ export class ReviewWorktreeService {
   private async deleteManagedRef(
     repositoryPath: string,
     ref: string,
+    expectedSha?: string,
   ): Promise<void> {
-    await this.git.run(["git", "-C", repositoryPath, "update-ref", "-d", ref]);
+    await this.git.run([
+      "git",
+      "-C",
+      repositoryPath,
+      "update-ref",
+      "-d",
+      ref,
+      ...(expectedSha === undefined ? [] : [expectedSha]),
+    ]);
   }
 
   /**
@@ -394,12 +405,13 @@ export class ReviewWorktreeService {
       "-C",
       repositoryPath,
       "for-each-ref",
-      "--format=%(refname)",
+      "--format=%(objectname) %(refname)",
       `refs/patchdesk/local/${profileId}/`,
       `refs/patchdesk/reviews/${profileId}/`,
     ]);
     if (listed._tag === "err") return undefined;
-    return listed.value.stdout.split("\n").flatMap((ref) => {
+    return listed.value.stdout.split("\n").flatMap((line) => {
+      const [sha = "", ref = ""] = line.split(" ");
       const sessionId = parseReviewSessionId(ref.split("/")[4]);
       if (sessionId._tag === "err") return [];
       const owned = [
@@ -407,28 +419,33 @@ export class ReviewWorktreeService {
         pullRequestSessionRef(profileId, sessionId.value, "head"),
         localSessionHeadRef(profileId, sessionId.value),
       ];
-      return owned.includes(ref) ? [{ ref, sessionId: sessionId.value }] : [];
+      return owned.includes(ref)
+        ? [{ ref, sha, sessionId: sessionId.value }]
+        : [];
     });
   }
 
-  /** Deletes managed refs one at a time, then prunes Git's metadata of removed worktrees. */
+  /**
+   * Deletes managed refs one at a time, each only while it still names the
+   * object it was listed with, so a ref another Patchdesk instance just
+   * rewrote stays.
+   */
   async deleteManagedRefs(
     localPath: string,
     refs: ReadonlyArray<ManagedRef>,
   ): Promise<void> {
     const repositoryPath = await realpath(localPath).catch(() => undefined);
     if (repositoryPath === undefined) return;
-    await mapConcurrent(refs, 1, ({ ref }) =>
-      this.deleteManagedRef(repositoryPath, ref),
+    await mapConcurrent(refs, 1, ({ ref, sha }) =>
+      this.deleteManagedRef(repositoryPath, ref, sha),
     );
-    await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
   }
 
   /**
    * Remove only a verified Patchdesk-owned worktree, then the managed refs its
-   * marker names, then Git's worktree metadata; no broad filesystem deletion
-   * is allowed. The refs go only after `git worktree remove` succeeded, so a
-   * worktree Git kept still has the ref it checked out.
+   * marker names; no broad filesystem deletion is allowed. The refs go only
+   * after `git worktree remove` succeeded, which also drops Git's record of
+   * the worktree, so a worktree Git kept still has the ref it checked out.
    */
   async cleanup(
     input: WorktreeCleanupInput,
@@ -440,7 +457,6 @@ export class ReviewWorktreeService {
       await this.deleteManagedRef(repositoryPath, refs.baseRef);
     if (refs.headRef !== undefined)
       await this.deleteManagedRef(repositoryPath, refs.headRef);
-    await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
     return ok(undefined);
   }
 
