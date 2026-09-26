@@ -1,6 +1,7 @@
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
@@ -41,6 +42,7 @@ type Dependencies = SessionRunningStateDependencies & {
   readonly insights: Pick<InsightStore, "load">;
   readonly localApplyOperations: Pick<LocalApplyOperationStore, "load">;
   readonly writeOperations: Pick<ReviewWriteOperationStore, "load">;
+  readonly refreshOperations: Pick<RefreshOperationStore, "load">;
   readonly worktrees: Pick<
     ReviewWorktreeService,
     "cleanup" | "listManagedRefs" | "deleteManagedRefs"
@@ -296,11 +298,16 @@ export class ReviewRetention {
   ): Promise<Result<undefined, ReviewRetentionFailure>> {
     // Apply recovery decides an unsettled Apply from the sessions it names, and
     // GitHub write recovery an outcome-unknown write (ADR 0035).
-    const [apply, write] = await Promise.all([
+    const [apply, write, refresh] = await Promise.all([
       this.dependencies.localApplyOperations.load(profileId, reviewId),
       this.dependencies.writeOperations.load(profileId, reviewId),
+      this.dependencies.refreshOperations.load(profileId, reviewId),
     ]);
-    if (apply._tag === "err" || write._tag === "err")
+    if (
+      apply._tag === "err" ||
+      write._tag === "err" ||
+      (refresh._tag === "err" && refresh.error.reason !== "not_found")
+    )
       return err({ _tag: "StorageUnavailable" });
     if (apply.value !== undefined || write.value !== undefined)
       return ok(undefined);
@@ -322,8 +329,14 @@ export class ReviewRetention {
       insightSessions === undefined
     )
       return err({ _tag: "StorageUnavailable" });
+    // Recovering a Prepared Refresh saves a Review whose current session is the one it names.
+    const refreshing =
+      refresh._tag === "ok" && refresh.value.state._tag === "Prepared"
+        ? refresh.value.state.sessionId
+        : undefined;
     const owned = sessions.value.filter(
-      (session) => createReviewId(session.key) === reviewId,
+      (session) =>
+        createReviewId(session.key) === reviewId && session.id !== refreshing,
     );
     // A locked pending-review or summary write keeps every session for its recovery (ADR 0035).
     if (owned.some(hasLockedGitHubWrite)) return ok(undefined);
