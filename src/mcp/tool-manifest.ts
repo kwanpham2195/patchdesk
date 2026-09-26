@@ -23,7 +23,7 @@ export const mcpToolManifest = {
   },
   review_local: {
     description:
-      "Open the Patchdesk Review of the checkout that contains cwd, so the maintainer reviews your change in Patchdesk. A new Review reads the checkout as it is now; an existing one is returned on the session the maintainer sees, and refresh_review reads newer changes. It performs no git write. Returns the reviewId, the session (sessionId, headSha, baseSha, patchHash), the changed files, and which Insights are retained. intent is the task you were given, as Markdown; it is recorded only when the Review has no Change intent. intentKept is false when this call recorded the intent, and true when the Review already held the same text.",
+      "Open the Patchdesk Review of the checkout that contains cwd, so the maintainer reviews your change in Patchdesk. A new Review reads the checkout as it is now; an existing one is returned on the session the maintainer sees, and refresh_review reads newer changes. It performs no git write. Returns the reviewId, the session (sessionId, headSha, baseSha, patchHash), the changed files, and which Insights are retained. intent is the task you were given, as Markdown; it is recorded only when the Review has no Change intent. With intent, intentRecorded says whether the Review now holds it: intentKept is false when this call recorded it, and true when the Review already held the same text. A refused intent still returns the opened Review, with intentRecorded: false, intentRefused (intent_exists when the Review holds a different intent, in_progress or storage when recording failed and a retry may work), and intentMessage.",
     inputSchema: v.strictObject({
       cwd: v.pipe(
         v.string(),

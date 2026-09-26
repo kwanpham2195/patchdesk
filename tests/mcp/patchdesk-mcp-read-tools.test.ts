@@ -108,10 +108,12 @@ describe.each(mcpProtocolEras)(
           },
         ],
         retainedInsights: [],
+        intentRecorded: true,
         intentKept: false,
       });
       expect(again.content).toMatchObject({
         sessionId: route.session.id,
+        intentRecorded: true,
         intentKept: true,
       });
       expect(loaded.changeIntent).toMatchObject({
@@ -120,6 +122,48 @@ describe.each(mcpProtocolEras)(
           markdown: "Add the app entry point.",
           source: "agent",
         },
+      });
+    });
+
+    it("review_local returns the opened Review with the refusal when it holds a different intent, and leaves the Review unmoved (#513)", async () => {
+      app = await startAppWithLinkedWorktree();
+      await writeFile(join(app.repositoryPath, "tracked.txt"), "two\n");
+      const client = await connect(app.socketPath);
+      const first = await call(client, "review_local", {
+        cwd: app.repositoryPath,
+        intent: "Ship the first goal.",
+      });
+      const { reviewId, sessionId } = v.parse(
+        v.object({ reviewId: v.string(), sessionId: v.string() }),
+        first.content,
+      );
+      await writeFile(join(app.repositoryPath, "tracked.txt"), "three\n");
+
+      const second = await call(client, "review_local", {
+        cwd: app.repositoryPath,
+        intent: "Ship another goal.",
+      });
+      const stored = value(
+        await new ReviewStore(app.paths).load(
+          profileId,
+          value(parseReviewId(reviewId)),
+        ),
+      );
+
+      expect(second).toMatchObject({
+        isError: false,
+        content: {
+          reviewId,
+          sessionId,
+          intentRecorded: false,
+          intentRefused: "intent_exists",
+          intentMessage: expect.any(String),
+        },
+      });
+      expect(second.content).not.toHaveProperty("intentKept");
+      expect(stored.currentSessionId).toBe(sessionId);
+      expect(stored.changeIntent).toMatchObject({
+        markdown: "Ship the first goal.",
       });
     });
 
