@@ -157,7 +157,13 @@ export async function startAppWithLinkedWorktree(
     },
     async stop() {
       await server.stop();
-      await rm(root, { recursive: true, force: true });
+      // The app's log appends are not flushed by `stop`; one landing mid-removal fails it with ENOTEMPTY, so rm retries.
+      await rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 50,
+      });
     },
   };
 }
