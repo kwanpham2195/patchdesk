@@ -1,14 +1,15 @@
 import type { ReviewStore } from "../adapters/storage/review-store";
 import { definedProps } from "../domain/defined-props";
-import type {
-  AbsolutePath,
-  GitHubHost,
-  GitHubOwner,
-  GitHubRepoName,
-  IsoTimestamp,
-  PullRequestNumber,
-  ReviewId,
-  WorkspaceProfileId,
+import {
+  checkoutFolderName,
+  type AbsolutePath,
+  type GitHubHost,
+  type GitHubOwner,
+  type GitHubRepoName,
+  type IsoTimestamp,
+  type PullRequestNumber,
+  type ReviewId,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, type Review } from "../domain/review";
@@ -193,9 +194,10 @@ function localRepositoryRow(
     ...definedProps({
       lastOpenedAt,
       checkout: source.checkout,
-      checkoutName: source.checkout?.slice(
-        source.checkout.lastIndexOf("/") + 1,
-      ),
+      checkoutName:
+        source.checkout === undefined
+          ? undefined
+          : checkoutFolderName(source.checkout),
     }),
   };
 }

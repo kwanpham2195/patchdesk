@@ -466,7 +466,12 @@ function reviewSourceIdSegment(source: ReviewSource): string {
 /** `<folder>--` for a named checkout, empty for the configured one, so its ids stay as they were. */
 function checkoutSlugPrefix(checkout: AbsolutePath | undefined): string {
   if (checkout === undefined) return "";
-  return `${localSourceSlug(checkout.slice(checkout.lastIndexOf("/") + 1))}--`;
+  return `${localSourceSlug(checkoutFolderName(checkout))}--`;
+}
+
+/** The last segment of a checkout path: what ids, titles, and the sidebar name a checkout by (#489). */
+export function checkoutFolderName(checkout: string): string {
+  return checkout.slice(checkout.lastIndexOf("/") + 1);
 }
 
 /**
