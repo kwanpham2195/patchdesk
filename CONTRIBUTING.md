@@ -50,6 +50,15 @@ pnpm --dir runtime/insight install
 pnpm --dir runtime/insight build
 ```
 
+**The MCP shim.** `pnpm dev` points the app's MCP socket at
+`~/.local/share/patchdesk/mcp/patchdesk-dev.sock`, so the dev app and an
+installed Patchdesk can listen side by side (ADR 0052). `pnpm -s mcp:shim`
+runs the shim the dev app's main build writes to `out/main/mcp-shim.js`
+against that socket; `pnpm -s mcp:shim --check` calls `list_repositories` and
+prints the result. Keep `-s`: without it pnpm prints its banner to stdout,
+which is the MCP channel. To register it with a client, give the client the
+command `pnpm -s mcp:shim` with this checkout as its working directory.
+
 **Fast checks.**
 
 ```bash
@@ -477,6 +486,16 @@ publishing it.
    git push origin main
    brew update && brew audit --cask kwanpham2195/patchdesk/patchdesk && brew upgrade --cask patchdesk
    ```
+
+   The cask also links the MCP launcher onto `PATH`, and keeps this line
+   across bumps (ADR 0052):
+
+   ```ruby
+   binary "#{appdir}/Patchdesk.app/Contents/Resources/bin/patchdesk"
+   ```
+
+   A `.dmg` install gets the same command with
+   `ln -s /Applications/Patchdesk.app/Contents/Resources/bin/patchdesk /usr/local/bin/patchdesk`.
 
 Bumping the bundled Pi client follows `docs/upgrading-pi.md`.
 
