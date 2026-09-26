@@ -58,6 +58,11 @@ export class PatchdeskPaths {
     return join(this.logsDirectory(), "patchdesk.jsonl");
   }
 
+  /** The MCP shim's Unix socket (ADR 0052); `PATCHDESK_MCP_SOCKET` overrides it. */
+  mcpSocketFile(): string {
+    return join(this.dataDirectory(), "mcp", "patchdesk.sock");
+  }
+
   configFile(): string {
     return join(this.configDirectory(), "config.json");
   }

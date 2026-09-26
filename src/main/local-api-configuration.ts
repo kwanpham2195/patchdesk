@@ -161,6 +161,8 @@ export type LocalApiConfiguration = {
   readonly retentionSweep?: boolean;
   /** Polls watched pull requests while the app runs (ADR 0045). Main-process-only; tests keep it off. */
   readonly watchedPullRequestPolling?: boolean;
+  /** Where the MCP shim's socket listens (ADR 0052); absent starts no listener. */
+  readonly mcpSocketPath?: () => Promise<string>;
   /** Main-process push to the renderer when a poll finds a change; absent tells no one. */
   readonly watchedPullRequestChanged?: (profileId: WorkspaceProfileId) => void;
 };

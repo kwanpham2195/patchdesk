@@ -5,12 +5,18 @@ import {
   notificationSettingsOf,
   type NotificationSettings,
 } from "../domain/contracts";
+import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
 import { hasMatchingAppCapability } from "./app-capability";
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import { buildLocalApiContainer, type LogWriter } from "./local-api-container";
 import type { LocalApiConfiguration } from "./local-api-configuration";
+import { createMcpToolTable } from "./mcp/mcp-tool-dispatcher";
+import {
+  startMcpSocketListener,
+  type McpSocketListenOutcome,
+} from "./mcp/mcp-socket-listener";
 import { startRetentionSweepScheduler } from "./retention-sweep-scheduler";
 import { startWatchedPullRequestScheduler } from "./watched-pull-request-scheduler";
 import { registerDashboardRoutes } from "./routes/dashboard-routes";
@@ -34,6 +40,8 @@ const localhostHostname = "127.0.0.1";
 export type LocalApiServer = {
   readonly capability: AppCapability;
   readonly url: URL;
+  /** How the MCP socket listener bound; absent when the configuration names no socket. */
+  readonly mcpSocket?: Promise<McpSocketListenOutcome>;
   stop(): Promise<void>;
 };
 
@@ -93,6 +101,15 @@ export async function startLocalApiServer(
   const { server, port } = await listenOnLoopback(app);
   const url = new URL(`http://${localhostHostname}:${port}/`);
 
+  const mcpListener =
+    configuration.mcpSocketPath === undefined
+      ? undefined
+      : startMcpSocketListener({
+          socketPath: configuration.mcpSocketPath,
+          tools: createMcpToolTable(container),
+          logs,
+        });
+
   const retentionScheduler = startRetentionSweepScheduler({
     profiles: container.configuredProfiles,
     storageManagement: container.storageManagement,
@@ -106,7 +123,9 @@ export async function startLocalApiServer(
     server: {
       capability: parsedConfiguration.output.capability,
       url,
+      ...definedProps({ mcpSocket: mcpListener?.listening }),
       async stop(): Promise<void> {
+        await mcpListener?.stop();
         await retentionScheduler.stop();
         await watchedPullRequestScheduler.stop();
         await closeServer(server);
