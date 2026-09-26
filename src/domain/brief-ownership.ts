@@ -1,7 +1,10 @@
 import * as v from "valibot";
 
 import { classifyChangedPath } from "./change-scope";
-import { tokenizeUnifiedPatch } from "./unified-patch";
+import {
+  listPatchChangedFiles,
+  type PatchChangedFile,
+} from "./patch-changed-files";
 
 /*
  * The Brief reader draws this block under the heading "Shape". Every symbol
@@ -11,20 +14,12 @@ import { tokenizeUnifiedPatch } from "./unified-patch";
  * and the JSON key therefore differ on purpose.
  */
 
-/** What the patch did to one changed file. */
-type BriefOwnershipStatus = "added" | "removed" | "modified" | "renamed";
-
 /**
  * One file of the deterministic skeleton. `path` is plain text, like
  * `ChangeScopeFile.path`: it is a display line and the key a model note must
  * match, never a path Patchdesk opens.
  */
-export type BriefOwnershipFile = {
-  readonly path: string;
-  readonly status: BriefOwnershipStatus;
-  readonly additions: number;
-  readonly deletions: number;
-};
+export type BriefOwnershipFile = PatchChangedFile;
 
 /** One short model note about what a changed file is responsible for afterwards. */
 type BriefOwnershipNote = {
@@ -82,19 +77,6 @@ export type NormalizedBriefOwnership = {
   readonly rejected: number;
 };
 
-/** Where one changed file stands while its patch section is still being read. */
-type ChangedFileDraft = {
-  oldPath: string;
-  newPath: string;
-  renamed: boolean;
-  /** The old side is `/dev/null`, so the patch creates this file. */
-  createdFile: boolean;
-  /** The new side is `/dev/null`, so the patch deletes this file. */
-  deletedFile: boolean;
-  additions: number;
-  deletions: number;
-};
-
 /**
  * The deterministic file skeleton of one patch: which files changed, how, and
  * by how many lines.
@@ -106,51 +88,9 @@ type ChangedFileDraft = {
 export function briefOwnershipFiles(
   patch: string,
 ): ReadonlyArray<BriefOwnershipFile> {
-  const drafts: Array<ChangedFileDraft> = [];
-  let current: ChangedFileDraft | undefined;
-  for (const token of tokenizeUnifiedPatch(patch)) {
-    if (token.kind === "file_header") {
-      current = {
-        oldPath: token.oldPath ?? "",
-        newPath: token.newPath ?? "",
-        renamed: false,
-        createdFile: false,
-        deletedFile: false,
-        additions: 0,
-        deletions: 0,
-      };
-      drafts.push(current);
-      continue;
-    }
-    if (current === undefined) continue;
-    if (token.kind === "old_file_path")
-      current.createdFile = token.path === "/dev/null";
-    else if (token.kind === "new_file_path")
-      current.deletedFile = token.path === "/dev/null";
-    else if (token.kind === "rename_from") {
-      current.oldPath = token.path;
-      current.renamed = true;
-    } else if (token.kind === "rename_to") {
-      current.newPath = token.path;
-      current.renamed = true;
-    } else if (token.kind === "body") {
-      if (token.marker === "added") current.additions += 1;
-      if (token.marker === "removed") current.deletions += 1;
-    }
-  }
-  const files: Array<BriefOwnershipFile> = [];
-  for (const draft of drafts) {
-    const status = changedFileStatus(draft);
-    const file: BriefOwnershipFile = {
-      path: status === "removed" ? draft.oldPath : draft.newPath,
-      status,
-      additions: draft.additions,
-      deletions: draft.deletions,
-    };
-    if (file.path === "" || classifyChangedPath(file) === "generated") continue;
-    files.push(file);
-  }
-  return files.sort((left, right) => comparePaths(left.path, right.path));
+  return listPatchChangedFiles(patch).filter(
+    (file) => classifyChangedPath(file) !== "generated",
+  );
 }
 
 /**
@@ -181,20 +121,4 @@ export function normalizeBriefOwnership(
     notes.push({ path: item.path, note });
   }
   return { value: { files, notes }, rejected };
-}
-
-/**
- * A file git shows against `/dev/null` on one side was created or deleted
- * whole; a rename is only a rename once neither side is missing.
- */
-function changedFileStatus(draft: ChangedFileDraft): BriefOwnershipStatus {
-  if (draft.createdFile) return "added";
-  if (draft.deletedFile) return "removed";
-  return draft.renamed ? "renamed" : "modified";
-}
-
-/** Code-unit order, so the tree never depends on the reader's locale. */
-function comparePaths(left: string, right: string): number {
-  if (left < right) return -1;
-  return left > right ? 1 : 0;
 }
