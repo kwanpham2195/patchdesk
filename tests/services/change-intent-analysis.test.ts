@@ -259,6 +259,11 @@ describe("Change intent in an Analysis run", () => {
       { "spec.md": `Use ghp_${"a".repeat(36)} to call the API.` },
       "change_intent_file_sensitive",
     ],
+    [
+      "expanded by an ident filter on checkout",
+      { ".gitattributes": "spec.md ident\n", "spec.md": "Goal. $Id$\n" },
+      "change_intent_file_filtered",
+    ],
   ] as const)(
     "refuses an Analysis whose spec file is %s, and starts nothing",
     async (_case, files, reason) => {

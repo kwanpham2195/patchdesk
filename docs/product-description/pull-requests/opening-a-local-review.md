@@ -104,12 +104,13 @@ Saving writes only the Review record. A refused save keeps the dialog open with 
 
 A spec file is read when Analysis starts, from the reviewed revision (the Local snapshot on a working tree), never from the working tree, so an edit after the snapshot reaches Analysis only after Refresh. When the file cannot be used, the run does not start and the run dialog says why:
 
-| Cause                                         | Sentence                                                                                                           |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| No file at that path in the reviewed revision | `The spec file is not in the reviewed revision. Fix the path in Change intent, or add the file and press Refresh.` |
-| Larger than 64 KiB                            | `The spec file is larger than 64 KiB. Shorten it, or enter the goal as text in Change intent.`                     |
-| Not UTF-8 text                                | `The spec file is not UTF-8 text. Point Change intent at a Markdown or text file.`                                 |
-| Holds what looks like a credential            | `The spec file contains what looks like a credential. Remove it and press Refresh.`                                |
+| Cause                                                                                                                    | Sentence                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No file at that path in the reviewed revision                                                                            | `The spec file is not in the reviewed revision. Fix the path in Change intent, or add the file and press Refresh.`                                               |
+| Larger than 64 KiB                                                                                                       | `The spec file is larger than 64 KiB. Shorten it, or enter the goal as text in Change intent.`                                                                   |
+| Not UTF-8 text                                                                                                           | `The spec file is not UTF-8 text. Point Change intent at a Markdown or text file.`                                                                               |
+| Holds what looks like a credential                                                                                       | `The spec file contains what looks like a credential. Remove it and press Refresh.`                                                                              |
+| Git rewrites it on checkout: Git LFS, a clean/smudge filter, `ident`, `working-tree-encoding`, or line-ending conversion | `Git rewrites the spec file on checkout (LFS, a filter, or line endings), so Patchdesk cannot read its committed text. Enter the goal as text in Change intent.` |
 
 An Analysis run on a Review with an intent names it after the provider and model: `Checked against: change intent`, or `Checked against: spec <path>`. When the intent was edited, replaced, or cleared after the run, the line adds `Intent changed since this run`; a spec file counts as unchanged while its path is the same, because its bytes belong to the revision the run already names. Refresh and opening the Review again keep the intent.
 

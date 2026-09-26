@@ -180,6 +180,7 @@ export type InsightCoordinatorFailure =
   | "change_intent_file_too_large"
   | "change_intent_file_not_text"
   | "change_intent_file_sensitive"
+  | "change_intent_file_filtered"
   /** Run named an agent run request that is no longer awaiting approval (ADR 0052). */
   | "request_not_awaiting";
 
@@ -209,6 +210,7 @@ export const insightFailureKinds = {
   change_intent_file_too_large: "conflict",
   change_intent_file_not_text: "conflict",
   change_intent_file_sensitive: "conflict",
+  change_intent_file_filtered: "conflict",
   request_not_awaiting: "conflict",
   catalog_unavailable: "unavailable",
   storage_unavailable: "unavailable",
@@ -219,6 +221,7 @@ const changeIntentRefusal = {
   file_too_large: "change_intent_file_too_large",
   file_not_text: "change_intent_file_not_text",
   file_sensitive: "change_intent_file_sensitive",
+  file_filtered: "change_intent_file_filtered",
 } as const satisfies Record<
   ChangeIntentUnreadable["reason"],
   InsightCoordinatorFailure

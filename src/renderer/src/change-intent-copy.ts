@@ -17,6 +17,8 @@ const CHANGE_INTENT_RUN_REFUSALS = {
     "The spec file is not UTF-8 text. Point Change intent at a Markdown or text file.",
   change_intent_file_sensitive:
     "The spec file contains what looks like a credential. Remove it and press Refresh.",
+  change_intent_file_filtered:
+    "Git rewrites the spec file on checkout (LFS, a filter, or line endings), so Patchdesk cannot read its committed text. Enter the goal as text in Change intent.",
 } as const;
 
 export type ChangeIntentRunRefusal = keyof typeof CHANGE_INTENT_RUN_REFUSALS;

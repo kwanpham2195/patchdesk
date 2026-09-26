@@ -25,7 +25,9 @@ export type ChangeIntentUnreadable = {
     | "file_too_large"
     | "file_not_text"
     /** It holds a credential-shaped value, which Patchdesk never writes to disk. */
-    | "file_sensitive";
+    | "file_sensitive"
+    /** Git LFS, a filter, `ident`, or a line-ending attribute rewrote it on checkout, so its bytes are not the blob's. */
+    | "file_filtered";
 };
 
 /** Git or the session checkout failed, so nothing is known about the spec file. */
@@ -68,8 +70,9 @@ export async function resolveChangeIntent(
   const root = await realpath(session.worktree.path).catch(() => undefined);
   const bytes =
     root === undefined ? undefined : await readCheckoutFile(root, intent.path);
-  if (bytes === undefined || gitBlobId(bytes, objectName) !== objectName)
-    return err({ _tag: "ChangeIntentReadFailed" });
+  if (bytes === undefined) return err({ _tag: "ChangeIntentReadFailed" });
+  if (gitBlobId(bytes, objectName) !== objectName)
+    return unreadable("file_filtered");
   let markdown: string;
   try {
     markdown = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
