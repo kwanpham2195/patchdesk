@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added local Reviews for a coding agent's work: open the working tree, a branch, or a commit with **Local review** on the Pull requests screen, or from the sidebar, and review it with Diff, Analysis, Walkthrough, and Brief as for a pull request. Findings and notes on any diff line go to **Local drafts**; **Copy as agent prompt** hands them to the agent as one Markdown prompt with each `path:line`. **Refresh** reads the changes again and marks each draft **Unchanged**, **Changed since your note**, or **Needs attention**. **Apply** writes a Finding's suggestion to the working tree after checking the files have not changed since the Analysis, and **Copy as PR description** on the Brief copies it for your own pull request. Patchdesk does not commit or push. #458 #459 #460 #464 #466 #468 #469
+
+- Added a **Change intent** to a local Review: the task or spec the change was written against, as text or a spec file in the repository. Analysis checks the patch against it and reports a goal the patch misses, or a change the intent does not mention, as a P2 Finding; its details line says which intent it checked and when the intent changed since the run. #471
+
 - Added newer models to choose from for API key Insight runs, among them Claude Opus 5.5 and Fable 5.1, GPT-6 Sol, Luna, and Astra, and Grok 4.7. Providers retired some models, among them the Kimi K2 models on Moonshot and DeepSeek V4 Flash; a saved model that is no longer listed needs picking again in the run dialog.
 
 - Brief Flow can show two new views: **state**, for a change to the values of a status field and the transitions between them, and **contract**, for an exported signature or fields shown old and new. Citation chips now appear only on changed steps, as the hunk alias with the file on hover, in their own column, and long steps stay on one line with the full text on hover. A Flow tree nested deeper than three levels is cut to three levels instead of failing the whole Brief. #445
