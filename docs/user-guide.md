@@ -197,6 +197,141 @@ and expose codex on the app launch PATH, then log in externally."
 With either provider, the model never touches GitHub, your checkout, or the
 network beyond the model API itself.
 
+## Use Patchdesk from a coding agent (MCP)
+
+A terminal coding agent, such as Claude Code or Codex, can use Patchdesk as
+its review desk through the `patchdesk mcp` command. The agent opens a local
+Review of its change, asks for Insights, and reads the notes you drafted. You
+stay the reviewer: an Insight runs only after you press Run in Patchdesk, and
+the Review moves to the agent's newer changes only when you press Refresh.
+The agent cannot Apply, edit your notes, commit, or touch GitHub.
+[A coding agent over MCP](product-description/pull-requests/coding-agent-over-mcp.md)
+describes the whole loop.
+
+### Install the command
+
+Patchdesk bundles the command at
+`Patchdesk.app/Contents/Resources/bin/patchdesk`. It runs on the Node inside
+the app, so there is nothing else to install. Link it onto your PATH:
+
+```bash
+ln -s /Applications/Patchdesk.app/Contents/Resources/bin/patchdesk /usr/local/bin/patchdesk
+```
+
+If `/usr/local/bin` does not exist or is not on your PATH, link it into
+Homebrew's `bin` folder instead:
+
+```bash
+ln -s /Applications/Patchdesk.app/Contents/Resources/bin/patchdesk "$(brew --prefix)/bin/patchdesk"
+```
+
+Once the Homebrew cask links the command itself, you do not need this step.
+Running `patchdesk` with no arguments prints its usage.
+
+### Register it with your agent
+
+```bash
+claude mcp add patchdesk -- patchdesk mcp
+codex mcp add patchdesk -- patchdesk mcp
+```
+
+`claude mcp add` registers the server for the current project; add
+`--scope user` to register it for every project. Both clients work with no
+extra setting. To have them use the 2026-07-28 MCP revision instead of the
+2025 one, set `MCP_PROTOCOL_NEGOTIATION=auto` for Claude Code, or enable the
+Codex feature `mcp_2026_07_28` and add
+`--env CODEX_MCP_PROTOCOL_VERSION=2026-07-28` to `codex mcp add`.
+
+### Check the connection
+
+Run the check with Patchdesk open:
+
+```bash
+patchdesk mcp --check
+```
+
+It prints the socket it connects to, then the repositories of your active
+workspace that have a local checkout, and exits 0:
+
+```text
+socket: /Users/you/.local/share/patchdesk/mcp/patchdesk.sock
+{
+  "profile": {
+    "id": "Personal",
+    "label": "Personal"
+  },
+  "repositories": [
+    {
+      "host": "github.com",
+      "owner": "you",
+      "repo": "app",
+      "localPath": "/Users/you/src/app",
+      "checkouts": [
+        {
+          "path": "/Users/you/src/app",
+          "name": "app",
+          "head": {
+            "kind": "branch",
+            "branch": "main"
+          },
+          "configured": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+With Patchdesk closed it prints the socket line, then this line on stderr,
+and exits 1:
+
+```text
+app_not_running: Patchdesk is not running. Start Patchdesk and try again. (ENOENT)
+```
+
+Run the check first whenever your agent reports the Patchdesk server as
+failed. Set `PATCHDESK_MCP_DEBUG=1` in the server's environment to log one
+stderr line per tool call.
+
+### Tell your agent to use it
+
+Your agent calls these tools when its instructions tell it to. Copy this into
+your project's `CLAUDE.md` or `AGENTS.md`:
+
+```markdown
+## Review in Patchdesk
+
+- When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
+- To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
+- When I say "check Patchdesk", call `get_feedback`, address every comment, then call `refresh_review` and tell me the changes are ready.
+- Do not commit until I say the review is done.
+```
+
+The last rule matters. A working-tree Review compares the working tree
+against `HEAD`, so after the agent commits, a clean tree shows an empty diff
+and your notes lose their lines
+([#491](https://github.com/kwanpham2195/patchdesk/issues/491)). To review
+work the agent already committed, open a Branch Review of its branch against
+the base branch.
+
+### Troubleshooting
+
+- **Patchdesk is not running.** Calls return `app_not_running`. Start
+  Patchdesk; the command never starts it. The next call works without
+  restarting the agent.
+- **No workspace.** Calls return `no_profile`. Finish
+  [First run](#first-run) in Patchdesk.
+- **You switched workspaces.** A call about a Review of another workspace
+  returns `profile_changed` and names the active one. Switch back in
+  Patchdesk, or have the agent call `review_local` again to open a Review in
+  the active workspace.
+- **The repository has no local path.** `list_repositories` leaves it out,
+  and `review_local` returns `checkout_not_found`. In Settings → Workspace,
+  choose the folder that holds the checkout and tick the repository in the
+  list Patchdesk finds there.
+- **`patchdesk: command not found`.** The link is missing or its folder is
+  not on your PATH. Repeat [Install the command](#install-the-command).
+
 ## Where Patchdesk keeps its files
 
 - Config: `~/.config/patchdesk`
@@ -209,7 +344,9 @@ Patchdesk does not use `~/Library`.
 ## How Patchdesk stays safe
 
 The local API only listens on `127.0.0.1`, and the app window is sandboxed:
-it has no direct access to Node.js or your filesystem.
+it has no direct access to Node.js or your filesystem. The `patchdesk mcp`
+command reaches the app through a socket in
+`~/.local/share/patchdesk/mcp/`, a folder only your macOS user can open.
 
 A GitHub write only happens from an action you name explicitly, like Add to
 review. Finishing an Insight never triggers one on its own. If Patchdesk
