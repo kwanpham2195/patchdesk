@@ -121,8 +121,9 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["revision_conflict", 409],
   ["operation_active", 409],
   ["operation_expired", 404],
-  // A local Review source: the repository has no checkout in the profile, or git has no such revision.
+  // A local Review source: the repository has no checkout in the profile, the named checkout is not one of its worktrees, or git has no such revision.
   ["repository_not_local", 404],
+  ["checkout_not_found", 404],
   ["revision_not_found", 404],
   ["unmerged_index", 409],
   // Apply suggestion on a local Review (ADR 0050): refusals the maintainer resolves by reopening or checking.

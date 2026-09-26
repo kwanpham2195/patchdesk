@@ -31,9 +31,12 @@ import type {
   LocalReviewRevisionService,
 } from "./local-review-revision-service";
 import {
+  configuredLocalPath,
+  listRepositoryCheckouts,
   resolveLocalReviewCheckout,
   type LocalCheckoutFailure,
   type LocalReviewCheckout,
+  type RepositoryCheckout,
 } from "./local-checkout";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
@@ -91,18 +94,32 @@ type LocalPreparationDependencies = {
 export class LocalReviewSessionPreparation {
   constructor(private readonly dependencies: LocalPreparationDependencies) {}
 
+  /** The live checkouts of a profile repository that a local Review may name (#489). */
+  async listCheckouts(
+    profileId: WorkspaceProfileId,
+    repository: LocalReviewOpenRequest["repository"],
+  ): Promise<
+    Result<ReadonlyArray<RepositoryCheckout>, LocalReviewPreparationFailure>
+  > {
+    const profile = await this.loadProfile(profileId);
+    if (profile._tag === "err") return profile;
+    const localPath = configuredLocalPath(profile.value, repository);
+    if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
+    const checkouts = await listRepositoryCheckouts(
+      this.dependencies,
+      localPath,
+    );
+    return checkouts === undefined
+      ? err({ _tag: "LocalGitFailed" })
+      : ok(checkouts);
+  }
+
   /** Reads the source from the checkout the request names; a working tree is snapshotted here. */
   async resolve(
     input: LocalReviewOpenRequest,
   ): Promise<Result<ResolvedLocalReview, LocalReviewPreparationFailure>> {
-    const profile = await this.dependencies.profiles.load(input.profileId);
-    if (profile._tag === "err")
-      return err({
-        _tag:
-          profile.error.reason === "not_found"
-            ? "ProfileNotFound"
-            : "ProfileUnavailable",
-      });
+    const profile = await this.loadProfile(input.profileId);
+    if (profile._tag === "err") return profile;
     const checkout = await resolveLocalReviewCheckout(
       this.dependencies,
       profile.value,
@@ -129,6 +146,17 @@ export class LocalReviewSessionPreparation {
         },
       },
       revision: resolved.value.revision,
+    });
+  }
+
+  private async loadProfile(profileId: WorkspaceProfileId) {
+    const profile = await this.dependencies.profiles.load(profileId);
+    if (profile._tag === "ok") return profile;
+    return err({
+      _tag:
+        profile.error.reason === "not_found"
+          ? ("ProfileNotFound" as const)
+          : ("ProfileUnavailable" as const),
     });
   }
 

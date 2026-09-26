@@ -235,3 +235,45 @@ export function reopenLocalSourceRequest(
       return casesHandled(source);
   }
 }
+
+/** A Review source as plain strings: the domain source, or the renderer's parsed copy of it. */
+type ReviewSourceText =
+  | { readonly kind: "pull_request"; readonly prNumber: number }
+  | {
+      readonly kind: "working_tree";
+      readonly branch?: string | undefined;
+      readonly checkout?: string | undefined;
+    }
+  | {
+      readonly kind: "branch";
+      readonly branch: string;
+      readonly baseBranch: string;
+      readonly checkout?: string | undefined;
+    }
+  | {
+      readonly kind: "commit";
+      readonly commitSha: string;
+      readonly checkout?: string | undefined;
+    };
+
+/** The heading a Review shows when GitHub supplied no pull request title; a named checkout adds its folder. */
+export function reviewSourceTitle(source: ReviewSourceText): string {
+  switch (source.kind) {
+    case "pull_request":
+      return `Pull request #${source.prNumber}`;
+    case "working_tree":
+      return `Working tree on ${source.branch ?? "detached HEAD"}${checkoutSuffix(source.checkout)}`;
+    case "branch":
+      return `Branch ${source.branch} against ${source.baseBranch}${checkoutSuffix(source.checkout)}`;
+    case "commit":
+      return `Commit ${source.commitSha.slice(0, 8)}${checkoutSuffix(source.checkout)}`;
+    default:
+      return casesHandled(source);
+  }
+}
+
+function checkoutSuffix(checkout: string | undefined): string {
+  return checkout === undefined
+    ? ""
+    : ` in ${checkout.slice(checkout.lastIndexOf("/") + 1)}`;
+}

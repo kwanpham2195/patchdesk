@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import type { Context, Hono } from "hono";
 import {
   array,
@@ -24,6 +26,7 @@ import {
   parseChangeIntent,
 } from "../../domain/change-intent";
 import {
+  parseAbsolutePath,
   parseFindingId,
   parseGitHubHost,
   parseGitHubOwner,
@@ -76,6 +79,38 @@ export function registerLocalReviewRoutes(
       request,
     });
     return localReviewResponse(context, opened);
+  });
+
+  // The checkouts the open dialog offers: the configured one and its live linked worktrees (#489).
+  app.get("/v1/reviews/local-checkouts", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const host = parseGitHubHost(context.req.query("host"));
+    const owner = parseGitHubOwner(context.req.query("owner"));
+    const repo = parseGitHubRepoName(context.req.query("repo"));
+    if (
+      profileId._tag === "err" ||
+      host._tag === "err" ||
+      owner._tag === "err" ||
+      repo._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    const listed = await container.localReviewOpening.listCheckouts(
+      profileId.value,
+      { host: host.value, owner: owner.value, repo: repo.value },
+    );
+    return response(
+      context,
+      listed._tag === "ok"
+        ? ok(
+            listed.value.map((checkout) => ({
+              path: checkout.path,
+              name: basename(checkout.path),
+              head: checkout.head,
+              configured: checkout.configured,
+            })),
+          )
+        : listed,
+    );
   });
 
   // Reads the stored source from the checkout again; a changed one moves the Review and its drafts to a new session (#452).
@@ -365,17 +400,35 @@ const localReviewOpenSchema = strictObject({
           strictObject({ kind: literal("detached") }),
         ]),
       ),
+      checkout: optional(nonEmpty),
     }),
     strictObject({
       kind: literal("branch"),
       branch: nonEmpty,
       baseBranch: nonEmpty,
+      checkout: optional(nonEmpty),
     }),
-    strictObject({ kind: literal("commit"), commit: nonEmpty }),
+    strictObject({
+      kind: literal("commit"),
+      commit: nonEmpty,
+      checkout: optional(nonEmpty),
+    }),
   ]),
 });
 
+/** The source request with its checkout, which must be an absolute path (#489). */
 function parseSourceRequest(
+  raw: InferOutput<typeof localReviewOpenSchema>["source"],
+): LocalReviewSourceRequest | undefined {
+  const spec = parseSourceSpec(raw);
+  if (spec === undefined || raw.checkout === undefined) return spec;
+  const checkout = parseAbsolutePath(raw.checkout);
+  return checkout._tag === "ok"
+    ? { ...spec, checkout: checkout.value }
+    : undefined;
+}
+
+function parseSourceSpec(
   raw: InferOutput<typeof localReviewOpenSchema>["source"],
 ): LocalReviewSourceRequest | undefined {
   if (raw.kind === "working_tree") {
