@@ -37,7 +37,11 @@ tools.
   states.
 - **Addressed or not.** After Refresh, each carried draft shows whether the
   lines under its anchor changed since the note (#452), so the maintainer can
-  check what the agent addressed without an agent reply.
+  check what the agent addressed without an agent reply. Updated 2026-09-26
+  (#521): the start or end of the file counts as the missing context on a
+  note's first or last line, so the note is placed when the lines on its
+  other side still match; with no matching lines on either side it still
+  needs attention.
 - **Copy Brief as PR description** stays: it is a copy action, and the
   maintainer opens the pull request with their own tools.
 

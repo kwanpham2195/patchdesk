@@ -189,7 +189,6 @@ The fixed rows, each with the case before and while an agent action runs.
 - After an approved run settles, the same `run_insight` records a new request that needs a new approval.
 - A request for a session the Review has moved past is dropped; `get_insight` describes the new session, usually with status `none`.
 - A draft whose text alone is larger than a page's size limit goes out on its own page, and that page's Markdown points to the entry for the full text.
-- A note on the first or last line of a file has no lines on one side to place it by. When the agent rewrites that line, Refresh cannot find it, and the note reads Needs attention and leaves the Diff; it stays under Local drafts on the Insights tab (`src/domain/local-draft-carry.ts`).
 
 ## Open questions and verification
 

@@ -360,7 +360,3 @@ lists refused calls.
   ([#491](https://github.com/kwanpham2195/patchdesk/issues/491)). Review
   before the agent commits. To review work the agent already committed, open
   a Branch Review of its branch against the base branch.
-- A note on the first or last line of a file is lost from the Diff when the
-  agent rewrites that line. The note reads **Needs attention** after Refresh
-  and stays under Local drafts on the Insights tab
-  ([#521](https://github.com/kwanpham2195/patchdesk/issues/521)).

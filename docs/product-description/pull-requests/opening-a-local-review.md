@@ -162,7 +162,7 @@ When the content is unchanged, Refresh lands on the same session and nothing cha
 
 Every move to a new session places each Local draft first, then says what happened to its lines (ADR 0002, ADR 0050, ADR 0051):
 
-- **Placed.** The drafted lines and the diff lines around them appear exactly once in the new patch, and the draft moves there. Otherwise, the lines around the draft are each found exactly once in the new version of the file, read from the new session's own worktree, with at least one line between them, and the draft moves to the lines between them.
+- **Placed.** The drafted lines and the diff lines around them appear exactly once in the new patch, and the draft moves there. Otherwise, the lines around the draft are each found exactly once in the new version of the file, read from the new session's own worktree, with at least one line between them, and the draft moves to the lines between them. For a draft on a file's first or last line, the start or end of the file stands in for the missing lines on that side, so the draft is placed when the lines on its other side still match.
 - **Needs attention.** Neither holds: the file is gone, or the lines around the draft changed, appear more than once, or have nothing left between them. The draft keeps its original lines and session and stays listed.
 
 A placed draft reads **Changed since your note** when the lines under it differ from the lines the maintainer saw when writing it, and **Unchanged** otherwise. A draft that changed keeps that label on later moves, because it describes the change since the note was written.
