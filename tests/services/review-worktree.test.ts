@@ -715,6 +715,107 @@ describe("ReviewWorktreeService", () => {
       }
     });
   });
+
+  describe("worktree add with real git (#483)", () => {
+    /** A one-commit repository whose post-checkout hook leaves `sentinel` beside it and fails. */
+    async function repositoryWithCheckoutHook(root: string) {
+      const local = join(root, "repo");
+      execFileSync("git", ["init", "-q", "-b", "main", local]);
+      await writeFile(join(local, "tracked.txt"), "one\n");
+      fixtureGit(local, "add", "tracked.txt");
+      fixtureGit(local, "commit", "-q", "-m", "root");
+      const sentinel = join(root, "sentinel");
+      await writeFile(
+        join(local, ".git", "hooks", "post-checkout"),
+        `#!/bin/sh\ntouch '${sentinel}'\nexit 1\n`,
+        { mode: 0o755 },
+      );
+      const headSha = must(parseGitSha(fixtureGit(local, "rev-parse", "HEAD")));
+      return { local, sentinel, headSha };
+    }
+
+    it("checks out a session without running the repository's hooks", async () => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+      try {
+        const { local, sentinel, headSha } =
+          await repositoryWithCheckoutHook(root);
+        const service = new ReviewWorktreeService(
+          PatchdeskPaths.forTest(join(root, "app")),
+          createReadOnlyGitExecutor(new CommandRunner()),
+          credentials,
+          resolveGh,
+        );
+
+        const prepared = await service.prepareLocal({
+          profileId: ids.profileId,
+          sessionId,
+          localPath: local,
+          headSha,
+        });
+
+        expect(prepared._tag).toBe("ok");
+        await expect(access(sentinel)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("removes the worktree an add left behind when it failed after checkout, so the next prepare succeeds", async () => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+      try {
+        const { local, headSha } = await repositoryWithCheckoutHook(root);
+        const realGit = createReadOnlyGitExecutor(new CommandRunner());
+        let failAdd = true;
+        // Git exits nonzero once the checkout exists, as a timed-out add does.
+        const git: GitReadExecutor = {
+          async run(argv, environment) {
+            const ran = await realGit.run(argv, environment);
+            return failAdd && argv.includes("worktree") && argv.includes("add")
+              ? err({ _tag: "GitReadFailed" as const })
+              : ran;
+          },
+        };
+        const paths = PatchdeskPaths.forTest(join(root, "app"));
+        const service = new ReviewWorktreeService(
+          paths,
+          git,
+          credentials,
+          resolveGh,
+        );
+        const input = {
+          profileId: ids.profileId,
+          sessionId,
+          localPath: local,
+          headSha,
+        };
+
+        const failed = await service.prepareLocal(input);
+
+        expect(failed).toEqual({
+          _tag: "err",
+          error: { _tag: "GitWorktreeFailed" },
+        });
+        await expect(
+          access(paths.worktreeDirectory(ids.profileId, sessionId)),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        expect(worktreeCount(local)).toBe(1);
+        expect(managedRefs(local)).toEqual([]);
+
+        failAdd = false;
+        const retried = await service.prepareLocal(input);
+
+        expect(retried).toEqual({
+          _tag: "ok",
+          value: { path: paths.worktreeDirectory(ids.profileId, sessionId) },
+        });
+        expect(worktreeCount(local)).toBe(2);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 /** Runs git for fixture setup and evidence only; the code under test runs git through the production executor. */
