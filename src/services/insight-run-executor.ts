@@ -19,10 +19,15 @@ import {
   type InsightType,
 } from "../domain/insight-record";
 import { rawJsonValueSchema } from "../domain/json";
-import { isPullRequestReview } from "../domain/review";
+import {
+  isLocalReview,
+  isPullRequestReview,
+  type Review,
+} from "../domain/review";
 import { err, type Result } from "../domain/result";
 import type { InsightActivitySink } from "../adapters/codex/codex-activity";
 import type { InsightStore } from "../adapters/storage/insight-store";
+import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { BriefReachComputer } from "./brief-reach-service";
@@ -38,9 +43,16 @@ import type {
   InsightRunResponse,
 } from "./insight-run-coordinator";
 import { validateInsightResult } from "./insight-result-validation";
+import { localReviewNotificationSubject } from "./local-review-notification-subject";
 import { contentHash } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+
+/** Announces settled runs: the notifier, and the profiles that name a local Review's checkout folder. */
+export type InsightSettledNotifier = {
+  readonly notifier: DesktopNotifier;
+  readonly profiles: Pick<ProfileStore, "list">;
+};
 
 /**
  * Runs one Insight invocation to its terminal state: invoke the provider,
@@ -66,7 +78,7 @@ export class InsightRunExecutor {
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     /** Counts a completed Brief's Reach block; absent leaves the block off. */
     private readonly reach?: BriefReachComputer,
-    private readonly notifier?: DesktopNotifier,
+    private readonly notifications?: InsightSettledNotifier,
   ) {}
 
   async execute(
@@ -383,20 +395,8 @@ export class InsightRunExecutor {
           // Posted inside the lock but outside the record transition, so only a persisted settlement is announced.
           if (mutated._tag === "ok") {
             const outcome = settledOutcome(mutated.value, runId);
-            // The notification subject is a pull request, and ADR 0050 decides no local one, so a local run settles silently.
-            if (outcome !== undefined && isPullRequestReview(review.value))
-              postDesktopNotification(this.notifier, {
-                _tag: "InsightSettled",
-                reviewId: input.reviewId,
-                pullRequest: {
-                  host: review.value.identity.host,
-                  owner: review.value.identity.owner,
-                  repo: review.value.identity.repo,
-                  number: review.value.identity.source.prNumber,
-                },
-                insightType: type,
-                outcome,
-              });
+            if (outcome !== undefined)
+              await this.announceSettled(review.value, type, runId, outcome);
           }
           return mutated;
         },
@@ -417,6 +417,46 @@ export class InsightRunExecutor {
       await this.recordDiagnostic(input, type, `${detail}_recovery_failed`);
     await this.recordDiagnostic(input, type, `${detail}_persist_failed`);
     return false;
+  }
+
+  /** Posts one InsightSettled notification; total, because a notification never fails the run it announces. */
+  private async announceSettled(
+    review: Review,
+    type: InsightType,
+    runId: InsightRunId,
+    outcome: "completed" | "failed",
+  ): Promise<void> {
+    if (this.notifications === undefined) return;
+    const { notifier, profiles } = this.notifications;
+    const settled = {
+      _tag: "InsightSettled",
+      reviewId: review.id,
+      insightType: type,
+      outcome,
+    } as const;
+    if (isPullRequestReview(review)) {
+      const { host, owner, repo, source } = review.identity;
+      postDesktopNotification(notifier, {
+        ...settled,
+        pullRequest: { host, owner, repo, number: source.prNumber },
+      });
+      return;
+    }
+    if (!isLocalReview(review)) return;
+    try {
+      const subject = await localReviewNotificationSubject(profiles, review);
+      postDesktopNotification(notifier, {
+        ...settled,
+        ...subject,
+        requestedByAgent:
+          review.agentRunRequests?.some(
+            (request) =>
+              request.status === "approved" && request.runId === runId,
+          ) ?? false,
+      });
+    } catch {
+      // The profile read only names the checkout folder; a failed read loses this one notification.
+    }
   }
 
   private async recordExecutionFailure(

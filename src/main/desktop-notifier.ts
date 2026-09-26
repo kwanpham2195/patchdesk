@@ -1,5 +1,6 @@
 import type { NotificationSettings } from "../domain/contracts";
 import type { ReviewId } from "../domain/ids";
+import type { InsightType } from "../domain/insight-record";
 import type { WatchedPullRequestChange } from "../domain/watched-pull-request";
 import type { LogEntryInput } from "../domain/log-entry";
 import { loggableMetaValue } from "../domain/log-entry";
@@ -7,6 +8,7 @@ import { casesHandled, type Result } from "../domain/result";
 import type {
   DesktopNotificationEvent,
   DesktopNotifier,
+  LocalReviewNotificationSubject,
 } from "../services/desktop-notifier";
 import type { DesktopNotificationClick } from "./ipc-contract";
 
@@ -92,9 +94,10 @@ type DesktopNotifierDependencies = {
 };
 
 /**
- * The main-process `DesktopNotifier` (ADR 0044). Titles and bodies name the
- * pull request by reference only, and the log lines carry the event tag and
- * Review id, so no pull request text leaves GitHub's own surfaces.
+ * The main-process `DesktopNotifier` (ADR 0044). Titles and bodies name a
+ * pull request by reference only and a local Review by its source title, and
+ * the log lines carry the event tag and Review id, so no pull request text
+ * leaves GitHub's own surfaces.
  */
 export function createDesktopNotifier(
   dependencies: DesktopNotifierDependencies,
@@ -221,19 +224,18 @@ function desktopNotificationText(
   if (event._tag === "AgentRunRequested")
     return {
       title: `Agent asks for ${insightLabels[event.insightType]}`,
-      body:
-        event.profileLabel === undefined
-          ? event.localTitle
-          : `${event.localTitle} · ${event.profileLabel} profile`,
+      body: localBody(event),
+    };
+  if (event._tag === "InsightSettled" && "localTitle" in event)
+    return {
+      title: settledTitle(event),
+      body: localBody(event, event.requestedByAgent),
     };
   const { owner, repo, number } = event.pullRequest;
   const reference = `${owner}/${repo}#${number}`;
   switch (event._tag) {
     case "InsightSettled":
-      return {
-        title: `${insightLabels[event.insightType]} ${event.outcome === "completed" ? "finished" : "failed"}`,
-        body: reference,
-      };
+      return { title: settledTitle(event), body: reference };
     case "WriteNeedsRecovery":
       return {
         title: "GitHub writes are paused",
@@ -248,4 +250,27 @@ function desktopNotificationText(
     default:
       return casesHandled(event);
   }
+}
+
+function settledTitle(event: {
+  readonly insightType: InsightType;
+  readonly outcome: "completed" | "failed";
+}): string {
+  return `${insightLabels[event.insightType]} ${event.outcome === "completed" ? "finished" : "failed"}`;
+}
+
+/** A local Review's body: its source title, then who asked for the run, then the profile when more than one exists. */
+function localBody(
+  subject: LocalReviewNotificationSubject,
+  requestedByAgent = false,
+): string {
+  return [
+    subject.localTitle,
+    requestedByAgent ? "requested by the agent" : undefined,
+    subject.profileLabel === undefined
+      ? undefined
+      : `${subject.profileLabel} profile`,
+  ]
+    .filter((part) => part !== undefined)
+    .join(" · ");
 }

@@ -13,12 +13,27 @@ type DesktopNotificationSubject = {
  * Something Patchdesk already knows that the maintainer may want to hear
  * about outside the window (ADR 0044). Each tag has exactly one hook point.
  */
+/** How a notification names a local Review (ADR 0052). */
+export type LocalReviewNotificationSubject = {
+  /** The local Review's source title with its checkout folder, such as "Working tree on feat/x in patchdesk". */
+  readonly localTitle: string;
+  /** Set when more than one workspace profile is configured (ADR 0052 "Profile switch"). */
+  readonly profileLabel?: string;
+};
+
 export type DesktopNotificationEvent =
-  | (DesktopNotificationSubject & {
+  | ({
       readonly _tag: "InsightSettled";
+      readonly reviewId: ReviewId;
       readonly insightType: InsightType;
       readonly outcome: "completed" | "failed";
-    })
+    } & (
+      | { readonly pullRequest: PullRequestRef }
+      | (LocalReviewNotificationSubject & {
+          /** The run started from an approved agent run request (#496). */
+          readonly requestedByAgent: boolean;
+        })
+    ))
   | (DesktopNotificationSubject & { readonly _tag: "WriteNeedsRecovery" })
   | (DesktopNotificationSubject & { readonly _tag: "PreparationFinished" })
   | (DesktopNotificationSubject & { readonly _tag: "MergeCompleted" })
@@ -26,15 +41,11 @@ export type DesktopNotificationEvent =
       readonly _tag: "WatchedPullRequestChanged";
       readonly change: WatchedPullRequestChange;
     })
-  | {
+  | (LocalReviewNotificationSubject & {
       readonly _tag: "AgentRunRequested";
       readonly reviewId: ReviewId;
       readonly insightType: InsightType;
-      /** The local Review's source title with its checkout folder, such as "Working tree on feat/x in patchdesk". */
-      readonly localTitle: string;
-      /** Set when more than one workspace profile is configured (ADR 0052 "Profile switch"). */
-      readonly profileLabel?: string;
-    };
+    });
 
 /**
  * Posts one desktop notification. Synchronous and total by contract: the

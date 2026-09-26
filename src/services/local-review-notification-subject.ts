@@ -1,4 +1,5 @@
 import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { LocalReviewNotificationSubject } from "./desktop-notifier";
 import type { Review } from "../domain/review";
 import {
   reviewSourceTitle,
@@ -13,7 +14,7 @@ import {
 export async function localReviewNotificationSubject(
   profiles: Pick<ProfileStore, "list">,
   review: Review<LocalReviewSource>,
-): Promise<{ readonly localTitle: string; readonly profileLabel?: string }> {
+): Promise<LocalReviewNotificationSubject> {
   const listed = await profiles.list();
   const saved = listed._tag === "ok" ? listed.value : [];
   const { profileId, host, owner, repo, source } = review.identity;

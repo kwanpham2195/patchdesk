@@ -30,6 +30,15 @@ const analysisFinished: DesktopNotificationEvent = {
   outcome: "completed",
 };
 
+const localAnalysisFinished: DesktopNotificationEvent = {
+  _tag: "InsightSettled",
+  reviewId,
+  insightType: "analysis",
+  outcome: "completed",
+  localTitle: "Working tree on feat/x in patchdesk",
+  requestedByAgent: false,
+};
+
 const defaults: NotificationSettings = {
   enabled: true,
   preparationAndMerge: false,
@@ -166,6 +175,38 @@ describe("createDesktopNotifier", () => {
     ]);
     expect(clicks).toEqual([
       { kind: "review", reviewId, insightType: "walkthrough" },
+    ]);
+  });
+
+  it.each([
+    [false, "Working tree on feat/x in patchdesk"],
+    [true, "Working tree on feat/x in patchdesk · requested by the agent"],
+  ])(
+    "names a settled local run by its source title (requested by the agent: %s)",
+    async (requestedByAgent, body) => {
+      const { notifier, notifications, logs } = harness();
+
+      notifier.notify({ ...localAnalysisFinished, requestedByAgent });
+      await waitForNotificationDecision(logs);
+
+      expect(notifications.shown).toMatchObject([
+        { title: "Analysis finished", body },
+      ]);
+    },
+  );
+
+  it("stays silent for a settled local run while focused on that Review", async () => {
+    const { notifier, notifications, logs } = harness({
+      focused: true,
+      destination: { kind: "workbench", reviewId },
+    });
+
+    notifier.notify(localAnalysisFinished);
+    await waitForNotificationDecision(logs);
+
+    expect(notifications.shown).toEqual([]);
+    expect(logs).toMatchObject([
+      { message: "skipped", meta: { reason: "focused_on_review" } },
     ]);
   });
 
