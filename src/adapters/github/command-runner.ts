@@ -103,6 +103,8 @@ export type CommandFailure =
   | { readonly _tag: "CommandRuntimeUnavailable" }
   | { readonly _tag: "CommandFailed"; readonly stderr?: string }
   | { readonly _tag: "CommandInvalidJson" }
+  /** The child wrote more than the 2 MiB cap to stdout or stderr and was terminated. */
+  | { readonly _tag: "CommandOutputExceeded" }
   /**
    * The caller's request was abandoned (renderer bridge timeout or the
    * client disconnecting) while the child process was already running, and
@@ -480,7 +482,8 @@ function classifyExecution(
   if (execution._tag === "Aborted") return { _tag: "CommandAborted" };
   if (execution._tag === "TimedOut") return { _tag: "CommandTimedOut" };
   if (execution._tag === "Unavailable") return { _tag: "CommandUnavailable" };
-  if (execution._tag === "OutputExceeded") return { _tag: "CommandFailed" };
+  if (execution._tag === "OutputExceeded")
+    return { _tag: "CommandOutputExceeded" };
   if (execution.exitCode === 0) return undefined;
 
   const fallback = classifyByStderrPattern(execution.stderr);

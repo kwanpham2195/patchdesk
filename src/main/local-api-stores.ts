@@ -65,9 +65,13 @@ export function createReadOnlyGitExecutor(
       };
       if (environment !== undefined) request = { ...request, environment };
       const output = await commands.runText(request);
-      return output._tag === "ok"
-        ? ok({ stdout: output.value })
-        : err({ _tag: "GitReadFailed" as const });
+      if (output._tag === "ok") return ok({ stdout: output.value });
+      return err({
+        _tag:
+          output.error._tag === "CommandOutputExceeded"
+            ? ("GitReadOutputExceeded" as const)
+            : ("GitReadFailed" as const),
+      });
     },
   };
 }

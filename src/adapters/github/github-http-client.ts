@@ -444,8 +444,8 @@ function parseJsonBody(text: string): Result<unknown, CommandFailure> {
 
 /**
  * Reads the body as it streams and stops at the budget instead of buffering
- * whatever arrives, so a large diff cannot exhaust the main process. The
- * `CommandFailed` tag matches what `OutputExceeded` classified to.
+ * whatever arrives, so a large diff cannot exhaust the main process. It
+ * answers `CommandOutputExceeded`, as a child over its output cap does.
  *
  * `ignoreBOM` keeps a leading U+FEFF in the text, which the default decoder
  * and `Response.text()` both strip. gh wrote its stdout through Node's utf8
@@ -467,7 +467,7 @@ async function readCappedText(
     budget.remaining -= chunk.value.byteLength;
     if (budget.remaining < 0) {
       await reader.cancel();
-      return err({ _tag: "CommandFailed" });
+      return err({ _tag: "CommandOutputExceeded" });
     }
     text += decoder.decode(chunk.value, { stream: true });
   }
