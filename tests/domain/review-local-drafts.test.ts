@@ -315,4 +315,26 @@ describe("Local drafts on a Review", () => {
       }),
     ).toEqual({ _tag: "err", error: { _tag: "InvalidReview" } });
   });
+
+  it("refuses a prepared session on a pull request Review, which an agent's refresh never records", () => {
+    const pullRequest = createReview({
+      identity: {
+        ...repository,
+        source: {
+          kind: "pull_request",
+          prNumber: must(parsePullRequestNumber(42)),
+        },
+      },
+      currentSessionId: localReview().currentSessionId,
+      headSha,
+      createdAt,
+    });
+
+    expect(
+      parseReview({
+        ...structuredClone(serializeReview(pullRequest)),
+        preparedSessionId: localReview().currentSessionId,
+      }),
+    ).toEqual({ _tag: "err", error: { _tag: "InvalidReview" } });
+  });
 });
