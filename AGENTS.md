@@ -180,6 +180,7 @@ Process:
 - Static copy, alert, and message changes go straight to main. Behaviour changes get their own PR with before/after screenshots in the body (`before-and-after` skill). Prompt and schema changes are reviewed in chat first.
 - Throwaway PRs are always fine for live checks, including writes. Real PRs still need a per-write ask.
 - `Closes #n` auto-closes only the first number after it; repeat the keyword per issue, and close finished issues before starting the next.
+- A PR that fixes an issue says `Closes #n` in its body, and after it lands `gh issue view <n> --json state` must read `CLOSED`. A CHANGELOG citation alone closes nothing: nine fixed bugs stayed open for weeks that way (closed 2026-09-26). Before fixing an old issue, check CHANGELOG and `git log` for its number.
 - Once an action is approved, do not re-ask for its sub-steps. Ask again only for a new destructive or outward action.
 - One review pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
 
