@@ -38,7 +38,7 @@ type InsightRunRequestFailure =
   | ChangeIntentRunRefusal;
 
 /** What a start carries beyond the run options. */
-export type InsightRunStartOptions = {
+type InsightRunStartOptions = {
   /** The agent run request this Run approves (ADR 0052). */
   readonly requestId?: string;
   readonly onAccepted?: (runId: string) => void;
