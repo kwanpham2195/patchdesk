@@ -98,6 +98,8 @@ describe("renderBriefAsPullRequestDescription", () => {
 
     expect(renderBriefAsPullRequestDescription(brief)).toBe(
       [
+        "## Flow",
+        "",
         "### Call tree: Recovery",
         "",
         "```diff",
@@ -197,6 +199,8 @@ describe("renderBriefAsPullRequestDescription", () => {
 
     expect(renderBriefAsPullRequestDescription(brief)).toBe(
       [
+        "## Flow",
+        "",
         "### Control flow: Cleanup",
         "",
         "````diff",
