@@ -142,8 +142,11 @@ export type ReviewRefreshFixtureCalls = {
   readonly projections: Array<"project">;
   readonly projectionInputs: Array<ProjectionInput>;
   readonly avatarSyncs: Array<"syncCommentAuthors">;
-  /** Reviews whose superseded sessions the refresh asked retention to prune. */
-  readonly prunedReviews: Array<PullRequestReview["id"]>;
+  /** Each prune request, with the current session of the Review saved last when it was made. */
+  readonly prunedReviews: Array<{
+    readonly reviewId: PullRequestReview["id"];
+    readonly savedCurrentSessionId: ReviewSessionId | undefined;
+  }>;
   readonly clearedRecentWrites: Array<{
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: PullRequestReview["id"];
@@ -375,7 +378,10 @@ export function createReviewRefreshFixture(
       options.operationCoordinator ?? new ReviewOperationCoordinator(),
     retention: {
       pruneSuperseded: async (_profileId, reviewId) => {
-        calls.prunedReviews.push(reviewId);
+        calls.prunedReviews.push({
+          reviewId,
+          savedCurrentSessionId: calls.savedReviews.at(-1)?.currentSessionId,
+        });
         return ok(undefined);
       },
     },

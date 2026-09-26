@@ -59,7 +59,7 @@ describe("ReviewRefreshService", () => {
     expect(calls.prunedReviews).toEqual([]);
   });
 
-  it("prepares a distinct session and prunes the one it supersedes when only the PR base changes", async () => {
+  it("prepares a distinct session and, once the Review is saved on it, prunes the one it supersedes when only the PR base changes", async () => {
     const changedSnapshot = {
       ...snapshot,
       pullRequest: { ...snapshot.pullRequest, baseSha: changedBaseSha },
@@ -86,7 +86,10 @@ describe("ReviewRefreshService", () => {
     expect(calls.savedSessions).toHaveLength(1);
     expect(calls.savedSessions[0]?.key.baseSha).toBe(changedBaseSha);
     expect(calls.savedSessions[0]?.pendingReview).toBeUndefined();
-    expect(calls.prunedReviews).toEqual([review.id]);
+    // After the save: pruning before it would remove the session the Review moves to.
+    expect(calls.prunedReviews).toEqual([
+      { reviewId: review.id, savedCurrentSessionId: preparedSession.id },
+    ]);
   });
 
   it("maps a preparation authentication failure onto the github_auth reason", async () => {
