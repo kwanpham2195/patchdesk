@@ -153,6 +153,42 @@ describe("Apply suggestions on a working-tree Review", () => {
     expect(localApply.check).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    {
+      name: "an unsettled Apply",
+      overrides: { lock: "outcome_unknown" },
+      shown: () => screen.getByRole("button", { name: "Check files" }),
+    },
+    {
+      name: "a refusal",
+      overrides: { refusal: "git apply refused the change." },
+      shown: () => screen.getByRole("alert"),
+    },
+    {
+      name: "a notice",
+      overrides: { notice: "Applied 1 suggestion." },
+      shown: () => screen.getByRole("status"),
+    },
+  ] satisfies ReadonlyArray<{
+    readonly name: string;
+    readonly overrides: Partial<LocalApplyControls>;
+    readonly shown: () => HTMLElement;
+  }>)(
+    "keeps the Apply bar for $name when nothing is left to apply",
+    ({ overrides, shown }) => {
+      render(
+        <AnalysisReader
+          result={{ ...result, findings: [withoutSuggestion] }}
+          evidencePatch={patch}
+          localApply={controls(overrides)}
+        />,
+      );
+
+      const group = screen.getByRole("group", { name: "Apply suggestions" });
+      expect(group.contains(shown())).toBe(true);
+    },
+  );
+
   it("leaves the Apply bar out when no open Finding has a suggestion that resolves", () => {
     render(
       <AnalysisReader

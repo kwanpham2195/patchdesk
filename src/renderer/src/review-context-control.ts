@@ -1,3 +1,5 @@
+import type { FileDiffMetadata } from "@pierre/diffs";
+
 import { casesHandled } from "../../domain/result";
 import type { ReviewDiffUnavailableReason } from "./hooks/use-review-diff-hydration";
 
@@ -11,10 +13,24 @@ export type ReviewContextControl = {
 
 /**
  * What the rendered files offer to expand: a hydrated file with both sides,
- * nothing (no files, or only added and deleted files, which have no unchanged
- * lines), or not yet known.
+ * nothing (only added and deleted files, which have no unchanged lines), or
+ * not yet known.
  */
 export type RenderedContext = "expandable" | "nothing_to_expand" | "unknown";
+
+/**
+ * Classifies the rendered files by their hydrated metadata, `undefined` for a
+ * file not hydrated (yet). Pierre marks an added or deleted file partial.
+ */
+export function renderedContextOf(
+  hydrated: ReadonlyArray<FileDiffMetadata | undefined>,
+): RenderedContext {
+  if (hydrated.some((file) => file !== undefined && !file.isPartial))
+    return "expandable";
+  return hydrated.length > 0 && hydrated.every((file) => file !== undefined)
+    ? "nothing_to_expand"
+    : "unknown";
+}
 
 /**
  * A raw unified patch can show collapsed separators, but only a hydrated
@@ -47,6 +63,7 @@ export function reviewContextControl(input: {
   // Contents loaded, but added and deleted files have no unchanged lines, so
   // "unavailable" would misreport a complete snapshot.
   if (
+    input.hasSourceSession &&
     input.renderedContext === "nothing_to_expand" &&
     input.unavailableReason === undefined
   ) {
