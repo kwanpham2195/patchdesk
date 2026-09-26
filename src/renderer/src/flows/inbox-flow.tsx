@@ -40,6 +40,7 @@ import {
   type RepositoryIdentity,
 } from "../../../domain/repository-identity";
 import { OpenLocalReviewAction } from "../components/local-review-source-dialog";
+import { localCheckoutsPath } from "../local-checkouts";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
@@ -247,6 +248,10 @@ export function InboxFlow({
     localRepository === undefined ? undefined : (
       <OpenLocalReviewAction
         repositoryLabel={`${localRepository.owner}/${localRepository.repo}`}
+        checkoutsPath={localCheckoutsPath(
+          dashboard.profile.id,
+          localRepository,
+        )}
         onOpen={(source) =>
           reviewOpening.openLocalReview(localRepository, source)
         }

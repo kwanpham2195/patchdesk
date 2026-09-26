@@ -2,6 +2,8 @@ import { useState } from "react";
 import { FolderGit2 } from "lucide-react";
 
 import type { LocalReviewSourceInput } from "../flows/use-inbox-review-opening";
+import { useApiProbe } from "../hooks/use-api-probe";
+import { parseLocalCheckouts, type LocalCheckout } from "../local-checkouts";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -14,6 +16,14 @@ import {
 } from "./ui/dialog";
 import { Field, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 type SourceKind = LocalReviewSourceInput["kind"];
@@ -26,9 +36,12 @@ type SourceKind = LocalReviewSourceInput["kind"];
  */
 export function OpenLocalReviewAction({
   repositoryLabel,
+  checkoutsPath,
   onOpen,
 }: {
   readonly repositoryLabel: string;
+  /** Where the repository's checkouts are listed; a working tree can be read from any of them (#489). */
+  readonly checkoutsPath: string;
   /** Rejects with the sentence to show; resolves once the Review is open. */
   readonly onOpen: (source: LocalReviewSourceInput) => Promise<void>;
 }): React.JSX.Element {
@@ -41,6 +54,7 @@ export function OpenLocalReviewAction({
       {open ? (
         <LocalReviewSourceDialog
           repositoryLabel={repositoryLabel}
+          checkoutsPath={checkoutsPath}
           onOpen={onOpen}
           onOpenChange={setOpen}
         />
@@ -52,10 +66,12 @@ export function OpenLocalReviewAction({
 /** Mounted only while open, so cancelling drops the draft. */
 function LocalReviewSourceDialog({
   repositoryLabel,
+  checkoutsPath,
   onOpen,
   onOpenChange,
 }: {
   readonly repositoryLabel: string;
+  readonly checkoutsPath: string;
   readonly onOpen: (source: LocalReviewSourceInput) => Promise<void>;
   readonly onOpenChange: (open: boolean) => void;
 }): React.JSX.Element {
@@ -65,7 +81,15 @@ function LocalReviewSourceDialog({
   const [commit, setCommit] = useState("");
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
-  const source = sourceInput(kind, { branch, baseBranch, commit });
+  const checkouts = useApiProbe(
+    { path: checkoutsPath, restartKey: checkoutsPath },
+    parseLocalCheckouts,
+  );
+  // Undefined reads the configured checkout; a listing that failed offers only that one.
+  const [checkout, setCheckout] = useState<string>();
+  const listedCheckouts =
+    checkouts.kind === "loaded" ? checkouts.value : ([] as const);
+  const source = sourceInput(kind, { branch, baseBranch, commit, checkout });
 
   const submit = async (): Promise<void> => {
     if (source === undefined) return;
@@ -124,9 +148,18 @@ function LocalReviewSourceDialog({
             </TabsList>
           </Tabs>
           {kind === "working_tree" ? (
-            <p className="text-sm text-muted-foreground">
-              Staged, unstaged, and untracked changes against HEAD.
-            </p>
+            <>
+              {listedCheckouts.length > 1 ? (
+                <CheckoutSelect
+                  checkouts={listedCheckouts}
+                  value={checkout}
+                  onChange={setCheckout}
+                />
+              ) : null}
+              <p className="text-sm text-muted-foreground">
+                Staged, unstaged, and untracked changes against HEAD.
+              </p>
+            </>
           ) : kind === "branch" ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <SourceField
@@ -175,6 +208,7 @@ function sourceInput(
     readonly branch: string;
     readonly baseBranch: string;
     readonly commit: string;
+    readonly checkout: string | undefined;
   },
 ): LocalReviewSourceInput | undefined {
   const branch = fields.branch.trim();
@@ -182,7 +216,9 @@ function sourceInput(
   const commit = fields.commit.trim().toLowerCase();
   switch (kind) {
     case "working_tree":
-      return { kind };
+      return fields.checkout === undefined
+        ? { kind }
+        : { kind, checkout: fields.checkout };
     case "branch":
       return branch === "" || baseBranch === ""
         ? undefined
@@ -190,6 +226,54 @@ function sourceInput(
     case "commit":
       return /^[0-9a-f]{4,64}$/.test(commit) ? { kind, commit } : undefined;
   }
+}
+
+/** Picks the checkout the working tree is read from; the configured one is the default and sends no path. */
+function CheckoutSelect({
+  checkouts,
+  value,
+  onChange,
+}: {
+  readonly checkouts: ReadonlyArray<LocalCheckout>;
+  readonly value: string | undefined;
+  readonly onChange: (checkout: string | undefined) => void;
+}): React.JSX.Element {
+  const selected =
+    value ?? checkouts.find((candidate) => candidate.configured)?.path ?? null;
+  return (
+    <Field>
+      <FieldLabel htmlFor="local-review-checkout">Checkout</FieldLabel>
+      <Select
+        value={selected}
+        items={checkouts.map((candidate) => ({
+          label: checkoutName(candidate),
+          value: candidate.path,
+        }))}
+        onValueChange={(path) => {
+          const chosen = checkouts.find((candidate) => candidate.path === path);
+          if (chosen !== undefined)
+            onChange(chosen.configured ? undefined : chosen.path);
+        }}
+      >
+        <SelectTrigger id="local-review-checkout" aria-label="Checkout">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {checkouts.map((candidate) => (
+              <SelectItem key={candidate.path} value={candidate.path}>
+                {checkoutName(candidate)}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+function checkoutName(checkout: LocalCheckout): string {
+  return `${checkout.name} · ${checkout.head.kind === "branch" ? checkout.head.branch : "detached HEAD"}`;
 }
 
 function SourceField({
