@@ -13,7 +13,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { ok, err, type Result } from "../../src/domain/result";
-import { LocalReviewRetention } from "../../src/services/local-review-retention";
+import { ReviewRetention } from "../../src/services/review-retention";
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
@@ -249,20 +249,21 @@ function preparationService(
 const preparationInput = { profileId, pullRequest };
 
 /**
- * The real `LocalReviewRetention`, wired only far enough to take its profile
+ * The real `ReviewRetention`, wired only far enough to take its profile
  * lock and stop inside it on the first read. Its callers hold the Review
  * lock, so the profile lock it takes is always an inner lock.
  */
-function localRetention(
+function reviewRetention(
   gate: ReviewLifecycleGate,
   coordinator: ReviewOperationCoordinator,
-): LocalReviewRetention {
+): ReviewRetention {
   const localReview = {
     id: reviewId,
     identity: { source: { kind: "working_tree" } },
+    status: { _tag: "Open" },
     updatedAt: at,
   };
-  return new LocalReviewRetention(
+  return new ReviewRetention(
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
       profiles: { load: async () => ok({ id: profileId, repos: [] }) },
@@ -271,6 +272,7 @@ function localRetention(
         load: async () => ok(localReview),
       },
       localApplyOperations: { load: async () => err({ reason: "io" }) },
+      writeOperations: { load: async () => ok(undefined) },
       lifecycleGate: gate,
       coordinator,
       now: () => at,
@@ -365,7 +367,7 @@ describe("global lock order: Review lock outer, profile lock inner", () => {
     expect(recorder.violations).toEqual([]);
   });
 
-  it("LocalReviewRetention.pruneSuperseded takes the profile lock inside its caller's Review lock", async () => {
+  it("ReviewRetention.pruneSuperseded takes the profile lock inside its caller's Review lock", async () => {
     const recorder = new LockOrderRecorder();
     const gate = new RecordingGate(recorder);
     const coordinator = new RecordingCoordinator(recorder);
@@ -373,7 +375,7 @@ describe("global lock order: Review lock outer, profile lock inner", () => {
     // How `LocalReviewOpening` prunes after moving a Review to a new session.
     await coordinator.withReviewLock(profileId, reviewId, () =>
       // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-      localRetention(gate, coordinator).pruneSuperseded(
+      reviewRetention(gate, coordinator).pruneSuperseded(
         profileId,
         reviewId as never,
       ),
@@ -383,12 +385,12 @@ describe("global lock order: Review lock outer, profile lock inner", () => {
     expect(recorder.violations).toEqual([]);
   });
 
-  it("LocalReviewRetention.sweepProfile takes each Review lock before the profile lock", async () => {
+  it("ReviewRetention.sweepProfile takes each Review lock before the profile lock", async () => {
     const recorder = new LockOrderRecorder();
     const gate = new RecordingGate(recorder);
     const coordinator = new RecordingCoordinator(recorder);
 
-    await localRetention(gate, coordinator).sweepProfile(profileId);
+    await reviewRetention(gate, coordinator).sweepProfile(profileId);
 
     // The Review's prune nests inside its Review lock; the orphan-ref pass takes the profile lock alone.
     expect(recorder.chains).toEqual(["review", "review>profile", "profile"]);

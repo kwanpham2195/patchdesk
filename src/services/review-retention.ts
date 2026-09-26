@@ -4,6 +4,7 @@ import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import { definedProps } from "../domain/defined-props";
 import {
   createReviewId,
@@ -26,11 +27,12 @@ import type {
   ReviewWorktreeService,
 } from "./review-worktree-service";
 import {
+  hasLockedGitHubWrite,
   readSessionRunningState,
   type SessionRunningStateDependencies,
 } from "./session-running-state";
 
-export type LocalRetentionFailure = { readonly _tag: "StorageUnavailable" };
+export type ReviewRetentionFailure = { readonly _tag: "StorageUnavailable" };
 
 type Dependencies = SessionRunningStateDependencies & {
   readonly profiles: Pick<ProfileStore, "load">;
@@ -38,6 +40,7 @@ type Dependencies = SessionRunningStateDependencies & {
   readonly sessions: Pick<ReviewSessionStore, "load" | "listSessions">;
   readonly insights: Pick<InsightStore, "load">;
   readonly localApplyOperations: Pick<LocalApplyOperationStore, "load">;
+  readonly writeOperations: Pick<ReviewWriteOperationStore, "load">;
   readonly worktrees: Pick<
     ReviewWorktreeService,
     "cleanup" | "listManagedRefs" | "deleteManagedRefs"
@@ -53,24 +56,26 @@ type Dependencies = SessionRunningStateDependencies & {
 const RETAIN_ABANDONED_LOCAL_REVIEW_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
- * Removes the sessions a local Review has moved past (#474). A local Review
- * is never Terminal, so ADR 0020's sweep would keep every session it ever
- * had, each with a worktree and a managed ref in the maintainer's repository.
+ * Removes the sessions an Open Review has moved past, local (#474) or pull
+ * request (#478). ADR 0020's sweep removes sessions only once their Review is
+ * Terminal, and a local Review never is, so without this every Refresh or push
+ * would leave a worktree and a managed ref in the maintainer's repository.
  */
-export class LocalReviewRetention {
+export class ReviewRetention {
   constructor(private readonly dependencies: Dependencies) {}
 
   /**
-   * Removes every superseded session of one local Review: its worktree, its
-   * managed ref, and its session directory. A session a retained Insight names
-   * keeps its directory, which holds everything that Insight reads, and loses
-   * only its worktree and ref. The caller holds the Review lock; the profile
-   * lock is taken here, inside it. A failure is recorded as a diagnostic.
+   * Removes every superseded session of one Open Review: its worktree, its
+   * managed refs, and its session directory. A session a retained Insight
+   * names keeps its directory, which holds everything that Insight reads, and
+   * loses only its worktree and refs. A Terminal Review is left to ADR 0020's
+   * 14-day rule. The caller holds the Review lock; the profile lock is taken
+   * here, inside it. A failure is recorded as a diagnostic.
    */
   async pruneSuperseded(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<undefined, LocalRetentionFailure>> {
+  ): Promise<Result<undefined, ReviewRetentionFailure>> {
     const pruned = await this.dependencies.lifecycleGate
       .withProfileLock(profileId, () =>
         this.pruneUnderProfileLock(profileId, reviewId),
@@ -87,19 +92,19 @@ export class LocalReviewRetention {
   }
 
   /**
-   * The scheduled pass (ADR 0020): prunes every local Review of the profile,
-   * or removes it whole when its source is gone, each under its own Review
-   * lock. Then deletes the profile's managed refs no kept session names,
-   * under the profile lock only.
+   * The scheduled pass (ADR 0020): prunes every Open Review of the profile,
+   * or removes a local one whole when its source is gone, each under its own
+   * Review lock. Then deletes the profile's managed refs no kept session
+   * names, under the profile lock only.
    */
   async sweepProfile(
     profileId: WorkspaceProfileId,
-  ): Promise<Result<undefined, LocalRetentionFailure>> {
+  ): Promise<Result<undefined, ReviewRetentionFailure>> {
     const listed = await this.dependencies.reviews.list(profileId);
     if (listed._tag === "err") return err({ _tag: "StorageUnavailable" });
     // One Review at a time: each one's Git work queues on the profile lock anyway.
     const swept = await mapConcurrent(
-      listed.value.reviews.filter(isLocalReview),
+      listed.value.reviews.filter((review) => review.status._tag === "Open"),
       1,
       (review) =>
         this.dependencies.coordinator.withReviewLock(profileId, review.id, () =>
@@ -115,7 +120,7 @@ export class LocalReviewRetention {
     await this.record(
       profileId,
       undefined,
-      `local sweep complete: ${String(removedReviews.length)} Reviews with a gone source removed, ${String(orphaned ?? 0)} orphaned managed refs deleted`,
+      `review retention sweep complete: ${String(removedReviews.length)} local Reviews with a gone source removed, ${String(orphaned ?? 0)} orphaned managed refs deleted`,
     );
     return orphaned === undefined || swept.includes("failed")
       ? err({ _tag: "StorageUnavailable" })
@@ -134,7 +139,10 @@ export class LocalReviewRetention {
     if (review._tag === "err")
       return review.error.reason === "not_found" ? "kept" : "failed";
     if (profile._tag === "err") return "failed";
-    if (!isLocalReview(review.value)) return "kept";
+    if (!isLocalReview(review.value)) {
+      const pruned = await this.pruneSuperseded(profileId, reviewId);
+      return pruned._tag === "ok" ? "kept" : "failed";
+    }
     const localPath = configuredLocalPath(profile.value, review.value.identity);
     const lastUsed = review.value.lastOpenedAt ?? review.value.updatedAt;
     const abandoned =
@@ -285,14 +293,17 @@ export class LocalReviewRetention {
   private async pruneUnderProfileLock(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<undefined, LocalRetentionFailure>> {
-    // Apply recovery decides an unsettled Apply from the sessions it names.
-    const apply = await this.dependencies.localApplyOperations.load(
-      profileId,
-      reviewId,
-    );
-    if (apply._tag === "err") return err({ _tag: "StorageUnavailable" });
-    if (apply.value !== undefined) return ok(undefined);
+  ): Promise<Result<undefined, ReviewRetentionFailure>> {
+    // Apply recovery decides an unsettled Apply from the sessions it names, and
+    // GitHub write recovery an outcome-unknown write (ADR 0035).
+    const [apply, write] = await Promise.all([
+      this.dependencies.localApplyOperations.load(profileId, reviewId),
+      this.dependencies.writeOperations.load(profileId, reviewId),
+    ]);
+    if (apply._tag === "err" || write._tag === "err")
+      return err({ _tag: "StorageUnavailable" });
+    if (apply.value !== undefined || write.value !== undefined)
+      return ok(undefined);
     const [review, profile, sessions, insightSessions] = await Promise.all([
       this.dependencies.reviews.load(profileId, reviewId),
       this.dependencies.profiles.load(profileId),
@@ -303,29 +314,28 @@ export class LocalReviewRetention {
       return review.error.reason === "not_found"
         ? ok(undefined)
         : err({ _tag: "StorageUnavailable" });
-    if (!isLocalReview(review.value)) return ok(undefined);
+    // The running-state rule keeps only an Open Review's current session.
+    if (review.value.status._tag !== "Open") return ok(undefined);
     if (
       profile._tag === "err" ||
       sessions._tag === "err" ||
       insightSessions === undefined
     )
       return err({ _tag: "StorageUnavailable" });
+    const owned = sessions.value.filter(
+      (session) => createReviewId(session.key) === reviewId,
+    );
+    // A locked pending-review or summary write keeps every session for its recovery (ADR 0035).
+    if (owned.some(hasLockedGitHubWrite)) return ok(undefined);
     const localPath = configuredLocalPath(profile.value, review.value.identity);
-    // Without the checkout, the worktree and its ref cannot be removed through Git.
-    if (localPath === undefined) return ok(undefined);
     // One session at a time: `git update-ref` and `git worktree` contend on the repository's locks.
-    const outcomes = await mapConcurrent(
-      sessions.value.filter(
-        (session) => createReviewId(session.key) === reviewId,
+    const outcomes = await mapConcurrent(owned, 1, (session) =>
+      this.pruneSession(
+        profileId,
+        session,
+        localPath,
+        insightSessions.has(session.id),
       ),
-      1,
-      (session) =>
-        this.pruneSession(
-          profileId,
-          session,
-          localPath,
-          insightSessions.has(session.id),
-        ),
     );
     const removed = outcomes.filter((outcome) => outcome === "removed").length;
     const trimmed = outcomes.filter((outcome) => outcome === "trimmed").length;
@@ -333,7 +343,7 @@ export class LocalReviewRetention {
       await this.record(
         profileId,
         undefined,
-        `removed ${String(removed)} superseded local sessions and the worktrees of ${String(trimmed)} kept for retained Insights`,
+        `removed ${String(removed)} superseded sessions of ${reviewId} and the worktrees of ${String(trimmed)} kept for retained Insights`,
       );
     return ok(undefined);
   }
@@ -345,7 +355,7 @@ export class LocalReviewRetention {
   private async pruneSession(
     profileId: WorkspaceProfileId,
     session: ReviewSession,
-    localPath: string,
+    localPath: string | undefined,
     namedByInsight: boolean,
   ): Promise<"removed" | "trimmed" | "kept"> {
     const running = await readSessionRunningState(
@@ -401,17 +411,22 @@ export class LocalReviewRetention {
     return sessionIds;
   }
 
-  /** Removes the session's worktree and managed ref; "kept" when Git or the ownership check refused. */
+  /**
+   * Removes the session's worktree and managed refs; "kept" when Git or the
+   * ownership check refused, or when the profile no longer names the checkout
+   * that Git must remove the worktree through.
+   */
   private async removeWorktree(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
-    localPath: string,
+    localPath: string | undefined,
   ): Promise<"absent" | "removed" | "kept"> {
     const targetPath = this.dependencies.paths.worktreeDirectory(
       profileId,
       sessionId,
     );
     if (!(await exists(targetPath))) return "absent";
+    if (localPath === undefined) return "kept";
     const cleaned = await this.dependencies.worktrees.cleanup({
       profileId,
       sessionId,
@@ -437,7 +452,7 @@ export class LocalReviewRetention {
     await this.dependencies.diagnostics?.record({
       profileId,
       category: "cleanup",
-      phase: "local_retention",
+      phase: "review_retention",
       ...definedProps({ sessionId }),
       retryable,
       detail,

@@ -32,6 +32,7 @@ import {
 import {
   beginInsightRun,
   completeInsightRun,
+  type InsightType,
 } from "../../src/domain/insight-record";
 import type { LogEntryInput } from "../../src/domain/log-entry";
 import { ok, type Result } from "../../src/domain/result";
@@ -43,7 +44,7 @@ import { LocalApplyService } from "../../src/services/local-apply-service";
 import { LocalApplySettlement } from "../../src/services/local-apply-settlement";
 import { LocalDraftService } from "../../src/services/local-draft-service";
 import { LocalReviewOpening } from "../../src/services/local-review-opening";
-import { LocalReviewRetention } from "../../src/services/local-review-retention";
+import { ReviewRetention } from "../../src/services/review-retention";
 import { LocalReviewRevisionService } from "../../src/services/local-review-revision-service";
 import { LocalReviewSessionPreparation } from "../../src/services/local-review-session-preparation";
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
@@ -108,7 +109,7 @@ export type LocalApplyHarness = {
   /** Add to draft, maintainer notes, and Remove over the same stores and Review coordinator; note ids count up from `note-fixture-1`. */
   readonly drafts: LocalDraftService;
   readonly coordinator: ReviewOperationCoordinator;
-  readonly retention: LocalReviewRetention;
+  readonly retention: ReviewRetention;
   readonly logs: ReadonlyArray<LogEntryInput>;
   readonly open: (
     request?: LocalReviewSourceRequest,
@@ -180,7 +181,7 @@ export async function localApplyHarness(
     { environmentFor: async () => ok({}) },
     async () => undefined,
   );
-  const retention = new LocalReviewRetention({
+  const retention = new ReviewRetention({
     paths,
     profiles,
     reviews,
@@ -188,6 +189,7 @@ export async function localApplyHarness(
     insights,
     mergeOperations: new MergeOperationStore(paths),
     localApplyOperations: operations,
+    writeOperations: new ReviewWriteOperationStore(paths),
     worktrees,
     artifacts,
     git: interceptedGit,
@@ -300,9 +302,51 @@ export function suggestionFinding(
 }
 
 /** Retains one Analysis result against the workbench's session, as a completed run would. */
+/** What an Insight run is bound to: an opened workbench, or the same parts of a stored session. */
+export type InsightRunTarget = {
+  readonly review: Pick<ReviewWorkbenchProjection["review"], "id">;
+  readonly session: Pick<ReviewWorkbenchProjection["session"], "id"> & {
+    readonly key: Pick<ReviewWorkbenchProjection["session"]["key"], "headSha">;
+  };
+  readonly revision: Pick<ReviewWorkbenchProjection["revision"], "patchHash">;
+};
+
+/** Starts an Insight run on the target's session and leaves it running. */
+export async function beginRun(
+  insights: InsightStore,
+  workbench: InsightRunTarget,
+  type: InsightType,
+): Promise<void> {
+  const id = value(
+    parseInsightRunId(`insight-${type}-1-aaaaaaaaaaaa-${workbench.review.id}`),
+  );
+  value(
+    await insights.mutate({
+      profileId,
+      reviewId: workbench.review.id,
+      type,
+      now,
+      operation: (record) =>
+        beginInsightRun(record, {
+          id,
+          revision: {
+            sessionId: workbench.session.id,
+            headSha: workbench.session.key.headSha,
+            patchHash: value(parseContentHash(workbench.revision.patchHash)),
+          },
+          provider: "pi",
+          model: "model",
+          reasoning: "medium",
+          language: "en",
+          startedAt: now,
+        }),
+    }),
+  );
+}
+
 export async function retainAnalysis(
   insights: InsightStore,
-  workbench: ReviewWorkbenchProjection,
+  workbench: InsightRunTarget,
   findings: ReviewResult["findings"],
 ): Promise<InsightRunId> {
   const runId = value(

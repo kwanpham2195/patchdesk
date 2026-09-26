@@ -35,7 +35,7 @@ import type {
   LocalReviewSessionPreparation,
   ResolvedLocalReview,
 } from "./local-review-session-preparation";
-import type { LocalReviewRetention } from "./local-review-retention";
+import type { ReviewRetention } from "./review-retention";
 import type { RepositoryCheckout } from "./local-checkout";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
@@ -94,7 +94,7 @@ export class LocalReviewOpening {
         ReviewOperationCoordinator,
         "withReviewLock" | "acquire" | "release"
       >;
-      readonly retention: Pick<LocalReviewRetention, "pruneSuperseded">;
+      readonly retention: Pick<ReviewRetention, "pruneSuperseded">;
       readonly applySettlement: Pick<
         LocalApplySettlement,
         "settleEarlierSession"
