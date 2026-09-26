@@ -12,9 +12,3 @@ Line 11 of the throwaway file for #526.
 Line 12 of the throwaway file for #526.
 Line 13 of the throwaway file for #526.
 Line 14 of the throwaway file for #526.
-Line 15 of the throwaway file for #526.
-Line 16 of the throwaway file for #526.
-Line 17 of the throwaway file for #526.
-Line 18 of the throwaway file for #526.
-Line 19 of the throwaway file for #526.
-Line 20 of the throwaway file for #526.
