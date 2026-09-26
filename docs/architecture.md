@@ -109,6 +109,8 @@ It is the only place that knows about Electron.
 - `desktop-notifier.ts` posts the macOS notifications of ADR 0044. `decideDesktopNotification` is the pure silence rule, and `createDesktopNotifier` owns the settings read, Electron's `Notification`, and the click hand-off.
 - `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, `window-appearance.ts`, and `desktop-menu.ts` hold small desktop concerns. The five `desktop-*-channel.ts` modules each keep both halves of one main-to-renderer channel — menu action, full screen, appearance, notification click, watched pull request change — in one module, so the channel name is written once.
 
+- `mcp/` is the app side of the coding-agent MCP server (ADR 0052). `mcp-socket-listener.ts` listens on a Unix socket (`PatchdeskPaths.mcpSocketFile()`, or `PATCHDESK_MCP_SOCKET`) in a `0700` directory, answers one JSON line per connection, and bounds requests, replies, and time. `mcp-tool-dispatcher.ts` is the table from tool name to a thin adapter over the service a route calls. No MCP SDK runs in the app.
+
 **Architecture Invariant:** the renderer is sandboxed and has no Node.js access.
 The preload bridge is the only way out.
 
@@ -227,6 +229,13 @@ Moving the exact `@earendil-works` version this runtime pins is its own procedur
 **Architecture Invariant:** the child mounts no sandbox, no MCP connection, no declared subagent, no generic filesystem or shell capability, and no GitHub writer.
 The agent loop mounts no tool of its own and the runtime installs no MCP client, so no code path here can create one.
 The shipped child is an exact locked package, staged at package time and validated by package smoke.
+
+### `src/mcp/`
+
+The `patchdesk mcp` shim a coding agent spawns (ADR 0052), built by a nested build in `electron.vite.config.ts` into one file, `out/main/mcp-shim.js`, and packaged outside the asar with the launcher `Contents/Resources/bin/patchdesk`.
+It serves the tools in `tool-manifest.ts` over stdio with `serveStdio`, which answers both the 2025 handshake and the 2026-07-28 revision, and forwards each call to the app's socket through `socket-client.ts`; `socket-protocol.ts` holds the path, the line shapes, and the bounds both sides share.
+
+**Architecture Invariant:** the shim holds no state and no authority. Every call connects afresh to the running app, which validates it again; an unreachable app is the tool error `app_not_running`, and the shim never starts the app.
 
 ### `src/skills/`
 

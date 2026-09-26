@@ -332,6 +332,10 @@ status in the route and one tool error in the dispatcher:
   with the same message, so both eras and both clients show it. `error` is
   the service's own reason plus the four the MCP layer adds:
   `app_not_running`, `profile_changed`, `rate_limited`, `too_large`.
+- Amended 2026-09-26 (slice 2): the shim adds a fifth, `app_not_responding`,
+  when it connects but gets no reply within 30 s, the connection closes
+  first, or the reply is malformed. `app_not_running` stays the connect
+  failure.
 - `in_progress` means the Review lock is held; the message says to retry
   when it finishes, as the UI does.
 - A tool never returns a stack, a path outside the checkout, or another
@@ -414,6 +418,9 @@ codex mcp add patchdesk -- patchdesk mcp
    `binary`, the dev socket. Inspector pass in both eras.
 3. **Read tools.** `review_local`, `refresh_review` (prepare-only),
    `get_insight`, `get_feedback` with paging. Live pass with Claude Code.
+   Refused and failed calls also recorded through
+   `review-diagnostic-service.ts` (deferred from slice 2, which only logs
+   them).
 4. **Requests and approval UI.** `run_insight`, the request record, the
    notification, the Agent requests bar, the sidebar marker, the local
    settled notification (#496). Live pass with both clients.
