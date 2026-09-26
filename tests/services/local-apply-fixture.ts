@@ -202,7 +202,7 @@ export async function localApplyHarness(
       new ViewedFilesStore(paths, { write: () => undefined }),
       operations,
     ),
-    { reviews, artifacts, coordinator },
+    { reviews, artifacts, coordinator, retention },
     () => now,
   );
   const logs: LogEntryInput[] = [];

@@ -136,7 +136,7 @@ export class LocalReviewSessionPreparation {
     const sessionId = createReviewSessionId(key);
     const stored = await this.dependencies.sessions.load(profileId, sessionId);
     if (stored._tag === "ok" && !isPullRequestReviewSession(stored.value))
-      return ok(stored.value);
+      return this.withWorktree(resolved, stored.value);
     if (stored._tag === "err" && stored.error.reason !== "not_found") {
       if (stored.error.reason !== "invalid_stored_value")
         return err({ _tag: "SessionStorageUnavailable" });
@@ -173,6 +173,27 @@ export class LocalReviewSessionPreparation {
     if (journal._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
     return this.writeSession(resolved, key, journal.value);
+  }
+
+  /**
+   * The stored session, with its worktree checked out again when retention
+   * removed it: a session a retained Insight names keeps only its directory
+   * (#474), and the checkout can return to that same snapshot.
+   */
+  private async withWorktree(
+    resolved: ResolvedLocalReview,
+    session: LocalReviewSession,
+  ): Promise<Result<LocalReviewSession, LocalReviewPreparationFailure>> {
+    if (await exists(session.worktree.path)) return ok(session);
+    const rebuilt = await this.dependencies.worktrees.prepareLocal({
+      profileId: session.key.profileId,
+      sessionId: session.id,
+      localPath: resolved.localPath,
+      headSha: session.worktree.headSha,
+    });
+    return rebuilt._tag === "ok"
+      ? ok(session)
+      : err({ _tag: "PreparationUnavailable" });
   }
 
   private async writeSession(

@@ -52,15 +52,25 @@ export class LocalReviewRetention {
    * managed ref, and its session directory. A session a retained Insight names
    * keeps its directory, which holds everything that Insight reads, and loses
    * only its worktree and ref. The caller holds the Review lock; the profile
-   * lock is taken here, inside it.
+   * lock is taken here, inside it. A failure is recorded as a diagnostic.
    */
   async pruneSuperseded(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<undefined, LocalRetentionFailure>> {
-    return this.dependencies.lifecycleGate.withProfileLock(profileId, () =>
-      this.pruneUnderProfileLock(profileId, reviewId),
-    );
+    const pruned = await this.dependencies.lifecycleGate
+      .withProfileLock(profileId, () =>
+        this.pruneUnderProfileLock(profileId, reviewId),
+      )
+      .catch(() => err({ _tag: "StorageUnavailable" as const }));
+    if (pruned._tag === "err")
+      await this.record(
+        profileId,
+        undefined,
+        `prune failed: ${reviewId}`,
+        true,
+      );
+    return pruned;
   }
 
   /** Prunes every local Review of the profile, each under its own Review lock. */
