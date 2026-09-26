@@ -82,6 +82,11 @@ The login-shell environment import runs beside that sequence rather than inside 
 `startDesktopBesideLoginShellImport` in `app-lifecycle.ts` starts the import first, keeps its promise, and starts the lifecycle next, so neither the local API nor the window waits for a shell to source the maintainer's dotfiles (ADR 0038, amended 2026-09-19).
 Each reader that needs an imported PATH or provider credential awaits that one promise for itself, and `electron-main.ts` awaits it after the window is up.
 
+A coding agent reaches the main process a second way (ADR 0052).
+Its MCP client spawns `patchdesk mcp`, a stdio process that runs on the app's own Node; each tool call opens one connection to a Unix socket the main process listens on, and the main process parses the call again and calls the same service a local API route calls.
+The listener starts beside the local API once the login-shell import settles, because `PATCHDESK_MCP_SOCKET` may come from it.
+The socket is outside the renderer's path, so no capability or origin applies: it sits in a `0700` folder only the maintainer's macOS user can open.
+
 ## Code Map
 
 This section describes the important directories and data structures.
@@ -109,7 +114,7 @@ It is the only place that knows about Electron.
 - `desktop-notifier.ts` posts the macOS notifications of ADR 0044. `decideDesktopNotification` is the pure silence rule, and `createDesktopNotifier` owns the settings read, Electron's `Notification`, and the click hand-off.
 - `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, `window-appearance.ts`, and `desktop-menu.ts` hold small desktop concerns. The five `desktop-*-channel.ts` modules each keep both halves of one main-to-renderer channel — menu action, full screen, appearance, notification click, watched pull request change — in one module, so the channel name is written once.
 
-- `mcp/` is the app side of the coding-agent MCP server (ADR 0052). `mcp-socket-listener.ts` listens on a Unix socket (`PatchdeskPaths.mcpSocketFile()`, or `PATCHDESK_MCP_SOCKET`) in a `0700` directory, answers one JSON line per connection, and bounds requests, replies, and time. `mcp-tool-dispatcher.ts` is the table from tool name to a thin adapter over the service a route calls. No MCP SDK runs in the app.
+- `mcp/` is the app side of the coding-agent MCP server (ADR 0052). `mcp-socket-listener.ts` listens on a Unix socket (`PatchdeskPaths.mcpSocketFile()`, or `PATCHDESK_MCP_SOCKET`) in a `0700` directory, removes a stale socket file at start, answers one JSON line per connection, bounds requests (256 KiB), replies (4 MiB), and time (30 s), and logs each call under topic `mcp`. `mcp-tool-dispatcher.ts` is the table from tool name to a thin adapter, keyed by the names in `src/mcp/tool-manifest.ts`, and re-validates each call with the manifest's schema; it also records refused calls in the Review diagnostics. `mcp-review-tools.ts` holds the adapters for the Review tools: each resolves the active profile at call time (`no_profile`, `profile_changed`), calls the service the matching route calls, and maps the service's reasons to tool errors. No MCP SDK runs in the app.
 
 **Architecture Invariant:** the renderer is sandboxed and has no Node.js access.
 The preload bridge is the only way out.
@@ -121,6 +126,9 @@ Cross-site and navigation-shaped requests are rejected before any service runs.
 It owns the capability, every GitHub write, every model child, and all storage.
 The renderer can only request; it can never execute.
 
+**Architecture Invariant:** an MCP tool is a thin adapter over the service a route calls.
+No validation, decision, or result shaping lives in `mcp/` or `src/mcp/` that a tool needs and the route lacks; a field a tool needs is a service change.
+
 ### `src/domain/`
 
 The types and invariants of the system. This is the **API Boundary** every other layer builds on.
@@ -130,6 +138,7 @@ The types and invariants of the system. This is the **API Boundary** every other
 - `review.ts` models the Review aggregate: identity, current session, freshness, and terminal state. Pure functions such as `reconcileReviewRemoteState` and `markReviewTerminal` are the only state transitions.
 - `review-session.ts` models a session pinned to one pull-request revision.
 - `insight-record.ts` models the run lifecycle of an Insight: an `InsightRun` is `queued`, `running`, or `cancelling`, a run that produces a validated result becomes a `RetainedInsight` bound to the analyzed revision, and a run that ends without one becomes an `InsightFailure` whose reason is `cancelled`, `failed`, `invalid_result`, or `superseded`.
+- `agent-run-request.ts` models an agent run request on a local Review: keyed by session and Insight type, `awaiting_approval`, `approved` with its run id, or `declined`.
 - `pending-review.ts`, `merge-operation.ts`, and `direct-summary-review.ts` model write intents and their receipts. `local-draft.ts` models a Local draft, the entry `Review.localDrafts` stores for a local Review only: a Finding draft, or a maintainer note (ADR 0051). `local-draft-carry.ts` is ADR 0002's carry rule for one draft when the Review moves to a new session: it moves when its `diff-anchor.ts` fingerprint maps once in the new patch or its surrounding lines are found once in the new file, and needs attention otherwise; a moved draft is changed when its lines differ from the lines at note time, which the draft keeps (#452). `local-apply-operation.ts` models the Apply suggestion write on a local Review and decides its recovery from file hashes; `local-apply-patch.ts` composes one file's post-image and patch from its current text.
 - `patch.ts` maps Findings to diff locations (`mapFindingLocation`, `toGitHubReviewCoordinates`), and `diff-anchor.ts` fingerprints the diff context around a `PendingReviewAnchor` so one inline command can be validated against the represented diff. Both read the patch through the tokenizer in `unified-patch.ts`.
 - `watched-pull-request.ts` models a watched pull request and the GitHub snapshot each poll is compared against. `diffWatchedSnapshot` derives the changes between two snapshots, and `checkWatchCapacity` refuses a 21st watch before GitHub is asked (ADR 0045).
@@ -165,6 +174,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `local-review-opening.ts` opens and refreshes a local Review (ADR 0050) under the Review lock. Refresh is a command, so it refuses a held Review instead of waiting; every move to a new session, from Refresh, a reopen, or Apply, carries the Local drafts, reading the new patch and each drafted file from the new session's worktree. `local-review-session-preparation.ts` resolves the source from a profile repository's `localPath` and prepares its session, and `local-review-revision-service.ts` reads the head and base SHAs from the checkout, writes the working-tree Local snapshot in a temporary index copy, and renders the patch with `git diff --binary`. The maintainer's index is only read.
 - `local-apply-service.ts` applies verified Finding suggestions to a working-tree checkout with `git apply` (ADR 0050): durable intent, outcome-unknown immediately before the write, confirmation from file hashes, then the drafted Findings it wrote marked applied and the next session through the local open path. `local-apply-composition.ts` rebuilds each range from the retained Analysis and the file's current bytes, and `local-apply-checkout.ts` reads a file only inside the checkout and never through a symlink. Recovery at startup and on request reads file hashes only and never applies again. `local-apply-settlement.ts` ends an unsettled Apply once the Review moves past its session (#484); `local-review-opening.ts` calls it on every move.
 - `local-draft-service.ts` implements Add to draft, maintainer notes (add, edit, remove), and Remove on a local Review (ADR 0050 "Local drafts", ADR 0051): a Review record write under the Review coordinator with no freshness gate; each names the session the workbench displays and is refused on another. For a Finding draft the main process reads the Finding from the Analysis retained for the current session; for a note it takes the lines the renderer names. Either way it fingerprints the anchor against the current session's patch with `diff-anchor.ts`, and refuses lines that patch does not show. `agentPrompt` composes the drafts as one prompt for the coding agent with `renderLocalDraftsAsAgentPrompt` in `src/domain/local-draft-agent-prompt.ts`. `brief-pull-request-description.ts` serves the retained Brief as Markdown through `renderBriefAsPullRequestDescription` in `src/domain/`, which writes each hunk citation as `path:line`.
+- The coding agent's tools (ADR 0052) sit on these services. `LocalReviewOpening.openForAgent` returns an existing local Review unmoved and opens a missing one as the open-local route does; `prepareForAgent` prepares a session for the checkout's current content and records it as the Review's prepared session without moving the Review, one call per Review every 10 seconds. `local-change-intent-service.ts` records an agent's intent only when the Review has none, marked as from the agent. `agent-run-request-service.ts` records, returns, and declines agent run requests and posts the notification; `InsightRunCoordinator.start` approves the current session's awaiting request inside its Review lock. `review-insight-reading.ts` answers `get_insight` from the workbench projection, and `local-feedback-page.ts` pages `get_feedback` by count and serialized size.
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
 - `review-recovery-service.ts` recovers a Review after an interrupted operation.
 - `review-diagnostic-service.ts` and `app-log-service.ts` implement observability.
@@ -232,8 +242,13 @@ The shipped child is an exact locked package, staged at package time and validat
 
 ### `src/mcp/`
 
-The `patchdesk mcp` shim a coding agent spawns (ADR 0052), built by a nested build in `electron.vite.config.ts` into one file, `out/main/mcp-shim.js`, and packaged outside the asar with the launcher `Contents/Resources/bin/patchdesk`.
+The `patchdesk mcp` shim a coding agent spawns (ADR 0052), built by a nested build in `electron.vite.config.ts` into one file, `out/main/mcp-shim.js`, with the MCP SDK bundled.
+`package.json` `extraResources` stages it outside the asar as `Contents/Resources/mcp-shim/index.js`, beside the launcher `resources/bin/patchdesk`, staged as `Contents/Resources/bin/patchdesk`.
+The launcher is a POSIX shell script: it follows the symlink a user or the cask puts on PATH back to the bundle and runs `ELECTRON_RUN_AS_NODE=1 Contents/MacOS/Patchdesk Contents/Resources/mcp-shim/index.js "$@"`, so the shim runs on the app's own Node.
+`main.ts` accepts `mcp` and `mcp --check` and prints usage otherwise; stdout carries the MCP protocol, so every diagnostic goes to stderr.
 It serves the tools in `tool-manifest.ts` over stdio with `serveStdio`, which answers both the 2025 handshake and the 2026-07-28 revision, and forwards each call to the app's socket through `socket-client.ts`; `socket-protocol.ts` holds the path, the line shapes, and the bounds both sides share.
+The shim sits outside the three layers: it imports only these modules, `PatchdeskPaths`, and the package version, and none of `src/main/`, `src/services/`, or the renderer.
+`pnpm dev` points both sides at `patchdesk-dev.sock`, and `pnpm -s mcp:shim` runs the dev build against it (CONTRIBUTING.md); package smoke runs the packaged launcher's `mcp --check`.
 
 **Architecture Invariant:** the shim holds no state and no authority. Every call connects afresh to the running app, which validates it again; an unreachable app is the tool error `app_not_running`, and the shim never starts the app.
 
@@ -268,6 +283,7 @@ The design concentrates authority in the main process and removes it from everyw
 - Merge and Published feedback deletion or dismissal require explicit confirmation.
 - A confirmed write is followed by one read-only post-write reconciliation. The reconciliation never repeats the write.
 - If Patchdesk cannot confirm a write outcome, it locks further writes for explicit GitHub reconciliation. It never retries automatically.
+- A coding agent's MCP tools write only Patchdesk's own state: the Local snapshot's git objects, a `refs/patchdesk/local/` ref, a cache worktree, and the Review record. They never Apply, edit Local drafts, or start an Insight run; a run an agent asks for starts only from the maintainer's Run.
 - The one write to the maintainer's checkout is Apply on a working-tree local Review: `git apply` without `--index`, gated by `requireFreshLocal`, with file pre- and post-image hashes recorded before the write.
 - Model children never touch GitHub, the maintainer's checkout, or the network.
 
@@ -301,7 +317,8 @@ Patchdesk never merges drafts and never reconciles a pending review while a pend
 
 ### Notifications and watched pull requests
 
-Patchdesk posts a macOS notification for five events it already knows about: an Insight run settling, a write left outcome-unknown, a new session from preparation, a completed merge, and a change on a watched pull request (ADR 0044).
+Patchdesk posts a macOS notification for six events it already knows about: an Insight run settling, a write left outcome-unknown, a new session from preparation, a completed merge, a change on a watched pull request (ADR 0044), and a coding agent's new agent run request (ADR 0052).
+A local Review's notification names its source title and checkout folder where a pull request's names `owner/repo#number`.
 Services see only the `DesktopNotifier` port in `src/services/desktop-notifier.ts`, whose `notify` is synchronous and never throws, so a notifier defect can never change the `Result` the write or run that raised it returns.
 The main-process implementation owns the toggles, Electron's `Notification`, and the click.
 An event about the Review the focused window is showing posts nothing, and a watched pull request open in the workbench stays silent whether the window is focused or not.
