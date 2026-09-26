@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import { definedProps } from "../../../domain/defined-props";
+import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
 
 import type { LocalApplyControls } from "../flows/use-local-apply";
 import { findingLocation, type AnalysisResult } from "../analysis-headline";
@@ -22,16 +25,47 @@ type AnalysisFinding = AnalysisResult["findings"][number];
 /**
  * The Apply control of a working-tree Review's Analysis: one confirmation
  * names every selected suggestion, and a refusal reads beside the button.
+ * With nothing to apply and nothing to check or report, it renders nothing.
  */
 export function LocalApplyBar({
   controls,
   findings,
+  evidencePatch,
 }: {
   readonly controls: LocalApplyControls;
   /** Every Finding the reader lists, in reading order. */
   readonly findings: ReadonlyArray<AnalysisFinding>;
-}): React.JSX.Element {
+  /** The session's patch, against which a row decides whether to offer Apply. */
+  readonly evidencePatch: string | undefined;
+}): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
+  // The rule that gives a Finding row its Apply checkbox.
+  const hasApplicableSuggestion = useMemo(
+    () =>
+      evidencePatch !== undefined &&
+      findings.some(
+        (finding) =>
+          (finding.disposition ?? "open") === "open" &&
+          finding.suggestedReplacement !== undefined &&
+          resolveSuggestionTarget(
+            evidencePatch,
+            definedProps({
+              file: finding.file,
+              lineStart: finding.lineStart,
+              lineEnd: finding.lineEnd,
+              diffSide: finding.diffSide,
+            }),
+          ) !== undefined,
+      ),
+    [evidencePatch, findings],
+  );
+  if (
+    !hasApplicableSuggestion &&
+    controls.lock === undefined &&
+    controls.refusal === undefined &&
+    controls.notice === undefined
+  )
+    return null;
   const selected = findings.filter((finding) =>
     controls.selectedIds.has(finding.id),
   );
