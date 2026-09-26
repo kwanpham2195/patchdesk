@@ -12,6 +12,8 @@
 
 - Fixed a working-tree Review reopened after the leave dialog, or restored at launch, opening against a different checked-out branch. It is now refused with the branch named, and the launch no longer retries it. #477
 
+- Fixed local Reviews leaving a worktree and a `refs/patchdesk/local` ref in the repository for every Refresh that changed the content. Moving a local Review to a new session now removes the sessions it moved past, keeping only the patch of one a retained Insight was generated from, and the background sweep removes a local Review whose branch or commit is gone, has no Local drafts, and was last opened over 14 days ago. Removing a pull request worktree now deletes its refs too; refs left by Discard, Clear local review data, and older versions go at the next background sweep. #474
+
 - Fixed Analysis never receiving the pull request description it is asked to check against the patch: it said the description was absent on every pull request. It now reports a goal the description states and the patch misses, or a change the description does not mention, as a P2 Finding. #470
 
 - Added newer models to choose from for API key Insight runs, among them Claude Opus 5.5 and Fable 5.1, GPT-6 Sol, Luna, and Astra, and Grok 4.7. Providers retired some models, among them the Kimi K2 models on Moonshot and DeepSeek V4 Flash; a saved model that is no longer listed needs picking again in the run dialog.

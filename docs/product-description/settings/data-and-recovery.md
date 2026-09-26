@@ -29,7 +29,7 @@ The active workspace profile is the target. With no active profile, both cleanup
 
 The Storage card lists three rows, each with a one-line description and its size on disk: Cache (`Cache · 246 MB`, rebuildable pull request checkouts), Local review data (`Local review data · 1.6 MB`, completed and failed local Reviews), and Logs (`Logs · 19 MB`, the app log that Diagnostics shows). Cache and Local review data carry their clear button on the right; the Logs row is read-only. Each size is what that clear frees: Local review data counts only sessions no active work protects. Sizes use decimal units, with one decimal below 10. A size that cannot be measured is left off its row. Each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. Review activity moved to the Diagnostics overlay; see [Logs and diagnostics](logs-and-diagnostics.md).
 
-The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: a terminal Review older than 14 days is removed with its record and session, orphaned sessions older than 14 days and quarantine entries older than 30 days are removed, as [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) describes.
+The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: a terminal Review older than 14 days is removed with its record and session, orphaned sessions older than 14 days and quarantine entries older than 30 days are removed, superseded local Review sessions are removed, and a local Review whose branch or commit is gone is removed after 14 days without Local drafts, as [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) describes.
 
 ### Leave unchanged
 
@@ -105,6 +105,7 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 - A terminal or orphaned session is eligible for automatic retention removal only when older than 14 days. A terminal session's Review record goes with it, unless the record holds an unreconciled GitHub write operation.
 - A quarantine entry is eligible for automatic removal only when older than 30 days.
 - Retention sweep runs at startup and every 24 hours while the app runs; per-item failures do not stop the sweep.
+- Clear local review data removes session folders without Git, so the `refs/patchdesk/` refs of the removed sessions stay in the maintainer's repository until the next retention sweep deletes them and prunes Git's worktree records.
 - Cleanup success reloads workspace data and closes Settings; Clear local review data also returns to Pull requests. Cleanup failure keeps the confirmation context.
 - Neither cleanup makes the [Visited pull requests column](../foundations/visited-pull-requests.md) read its list again, so rows for removed Reviews stay until the next Review open or workspace switch.
 
@@ -117,4 +118,4 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 - Suspected defect: after Clear local review data, a Visited pull requests row for a removed Review stays listed and fails when clicked; see [Visited pull requests](../foundations/visited-pull-requests.md#open-questions-and-verification) and [B-16](../bug-triage.md#b-16-the-visited-pull-requests-column-keeps-rows-for-removed-reviews).
 - Confirm whether a failed retention sweep has any visible Settings indication beyond redacted activity.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; local session retention from `ed32b718` (#474).
