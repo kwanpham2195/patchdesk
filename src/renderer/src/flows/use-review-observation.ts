@@ -141,8 +141,8 @@ export function useReviewObservation({
 
   const runDetect = useCallback(async (): Promise<void> => {
     const wb = workbenchRef.current;
-    // A local Review's detection reads only whether an agent's refresh prepared a session (ADR 0052).
     if (wb.review.status !== "open") return;
+    // A local Review is detected too: the answer says whether an agent's refresh prepared a session (ADR 0052).
     if (document.visibilityState !== "visible") return;
     const generation = generationRef.current;
     if (
