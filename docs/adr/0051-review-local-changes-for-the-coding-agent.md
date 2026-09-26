@@ -49,7 +49,8 @@ tools.
 - No local write needs GitHub credentials, and the profile account is used
   only for reads.
 - An integration that lets the agent read the drafts and answer them directly
-  (an MCP server, #463) is a separate decision with its own ADR.
+  (an MCP server, #463) is a separate decision with its own ADR: ADR 0052
+  (accepted 2026-09-26).
 
 ## Change intent (#467)
 

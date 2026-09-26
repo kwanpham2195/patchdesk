@@ -74,6 +74,10 @@ _Avoid_: Local comment, queued finding, offline draft
 The spec a local Review's change is checked against: Markdown the maintainer entered, or a repository-relative spec file read from the reviewed head commit (the Local snapshot of a working-tree Review), never from the working tree. Only Analysis reads it, as the change's stated goal; an Analysis result records the intent it ran against. A pull request Review has none (#467, ADR 0051).
 _Avoid_: Task, prompt, requirements, PR description
 
+**Agent run request**:
+A coding agent's request over MCP for an Insight run on a local Review session. It spends nothing by itself: it waits on the Review until the maintainer presses Run, which opens the ordinary run dialog, or Decline, which is final for that session (ADR 0052).
+_Avoid_: Agent run, auto-run, queued run
+
 **Represented-review worktree**:
 Patchdesk's immutable checkout for a Review session's pinned revision. Codex may inspect it only through verified sandboxed read-only tools; it is never the maintainer's original checkout.
 _Avoid_: Local checkout, repository clone
