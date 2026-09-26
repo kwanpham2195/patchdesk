@@ -189,14 +189,15 @@ The Homebrew install puts the `patchdesk` command on your PATH.
 
 Review the change before the agent commits it. After a commit, a working-tree
 Review compares against the new `HEAD`, so a clean tree shows an empty diff.
-The
-[user guide](docs/user-guide.md#use-patchdesk-from-a-coding-agent-mcp) covers
-a disk-image install, troubleshooting, and each tool.
+[The MCP server page](docs/mcp.md) covers a disk-image install, other MCP
+hosts, each tool, and troubleshooting.
 
 ## Learn more
 
 - [User guide](docs/user-guide.md) covers first run, review workflows,
   Insights, providers, coding agents over MCP, storage, and current limits.
+- [MCP server](docs/mcp.md) covers connecting a coding agent and lists its
+  tools.
 - [Product description](docs/product-description/README.md) documents the app
   screen by screen.
 - [Architecture](docs/architecture.md) explains the application layers and
