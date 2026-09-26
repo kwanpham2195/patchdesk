@@ -7,8 +7,3 @@ Line 6 of the throwaway file for #526.
 Line 7 of the throwaway file for #526.
 Line 8 of the throwaway file for #526.
 Line 9 of the throwaway file for #526.
-Line 10 of the throwaway file for #526.
-Line 11 of the throwaway file for #526.
-Line 12 of the throwaway file for #526.
-Line 13 of the throwaway file for #526.
-Line 14 of the throwaway file for #526.
