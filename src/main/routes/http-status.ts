@@ -5,6 +5,7 @@ import {
   insightFailureKinds,
   type InsightCoordinatorFailure,
 } from "../../services/insight-run-coordinator";
+import type { UntrackedTooLarge } from "../../services/local-untracked-size";
 
 /**
  * The eight write-failure reasons every review write route shares.
@@ -176,8 +177,8 @@ export function response(
  * A service result on the wire: its value, or `{ error: reason }` with the
  * status `kinds` classifies the reason as. A working-tree branch refusal also
  * names the checkout's branch (null when detached) so the renderer can say
- * which one to switch to, and an untracked-size refusal names the paths to
- * ignore.
+ * which one to switch to, and an untracked-size refusal names the limit it
+ * is over and the paths to ignore.
  */
 export function serviceResponse<Reason extends string>(
   context: Context,
@@ -188,6 +189,7 @@ export function serviceResponse<Reason extends string>(
         readonly error: {
           readonly reason: Reason;
           readonly currentBranch?: string;
+          readonly exceededLimit?: UntrackedTooLarge["exceededLimit"];
           readonly largestPaths?: ReadonlyArray<string>;
         };
       },
@@ -196,7 +198,7 @@ export function serviceResponse<Reason extends string>(
   kinds: string extends Reason ? never : FailureKinds<NoInfer<Reason>>,
 ): Response {
   if (result._tag === "ok") return context.json(result.value);
-  const { reason, currentBranch, largestPaths } = result.error;
+  const { reason, currentBranch, exceededLimit, largestPaths } = result.error;
   const status: ResponseFailureStatus = failureKindStatuses[kinds[reason]];
   if (reason === "branch_mismatch")
     return context.json(
@@ -204,6 +206,6 @@ export function serviceResponse<Reason extends string>(
       status,
     );
   if (reason === "untracked_too_large")
-    return context.json({ error: reason, largestPaths }, status);
+    return context.json({ error: reason, exceededLimit, largestPaths }, status);
   return context.json({ error: reason }, status);
 }

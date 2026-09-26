@@ -243,4 +243,31 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
       currentBranch: "feat/467",
     });
   });
+
+  it.each([
+    {
+      name: "untracked-size refusal names the exceeded limit and largest paths",
+      failure: {
+        reason: "untracked_too_large",
+        exceededLimit: "bytes",
+        largestPaths: ["node_modules/", "build/"],
+      },
+      body: {
+        error: "untracked_too_large",
+        exceededLimit: "bytes",
+        largestPaths: ["node_modules/", "build/"],
+      },
+    },
+  ])("a local $name", async ({ failure, body }) => {
+    const app = new Hono();
+    // SAFETY: the route under test reaches only the supplied service seam.
+    registerLocalReviewRoutes(app, {
+      localReviewOpening: { refresh: async () => err(failure) },
+    } as never);
+
+    const answered = await post(app, "/v1/reviews/local-refresh", identity);
+
+    expect(answered.status).toBe(409);
+    expect(await answered.json()).toEqual(body);
+  });
 });

@@ -131,7 +131,7 @@ function refusal(reason: ServiceReason): McpToolRefusal {
 /**
  * An open or refresh refusal; `branch_mismatch` names the branch the checkout
  * is on, `rate_limited` carries when to retry, and `untracked_too_large`
- * names the untracked paths to ignore.
+ * names the limit it is over and the untracked paths to ignore.
  */
 function localReviewRefusal(
   failure: LocalReviewAgentRefreshFailure,
@@ -139,7 +139,11 @@ function localReviewRefusal(
   if (failure.reason === "untracked_too_large")
     return {
       error: "untracked_too_large",
-      message: `The working tree has more untracked files than Patchdesk snapshots, over ${localSnapshotUntrackedLimits.files.toLocaleString("en-US")} files or ${localSnapshotUntrackedLimits.bytes / (1024 * 1024)} MiB. ${
+      message: `The working tree has more than ${
+        failure.exceededLimit === "files"
+          ? `${localSnapshotUntrackedLimits.files.toLocaleString("en-US")} untracked files`
+          : `${localSnapshotUntrackedLimits.bytes / (1024 * 1024)} MiB of untracked files`
+      }, more than Patchdesk snapshots. ${
         failure.largestPaths.length === 0
           ? "Add large untracked directories, such as dependencies or build output,"
           : `The largest untracked paths are ${failure.largestPaths.join(", ")}. Add them`

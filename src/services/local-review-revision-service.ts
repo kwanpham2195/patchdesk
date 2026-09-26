@@ -19,6 +19,8 @@ import type {
 import {
   checkUntrackedSize,
   localSnapshotUntrackedLimits,
+  lstatFileSize,
+  type UntrackedFileSize,
   type UntrackedLimits,
   type UntrackedTooLarge,
 } from "./local-untracked-size";
@@ -65,6 +67,7 @@ export class LocalReviewRevisionService {
     private readonly git: GitReadExecutor,
     private readonly paths: PatchdeskPaths,
     private readonly untrackedLimits: UntrackedLimits = localSnapshotUntrackedLimits,
+    private readonly untrackedFileSize: UntrackedFileSize = lstatFileSize,
   ) {}
 
   async resolve(
@@ -211,6 +214,7 @@ export class LocalReviewRevisionService {
       repositoryPath,
       scratchIndex,
       this.untrackedLimits,
+      this.untrackedFileSize,
     );
     if (untracked._tag === "err") return untracked;
     const added = await this.git.run(
