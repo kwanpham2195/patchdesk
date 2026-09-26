@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { definedProps } from "../../src/domain/defined-props";
 import {
   createReview,
   markReviewLeft,
@@ -20,6 +21,7 @@ import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
+  parseAbsolutePath,
   parseGitSha,
   parseIsoTimestamp,
   parseLocalBranchName,
@@ -408,6 +410,59 @@ describe("local Review source IDs", () => {
     ).not.toBe(createReviewSessionId({ ...right, headSha: firstSha, baseSha }));
   });
 
+  function workingTreeIn(checkout?: string): ReviewIdentity {
+    return {
+      ...repository,
+      source: {
+        kind: "working_tree",
+        branch: must(parseLocalBranchName("main")),
+        ...definedProps({
+          checkout:
+            checkout === undefined
+              ? undefined
+              : must(parseAbsolutePath(checkout)),
+        }),
+      },
+    };
+  }
+
+  it("keeps configured-checkout IDs byte-identical to the ones stored before named checkouts", () => {
+    const configured = workingTreeIn();
+
+    expect(createReviewId(configured)).toBe(
+      "github.com__octo-org__patchdesk__local-working_tree-main__review-a5d7d4d5e9b4",
+    );
+    expect(
+      createReviewSessionId({ ...configured, headSha: firstSha, baseSha }),
+    ).toBe(
+      "github.com__octo-org__patchdesk__local-working_tree-main__sha-11111111__base-bbbbbbbb__e6ad30fb2efd",
+    );
+  });
+
+  it("gives each checkout of one branch its own Review and session IDs", () => {
+    const ids = ["/work/patchdesk", "/work/linked", "/other/linked"].map(
+      (checkout) => ({
+        review: createReviewId(workingTreeIn(checkout)),
+        session: createReviewSessionId({
+          ...workingTreeIn(checkout),
+          headSha: firstSha,
+          baseSha,
+        }),
+      }),
+    );
+
+    expect(ids[1]?.review).toMatch(
+      /^github\.com__octo-org__patchdesk__local-working_tree-linked--main__review-[a-f0-9]{12}$/,
+    );
+    expect(parseReviewId(ids[1]?.review)._tag).toBe("ok");
+    expect(parseReviewSessionId(ids[1]?.session)._tag).toBe("ok");
+    expect(new Set(ids.map((id) => id.review)).size).toBe(3);
+    expect(new Set(ids.map((id) => id.session)).size).toBe(3);
+    expect(ids.map((id) => id.review)).not.toContain(
+      createReviewId(workingTreeIn()),
+    );
+  });
+
   it("round-trips a stored local Review with its source", () => {
     const local = createReview({
       identity: branchIdentity("feat/login"),
@@ -426,5 +481,30 @@ describe("local Review source IDs", () => {
       source: { kind: "branch", branch: "feat/login", baseBranch: "main" },
     });
     expect(parseReview(stored)).toEqual({ _tag: "ok", value: local });
+  });
+
+  it("stores a named checkout with its source and refuses a relative one", () => {
+    const linked = createReview({
+      identity: workingTreeIn("/work/linked"),
+      currentSessionId: createReviewSessionId({
+        ...workingTreeIn("/work/linked"),
+        headSha: firstSha,
+        baseSha,
+      }),
+      headSha: firstSha,
+      createdAt: now,
+    });
+    const stored = structuredClone(serializeReview(linked));
+
+    expect(parseReview(stored)).toEqual({ _tag: "ok", value: linked });
+    expect(
+      parseReview({
+        ...stored,
+        identity: {
+          ...stored.identity,
+          source: { kind: "working_tree", branch: "main", checkout: "linked" },
+        },
+      })._tag,
+    ).toBe("err");
   });
 });

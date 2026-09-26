@@ -453,23 +453,39 @@ function reviewSourceIdSegment(source: ReviewSource): string {
     case "pull_request":
       return `pr-${source.prNumber}`;
     case "working_tree":
-      return `local-working_tree-${localSourceSlug(source.branch ?? "detached")}`;
+      return `local-working_tree-${checkoutSlugPrefix(source.checkout)}${localSourceSlug(source.branch ?? "detached")}`;
     case "branch":
-      return `local-branch-${localSourceSlug(source.branch)}`;
+      return `local-branch-${checkoutSlugPrefix(source.checkout)}${localSourceSlug(source.branch)}`;
     case "commit":
-      return `local-commit-${source.commitSha.slice(0, 8)}`;
+      return `local-commit-${checkoutSlugPrefix(source.checkout)}${source.commitSha.slice(0, 8)}`;
     default:
       return casesHandled(source);
   }
+}
+
+/** `<folder>--` for a named checkout, empty for the configured one, so its ids stay as they were. */
+function checkoutSlugPrefix(checkout: AbsolutePath | undefined): string {
+  if (checkout === undefined) return "";
+  return `${localSourceSlug(checkout.slice(checkout.lastIndexOf("/") + 1))}--`;
 }
 
 /**
  * The raw source spec for the collision hash. The pull request case is the
  * pre-ADR-0050 input exactly; each local case leads with its kind so two kinds
  * never share an input, and a detached working tree cannot match a branch
- * literally named `detached`.
+ * literally named `detached`. A named checkout is appended, so the configured
+ * checkout's input is unchanged.
  */
 function reviewSourceCollisionParts(
+  source: ReviewSource,
+): ReadonlyArray<string | number> {
+  const spec = reviewSourceSpecParts(source);
+  return source.kind === "pull_request" || source.checkout === undefined
+    ? spec
+    : [...spec, "checkout", source.checkout];
+}
+
+function reviewSourceSpecParts(
   source: ReviewSource,
 ): ReadonlyArray<string | number> {
   switch (source.kind) {
