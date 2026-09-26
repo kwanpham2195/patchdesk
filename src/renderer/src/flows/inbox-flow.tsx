@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, X } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
   type InboxLabelActions,
@@ -179,6 +179,12 @@ export function InboxFlow({
       ? undefined
       : { fetchLabels: fetchInboxLabels };
   const dashboardProfileId = dashboard?.profile.id;
+  // Setup stays open once shown, until Continue: the first tick saves a
+  // watched repository, and closing on that would stop the user after one.
+  const [firstRunOpen, setFirstRunOpen] = useState(false);
+  const needsFirstRun =
+    state === "empty" && (dashboard?.profile.repos?.length ?? 0) === 0;
+  if (needsFirstRun && !firstRunOpen) setFirstRunOpen(true);
 
   useEffect(() => {
     if (
@@ -229,13 +235,14 @@ export function InboxFlow({
   // noise for a workspace that has nothing to list yet, and read as a second
   // thing to do. Lifted here rather than into `Outcome`, which the bootstrap
   // path shares and which renders inside the inbox chrome, not instead of it.
-  if (state === "empty" && (dashboard.profile.repos?.length ?? 0) === 0)
+  if (needsFirstRun || firstRunOpen)
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="mx-auto max-w-[112rem]">
           <WorkspaceFirstRun
             dashboard={dashboard}
             onWorkspaceReload={onWorkspaceReload}
+            onContinue={() => setFirstRunOpen(false)}
           />
         </div>
       </div>
@@ -559,6 +566,7 @@ function BootstrapOutcome({
           <WorkspaceFirstRun
             dashboard={undefined}
             onWorkspaceReload={onWorkspaceReload}
+            onContinue={undefined}
           />
         </div>
       </div>
