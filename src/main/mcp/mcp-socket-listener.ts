@@ -42,6 +42,8 @@ export type McpSocketListenerOptions = {
   /** Refused and failed calls also go to the diagnostics Settings lists. */
   readonly recordRefusal?: (refused: McpRefusedCall) => Promise<void>;
   readonly bounds?: McpSocketBounds;
+  /** How long `stop` waits for calls still running; defaults to 3 s so quitting never stalls on one. */
+  readonly stopGraceMs?: number;
 };
 
 /**
@@ -67,7 +69,7 @@ export function startMcpSocketListener(
 ): McpSocketListener {
   const bounds = options.bounds ?? mcpSocketBounds;
   const connections = new Set<Socket>();
-  // Calls still running when the listener stops; stop waits for them, so no tool or diagnostics write outlives it.
+  // Calls still running when the listener stops; stop waits a grace period for them, so a tool or diagnostics write rarely outlives it.
   const answering = new Set<Promise<void>>();
   const server = createServer((socket) => {
     connections.add(socket);
@@ -94,7 +96,25 @@ export function startMcpSocketListener(
       if ((await listening) !== "listening") return;
       for (const socket of connections) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await Promise.all(answering);
+      let grace: ReturnType<typeof setTimeout> | undefined;
+      const finished = await Promise.race([
+        Promise.all(answering).then(() => true),
+        new Promise<false>((resolve) => {
+          grace = setTimeout(
+            () => resolve(false),
+            options.stopGraceMs ?? 3_000,
+          );
+        }),
+      ]);
+      clearTimeout(grace);
+      if (!finished)
+        options.logs.write({
+          process: "main",
+          level: "warn",
+          topic: "mcp",
+          message: "stopped with calls still running",
+          meta: { calls: answering.size },
+        });
     },
   };
 }

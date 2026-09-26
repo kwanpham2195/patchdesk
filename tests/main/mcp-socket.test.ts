@@ -211,6 +211,48 @@ describe("MCP socket listener (ADR 0052)", () => {
     expect(closed).toBe(true);
   });
 
+  it("stops within its grace period while a call is still running, and logs the call", async () => {
+    const socketPath = join(await socketDirectory(), "patchdesk.sock");
+    let markStarted = (): void => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let release = (): void => {};
+    const held = new Promise<McpToolReply>((resolve) => {
+      release = () => resolve(emptyListing());
+    });
+    const logs: Array<LogEntryInput> = [];
+    const listener = startMcpSocketListener({
+      socketPath: async () => socketPath,
+      tools: {
+        ...recordingTools().tools,
+        list_repositories: {
+          schema: mcpToolManifest.list_repositories.inputSchema,
+          call: async () => {
+            markStarted();
+            return await held;
+          },
+        },
+      },
+      logs: { write: (entry) => logs.push(entry) },
+      stopGraceMs: 100,
+    });
+    await listener.listening;
+    const answered = exchangeSocketLine(socketPath, listRepositoriesLine);
+    await started;
+
+    const stoppingAt = performance.now();
+    await listener.stop();
+    const stoppedAfterMs = performance.now() - stoppingAt;
+    release();
+    await answered;
+
+    expect(stoppedAfterMs).toBeLessThan(1_000);
+    expect(logs.map((entry) => entry.message)).toContain(
+      "stopped with calls still running",
+    );
+  });
+
   it("refuses to listen in an existing directory group or others can open", async () => {
     const directory = await socketDirectory();
     await mkdir(directory);
