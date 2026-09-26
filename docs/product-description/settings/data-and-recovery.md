@@ -105,7 +105,7 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 - A terminal or orphaned session is eligible for automatic retention removal only when older than 14 days. A terminal session's Review record goes with it, unless the record holds an unreconciled GitHub write operation.
 - A quarantine entry is eligible for automatic removal only when older than 30 days.
 - Retention sweep runs at startup and every 24 hours while the app runs; per-item failures do not stop the sweep.
-- Clear local review data removes session folders without Git, so the `refs/patchdesk/` refs of the removed sessions stay in the maintainer's repository until the next retention sweep deletes them and prunes Git's worktree records.
+- Clear local review data removes session folders without Git, so the `refs/patchdesk/` refs of the removed sessions stay in the maintainer's repository until the next retention sweep deletes them. Git lists their worktrees as prunable until Patchdesk next adds a session worktree.
 - Cleanup success reloads workspace data and closes Settings; Clear local review data also returns to Pull requests. Cleanup failure keeps the confirmation context.
 - Neither cleanup makes the [Visited pull requests column](../foundations/visited-pull-requests.md) read its list again, so rows for removed Reviews stay until the next Review open or workspace switch.
 
