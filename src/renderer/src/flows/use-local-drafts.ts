@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
+import { findingDraftStates } from "../../../domain/local-draft";
 import { isApiErrorCode, requestJson } from "../api-client";
 import type { LocalCommentLocation } from "../components/review-diff-view";
 import {
@@ -222,13 +223,7 @@ export function useLocalDrafts({
     reviewOpen &&
     runId !== undefined &&
     workbench.insights.analysis.status === "current";
-  const draftedFindingIds = new Set(
-    entries.flatMap((entry) =>
-      entry.kind === "finding" && entry.analysisRunId === runId
-        ? [entry.findingId]
-        : [],
-    ),
-  );
+  const draftedFindingIds = new Set(findingDraftStates(entries, runId).keys());
   return {
     entries,
     draftedFindingIds,

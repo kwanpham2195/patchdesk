@@ -9,6 +9,9 @@ import {
   parseRepoRelativePath,
 } from "../../src/domain/ids";
 import { dismissInsightFinding } from "../../src/domain/insight-record";
+import { ok } from "../../src/domain/result";
+import { isLocalReview, markLocalDraftsApplied } from "../../src/domain/review";
+import { ReviewInsightReader } from "../../src/services/review-insight-reading";
 import {
   cleanupLocalApplyRoots,
   localApplyHarness,
@@ -244,6 +247,97 @@ describe("LocalDraftService", () => {
       _tag: "err",
       error: { reason: "not_applicable" },
     });
+  });
+
+  it("reads each Finding's state, the drafts, and the agent prompt as the workbench shows them", async () => {
+    const { harness, workbench, request } = await draftedReview();
+    const appliedFix = suggestionFinding(
+      "finding-applied",
+      "probe.ts",
+      { start: 4, end: 4 },
+      "    total += values[index];",
+    );
+    const dismissedFix = suggestionFinding(
+      "finding-dismissed",
+      "probe.ts",
+      { start: 6, end: 6 },
+      "  return total || 0;",
+    );
+    const openFix = suggestionFinding(
+      "finding-open",
+      "probe.ts",
+      { start: 1, end: 1 },
+      "export function sum(values: readonly number[]): number {",
+    );
+    const runId = await retainAnalysis(harness.insights, workbench, [
+      boundFix,
+      appliedFix,
+      dismissedFix,
+      openFix,
+    ]);
+    value(await harness.drafts.add({ ...request, runId }));
+    value(
+      await harness.drafts.add({ ...request, runId, findingId: appliedFix.id }),
+    );
+    const drafted = value(
+      await harness.reviews.load(profileId, request.reviewId),
+    );
+    if (!isLocalReview(drafted)) throw new Error("expected a local Review");
+    value(
+      await harness.reviews.save(
+        markLocalDraftsApplied(drafted, {
+          runId,
+          findingIds: [appliedFix.id],
+          appliedAt: now,
+        }),
+        drafted.updatedAt,
+      ),
+    );
+    value(
+      await harness.insights.mutate({
+        profileId,
+        reviewId: request.reviewId,
+        type: "analysis",
+        now,
+        operation: (record) =>
+          dismissInsightFinding(record, dismissedFix.id, "Accepted risk", now),
+      }),
+    );
+    const shown = await harness.open();
+    const reader = new ReviewInsightReader({ load: async () => ok(shown) });
+
+    const reading = value(
+      await reader.read({
+        profileId,
+        reviewId: request.reviewId,
+        type: "analysis",
+      }),
+    );
+    const feedback = value(
+      await harness.drafts.feedback(profileId, request.reviewId),
+    );
+
+    expect(
+      reading.findings?.map(({ id, dismissed, drafted, applied }) => ({
+        id,
+        dismissed,
+        drafted,
+        applied,
+      })),
+    ).toEqual([
+      { id: "finding-bound", dismissed: false, drafted: true, applied: false },
+      { id: "finding-applied", dismissed: false, drafted: true, applied: true },
+      {
+        id: "finding-dismissed",
+        dismissed: true,
+        drafted: false,
+        applied: false,
+      },
+      { id: "finding-open", dismissed: false, drafted: false, applied: false },
+    ]);
+    expect(feedback.localDrafts).toEqual(shown.localDrafts);
+    expect(feedback.markdown).toContain(boundFix.title);
+    expect(feedback.markdown).not.toContain(appliedFix.title);
   });
 
   describe("maintainer notes", () => {
