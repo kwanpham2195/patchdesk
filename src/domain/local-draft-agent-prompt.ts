@@ -1,4 +1,5 @@
 import { withTrailingNewline } from "./finding-suggestion";
+import { markdownHeadingText } from "./markdown-heading";
 import {
   isMaintainerNote,
   localDraftState,
@@ -64,7 +65,7 @@ function renderDraft(draft: LocalDraft, position: number): string {
   const side = anchor.side === "old" ? " (line numbers before the change)" : "";
   const title = isMaintainerNote(draft)
     ? "Note from the maintainer"
-    : draft.title.trim();
+    : markdownHeadingText(draft.title);
   const state = localDraftState(draft);
   const status =
     state === "changed" || state === "needs_attention"

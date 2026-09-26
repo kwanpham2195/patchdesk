@@ -4,6 +4,7 @@ import type { BriefFlowTree } from "./brief-flow";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";
+import { markdownHeadingText } from "./markdown-heading";
 import { matchUnifiedHunkHeader } from "./unified-patch";
 
 /**
@@ -42,7 +43,7 @@ function flowSection(tree: BriefFlowTree): string {
   const fence = fenceFor(lines);
   const kind = briefFlowKindLabel(tree.kind);
   return [
-    `### ${kind.charAt(0).toUpperCase()}${kind.slice(1)}: ${tree.title}`,
+    `### ${kind.charAt(0).toUpperCase()}${kind.slice(1)}: ${markdownHeadingText(tree.title)}`,
     "",
     `${fence}diff`,
     ...lines,
