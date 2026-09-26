@@ -199,8 +199,8 @@ export class ReviewWorktreeService {
     // The existing worktree still stands when only its replacement failed.
     if (checkedOut.error === "replace_failed")
       return err({ _tag: "WorktreeStorageUnavailable" });
-    await this.deleteManagedRef(repositoryPath, baseRef);
-    await this.deleteManagedRef(repositoryPath, headRef);
+    await this.deleteManagedRef(repositoryPath, baseRef, input.baseSha);
+    await this.deleteManagedRef(repositoryPath, headRef, input.sha);
     return checkedOut.error === "worktree_add_failed"
       ? ok({ mode: "metadata_only", warning: "local_checkout_unavailable" })
       : err({ _tag: "WorktreeStorageUnavailable" });
@@ -243,7 +243,7 @@ export class ReviewWorktreeService {
       markerRefs: { headRef },
     });
     if (checkedOut._tag === "ok") return ok({ path: checkedOut.value });
-    await this.deleteManagedRef(repositoryPath, headRef);
+    await this.deleteManagedRef(repositoryPath, headRef, input.headSha);
     return err({
       _tag:
         checkedOut.error === "worktree_add_failed"
@@ -298,8 +298,13 @@ export class ReviewWorktreeService {
     // A stale worktree registration can block the fresh `add` call; clear it
     // first so the user never has to clean it up by hand.
     await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
+    const absentBeforeAdd = !(await pathExists(path));
     const added = await this.git.run([
       "git",
+      // A review worktree needs no hooks, and a post-checkout hook that
+      // installs packages or pulls LFS objects outlasts the read timeout (#483).
+      "-c",
+      "core.hooksPath=/dev/null",
       "-C",
       repositoryPath,
       "worktree",
@@ -308,7 +313,14 @@ export class ReviewWorktreeService {
       path,
       input.headRef,
     ]);
-    if (added._tag === "err") return err("worktree_add_failed");
+    if (added._tag === "err") {
+      // Git can fail after it created and registered the directory. Left
+      // without a marker, cleanup refuses it and every retry of this session
+      // fails with "already exists" (#483).
+      if (absentBeforeAdd && (await pathExists(path)))
+        await this.removeCreatedWorktree(repositoryPath, path);
+      return err("worktree_add_failed");
+    }
     try {
       await mkdir(path, { recursive: true });
       // Deliberately not `writeAtomicFile` (M5): this marker lives inside a
@@ -351,11 +363,15 @@ export class ReviewWorktreeService {
    * registering. The failure that broke the marker write may also block
    * Git's own bookkeeping, so this unregisters the worktree with Git AND
    * removes its directory directly rather than trusting either alone.
+   * The remove is forced twice because an interrupted checkout leaves
+   * untracked files and Git's "initializing" lock; that is safe only for a
+   * path this call created inside the cache root.
    */
   private async removeCreatedWorktree(
     repositoryPath: string,
     path: string,
   ): Promise<void> {
+    if ((await this.resolveInsideCache(path)) === undefined) return;
     await unlink(joinMetadata(path)).catch(() => undefined);
     await this.git.run([
       "git",
@@ -363,9 +379,24 @@ export class ReviewWorktreeService {
       repositoryPath,
       "worktree",
       "remove",
+      "--force",
+      "--force",
       path,
     ]);
     await rm(path, { recursive: true, force: true }).catch(() => undefined);
+  }
+
+  /** The resolved path when it is inside the cache root and not itself a symlink. */
+  private async resolveInsideCache(path: string): Promise<string | undefined> {
+    try {
+      await mkdir(this.paths.cacheDirectory(), { recursive: true });
+      const root = await realpath(this.paths.cacheDirectory());
+      if ((await lstat(path)).isSymbolicLink()) return undefined;
+      const target = await realpath(path);
+      return isPathContained(root, target) ? target : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -474,29 +505,13 @@ export class ReviewWorktreeService {
     );
     if (resolve(input.targetPath) !== resolve(expected))
       return err({ _tag: "UnsafeWorktreeCleanup" });
-    let root: string;
-    try {
-      await mkdir(this.paths.cacheDirectory(), { recursive: true });
-      root = await realpath(this.paths.cacheDirectory());
-    } catch {
-      return err({ _tag: "UnsafeWorktreeCleanup" });
-    }
-    let refs: MarkerRefs | undefined;
-    try {
-      const info = await lstat(input.targetPath);
-      if (info.isSymbolicLink()) return err({ _tag: "UnsafeWorktreeCleanup" });
-      const target = await realpath(input.targetPath);
-      if (!isPathContained(root, target))
-        return err({ _tag: "UnsafeWorktreeCleanup" });
-      refs = await this.ownedMarkerRefs(
-        target,
-        input.profileId,
-        input.sessionId,
-      );
-      if (refs === undefined) return err({ _tag: "UnsafeWorktreeCleanup" });
-    } catch {
-      return err({ _tag: "UnsafeWorktreeCleanup" });
-    }
+    const target = await this.resolveInsideCache(input.targetPath);
+    if (target === undefined) return err({ _tag: "UnsafeWorktreeCleanup" });
+    const refs = await this.ownedMarkerRefs(
+      target,
+      input.profileId,
+      input.sessionId,
+    );
     if (input.localPath === undefined || refs === undefined)
       return err({ _tag: "UnsafeWorktreeCleanup" });
     let repositoryPath: string;
@@ -597,6 +612,13 @@ function localSessionHeadRef(
   sessionId: ReviewSessionId,
 ): string {
   return `refs/patchdesk/local/${profileId}/${sessionId}/head`;
+}
+
+function pathExists(path: string): Promise<boolean> {
+  return lstat(path).then(
+    () => true,
+    () => false,
+  );
 }
 
 function joinMetadata(path: string): string {
