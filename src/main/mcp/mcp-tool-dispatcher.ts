@@ -83,6 +83,7 @@ export function createMcpToolTable(services: McpToolServices): McpToolTable {
     insightReader: new ReviewInsightReader(
       services.reviewWorkbench,
       services.sessions,
+      services.reviews,
     ),
   };
   return {

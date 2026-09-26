@@ -19,6 +19,7 @@ import {
   type McpSocketReply,
   type McpToolRefusal,
 } from "../../mcp/socket-protocol";
+import { isMcpToolName } from "../../mcp/tool-manifest";
 import type { LogWriter } from "../local-api-container";
 import {
   dispatchMcpTool,
@@ -343,8 +344,9 @@ async function answerLine(
     });
   socket.end(serialized.text);
   if (serialized.outcome !== "ok")
+    // An unknown tool name is the agent's own text, so the diagnostics phase names only the request.
     await options.recordRefusal?.({
-      tool: request.output.tool,
+      ...(isMcpToolName(request.output.tool) && { tool: request.output.tool }),
       reason: serialized.outcome,
       durationMs,
     });
