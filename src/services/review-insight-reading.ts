@@ -15,7 +15,7 @@ type AnalysisFinding = NonNullable<
 >["value"]["findings"][number];
 
 /** One Analysis Finding with the maintainer's disposition as the workbench shows it. */
-export type AnalysisFindingReading = AnalysisFinding & {
+type AnalysisFindingReading = AnalysisFinding & {
   readonly dismissed: boolean;
   readonly drafted: boolean;
   readonly applied: boolean;
