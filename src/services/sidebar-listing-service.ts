@@ -1,6 +1,7 @@
 import type { ReviewStore } from "../adapters/storage/review-store";
 import { definedProps } from "../domain/defined-props";
 import type {
+  AbsolutePath,
   GitHubHost,
   GitHubOwner,
   GitHubRepoName,
@@ -47,15 +48,19 @@ type SidebarPullRequestRow = {
 };
 
 /**
- * One repository with at least one visited local Review (#479). A click opens
- * the working tree of the branch checked out at that moment, so the row names
- * no source and no branch. `reviewIds` holds every local Review of the
- * repository, so the row reads as selected while any of them is open.
+ * One checkout of a repository with at least one visited local Review (#479,
+ * #489). A click opens the working tree of the branch checked out there at
+ * that moment, so the row names no source and no branch. `reviewIds` holds
+ * every local Review of that checkout, so the row reads as selected while any
+ * of them is open.
  */
 type SidebarLocalRepositoryRow = {
   readonly host: GitHubHost;
   readonly owner: GitHubOwner;
   readonly repo: GitHubRepoName;
+  /** The linked worktree the row opens, and its folder name; absent for the configured checkout. */
+  readonly checkout?: AbsolutePath;
+  readonly checkoutName?: string;
   readonly reviewIds: ReadonlyArray<ReviewId>;
   /** The newest of the repository's local Reviews' ordering instants. */
   readonly sortedAt: IsoTimestamp;
@@ -81,7 +86,7 @@ export type SidebarListingDependencies = {
 /**
  * Projects one workspace profile's visited Reviews into the sidebar's rows,
  * most recently opened first: one row per pull request, and one per
- * repository for its local Reviews, whatever their branch or source.
+ * repository checkout for its local Reviews, whatever their branch or source.
  *
  * `ReviewStore.list` has no index: it opens every review file under the
  * profile, so this runs on demand for one profile rather than eagerly or
@@ -107,8 +112,8 @@ export class SidebarListingService {
         if (row !== undefined) pullRequestRows.push(row);
         continue;
       }
-      const { host, owner, repo } = review.identity;
-      const key = JSON.stringify([host, owner, repo]);
+      const { host, owner, repo, source } = review.identity;
+      const key = JSON.stringify([host, owner, repo, source.checkout ?? null]);
       localReviews.set(key, [review, ...(localReviews.get(key) ?? [])]);
     }
     const rows = [
@@ -162,7 +167,7 @@ type LocalReviewGroup = readonly [
   ...ReadonlyArray<Review<LocalReviewSource>>,
 ];
 
-/** One repository's local Reviews as one row, dated by the newest of them. */
+/** One checkout's local Reviews as one row, dated by the newest of them. */
 function localRepositoryRow(
   reviews: LocalReviewGroup,
 ): SidebarLocalRepositoryRow {
@@ -178,14 +183,20 @@ function localRepositoryRow(
         latest === undefined || opened > latest ? opened : latest,
       undefined,
     );
-  const { host, owner, repo } = newest.identity;
+  const { host, owner, repo, source } = newest.identity;
   return {
     host,
     owner,
     repo,
     reviewIds: reviews.map((review) => review.id),
     sortedAt: sortedAt(newest),
-    ...definedProps({ lastOpenedAt }),
+    ...definedProps({
+      lastOpenedAt,
+      checkout: source.checkout,
+      checkoutName: source.checkout?.slice(
+        source.checkout.lastIndexOf("/") + 1,
+      ),
+    }),
   };
 }
 

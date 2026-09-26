@@ -23,12 +23,15 @@ const sidebarPullRequestRowSchema = v.strictObject({
   ),
 });
 
-// One repository's local Reviews (#479). `host` is what the local open route
-// needs, and `reviewIds` names every local Review the row stands for.
+// One checkout's local Reviews (#479, #489). `host` and `checkout` are what
+// the local open route needs, and `reviewIds` names every local Review the
+// row stands for. `checkout` is absent for the configured checkout.
 const sidebarLocalRepositoryRowSchema = v.strictObject({
   host: v.pipe(v.string(), v.minLength(1)),
   owner: v.pipe(v.string(), v.minLength(1)),
   repo: v.pipe(v.string(), v.minLength(1)),
+  checkout: v.optional(v.pipe(v.string(), v.minLength(1))),
+  checkoutName: v.optional(v.pipe(v.string(), v.minLength(1))),
   reviewIds: v.pipe(
     v.array(v.pipe(v.string(), v.minLength(1))),
     v.minLength(1),
@@ -67,11 +70,13 @@ export function isSidebarLocalRepositoryRow(
   return "reviewIds" in row;
 }
 
-/** A key unique among the listed rows: a pull request row's Review id, or a local row's repository. */
+/** A key unique among the listed rows: a pull request row's Review id, or a local row's repository and checkout. */
 export function sidebarRowKey(row: SidebarReviewRow): string {
-  return isSidebarLocalRepositoryRow(row)
-    ? `local:${row.host}/${row.owner}/${row.repo}`
-    : row.reviewId;
+  if (!isSidebarLocalRepositoryRow(row)) return row.reviewId;
+  const repository = `local:${row.host}/${row.owner}/${row.repo}`;
+  return row.checkout === undefined
+    ? repository
+    : `${repository}:${row.checkout}`;
 }
 
 /** Whether the row stands for the open Review; a local row covers each of its repository's local Reviews. */
