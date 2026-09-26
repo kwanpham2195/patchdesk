@@ -207,6 +207,8 @@ Amended 2026-09-26 (slice 5): `get_insight` has no `queued` status; a run is `ru
 
 Amended 2026-09-27 (#485): `review_local` and `refresh_review` also refuse `untracked_too_large` when the working tree has more than 5,000 untracked files or 100 MiB of them, before `git add -A` hashes any; the message names the limit the working tree is over and the largest untracked paths.
 
+Amended 2026-09-27 (#493): `review_local` and `refresh_review` also refuse `patch_too_large` when the patch is over the 2 MiB git output cap; no session is stored, the snapshot's ref and worktree are removed, and its git objects stay in the object store. The message names the files with the most changes.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run
