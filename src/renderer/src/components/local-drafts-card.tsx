@@ -83,7 +83,7 @@ export function LocalDraftsCard({
                   <Button
                     size="xs"
                     variant="ghost"
-                    aria-label={`Remove ${location} from drafts`}
+                    aria-label={`Remove ${entry.kind} at ${location} from drafts`}
                     disabled={
                       !controls.canRemove ||
                       controls.pending.has(localDraftKey(entry))

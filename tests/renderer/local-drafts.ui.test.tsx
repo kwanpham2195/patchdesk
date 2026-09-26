@@ -2,10 +2,14 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AnalysisReader } from "../../src/renderer/src/components/analysis-reader";
-import { useLocalDrafts } from "../../src/renderer/src/flows/use-local-drafts";
+import { LocalDraftsCard } from "../../src/renderer/src/components/local-drafts-card";
+import {
+  useLocalDrafts,
+  type LocalDraftControls,
+} from "../../src/renderer/src/flows/use-local-drafts";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 import {
@@ -99,7 +103,9 @@ describe("Local drafts in the Analysis reader", () => {
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
 
     await user.click(
-      screen.getByRole("button", { name: "Remove src/a.ts:1 from drafts" }),
+      screen.getByRole("button", {
+        name: "Remove finding at src/a.ts:1 from drafts",
+      }),
     );
 
     await waitFor(() =>
@@ -131,6 +137,51 @@ describe("Local drafts in the Analysis reader", () => {
           findingId: "finding-1",
         },
       ],
+    ]);
+  });
+
+  it("names each Remove in the Local drafts card by kind when a note and a Finding share lines", async () => {
+    const remove = vi.fn<LocalDraftControls["remove"]>(async () => undefined);
+    const note = {
+      kind: "note" as const,
+      noteId: "note-1",
+      sessionId: "session-a",
+      path: "src/a.ts",
+      side: "new" as const,
+      startLine: 1,
+      line: 1,
+      text: "Guard the empty case.",
+    };
+    render(
+      <LocalDraftsCard
+        controls={{
+          entries: [drafted, note],
+          draftedFindingIds: new Set(["finding-1"]),
+          canAdd: true,
+          canRemove: true,
+          pending: new Set(),
+          add: async () => undefined,
+          remove,
+          loadAgentPrompt: async () => "",
+          forFinding: () => ({ drafted: true, pending: false }),
+        }}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Remove note at src/a.ts:1 from drafts",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Remove finding at src/a.ts:1 from drafts",
+      }),
+    );
+
+    expect(remove.mock.calls.map(([entry]) => entry.kind)).toEqual([
+      "note",
+      "finding",
     ]);
   });
 });
