@@ -57,7 +57,7 @@ An artifact write syncs the temporary file, closes it, renames it over the targe
 
 Preparation records each owned path before use. Recovery validates every deletion target against the expected profile and session roots before it removes anything. A path that cannot be proved owned blocks cleanup rather than widening deletion.
 
-Active Reviews, active Insights, locked pending or summary reviews, pending merges, and live preparation journals protect their sessions from cleanup. Cache and local-data operations serialize with profile preparation and recovery.
+Active Reviews, active Insights (Analysis, Walkthrough, or Brief), locked pending or summary reviews, pending merges, and live preparation journals protect their sessions from cleanup. Cache and local-data operations serialize with profile preparation and recovery.
 
 ### Settle
 
@@ -74,7 +74,7 @@ An uncertain GitHub write remains locked after restart. Recovery reads GitHub an
 | Variant | Before the action runs | While the action runs |
 | --- | --- | --- |
 | Workspace profile and GitHub account | Config and durable data are namespaced by profile. Credentials are resolved at use time and are not stored. | Profile lifecycle locking prevents cleanup from racing preparation under the same namespace. |
-| Pull request and Review state | Active open Reviews and current sessions are protected. Terminal and orphaned sessions can become retention candidates. | A Review lock protects one Review's writes and recovery classification. Revision identity remains part of every stored operation. |
+| Pull request and Review state | Active open Reviews and current sessions are protected. Terminal and orphaned sessions, and sessions a local Review moved past, can become retention candidates. | A Review lock protects one Review's writes and recovery classification. Revision identity remains part of every stored operation. |
 | GitHub permissions and merge readiness | Storage can remain readable without current GitHub permission. Recovery that needs remote proof requires a current authenticated read. | Permission or network failure keeps uncertain writes locked; it does not convert them to confirmed failure. |
 | Network, local tool, and Insight provider availability | Local configuration and Review data do not need the network to be read. Re-creating cache or reconciling operations can need GitHub, Git, or a provider. | A child or tool failure records a typed operation result where possible. Storage and diagnostic failures remain separate. |
 | Input path: mouse, keyboard, or desktop menu | Data and recovery controls reach the same storage owner. | Input path cannot bypass protection of running sessions or the confirmation for destructive cleanup. |
@@ -127,6 +127,9 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - Clear cache keeps durable Review history. Clear local review data keeps active Reviews, running Insights, locked writes, pending merges, and diagnostics. [Data and recovery](../settings/data-and-recovery.md) owns their copy and what the screen does afterwards.
 - The retention sweep targets terminal or orphaned sessions older than 14 days and quarantine entries older than 30 days. Per-item failure does not fail startup.
 - For a terminal Review, the sweep removes the whole Review record, with its Insights and journals, before its session. Opening that pull request again starts a fresh Review. If the record has an unreconciled GitHub write operation, or its removal fails, the sweep keeps both and tries again next time. An orphaned session is removed on its own.
+- A local Review is never terminal, so it is pruned instead: each move to a new session removes the sessions it moved past with their worktrees and managed refs, unless they have running state or the Review has a recorded Apply operation. A session a retained Analysis, Walkthrough, or Brief names keeps its record and patch and loses its worktree; when the checkout returns to that snapshot, opening it checks the worktree out again. The background sweep prunes every local Review the same way.
+- The background sweep removes a local Review, with its sessions and Insights, when its repository still reads but its branch, base branch, or commit is gone, it has no Local drafts, and it was last opened over 14 days ago. A detached working-tree Review is kept.
+- Removing a worktree through Git deletes the managed refs it checked out. Discard, Clear local review data, and the pull request sweep remove session folders directly, so their refs stay until the background sweep deletes every `refs/patchdesk/` ref of the profile that no stored session, worktree, or preparation names.
 - A Review record written by this build cannot be read by an older build, because it carries the title and last-open fields.
 
 ## Open questions and verification
@@ -136,4 +139,4 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - Confirm that cache clearing re-creates represented-review worktrees when an older Review opens again and clearly reports any missing local checkout.
 - Confirm native Trash behavior and recovery options for quarantined entries; the current Settings surface does not expose every lower-level storage-management action.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; local session retention from `ed32b718` (#474).

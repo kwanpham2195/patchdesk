@@ -109,6 +109,8 @@ Clear cache removes rebuildable children while durable Review history remains. C
 - A represented-review worktree is Cache even though it is a Git checkout; the session that identifies it is Local data.
 - Atomic replacement failures leave the previous complete value authoritative where possible.
 - Retention sweeps remove only old terminal Review records with their sessions, old orphaned sessions, and stale quarantine entries, and continue after per-item errors. A sweep that cannot remove a terminal record leaves its session for the next sweep.
+- A local Review keeps only the sessions it still uses. Each open or Refresh that moves it to a new session removes the ones it moved past, with their worktrees and the `refs/patchdesk/local` refs Patchdesk wrote into the maintainer's repository. A session a retained Insight was generated from keeps its patch in Local data and loses its worktree.
+- Discard, Clear local review data, and the pull request sweep remove sessions without Git, so their `refs/patchdesk/` refs stay in the repository until the next background sweep deletes every managed ref no stored session names.
 
 ## Open questions and verification
 
@@ -120,4 +122,4 @@ Clear cache removes rebuildable children while durable Review history remains. C
 - Confirm which local paths and error details remain visible in the app Logs panel and which are redacted in Review activity.
 - Confirm startup presentation after interrupted atomic writes and preparation-journal recovery.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`; local session retention from `ed32b718` (#474).

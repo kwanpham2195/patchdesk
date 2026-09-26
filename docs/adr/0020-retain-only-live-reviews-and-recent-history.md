@@ -24,3 +24,10 @@ Retention windows are fixed constants in the first version. They may become user
 - Disk usage stays bounded to live reviews plus the retention windows, with no user action.
 - Reopening a terminal review rebuilds its session from the pull request. Local insight history for a discarded session is gone.
 - The manual storage panel keeps working alongside the sweep; both use the same running-state definition.
+
+> **Note, 2026-09-26 (#474):** local Reviews (ADR 0050) are never terminal, so the rules above kept every session one ever had, each with a worktree and a `refs/patchdesk/local` ref in the maintainer's repository. As built:
+>
+> - Each time a local Review moves to a session (open, Refresh, Apply), and in the scheduled sweep, every superseded session is removed with its worktree and managed ref, unless it has running state. A session that a retained Analysis, Walkthrough, or Brief names keeps its session record and patch and loses only its worktree and ref; returning to that snapshot checks the worktree out again. A Review with a recorded Apply operation is left alone.
+> - A local Review is removed with its sessions and Insights when its repository still reads, its branch, base branch, or commit no longer exists, it has no Local drafts, and it was last opened over 14 days ago. A detached working-tree Review is kept.
+> - An active Brief run now counts as running state, as an Analysis or Walkthrough run does.
+> - Removing a worktree now deletes the managed refs it checked out. Discard, Clear local review data, and the pull request sweep remove session directories without Git, so their refs stay until the scheduled sweep deletes every managed ref of the profile that no stored session, worktree, or preparation names, and prunes Git's worktree metadata.
