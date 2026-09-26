@@ -22,6 +22,7 @@ import {
   suggestionFinding,
   value,
   type GitInterceptor,
+  type LocalApplyHarness,
 } from "./local-apply-fixture";
 
 afterEach(cleanupLocalApplyRoots);
@@ -53,6 +54,25 @@ const lastLineFix = suggestionFinding(
 function isApplyWrite(argv: ReadonlyArray<string>): boolean {
   return argv.includes("apply") && !argv.includes("--check");
 }
+
+/** Opens the working tree of a new linked worktree `linked` holding `probe.ts`, which the configured checkout lacks (#489). */
+async function openLinkedProbe(harness: LocalApplyHarness) {
+  const linked = join(dirname(harness.repositoryPath), "linked");
+  git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
+  await writeFile(join(linked, "probe.ts"), probe);
+  const workbench = await harness.open({
+    kind: "working_tree",
+    checkout: value(parseAbsolutePath(linked)),
+  });
+  return { linked, workbench };
+}
+
+/** An Apply whose `git apply` wrote its files and then reported failure, so it is left outcome-unknown. */
+const landsThenFails: GitInterceptor = async (argv, run) => {
+  if (!isApplyWrite(argv)) return run();
+  await run();
+  return err({ _tag: "GitReadFailed" as const });
+};
 
 describe("LocalApplyService", () => {
   it("changes exactly the suggested lines and leaves the index and status untouched", async () => {
@@ -184,13 +204,7 @@ describe("LocalApplyService", () => {
 
   it("applies to the linked worktree a Review names and leaves the configured checkout alone (#489)", async () => {
     const harness = await localApplyHarness();
-    const linked = join(dirname(harness.repositoryPath), "linked");
-    git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
-    await writeFile(join(linked, "probe.ts"), probe);
-    const workbench = await harness.open({
-      kind: "working_tree",
-      checkout: value(parseAbsolutePath(linked)),
-    });
+    const { linked, workbench } = await openLinkedProbe(harness);
     const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
 
     const applied = value(
@@ -566,6 +580,38 @@ describe("LocalApplyService recovery", () => {
   });
 });
 
+describe("LocalApplyService recovery in a linked worktree (#489)", () => {
+  it("confirms at the next start an Apply that landed in the linked worktree, reading that checkout", async () => {
+    const harness = await localApplyHarness(landsThenFails);
+    const { linked, workbench } = await openLinkedProbe(harness);
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    expect(
+      value(
+        await harness.service.apply(
+          applyRequest(workbench, runId, ["finding-bound"]),
+        ),
+      ),
+    ).toEqual({ status: "outcome_unknown" });
+
+    await harness.service.recoverAll();
+
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+    expect(
+      harness.logs.find(
+        (entry) => entry.message === "Local apply recovery decided",
+      )?.meta,
+    ).toEqual(expect.objectContaining({ decision: "confirmed" }));
+    expect(await readFile(join(linked, "probe.ts"), "utf8")).toContain(
+      "index < values.length",
+    );
+    await expect(
+      access(join(harness.repositoryPath, "probe.ts")),
+    ).rejects.toThrow();
+  });
+});
+
 describe("LocalApplyService after a move to another session (#484)", () => {
   it("settles a CheckRequired Apply on Refresh, so a new Apply succeeds and the old session is pruned", async () => {
     let agentWrote = false;
@@ -664,6 +710,40 @@ describe("LocalApplyService after a move to another session (#484)", () => {
       await harness.opening.refresh(profileId, workbench.review.id),
     );
 
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+    expect(refreshed.localDrafts).toEqual([
+      expect.objectContaining({ findingId: "finding-bound", state: "applied" }),
+    ]);
+  });
+
+  it("marks the drafted Finding applied when Refresh of a linked worktree finds its unknown Apply landed (#489)", async () => {
+    const harness = await localApplyHarness(landsThenFails);
+    const { workbench } = await openLinkedProbe(harness);
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    value(
+      await harness.drafts.add({
+        profileId,
+        reviewId: workbench.review.id,
+        sessionId: workbench.session.id,
+        runId,
+        findingId: value(parseFindingId("finding-bound")),
+      }),
+    );
+    expect(
+      value(
+        await harness.service.apply(
+          applyRequest(workbench, runId, ["finding-bound"]),
+        ),
+      ),
+    ).toEqual({ status: "outcome_unknown" });
+
+    const refreshed = value(
+      await harness.opening.refresh(profileId, workbench.review.id),
+    );
+
+    expect(refreshed.session.id).not.toBe(workbench.session.id);
     expect(
       value(await harness.operations.load(profileId, workbench.review.id)),
     ).toBeUndefined();
