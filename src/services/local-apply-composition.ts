@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import type { InsightStore } from "../adapters/storage/insight-store";
 import { resolveSuggestionTarget } from "../domain/finding-suggestion";
-import { parseRepoRelativePath } from "../domain/ids";
+import { parseRepoRelativePath, type RepoRelativePath } from "../domain/ids";
 import { sameInsightRevision } from "../domain/insight-record";
 import type { LocalApplyFile } from "../domain/local-apply-operation";
 import {
@@ -12,6 +12,7 @@ import {
 import { err, ok, type Result } from "../domain/result";
 import { parseReviewResult } from "../domain/review-result";
 import {
+  findWorkingTreeConversion,
   hashFileBytes,
   readCheckoutFile,
   resolveCheckoutRoot,
@@ -95,7 +96,7 @@ export async function loadVerifiedEdits(
   return ok(byPath);
 }
 
-/** Reads each file's current bytes and computes its expected post-image in memory. */
+/** Checks line-ending conversion, then reads each file's current bytes and computes its expected post-image in memory. */
 export async function composeLocalApply(
   git: GitReadExecutor,
   checkoutPath: string,
@@ -103,13 +104,29 @@ export async function composeLocalApply(
 ): Promise<Result<ComposedApply, LocalApplyFailure>> {
   const root = await resolveCheckoutRoot(git, checkoutPath);
   if (root === undefined) return err({ reason: "checkout_unavailable" });
-  const files: LocalApplyFile[] = [];
-  const patches: string[] = [];
-  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+  const paths: Array<
+    readonly [RepoRelativePath, ReadonlyArray<LocalApplyEdit>]
+  > = [];
   for (const [rawPath, fileEdits] of edits) {
     const path = parseRepoRelativePath(rawPath);
     if (path._tag === "err") return err({ reason: "path_refused" });
-    const bytes = await readCheckoutFile(root, path.value);
+    paths.push([path.value, fileEdits]);
+  }
+  // Checked before composing: a CRLF file's lines end in `\r` and would read as changed (#497).
+  const conversion = await findWorkingTreeConversion(
+    git,
+    root,
+    paths.map(([path]) => path),
+  );
+  if (conversion._tag === "unreadable")
+    return err({ reason: "checkout_unavailable" });
+  if (conversion._tag === "converts")
+    return err({ reason: "working_tree_conversion" });
+  const files: LocalApplyFile[] = [];
+  const patches: string[] = [];
+  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+  for (const [path, fileEdits] of paths) {
+    const bytes = await readCheckoutFile(root, path);
     if (bytes === undefined) return err({ reason: "path_refused" });
     let content: string;
     try {
@@ -117,7 +134,7 @@ export async function composeLocalApply(
     } catch {
       return err({ reason: "file_changed" });
     }
-    const change = composeLocalApplyFileChange(path.value, content, fileEdits);
+    const change = composeLocalApplyFileChange(path, content, fileEdits);
     if (change._tag === "err")
       return err({
         reason: change.error === "overlapping" ? "overlapping" : "file_changed",
@@ -128,8 +145,10 @@ export async function composeLocalApply(
     );
     if (preImageSha256 === undefined || postImageSha256 === undefined)
       return err({ reason: "storage" });
-    files.push({ path: path.value, preImageSha256, postImageSha256 });
+    files.push({ path, preImageSha256, postImageSha256 });
     patches.push(change.value.patch);
   }
+  if (files.every((file) => file.preImageSha256 === file.postImageSha256))
+    return err({ reason: "already_applied" });
   return ok({ root, files, patch: patches.join("") });
 }

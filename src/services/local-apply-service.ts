@@ -23,10 +23,7 @@ import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, type Review } from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
 import type { AppLogService } from "./app-log-service";
-import {
-  findWorkingTreeConversion,
-  resolveCheckoutRoot,
-} from "./local-apply-checkout";
+import { resolveCheckoutRoot } from "./local-apply-checkout";
 import {
   composeLocalApply,
   loadVerifiedEdits,
@@ -70,6 +67,8 @@ export type LocalApplyFailure = {
     | "path_refused"
     /** A file no longer holds the lines its suggestion was verified against, or is not UTF-8. */
     | "file_changed"
+    /** Every selected suggestion matches the lines it replaces, so there is nothing to write. */
+    | "already_applied"
     /** `git apply --check` refused the composed patch; nothing was written. */
     | "check_failed"
     /** Git would convert line endings or run a filter when writing a file, so its bytes could not be confirmed. */
@@ -213,15 +212,6 @@ export class LocalApplyService {
       edits.value,
     );
     if (composed._tag === "err") return composed;
-    const conversion = await findWorkingTreeConversion(
-      this.dependencies.git,
-      composed.value.root,
-      composed.value.files.map((file) => file.path),
-    );
-    if (conversion._tag === "unreadable")
-      return err({ reason: "checkout_unavailable" });
-    if (conversion._tag === "converts")
-      return err({ reason: "working_tree_conversion" });
     const now = this.dependencies.now();
     const intent: LocalApplyOperation = {
       schemaVersion: 1,

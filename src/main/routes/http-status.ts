@@ -120,6 +120,7 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["overlapping", 409],
   ["path_refused", 409],
   ["file_changed", 409],
+  ["already_applied", 409],
   ["check_failed", 409],
   ["working_tree_conversion", 409],
   ["checkout_unavailable", 503],
