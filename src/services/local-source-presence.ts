@@ -2,10 +2,7 @@ import { realpath } from "node:fs/promises";
 
 import { casesHandled } from "../domain/result";
 import type { LocalReviewSource } from "../domain/review-source";
-import {
-  listRepositoryCheckouts,
-  type LocalCheckoutReads,
-} from "./local-checkout";
+import { isNamedCheckoutGone, type LocalCheckoutReads } from "./local-checkout";
 
 /**
  * True when the repository at `localPath` still reads and the Review's source
@@ -15,7 +12,8 @@ import {
  * Review. Only ref and object lookups run, never the snapshot a working-tree
  * open writes. A detached working tree names nothing to lose, so it is never
  * gone. A named checkout that `git worktree list` no longer lists as live is
- * gone too (#489); a failed listing keeps the Review.
+ * gone too (#489); a failed listing, or a locked worktree whose directory is
+ * missing, keeps the Review.
  */
 export async function isLocalSourceGone(
   reads: LocalCheckoutReads,
@@ -25,10 +23,12 @@ export async function isLocalSourceGone(
   const repositoryPath = await realpath(localPath).catch(() => undefined);
   if (repositoryPath === undefined) return false;
   if (source.checkout !== undefined) {
-    const checkouts = await listRepositoryCheckouts(reads, repositoryPath);
-    if (checkouts === undefined) return false;
-    if (!checkouts.some((checkout) => checkout.path === source.checkout))
-      return true;
+    const gone = await isNamedCheckoutGone(
+      reads,
+      repositoryPath,
+      source.checkout,
+    );
+    if (gone !== false) return gone === true;
   }
   const read = async (
     ...args: ReadonlyArray<string>
