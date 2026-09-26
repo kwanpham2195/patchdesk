@@ -77,7 +77,7 @@ export function VisitedPullRequests({
   return (
     <aside
       id="visited-pull-requests"
-      aria-label="Pull requests you have opened"
+      aria-label="Reviews you have opened"
       // Navigation sits on the window itself so the main pane stays the one raised surface.
       className="mr-1 flex w-[252px] shrink-0 flex-col overflow-hidden bg-shell"
     >
@@ -102,12 +102,12 @@ export function VisitedPullRequests({
         <div className="pt-3 pb-2" onKeyDown={onRowsKeyDown}>
           {state.kind === "failed" ? (
             <p className="px-2.5 py-2 text-[12px] text-muted-foreground">
-              Could not load recent pull requests.
+              Could not load recent reviews.
             </p>
           ) : null}
           {state.kind === "loaded" && state.rows.length === 0 ? (
             <p className="px-2.5 py-2 text-[12px] text-muted-foreground">
-              Opened pull requests appear here.
+              Pull requests and local reviews you open appear here.
             </p>
           ) : null}
           {state.kind === "loaded"

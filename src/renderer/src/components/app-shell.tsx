@@ -365,8 +365,8 @@ function VisitedToggle({
   readonly onToggle: () => void;
 }): React.JSX.Element {
   const label = collapsed
-    ? "Expand the pull requests you have opened"
-    : "Collapse the pull requests you have opened";
+    ? "Expand the reviews you have opened"
+    : "Collapse the reviews you have opened";
   return (
     <Tooltip>
       <TooltipTrigger
