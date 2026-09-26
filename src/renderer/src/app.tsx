@@ -293,19 +293,23 @@ function AppContent({
   // The open that waits behind the leave-confirmation for a local row click (#479).
   const [parkedLocalOpen, setParkedLocalOpen] = useState<RepositoryIdentity>();
   // Opens the working tree of whichever branch the checkout is on now, so a
-  // branch switch lands on that branch's own Review (#479).
+  // branch switch lands on that branch's own Review (#479). A refused open
+  // calls `leave` before reporting; a parked open has already left.
   const openCurrentWorkingTree = useCallback(
-    async (repository: RepositoryIdentity): Promise<void> => {
+    async (
+      repository: RepositoryIdentity,
+      leave: () => void,
+    ): Promise<void> => {
       try {
         await openLocalReview(repository, { kind: "working_tree" });
       } catch (cause) {
-        navigate({ kind: "dashboard" });
+        leave();
         reportOpenError(
           cause instanceof Error ? cause.message : "Could not open review.",
         );
       }
     },
-    [navigate, openLocalReview, reportOpenError],
+    [openLocalReview, reportOpenError],
   );
   const openLocalRepositoryFromSidebar = useCallback(
     ({ host, owner, repo }: SidebarLocalRepositoryRow): void => {
@@ -313,9 +317,11 @@ function AppContent({
         setParkedLocalOpen({ host, owner, repo });
         return;
       }
-      void openCurrentWorkingTree({ host, owner, repo });
+      void openCurrentWorkingTree({ host, owner, repo }, () =>
+        navigate({ kind: "dashboard" }),
+      );
     },
-    [navigationState, openCurrentWorkingTree],
+    [navigate, navigationState, openCurrentWorkingTree],
   );
   const openPullRequestFromPalette = useCallback(
     (ref: PullRequestRef): void => {
@@ -458,7 +464,10 @@ function AppContent({
                   if (parkedLocalOpen !== undefined) {
                     // Leaving first unmounts the draft this confirmation discards.
                     performNavigation({ kind: "dashboard" });
-                    void openCurrentWorkingTree(parkedLocalOpen);
+                    void openCurrentWorkingTree(
+                      parkedLocalOpen,
+                      () => undefined,
+                    );
                   } else if (pendingDestination !== undefined)
                     performNavigation(pendingDestination);
                   setNavigationState("clear");

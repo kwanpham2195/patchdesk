@@ -270,8 +270,10 @@ function VisitedRow({
       className={cn(
         "ui-state-transition relative flex w-full min-w-0 items-start py-1.5 pr-3 pl-2.5 text-left outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-        // An inert row takes no hover fill that would lighten it.
+        // An inert row takes no hover fill; a selected local row stays
+        // clickable, so its hover darkens the selected fill.
         selected ? "bg-foreground/10" : "hover:bg-foreground/5",
+        selected && !inert && "hover:bg-foreground/15",
       )}
     >
       {selected ? (
