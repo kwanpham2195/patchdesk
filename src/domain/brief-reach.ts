@@ -38,6 +38,7 @@ const EXPORTED_DECLARATION_SYNTAX =
 /** One changed file, reduced to the text the Reach rules read. */
 export type BriefReachFile = {
   readonly path: string;
+// Throwaway line for the #526 filter check.
   /** This file's added and removed line text, joined; the patch carries no more. */
   readonly changedText: string;
 };
