@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.12 - 2026-09-26
+
 - Added local Reviews for a coding agent's work: open the working tree, a branch, or a commit with **Local review** on the Pull requests screen, or from the sidebar, and review it with Diff, Analysis, Walkthrough, and Brief as for a pull request. Findings and notes on any diff line go to **Local drafts**; **Copy as agent prompt** hands them to the agent as one Markdown prompt with each `path:line`. **Refresh** reads the changes again and marks each draft **Unchanged**, **Changed since your note**, or **Needs attention**. **Apply** writes a Finding's suggestion to the working tree after checking the files have not changed since the Analysis, and **Copy as PR description** on the Brief copies it for your own pull request. Patchdesk does not commit or push. #458 #459 #460 #464 #466 #468 #469
 
 - Added a **Change intent** to a local Review: the task or spec the change was written against, as text or a spec file in the repository. Analysis checks the patch against it and reports a goal the patch misses, or a change the intent does not mention, as a P2 Finding; its details line says which intent it checked and when the intent changed since the run. #471
