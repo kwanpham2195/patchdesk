@@ -350,6 +350,7 @@ function childFailureReason(
     case "CommandPendingReview":
     case "CommandFailed":
     case "CommandInvalidJson":
+    case "CommandOutputExceeded":
       return "execution_failed";
     // An aborted child is a cancellation; `runChild` already reports the run's own abort before this runs.
     case "CommandAborted":

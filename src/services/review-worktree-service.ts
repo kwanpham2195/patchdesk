@@ -34,7 +34,12 @@ export type GitReadExecutor = {
     argv: ReadonlyArray<string>,
     environment?: Readonly<Record<string, string>>,
   ) => Promise<
-    Result<{ readonly stdout: string }, { readonly _tag: "GitReadFailed" }>
+    Result<
+      { readonly stdout: string },
+      /** `GitReadOutputExceeded`: git wrote more than the command runner's output cap. */
+      | { readonly _tag: "GitReadFailed" }
+      | { readonly _tag: "GitReadOutputExceeded" }
+    >
   >;
 };
 
