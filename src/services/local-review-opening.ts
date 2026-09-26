@@ -47,6 +47,8 @@ export type LocalReviewOpenFailure =
       readonly reason:
         | "not_found"
         | "repository_not_local"
+        /** The named checkout is not a live worktree of the repository (#489). */
+        | "checkout_not_found"
         | "unmerged_index"
         | "revision_not_found"
         | "storage"
@@ -245,7 +247,7 @@ export class LocalReviewOpening {
       profileId,
       reviewId,
       sessionId: session.value.id,
-      localPath: resolved.localPath,
+      checkoutPath: resolved.checkoutPath,
     });
     const existing = await this.lifecycle.reviews.load(profileId, reviewId);
     let stored: Review<LocalReviewSource> | undefined;
@@ -364,6 +366,8 @@ function mapPreparationFailure(
       return { reason: "not_found" };
     case "RepositoryNotLocal":
       return { reason: "repository_not_local" };
+    case "CheckoutNotInRepository":
+      return { reason: "checkout_not_found" };
     case "UnmergedIndex":
       return { reason: "unmerged_index" };
     case "LocalRevisionNotFound":

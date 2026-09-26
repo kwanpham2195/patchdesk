@@ -1,9 +1,12 @@
 import { execFileSync } from "node:child_process";
 import {
+  mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
+  symlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -23,6 +26,7 @@ import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
 import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
 import {
+  parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -30,6 +34,7 @@ import {
   parseIsoTimestamp,
   parseLocalBranchName,
   parseReviewId,
+  parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
@@ -137,6 +142,7 @@ async function opening(
     ),
     artifacts,
     paths,
+    git: readOnlyGit,
     lifecycleGate: new ReviewLifecycleGate(),
     now: () => now,
   });
@@ -492,5 +498,129 @@ describe("LocalReviewOpening", () => {
       _tag: "err",
       error: { reason: "repository_not_local" },
     });
+  });
+});
+
+describe("LocalReviewOpening in a linked worktree (#489)", () => {
+  async function linkedCheckout() {
+    const fixture = await checkout();
+    const linkedPath = join(fixture.root, "linked");
+    git(
+      fixture.repositoryPath,
+      "worktree",
+      "add",
+      "-q",
+      linkedPath,
+      "-b",
+      "feat",
+    );
+    return { ...fixture, linkedPath: await realpath(linkedPath) };
+  }
+  const workingTreeIn = (path: string): LocalReviewSourceRequest => ({
+    kind: "working_tree",
+    checkout: value(parseAbsolutePath(path)),
+  });
+
+  it("opens the working tree of each checkout as its own Review with its own session and ref", async () => {
+    const { root, repositoryPath, linkedPath } = await linkedCheckout();
+    await writeFile(join(repositoryPath, "main-change.txt"), "main\n");
+    await writeFile(join(linkedPath, "linked-change.txt"), "linked\n");
+    const service = await opening(root, repositoryPath);
+
+    const configured = value(
+      await service.open({ profileId, repository, request: workingTree }),
+    );
+    const linked = value(
+      await service.open({
+        profileId,
+        repository,
+        request: workingTreeIn(linkedPath),
+      }),
+    );
+
+    expect(linked.review.id).not.toBe(configured.review.id);
+    expect(linked.session.key.source).toEqual({
+      kind: "working_tree",
+      branch: "feat",
+      checkout: linkedPath,
+    });
+    expect(configured.fullPatch).toContain("+++ b/main-change.txt");
+    expect(configured.fullPatch).not.toContain("linked-change.txt");
+    expect(linked.fullPatch).toContain("+++ b/linked-change.txt");
+    expect(linked.fullPatch).not.toContain("main-change.txt");
+    expect(
+      git(
+        repositoryPath,
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/patchdesk/local",
+      )
+        .split("\n")
+        .sort(),
+    ).toEqual(
+      [configured.session.id, linked.session.id]
+        .map((id) => `refs/patchdesk/local/acme/${id}/head`)
+        .sort(),
+    );
+    const paths = PatchdeskPaths.forTest(join(root, "app"));
+    for (const opened of [configured, linked])
+      expect(
+        (
+          await stat(
+            paths.worktreeDirectory(
+              profileId,
+              value(parseReviewSessionId(opened.session.id)),
+            ),
+          )
+        ).isDirectory(),
+      ).toBe(true);
+  });
+
+  it("keys a subdirectory and a symlink of a checkout to that checkout's Review", async () => {
+    const { root, repositoryPath, linkedPath } = await linkedCheckout();
+    await mkdir(join(linkedPath, "nested"));
+    await symlink(linkedPath, join(root, "alias"));
+    const service = await opening(root, repositoryPath);
+    const reviewIdIn = async (request: LocalReviewSourceRequest) =>
+      value(await service.open({ profileId, repository, request })).review.id;
+
+    const linked = await reviewIdIn(workingTreeIn(linkedPath));
+
+    expect(await reviewIdIn(workingTreeIn(join(linkedPath, "nested")))).toBe(
+      linked,
+    );
+    expect(await reviewIdIn(workingTreeIn(join(root, "alias")))).toBe(linked);
+    expect(await reviewIdIn(workingTreeIn(repositoryPath))).toBe(
+      await reviewIdIn(workingTree),
+    );
+  });
+
+  it("refuses a directory outside the repository, a second clone, and a Patchdesk worktree", async () => {
+    const { root, repositoryPath } = await linkedCheckout();
+    const outside = join(root, "outside");
+    await mkdir(outside);
+    execFileSync("git", ["clone", "-q", repositoryPath, join(root, "clone")]);
+    const service = await opening(root, repositoryPath);
+    const cacheWorktree = PatchdeskPaths.forTest(
+      join(root, "app"),
+    ).worktreeDirectory(
+      profileId,
+      value(
+        parseReviewSessionId(
+          value(
+            await service.open({ profileId, repository, request: workingTree }),
+          ).session.id,
+        ),
+      ),
+    );
+
+    for (const path of [outside, join(root, "clone"), cacheWorktree])
+      expect(
+        await service.open({
+          profileId,
+          repository,
+          request: workingTreeIn(path),
+        }),
+      ).toEqual({ _tag: "err", error: { reason: "checkout_not_found" } });
   });
 });

@@ -13,7 +13,7 @@ import {
   type IsoTimestamp,
   type WorkspaceProfileId,
 } from "../domain/ids";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
+import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewIdentity } from "../domain/review";
 import {
@@ -30,11 +30,19 @@ import type {
   LocalReviewRevisionFailure,
   LocalReviewRevisionService,
 } from "./local-review-revision-service";
+import {
+  resolveLocalReviewCheckout,
+  type LocalCheckoutFailure,
+  type LocalReviewCheckout,
+} from "./local-checkout";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import { exists, ReviewPreparationJournal } from "./review-preparation-journal";
-import type { ReviewWorktreeService } from "./review-worktree-service";
+import type {
+  GitReadExecutor,
+  ReviewWorktreeService,
+} from "./review-worktree-service";
 
 /** A refined request to open a local Review on one profile repository. */
 export type LocalReviewOpenRequest = {
@@ -48,17 +56,15 @@ export type LocalReviewOpenRequest = {
 };
 
 /** A local source read from the checkout: the Review it keys and the revision it pins. */
-export type ResolvedLocalReview = {
+export type ResolvedLocalReview = LocalReviewCheckout & {
   readonly identity: ReviewIdentity<LocalReviewSource>;
   readonly revision: ReviewRevision;
-  readonly localPath: string;
 };
 
 export type LocalReviewPreparationFailure =
   | { readonly _tag: "ProfileNotFound" }
   | { readonly _tag: "ProfileUnavailable" }
-  /** The repository is not in the profile, or the profile gives it no `localPath`. */
-  | { readonly _tag: "RepositoryNotLocal" }
+  | LocalCheckoutFailure
   | LocalReviewRevisionFailure
   | { readonly _tag: "SessionStorageUnavailable" }
   | { readonly _tag: "PreparationUnavailable" }
@@ -71,6 +77,7 @@ type LocalPreparationDependencies = {
   readonly worktrees: ReviewWorktreeService;
   readonly artifacts: Pick<ReviewArtifactStorage, "quarantine">;
   readonly paths: PatchdeskPaths;
+  readonly git: GitReadExecutor;
   readonly lifecycleGate: ReviewLifecycleGate;
   readonly now: () => IsoTimestamp;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
@@ -84,7 +91,7 @@ type LocalPreparationDependencies = {
 export class LocalReviewSessionPreparation {
   constructor(private readonly dependencies: LocalPreparationDependencies) {}
 
-  /** Reads the source from the profile repository's checkout; a working tree is snapshotted here. */
+  /** Reads the source from the checkout the request names; a working tree is snapshotted here. */
   async resolve(
     input: LocalReviewOpenRequest,
   ): Promise<Result<ResolvedLocalReview, LocalReviewPreparationFailure>> {
@@ -96,26 +103,32 @@ export class LocalReviewSessionPreparation {
             ? "ProfileNotFound"
             : "ProfileUnavailable",
       });
-    const localPath = profile.value.repos.find((candidate) =>
-      sameRepositoryIdentity(candidate, input.repository),
-    )?.localPath;
-    if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
+    const checkout = await resolveLocalReviewCheckout(
+      this.dependencies,
+      profile.value,
+      input.repository,
+      input.request.checkout,
+    );
+    if (checkout._tag === "err") return checkout;
     const resolved = await this.dependencies.revisions.resolve(
       input.profileId,
-      localPath,
+      checkout.value.checkoutPath,
       input.request,
     );
     if (resolved._tag === "err") return resolved;
     return ok({
+      ...checkout.value,
       identity: {
         profileId: input.profileId,
         host: input.repository.host,
         owner: input.repository.owner,
         repo: input.repository.repo,
-        source: resolved.value.source,
+        source: {
+          ...resolved.value.source,
+          ...definedProps({ checkout: checkout.value.checkout }),
+        },
       },
       revision: resolved.value.revision,
-      localPath,
     });
   }
 
@@ -188,7 +201,7 @@ export class LocalReviewSessionPreparation {
     const rebuilt = await this.dependencies.worktrees.prepareLocal({
       profileId: session.key.profileId,
       sessionId: session.id,
-      localPath: resolved.localPath,
+      localPath: resolved.repositoryPath,
       headSha: session.worktree.headSha,
     });
     return rebuilt._tag === "ok"
@@ -209,14 +222,14 @@ export class LocalReviewSessionPreparation {
     );
     const recorded = await journal.recordWorktree({
       path: worktreePath,
-      repositoryPath: resolved.localPath,
+      repositoryPath: resolved.repositoryPath,
     });
     if (recorded._tag === "err")
       return this.abort(journal, { _tag: "SessionStorageUnavailable" });
     const worktree = await this.dependencies.worktrees.prepareLocal({
       profileId,
       sessionId,
-      localPath: resolved.localPath,
+      localPath: resolved.repositoryPath,
       headSha: resolved.revision.headSha,
     });
     if (worktree._tag === "err") {
@@ -230,7 +243,7 @@ export class LocalReviewSessionPreparation {
       });
     }
     const patch = await this.dependencies.revisions.renderPatch(
-      resolved.localPath,
+      resolved.checkoutPath,
       resolved.revision,
     );
     if (patch._tag === "err")

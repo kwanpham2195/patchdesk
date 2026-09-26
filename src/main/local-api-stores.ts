@@ -239,7 +239,13 @@ export async function buildLocalApiStores(
     sessions,
     remoteReviews,
     observationJournals,
-    { revisions: localRevisions, reviews, now: systemNow },
+    {
+      revisions: localRevisions,
+      reviews,
+      now: systemNow,
+      git: readOnlyGit,
+      paths,
+    },
   );
   const storageArtifacts = new ReviewArtifactStorage(paths, systemNow);
   const lifecycleGate =

@@ -98,10 +98,10 @@ export async function loadVerifiedEdits(
 /** Reads each file's current bytes and computes its expected post-image in memory. */
 export async function composeLocalApply(
   git: GitReadExecutor,
-  localPath: string,
+  checkoutPath: string,
   edits: ReadonlyMap<string, ReadonlyArray<LocalApplyEdit>>,
 ): Promise<Result<ComposedApply, LocalApplyFailure>> {
-  const root = await resolveCheckoutRoot(git, localPath);
+  const root = await resolveCheckoutRoot(git, checkoutPath);
   if (root === undefined) return err({ reason: "checkout_unavailable" });
   const files: LocalApplyFile[] = [];
   const patches: string[] = [];

@@ -479,6 +479,7 @@ export async function buildLocalApiContainer(
       worktrees,
       artifacts: storageArtifacts,
       paths,
+      git: readOnlyGit,
       lifecycleGate,
       now: systemNow,
       diagnostics,
