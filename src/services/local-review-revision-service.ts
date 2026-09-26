@@ -96,6 +96,8 @@ export class LocalReviewRevisionService {
       "--src-prefix=a/",
       "--dst-prefix=b/",
       "--no-relative",
+      // Note carry reads a file boundary from missing context, so the context width cannot follow the maintainer's diff.context (#521).
+      "--unified=3",
       revision.baseSha,
       revision.headSha,
     ]);
