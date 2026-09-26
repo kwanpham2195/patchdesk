@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { InsightStore } from "../../src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import type { ReviewStore } from "../../src/adapters/storage/review-store";
 import { definedProps } from "../../src/domain/defined-props";
 import {
@@ -12,8 +18,12 @@ import {
   parseLocalBranchName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
+  createAgentRunRequestId,
   createReviewSessionId,
+  parseContentHash,
+  parseInsightRunId,
 } from "../../src/domain/ids";
+import { beginInsightRun } from "../../src/domain/insight-record";
 import { ok, type Result } from "../../src/domain/result";
 import {
   createReview,
@@ -141,7 +151,15 @@ function localReview(
   };
 }
 
-function service(listing: ListResult) {
+/** An Insight store under a root nothing wrote to, so no Review has a run. */
+const noInsights = new InsightStore(
+  PatchdeskPaths.forTest(join(tmpdir(), "patchdesk-sidebar-no-insights")),
+);
+
+function service(
+  listing: ListResult,
+  insights: Pick<InsightStore, "load"> = noInsights,
+) {
   const recorded: DiagnosticInput[] = [];
   const record = vi.fn(
     async (input: DiagnosticInput): Promise<DiagnosticResult> => {
@@ -163,6 +181,7 @@ function service(listing: ListResult) {
         return listing;
       },
     },
+    insights,
     diagnostics: { record },
   });
   return { listed, recorded };
@@ -422,6 +441,7 @@ describe("SidebarListingService.list", () => {
           });
         },
       },
+      insights: noInsights,
       diagnostics: {
         record: async (): Promise<DiagnosticResult> => {
           throw new Error("diagnostics unavailable");
@@ -534,4 +554,99 @@ describe("SidebarListingService.list", () => {
 
     expect(listing).toEqual({ _tag: "err", error: { reason: "storage" } });
   });
+});
+
+describe("SidebarListingService agent marker (ADR 0052)", () => {
+  const runId = must(parseInsightRunId("insight-analysis-1-111111111111-run"));
+
+  it.each([
+    {
+      state: "an awaiting request",
+      status: "awaiting_approval",
+      active: false,
+      marked: true,
+    },
+    {
+      state: "an approved request whose run is active",
+      status: "approved",
+      active: true,
+      marked: true,
+    },
+    {
+      state: "an approved request whose run settled",
+      status: "approved",
+      active: false,
+      marked: false,
+    },
+    {
+      state: "a declined request",
+      status: "declined",
+      active: false,
+      marked: false,
+    },
+  ] as const)(
+    "marks the local row $marked for $state",
+    async ({ status, active, marked }) => {
+      const root = await mkdtemp(join(tmpdir(), "sidebar-agent-"));
+      try {
+        const insights = new InsightStore(PatchdeskPaths.forTest(root));
+        const local = localReview("feat/x", "2026-03-01T00:00:00.000Z");
+        const request = {
+          requestId: createAgentRunRequestId("request-1"),
+          sessionId: local.currentSessionId,
+          type: "analysis" as const,
+          requestedAt: createdAt,
+        };
+        if (active)
+          must(
+            await insights.mutate({
+              profileId,
+              reviewId: local.id,
+              type: "analysis",
+              now: createdAt,
+              operation: (record) =>
+                beginInsightRun(record, {
+                  id: runId,
+                  revision: {
+                    sessionId: local.currentSessionId,
+                    headSha,
+                    patchHash: must(parseContentHash("c".repeat(64))),
+                  },
+                  provider: "codex-cli-account",
+                  model: "gpt-6-luna",
+                  reasoning: "medium",
+                  language: "en",
+                  startedAt: createdAt,
+                }),
+            }),
+          );
+        const value = service(
+          ok({
+            reviews: [
+              {
+                ...local,
+                agentRunRequests: [
+                  status === "approved"
+                    ? { ...request, status, runId }
+                    : { ...request, status },
+                ],
+              },
+            ],
+            unreadable: 0,
+          }),
+          insights,
+        );
+
+        const listing = must(await value.listed.list(profileId));
+
+        expect(listing.rows[0]).toEqual(
+          marked
+            ? expect.objectContaining({ agent: true })
+            : expect.not.objectContaining({ agent: expect.anything() }),
+        );
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

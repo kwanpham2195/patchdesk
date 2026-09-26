@@ -322,6 +322,18 @@ function VisitedRow({
               <span className="sr-only">Watched</span>
             </span>
           ) : null}
+          {isSidebarLocalRepositoryRow(row) && row.agent ? (
+            <span
+              className="ml-auto inline-flex shrink-0 items-center gap-1 text-[10px]"
+              title="An agent's Insight request awaits you or is running"
+            >
+              <span
+                className="size-1.5 rounded-full bg-primary"
+                aria-hidden="true"
+              />
+              agent
+            </span>
+          ) : null}
           {isSidebarLocalRepositoryRow(row) ||
           row.terminal === undefined ? null : (
             <TerminalMarker terminal={row.terminal} />

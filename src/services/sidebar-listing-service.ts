@@ -1,4 +1,6 @@
+import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import type { AgentRunRequest } from "../domain/agent-run-request";
 import { definedProps } from "../domain/defined-props";
 import {
   checkoutFolderName,
@@ -67,6 +69,8 @@ type SidebarLocalRepositoryRow = {
   readonly sortedAt: IsoTimestamp;
   /** The newest recorded open among them; absent when none was recorded. */
   readonly lastOpenedAt?: IsoTimestamp;
+  /** Present while one of them has an agent run request awaiting approval or its approved run active (ADR 0052 "Sidebar marker"). */
+  readonly agent?: true;
 };
 
 /** The sidebar's rows, plus how many stored Reviews could not be read. */
@@ -81,6 +85,7 @@ export type SidebarListingFailure = { readonly reason: "storage" };
 
 export type SidebarListingDependencies = {
   readonly reviews: Pick<ReviewStore, "list">;
+  readonly insights: Pick<InsightStore, "load">;
   readonly diagnostics: Pick<ReviewDiagnosticService, "record">;
 };
 
@@ -117,13 +122,50 @@ export class SidebarListingService {
       const key = JSON.stringify([host, owner, repo, source.checkout ?? null]);
       localReviews.set(key, [review, ...(localReviews.get(key) ?? [])]);
     }
-    const rows = [
-      ...pullRequestRows,
-      ...[...localReviews.values()].map(localRepositoryRow),
-    ]
+    const localRows = await Promise.all(
+      [...localReviews.values()].map(async (group) => ({
+        ...localRepositoryRow(group),
+        ...definedProps({
+          agent: (await this.hasAgentActivity(profileId, group))
+            ? (true as const)
+            : undefined,
+        }),
+      })),
+    );
+    const rows = [...pullRequestRows, ...localRows]
       .sort((left, right) => right.sortedAt.localeCompare(left.sortedAt))
       .slice(0, SIDEBAR_ROW_LIMIT);
     return ok({ rows, unreadable });
+  }
+
+  /** Whether any of the Reviews has an agent run request awaiting approval, or an approved one whose run is still active. */
+  private async hasAgentActivity(
+    profileId: WorkspaceProfileId,
+    reviews: LocalReviewGroup,
+  ): Promise<boolean> {
+    const approved: Array<{
+      readonly reviewId: ReviewId;
+      readonly request: Extract<AgentRunRequest, { status: "approved" }>;
+    }> = [];
+    for (const review of reviews)
+      for (const request of review.agentRunRequests ?? []) {
+        if (request.sessionId !== review.currentSessionId) continue;
+        if (request.status === "awaiting_approval") return true;
+        if (request.status === "approved")
+          approved.push({ reviewId: review.id, request });
+      }
+    const active = await Promise.all(
+      approved.map(({ reviewId, request }) =>
+        this.dependencies.insights
+          .load(profileId, reviewId, request.type)
+          .then(
+            (record) =>
+              record._tag === "ok" &&
+              record.value.activeRun?.id === request.runId,
+          ),
+      ),
+    );
+    return active.includes(true);
   }
 
   private async recordUnreadable(

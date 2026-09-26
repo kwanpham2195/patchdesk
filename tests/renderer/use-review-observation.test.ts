@@ -275,6 +275,33 @@ describe("useReviewObservation scheduling", () => {
     });
   });
 
+  it("shows an agent run request that arrives while the local Review stays focused, from the next interval detection", async () => {
+    vi.useFakeTimers();
+    const request = {
+      requestId: "agent-request-1",
+      sessionId: "session-a",
+      type: "analysis",
+      requestedAt: "2026-09-26T10:00:00.000Z",
+      status: "awaiting_approval",
+    } as const;
+    installObservationDouble({
+      detect: (call) => ({
+        _tag: "Unchanged",
+        agentRunRequests: call > 1 ? [request] : [],
+      }),
+    });
+    const { patch } = renderObservation(
+      projection({ ...localWorkbench("fresh"), agentRunRequests: [] }),
+    );
+    await flush();
+    expect(patch).not.toHaveBeenCalled();
+
+    // No focus or visibility event: the window never left the Review.
+    await flush(DETECT_INTERVAL_MS);
+
+    expect(patch).toHaveBeenCalledWith({ agentRunRequests: [request] });
+  });
+
   it("leaves a pull request Review's Updates available alone when detection answers Unchanged", async () => {
     vi.useFakeTimers();
     installObservationDouble({ detect: () => ({ _tag: "Unchanged" }) });

@@ -475,7 +475,11 @@ export async function buildLocalApiContainer(
     readOnlyGit,
     profiles,
   );
-  const sidebarListing = new SidebarListingService({ reviews, diagnostics });
+  const sidebarListing = new SidebarListingService({
+    reviews,
+    insights,
+    diagnostics,
+  });
   const reviewDiffSources = new ReviewDiffSourceService(
     profiles,
     sessions,

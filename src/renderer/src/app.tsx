@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { agentMarkerInputs } from "./agent-run-requests";
 import { AppShell } from "./components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
@@ -268,6 +269,14 @@ function AppContent({
     applyLatestProfileSwitch,
   );
   const [visitedReloadKey, setVisitedReloadKey] = useState(0);
+  // The sidebar's "agent" marker follows the open Review's requests and runs, so a change reads the column again.
+  const agentMarker =
+    workbench?.state === "review" ? agentMarkerInputs(workbench) : "";
+  const [shownAgentMarker, setShownAgentMarker] = useState(agentMarker);
+  if (shownAgentMarker !== agentMarker) {
+    setShownAgentMarker(agentMarker);
+    setVisitedReloadKey((key) => key + 1);
+  }
   const openWorkbench = useCallback(
     (next: WorkbenchResponse): void => {
       setWorkbench(next);
@@ -524,6 +533,15 @@ function AppContent({
                 : 0
             }
             workbench={workbench}
+            {...definedProps({
+              profileLabel:
+                profiles.length > 1
+                  ? profiles.find(
+                      (profile) =>
+                        profile.id === workbench.session.key.profileId,
+                    )?.label
+                  : undefined,
+            })}
             {...(notificationFocus?.reviewId === workbench.review.id
               ? { initialUiState: notificationFocus.state }
               : restoredWorkbenchUi.current !== undefined &&

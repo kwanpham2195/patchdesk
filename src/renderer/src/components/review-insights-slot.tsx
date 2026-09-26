@@ -38,6 +38,7 @@ import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { LocalApplyControls } from "../flows/use-local-apply";
 import type { LocalDraftControls } from "../flows/use-local-drafts";
 import { LocalDraftsCard } from "./local-drafts-card";
+import { AgentRequestsBar } from "./agent-requests-bar";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 import {
   INSIGHT_LANGUAGE_LABELS,
@@ -61,6 +62,8 @@ function insightRequestFailureMessage(
     return `${insightName} cancel failed; still running. Try again.`;
   if (requestFailure === "status")
     return `${insightName} status refresh failed; still running.`;
+  if (requestFailure === "request_not_awaiting")
+    return "The agent's request was declined or run meanwhile.";
   return changeIntentRunRefusalMessage(requestFailure);
 }
 /** The selected document's retained time, provider, and model, drawn muted at the right end of the tab strip. */
@@ -198,6 +201,7 @@ export function InsightsSlot({
   localApply,
   localDrafts,
   onFinishWithAnalysisSummary,
+  profileLabel,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly initialDetail?: "analysis" | "walkthrough";
@@ -210,6 +214,8 @@ export function InsightsSlot({
   /** A local Review's Local draft list (ADR 0050, ADR 0051). */
   readonly localDrafts?: LocalDraftControls;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
+  /** The workspace profile's label, set when more than one profile is configured. */
+  readonly profileLabel?: string;
 }): React.JSX.Element {
   const {
     initialInsight,
@@ -337,10 +343,6 @@ export function InsightsSlot({
     selectedInsight === "walkthrough" && selectedRetained !== undefined
       ? workbench.insights.walkthrough.retained?.value.title
       : undefined;
-  const dialogRun =
-    configuration.runDialogType === null
-      ? undefined
-      : runs[configuration.runDialogType];
   const retryRun = reviewOpen ? () => openRunDialog("retry") : undefined;
   const selectedRequestFailureMessage = insightRequestFailureMessage(
     selectedInsightName,
@@ -353,6 +355,20 @@ export function InsightsSlot({
       onTransitionEnd={handleWalkthroughFocusTransitionEnd}
       className="flex h-full min-h-0 w-full flex-col gap-2"
     >
+      {walkthroughFocusActive ? null : (
+        <AgentRequestsBar
+          workbench={workbench}
+          onWorkbenchPatch={onWorkbenchPatch}
+          {...definedProps({ profileLabel })}
+          runBlockedReason={(type) =>
+            agentRunBlockedReason(runEnabled, runs[type], type)
+          }
+          onRun={(request) => {
+            setSelectedInsight(request.type);
+            openRunDialog("run", request.type, request.requestId);
+          }}
+        />
+      )}
       <div className="flex h-full min-h-0 flex-1 flex-col gap-2">
         {walkthroughFocusActive ? null : (
           <InsightNavRail
@@ -469,19 +485,20 @@ export function InsightsSlot({
         changeProvider={changeProvider}
         activateCodex={activateCodex}
         confirmRun={confirmRun}
-        runPending={dialogRun?.starting ?? false}
-        {...definedProps({
-          runErrorMessage:
-            configuration.runDialogType === null
-              ? undefined
-              : insightRequestFailureMessage(
-                  INSIGHT_NOUNS[configuration.runDialogType],
-                  dialogRun?.requestFailure,
-                ),
-        })}
+        runs={runs}
       />
     </section>
   );
+}
+
+/** Why the Agent requests bar's Run cannot start a request of `type` now; undefined when it can. */
+function agentRunBlockedReason(
+  runEnabled: boolean,
+  run: InsightRunController,
+  type: InsightRunDialogType,
+): string | undefined {
+  if (!runEnabled) return "No model configured";
+  return run.busy ? `${INSIGHT_NOUNS[type]} is running` : undefined;
 }
 
 function InsightRunControls({
@@ -491,8 +508,7 @@ function InsightRunControls({
   changeProvider,
   activateCodex,
   confirmRun,
-  runPending,
-  runErrorMessage,
+  runs,
 }: {
   readonly configuration: InsightRunConfiguration;
   readonly closeRunDialog: () => void;
@@ -500,8 +516,7 @@ function InsightRunControls({
   readonly changeProvider: (provider: InsightProvider) => void;
   readonly activateCodex: () => void;
   readonly confirmRun: () => void;
-  readonly runPending: boolean;
-  readonly runErrorMessage?: string;
+  readonly runs: Readonly<Record<InsightRunDialogType, InsightRunController>>;
 }): React.JSX.Element | null {
   const {
     models,
@@ -515,6 +530,11 @@ function InsightRunControls({
     runDialogAction,
   } = configuration;
   if (runDialogType === null) return null;
+  const dialogRun = runs[runDialogType];
+  const runErrorMessage = insightRequestFailureMessage(
+    INSIGHT_NOUNS[runDialogType],
+    dialogRun.requestFailure,
+  );
   return (
     <InsightRunDialog
       open
@@ -555,7 +575,7 @@ function InsightRunControls({
         setConfiguration({ language: nextLanguage })
       }
       onConfirm={confirmRun}
-      pending={runPending}
+      pending={dialogRun.starting}
       {...definedProps({ errorMessage: runErrorMessage })}
     />
   );

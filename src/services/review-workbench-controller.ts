@@ -41,6 +41,10 @@ import type {
   LocalReviewOpening,
 } from "./local-review-opening";
 import type { FailureKinds } from "../domain/failure-kind";
+import {
+  agentRunRequestsOnSession,
+  type AgentRunRequest,
+} from "../domain/agent-run-request";
 import { err, ok, type Result } from "../domain/result";
 import type {
   PrepareReviewSessionFailure,
@@ -747,16 +751,27 @@ export class ReviewWorkbenchController {
   private async observeLocal(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
-  }): Promise<ReviewObservation | undefined> {
+  }): Promise<
+    | (ReviewObservation & {
+        readonly agentRunRequests: ReadonlyArray<AgentRunRequest>;
+      })
+    | undefined
+  > {
     const review = await this.lifecycle.reviews.load(
       input.profileId,
       input.reviewId,
     );
     if (review._tag === "err" || !isLocalReview(review.value)) return undefined;
     const detectedAt = this.now();
+    // The session's agent run requests ride along so a request an agent made while the Review is open reaches its bar.
+    const agentRunRequests =
+      agentRunRequestsOnSession(
+        review.value.agentRunRequests,
+        review.value.currentSessionId,
+      ) ?? [];
     return review.value.freshness._tag === "RevisionChanged"
-      ? { _tag: "RevisionChanged", detectedAt }
-      : { _tag: "Unchanged", detectedAt };
+      ? { _tag: "RevisionChanged", detectedAt, agentRunRequests }
+      : { _tag: "Unchanged", detectedAt, agentRunRequests };
   }
 
   async refresh(

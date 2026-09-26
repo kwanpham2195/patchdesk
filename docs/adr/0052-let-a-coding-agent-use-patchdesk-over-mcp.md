@@ -208,7 +208,11 @@ socket request line.
 
 Amended 2026-09-26 (slice 4b): `run_insight` is annotated
 `idempotentHint: false`, because a repeat after a settled approved run
-records a new request.
+records a new request. Its description no longer asks the agent to poll: on
+`awaiting_approval` the agent stops, tells the user the request waits in
+Patchdesk, and reads `get_insight` when the user resumes it. A local Review's
+detection answer carries the session's requests, so the bar of a Review the
+window stays focused on shows a new request at the next detection.
 
 Amended 2026-09-26 (slice 4): `get_insight` reports `awaiting_approval` or
 `declined` from the current session's request until a run of that type is

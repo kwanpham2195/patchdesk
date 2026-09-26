@@ -46,6 +46,8 @@ export type ReviewWorkbenchFlowProps = {
   ) => void;
   /** Reports in-screen position changes so a reload can restore them. */
   readonly onUiStateChange?: (state: WorkbenchPosition) => void;
+  /** The Review's workspace profile label, set when more than one profile is configured. */
+  readonly profileLabel?: string;
 };
 
 /** Owns loopback calls and replacement of the one canonical Review projection. */
@@ -56,6 +58,7 @@ export function ReviewWorkbenchFlow({
   onWorkbenchPatch,
   onNavigationStateChange,
   onUiStateChange,
+  profileLabel,
 }: ReviewWorkbenchFlowProps): React.JSX.Element {
   const {
     refreshing,
@@ -240,6 +243,7 @@ export function ReviewWorkbenchFlow({
               onWorkbenchReplace={replaceWorkbench}
               onWorkbenchPatch={onWorkbenchPatch}
               onReprepare={requestReprepare}
+              {...(profileLabel === undefined ? {} : { profileLabel })}
               {...(localApply === undefined ? {} : { localApply })}
               {...(localDrafts === undefined ? {} : { localDrafts })}
               {...(writeRecovery.githubWritesLocked
