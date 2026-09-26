@@ -88,20 +88,21 @@ AI Insights sit inside a complete GitHub review workflow:
 
 ## Review your coding agent's work
 
-Patchdesk also reviews changes that are not on GitHub yet: the working tree,
-a branch, or a commit in your checkout. Claude Code or Codex can hand you
-their work over MCP:
+Patchdesk also reviews changes that are not on GitHub yet, such as the
+working tree, a branch, or a commit in your checkout. Claude Code and Codex
+can send their work to Patchdesk over MCP:
 
 1. The agent opens a local Review of its change and asks for an Analysis.
 2. You press **Run** in Patchdesk. Nothing spends your model account without
    that click.
 3. You leave notes on diff lines, then tell the agent "check Patchdesk".
-4. The agent reads your notes, fixes the code, and asks you to refresh. Your
-   notes follow the code to the new revision.
+4. The agent reads your notes, fixes the code, and prepares the new revision.
+5. You press **Refresh**. Patchdesk moves the Review to the new code and marks
+   each note **Unchanged** or **Changed since your note**.
 
-The agent cannot Apply a suggestion, commit, edit your notes, or reach GitHub
-through Patchdesk. [Connect a coding agent](#connect-a-coding-agent) shows
-the setup.
+Patchdesk gives the agent no way to apply a suggestion, commit, edit your
+notes, or reach GitHub. To set it up, see
+[Connect a coding agent](#connect-a-coding-agent).
 
 ## Local-first by design
 
@@ -155,29 +156,40 @@ For development commands and project conventions, read
 
 ### Connect a coding agent
 
-The Homebrew install puts the `patchdesk` command on your PATH. Register it
-with your agent, then check the connection with Patchdesk open:
+The Homebrew install puts the `patchdesk` command on your PATH.
 
-```bash
-claude mcp add patchdesk -- patchdesk mcp
-codex mcp add patchdesk -- patchdesk mcp
-patchdesk mcp --check
-```
+1. Register the command with your agent. Run the line for the agent you use:
 
-Your agent uses the tools when its instructions tell it to. Copy this into
-your project's `CLAUDE.md` or `AGENTS.md`:
+   ```bash
+   claude mcp add patchdesk -- patchdesk mcp
+   codex mcp add patchdesk -- patchdesk mcp
+   ```
 
-```markdown
-## Review in Patchdesk
+2. With Patchdesk open, check the connection:
 
-- When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
-- To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
-- When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback`; address every Finding and comment, then call `refresh_review` and tell me the changes are ready.
-- Do not commit until I say the review is done.
-```
+   ```bash
+   patchdesk mcp --check
+   ```
 
-Review before the agent commits: after a commit, a working-tree Review of a
-clean tree shows an empty diff. The
+   The command prints your repositories. If it prints `app_not_running`,
+   open Patchdesk and run it again.
+
+3. Tell the agent when to use Patchdesk. The agent calls the tools only when
+   its instructions say so. Copy this into your project's `CLAUDE.md` or
+   `AGENTS.md`:
+
+   ```markdown
+   ## Review in Patchdesk
+
+   - When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
+   - To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
+   - When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback`; address every Finding and comment, then call `refresh_review` and tell me the changes are ready.
+   - Do not commit until I say the review is done.
+   ```
+
+Review the change before the agent commits it. After a commit, a working-tree
+Review compares against the new `HEAD`, so a clean tree shows an empty diff.
+The
 [user guide](docs/user-guide.md#use-patchdesk-from-a-coding-agent-mcp) covers
 a disk-image install, troubleshooting, and each tool.
 
