@@ -481,7 +481,12 @@ export async function buildLocalApiContainer(
       diagnostics,
     }),
     reviewProjection,
-    { reviews, artifacts: storageArtifacts, coordinator: reviewOperations },
+    {
+      reviews,
+      artifacts: storageArtifacts,
+      coordinator: reviewOperations,
+      retention: localRetention,
+    },
     systemNow,
   );
   const reviewWorkbench =

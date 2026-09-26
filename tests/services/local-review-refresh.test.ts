@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { access, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,6 +16,13 @@ import {
 } from "./local-apply-fixture";
 
 afterEach(cleanupLocalApplyRoots);
+
+function present(path: string): Promise<boolean> {
+  return access(path).then(
+    () => true,
+    () => false,
+  );
+}
 
 const probe = [
   "export function sum(values: number[]): number {",
@@ -138,6 +145,39 @@ describe("LocalReviewOpening.refresh", () => {
     expect(stored.currentSessionId).toBe(refreshed.session.id);
     expect(stored.localDrafts?.[0]?.anchor.selectedLines).toEqual([
       "  for (let index = 0; index < values.length; index += 1) {",
+    ]);
+  });
+
+  it("removes the superseded worktree on Refresh and checks it out again when the checkout returns to it", async () => {
+    const { harness, workbench } = await draftedReview();
+    const firstWorktree = harness.paths.worktreeDirectory(
+      profileId,
+      workbench.session.id,
+    );
+    await writeFile(join(harness.repositoryPath, "probe.ts"), `${probe}//\n`);
+    value(await harness.opening.refresh(profileId, workbench.review.id));
+    const prunedWorktree = await present(firstWorktree);
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+
+    const reverted = value(
+      await harness.opening.refresh(profileId, workbench.review.id),
+    );
+
+    // The retained Analysis names the first session, so its patch stayed and only its worktree went.
+    expect(prunedWorktree).toBe(false);
+    expect(reverted.session.id).toBe(workbench.session.id);
+    expect(await present(join(firstWorktree, "probe.ts"))).toBe(true);
+    expect(reverted.localDrafts).toEqual([
+      expect.objectContaining({
+        kind: "finding",
+        sessionId: workbench.session.id,
+        state: "unchanged",
+      }),
+      expect.objectContaining({
+        kind: "note",
+        sessionId: workbench.session.id,
+        state: "unchanged",
+      }),
     ]);
   });
 

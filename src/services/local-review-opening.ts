@@ -34,6 +34,7 @@ import type {
   LocalReviewSessionPreparation,
   ResolvedLocalReview,
 } from "./local-review-session-preparation";
+import type { LocalReviewRetention } from "./local-review-retention";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
   ReviewWorkbenchProjection,
@@ -89,6 +90,7 @@ export class LocalReviewOpening {
         ReviewOperationCoordinator,
         "withReviewLock" | "acquire" | "release"
       >;
+      readonly retention: Pick<LocalReviewRetention, "pruneSuperseded">;
     },
     private readonly now: () => IsoTimestamp,
   ) {}
@@ -276,6 +278,9 @@ export class LocalReviewOpening {
       stored?.updatedAt,
     );
     if (saved._tag === "err") return err({ reason: "storage" });
+    // Awaited under this Review lock, so no other open of the Review moves it meanwhile (#474).
+    // Best effort: the retention service records its own failures.
+    await this.lifecycle.retention.pruneSuperseded(profileId, reviewId);
     const projected = await this.projection.loadLocal({
       profileId,
       sessionId: session.value.id,

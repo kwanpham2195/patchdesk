@@ -164,6 +164,8 @@ async function opening(
       reviews,
       artifacts,
       coordinator: seams.coordinator ?? new ReviewOperationCoordinator(),
+      // Retention has its own suite; these scenarios open one session each.
+      retention: { pruneSuperseded: async () => ok(undefined) },
     },
     () => now,
   );

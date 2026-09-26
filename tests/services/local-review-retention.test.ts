@@ -98,7 +98,7 @@ describe("LocalReviewRetention", () => {
 
   it("keeps every session of a Review while an Apply operation is recorded", async () => {
     const harness = await localApplyHarness();
-    const { first } = await refreshedReview(harness, 1);
+    const { first } = await refreshedReview(harness, 0);
     const hash = value(parseContentHash("a".repeat(64)));
     value(
       await harness.operations.save({
@@ -124,6 +124,8 @@ describe("LocalReviewRetention", () => {
     expect(
       value(await harness.operations.load(profileId, first.review.id)),
     ).toBeDefined();
+    await writeFile(join(harness.repositoryPath, "probe.txt"), "edit 1\n");
+    value(await harness.opening.refresh(profileId, first.review.id));
 
     value(await harness.retention.sweepProfile(profileId));
 
