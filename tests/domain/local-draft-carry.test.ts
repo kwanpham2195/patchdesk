@@ -341,6 +341,112 @@ describe("carryLocalDraft", () => {
     });
   });
 
+  // The file's start or end stands in for the empty context block on its side (#521).
+  const firstLineAnchor = {
+    ...loopAnchor,
+    startLine: 1,
+    line: 1,
+    selectedLines: ["export function sum(values) {"],
+    before: [],
+    after: [
+      "  let total = 0;",
+      "  for (let i = 0; i <= values.length; i += 1) {",
+    ],
+  };
+  const lastLineAnchor = {
+    ...loopAnchor,
+    startLine: 7,
+    line: 7,
+    selectedLines: ["}"],
+    before: ["  }", "  return total;"],
+    after: [],
+  };
+  const typedHeader = "export function sum(values: number[]) {";
+
+  it.each([
+    [
+      "the file's first line",
+      firstLineAnchor,
+      [typedHeader, ...probe.slice(1)],
+      { startLine: 1, line: 1, selectedLines: [typedHeader] },
+    ],
+    [
+      "the file's last line",
+      lastLineAnchor,
+      [...probe.slice(0, -1), "} // sum"],
+      { startLine: 7, line: 7, selectedLines: ["} // sum"] },
+    ],
+    [
+      "the file's first line rewritten as two lines",
+      firstLineAnchor,
+      ["/** Sums the values. */", typedHeader, ...probe.slice(1)],
+      {
+        startLine: 1,
+        line: 2,
+        selectedLines: ["/** Sums the values. */", typedHeader],
+      },
+    ],
+  ])(
+    "moves a note on %s to the rewritten lines as changed since the note",
+    (_, anchor, lines, placed) => {
+      const note = { ...loopNote, anchor };
+
+      const carried = carryLocalDraft(note, target(lines));
+
+      expect(carried).toMatchObject({
+        sessionId: next,
+        anchor: placed,
+        carry: {
+          state: "changed",
+          sessionId: next,
+          notedLines: anchor.selectedLines,
+        },
+      });
+    },
+  );
+
+  it.each([
+    [
+      "the first line whose following lines changed too",
+      firstLineAnchor,
+      [typedHeader, "  let total = 0.0;", ...probe.slice(2)],
+    ],
+    [
+      "the last line whose preceding lines changed too",
+      lastLineAnchor,
+      [...probe.slice(0, 5), "  return total ?? 0;", "} // sum"],
+    ],
+    [
+      "the first line of a file rewritten wholesale",
+      firstLineAnchor,
+      ["const total = values.reduce((sum, value) => sum + value, 0);"],
+    ],
+    [
+      "the only line of a one-line file",
+      {
+        ...firstLineAnchor,
+        selectedLines: ["export const limit = 1;"],
+        after: [],
+      },
+      ["export const limit = 2;"],
+    ],
+    [
+      "a hunk's first line that is not the file's first line",
+      { ...loopAnchor, before: [] },
+      probe.map((line, index) => (index === 2 ? "  for (;;) {" : line)),
+    ],
+  ])("needs attention for a note on %s", (_, anchor, lines) => {
+    const note = { ...loopNote, anchor };
+
+    const carried = carryLocalDraft(note, target(lines));
+
+    expect(carried).toMatchObject({
+      anchor,
+      sessionId: earlier,
+      carry: { state: "needs_attention" },
+    });
+  });
+
   it("leaves an applied Finding draft as it is", () => {
     const applied = { ...boundDraft, appliedAt: at };
 

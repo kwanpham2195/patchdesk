@@ -18,9 +18,10 @@ export type LocalDraftCarryTarget = {
  * ADR 0002's carry rule for one Local draft (ADR 0050 "Local drafts", ADR
  * 0051 "Addressed or not", #452). The draft moves when its fingerprint maps to
  * exactly one location in the new patch, or else when its surrounding lines
- * are each found exactly once in the new file around at least one line; it
- * moves to the lines between them even when those left the patch. Any other
- * draft needs attention and keeps its anchor and session. The state describes
+ * are each found exactly once in the new file around at least one line, the
+ * file's start or end standing in for an empty side; it moves to the lines
+ * between them even when those left the patch. Any other draft needs
+ * attention and keeps its anchor and session. The state describes
  * the lines under the draft, not how it was placed: changed once they differ
  * from the lines the maintainer saw, unchanged otherwise. No draft is
  * discarded, and an applied Finding draft is left as it is.
@@ -103,26 +104,33 @@ function withoutStaleSuggestion(
 /**
  * The lines between the draft's `before` and `after` context in the new file,
  * when each context block is found there exactly once, in order, around at
- * least one line.
+ * least one line. The file's start or end stands in for an empty block (#521).
  */
 function regionBetweenContext(
   anchor: ReviewAnchorFingerprint,
   text: string | undefined,
 ): ReviewAnchorFingerprint | undefined {
-  // An empty context block matches everywhere, so it cannot place the draft.
+  // An empty block matches everywhere, so it counts only as the file boundary on its side, beside a block that still matches.
   if (
     text === undefined ||
-    anchor.before.length === 0 ||
-    anchor.after.length === 0
+    (anchor.before.length === 0 && anchor.after.length === 0)
   )
     return undefined;
   const lines = text.split("\n");
   if (lines.at(-1) === "") lines.pop();
-  const before = occurrences(lines, anchor.before);
-  const after = occurrences(lines, anchor.after);
-  if (before.length !== 1 || after.length !== 1) return undefined;
-  const start = (before[0] ?? 0) + anchor.before.length;
-  const end = after[0] ?? 0;
+  // Leading context is missing at the file's start only when the note began on line 1; git's trailing context runs out only at the file's end.
+  const before =
+    anchor.before.length > 0
+      ? onlyOccurrence(lines, anchor.before)
+      : anchor.startLine === 1
+        ? 0
+        : undefined;
+  const end =
+    anchor.after.length > 0
+      ? onlyOccurrence(lines, anchor.after)
+      : lines.length;
+  if (before === undefined || end === undefined) return undefined;
+  const start = before + anchor.before.length;
   if (end <= start) return undefined;
   return {
     ...anchor,
@@ -130,6 +138,14 @@ function regionBetweenContext(
     line: end,
     selectedLines: lines.slice(start, end),
   };
+}
+
+function onlyOccurrence(
+  lines: ReadonlyArray<string>,
+  block: ReadonlyArray<string>,
+): number | undefined {
+  const found = occurrences(lines, block);
+  return found.length === 1 ? found[0] : undefined;
 }
 
 function occurrences(
