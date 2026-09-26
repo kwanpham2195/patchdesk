@@ -65,6 +65,12 @@ export type WorktreeCleanupInput = {
   readonly targetPath: string;
 };
 
+/** The managed refs an ownership marker names, which cleanup deletes with the worktree. */
+type MarkerRefs = {
+  readonly baseRef?: string;
+  readonly headRef?: string;
+};
+
 /** One immutable SHA and the managed ref a fetch writes it to. */
 type ManagedFetchRefspec = {
   readonly sha: GitSha;
@@ -89,7 +95,7 @@ type WorktreeInput = {
 /**
  * `worktree.json` is a durable ownership marker Patchdesk fully owns on both
  * the write and read side (`prepare` and `cleanup` below write it;
- * `matchesMetadata` reads it back). Per ADR 0022, structural drift here means
+ * `ownedMarkerRefs` reads it back). Per ADR 0022, structural drift here means
  * the marker is corrupt, so parsing fails the whole read closed rather than
  * degrading field by field.
  */
@@ -127,8 +133,16 @@ export class ReviewWorktreeService {
         warning: "local_checkout_unavailable",
       });
     }
-    const baseRef = `refs/patchdesk/reviews/${input.profileId}/${input.sessionId}/base`;
-    const headRef = `refs/patchdesk/reviews/${input.profileId}/${input.sessionId}/head`;
+    const baseRef = pullRequestSessionRef(
+      input.profileId,
+      input.sessionId,
+      "base",
+    );
+    const headRef = pullRequestSessionRef(
+      input.profileId,
+      input.sessionId,
+      "head",
+    );
     // Both failures below are authentication problems, not local-checkout
     // problems: GitHub reads have already proven this PR exists, so a missing
     // profile credential or a missing `gh` binary must fail closed rather
@@ -249,13 +263,12 @@ export class ReviewWorktreeService {
   > {
     const { repositoryPath } = input;
     const path = this.paths.worktreeDirectory(input.profileId, input.sessionId);
-    let existing = await this.matchesMetadata(
-      path,
-      input.profileId,
-      input.sessionId,
-    );
+    let existing =
+      (await this.ownedMarkerRefs(path, input.profileId, input.sessionId)) !==
+      undefined;
     if (existing && input.replaceExisting === true) {
-      const removed = await this.cleanup({
+      // The refs this call just pinned stay: only the checkout is replaced.
+      const removed = await this.removeOwnedWorktree({
         profileId: input.profileId,
         sessionId: input.sessionId,
         targetPath: path,
@@ -295,7 +308,7 @@ export class ReviewWorktreeService {
       // write would risk leaving a randomly-named `.tmp` sibling behind on a
       // crash that this cleanup path can't find by name, newly blocking
       // `git worktree remove` in a way plain `writeFile` never could. A
-      // write that throws here is already handled: `matchesMetadata`'s
+      // write that throws here is already handled: `ownedMarkerRefs`'s
       // JSON.parse fails closed, and the `catch` below calls
       // `removeCreatedWorktree` to tear down the whole worktree.
       // A crash mid-write is not the same case: nothing runs to tear the
@@ -358,10 +371,34 @@ export class ReviewWorktreeService {
     await this.git.run(["git", "-C", repositoryPath, "update-ref", "-d", ref]);
   }
 
-  /** Remove only a verified Patchdesk-owned worktree; no broad filesystem deletion is allowed. */
+  /**
+   * Remove only a verified Patchdesk-owned worktree, then the managed refs its
+   * marker names, then Git's worktree metadata; no broad filesystem deletion
+   * is allowed. The refs go only after `git worktree remove` succeeded, so a
+   * worktree Git kept still has the ref it checked out.
+   */
   async cleanup(
     input: WorktreeCleanupInput,
   ): Promise<Result<void, UnsafeWorktreeCleanup | WorktreeFailure>> {
+    const removed = await this.removeOwnedWorktree(input);
+    if (removed._tag === "err") return removed;
+    const { repositoryPath, refs } = removed.value;
+    if (refs.baseRef !== undefined)
+      await this.deleteManagedRef(repositoryPath, refs.baseRef);
+    if (refs.headRef !== undefined)
+      await this.deleteManagedRef(repositoryPath, refs.headRef);
+    await this.git.run(["git", "-C", repositoryPath, "worktree", "prune"]);
+    return ok(undefined);
+  }
+
+  private async removeOwnedWorktree(
+    input: WorktreeCleanupInput,
+  ): Promise<
+    Result<
+      { readonly repositoryPath: string; readonly refs: MarkerRefs },
+      UnsafeWorktreeCleanup | WorktreeFailure
+    >
+  > {
     const expected = this.paths.worktreeDirectory(
       input.profileId,
       input.sessionId,
@@ -375,20 +412,23 @@ export class ReviewWorktreeService {
     } catch {
       return err({ _tag: "UnsafeWorktreeCleanup" });
     }
+    let refs: MarkerRefs | undefined;
     try {
       const info = await lstat(input.targetPath);
       if (info.isSymbolicLink()) return err({ _tag: "UnsafeWorktreeCleanup" });
       const target = await realpath(input.targetPath);
       if (!isPathContained(root, target))
         return err({ _tag: "UnsafeWorktreeCleanup" });
-      if (
-        !(await this.matchesMetadata(target, input.profileId, input.sessionId))
-      )
-        return err({ _tag: "UnsafeWorktreeCleanup" });
+      refs = await this.ownedMarkerRefs(
+        target,
+        input.profileId,
+        input.sessionId,
+      );
+      if (refs === undefined) return err({ _tag: "UnsafeWorktreeCleanup" });
     } catch {
       return err({ _tag: "UnsafeWorktreeCleanup" });
     }
-    if (input.localPath === undefined)
+    if (input.localPath === undefined || refs === undefined)
       return err({ _tag: "UnsafeWorktreeCleanup" });
     let repositoryPath: string;
     try {
@@ -411,7 +451,7 @@ export class ReviewWorktreeService {
       "remove",
       input.targetPath,
     ]);
-    if (removed._tag === "ok") return ok(undefined);
+    if (removed._tag === "ok") return ok({ repositoryPath, refs });
     // Keep recovery able to prove ownership if Git could not remove the
     // worktree this time. The next cleanup attempt removes the marker again.
     // Deliberately not `writeAtomicFile` (M5): same reasoning as the marker
@@ -424,6 +464,7 @@ export class ReviewWorktreeService {
         JSON.stringify({
           profileId: input.profileId,
           sessionId: input.sessionId,
+          ...refs,
         }),
         "utf8",
       );
@@ -433,25 +474,52 @@ export class ReviewWorktreeService {
     return err({ _tag: "GitWorktreeFailed" });
   }
 
-  private async matchesMetadata(
+  /**
+   * The managed refs the marker names when it proves this session owns the
+   * worktree, else undefined. A ref outside this session's own names is
+   * dropped, so a corrupt marker can never delete another ref.
+   */
+  private async ownedMarkerRefs(
     path: string,
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
-  ): Promise<boolean> {
+  ): Promise<MarkerRefs | undefined> {
     try {
       const raw: unknown = JSON.parse(
         await readFile(joinMetadata(path), "utf8"),
       );
       const parsed = v.safeParse(worktreeMetadataSchema, raw);
-      return (
-        parsed.success &&
-        parsed.output.profileId === profileId &&
-        parsed.output.sessionId === sessionId
-      );
+      if (
+        !parsed.success ||
+        parsed.output.profileId !== profileId ||
+        parsed.output.sessionId !== sessionId
+      )
+        return undefined;
+      const owned = new Set([
+        pullRequestSessionRef(profileId, sessionId, "base"),
+        pullRequestSessionRef(profileId, sessionId, "head"),
+        localSessionHeadRef(profileId, sessionId),
+      ]);
+      const { baseRef, headRef } = parsed.output;
+      return definedProps({
+        baseRef:
+          baseRef !== undefined && owned.has(baseRef) ? baseRef : undefined,
+        headRef:
+          headRef !== undefined && owned.has(headRef) ? headRef : undefined,
+      });
     } catch {
-      return false;
+      return undefined;
     }
   }
+}
+
+/** The managed refs a pull request session's fetch writes. */
+function pullRequestSessionRef(
+  profileId: WorkspaceProfileId,
+  sessionId: ReviewSessionId,
+  side: "base" | "head",
+): string {
+  return `refs/patchdesk/reviews/${profileId}/${sessionId}/${side}`;
 }
 
 /** The managed ref a local session's head is pinned under (ADR 0050 "The Local snapshot"). */
