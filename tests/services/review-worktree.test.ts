@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   access,
   mkdtemp,
@@ -11,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { CommandRunner } from "../../src/adapters/github/command-runner";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import type { GitHubCredentials } from "../../src/adapters/github/github-credentials";
 
@@ -31,6 +33,7 @@ import {
   type GitReadExecutor,
 } from "../../src/services/review-worktree-service";
 import { err, ok } from "../../src/domain/result";
+import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 
 function must<T>(
   value: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" },
@@ -615,4 +618,115 @@ describe("ReviewWorktreeService", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  describe("cleanup with real git", () => {
+    /** A one-commit repository and a local session worktree prepared from it by the production executor. */
+    async function preparedLocalSession(root: string) {
+      const local = join(root, "repo");
+      execFileSync("git", ["init", "-q", "-b", "main", local]);
+      await writeFile(join(local, "tracked.txt"), "one\n");
+      fixtureGit(local, "add", "tracked.txt");
+      fixtureGit(local, "commit", "-q", "-m", "root");
+      const headSha = must(parseGitSha(fixtureGit(local, "rev-parse", "HEAD")));
+      const paths = PatchdeskPaths.forTest(join(root, "app"));
+      const service = new ReviewWorktreeService(
+        paths,
+        createReadOnlyGitExecutor(new CommandRunner()),
+        credentials,
+        resolveGh,
+      );
+      const prepared = await service.prepareLocal({
+        profileId: ids.profileId,
+        sessionId,
+        localPath: local,
+        headSha,
+      });
+      if (prepared._tag === "err") throw new Error("fixture prepare failed");
+      return { local, service, target: prepared.value.path };
+    }
+
+    it("deletes the session's managed ref and Git's worktree record", async () => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+      try {
+        const { local, service, target } = await preparedLocalSession(root);
+        expect(managedRefs(local)).toHaveLength(1);
+
+        const cleaned = await service.cleanup({
+          profileId: ids.profileId,
+          sessionId,
+          localPath: local,
+          targetPath: target,
+        });
+
+        expect(cleaned).toEqual({ _tag: "ok", value: undefined });
+        expect(managedRefs(local)).toEqual([]);
+        expect(worktreeCount(local)).toBe(1);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("never deletes a ref the marker names outside the session's own refs", async () => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+      try {
+        const { local, service, target } = await preparedLocalSession(root);
+        await writeFile(
+          join(target, "worktree.json"),
+          JSON.stringify({
+            profileId: ids.profileId,
+            sessionId,
+            headRef: "refs/heads/main",
+          }),
+          "utf8",
+        );
+
+        const cleaned = await service.cleanup({
+          profileId: ids.profileId,
+          sessionId,
+          localPath: local,
+          targetPath: target,
+        });
+
+        expect(cleaned).toEqual({ _tag: "ok", value: undefined });
+        expect(
+          fixtureGit(local, "rev-parse", "--verify", "refs/heads/main"),
+        ).toMatch(/^[0-9a-f]{40}$/);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
 });
+
+/** Runs git for fixture setup and evidence only; the code under test runs git through the production executor. */
+function fixtureGit(cwd: string, ...args: ReadonlyArray<string>): string {
+  return execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd, encoding: "utf8" },
+  ).trim();
+}
+
+function managedRefs(local: string): ReadonlyArray<string> {
+  const listed = fixtureGit(
+    local,
+    "for-each-ref",
+    "--format=%(refname)",
+    "refs/patchdesk/",
+  );
+  return listed === "" ? [] : listed.split("\n");
+}
+
+function worktreeCount(local: string): number {
+  return fixtureGit(local, "worktree", "list", "--porcelain")
+    .split("\n")
+    .filter((line) => line.startsWith("worktree ")).length;
+}
