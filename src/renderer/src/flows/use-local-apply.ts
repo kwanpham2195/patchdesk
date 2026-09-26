@@ -7,6 +7,7 @@ import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
 } from "../renderer-contracts";
+import type { ReviewWorkbenchPatch } from "./use-review-observation";
 
 type LocalApplyLock = "outcome_unknown" | "check_required";
 
@@ -101,13 +102,18 @@ const recoverResponseSchema = v.object({
   workbench: nextWorkbenchSchema,
 });
 
-function refusalMessage(cause: unknown): string {
+function refusalReason(cause: unknown): string | undefined {
   const body =
     cause instanceof PatchdeskApiError
       ? v.safeParse(errorBodySchema, cause.responseBody)
       : undefined;
+  return body?.success === true ? body.output.error : undefined;
+}
+
+function refusalMessage(cause: unknown): string {
+  const reason = refusalReason(cause);
   return (
-    (body?.success === true ? refusalFor(body.output.error) : undefined) ??
+    (reason === undefined ? undefined : refusalFor(reason)) ??
     "The suggestions were not applied."
   );
 }
@@ -120,9 +126,11 @@ function refusalMessage(cause: unknown): string {
 export function useLocalApply({
   workbench,
   onWorkbenchReplace,
+  onWorkbenchPatch,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
+  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
 }): LocalApplyControls | undefined {
   const sessionId = workbench.session.id;
   // Selection, messages, and a settled lock belong to the session they were made on.
@@ -138,7 +146,8 @@ export function useLocalApply({
       ? undefined
       : (current.lock ?? workbench.localApply?.state);
   const retained = workbench.insights.analysis.retained;
-  const patchHash = workbench.revision.patchHash;
+  const revision = workbench.revision;
+  const patchHash = revision.patchHash;
 
   const run = useCallback(
     async (action: () => Promise<SessionApplyUpdate>): Promise<void> => {
@@ -205,14 +214,22 @@ export function useLocalApply({
                 notice: "Applied. Press Refresh to read the changed files.",
               };
         } catch (cause: unknown) {
+          const reason = refusalReason(cause);
+          // The main process marked the Review RevisionChanged; mirroring it keeps Apply disabled until Refresh (#476).
+          if (reason === "revision_changed" || reason === "not_fresh")
+            onWorkbenchPatch({
+              revision: { ...revision, freshness: "updates_available" },
+            });
           return { refusal: refusalMessage(cause) };
         }
       }),
     [
       current.selected,
+      onWorkbenchPatch,
       patchHash,
       replaceWith,
       retained,
+      revision,
       run,
       sessionId,
       workbench.review.id,
