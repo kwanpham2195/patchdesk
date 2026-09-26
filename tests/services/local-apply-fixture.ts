@@ -27,6 +27,7 @@ import {
   parseWorkspaceProfileId,
   type FindingId,
   type InsightRunId,
+  type IsoTimestamp,
 } from "../../src/domain/ids";
 import {
   beginInsightRun,
@@ -128,6 +129,8 @@ export async function localApplyHarness(
     readonly opening?: (
       opening: LocalReviewOpening,
     ) => Pick<LocalReviewOpening, "openLocked">;
+    /** The clock retention ages a Review by; every other clock stays at `now`. */
+    readonly retentionNow?: () => IsoTimestamp;
   } = {},
 ): Promise<LocalApplyHarness> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-local-apply-"));
@@ -178,8 +181,10 @@ export async function localApplyHarness(
     localApplyOperations: operations,
     worktrees,
     artifacts,
+    git: realGit,
     lifecycleGate,
     coordinator,
+    now: seams.retentionNow ?? (() => now),
   });
   const opening = new LocalReviewOpening(
     new LocalReviewSessionPreparation({

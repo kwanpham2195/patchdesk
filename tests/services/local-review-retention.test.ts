@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   parseContentHash,
   parseFindingId,
+  parseIsoTimestamp,
   parseRepoRelativePath,
 } from "../../src/domain/ids";
 import {
@@ -20,6 +21,12 @@ import {
 } from "./local-apply-fixture";
 
 afterEach(cleanupLocalApplyRoots);
+
+const fifteenDaysLater = value(
+  parseIsoTimestamp(
+    new Date(Date.parse(now) + 15 * 24 * 60 * 60 * 1000).toISOString(),
+  ),
+);
 
 function localRefs(repositoryPath: string): ReadonlyArray<string> {
   const listed = git(
@@ -131,5 +138,106 @@ describe("LocalReviewRetention", () => {
 
     expect(localRefs(harness.repositoryPath)).toHaveLength(2);
     expect(sessionWorktrees(harness.repositoryPath)).toHaveLength(2);
+  });
+
+  it("deletes managed refs no stored session names and keeps the current session's", async () => {
+    const harness = await localApplyHarness();
+    const { latest } = await refreshedReview(harness, 0);
+    const gone =
+      "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab";
+    git(
+      harness.repositoryPath,
+      "update-ref",
+      `refs/patchdesk/reviews/${profileId}/${gone}/head`,
+      "HEAD",
+    );
+    git(
+      harness.repositoryPath,
+      "update-ref",
+      `refs/patchdesk/local/${profileId}/${gone}/head`,
+      "HEAD",
+    );
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(
+      git(
+        harness.repositoryPath,
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/patchdesk/",
+      ).trim(),
+    ).toBe(`refs/patchdesk/local/${profileId}/${latest.session.id}/head`);
+  });
+
+  it("removes a local Review whose branch was deleted and that was left alone for 14 days", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
+    const { first } = await refreshedReview(harness, 1);
+    git(harness.repositoryPath, "checkout", "-q", "main");
+    git(harness.repositoryPath, "branch", "-q", "-D", "feature");
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await harness.reviews.load(profileId, first.review.id)).toEqual({
+      _tag: "err",
+      error: expect.objectContaining({ reason: "not_found" }),
+    });
+    expect(
+      await present(
+        harness.paths.sessionDirectory(profileId, first.session.id),
+      ),
+    ).toBe(false);
+    expect(localRefs(harness.repositoryPath)).toEqual([]);
+    expect(sessionWorktrees(harness.repositoryPath)).toEqual([]);
+  });
+
+  it("keeps a local Review whose branch was deleted within the last 14 days", async () => {
+    const harness = await localApplyHarness();
+    git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
+    const { first } = await refreshedReview(harness, 0);
+    git(harness.repositoryPath, "checkout", "-q", "main");
+    git(harness.repositoryPath, "branch", "-q", "-D", "feature");
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(
+      value(await harness.reviews.load(profileId, first.review.id))
+        .currentSessionId,
+    ).toBe(first.session.id);
+  });
+
+  it("keeps a local Review whose branch was deleted while it holds a Local draft", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
+    const { first } = await refreshedReview(harness, 0);
+    value(
+      await harness.drafts.addNote({
+        profileId,
+        reviewId: first.review.id,
+        sessionId: first.session.id,
+        anchor: {
+          path: value(parseRepoRelativePath("probe.txt")),
+          side: "new",
+          startLine: 1,
+          line: 1,
+        },
+        text: "Keep this.",
+      }),
+    );
+    git(harness.repositoryPath, "checkout", "-q", "main");
+    git(harness.repositoryPath, "branch", "-q", "-D", "feature");
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(
+      value(await harness.reviews.load(profileId, first.review.id))
+        .currentSessionId,
+    ).toBe(first.session.id);
+    expect(localRefs(harness.repositoryPath)).toHaveLength(1);
   });
 });

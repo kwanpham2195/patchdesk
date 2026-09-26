@@ -96,6 +96,7 @@ export async function startLocalApiServer(
   const retentionScheduler = startRetentionSweepScheduler({
     profiles: container.configuredProfiles,
     storageManagement: container.storageManagement,
+    localRetention: container.localRetention,
     enabled: configuration.retentionSweep ?? false,
     diagnostics: container.diagnostics,
   });

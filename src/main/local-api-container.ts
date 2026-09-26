@@ -189,8 +189,10 @@ export async function buildLocalApiContainer(
     localApplyOperations,
     worktrees,
     artifacts: storageArtifacts,
+    git: readOnlyGit,
     lifecycleGate,
     coordinator: reviewOperations,
+    now: systemNow,
     diagnostics,
   });
 

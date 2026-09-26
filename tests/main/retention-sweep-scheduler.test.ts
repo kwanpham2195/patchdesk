@@ -11,6 +11,7 @@ import type {
   StorageManagementFailure,
   StorageManagementService,
 } from "../../src/services/storage-management-service";
+import type { LocalReviewRetention } from "../../src/services/local-review-retention";
 import type { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 
 // The sweep interval is written out here rather than imported from the
@@ -51,6 +52,11 @@ function storageManagement(
   return { sweepRetained };
 }
 
+/** A local pass with nothing to remove, for scenarios about the retained sweep. */
+const idleLocalRetention: Pick<LocalReviewRetention, "sweepProfile"> = {
+  sweepProfile: async () => ok(undefined),
+};
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -65,6 +71,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: false,
     });
 
@@ -83,6 +90,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
     });
 
@@ -90,6 +98,29 @@ describe("retention sweep scheduler", () => {
 
     expect(sweepRetained).toHaveBeenCalledTimes(1);
     expect(sweepRetained).toHaveBeenCalledWith(profileId);
+  });
+
+  it("sweeps each profile's local Reviews after its retained sweep", async () => {
+    vi.useFakeTimers();
+    const calls: string[] = [];
+    const scheduler = startRetentionSweepScheduler({
+      profiles: [{ id: profileId }],
+      storageManagement: storageManagement(async (id) => {
+        calls.push(`retained:${id}`);
+        return ok(undefined);
+      }),
+      localRetention: {
+        sweepProfile: async (id) => {
+          calls.push(`local:${id}`);
+          return ok(undefined);
+        },
+      },
+      enabled: true,
+    });
+
+    await scheduler.stop();
+
+    expect(calls).toEqual([`retained:${profileId}`, `local:${profileId}`]);
   });
 
   it("starts one subsequent sweep for an interval tick", async () => {
@@ -100,6 +131,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
     });
 
@@ -118,6 +150,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
     });
 
@@ -143,6 +176,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
     });
 
@@ -165,6 +199,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
     });
 
@@ -183,6 +218,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
     });
     let stopped = false;
@@ -207,6 +243,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
     });
 
@@ -246,6 +283,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }, { id: secondProfileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
       diagnostics: { record },
     });
@@ -272,6 +310,7 @@ describe("retention sweep scheduler", () => {
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(sweepRetained),
+      localRetention: idleLocalRetention,
       enabled: true,
       diagnostics: { record },
     });
