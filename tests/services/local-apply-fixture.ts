@@ -163,6 +163,13 @@ export async function localApplyHarness(
   const artifacts = new ReviewArtifactStorage(paths, () => now);
   const realGit = createReadOnlyGitExecutor(new CommandRunner());
   const revisions = new LocalReviewRevisionService(realGit, paths);
+  // Apply and retention's source reads run through the interceptor; preparation runs real git.
+  const interceptedGit: GitReadExecutor = {
+    run: (argv, environment) =>
+      intercept === undefined
+        ? realGit.run(argv, environment)
+        : intercept(argv, () => realGit.run(argv, environment)),
+  };
   const coordinator = new ReviewOperationCoordinator();
   const lifecycleGate = new ReviewLifecycleGate();
   const worktrees = new ReviewWorktreeService(
@@ -181,7 +188,7 @@ export async function localApplyHarness(
     localApplyOperations: operations,
     worktrees,
     artifacts,
-    git: realGit,
+    git: interceptedGit,
     lifecycleGate,
     coordinator,
     now: seams.retentionNow ?? (() => now),
@@ -227,12 +234,7 @@ export async function localApplyHarness(
     profiles,
     opening: seams.opening?.(opening) ?? opening,
     coordinator,
-    git: {
-      run: (argv, environment) =>
-        intercept === undefined
-          ? realGit.run(argv, environment)
-          : intercept(argv, () => realGit.run(argv, environment)),
-    },
+    git: interceptedGit,
     paths,
     logs: { write: (entry) => logs.push(entry) },
     now: () => now,
