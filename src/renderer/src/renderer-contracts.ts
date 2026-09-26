@@ -21,6 +21,7 @@ import {
 } from "./insight-contracts";
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
+import { agentRunRequestSchema } from "../../domain/agent-run-request";
 import {
   changeIntentProvenanceSchema,
   changeIntentViewSchema,
@@ -880,6 +881,7 @@ const workbenchProjectionSchema = v.strictObject({
   ),
   localDrafts: v.optional(v.array(localDraftEntrySchema)),
   changeIntent: v.optional(v.nullable(changeIntentViewSchema)),
+  agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
 export type RemoteWriteRecovery = v.InferOutput<

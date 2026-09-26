@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import type { AgentRunRequest } from "../../src/domain/agent-run-request";
 import {
+  createAgentRunRequestId,
   createReviewSessionId,
   parseFindingId,
   parseGitHubHost,
@@ -25,9 +27,11 @@ import {
   addLocalDraft,
   createReview,
   editMaintainerNote,
+  moveLocalReviewToSession,
   parseReview,
   removeLocalDraft,
   serializeReview,
+  setAgentRunRequests,
   type Review,
   type ReviewIdentity,
 } from "../../src/domain/review";
@@ -334,6 +338,71 @@ describe("Local drafts on a Review", () => {
       parseReview({
         ...structuredClone(serializeReview(pullRequest)),
         preparedSessionId: localReview().currentSessionId,
+      }),
+    ).toEqual({ _tag: "err", error: { _tag: "InvalidReview" } });
+  });
+});
+
+describe("Agent run requests on a Review", () => {
+  const request: AgentRunRequest = {
+    requestId: createAgentRunRequestId("1"),
+    sessionId: localReview().currentSessionId,
+    type: "analysis",
+    requestedAt: addedAt,
+    status: "awaiting_approval",
+  };
+
+  it("drops the requests of the session a local Review moves past, and keeps them on a move to the same session", () => {
+    const requested = must(
+      setAgentRunRequests(localReview(), [request], addedAt),
+    );
+    const nextHead = must(parseGitSha("2".repeat(40)));
+
+    const unchanged = must(
+      moveLocalReviewToSession(requested, {
+        sessionId: requested.currentSessionId,
+        headSha,
+        updatedAt: removedAt,
+      }),
+    );
+    const moved = must(
+      moveLocalReviewToSession(requested, {
+        sessionId: createReviewSessionId({
+          ...localIdentity,
+          headSha: nextHead,
+          baseSha,
+        }),
+        headSha: nextHead,
+        updatedAt: removedAt,
+      }),
+    );
+
+    expect(unchanged.agentRunRequests).toEqual([request]);
+    expect(moved.agentRunRequests).toBeUndefined();
+    expect(parseReview(structuredClone(serializeReview(requested)))).toEqual({
+      _tag: "ok",
+      value: requested,
+    });
+  });
+
+  it("refuses agent run requests on a pull request Review, which an agent never asks to run on", () => {
+    const pullRequest = createReview({
+      identity: {
+        ...repository,
+        source: {
+          kind: "pull_request",
+          prNumber: must(parsePullRequestNumber(42)),
+        },
+      },
+      currentSessionId: localReview().currentSessionId,
+      headSha,
+      createdAt,
+    });
+
+    expect(
+      parseReview({
+        ...structuredClone(serializeReview(pullRequest)),
+        agentRunRequests: [request],
       }),
     ).toEqual({ _tag: "err", error: { _tag: "InvalidReview" } });
   });

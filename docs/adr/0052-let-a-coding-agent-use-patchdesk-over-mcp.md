@@ -197,6 +197,20 @@ the agent can tell which code a Finding or note is about (ADR 0012).
   recommendations**.
   Refusals: `not_found`, `not_applicable` (a pull request Review).
 
+Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
+`type`, `status`, and `requestId`, plus `runId` once approved. An approved
+request is returned as it stands while its run is active; after that run
+settles, a new call records a new request that needs a new approval. When a
+run of that type that no agent asked for is active on the session,
+`run_insight` returns `running` with that `runId` and records nothing. The
+shim reads the client's name from the SDK and sends it as `client` on the
+socket request line.
+
+Amended 2026-09-26 (slice 4): `get_insight` reports `awaiting_approval` or
+`declined` from the current session's request until a run of that type is
+active on the session or has retained a result generated after the request.
+It carries `requestId` whenever that session has a request.
+
 Never exposed: Apply, Dismiss, adding, editing, or removing the maintainer's
 notes, provider settings, profile selection, and pull request Reviews. v2
 candidates (`reply_to_note`, `add_agent_note`, `cancel_insight`) are decided
@@ -220,6 +234,13 @@ action buttons: Electron shows them on macOS only for a signed app with
 `NSUserNotificationAlertStyle` set to `alert`, and Patchdesk is ad-hoc signed
 (electronjs.org/docs/latest/api/structures/notification-action). The silence
 rule holds; for the focused Review the bar is the signal.
+
+Amended 2026-09-26 (slice 4): Run approves through the existing start route
+with an optional `requestId`. Decline is
+`POST /v1/reviews/insights/agent-requests/decline`. Both refuse a request
+that is not awaiting approval with `request_not_awaiting`. The notification
+title is "Agent asks for Analysis". Its body is the source title with the
+checkout folder, plus "· <label> profile" when more than one profile exists.
 
 ### Feedback hand-off
 
@@ -278,6 +299,12 @@ same session and type returns `declined` and posts nothing. A new session,
 after the maintainer's Refresh, allows a new request. Requests for a session
 the Review has moved past are dropped on the move; `get_insight` reports
 `stale_session` for them.
+
+Amended 2026-09-26 (slice 4): `get_insight` takes no `sessionId`, so it
+cannot tell which session a dropped request was for. After a move it
+describes the new session, with its own status (usually `none`) and the new
+`sessionId`. A `run_insight` that names the old session is refused
+`stale_session`.
 
 **App restart mid-run.** Nothing new: `insight-recovery.ts` fails runs a
 crash left active, so `get_insight` reports `failed`, and the agent may

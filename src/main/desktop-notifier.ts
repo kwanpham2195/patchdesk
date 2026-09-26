@@ -183,6 +183,7 @@ function desktopNotificationClick(
 ): DesktopNotificationClick {
   switch (event._tag) {
     case "InsightSettled":
+    case "AgentRunRequested":
       return {
         kind: "review",
         reviewId: event.reviewId,
@@ -217,6 +218,14 @@ const watchedChangeTitles = {
 function desktopNotificationText(
   event: DesktopNotificationEvent,
 ): DesktopNotificationText {
+  if (event._tag === "AgentRunRequested")
+    return {
+      title: `Agent asks for ${insightLabels[event.insightType]}`,
+      body:
+        event.profileLabel === undefined
+          ? event.localTitle
+          : `${event.localTitle} · ${event.profileLabel} profile`,
+    };
   const { owner, repo, number } = event.pullRequest;
   const reference = `${owner}/${repo}#${number}`;
   switch (event._tag) {

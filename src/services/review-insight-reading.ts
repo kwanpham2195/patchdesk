@@ -1,8 +1,13 @@
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import {
+  findAgentRunRequest,
+  type AgentRunRequest,
+} from "../domain/agent-run-request";
 import { renderBriefAsPullRequestDescription } from "../domain/brief-pull-request-description";
 import { definedProps } from "../domain/defined-props";
 import type {
+  AgentRunRequestId,
   GitSha,
   IsoTimestamp,
   ReviewId,
@@ -73,7 +78,15 @@ type RetainedInsightReading = {
 /** One Insight as `get_insight` answers it (ADR 0052 "Tools, v1"). */
 export type InsightReading = ReviewSessionDescription & {
   readonly type: InsightType;
-  readonly status: "none" | "running" | "completed" | "failed";
+  readonly status:
+    | "none"
+    | "awaiting_approval"
+    | "declined"
+    | "running"
+    | "completed"
+    | "failed";
+  /** The agent run request for this type on the current session, when there is one. */
+  readonly requestId?: AgentRunRequestId;
   readonly failure?: {
     readonly category?: InsightFailureCategory;
     readonly retryable: boolean;
@@ -124,16 +137,23 @@ export class ReviewInsightReader {
     if (session._tag === "err") return session;
     const insight = projected.value.insights[request.type];
     const result = readRetained(projected.value, request.type);
+    const agentRequest = findAgentRunRequest(
+      review.value.agentRunRequests,
+      projected.value.session.id,
+      request.type,
+    );
     return ok({
       ...session.value,
       type: request.type,
-      status:
-        insight.status === "not_generated"
+      status: answersRequest(agentRequest, insight, projected.value.session.id)
+        ? agentRequest.status
+        : insight.status === "not_generated"
           ? "none"
           : insight.status === "current" || insight.status === "outdated"
             ? "completed"
             : insight.status,
       ...definedProps({
+        requestId: agentRequest?.requestId,
         failure:
           insight.replacementFailure === undefined
             ? undefined
@@ -147,6 +167,27 @@ export class ReviewInsightReader {
       }),
     });
   }
+}
+
+/**
+ * An awaiting or declined request answers `get_insight` until a run of that
+ * type on the session is active, or retains a result generated after it.
+ */
+function answersRequest(
+  request: AgentRunRequest | undefined,
+  insight: ReviewWorkbenchProjection["insights"][InsightType],
+  sessionId: ReviewSessionId,
+): request is AgentRunRequest & {
+  readonly status: "awaiting_approval" | "declined";
+} {
+  if (request === undefined || request.status === "approved") return false;
+  if (insight.activeRun?.sessionId === sessionId) return false;
+  const retained = insight.retained;
+  return (
+    retained === undefined ||
+    retained.sessionId !== sessionId ||
+    Date.parse(retained.generatedAt) < Date.parse(request.requestedAt)
+  );
 }
 
 function readRetained(

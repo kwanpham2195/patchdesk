@@ -6,6 +6,7 @@ import { definedProps } from "../../domain/defined-props";
 import {
   parseAbsolutePath,
   parseReviewId,
+  parseReviewSessionId,
   type ReviewId,
 } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
@@ -13,6 +14,11 @@ import { parseLocalReviewSourceRequest } from "../../domain/review-source";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import type { McpToolRefusal } from "../../mcp/socket-protocol";
 import type { mcpToolManifest } from "../../mcp/tool-manifest";
+import type {
+  AgentRunRequestFailure,
+  AgentRunRequestReply,
+  AgentRunRequestService,
+} from "../../services/agent-run-request-service";
 import type { DashboardController } from "../../services/dashboard-controller";
 import {
   checkAgentIntentText,
@@ -55,6 +61,7 @@ export type McpReviewToolServices = {
     "recordAgentIntent"
   >;
   readonly localDrafts: Pick<LocalDraftService, "feedback">;
+  readonly agentRunRequests: Pick<AgentRunRequestService, "request">;
   readonly insightReader: Pick<ReviewInsightReader, "read">;
   readonly sessions: Pick<ReviewSessionStore, "load">;
   readonly reviews: Pick<ReviewStore, "load">;
@@ -65,6 +72,7 @@ type ServiceReason =
   | AgentIntentFailure["reason"]
   | InsightReadingFailure["reason"]
   | LocalFeedbackPageFailure["reason"]
+  | AgentRunRequestFailure["reason"]
   | "no_profile";
 
 const refusalMessages = {
@@ -94,6 +102,9 @@ const refusalMessages = {
     "The intent holds what looks like a credential, which Patchdesk never stores. Remove it and try again.",
   stale_cursor:
     "The feedback changed since this cursor was issued. Call get_feedback again without a cursor.",
+  stale_session:
+    "sessionId is not the Review's current session. Call get_insight or review_local for the current sessionId, then ask again.",
+  request_not_awaiting: "That run request is no longer awaiting approval.",
   storage: "Patchdesk could not read or write its local storage.",
   github_read: "Patchdesk could not read GitHub.",
   github_auth: "Patchdesk is not signed in to GitHub.",
@@ -280,5 +291,32 @@ export async function getFeedback(
     feedback.error.reason === "not_found"
       ? await missingReviewRefusal(services, profiles.value, reviewId.value)
       : refusal(feedback.error.reason),
+  );
+}
+
+/** `run_insight`: `AgentRunRequestService.request`, which records a request the maintainer approves in the app. */
+export async function runInsight(
+  services: McpReviewToolServices,
+  input: ToolInput<"run_insight">,
+  context: { readonly clientName?: string },
+): Promise<Result<AgentRunRequestReply, McpToolRefusal>> {
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const reviewId = parseReviewId(input.reviewId);
+  const sessionId = parseReviewSessionId(input.sessionId);
+  if (reviewId._tag === "err" || sessionId._tag === "err")
+    return err(refusal("invalid_input"));
+  const requested = await services.agentRunRequests.request({
+    profileId: profiles.value.active.id,
+    reviewId: reviewId.value,
+    sessionId: sessionId.value,
+    type: input.type,
+    ...definedProps({ clientName: context.clientName }),
+  });
+  if (requested._tag === "ok") return requested;
+  return err(
+    requested.error.reason === "not_found"
+      ? await missingReviewRefusal(services, profiles.value, reviewId.value)
+      : refusal(requested.error.reason),
   );
 }

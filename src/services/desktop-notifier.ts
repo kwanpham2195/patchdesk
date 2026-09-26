@@ -25,7 +25,16 @@ export type DesktopNotificationEvent =
   | (DesktopNotificationSubject & {
       readonly _tag: "WatchedPullRequestChanged";
       readonly change: WatchedPullRequestChange;
-    });
+    })
+  | {
+      readonly _tag: "AgentRunRequested";
+      readonly reviewId: ReviewId;
+      readonly insightType: InsightType;
+      /** The local Review's source title with its checkout folder, such as "Working tree on feat/x in patchdesk". */
+      readonly localTitle: string;
+      /** Set when more than one workspace profile is configured (ADR 0052 "Profile switch"). */
+      readonly profileLabel?: string;
+    };
 
 /**
  * Posts one desktop notification. Synchronous and total by contract: the

@@ -145,6 +145,30 @@ describe("createDesktopNotifier", () => {
     expect(clicks).toEqual([{ kind: "pullRequest", pullRequest }]);
   });
 
+  it("names an agent's run request by its local source and profile, and routes its click to that Insight", async () => {
+    const { notifier, notifications, clicks, logs } = harness();
+
+    notifier.notify({
+      _tag: "AgentRunRequested",
+      reviewId,
+      insightType: "walkthrough",
+      localTitle: "Working tree on feat/x in patchdesk",
+      profileLabel: "Personal",
+    });
+    await waitForNotificationDecision(logs);
+    notifications.shown[0]?.click();
+
+    expect(notifications.shown).toMatchObject([
+      {
+        title: "Agent asks for Walkthrough",
+        body: "Working tree on feat/x in patchdesk · Personal profile",
+      },
+    ]);
+    expect(clicks).toEqual([
+      { kind: "review", reviewId, insightType: "walkthrough" },
+    ]);
+  });
+
   it.each([
     [
       "focused on the event's Review",

@@ -27,6 +27,7 @@ import type {
   GitHubReader,
 } from "../adapters/github/github-adapter";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import { definedProps } from "../domain/defined-props";
 import { err, ok } from "../domain/result";
 import { DashboardController } from "../services/dashboard-controller";
 import { PublishedFeedbackService } from "../services/published-feedback-service";
@@ -59,7 +60,8 @@ import { LocalApplyService } from "../services/local-apply-service";
 import { LocalApplySettlement } from "../services/local-apply-settlement";
 import { LocalChangeIntentService } from "../services/local-change-intent-service";
 import { LocalDraftService } from "../services/local-draft-service";
-import { createLocalNoteId } from "../domain/ids";
+import { createAgentRunRequestId, createLocalNoteId } from "../domain/ids";
+import { AgentRunRequestService } from "../services/agent-run-request-service";
 import { ReviewRetention } from "../services/review-retention";
 import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
@@ -95,6 +97,8 @@ export type LocalApiContainer = {
   readonly localApply: LocalApplyService;
   readonly localDrafts: LocalDraftService;
   readonly localChangeIntent: LocalChangeIntentService;
+  /** Agent run requests over MCP and their approval in the app (ADR 0052). */
+  readonly agentRunRequests: AgentRunRequestService;
   /** Retained Insight reads for routes that compose from a stored result, such as the Brief's PR description. */
   readonly retainedInsights: Pick<InsightStore, "loadTyped">;
   readonly reviewDiffSources: ReviewDiffSourceService;
@@ -592,6 +596,15 @@ export async function buildLocalApiContainer(
         reviews,
         coordinator: reviewOperations,
         now: systemNow,
+      }),
+      agentRunRequests: new AgentRunRequestService({
+        reviews,
+        insights,
+        profiles,
+        coordinator: reviewOperations,
+        now: systemNow,
+        createRequestId: () => createAgentRunRequestId(randomUUID()),
+        ...definedProps({ notifier: configuration.desktopNotifier }),
       }),
       retainedInsights: insights,
       reviewDiffSources,

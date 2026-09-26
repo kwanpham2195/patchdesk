@@ -16,6 +16,7 @@ import {
 } from "valibot";
 
 import {
+  parseAgentRunRequestId,
   parseFindingId,
   parseInsightRunId,
   parseReviewId,
@@ -23,6 +24,11 @@ import {
 } from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
 import { err } from "../../domain/result";
+import {
+  agentRunDeclineRequestSchema,
+  agentRunRequestFailureKinds,
+  type AgentRunRequestService,
+} from "../../services/agent-run-request-service";
 import { readBriefPullRequestDescription } from "../../services/brief-pull-request-description";
 import {
   insightRunRequestSchema,
@@ -30,7 +36,7 @@ import {
 } from "../../services/insight-run-coordinator";
 import type { InsightCoordinatorSeam } from "../local-api-configuration";
 import type { LocalApiContainer } from "../local-api-container";
-import { insightFailureStatus, response } from "./http-status";
+import { insightFailureStatus, response, serviceResponse } from "./http-status";
 import { jsonBody } from "./json-body";
 
 /** Insight provider activation and the analysis, walkthrough, and brief run lifecycle. */
@@ -52,20 +58,42 @@ export function registerInsightRoutes(
       await configuration.insightProviders.activateCodex(),
     );
   });
+  const { agentRunRequests } = container;
   app.post("/v1/reviews/insights/analysis/run", async (context) =>
-    insightRunResponse(context, insights, "analysis", await jsonBody(context)),
+    insightRunResponse(context, insights, agentRunRequests, "analysis"),
   );
   app.post("/v1/reviews/insights/walkthrough/run", async (context) =>
-    insightRunResponse(
-      context,
-      insights,
-      "walkthrough",
-      await jsonBody(context),
-    ),
+    insightRunResponse(context, insights, agentRunRequests, "walkthrough"),
   );
   app.post("/v1/reviews/insights/brief/run", async (context) =>
-    insightRunResponse(context, insights, "brief", await jsonBody(context)),
+    insightRunResponse(context, insights, agentRunRequests, "brief"),
   );
+  // Decline on the Agent requests bar; final for the request's session (ADR 0052).
+  app.post("/v1/reviews/insights/agent-requests/decline", async (context) => {
+    const parsed = safeParse(
+      agentRunDeclineRequestSchema,
+      await jsonBody(context),
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    const requestId = parseAgentRunRequestId(parsed.output.requestId);
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      requestId._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return serviceResponse(
+      context,
+      await agentRunRequests.decline({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        requestId: requestId.value,
+      }),
+      agentRunRequestFailureKinds,
+    );
+  });
   app.post("/v1/reviews/insights/analysis/cancel", async (context) =>
     insightCancelResponse(
       context,
@@ -175,22 +203,31 @@ const insightFindingSchema = strictObject({
   reason: optional(pipe(string(), minLength(1), maxLength(500))),
 });
 
+/** Starts a run; with `requestId` the start also approves that agent run request. */
 async function insightRunResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
+  agentRunRequests: Pick<AgentRunRequestService, "approve">,
   type: InsightType,
-  body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)
     return context.json({ error: "workflow_unavailable" }, 503);
-  const parsed = safeParse(insightRunRequestSchema, body);
+  const parsed = safeParse(insightRunRequestSchema, await jsonBody(context));
   if (!parsed.success || parsed.output.type !== type)
     return context.json({ error: "invalid_input" }, 400);
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);
   const reviewId = parseReviewId(parsed.output.reviewId);
-  if (profileId._tag === "err" || reviewId._tag === "err")
+  const requestId =
+    parsed.output.requestId === undefined
+      ? undefined
+      : parseAgentRunRequestId(parsed.output.requestId);
+  if (
+    profileId._tag === "err" ||
+    reviewId._tag === "err" ||
+    requestId?._tag === "err"
+  )
     return context.json({ error: "invalid_input" }, 400);
-  const result = await coordinator.start({
+  const input = {
     profileId: profileId.value,
     reviewId: reviewId.value,
     type,
@@ -198,8 +235,21 @@ async function insightRunResponse(
     model: parsed.output.model,
     reasoning: parsed.output.reasoning,
     language: parsed.output.language,
-  });
-  return insightResultResponse(context, result, 202);
+  };
+  const result =
+    requestId === undefined
+      ? await coordinator.start(input)
+      : await agentRunRequests.approve(coordinator, {
+          ...input,
+          requestId: requestId.value,
+        });
+  if (result._tag === "ok") return context.json(result.value, 202);
+  return context.json(
+    { error: result.error },
+    result.error === "request_not_awaiting"
+      ? 409
+      : insightFailureStatus(result.error),
+  );
 }
 
 async function insightCancelResponse(

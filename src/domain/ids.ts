@@ -19,6 +19,8 @@ export type LocalBranchName = Brand<string, "LocalBranchName">;
 export type ReviewId = Brand<string, "ReviewId">;
 export type ReviewSessionId = Brand<string, "ReviewSessionId">;
 export type FindingId = Brand<string, "FindingId">;
+/** One coding agent's request to run an Insight on a local Review (ADR 0052). */
+export type AgentRunRequestId = Brand<string, "AgentRunRequestId">;
 /** A maintainer note's identity on its local Review's Local draft list. */
 export type LocalNoteId = Brand<string, "LocalNoteId">;
 /** An opaque GitHub GraphQL review-thread node identifier. */
@@ -215,6 +217,17 @@ export function parseLocalNoteId(
   input: unknown,
 ): Result<LocalNoteId, InvalidDomainValue> {
   return parseSafeSlug<"LocalNoteId">(input, "localNoteId");
+}
+
+export function parseAgentRunRequestId(
+  input: unknown,
+): Result<AgentRunRequestId, InvalidDomainValue> {
+  return parseSafeSlug<"AgentRunRequestId">(input, "agentRunRequestId");
+}
+
+/** A new agent run request identifier from a random UUID the caller supplies. */
+export function createAgentRunRequestId(uuid: string): AgentRunRequestId {
+  return brand(`agent-request-${uuid}`);
 }
 
 /** A new maintainer note identifier from a random UUID the caller supplies. */

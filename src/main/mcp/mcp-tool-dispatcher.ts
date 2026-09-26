@@ -28,6 +28,7 @@ import type {
   McpToolRefusal,
 } from "../../mcp/socket-protocol";
 import type { LocalFeedback } from "../../services/local-draft-service";
+import type { AgentRunRequestReply } from "../../services/agent-run-request-service";
 import {
   isMcpToolName,
   mcpToolManifest,
@@ -39,6 +40,7 @@ import {
   readActiveProfile,
   refreshReview,
   reviewLocal,
+  runInsight,
   type McpReviewToolServices,
   type ReviewLocalResult,
 } from "./mcp-review-tools";
@@ -54,7 +56,8 @@ export type McpToolReply = Result<
   | ReviewLocalResult
   | LocalReviewPrepared
   | InsightReading
-  | LocalFeedback,
+  | LocalFeedback
+  | AgentRunRequestReply,
   McpToolRefusal
 >;
 
@@ -68,10 +71,14 @@ type LocalRepositoryListing = {
   readonly checkoutError?: LocalReviewOpenFailure["reason"];
 };
 
+/** What a call carries besides its arguments. */
+type McpCallContext = { readonly clientName?: string };
+
 type McpToolEntry<Name extends McpToolName> = {
   readonly schema: (typeof mcpToolManifest)[Name]["inputSchema"];
   call(
     input: InferOutput<(typeof mcpToolManifest)[Name]["inputSchema"]>,
+    context: McpCallContext,
   ): Promise<McpToolReply>;
 };
 
@@ -114,6 +121,10 @@ export function createMcpToolTable(services: McpToolServices): McpToolTable {
     get_feedback: {
       schema: mcpToolManifest.get_feedback.inputSchema,
       call: (input) => getFeedback(tools, input),
+    },
+    run_insight: {
+      schema: mcpToolManifest.run_insight.inputSchema,
+      call: (input, context) => runInsight(tools, input, context),
     },
   };
 }
@@ -165,7 +176,10 @@ export async function dispatchMcpTool(
       error: "invalid_input",
       message: `The arguments do not match ${request.tool}'s input schema.`,
     });
-  return await tool.call(parsed.output);
+  return await tool.call(
+    parsed.output,
+    definedProps({ clientName: request.client }),
+  );
 }
 
 async function listRepositories(
