@@ -1,3 +1,4 @@
+import type { AgentRunRequest } from "../domain/agent-run-request";
 import { createHash } from "node:crypto";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { GitHubReadFailure } from "../adapters/github/gh-request-runner";
@@ -165,6 +166,8 @@ export type ReviewWorkbenchProjection = {
   readonly localDrafts?: ReadonlyArray<LocalDraftEntry>;
   /** Present exactly on a local Review, `null` when it has no Change intent (#467). */
   readonly changeIntent?: ChangeIntentView | null;
+  /** Present exactly on a local Review: the agent run requests on this session, empty when none (ADR 0052). */
+  readonly agentRunRequests?: ReadonlyArray<AgentRunRequest>;
 };
 
 /** A patch file's contents plus the identity a cached hash of them is keyed on. */
@@ -711,6 +714,11 @@ export class ReviewWorkbenchProjectionService {
               : undefined,
         localDrafts: isLocalReview(stableReview.value)
           ? (stableReview.value.localDrafts ?? []).map(projectLocalDraft)
+          : undefined,
+        agentRunRequests: isLocalReview(stableReview.value)
+          ? (stableReview.value.agentRunRequests ?? []).filter(
+              (request) => request.sessionId === session.id,
+            )
           : undefined,
         changeIntent: !isLocalReview(stableReview.value)
           ? undefined

@@ -69,6 +69,10 @@ function recordingTools(reply: McpToolReply = emptyListing()) {
       schema: mcpToolManifest.get_feedback.inputSchema,
       call: record("get_feedback"),
     },
+    run_insight: {
+      schema: mcpToolManifest.run_insight.inputSchema,
+      call: record("run_insight"),
+    },
   };
   return { calls, tools };
 }
@@ -338,6 +342,7 @@ describe("MCP tool dispatcher", () => {
       },
       localChangeIntent: { recordAgentIntent: unavailable },
       localDrafts: { feedback: unavailable },
+      agentRunRequests: { request: unavailable },
       reviewWorkbench: { load: unavailable },
       sessions: { load: unreadable },
       reviews: { load: unreadable },

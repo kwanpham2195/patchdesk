@@ -78,9 +78,29 @@ export const mcpToolManifest = {
       openWorldHint: false,
     },
   },
+  run_insight: {
+    description:
+      "Ask the maintainer to run one Insight on a local Review's current session. It returns at once with status awaiting_approval and a requestId; nothing runs until the maintainer presses Run in Patchdesk, and the provider and model are theirs to pick. Poll get_insight for the outcome. A request already awaiting or running for that session and type is returned as it stands, and a declined one returns declined: the maintainer declined it for this session. sessionId must be the Review's current session, else it is refused stale_session.",
+    inputSchema: v.strictObject({
+      reviewId,
+      sessionId: v.pipe(
+        v.string(),
+        v.minLength(1),
+        v.maxLength(512),
+        v.description("The sessionId review_local or get_insight returned."),
+      ),
+      type: v.picklist(["analysis", "walkthrough", "brief"]),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   get_insight: {
     description:
-      "Read one Insight of a local Review: its status, and the retained result with the session it describes. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries outdated: true.",
+      "Read one Insight of a local Review: its status, and the retained result with the session it describes. awaiting_approval and declined answer a run_insight request on the current session. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries outdated: true.",
     inputSchema: v.strictObject({
       reviewId,
       type: v.picklist(["analysis", "walkthrough", "brief"]),

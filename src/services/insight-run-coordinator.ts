@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import {
   maxLength,
   minLength,
+  optional,
   picklist,
   pipe,
   strictObject,
@@ -158,6 +159,8 @@ export const insightRunRequestSchema = strictObject({
   model: pipe(string(), minLength(1), maxLength(200)),
   reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]),
   language: picklist(INSIGHT_LANGUAGES),
+  /** Set when Run approves an agent run request (ADR 0052). */
+  requestId: optional(pipe(string(), minLength(1))),
 });
 export type InsightCoordinatorFailure =
   | "invalid_request"

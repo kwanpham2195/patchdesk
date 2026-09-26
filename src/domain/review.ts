@@ -1,6 +1,12 @@
 import * as v from "valibot";
 
 import {
+  agentRunRequestSchema,
+  agentRunRequestsOnSession,
+  parseStoredAgentRunRequests,
+  type AgentRunRequest,
+} from "./agent-run-request";
+import {
   parseChangeIntent,
   storedChangeIntentSchema,
   sameChangeIntent,
@@ -154,6 +160,8 @@ export type Review<Source extends ReviewSource = ReviewSource> = {
    * maintainer has not moved to yet (ADR 0052); the move clears it.
    */
   readonly preparedSessionId?: ReviewSessionId;
+  /** A local Review's agent run requests for its current session (ADR 0052); a move drops the rest, absent when empty. */
+  readonly agentRunRequests?: ReadonlyArray<AgentRunRequest>;
 };
 
 /**
@@ -270,6 +278,7 @@ const reviewV2Schema = v.strictObject({
   localDrafts: v.optional(v.array(storedLocalDraftSchema)),
   changeIntent: v.optional(storedChangeIntentSchema),
   preparedSessionId: v.optional(v.string()),
+  agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -362,14 +371,20 @@ export function moveLocalReviewToSession(
   },
 ): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
-  const { preparedSessionId: _moved, ...rest } = review;
+  const { preparedSessionId: _moved, agentRunRequests, ...rest } = review;
   return ok({
     ...rest,
     currentSessionId: input.sessionId,
     currentHeadSha: input.headSha,
     freshness: { _tag: "Fresh" },
     updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
-    ...definedProps({ localDrafts: input.localDrafts ?? review.localDrafts }),
+    ...definedProps({
+      localDrafts: input.localDrafts ?? review.localDrafts,
+      agentRunRequests: agentRunRequestsOnSession(
+        agentRunRequests,
+        input.sessionId,
+      ),
+    }),
   });
 }
 
@@ -635,6 +650,23 @@ export function setChangeIntent(
   });
 }
 
+/** Replace a local Review's agent run requests (ADR 0052). */
+export function setAgentRunRequests(
+  review: Review<LocalReviewSource>,
+  requests: ReadonlyArray<AgentRunRequest>,
+  updatedAt: IsoTimestamp,
+): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  const { agentRunRequests: _replaced, ...rest } = review;
+  return ok({
+    ...rest,
+    ...definedProps({
+      agentRunRequests: requests.length === 0 ? undefined : requests,
+    }),
+    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
+  });
+}
+
 /** Remove one Local draft; removing a draft that is not listed changes nothing. */
 export function removeLocalDraft(
   review: Review<LocalReviewSource>,
@@ -720,6 +752,7 @@ function parseReviewBase(
     | "localDrafts"
     | "changeIntent"
     | "preparedSessionId"
+    | "agentRunRequests"
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
@@ -788,6 +821,12 @@ function parseReviewBase(
       : source.value.kind === "pull_request"
         ? invalid()
         : parseReviewSessionId(raw.preparedSessionId);
+  const agentRunRequests =
+    raw.agentRunRequests === undefined
+      ? ok(undefined)
+      : source.value.kind === "pull_request"
+        ? invalid()
+        : parseStoredAgentRunRequests(raw.agentRunRequests);
   if (
     representedRemote._tag === "err" ||
     status._tag === "err" ||
@@ -795,7 +834,8 @@ function parseReviewBase(
     lastLooked._tag === "err" ||
     localDrafts._tag === "err" ||
     changeIntent._tag === "err" ||
-    preparedSessionId._tag === "err"
+    preparedSessionId._tag === "err" ||
+    agentRunRequests._tag === "err"
   )
     return invalid();
 
@@ -812,6 +852,7 @@ function parseReviewBase(
       localDrafts: localDrafts.value,
       changeIntent: changeIntent.value,
       preparedSessionId: preparedSessionId.value,
+      agentRunRequests: agentRunRequests.value,
     }),
     status: status.value,
     createdAt: createdAt.value,

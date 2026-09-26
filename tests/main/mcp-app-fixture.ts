@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import type { DesktopNotifier } from "../../src/services/desktop-notifier";
 import {
   startLocalApiServer,
   type LocalApiServer,
@@ -76,7 +77,10 @@ export type McpAppFixture = {
  * saves no profile; `"two"` adds an `other` profile with the same repository.
  */
 export async function startAppWithLinkedWorktree(
-  options: { readonly profiles?: "none" | "one" | "two" } = {},
+  options: {
+    readonly profiles?: "none" | "one" | "two";
+    readonly desktopNotifier?: DesktopNotifier;
+  } = {},
 ): Promise<McpAppFixture> {
   const root = await shortTemporaryDirectory();
   const repositoryPath = join(root, "repo");
@@ -119,6 +123,9 @@ export async function startAppWithLinkedWorktree(
     allowedOrigin: origin,
     paths,
     mcpSocketPath: async () => socketPath,
+    ...(options.desktopNotifier !== undefined && {
+      desktopNotifier: options.desktopNotifier,
+    }),
   });
   if (started._tag !== "started") throw new Error("local API did not start");
   const server: LocalApiServer = started.server;

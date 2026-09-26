@@ -61,6 +61,10 @@ export async function connectModernClient(socketPath: string): Promise<Client> {
 
 /** Both protocol eras, for `describe.each`. */
 export const mcpProtocolEras = [
-  { era: "2025", connect: connectLegacyClient },
-  { era: "2026-07-28", connect: connectModernClient },
+  { era: "2025", connect: connectLegacyClient, clientName: "legacy-test" },
+  {
+    era: "2026-07-28",
+    connect: connectModernClient,
+    clientName: "modern-test",
+  },
 ] as const;

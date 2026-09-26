@@ -40,8 +40,18 @@ export function createPatchdeskMcpServer(
         inputSchema: toStandardJsonSchema(tool.inputSchema),
         annotations: tool.annotations,
       },
-      async (input) =>
-        toolResult(await forward(options, { tool: name, arguments: input })),
+      async (input) => {
+        // Backfilled per request on the 2026-07-28 era, so one read serves both eras.
+        const client = server.server.getClientVersion()?.name;
+        return toolResult(
+          await forward(options, {
+            tool: name,
+            arguments: input,
+            ...(client !== undefined &&
+              client.length > 0 && { client: client.slice(0, 128) }),
+          }),
+        );
+      },
     );
   }
   return server;

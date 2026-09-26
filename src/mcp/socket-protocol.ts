@@ -42,6 +42,8 @@ export function resolveMcpSocketPath(
 export const mcpSocketRequestSchema = v.strictObject({
   tool: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
   arguments: v.unknown(),
+  /** The MCP client's own name, which an agent run request records (ADR 0052). */
+  client: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(128))),
 });
 
 export type McpSocketRequest = v.InferOutput<typeof mcpSocketRequestSchema>;
