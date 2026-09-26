@@ -7,7 +7,6 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type {
-  ContentHash,
   FindingId,
   InsightRunId,
   IsoTimestamp,
@@ -16,24 +15,17 @@ import type {
 } from "../domain/ids";
 import {
   decideLocalApplyRecovery,
-  type LocalApplyFile,
   type LocalApplyOperation,
   type LocalApplyRecoveryDecision,
 } from "../domain/local-apply-operation";
 import { definedProps } from "../domain/defined-props";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
-import {
-  isLocalReview,
-  markLocalDraftsApplied,
-  type Review,
-} from "../domain/review";
+import { isLocalReview, type Review } from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import {
   findWorkingTreeConversion,
-  hashFileBytes,
-  readCheckoutFile,
   resolveCheckoutRoot,
 } from "./local-apply-checkout";
 import {
@@ -41,6 +33,10 @@ import {
   loadVerifiedEdits,
   type ComposedApply,
 } from "./local-apply-composition";
+import {
+  markLocalApplyDraftsApplied,
+  observeLocalApplyFiles,
+} from "./local-apply-settlement";
 import type { LocalReviewOpening } from "./local-review-opening";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewWorkbenchProjection } from "./review-workbench-projection";
@@ -277,7 +273,10 @@ export class LocalApplyService {
           patchFile,
         ]);
       const checked = await apply(true);
-      const unchanged = await this.observeFiles(composed.root, intent.files);
+      const unchanged = await observeLocalApplyFiles(
+        composed.root,
+        intent.files,
+      );
       if (
         checked._tag === "err" ||
         decideLocalApplyRecovery(intent.files, unchanged) !== "not_applied"
@@ -293,7 +292,10 @@ export class LocalApplyService {
         return err({ reason: "storage" });
       }
       const applied = await apply(false);
-      const observed = await this.observeFiles(composed.root, intent.files);
+      const observed = await observeLocalApplyFiles(
+        composed.root,
+        intent.files,
+      );
       if (
         applied._tag === "err" ||
         decideLocalApplyRecovery(intent.files, observed) !== "confirmed"
@@ -338,7 +340,13 @@ export class LocalApplyService {
     if ((await this.dependencies.operations.save(confirmed))._tag === "err")
       return { status: "outcome_unknown" };
     this.log("info", "Local apply confirmed", operation, { trigger });
-    if (!(await this.markDraftsApplied(operation).catch(() => false)))
+    if (
+      !(await markLocalApplyDraftsApplied(
+        this.dependencies.reviews,
+        operation,
+        this.dependencies.now(),
+      ).catch(() => false))
+    )
       this.log("warn", "Local apply drafts not marked applied", operation, {});
     const next = await this.dependencies.opening
       .openLocked(
@@ -362,28 +370,6 @@ export class LocalApplyService {
       return { status: "applied", workbench: next.value };
     this.log("warn", "Local apply next session not prepared", operation, {});
     return { status: "applied" };
-  }
-
-  /** False when the Review could not be read or saved. */
-  private async markDraftsApplied(
-    operation: LocalApplyOperation,
-  ): Promise<boolean> {
-    const loaded = await this.dependencies.reviews.load(
-      operation.profileId,
-      operation.reviewId,
-    );
-    if (loaded._tag === "err" || !isLocalReview(loaded.value)) return false;
-    const marked = markLocalDraftsApplied(loaded.value, {
-      runId: operation.analysisRunId,
-      findingIds: operation.findingIds,
-      appliedAt: this.dependencies.now(),
-    });
-    if (marked === loaded.value) return true;
-    const saved = await this.dependencies.reviews.save(
-      marked,
-      loaded.value.updatedAt,
-    );
-    return saved._tag === "ok";
   }
 
   private async recoverLocked(
@@ -427,7 +413,7 @@ export class LocalApplyService {
     const observed =
       root === undefined
         ? operation.files.map(() => undefined)
-        : await this.observeFiles(root, operation.files);
+        : await observeLocalApplyFiles(root, operation.files);
     const decision = decideLocalApplyRecovery(operation.files, observed);
     this.log(
       decision === "check_required" ? "warn" : "info",
@@ -453,18 +439,6 @@ export class LocalApplyService {
       decision,
       ...definedProps({ workbench: confirmed.workbench }),
     });
-  }
-
-  private async observeFiles(
-    root: string,
-    files: ReadonlyArray<LocalApplyFile>,
-  ): Promise<ReadonlyArray<ContentHash | undefined>> {
-    return Promise.all(
-      files.map(async (file) => {
-        const bytes = await readCheckoutFile(root, file.path);
-        return bytes === undefined ? undefined : hashFileBytes(bytes);
-      }),
-    );
   }
 
   private transition(

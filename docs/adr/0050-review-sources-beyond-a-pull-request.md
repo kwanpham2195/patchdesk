@@ -257,6 +257,21 @@ starts (ADR 0035). Recovery reads only:
 None of the four is ever retried automatically. A confirmed write stays
 confirmed when a later bookkeeping step fails.
 
+> **Note, 2026-09-26 (#484):** an outcome-unknown or check-required Apply
+> ends when the Review moves to a session other than the one the Apply was
+> made on, by Refresh or a reopen. The move reads the file hashes once: all
+> at post-image marks the Apply's drafts applied, and every decision removes
+> the record and logs
+> `Local apply settled by a move to another session`. The lock guards
+> against writing the same suggestions twice, and after the move that cannot
+> happen: the Findings are bound to the earlier session, the freshness gate
+> refuses them, and the new session's diff shows the files as they are.
+> Without this rule a file the agent wrote between `git apply --check` and
+> `git apply` left the Review check-required for good, refusing every Apply
+> and keeping retention from pruning it. An Apply on the session the Review
+> is still on keeps ADR 0035's lock; Check files and the next start decide
+> it.
+
 ## Handoff
 
 A confirmed Open PR ends the local Review. Patchdesk opens the pull request

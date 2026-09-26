@@ -199,7 +199,8 @@ describe("LocalReviewRetention", () => {
             postImageSha256: hash,
           },
         ],
-        state: "OutcomeUnknown",
+        // Not OutcomeUnknown: the Refresh below would settle that (#484).
+        state: "Requested",
         requestedAt: now,
         updatedAt: now,
       }),
