@@ -1,14 +1,25 @@
-import { access, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import {
   parseContentHash,
   parseFindingId,
+  parseInsightRunId,
   parseIsoTimestamp,
   parseRepoRelativePath,
+  parseReviewSessionId,
+  type ReviewSessionId,
 } from "../../src/domain/ids";
+import {
+  beginInsightRun,
+  type InsightType,
+} from "../../src/domain/insight-record";
+import { err } from "../../src/domain/result";
+import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
+import { ReviewPreparationJournal } from "../../src/services/review-preparation-journal";
 import {
   cleanupLocalApplyRoots,
   git,
@@ -21,6 +32,10 @@ import {
 } from "./local-apply-fixture";
 
 afterEach(cleanupLocalApplyRoots);
+
+/** A session id no stored session has. */
+const orphanSessionId =
+  "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab";
 
 const fifteenDaysLater = value(
   parseIsoTimestamp(
@@ -50,6 +65,67 @@ function present(path: string): Promise<boolean> {
   return access(path).then(
     () => true,
     () => false,
+  );
+}
+
+/** Starts an Insight run on the workbench's session and leaves it running. */
+async function beginRun(
+  harness: LocalApplyHarness,
+  workbench: ReviewWorkbenchProjection,
+  type: InsightType,
+): Promise<void> {
+  const id = value(
+    parseInsightRunId(`insight-${type}-1-aaaaaaaaaaaa-${workbench.review.id}`),
+  );
+  value(
+    await harness.insights.mutate({
+      profileId,
+      reviewId: workbench.review.id,
+      type,
+      now,
+      operation: (record) =>
+        beginInsightRun(record, {
+          id,
+          revision: {
+            sessionId: workbench.session.id,
+            headSha: workbench.session.key.headSha,
+            patchHash: value(parseContentHash(workbench.revision.patchHash)),
+          },
+          provider: "pi",
+          model: "model",
+          reasoning: "medium",
+          language: "en",
+          startedAt: now,
+        }),
+    }),
+  );
+}
+
+/** A preparation journal left open on the session, as an interrupted preparation leaves it. */
+async function beginPreparation(
+  harness: LocalApplyHarness,
+  sessionId: ReviewSessionId,
+): Promise<void> {
+  value(
+    await ReviewPreparationJournal.begin(harness.paths, profileId, sessionId),
+  );
+}
+
+/** A working-tree Review opened on branch `feature`, which is then deleted. */
+async function reviewOfDeletedBranch(harness: LocalApplyHarness) {
+  git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
+  const { first } = await refreshedReview(harness, 0);
+  git(harness.repositoryPath, "checkout", "-q", "main");
+  git(harness.repositoryPath, "branch", "-q", "-D", "feature");
+  return first;
+}
+
+async function reviewKept(
+  harness: LocalApplyHarness,
+  workbench: ReviewWorkbenchProjection,
+): Promise<boolean> {
+  return (
+    (await harness.reviews.load(profileId, workbench.review.id))._tag === "ok"
   );
 }
 
@@ -239,5 +315,133 @@ describe("LocalReviewRetention", () => {
         .currentSessionId,
     ).toBe(first.session.id);
     expect(localRefs(harness.repositoryPath)).toHaveLength(1);
+  });
+
+  it("keeps a Review whose deleted branch cannot be read because Git failed", async () => {
+    const harness = await localApplyHarness(
+      async (argv, run) =>
+        argv.some((arg) => arg.includes("refs/heads/feature"))
+          ? err({ _tag: "GitReadFailed" as const })
+          : run(),
+      { retentionNow: () => fifteenDaysLater },
+    );
+    const workbench = await reviewOfDeletedBranch(harness);
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, workbench)).toBe(true);
+  });
+
+  it.each([
+    ["an active preparation", beginPreparation],
+    [
+      "only a worktree directory",
+      (harness: LocalApplyHarness, sessionId: ReviewSessionId) =>
+        mkdir(harness.paths.worktreeDirectory(profileId, sessionId), {
+          recursive: true,
+        }).then(() => undefined),
+    ],
+    [
+      "an unreadable session record",
+      async (harness: LocalApplyHarness, sessionId: ReviewSessionId) => {
+        await mkdir(harness.paths.sessionDirectory(profileId, sessionId), {
+          recursive: true,
+        });
+        await writeFile(harness.paths.sessionFile(profileId, sessionId), "{");
+      },
+    ],
+  ] as const)(
+    "keeps a managed ref whose session has %s",
+    async (_label, arrange) => {
+      const harness = await localApplyHarness();
+      const sessionId = value(parseReviewSessionId(orphanSessionId));
+      const ref = `refs/patchdesk/local/${profileId}/${sessionId}/head`;
+      git(harness.repositoryPath, "update-ref", ref, "HEAD");
+      await arrange(harness, sessionId);
+
+      value(await harness.retention.sweepProfile(profileId));
+
+      expect(localRefs(harness.repositoryPath)).toContain(ref);
+    },
+  );
+
+  it.each([
+    [
+      "a preparation in progress",
+      (harness: LocalApplyHarness, workbench: ReviewWorkbenchProjection) =>
+        beginPreparation(harness, workbench.session.id),
+    ],
+    [
+      "an active Analysis run",
+      (harness: LocalApplyHarness, workbench: ReviewWorkbenchProjection) =>
+        beginRun(harness, workbench, "analysis"),
+    ],
+  ] as const)(
+    "keeps a Review whose branch was deleted while it has %s",
+    async (_label, arrange) => {
+      const harness = await localApplyHarness(undefined, {
+        retentionNow: () => fifteenDaysLater,
+      });
+      const workbench = await reviewOfDeletedBranch(harness);
+      await arrange(harness, workbench);
+
+      value(await harness.retention.sweepProfile(profileId));
+
+      expect(await reviewKept(harness, workbench)).toBe(true);
+    },
+  );
+
+  it.each(["analysis", "brief"] as const)(
+    "keeps a superseded session while its %s run is active",
+    async (type) => {
+      const harness = await localApplyHarness();
+      const { first } = await refreshedReview(harness, 0);
+      await beginRun(harness, first, type);
+      await writeFile(join(harness.repositoryPath, "probe.txt"), "edit 1\n");
+
+      value(await harness.opening.refresh(profileId, first.review.id));
+
+      expect(
+        await present(
+          harness.paths.worktreeDirectory(profileId, first.session.id),
+        ),
+      ).toBe(true);
+      expect(
+        await present(harness.paths.patchFile(profileId, first.session.id)),
+      ).toBe(true);
+    },
+  );
+
+  it("keeps a Review whose branch was deleted once its repository has no local path", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    const workbench = await reviewOfDeletedBranch(harness);
+    const profiles = new ProfileStore(harness.paths);
+    const profile = value(await profiles.load(profileId));
+    value(
+      await profiles.save({
+        ...profile,
+        repos: profile.repos.map(
+          ({ localPath: _localPath, ...repository }) => repository,
+        ),
+      }),
+    );
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, workbench)).toBe(true);
+  });
+
+  it("keeps a detached working-tree Review past 14 days", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    git(harness.repositoryPath, "checkout", "-q", "--detach");
+    const { first } = await refreshedReview(harness, 0);
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, first)).toBe(true);
   });
 });
