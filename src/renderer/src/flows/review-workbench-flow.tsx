@@ -159,6 +159,7 @@ export function ReviewWorkbenchFlow({
   const localApply = useLocalApply({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
+    onWorkbenchPatch,
   });
   // One owner for the Insights tab's Local drafts card and the Diff tab's notes.
   const localDrafts = useLocalDrafts({ workbench, onWorkbenchPatch });

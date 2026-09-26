@@ -68,7 +68,11 @@ function workingTreeAnalysis(sessionId = "session-a"): WorkbenchResponse {
 function renderApply(workbench: WorkbenchResponse) {
   const onWorkbenchReplace = vi.fn();
   const rendered = renderHook(() =>
-    useLocalApply({ workbench, onWorkbenchReplace }),
+    useLocalApply({
+      workbench,
+      onWorkbenchReplace,
+      onWorkbenchPatch: () => undefined,
+    }),
   );
   return { ...rendered, onWorkbenchReplace };
 }
@@ -118,6 +122,38 @@ describe("useLocalApply", () => {
     expect(result.current?.selectedIds.has("finding-1")).toBe(true);
     expect(result.current?.lock).toBeUndefined();
     expect(onWorkbenchReplace).not.toHaveBeenCalled();
+  });
+
+  it("keeps Apply disabled with its reason after a RevisionChanged refusal until Refresh moves the Review on", async () => {
+    restore = installDesktopDouble({
+      [APPLY]: () => failure({ error: "revision_changed" }, 409),
+    }).restore;
+    let workbench = workingTreeAnalysis();
+    const { result, rerender } = renderHook(() =>
+      useLocalApply({
+        workbench,
+        onWorkbenchReplace: () => undefined,
+        onWorkbenchPatch: (patch) => {
+          // SAFETY: the patch carries whole top-level fields, as the app's merge applies them.
+          workbench = { ...workbench, ...patch } as WorkbenchResponse;
+        },
+      }),
+    );
+
+    act(() => result.current?.setSelected("finding-1", true));
+    await act(async () => result.current?.apply());
+    rerender();
+    act(() => result.current?.setSelected("finding-1", false));
+    act(() => result.current?.setSelected("finding-1", true));
+
+    expect(result.current?.blocked).toBe(true);
+    expect(result.current?.refusal).toBeDefined();
+
+    workbench = workingTreeAnalysis("session-b");
+    rerender();
+
+    expect(result.current?.blocked).toBe(false);
+    expect(result.current?.refusal).toBeUndefined();
   });
 
   it("locks Apply after an unknown outcome until a check finds nothing applied", async () => {
