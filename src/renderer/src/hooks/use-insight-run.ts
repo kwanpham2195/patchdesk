@@ -6,7 +6,7 @@ import {
   useState,
 } from "react";
 
-import { requestJson } from "../api-client";
+import { isApiErrorCode, requestJson } from "../api-client";
 import {
   changeIntentRunRefusal,
   type ChangeIntentRunRefusal,
@@ -33,7 +33,16 @@ type InsightRunRequestFailure =
   | "start"
   | "cancel"
   | "status"
+  /** Run named an agent run request that was declined or run meanwhile (ADR 0052). */
+  | "request_not_awaiting"
   | ChangeIntentRunRefusal;
+
+/** What a start carries beyond the run options. */
+export type InsightRunStartOptions = {
+  /** The agent run request this Run approves (ADR 0052). */
+  readonly requestId?: string;
+  readonly onAccepted?: (runId: string) => void;
+};
 
 export type InsightRunController = {
   readonly status: InsightRunState;
@@ -51,7 +60,7 @@ export type InsightRunController = {
     model: string,
     reasoning: InsightReasoning,
     language: InsightLanguage,
-    onAccepted?: () => void,
+    options?: InsightRunStartOptions,
   ) => void;
   readonly cancel: () => void;
 };
@@ -181,7 +190,7 @@ export function useInsightRun(input: {
       model: string,
       reasoning: InsightReasoning,
       language: InsightLanguage,
-      onAccepted?: () => void,
+      options?: InsightRunStartOptions,
     ): void => {
       if (
         startingRef.current ||
@@ -206,6 +215,7 @@ export function useInsightRun(input: {
           model,
           reasoning,
           language,
+          ...definedProps({ requestId: options?.requestId }),
         },
       })
         .then((value) => {
@@ -217,12 +227,16 @@ export function useInsightRun(input: {
           activeRunRef.current = parsed.runId;
           setRunId(parsed.runId);
           setStatus(parsed.status);
-          onAccepted?.();
+          options?.onAccepted?.(parsed.runId);
         })
         .catch((cause: unknown) => {
           if (!mountedRef.current || generationRef.current !== generation)
             return;
-          setRequestFailure(changeIntentRunRefusal(cause) ?? "start");
+          setRequestFailure(
+            isApiErrorCode(cause, "request_not_awaiting")
+              ? "request_not_awaiting"
+              : (changeIntentRunRefusal(cause) ?? "start"),
+          );
           setStatus("error");
         })
         .finally(() => {

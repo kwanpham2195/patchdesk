@@ -38,6 +38,8 @@ const sidebarLocalRepositoryRowSchema = v.strictObject({
   ),
   sortedAt: v.pipe(v.string(), v.minLength(1)),
   lastOpenedAt: v.optional(v.pipe(v.string(), v.minLength(1))),
+  // Present while an agent's request awaits approval or its approved run is active (ADR 0052).
+  agent: v.optional(v.literal(true)),
 });
 
 // `GET /v1/sidebar/reviews` is a local-API payload Patchdesk owns on both

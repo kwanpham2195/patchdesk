@@ -70,6 +70,11 @@ describe.each(mcpProtocolEras)(
           )
         ).body,
       );
+      // Detection carries the request so the open Review's bar sees it without a reload.
+      const detected = await fixture.route(
+        "v1/reviews/detect-updates",
+        JSON.stringify({ profileId: "acme", reviewId: workbench.review.id }),
+      );
       const { requestId } = v.parse(requestedSchema, first.content);
       const declined = await fixture.route(
         "v1/reviews/insights/agent-requests/decline",
@@ -108,6 +113,11 @@ describe.each(mcpProtocolEras)(
           clientName,
         }),
       ]);
+      expect(detected.body).toMatchObject({
+        agentRunRequests: [
+          expect.objectContaining({ requestId, status: "awaiting_approval" }),
+        ],
+      });
       expect(declined.status).toBe(200);
       expect(afterDecline.content).toMatchObject({
         status: "declined",

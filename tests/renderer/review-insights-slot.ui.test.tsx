@@ -16,7 +16,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { definedProps } from "../../src/domain/defined-props";
 import { InsightsSlot } from "../../src/renderer/src/components/review-insights-slot";
+import { saveInsightRunPreference } from "../../src/renderer/src/insight-run-preferences";
 import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
@@ -827,4 +829,77 @@ describe("InsightsSlot Brief Start here links", () => {
       ).toBeNull();
     },
   );
+});
+
+describe("InsightsSlot Agent requests bar (ADR 0052)", () => {
+  const awaiting = {
+    requestId: "agent-request-1",
+    sessionId: "session-a",
+    type: "analysis" as const,
+    requestedAt: "2026-09-26T10:00:00.000Z",
+    clientName: "claude-code",
+    status: "awaiting_approval" as const,
+  };
+
+  it("runs a request from the keyboard through the run dialog with the stored preference and its requestId, then drops it from the bar", async () => {
+    const runBodies: unknown[] = [];
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+      "/v1/reviews/insights/analysis/run": (input) => {
+        runBodies.push(input.body);
+        return success({ runId: "run-a", type: "analysis", status: "queued" });
+      },
+      "/v1/reviews/insights/runs/run-a": () => new Promise(() => undefined),
+    });
+    saveInsightRunPreference("profile", "analysis", {
+      provider: "pi",
+      model: "fixture-model",
+      reasoning: "medium",
+      language: "vi",
+    });
+    function Harness(): React.JSX.Element {
+      const [workbench, setWorkbench] = useState(
+        projection({ agentRunRequests: [awaiting] }),
+      );
+      return (
+        <InsightsSlot
+          workbench={workbench}
+          onWorkbenchReplace={setWorkbench}
+          onWorkbenchPatch={(patch) =>
+            setWorkbench((current) => ({
+              ...current,
+              ...definedProps({ agentRunRequests: patch.agentRunRequests }),
+            }))
+          }
+          onReprepare={async () => workbench}
+        />
+      );
+    }
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    const bar = screen.getByRole("region", { name: "Agent requests" });
+    const run = within(bar).getByRole("button", { name: "Run Analysis" });
+    await waitFor(() => expect(run.hasAttribute("disabled")).toBe(false));
+    run.focus();
+    await user.keyboard("{Enter}");
+    expect(
+      screen.getByRole("combobox", { name: "Insight language" }).textContent,
+    ).toContain("Vietnamese");
+    await user.click(screen.getByRole("button", { name: "Start run" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "Agent requests" }),
+      ).toBeNull(),
+    );
+    expect(runBodies).toEqual([
+      expect.objectContaining({
+        type: "analysis",
+        model: "fixture-model",
+        language: "vi",
+        requestId: "agent-request-1",
+      }),
+    ]);
+  });
 });

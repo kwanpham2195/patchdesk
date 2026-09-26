@@ -80,7 +80,7 @@ export const mcpToolManifest = {
   },
   run_insight: {
     description:
-      "Ask the maintainer to run one Insight on a local Review's current session. It returns at once with status awaiting_approval and a requestId; nothing runs until the maintainer presses Run in Patchdesk, and the provider and model are theirs to pick. Poll get_insight for the outcome. A request already awaiting or running for that session and type is returned as it stands, and a declined one returns declined: the maintainer declined it for this session. sessionId must be the Review's current session, else it is refused stale_session.",
+      "Ask the maintainer to run one Insight on a local Review's current session. It returns at once with status awaiting_approval and a requestId; nothing runs until the maintainer presses Run in Patchdesk, and the provider and model are theirs to pick. On awaiting_approval, stop: tell the user the request waits for their approval in Patchdesk, and read get_insight when they resume you. A request already awaiting or running for that session and type is returned as it stands, and a declined one returns declined: the maintainer declined it for this session. sessionId must be the Review's current session, else it is refused stale_session.",
     inputSchema: v.strictObject({
       reviewId,
       sessionId: v.pipe(

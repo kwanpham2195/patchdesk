@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
@@ -7,6 +7,7 @@ import { requestJson, untrustedWriteResponseError } from "../api-client";
 import { appLog } from "../lib/logger";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { saveInsightRunPreference } from "../insight-run-preferences";
+import { approveAgentRunRequests } from "../agent-run-requests";
 import {
   useInsightRun,
   type InsightPatchOptions,
@@ -38,6 +39,8 @@ type InsightRunControlsHook = {
   readonly openRunDialog: (
     action: "run" | "retry" | "regenerate",
     type?: InsightRunType,
+    /** The agent run request the dialog's run approves (ADR 0052). */
+    requestId?: string,
   ) => void;
   readonly closeRunDialog: () => void;
   readonly confirmRun: () => void;
@@ -175,6 +178,7 @@ export function useInsightRunControls({
     walkthrough: walkthroughRun,
     brief: briefRun,
   } satisfies Record<InsightRunType, InsightRunController>;
+  const [runDialogRequestId, setRunDialogRequestId] = useState<string>();
   /**
    * `type` defaults to the rail's own selection, which is what every header
    * and empty-state button wants. The Brief's "Generate walkthrough" link is
@@ -184,9 +188,11 @@ export function useInsightRunControls({
   const openRunDialog = (
     action: "run" | "retry" | "regenerate",
     type?: InsightRunType,
+    requestId?: string,
   ): void => {
     const dialogType = type ?? selectedInsight;
     if (catalogError) return;
+    setRunDialogRequestId(requestId);
     const preference = preferencesRef.current[dialogType];
     const nextModels =
       catalog?.models.filter(
@@ -213,14 +219,27 @@ export function useInsightRunControls({
   const confirmRun = (): void => {
     const dialogType = configuration.runDialogType;
     if (model === null || dialogType === null) return;
-    runs[dialogType].run(provider, model, reasoning, language, () => {
-      closeRunDialog();
-      const preference = { provider, model, reasoning, language };
-      saveInsightRunPreference(profileId, dialogType, preference);
-      preferencesRef.current = {
-        ...preferencesRef.current,
-        [dialogType]: preference,
-      };
+    runs[dialogType].run(provider, model, reasoning, language, {
+      ...definedProps({ requestId: runDialogRequestId }),
+      onAccepted: (runId) => {
+        closeRunDialog();
+        // The start approved this type's awaiting agent request, so the bar drops it now.
+        onWorkbenchPatch({
+          ...definedProps({
+            agentRunRequests: approveAgentRunRequests(
+              workbench.agentRunRequests,
+              dialogType,
+              runId,
+            ),
+          }),
+        });
+        const preference = { provider, model, reasoning, language };
+        saveInsightRunPreference(profileId, dialogType, preference);
+        preferencesRef.current = {
+          ...preferencesRef.current,
+          [dialogType]: preference,
+        };
+      },
     });
   };
   return {

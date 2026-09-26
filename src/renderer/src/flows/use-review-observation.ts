@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 
+import { agentRunRequestSchema } from "../../../domain/agent-run-request";
 import {
   appendRecentWriteReceipts,
   type RecentReviewWrite,
@@ -180,6 +181,15 @@ export function useReviewObservation({
       )
         return;
       const observation = isReviewObservation(value);
+      const agentRunRequests = v.safeParse(localDetectionRequestsSchema, value);
+      if (
+        agentRunRequests.success &&
+        JSON.stringify(agentRunRequests.output.agentRunRequests) !==
+          JSON.stringify(current.agentRunRequests)
+      )
+        onWorkbenchPatchRef.current({
+          agentRunRequests: agentRunRequests.output.agentRunRequests,
+        });
       if (observation !== undefined) {
         if (observation._tag === "Reconciled") {
           const next = reconciledProjection(observation);
@@ -554,6 +564,11 @@ const reviewObservationSchema = v.variant("_tag", [
     status: v.picklist(["merged", "closed"]),
   }),
 ]);
+
+/** A local Review's detection also carries its session's agent run requests (ADR 0052). */
+const localDetectionRequestsSchema = v.looseObject({
+  agentRunRequests: v.array(agentRunRequestSchema),
+});
 
 function isReviewObservation(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this predicate is itself the JSON I/O boundary parser for the review-observation response; no earlier parser can run here.
