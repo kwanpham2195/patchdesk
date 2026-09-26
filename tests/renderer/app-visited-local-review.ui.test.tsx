@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "../../src/renderer/src/app";
 import { APP_BOOT_OPERATIONS, APP_BOOT_ROUTES } from "./app-boot-routes";
 import {
+  failure,
   installDesktopDouble,
   success,
   type DesktopDouble,
+  type DesktopRoute,
 } from "./fake-desktop-response";
 import {
   asJsonBody,
@@ -109,58 +111,83 @@ describe("App visited local Review", () => {
   });
 
   it("opens the current working tree once the maintainer leaves a draft for a parked local row click", async () => {
-    const user = userEvent.setup();
-    window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
-    installed = installDesktopDouble(
-      {
-        ...APP_BOOT_ROUTES,
-        "/v1/profiles": () => success([profile]),
-        // A listed row puts the inbox chrome, and its notices, on screen.
-        "/v1/inbox": () =>
-          success({
-            ...inboxWithRow,
-            inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
-          }),
-        "/v1/sidebar/reviews": () =>
-          success({ rows: [localRow], unreadable: 0 }),
-        "/v1/reviews/leave": () => success(null),
-        "/v1/reviews/load": () => success(asJsonBody(projection())),
-        "/v1/reviews/open-local": () => success(asJsonBody(openedLocal)),
-      },
-      { operations: APP_BOOT_OPERATIONS },
-    );
-    render(
-      <App
-        reviewWorkbenchLoader={async () => ({
-          default: (props) => (
-            <button
-              type="button"
-              onClick={() => props.onNavigationStateChange("dirty_draft")}
-            >
-              Hold a draft on {props.workbench.review.id}
-            </button>
-          ),
-        })}
-      />,
-    );
-
-    await user.click(
-      await screen.findByRole("button", { name: "Hold a draft on review-42" }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: /acme\/widgets/ }),
-    );
-    expect(openLocalRequest(installed)).toBeUndefined();
-    await user.click(
-      await screen.findByRole("button", { name: "Discard changes and leave" }),
+    const double = await leaveDraftForParkedLocalClick(() =>
+      success(asJsonBody(openedLocal)),
     );
 
     await screen.findByRole("button", {
       name: "Hold a draft on review-local-feat",
     });
-    expect(callBody(openLocalRequest(installed))).toMatchObject({
+    expect(callBody(openLocalRequest(double))).toMatchObject({
       source: { kind: "working_tree" },
     });
     expect(openErrorAlert()).toBeUndefined();
   });
+
+  it("reports a refused parked open on the Pull requests screen without asking to leave again", async () => {
+    await leaveDraftForParkedLocalClick(() =>
+      failure({ error: "unmerged_index" }, 409),
+    );
+
+    await waitFor(() => expect(openErrorAlert()).toBeDefined());
+    // The draft was discarded when the maintainer left, so nothing is left to confirm.
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(window.localStorage.getItem("patchdesk.destination")).toBe(
+      "dashboard",
+    );
+  });
 });
+
+/**
+ * Boots on a held Review, holds a draft, clicks the local row, and confirms
+ * "Discard changes and leave", with `openLocal` answering the parked open.
+ */
+async function leaveDraftForParkedLocalClick(
+  openLocal: DesktopRoute,
+): Promise<DesktopDouble> {
+  const user = userEvent.setup();
+  window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
+  installed = installDesktopDouble(
+    {
+      ...APP_BOOT_ROUTES,
+      "/v1/profiles": () => success([profile]),
+      // A listed row puts the inbox chrome, and its notices, on screen.
+      "/v1/inbox": () =>
+        success({
+          ...inboxWithRow,
+          inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
+        }),
+      "/v1/sidebar/reviews": () => success({ rows: [localRow], unreadable: 0 }),
+      "/v1/reviews/leave": () => success(null),
+      "/v1/reviews/load": () => success(asJsonBody(projection())),
+      "/v1/reviews/open-local": openLocal,
+    },
+    { operations: APP_BOOT_OPERATIONS },
+  );
+  render(
+    <App
+      reviewWorkbenchLoader={async () => ({
+        default: (props) => (
+          <button
+            type="button"
+            onClick={() => props.onNavigationStateChange("dirty_draft")}
+          >
+            Hold a draft on {props.workbench.review.id}
+          </button>
+        ),
+      })}
+    />,
+  );
+
+  await user.click(
+    await screen.findByRole("button", { name: "Hold a draft on review-42" }),
+  );
+  await user.click(
+    await screen.findByRole("button", { name: /acme\/widgets/ }),
+  );
+  expect(openLocalRequest(installed)).toBeUndefined();
+  await user.click(
+    await screen.findByRole("button", { name: "Discard changes and leave" }),
+  );
+  return installed;
+}
