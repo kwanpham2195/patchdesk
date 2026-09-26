@@ -9,9 +9,13 @@
   // `pnpm typecheck:scripts`.
   //
   // `vitest/globals` is dropped: nothing under `scripts/` is a test.
+  //
+  // A script may import a `src/` module by its `.ts` path, which Node's type
+  // stripping (22.18+, below the `engines` floor) runs directly.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "checkJs": true,
     "types": ["node"]
   },
