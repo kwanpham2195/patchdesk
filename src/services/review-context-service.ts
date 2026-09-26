@@ -17,6 +17,9 @@ import {
   writeAtomicFile,
 } from "../adapters/storage/json-file";
 
+/** First line of every `review-input.md`; a pack without it was written before #495 and is rebuilt. */
+export const REVIEW_INPUT_HEADING = "# Review input\n";
+
 export type ReviewContextFailure = { readonly _tag: "ReviewContextFailed" };
 type ProjectReviewCriterion = {
   readonly label: string;
@@ -198,7 +201,7 @@ export class ReviewContextService {
       const wroteContext = await writeAtomicFile(contextPath, rendered);
       if (wroteContext._tag === "err")
         return err({ _tag: "ReviewContextFailed" });
-      const reviewInput = `# Review input\n\nRepository: ${input.pr.repository}\nSource: ${input.pr.source}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`;
+      const reviewInput = `${REVIEW_INPUT_HEADING}\nRepository: ${input.pr.repository}\nSource: ${input.pr.source}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`;
       const wroteReviewInput = await writeAtomicFile(
         reviewInputPath,
         input.statedGoal === undefined
