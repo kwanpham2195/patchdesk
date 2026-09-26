@@ -454,20 +454,6 @@ export async function buildLocalApiContainer(
     sessions,
     configuration.readOnlyGit ?? readOnlyGit,
   );
-  const reviewWorkbench =
-    configuration.reviewWorkbench ??
-    new ReviewWorkbenchController(reviewPreparation, reviewProjection, {
-      reviews,
-      sessions,
-      artifacts: storageArtifacts,
-      remote: remoteReviews,
-      journals: observationJournals,
-      coordinator: reviewOperations,
-      refresh: reviewRefresh,
-      observation: reviewObservation,
-      commits: reviewCommits,
-      logs,
-    });
   const localReviewOpening = new LocalReviewOpening(
     new LocalReviewSessionPreparation({
       profiles,
@@ -489,6 +475,21 @@ export async function buildLocalApiContainer(
     { reviews, artifacts: storageArtifacts, coordinator: reviewOperations },
     systemNow,
   );
+  const reviewWorkbench =
+    configuration.reviewWorkbench ??
+    new ReviewWorkbenchController(reviewPreparation, reviewProjection, {
+      reviews,
+      sessions,
+      artifacts: storageArtifacts,
+      remote: remoteReviews,
+      journals: observationJournals,
+      coordinator: reviewOperations,
+      refresh: reviewRefresh,
+      observation: reviewObservation,
+      commits: reviewCommits,
+      localCheckout: localReviewOpening,
+      logs,
+    });
   const localApply = new LocalApplyService({
     gate: reviewWriteGate,
     operations: localApplyOperations,

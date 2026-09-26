@@ -29,7 +29,7 @@ import {
   type RecentReviewWrite,
 } from "../../domain/recent-review-write";
 import type { LocalApiContainer } from "../local-api-container";
-import { response } from "./http-status";
+import { localReviewResponse, response } from "./http-status";
 import { jsonBody } from "./json-body";
 import { reviewRecoverySchema } from "./review-recovery-schema";
 
@@ -60,7 +60,7 @@ export function registerReviewLifecycleRoutes(
   app.post("/v1/reviews/load", async (context) => {
     const parsed = safeParse(reviewLoadSchema, await jsonBody(context));
     return parsed.success
-      ? response(context, await reviewWorkbench.load(parsed.output))
+      ? localReviewResponse(context, await reviewWorkbench.load(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/leave", async (context) => {

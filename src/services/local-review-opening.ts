@@ -56,6 +56,12 @@ export type LocalReviewOpenFailure =
       readonly currentBranch?: LocalBranchName;
     };
 
+/** A working-tree Review refused because the checkout's `HEAD` moved to another branch. */
+export type LocalBranchMismatch = Extract<
+  LocalReviewOpenFailure,
+  { readonly reason: "branch_mismatch" }
+>;
+
 /** Refresh refuses while another command holds the Review, and on a Review that is not local. */
 export type LocalReviewRefreshFailure =
   | LocalReviewOpenFailure
@@ -158,6 +164,29 @@ export class LocalReviewOpening {
     } finally {
       this.lifecycle.coordinator.release(key);
     }
+  }
+
+  /**
+   * The refusal for opening a stored working-tree Review as stored while the
+   * checkout is on another branch (#477), the rule `open` and `refresh` apply.
+   * Undefined for any other source, and when the checkout cannot be read,
+   * because a stored session shows without it.
+   */
+  async branchMismatch(
+    review: Review<LocalReviewSource>,
+  ): Promise<LocalBranchMismatch | undefined> {
+    const { profileId, host, owner, repo, source } = review.identity;
+    if (source.kind !== "working_tree") return undefined;
+    const request = reopenLocalSourceRequest(source);
+    if (request === undefined) return undefined;
+    const resolved = await this.preparation.resolve({
+      profileId,
+      repository: { host, owner, repo },
+      request,
+    });
+    return resolved._tag === "ok"
+      ? headMismatch(request, resolved.value.identity.source)
+      : undefined;
   }
 
   /**
@@ -295,7 +324,7 @@ async function carryToSession(
 function headMismatch(
   request: LocalReviewSourceRequest,
   source: LocalReviewSource,
-): LocalReviewOpenFailure | undefined {
+): LocalBranchMismatch | undefined {
   if (request.kind !== "working_tree" || request.expectedHead === undefined)
     return undefined;
   if (source.kind !== "working_tree") return undefined;
