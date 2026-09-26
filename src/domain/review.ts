@@ -1,8 +1,8 @@
 import * as v from "valibot";
 
 import {
-  changeIntentSchema,
   parseChangeIntent,
+  storedChangeIntentSchema,
   sameChangeIntent,
   type ChangeIntent,
 } from "./change-intent";
@@ -263,7 +263,7 @@ const reviewV2Schema = v.strictObject({
     }),
   ),
   localDrafts: v.optional(v.array(storedLocalDraftSchema)),
-  changeIntent: v.optional(changeIntentSchema),
+  changeIntent: v.optional(storedChangeIntentSchema),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;

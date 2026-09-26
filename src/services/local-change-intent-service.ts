@@ -43,15 +43,21 @@ export type ChangeIntentFailure = {
     | "storage";
 };
 
+/** An agent's intent is refused when the Review holds a different one (ADR 0052 `review_local`). */
+export type AgentIntentFailure =
+  | ChangeIntentFailure
+  | { readonly reason: "intent_exists" };
+
 /** How each Change intent refusal is classified (ADR 0052 "Error model"). */
 export const changeIntentFailureKinds = {
+  intent_exists: "conflict",
   change_intent_sensitive: "invalid",
   not_found: "not_found",
   in_progress: "conflict",
   terminal: "conflict",
   not_applicable: "conflict",
   storage: "unavailable",
-} as const satisfies FailureKinds<ChangeIntentFailure["reason"]>;
+} as const satisfies FailureKinds<AgentIntentFailure["reason"]>;
 
 /** What the Review holds after the write; `null` when it has no Change intent. */
 export type ChangeIntentState = {
@@ -87,6 +93,47 @@ export class LocalChangeIntentService {
   async set(
     request: ChangeIntentRequest,
   ): Promise<Result<ChangeIntentState, ChangeIntentFailure>> {
+    return this.write(request, () => ok(request.intent));
+  }
+
+  /**
+   * Records a coding agent's text as the Change intent only when the Review
+   * has none (ADR 0052 `review_local`): the same text is kept, and a
+   * different intent is never replaced, because it is what the maintainer
+   * wants checked.
+   */
+  async recordAgentIntent(request: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly markdown: string;
+  }): Promise<Result<{ readonly intentKept: boolean }, AgentIntentFailure>> {
+    let kept = false;
+    const written = await this.write<AgentIntentFailure>(
+      {
+        ...request,
+        intent: { kind: "text", markdown: request.markdown, source: "agent" },
+      },
+      (current) => {
+        if (current === undefined)
+          return ok({
+            kind: "text",
+            markdown: request.markdown,
+            source: "agent",
+          });
+        kept = current.kind === "text" && current.markdown === request.markdown;
+        return kept ? ok(current) : err({ reason: "intent_exists" });
+      },
+    );
+    return written._tag === "ok" ? ok({ intentKept: kept }) : written;
+  }
+
+  /** `next` decides the intent from the one the Review holds, under the Review coordinator. */
+  private async write<Failure extends { readonly reason: string }>(
+    request: ChangeIntentRequest,
+    next: (
+      current: ChangeIntent | undefined,
+    ) => Result<ChangeIntent | undefined, Failure>,
+  ): Promise<Result<ChangeIntentState, ChangeIntentFailure | Failure>> {
     if (
       request.intent?.kind === "text" &&
       containsSensitiveData(request.intent.markdown)
@@ -106,9 +153,11 @@ export class LocalChangeIntentService {
         });
       const review = loaded.value;
       if (!isLocalReview(review)) return err({ reason: "not_applicable" });
+      const intent = next(review.changeIntent);
+      if (intent._tag === "err") return intent;
       const changed = setChangeIntent(
         review,
-        request.intent,
+        intent.value,
         this.dependencies.now(),
       );
       if (changed._tag === "err") return err({ reason: "terminal" });
@@ -119,9 +168,9 @@ export class LocalChangeIntentService {
         );
         if (saved._tag === "err") return err({ reason: "storage" });
       }
-      const intent = changed.value.changeIntent;
+      const stored = changed.value.changeIntent;
       return ok({
-        changeIntent: intent === undefined ? null : changeIntentView(intent),
+        changeIntent: stored === undefined ? null : changeIntentView(stored),
       });
     } finally {
       this.dependencies.coordinator.release(key);
