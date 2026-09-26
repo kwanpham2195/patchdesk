@@ -16,6 +16,10 @@
 
 - Fixed local Reviews leaving a worktree and a `refs/patchdesk/local` ref in the repository for every Refresh that changed the content. Moving a local Review to a new session now removes the sessions it moved past, keeping only the patch of one a retained Insight was generated from, and the background sweep removes a local Review whose branch or commit is gone, has no Local drafts, and was last opened over 14 days ago. Removing a pull request worktree now deletes its refs too; refs left by Discard, Clear local review data, and older versions go at the next background sweep. #474
 
+- Fixed a local or pull request Review that could never open again after `git worktree add` failed once its checkout existed, for example a post-checkout hook that installs packages and outlasts the timeout. Patchdesk now adds review worktrees with the repository's hooks disabled and removes the worktree a failed add left behind, so the next open succeeds. #483
+
+- Fixed an **Apply** left in an unexpected state, such as after the agent wrote a file while Apply ran, locking the local Review for good: **Check files** kept the lock, every later Apply was refused, and its old sessions were never removed. A Refresh or reopen that moves the Review to a new session now ends that lock, marking the drafted Findings applied when the files hold the suggested change. #484
+
 - Fixed Analysis never receiving the pull request description it is asked to check against the patch: it said the description was absent on every pull request. It now reports a goal the description states and the patch misses, or a change the description does not mention, as a P2 Finding. #470
 
 - Added newer models to choose from for API key Insight runs, among them Claude Opus 5.5 and Fable 5.1, GPT-6 Sol, Luna, and Astra, and Grok 4.7. Providers retired some models, among them the Kimi K2 models on Moonshot and DeepSeek V4 Flash; a saved model that is no longer listed needs picking again in the run dialog.
