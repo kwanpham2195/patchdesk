@@ -12,6 +12,7 @@ import {
   type GitHubThreadId,
 } from "../../../domain/ids";
 import { composerErrorMessage } from "../components/review-diff-authoring-errors";
+import type { DraftRecovery } from "../components/draft-recovery";
 import { useLatestCommitted } from "./use-latest-committed";
 import type {
   ConversationThreadCardData,
@@ -85,7 +86,8 @@ type PendingReviewWriteOverlay =
 export type ReviewConversationOverlays = {
   readonly displayedAnnotations: ReadonlyArray<ReviewInlineAnnotation>;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
-  readonly draftRecoveryMessage: string | undefined;
+  /** A kept draft that waits for a new diff line: Edit draft on lines that are gone, or a failed draft whose lines Refresh removed (#526). */
+  readonly draftRecovery: DraftRecovery | undefined;
   readonly beginAccessibleAuthoring: (
     path: string,
     line: number,
@@ -211,6 +213,40 @@ export function useReviewConversationOverlays({
     });
   }, [annotations]);
 
+  // A failed draft whose lines Refresh removed has nowhere to show its card, so it waits for a new line instead.
+  const { strandedWrite, shownPendingWrites } = useMemo(() => {
+    const stranded: Array<PendingReviewWriteOverlay> = [];
+    const shown: Array<PendingReviewWriteOverlay> = [];
+    for (const overlay of pendingWriteOverlays) {
+      const linesGone =
+        overlay._tag === "failed" &&
+        localCommentAuthoring?.enabled === true &&
+        localCommentAuthoring.canAuthor?.({
+          path: overlay.path,
+          startLine: overlay.start,
+          line: overlay.end,
+          side: overlay.side,
+        }) === false;
+      (linesGone ? stranded : shown).push(overlay);
+    }
+    return { strandedWrite: stranded[0], shownPendingWrites: shown };
+  }, [localCommentAuthoring, pendingWriteOverlays]);
+  const recoverableDraftBody = orphanedDraftBody ?? strandedWrite?.body;
+  const releaseRecoverableDraft = useCallback((): void => {
+    if (orphanedDraftBody !== undefined) {
+      setOrphanedDraftBody(undefined);
+      return;
+    }
+    if (strandedWrite === undefined) return;
+    setPendingWriteOverlays((current) =>
+      current.filter((overlay) => overlay.localId !== strandedWrite.localId),
+    );
+  }, [orphanedDraftBody, strandedWrite]);
+  const takeRecoverableDraft = useCallback((): void => {
+    setAuthoringInitialBody(recoverableDraftBody);
+    releaseRecoverableDraft();
+  }, [recoverableDraftBody, releaseRecoverableDraft]);
+
   const clearAuthoring = useCallback((): void => {
     setAuthoringSelection(null);
     setAuthoringInitialBody(undefined);
@@ -228,14 +264,13 @@ export function useReviewConversationOverlays({
       };
       if (localCommentAuthoring.canAuthor?.(location) === false) return;
       localCommentAuthoring.onSelectionChange?.(location);
-      setAuthoringInitialBody(orphanedDraftBody);
-      setOrphanedDraftBody(undefined);
+      takeRecoverableDraft();
       setAuthoringSelection({
         id: path,
         range: { start: line, end: line, side },
       });
     },
-    [localCommentAuthoring, orphanedDraftBody],
+    [localCommentAuthoring, takeRecoverableDraft],
   );
 
   const saveAuthoring = useCallback(
@@ -556,7 +591,7 @@ export function useReviewConversationOverlays({
           conversationThread,
         };
       }),
-      ...pendingWriteOverlays.map((entry: PendingReviewWriteOverlay) => {
+      ...shownPendingWrites.map((entry: PendingReviewWriteOverlay) => {
         const pendingReviewWrite: NonNullable<
           ReviewInlineAnnotation["pendingReviewWrite"]
         > = {
@@ -586,12 +621,7 @@ export function useReviewConversationOverlays({
         };
       }),
     ],
-    [
-      conversationActions,
-      createdThreads,
-      editPendingWrite,
-      pendingWriteOverlays,
-    ],
+    [conversationActions, createdThreads, editPendingWrite, shownPendingWrites],
   );
 
   const renderedAnnotations = useMemo(
@@ -759,20 +789,22 @@ export function useReviewConversationOverlays({
       };
       if (localCommentAuthoring.canAuthor?.(location) === false) return;
       localCommentAuthoring.onSelectionChange?.(location);
-      setAuthoringInitialBody(orphanedDraftBody);
-      setOrphanedDraftBody(undefined);
+      takeRecoverableDraft();
       setAuthoringSelection(selection);
     },
-    [localCommentAuthoring, orphanedDraftBody],
+    [localCommentAuthoring, takeRecoverableDraft],
   );
 
   return {
     displayedAnnotations,
     localComposerAnnotation,
-    draftRecoveryMessage:
-      orphanedDraftBody === undefined
+    draftRecovery:
+      recoverableDraftBody === undefined
         ? undefined
-        : "Select a new diff line to restore the saved draft.",
+        : {
+            message: "Select a new diff line to restore the saved draft.",
+            onDismiss: releaseRecoverableDraft,
+          },
     beginAccessibleAuthoring,
     beginAuthoring,
     decorateConversationThread,

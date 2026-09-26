@@ -47,6 +47,7 @@ import type {
   ReviewConversationActions,
 } from "./conversation-thread-card";
 import { InlineCommentComposer } from "./review-diff-authoring";
+import { DraftRecoveryPrompt, type DraftRecovery } from "./draft-recovery";
 import type { LocalNoteCardProps } from "./local-note-card";
 import { renderReviewDiffGutterUtility } from "./review-diff-gutter-utility";
 import {
@@ -290,6 +291,7 @@ function ReviewDiffSurface({
   const {
     displayedAnnotations,
     localComposerAnnotation,
+    draftRecovery,
     beginAccessibleAuthoring,
     beginAuthoring,
     decorateConversationThread,
@@ -428,6 +430,7 @@ function ReviewDiffSurface({
       syntaxHighlightingStatus={syntaxHighlightingStatus}
       localCommentAuthoring={localCommentAuthoring}
       localComposerAnnotation={localComposerAnnotation}
+      draftRecovery={draftRecovery}
       contextStatus={contextStatus}
       beginAccessibleAuthoring={beginAccessibleAuthoring}
       selectedFile={selectedFile}
@@ -482,6 +485,7 @@ type ReviewDiffRenderSiteProps = {
   readonly navigationStatus: ReviewDiffNavigationFeedbackState["navigationStatus"];
   readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
+  readonly draftRecovery: DraftRecovery | undefined;
   readonly contextStatus: ReviewContextStatus;
   readonly beginAccessibleAuthoring: (
     path: string,
@@ -533,6 +537,7 @@ function ReviewDiffRenderSite({
   syntaxHighlightingStatus,
   localCommentAuthoring,
   localComposerAnnotation,
+  draftRecovery,
   contextStatus,
   beginAccessibleAuthoring,
   selectedFile,
@@ -682,6 +687,7 @@ function ReviewDiffRenderSite({
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />
       ) : null}
       <ReviewDiffNavigationFeedback status={navigationStatus} />
+      <DraftRecoveryPrompt recovery={draftRecovery} />
       {markdownPreview?.active === true && previewMarkdown !== undefined ? (
         <MarkdownFilePreview
           markdown={previewMarkdown}

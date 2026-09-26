@@ -281,7 +281,7 @@ describe("pending-review draft recovery", () => {
     if (failed?.onEdit === undefined) throw new Error("expected Edit draft");
     act(() => failed.onEdit?.(failed.localId));
     expect(rendered.result.current.localComposerAnnotation).toBeUndefined();
-    expect(rendered.result.current.draftRecoveryMessage).toBe(
+    expect(rendered.result.current.draftRecovery?.message).toBe(
       "Select a new diff line to restore the saved draft.",
     );
 
@@ -293,6 +293,65 @@ describe("pending-review draft recovery", () => {
       rendered.result.current.localComposerAnnotation?.localComposer
         ?.initialBody,
     ).toBe("Draft needing a new line");
-    expect(rendered.result.current.draftRecoveryMessage).toBeUndefined();
+    expect(rendered.result.current.draftRecovery).toBeUndefined();
+  });
+
+  it("keeps a failed draft whose lines Refresh removed and restores it on a newly selected line", async () => {
+    let refreshed = false;
+    const rendered = renderPendingOverlays(
+      rejectedStart,
+      (line) => !refreshed || line !== 2,
+    );
+    await rejectPendingDraft(rendered, "Draft whose lines went away");
+
+    refreshed = true;
+    rendered.rerender();
+
+    expect(
+      rendered.result.current.displayedAnnotations.some(
+        (annotation) => annotation.pendingReviewWrite !== undefined,
+      ),
+    ).toBe(false);
+    expect(rendered.result.current.draftRecovery).toBeDefined();
+    act(() =>
+      rendered.result.current.beginAccessibleAuthoring(PATH, 3, "additions"),
+    );
+    expect(
+      rendered.result.current.localComposerAnnotation?.localComposer
+        ?.initialBody,
+    ).toBe("Draft whose lines went away");
+    expect(rendered.result.current.draftRecovery).toBeUndefined();
+  });
+
+  it("drops a failed draft whose lines Refresh removed when the maintainer dismisses it", async () => {
+    let refreshed = false;
+    const rendered = renderPendingOverlays(
+      rejectedStart,
+      (line) => !refreshed || line !== 2,
+    );
+    await rejectPendingDraft(rendered, "Draft to drop");
+    refreshed = true;
+    rendered.rerender();
+
+    act(() => rendered.result.current.draftRecovery?.onDismiss());
+    act(() =>
+      rendered.result.current.beginAccessibleAuthoring(PATH, 3, "additions"),
+    );
+
+    expect(rendered.result.current.draftRecovery).toBeUndefined();
+    expect(
+      rendered.result.current.localComposerAnnotation?.localComposer
+        ?.initialBody,
+    ).toBeUndefined();
   });
 });
+
+async function rejectedStart(): Promise<void> {
+  throw new PatchdeskApiError(
+    "github_rejected",
+    422,
+    false,
+    "rejected-write",
+    "A pending review already exists.",
+  );
+}
