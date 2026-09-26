@@ -132,3 +132,76 @@ describe("ReviewWorkbenchFlow commit slice comments", () => {
     );
   });
 });
+
+const guideHeader =
+  "diff --git a/docs/guide.md b/docs/guide.md\n--- a/docs/guide.md\n+++ b/docs/guide.md\n";
+const twoFilePatch = guideHeader + "@@ -1 +1 @@\n-old\n+new\n" + fullPatch;
+const guideCommit = {
+  sha: firstSha,
+  message: "Edit the guide",
+  author: "author",
+  authoredAt: "2026-08-01T00:00:00.000Z",
+  isHead: false,
+};
+
+/** What the Browse tree highlights and what the diff pane shows. */
+function namedFile() {
+  return {
+    tree:
+      document
+        .querySelector("[data-active-path]")
+        ?.getAttribute("data-active-path") ?? undefined,
+    pane:
+      screen
+        .getByRole("region", { name: "Review diff" })
+        .getAttribute("data-selected-path") ?? undefined,
+  };
+}
+
+describe("ReviewWorkbenchFlow leaving a commit slice", () => {
+  it("returns Browse in Selected mode to the file chosen before the slice (#535)", async () => {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/commit-diff")
+        return {
+          commit: guideCommit,
+          position: 1,
+          total: 2,
+          patch: guideHeader + "@@ -1 +1 @@\n-old\n+new\n",
+          fileCount: 1,
+          additions: 1,
+          deletions: 1,
+        };
+      throw new Error(input.path);
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={projection({
+          fullPatch: twoFilePatch,
+          pendingReview: pending("none"),
+          commits: [guideCommit, ...commits.slice(1)],
+        })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    const row = document
+      .querySelector("file-tree-container")
+      ?.shadowRoot?.querySelector('[data-item-path="src/a.ts"]');
+    if (!(row instanceof HTMLElement)) throw new Error("Expected src/a.ts row");
+    await user.click(row);
+    await user.click(screen.getByRole("button", { name: "Selected" }));
+    expect(namedFile()).toEqual({ tree: "src/a.ts", pane: "src/a.ts" });
+
+    // The Commits section opens on its first commit, which touches only the guide.
+    await user.click(screen.getByRole("tab", { name: /^Commits/ }));
+    await screen.findByText(/1 of 2/);
+    await user.click(screen.getByRole("tab", { name: /^Browse/ }));
+
+    expect(namedFile()).toEqual({ tree: "src/a.ts", pane: "src/a.ts" });
+  });
+});
