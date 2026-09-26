@@ -77,10 +77,10 @@ export async function listRepositoryCheckouts(
 }
 
 /**
- * Whether a named checkout is gone: false while it is listed live, and
- * undefined when that is unknown, because git failed or the worktree is
- * locked (`git worktree lock`) with its directory missing, as on removable
- * media. True otherwise.
+ * Whether a named checkout is gone: false while it is listed live and is not
+ * the configured checkout, and undefined when that is unknown, because git
+ * failed or the worktree is locked (`git worktree lock`) with its directory
+ * missing, as on removable media. True otherwise.
  */
 export async function isNamedCheckoutGone(
   reads: LocalCheckoutReads,
@@ -90,7 +90,10 @@ export async function isNamedCheckoutGone(
   const listing = await readCheckoutListing(reads, localPath);
   if (listing === undefined || listing.unreachableLocked.includes(checkout))
     return undefined;
-  return !listing.live.some((candidate) => candidate.path === checkout);
+  // A checkout that became the configured one no longer keys the Reviews that name it.
+  return !listing.live.some(
+    (candidate) => candidate.path === checkout && !candidate.configured,
+  );
 }
 
 async function readCheckoutListing(

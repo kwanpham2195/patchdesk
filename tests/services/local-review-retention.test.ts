@@ -366,6 +366,33 @@ describe("LocalReviewRetention", () => {
     expect(sessionWorktrees(harness.repositoryPath)).toEqual([]);
   });
 
+  it("removes a Review of a linked worktree once the profile's local path is re-pointed to that worktree", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    const linked = join(dirname(harness.repositoryPath), "linked");
+    git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
+    const workbench = await harness.open({
+      kind: "working_tree",
+      checkout: value(parseAbsolutePath(linked)),
+    });
+    const profiles = new ProfileStore(harness.paths);
+    const profile = value(await profiles.load(profileId));
+    value(
+      await profiles.save({
+        ...profile,
+        repos: profile.repos.map((repository) => ({
+          ...repository,
+          localPath: value(parseAbsolutePath(linked)),
+        })),
+      }),
+    );
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, workbench)).toBe(false);
+  });
+
   it("keeps a Review of a locked linked worktree whose directory is missing, as on removable media", async () => {
     const harness = await localApplyHarness(undefined, {
       retentionNow: () => fifteenDaysLater,
