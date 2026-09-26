@@ -287,7 +287,7 @@ describe("MCP tool dispatcher", () => {
       localReviewOpening: {
         listCheckouts: unavailable,
         findCheckout: unavailable,
-        open: unavailable,
+        openForAgent: unavailable,
       },
       localChangeIntent: { recordAgentIntent: unavailable },
       localDrafts: { feedback: unavailable },
