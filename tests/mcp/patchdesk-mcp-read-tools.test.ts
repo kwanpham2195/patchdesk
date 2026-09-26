@@ -315,6 +315,17 @@ describe.each(mcpProtocolEras)(
           .markdown,
       });
       expect(feedback.content).not.toHaveProperty("nextCursor");
+      // Both notes were written on the Review's current session, which the workbench leaves unlabelled.
+      expect(
+        v
+          .parse(
+            v.object({
+              localDrafts: v.array(v.looseObject({ state: v.string() })),
+            }),
+            feedback.content,
+          )
+          .localDrafts.map(({ state }) => state),
+      ).toEqual(["current", "current"]);
     });
   },
 );

@@ -231,6 +231,12 @@ against. The maintainer triggers the hand-off by telling the agent to read
 it. The agent does not poll: no tool description asks it to, and the server
 sends no notifications.
 
+Amended 2026-09-26 (slice 3): every entry has a `state`: `current` for a
+draft written on the Review's current session, `unchanged`, `changed`,
+`needs_attention`, or `applied`. `current` exists only in the tool's output;
+the stored draft is unchanged and still carries no state until the Review
+first moves.
+
 ### Multiple checkouts
 
 Shipped in #489: `review_local` resolves `cwd` to the configured `localPath`
