@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
 import { err } from "../../src/domain/result";
+import { serviceResponse } from "../../src/main/routes/http-status";
 import { registerInsightRoutes } from "../../src/main/routes/insight-routes";
 import { registerLocalReviewRoutes } from "../../src/main/routes/local-review-routes";
 import { registerReviewLifecycleRoutes } from "../../src/main/routes/review-lifecycle-routes";
@@ -79,6 +80,9 @@ const workbenchStatuses = {
   ReviewWorkbenchFailure["reason"] | "branch_mismatch",
   number
 >;
+
+/** A service failure typed with a bare `string` reason rather than a closed union. */
+type OpenReasonFailure = { readonly reason: string };
 
 const identity = {
   profileId: "acme",
@@ -198,6 +202,23 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
       expect(await answered.json()).toMatchObject({ error: reason });
     },
   );
+
+  it("refuses at compile time a service whose reason is an open string", async () => {
+    const app = new Hono();
+    const failure: OpenReasonFailure = { reason: "any_reason" };
+    app.post("/open-reason", (context) =>
+      serviceResponse(
+        context,
+        err(failure),
+        // @ts-expect-error A bare string reason has no closed table, so a reason missing from it would answer 200.
+        { any_reason: "invalid" },
+      ),
+    );
+
+    const answered = await post(app, "/open-reason", identity);
+
+    expect(answered.status).toBe(400);
+  });
 
   it("names the checkout's branch on a working-tree branch refusal", async () => {
     const app = new Hono();
