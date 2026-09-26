@@ -7,6 +7,7 @@ import * as v from "valibot";
 import type { PatchdeskPaths } from "../../adapters/storage/patchdesk-paths";
 import { whenLoginShellEnvironmentImported } from "../../adapters/process/login-shell-import";
 import { loggableMetaValue } from "../../domain/log-entry";
+import { err } from "../../domain/result";
 import {
   MCP_SOCKET_ENV,
   mcpSocketBounds,
@@ -85,7 +86,18 @@ async function listen(
   let socketPath: string | undefined;
   try {
     socketPath = await options.socketPath();
-    await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
+    const directory = dirname(socketPath);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    if (!(await isPrivateDirectory(directory))) {
+      logs.write({
+        process: "main",
+        level: "error",
+        topic: "mcp",
+        message: "socket directory is not private",
+        meta: { socketPath },
+      });
+      return "failed";
+    }
     const existing = await probeExistingSocket(socketPath);
     if (existing === "live") {
       logs.write({
@@ -116,6 +128,16 @@ async function listen(
       });
     });
     await chmod(socketPath, 0o600);
+    // A late accept error with no listener would reach `uncaughtException` and exit the app.
+    server.on("error", (cause) => {
+      logs.write({
+        process: "main",
+        level: "error",
+        topic: "mcp",
+        message: "socket error",
+        meta: { error: loggableMetaValue(cause) },
+      });
+    });
     logs.write({
       process: "main",
       level: "info",
@@ -135,6 +157,16 @@ async function listen(
     });
     return "failed";
   }
+}
+
+/** The socket's only access control is its directory: it must be ours and closed to group and others. */
+async function isPrivateDirectory(directory: string): Promise<boolean> {
+  const stats = await lstat(directory);
+  return (
+    stats.isDirectory() &&
+    stats.uid === process.getuid?.() &&
+    (stats.mode & 0o077) === 0
+  );
 }
 
 /** A refused connection is a file a crashed instance left; only a socket file is ever removed. */
@@ -183,12 +215,21 @@ function answerConnection(
     }
     if (newline === -1) return;
     socket.off("data", onData);
-    void answerLine(
+    answerLine(
       socket,
       options,
       bounds,
       Buffer.concat(received).toString("utf8"),
-    );
+    ).catch((cause: unknown) => {
+      options.logs.write({
+        process: "main",
+        level: "error",
+        topic: "mcp",
+        message: "reply failed",
+        meta: { error: loggableMetaValue(cause) },
+      });
+      socket.destroy();
+    });
   };
   socket.on("data", onData);
   socket.on("error", () => socket.destroy());
@@ -224,15 +265,21 @@ async function answerLine(
       message: "tool failed",
       meta: { tool: request.output.tool, error: loggableMetaValue(cause) },
     });
-    reply = {
-      _tag: "err",
-      error: {
-        error: "storage",
-        message: "Patchdesk could not complete the call.",
-      },
-    };
+    reply = err(storageFailure);
   }
-  const serialized = serializeReply(reply, bounds);
+  let serialized: ReturnType<typeof serializeReply>;
+  try {
+    serialized = serializeReply(reply, bounds);
+  } catch (cause: unknown) {
+    options.logs.write({
+      process: "main",
+      level: "error",
+      topic: "mcp",
+      message: "tool failed",
+      meta: { tool: request.output.tool, error: loggableMetaValue(cause) },
+    });
+    serialized = serializeReply(err(storageFailure), bounds);
+  }
   options.logs.write({
     process: "main",
     level: serialized.outcome === "ok" ? "info" : "warn",
@@ -254,6 +301,11 @@ async function answerLine(
     });
   socket.end(serialized.text);
 }
+
+const storageFailure: McpToolRefusal = {
+  error: "storage",
+  message: "Patchdesk could not complete the call.",
+};
 
 const invalidRequest: McpToolRefusal = {
   error: "invalid_input",

@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+
 import * as v from "valibot";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -23,14 +25,18 @@ export type McpSocketBounds = {
   readonly timeoutMs: number;
 };
 
-/** `PATCHDESK_MCP_SOCKET` when set and non-empty, else `<dataDirectory>/mcp/patchdesk.sock`. */
+/**
+ * `PATCHDESK_MCP_SOCKET` when it is an absolute path, else
+ * `<dataDirectory>/mcp/patchdesk.sock`. A relative value is ignored: the app
+ * and the shim run in different working directories and would disagree.
+ */
 export function resolveMcpSocketPath(
   override: string | undefined,
   paths: Pick<PatchdeskPaths, "mcpSocketFile">,
 ): string {
-  return override === undefined || override === ""
-    ? paths.mcpSocketFile()
-    : override;
+  return override !== undefined && isAbsolute(override)
+    ? override
+    : paths.mcpSocketFile();
 }
 
 export const mcpSocketRequestSchema = v.strictObject({
