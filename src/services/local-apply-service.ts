@@ -357,7 +357,10 @@ export class LocalApplyService {
             owner: review.identity.owner,
             repo: review.identity.repo,
           },
-          request: { kind: "working_tree" },
+          request: {
+            kind: "working_tree",
+            ...definedProps({ checkout: review.identity.source.checkout }),
+          },
         },
         operation.reviewId,
       )

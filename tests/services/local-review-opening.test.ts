@@ -590,6 +590,14 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
       linked,
     );
     expect(await reviewIdIn(workingTreeIn(join(root, "alias")))).toBe(linked);
+  });
+
+  it("keys the configured checkout named by path to the Review that names no checkout", async () => {
+    const { root, repositoryPath } = await linkedCheckout();
+    const service = await opening(root, repositoryPath);
+    const reviewIdIn = async (request: LocalReviewSourceRequest) =>
+      value(await service.open({ profileId, repository, request })).review.id;
+
     expect(await reviewIdIn(workingTreeIn(repositoryPath))).toBe(
       await reviewIdIn(workingTree),
     );
