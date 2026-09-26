@@ -77,7 +77,12 @@ type ContextChecks = {
 type ContextInput = {
   readonly worktreePath: string;
   readonly preparedDirectory: string;
-  readonly pr: { readonly title: string; readonly headSha: string };
+  /** `source` is the domain `reviewSourceTitle`, so a local Review is not described as a pull request. */
+  readonly pr: {
+    readonly repository: string;
+    readonly source: string;
+    readonly headSha: string;
+  };
   /** Absent for a local Review, which has no pull request to read them from. */
   readonly comments?: ContextComments;
   readonly checks?: ContextChecks;
@@ -193,7 +198,7 @@ export class ReviewContextService {
       const wroteContext = await writeAtomicFile(contextPath, rendered);
       if (wroteContext._tag === "err")
         return err({ _tag: "ReviewContextFailed" });
-      const reviewInput = `# PR review input\n\nPR: ${input.pr.title}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`;
+      const reviewInput = `# Review input\n\nRepository: ${input.pr.repository}\nSource: ${input.pr.source}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`;
       const wroteReviewInput = await writeAtomicFile(
         reviewInputPath,
         input.statedGoal === undefined

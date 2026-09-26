@@ -15,7 +15,8 @@ import {
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { definedProps } from "../domain/defined-props";
 import type { ContentHash } from "../domain/ids";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+import { err, ok, type Result } from "../domain/result";
+import { reviewSourceTitle } from "../domain/review-source";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
@@ -150,7 +151,8 @@ export class ReviewContextPackService {
         sessionId,
       ),
       pr: {
-        title: reviewSourceTitle(input.session),
+        repository: `${input.session.key.owner}/${input.session.key.repo}`,
+        source: reviewSourceTitle(input.session.key.source),
         headSha: input.session.key.headSha,
       },
       ...definedProps({
@@ -284,22 +286,4 @@ function changedFiles(diff: string): ReadonlyArray<string> {
       ? [token.path]
       : [],
   );
-}
-
-/** Names the Review source in the pack, since a local Review has no pull request title. */
-function reviewSourceTitle(session: ReviewSession): string {
-  const repository = `${session.key.owner}/${session.key.repo}`;
-  const source = session.key.source;
-  switch (source.kind) {
-    case "pull_request":
-      return `${repository}#${source.prNumber}`;
-    case "working_tree":
-      return `${repository} working tree on ${source.branch ?? "detached HEAD"}`;
-    case "branch":
-      return `${repository} branch ${source.branch} against ${source.baseBranch}`;
-    case "commit":
-      return `${repository} commit ${source.commitSha}`;
-    default:
-      return casesHandled(source);
-  }
 }

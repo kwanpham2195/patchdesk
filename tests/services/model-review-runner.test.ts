@@ -54,14 +54,18 @@ async function writeArtifacts(
   await writeFile(
     contextPath,
     JSON.stringify({
-      pr: { title: "octo-org/patchdesk#42", headSha },
+      pr: {
+        repository: "octo-org/patchdesk",
+        source: "Pull request #42",
+        headSha,
+      },
       changedFiles,
       checks: { overall: "passing" },
     }),
   );
   await writeFile(
     reviewInputPath,
-    "# PR review input\n\nPR: octo-org/patchdesk#42\n",
+    "# Review input\n\nRepository: octo-org/patchdesk\nSource: Pull request #42\n",
   );
   await writeFile(
     patchPath,
@@ -86,9 +90,9 @@ describe("model review preparation", () => {
         }),
       });
 
-      expect(prepared.prompt).toContain("octo-org/patchdesk#42");
+      expect(prepared.prompt).toContain("Source: Pull request #42");
       expect(prepared.prompt).toContain(
-        "Review the complete represented pull request and decide whether it should merge.",
+        "Review the complete represented change and decide whether it should merge.",
       );
       expect(prepared.prompt).toContain("export const review");
       await expect(
@@ -303,12 +307,16 @@ describe("model review preparation", () => {
       await writeFile(
         contextPath,
         JSON.stringify({
-          pr: { title: "octo-org/patchdesk#42", headSha },
+          pr: {
+            repository: "octo-org/patchdesk",
+            source: "Pull request #42",
+            headSha,
+          },
           changedFiles: ["src/review.ts"],
           checks: { overall: "passing" },
         }),
       );
-      await writeFile(reviewInputPath, "# PR review input\n");
+      await writeFile(reviewInputPath, "# Review input\n");
       await writeFile(
         patchPath,
         `diff --git a/src/review.ts b/src/review.ts\n+${"x".repeat(7 * 1024 * 1024)}\n`,

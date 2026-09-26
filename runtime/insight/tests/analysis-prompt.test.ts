@@ -5,7 +5,7 @@ import { composeReviewPrompt } from "../../../src/services/review-rubric";
 import { createAnalysisAgent } from "../src/patchdesk-insight-agent";
 
 const shared = composeReviewPrompt({
-  reviewInput: "# PR review input",
+  reviewInput: "# Review input",
   context: '{"projectReviewCriteria":[]}',
   fullPatch: "diff --git a/src/a.ts b/src/a.ts",
   language: "en",
