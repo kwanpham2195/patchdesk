@@ -48,7 +48,7 @@ describe("ReviewRefreshService", () => {
     expect(calls.savedReviews).toEqual([]);
   });
 
-  it("keeps the current session when the immutable head/base pair is unchanged", async () => {
+  it("keeps the current session and prunes nothing when the immutable head/base pair is unchanged", async () => {
     const { service, calls } = createReviewRefreshFixture();
 
     await expect(
@@ -56,9 +56,10 @@ describe("ReviewRefreshService", () => {
     ).resolves.toMatchObject({ _tag: "ok" });
     expect(calls.preparations).toEqual([]);
     expect(calls.savedSessions).toEqual([]);
+    expect(calls.prunedReviews).toEqual([]);
   });
 
-  it("prepares a distinct session when only the PR base changes", async () => {
+  it("prepares a distinct session and prunes the one it supersedes when only the PR base changes", async () => {
     const changedSnapshot = {
       ...snapshot,
       pullRequest: { ...snapshot.pullRequest, baseSha: changedBaseSha },
@@ -85,6 +86,7 @@ describe("ReviewRefreshService", () => {
     expect(calls.savedSessions).toHaveLength(1);
     expect(calls.savedSessions[0]?.key.baseSha).toBe(changedBaseSha);
     expect(calls.savedSessions[0]?.pendingReview).toBeUndefined();
+    expect(calls.prunedReviews).toEqual([review.id]);
   });
 
   it("maps a preparation authentication failure onto the github_auth reason", async () => {
