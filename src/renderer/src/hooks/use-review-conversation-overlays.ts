@@ -15,6 +15,10 @@ import { composerErrorMessage } from "../components/review-diff-authoring-errors
 import type { DraftRecovery } from "../components/draft-recovery";
 import { useLatestCommitted } from "./use-latest-committed";
 import type {
+  PendingReviewDrafts,
+  PendingReviewWrite,
+} from "./use-pending-review-drafts";
+import type {
   ConversationThreadCardData,
   ReviewConversationActions,
 } from "../components/conversation-thread-card";
@@ -60,29 +64,6 @@ type CreatedThreadOverlay =
       readonly threadId?: GitHubThreadId;
     };
 
-type PendingReviewWriteOverlay =
-  | {
-      readonly _tag: "sending";
-      readonly localId: string;
-      readonly action: "start" | "add";
-      readonly path: string;
-      readonly start: number;
-      readonly end: number;
-      readonly side: "new" | "old";
-      readonly body: string;
-    }
-  | {
-      readonly _tag: "failed";
-      readonly localId: string;
-      readonly action: "start" | "add";
-      readonly path: string;
-      readonly start: number;
-      readonly end: number;
-      readonly side: "new" | "old";
-      readonly body: string;
-      readonly message: string;
-    };
-
 export type ReviewConversationOverlays = {
   readonly displayedAnnotations: ReadonlyArray<ReviewInlineAnnotation>;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
@@ -99,12 +80,15 @@ export type ReviewConversationOverlays = {
   ) => ConversationThreadCardData;
 };
 
+const NO_WRITES: ReadonlyArray<PendingReviewWrite> = [];
+
 export function useReviewConversationOverlays({
   patch,
   annotations,
   viewer,
   localCommentAuthoring,
   pendingReviewComposer,
+  pendingReviewDrafts,
   conversationActions,
 }: {
   readonly patch: string;
@@ -114,6 +98,8 @@ export function useReviewConversationOverlays({
   > | null>;
   readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
   readonly pendingReviewComposer: PendingReviewComposerActions | undefined;
+  /** Where pending-review writes are kept; without it the composer offers no pending-review action. */
+  readonly pendingReviewDrafts: PendingReviewDrafts | undefined;
   readonly conversationActions: ReviewConversationActions | undefined;
 }): ReviewConversationOverlays {
   const [authoringSelection, setAuthoringSelection] =
@@ -121,15 +107,13 @@ export function useReviewConversationOverlays({
   const [authoringInitialBody, setAuthoringInitialBody] = useState<
     string | undefined
   >();
-  const [orphanedDraftBody, setOrphanedDraftBody] = useState<
-    string | undefined
-  >();
   const [createdThreads, setCreatedThreads] = useState<
     ReadonlyArray<CreatedThreadOverlay>
   >([]);
-  const [pendingWriteOverlays, setPendingWriteOverlays] = useState<
-    ReadonlyArray<PendingReviewWriteOverlay>
-  >([]);
+  const pendingWriteOverlays = pendingReviewDrafts?.writes ?? NO_WRITES;
+  const setPendingWriteOverlays = pendingReviewDrafts?.updateWrites;
+  const orphanedDraftBody = pendingReviewDrafts?.orphanedBody;
+  const setOrphanedDraftBody = pendingReviewDrafts?.setOrphanedBody;
   const localIdCounter = useRef(0);
   const [editedBodies, setEditedBodies] = useState<ReadonlyMap<string, string>>(
     () => new Map(),
@@ -213,35 +197,53 @@ export function useReviewConversationOverlays({
     });
   }, [annotations]);
 
+  // A draft's card renders only on lines this diff shows, and its composer opens only where a comment is allowed.
+  const draftLinesAvailable = useCallback(
+    (location: LocalCommentLocation): boolean => {
+      const path = parseRepoRelativePath(location.path);
+      return (
+        path._tag === "ok" &&
+        fingerprintPatchAnchor(patch, { ...location, path: path.value }) !==
+          undefined &&
+        localCommentAuthoring?.canAuthor?.(location) !== false
+      );
+    },
+    [localCommentAuthoring, patch],
+  );
   // A failed draft whose lines Refresh removed has nowhere to show its card, so it waits for a new line instead.
   const { strandedWrite, shownPendingWrites } = useMemo(() => {
-    const stranded: Array<PendingReviewWriteOverlay> = [];
-    const shown: Array<PendingReviewWriteOverlay> = [];
+    const stranded: Array<PendingReviewWrite> = [];
+    const shown: Array<PendingReviewWrite> = [];
     for (const overlay of pendingWriteOverlays) {
       const linesGone =
         overlay._tag === "failed" &&
         localCommentAuthoring?.enabled === true &&
-        localCommentAuthoring.canAuthor?.({
+        !draftLinesAvailable({
           path: overlay.path,
           startLine: overlay.start,
           line: overlay.end,
           side: overlay.side,
-        }) === false;
+        });
       (linesGone ? stranded : shown).push(overlay);
     }
     return { strandedWrite: stranded[0], shownPendingWrites: shown };
-  }, [localCommentAuthoring, pendingWriteOverlays]);
+  }, [draftLinesAvailable, localCommentAuthoring, pendingWriteOverlays]);
   const recoverableDraftBody = orphanedDraftBody ?? strandedWrite?.body;
   const releaseRecoverableDraft = useCallback((): void => {
     if (orphanedDraftBody !== undefined) {
-      setOrphanedDraftBody(undefined);
+      setOrphanedDraftBody?.(undefined);
       return;
     }
     if (strandedWrite === undefined) return;
-    setPendingWriteOverlays((current) =>
+    setPendingWriteOverlays?.((current) =>
       current.filter((overlay) => overlay.localId !== strandedWrite.localId),
     );
-  }, [orphanedDraftBody, strandedWrite]);
+  }, [
+    orphanedDraftBody,
+    setOrphanedDraftBody,
+    setPendingWriteOverlays,
+    strandedWrite,
+  ]);
   const takeRecoverableDraft = useCallback((): void => {
     setAuthoringInitialBody(recoverableDraftBody);
     releaseRecoverableDraft();
@@ -396,7 +398,7 @@ export function useReviewConversationOverlays({
     ): Promise<void> => {
       const localId = `pending-write-${Date.now().toString(36)}-${localIdCounter.current}`;
       localIdCounter.current += 1;
-      setPendingWriteOverlays((current) => [
+      setPendingWriteOverlays?.((current) => [
         ...current,
         {
           _tag: "sending",
@@ -412,17 +414,17 @@ export function useReviewConversationOverlays({
       clearAuthoring();
       try {
         await run(anchor, body);
-        setPendingWriteOverlays((current) =>
+        setPendingWriteOverlays?.((current) =>
           current.filter((entry) => entry.localId !== localId),
         );
       } catch (cause) {
         if (isOutcomeUnknownRetry(cause)) {
-          setPendingWriteOverlays((current) =>
+          setPendingWriteOverlays?.((current) =>
             current.filter((entry) => entry.localId !== localId),
           );
           return;
         }
-        setPendingWriteOverlays((current) =>
+        setPendingWriteOverlays?.((current) =>
           current.map((entry) =>
             entry.localId === localId
               ? {
@@ -435,7 +437,7 @@ export function useReviewConversationOverlays({
         );
       }
     },
-    [clearAuthoring],
+    [clearAuthoring, setPendingWriteOverlays],
   );
 
   const localComposerAnnotation = useMemo<
@@ -444,7 +446,7 @@ export function useReviewConversationOverlays({
     if (authoringSelection === null || localCommentAuthoring?.enabled !== true)
       return undefined;
     const wrappedPendingReview: PendingReviewComposerActions | undefined =
-      pendingReviewComposer === undefined
+      pendingReviewComposer === undefined || pendingReviewDrafts === undefined
         ? undefined
         : {
             ...pendingReviewComposer,
@@ -490,6 +492,7 @@ export function useReviewConversationOverlays({
     localCommentAuthoring?.enabled,
     localCommentAuthoring?.kind,
     pendingReviewComposer,
+    pendingReviewDrafts,
     saveAuthoring,
     submitPendingWrite,
   ]);
@@ -506,16 +509,16 @@ export function useReviewConversationOverlays({
         line: candidate.end,
         side: candidate.side,
       };
-      setPendingWriteOverlays((current) =>
+      setPendingWriteOverlays?.((current) =>
         current.filter((overlay) => overlay.localId !== localId),
       );
       if (
         localCommentAuthoring?.enabled === true &&
-        localCommentAuthoring.canAuthor?.(location) !== false
+        draftLinesAvailable(location)
       ) {
         localCommentAuthoring.onSelectionChange?.(location);
         setAuthoringInitialBody(candidate.body);
-        setOrphanedDraftBody(undefined);
+        setOrphanedDraftBody?.(undefined);
         setAuthoringSelection({
           id: candidate.path,
           range: {
@@ -526,12 +529,19 @@ export function useReviewConversationOverlays({
         });
         return;
       }
-      setOrphanedDraftBody(candidate.body);
+      setOrphanedDraftBody?.(candidate.body);
       setAuthoringSelection(null);
       setAuthoringInitialBody(undefined);
       viewer.current?.clearSelectedLines();
     },
-    [localCommentAuthoring, pendingWriteOverlays, viewer],
+    [
+      draftLinesAvailable,
+      localCommentAuthoring,
+      pendingWriteOverlays,
+      setOrphanedDraftBody,
+      setPendingWriteOverlays,
+      viewer,
+    ],
   );
 
   const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
@@ -591,7 +601,7 @@ export function useReviewConversationOverlays({
           conversationThread,
         };
       }),
-      ...shownPendingWrites.map((entry: PendingReviewWriteOverlay) => {
+      ...shownPendingWrites.map((entry: PendingReviewWrite) => {
         const pendingReviewWrite: NonNullable<
           ReviewInlineAnnotation["pendingReviewWrite"]
         > = {
@@ -600,7 +610,7 @@ export function useReviewConversationOverlays({
           action: entry.action,
           body: entry.body,
           onDismiss: (localId: string) =>
-            setPendingWriteOverlays((current) =>
+            setPendingWriteOverlays?.((current) =>
               current.filter((candidate) => candidate.localId !== localId),
             ),
           onEdit: editPendingWrite,
@@ -621,7 +631,13 @@ export function useReviewConversationOverlays({
         };
       }),
     ],
-    [conversationActions, createdThreads, editPendingWrite, shownPendingWrites],
+    [
+      conversationActions,
+      createdThreads,
+      editPendingWrite,
+      setPendingWriteOverlays,
+      shownPendingWrites,
+    ],
   );
 
   const renderedAnnotations = useMemo(

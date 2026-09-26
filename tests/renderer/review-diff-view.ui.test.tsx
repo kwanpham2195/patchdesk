@@ -14,6 +14,7 @@ import {
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { usePendingReviewDrafts } from "../../src/renderer/src/hooks/use-pending-review-drafts";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
 import {
@@ -726,6 +727,16 @@ it("keeps Reply and Resolve off a published create card even when all global con
     }
   }
 });
+/** The diff with the drafts the workbench keeps for it. */
+function DiffWithDrafts(
+  props: ComponentProps<typeof ReviewDiffView>,
+): React.JSX.Element {
+  const pendingReviewDrafts = usePendingReviewDrafts("review-a");
+  return (
+    <ReviewDiffView {...props} pendingReviewDrafts={pendingReviewDrafts} />
+  );
+}
+
 describe("pending-review composer lifecycle", () => {
   const patch =
     "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
@@ -750,7 +761,7 @@ describe("pending-review composer lifecycle", () => {
   ) => {
     const parsed = parseReviewDiff(patch);
     return render(
-      <ReviewDiffView
+      <DiffWithDrafts
         patch={patch}
         parsedFiles={parsed.files}
         fileStatsByPath={parsed.statsByPath}

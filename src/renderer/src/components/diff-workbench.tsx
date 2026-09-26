@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useMarkdownPreviewPaths } from "@/hooks/use-markdown-preview-paths";
 import type { ViewedFilesControls } from "@/hooks/use-viewed-files";
+import type { PendingReviewDrafts } from "@/hooks/use-pending-review-drafts";
 import { InlineError } from "@/components/ui/inline-error";
 import {
   Sheet,
@@ -50,6 +51,7 @@ export function DiffWorkbench({
   fillViewport = true,
   localCommentAuthoring,
   pendingReviewComposer,
+  pendingReviewDrafts,
   conversationActions,
   bodyContext,
   controlledSelectedPath,
@@ -81,6 +83,7 @@ export function DiffWorkbench({
   readonly fillViewport?: boolean;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly pendingReviewComposer?: PendingReviewComposerActions;
+  readonly pendingReviewDrafts?: PendingReviewDrafts;
   readonly conversationActions?: ReviewConversationActions;
   /** What an inline conversation or pending card resolves its images and links against. */
   readonly bodyContext?: PullRequestBodyContext;
@@ -281,6 +284,7 @@ export function DiffWorkbench({
               sourceSession,
               localCommentAuthoring,
               pendingReviewComposer,
+              pendingReviewDrafts,
               conversationActions,
               bodyContext,
               annotations,
