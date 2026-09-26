@@ -1,9 +1,10 @@
-import { readFile, symlink, writeFile } from "node:fs/promises";
+import { access, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  parseAbsolutePath,
   parseFindingId,
   parseLocalBranchName,
   parseRepoRelativePath,
@@ -179,6 +180,35 @@ describe("LocalApplyService", () => {
     expect(
       await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
     ).toBe(probe);
+  });
+
+  it("applies to the linked worktree a Review names and leaves the configured checkout alone (#489)", async () => {
+    const harness = await localApplyHarness();
+    const linked = join(dirname(harness.repositoryPath), "linked");
+    git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
+    await writeFile(join(linked, "probe.ts"), probe);
+    const workbench = await harness.open({
+      kind: "working_tree",
+      checkout: value(parseAbsolutePath(linked)),
+    });
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+
+    const applied = value(
+      await harness.service.apply(
+        applyRequest(workbench, runId, ["finding-bound"]),
+      ),
+    );
+
+    expect(applied.status).toBe("applied");
+    expect(await readFile(join(linked, "probe.ts"), "utf8")).toBe(
+      probe.replace("index <= values.length", "index < values.length"),
+    );
+    await expect(
+      access(join(harness.repositoryPath, "probe.ts")),
+    ).rejects.toThrow();
+    const next = applied.status === "applied" ? applied.workbench : undefined;
+    expect(next?.review.id).toBe(workbench.review.id);
+    expect(next?.fullPatch).toContain("index < values.length");
   });
 
   it("refuses a Review whose source is a branch", async () => {
