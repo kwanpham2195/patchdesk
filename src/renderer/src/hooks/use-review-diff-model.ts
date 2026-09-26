@@ -12,8 +12,8 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import {
+  renderedContextOf,
   reviewContextControl,
-  type RenderedContext,
 } from "@/review-context-control";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
@@ -372,16 +372,15 @@ export function useReviewDiffModel({
     void hydrateFiles(hydrationPaths);
   }, [hydrateFiles, hydrationPaths]);
 
-  const renderedContext = useMemo((): RenderedContext => {
-    const hydrated = items.map((item) =>
-      item.type === "diff" ? hydratedFiles.get(item.id) : undefined,
-    );
-    if (hydrated.some((file) => file !== undefined && !file.isPartial))
-      return "expandable";
-    return hydrated.every((file) => file !== undefined)
-      ? "nothing_to_expand"
-      : "unknown";
-  }, [hydratedFiles, items]);
+  const renderedContext = useMemo(
+    () =>
+      renderedContextOf(
+        items.map((item) =>
+          item.type === "diff" ? hydratedFiles.get(item.id) : undefined,
+        ),
+      ),
+    [hydratedFiles, items],
+  );
   const contextControl = reviewContextControl({
     hasSourceSession:
       hydrationSourceSession?.profileId !== undefined &&

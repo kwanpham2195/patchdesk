@@ -10,9 +10,10 @@ import { matchUnifiedHunkHeader } from "./unified-patch";
 /**
  * The retained Brief as a pull request description in Markdown (ADR 0050
  * "Handoff"): Flow, Shape, Blast radius, then Start here, in the order the
- * reader draws them, each a `##` section. Every citation is written as `path:line`, a hunk at its
- * new-side start line. Only the citations the reader shows as chips are
- * written, and one that names no hunk location is dropped.
+ * reader draws them, each a `##` section. Every citation is written as
+ * `path:line`, a hunk at its new-side start line. Only the citations the
+ * reader shows as chips are written, and one that names no hunk location is
+ * dropped.
  */
 export function renderBriefAsPullRequestDescription(
   brief: NormalizedBrief,
