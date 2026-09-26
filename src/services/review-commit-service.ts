@@ -1,4 +1,5 @@
 import { parseUnifiedPatch } from "../domain/patch";
+import { canonicalPatchFlags } from "../adapters/process/git-patch-flags";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type {
   ReviewRemoteSnapshot,
@@ -239,7 +240,7 @@ export class ReviewCommitService {
       "-C",
       session.worktree.path,
       "diff",
-      "--no-ext-diff",
+      ...canonicalPatchFlags,
       "--patch",
       "--binary",
       from,

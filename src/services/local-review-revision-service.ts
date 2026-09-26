@@ -1,6 +1,7 @@
 import { copyFile, mkdir, mkdtemp, rm, stat, utimes } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { canonicalPatchFlags } from "../adapters/process/git-patch-flags";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import {
   parseGitSha,
@@ -89,15 +90,7 @@ export class LocalReviewRevisionService {
       repositoryPath,
       "diff",
       "--binary",
-      "--no-ext-diff",
-      "--no-textconv",
-      // The patch parser needs a/ and b/ paths from the repository root with no escape codes, whatever the maintainer's diff config says.
-      "--no-color",
-      "--src-prefix=a/",
-      "--dst-prefix=b/",
-      "--no-relative",
-      // Note carry reads a file boundary from missing context, so the context width cannot follow the maintainer's diff.context (#521).
-      "--unified=3",
+      ...canonicalPatchFlags,
       revision.baseSha,
       revision.headSha,
     ]);

@@ -116,6 +116,12 @@ describe("GitHubAdapter revision and commit reads", () => {
         "/tmp/patchdesk-repo",
         "diff",
         "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--no-relative",
+        "--unified=3",
         "refs/patchdesk/base...refs/patchdesk/head",
       ],
     ]);
