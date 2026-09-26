@@ -351,6 +351,17 @@ line, with `nextCursor`, and returns for that page the Markdown
 the clipboard carries. A page of 25 notes with suggestions stays under
 Claude Code's 25,000-token cut.
 
+Amended 2026-09-26 (#514): a note may hold 65,536 characters and each page
+carries it twice, in its entry and in the Markdown, so 25 entries did not
+stay under the cut. A page now also stops before the entry that would take
+its serialized JSON past 60 KiB (about 25,000 tokens at 2.5 bytes a token);
+`nextCursor` and `stale_cursor` are unchanged. The first entry of a page
+always goes out, so a page is never empty. When that entry alone passes
+60 KiB, the Markdown replaces its text with a line pointing to the entry,
+which keeps the full text; nothing is truncated, and that page's Markdown
+differs from the clipboard. The page can still pass 60 KiB when the entry
+alone does, as a note near the 65,536-character limit does.
+
 **Spec-file intents.** `review_local` accepts text only. A spec file must be
 in the Local snapshot to be read (ADR 0051); an agent that has the file sends
 its text, and a path would add the `change_intent_file_*` refusals to a tool
