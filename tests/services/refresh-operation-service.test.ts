@@ -20,6 +20,7 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
+  type ReviewSessionId,
 } from "../../src/domain/ids";
 import { err, ok, type Result } from "../../src/domain/result";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -80,7 +81,7 @@ afterEach(async () => {
   );
 });
 
-async function harness() {
+async function harness(preparedRefresh: PreparedReviewRefresh = prepared) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-refresh-operation-"));
   roots.push(root);
   const operationStore = new RefreshOperationStore(
@@ -130,13 +131,17 @@ async function harness() {
   let prepareResult: Result<
     PreparedReviewRefresh,
     { readonly reason: "github_read" }
-  > = ok(prepared);
+  > = ok(preparedRefresh);
+  const reconciledSessionIds: Array<ReviewSessionId> = [];
   const refresh = {
     prepareUnlocked: async (input: { readonly reprepare?: boolean }) => {
       preparationInputs.push(input);
       return prepareResult;
     },
-    reconcilePendingReviewUnlocked: async () => undefined,
+    // Like the real reconcile, it reads the session the stored Review names now.
+    reconcilePendingReviewUnlocked: async () => {
+      reconciledSessionIds.push(currentReview.currentSessionId);
+    },
     savePreparedReviewUnlocked: async (value: PreparedReviewRefresh) => {
       const saved = await reviews.save(
         value.nextReview,
@@ -164,6 +169,7 @@ async function harness() {
     operations,
     launches,
     preparationInputs,
+    reconciledSessionIds,
     saves,
     currentReview: () => currentReview,
     failPreparation: () => {
@@ -215,6 +221,32 @@ describe("RefreshOperationService", () => {
       _tag: "ok",
       value: { operationId: "refresh-7", state: "completed" },
     });
+  });
+
+  // A new head moves the Review to a new session, which holds no pending-review state until reconciled (#529).
+  it("reconciles the pending review on the session a Refresh moved the Review to", async () => {
+    const movedHeadSha = must(parseGitSha("c".repeat(40)));
+    const movedSessionId = createReviewSessionId({
+      ...identity,
+      headSha: movedHeadSha,
+      baseSha: must(parseGitSha("b".repeat(40))),
+    });
+    const fixture = await harness({
+      ...prepared,
+      nextReview: {
+        ...nextReview,
+        currentSessionId: movedSessionId,
+        currentHeadSha: movedHeadSha,
+      },
+      sessionId: movedSessionId,
+      movesSession: true,
+    });
+
+    await fixture.service.begin({ profileId, reviewId: review.id });
+    await fixture.launches[0]?.();
+
+    expect(fixture.currentReview().currentSessionId).toBe(movedSessionId);
+    expect(fixture.reconciledSessionIds).toEqual([movedSessionId]);
   });
 
   it("returns the same active operation without launching duplicate work", async () => {

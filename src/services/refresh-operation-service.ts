@@ -243,9 +243,6 @@ export class RefreshOperationService {
         snapshotHash: prepared.value.snapshotHash,
       },
     };
-    await this.dependencies.refresh.reconcilePendingReviewUnlocked(
-      prepared.value,
-    );
     const savedPrepared =
       await this.dependencies.operations.save(durablePrepared);
     if (savedPrepared._tag === "err") {
@@ -268,6 +265,10 @@ export class RefreshOperationService {
       );
       return;
     }
+    // Reconcile reads the session the Review names, so it runs after the move; a new session has no pending-review state until then (#529).
+    await this.dependencies.refresh.reconcilePendingReviewUnlocked(
+      prepared.value,
+    );
     await this.saveTerminal(operation, { _tag: "Completed" });
   }
 
