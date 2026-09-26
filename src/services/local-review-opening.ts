@@ -166,6 +166,45 @@ export class LocalReviewOpening {
     return err({ reason: "storage" });
   }
 
+  /**
+   * A coding agent's open (ADR 0052 `review_local`): the agent prepares and
+   * the maintainer moves, so a Review that exists for the source is returned
+   * on its current session, unmoved, and only a missing one is created. It
+   * never stamps `lastOpenedAt`, so the agent does not reorder the sidebar.
+   */
+  async openForAgent(
+    request: LocalReviewOpenRequest,
+  ): Promise<Result<ReviewWorkbenchProjection, LocalReviewOpenFailure>> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const resolved = await this.preparation.resolve(request);
+      if (resolved._tag === "err")
+        return err(mapPreparationFailure(resolved.error));
+      const mismatch = headMismatch(
+        request.request,
+        resolved.value.identity.source,
+      );
+      if (mismatch !== undefined) return err(mismatch);
+      const reviewId = createReviewId(resolved.value.identity);
+      const opened = await this.lifecycle.coordinator.withReviewLock(
+        request.profileId,
+        reviewId,
+        async () => {
+          const existing = await this.lifecycle.reviews.load(
+            request.profileId,
+            reviewId,
+          );
+          if (existing._tag === "ok")
+            return isLocalReview(existing.value)
+              ? this.projectCurrent(existing.value)
+              : err({ reason: "storage" as const });
+          return this.openLocked(request, reviewId);
+        },
+      );
+      if (opened !== undefined) return opened;
+    }
+    return err({ reason: "storage" });
+  }
+
   /** The checkouts a local Review of the repository may be opened in (#489). */
   async listCheckouts(
     profileId: WorkspaceProfileId,
@@ -358,11 +397,17 @@ export class LocalReviewOpening {
     // Awaited under this Review lock, so no other open of the Review moves it meanwhile (#474).
     // Best effort: the retention service records its own failures.
     await this.lifecycle.retention.pruneSuperseded(profileId, reviewId);
+    return this.projectCurrent(moved.value);
+  }
+
+  private async projectCurrent(
+    review: Review<LocalReviewSource>,
+  ): Promise<Result<ReviewWorkbenchProjection, LocalReviewOpenFailure>> {
     const projected = await this.projection.loadLocal({
-      profileId,
-      sessionId: session.value.id,
-      refreshedAt: moved.value.updatedAt,
-      freshness: moved.value.freshness,
+      profileId: review.identity.profileId,
+      sessionId: review.currentSessionId,
+      refreshedAt: review.updatedAt,
+      freshness: review.freshness,
     });
     return projected._tag === "ok"
       ? projected

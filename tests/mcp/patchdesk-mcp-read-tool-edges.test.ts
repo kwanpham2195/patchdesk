@@ -1,10 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { parseReviewId } from "../../src/domain/ids";
 import {
   shortTemporaryDirectory,
   startAppWithLinkedWorktree,
@@ -14,9 +17,11 @@ import {
   addNote,
   call,
   loadRoute,
+  openRoute,
   pageSchema,
   reviewWithNotes,
 } from "./mcp-read-tools-fixture";
+import { profileId, value } from "../services/local-apply-fixture";
 import { closeMcpTestClients, connectLegacyClient } from "./mcp-test-clients";
 
 let app: McpAppFixture | undefined;
@@ -98,6 +103,53 @@ describe("get_feedback paging", () => {
       isError: true,
       content: { error: "stale_cursor" },
     });
+  });
+});
+
+describe("review_local on the agent's side (the agent prepares, the maintainer moves)", () => {
+  it("returns an existing Review on its current session after the working tree changed, and records no open", async () => {
+    app = await startAppWithLinkedWorktree();
+    await writeFile(join(app.repositoryPath, "tracked.txt"), "two\n");
+    const shown = await openRoute(app, app.repositoryPath);
+    const reviews = new ReviewStore(app.paths);
+    const reviewId = value(parseReviewId(shown.review.id));
+    const before = value(await reviews.load(profileId, reviewId));
+    await writeFile(join(app.repositoryPath, "tracked.txt"), "three\n");
+    const client = await connectLegacyClient(app.socketPath);
+
+    const called = await call(client, "review_local", {
+      cwd: app.repositoryPath,
+    });
+    const after = value(await reviews.load(profileId, reviewId));
+
+    expect(called.content).toMatchObject({
+      reviewId: shown.review.id,
+      sessionId: shown.session.id,
+    });
+    expect(after.currentSessionId).toBe(before.currentSessionId);
+    expect(before.lastOpenedAt).toBeDefined();
+    expect(after.lastOpenedAt).toBe(before.lastOpenedAt);
+  });
+
+  it("creates a missing Review without recording an open", async () => {
+    app = await startAppWithLinkedWorktree();
+    const client = await connectLegacyClient(app.socketPath);
+
+    const called = await call(client, "review_local", {
+      cwd: app.repositoryPath,
+    });
+    const reviewId = v.parse(
+      v.object({ reviewId: v.string() }),
+      called.content,
+    ).reviewId;
+    const stored = value(
+      await new ReviewStore(app.paths).load(
+        profileId,
+        value(parseReviewId(reviewId)),
+      ),
+    );
+
+    expect(stored.lastOpenedAt).toBeUndefined();
   });
 });
 

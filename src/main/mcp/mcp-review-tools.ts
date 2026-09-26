@@ -47,7 +47,7 @@ export type McpReviewToolServices = {
   readonly dashboard: Pick<DashboardController, "savedProfiles">;
   readonly localReviewOpening: Pick<
     LocalReviewOpening,
-    "listCheckouts" | "findCheckout" | "open"
+    "listCheckouts" | "findCheckout" | "openForAgent"
   >;
   readonly localChangeIntent: Pick<
     LocalChangeIntentService,
@@ -149,7 +149,7 @@ type ToolInput<Name extends keyof typeof mcpToolManifest> = InferOutput<
   (typeof mcpToolManifest)[Name]["inputSchema"]
 >;
 
-/** `review_local`: the open goes through `LocalReviewOpening.open`, the service the open-local route calls. */
+/** `review_local`: `LocalReviewOpening.openForAgent`, which returns an existing Review unmoved and creates a missing one as the open-local route does. */
 export async function reviewLocal(
   services: McpReviewToolServices,
   input: ToolInput<"review_local">,
@@ -175,7 +175,7 @@ export async function reviewLocal(
   });
   if (request === undefined) return err(refusal("invalid_input"));
   const { host, owner, repo } = found.value.repository;
-  const opened = await services.localReviewOpening.open({
+  const opened = await services.localReviewOpening.openForAgent({
     profileId,
     repository: { host, owner, repo },
     request,
