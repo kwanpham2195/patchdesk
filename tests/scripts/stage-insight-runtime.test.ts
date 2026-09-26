@@ -113,7 +113,7 @@ describe("stageInsightRuntime", () => {
     const rootPackage = JSON.parse(
       await readFile(join(projectRoot, "package.json"), "utf8"),
     ) as {
-      build: { extraResources: Array<{ filter: string[] }> };
+      build: { extraResources: Array<{ to: string; filter?: string[] }> };
       scripts: { prepare: string };
     };
 
@@ -135,7 +135,10 @@ describe("stageInsightRuntime", () => {
     ])
       expect(runtimeLock).toContain(`/${providerSdk}@`);
 
-    for (const { filter } of rootPackage.build.extraResources) {
+    // The MCP shim and its launcher are single files with nothing to filter.
+    for (const { filter } of rootPackage.build.extraResources.filter(({ to }) =>
+      to.startsWith("insight-runtime"),
+    )) {
       expect(filter).toContain("!**/*.{d.ts,d.mts,d.cts,map}");
       expect(filter).toContain(
         "!**/{README,README.*,readme,readme.*,CHANGELOG,CHANGELOG.*,changelog,changelog.*,HISTORY,HISTORY.*,history,history.*}",
