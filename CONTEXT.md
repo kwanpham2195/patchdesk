@@ -75,8 +75,12 @@ The spec a local Review's change is checked against: Markdown the maintainer ent
 _Avoid_: Task, prompt, requirements, PR description
 
 **Agent run request**:
-A coding agent's request over MCP for an Insight run on a local Review session. It spends nothing by itself: it waits on the Review until the maintainer presses Run, which opens the ordinary run dialog, or Decline, which is final for that session (ADR 0052).
+A coding agent's request over MCP for one Insight run on a local Review's current session. It spends nothing by itself: it waits on the Review's Agent requests bar until the maintainer presses Run, which opens the ordinary run dialog, or Decline, which is final for that session. Any Run of that Insight on that session approves it, and a move to a new session drops it (ADR 0052).
 _Avoid_: Agent run, auto-run, queued run
+
+**Prepared session**:
+A Review session Patchdesk prepared for a local Review's newer checkout content without moving the Review to it. A coding agent's refresh records it; the header shows Updates available, and the maintainer's Refresh moves the Review to it and carries the Local drafts, so the diff never changes under the maintainer (ADR 0052). It is not a Prepared Refresh, the pull request refresh journal state.
+_Avoid_: Pending session, next session, agent session
 
 **Represented-review worktree**:
 Patchdesk's immutable checkout for a Review session's pinned revision. Codex may inspect it only through verified sandboxed read-only tools; it is never the maintainer's original checkout.
