@@ -318,6 +318,9 @@ export const threadResponseSchema = v.looseObject({
                       }),
                     ),
                     path: v.optional(v.nullable(v.string())),
+                    pullRequestReview: v.nullish(
+                      v.looseObject({ state: v.string() }),
+                    ),
                   }),
                 ),
                 pageInfo: v.optional(
@@ -411,6 +414,7 @@ export const threadCommentsResponseSchema = v.looseObject({
               }),
             ),
             path: v.optional(v.nullable(v.string())),
+            pullRequestReview: v.nullish(v.looseObject({ state: v.string() })),
           }),
         ),
         pageInfo: v.looseObject({
