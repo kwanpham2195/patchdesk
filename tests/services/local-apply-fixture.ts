@@ -136,6 +136,8 @@ export async function localApplyHarness(
     readonly retentionNow?: () => IsoTimestamp;
     /** The clock the opening service rate-limits an agent's refresh by. */
     readonly openingNow?: () => IsoTimestamp;
+    /** Awaited after each session the opening service prepares, to hold it between the snapshot and the save. */
+    readonly afterPrepare?: () => Promise<void>;
   } = {},
 ): Promise<LocalApplyHarness> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-local-apply-"));
@@ -201,18 +203,28 @@ export async function localApplyHarness(
     coordinator,
     now: seams.retentionNow ?? (() => now),
   });
+  const preparation = new LocalReviewSessionPreparation({
+    profiles,
+    sessions,
+    revisions,
+    worktrees,
+    artifacts,
+    paths,
+    git: realGit,
+    lifecycleGate,
+    now: () => now,
+  });
   const opening = new LocalReviewOpening(
-    new LocalReviewSessionPreparation({
-      profiles,
-      sessions,
-      revisions,
-      worktrees,
-      artifacts,
-      paths,
-      git: realGit,
-      lifecycleGate,
-      now: () => now,
-    }),
+    {
+      resolve: (request) => preparation.resolve(request),
+      prepare: async (resolved) => {
+        const prepared = await preparation.prepare(resolved);
+        await seams.afterPrepare?.();
+        return prepared;
+      },
+      listCheckouts: (id, target) => preparation.listCheckouts(id, target),
+      findCheckout: (id, directory) => preparation.findCheckout(id, directory),
+    },
     new ReviewWorkbenchProjectionService(
       profiles,
       sessions,
