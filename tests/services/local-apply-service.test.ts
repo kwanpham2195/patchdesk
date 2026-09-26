@@ -535,3 +535,136 @@ describe("LocalApplyService recovery", () => {
     ]);
   });
 });
+
+describe("LocalApplyService after a move to another session (#484)", () => {
+  it("settles a CheckRequired Apply on Refresh, so a new Apply succeeds and the old session is pruned", async () => {
+    let agentWrote = false;
+    const harness = await localApplyHarness(async (argv, run) => {
+      if (!isApplyWrite(argv) || agentWrote) return run();
+      // The agent writes the file between `git apply --check` and `git apply`.
+      agentWrote = true;
+      await writeFile(
+        join(argv[2] ?? "", "probe.ts"),
+        `${probe}\nexport const agent = 1;`,
+      );
+      return run();
+    });
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    expect(
+      value(
+        await harness.service.apply(
+          applyRequest(workbench, runId, ["finding-bound"]),
+        ),
+      ),
+    ).toEqual({ status: "outcome_unknown" });
+    expect(
+      value(await harness.service.recover(profileId, workbench.review.id)),
+    ).toEqual({ decision: "check_required" });
+
+    const refreshed = value(
+      await harness.opening.refresh(profileId, workbench.review.id),
+    );
+
+    expect(refreshed.session.id).not.toBe(workbench.session.id);
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+    expect(
+      harness.logs.find(
+        (entry) =>
+          entry.message === "Local apply settled by a move to another session",
+      ),
+    ).toMatchObject({
+      level: "warn",
+      sessionId: workbench.session.id,
+      meta: expect.objectContaining({
+        state: "CheckRequired",
+        decision: "check_required",
+      }),
+    });
+    expect(
+      git(
+        harness.repositoryPath,
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/patchdesk/local/",
+      ).trim(),
+    ).toBe(`refs/patchdesk/local/${profileId}/${refreshed.session.id}/head`);
+    const nextRun = await retainAnalysis(harness.insights, refreshed, [
+      lastLineFix,
+    ]);
+    const applied = await harness.service.apply(
+      applyRequest(refreshed, nextRun, ["finding-last"]),
+    );
+    expect(value(applied).status).toBe("applied");
+    expect(
+      await readFile(join(harness.repositoryPath, "probe.ts"), "utf8"),
+    ).toContain("export const last = 2;");
+  });
+
+  it("marks the drafted Finding applied when Refresh finds an unknown Apply landed", async () => {
+    const harness = await localApplyHarness(async (argv, run) => {
+      if (!isApplyWrite(argv)) return run();
+      await run();
+      return err({ _tag: "GitReadFailed" as const });
+    });
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    value(
+      await harness.drafts.add({
+        profileId,
+        reviewId: workbench.review.id,
+        sessionId: workbench.session.id,
+        runId,
+        findingId: value(parseFindingId("finding-bound")),
+      }),
+    );
+    expect(
+      value(
+        await harness.service.apply(
+          applyRequest(workbench, runId, ["finding-bound"]),
+        ),
+      ),
+    ).toEqual({ status: "outcome_unknown" });
+
+    const refreshed = value(
+      await harness.opening.refresh(profileId, workbench.review.id),
+    );
+
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id)),
+    ).toBeUndefined();
+    expect(refreshed.localDrafts).toEqual([
+      expect.objectContaining({ findingId: "finding-bound", state: "applied" }),
+    ]);
+  });
+
+  it("keeps an unknown Apply locked when Refresh finds the same session", async () => {
+    const harness = await localApplyHarness(async (argv, run) =>
+      isApplyWrite(argv) ? err({ _tag: "GitReadFailed" as const }) : run(),
+    );
+    await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    const request = applyRequest(workbench, runId, ["finding-bound"]);
+    expect(value(await harness.service.apply(request))).toEqual({
+      status: "outcome_unknown",
+    });
+
+    const refreshed = value(
+      await harness.opening.refresh(profileId, workbench.review.id),
+    );
+
+    expect(refreshed.session.id).toBe(workbench.session.id);
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id))
+        ?.state,
+    ).toBe("OutcomeUnknown");
+    expect(await harness.service.apply(request)).toEqual(
+      err({ reason: "apply_locked" }),
+    );
+  });
+});

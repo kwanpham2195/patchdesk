@@ -40,6 +40,7 @@ import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import { LocalApplyService } from "../../src/services/local-apply-service";
+import { LocalApplySettlement } from "../../src/services/local-apply-settlement";
 import { LocalDraftService } from "../../src/services/local-draft-service";
 import { LocalReviewOpening } from "../../src/services/local-review-opening";
 import { LocalReviewRetention } from "../../src/services/local-review-retention";
@@ -171,6 +172,7 @@ export async function localApplyHarness(
         : intercept(argv, () => realGit.run(argv, environment)),
   };
   const coordinator = new ReviewOperationCoordinator();
+  const logs: LogEntryInput[] = [];
   const lifecycleGate = new ReviewLifecycleGate();
   const worktrees = new ReviewWorktreeService(
     paths,
@@ -214,10 +216,21 @@ export async function localApplyHarness(
       new ViewedFilesStore(paths, { write: () => undefined }),
       operations,
     ),
-    { reviews, artifacts, coordinator, retention },
+    {
+      reviews,
+      artifacts,
+      coordinator,
+      retention,
+      applySettlement: new LocalApplySettlement({
+        operations,
+        reviews,
+        git: interceptedGit,
+        logs: { write: (entry) => logs.push(entry) },
+        now: () => now,
+      }),
+    },
     () => now,
   );
-  const logs: LogEntryInput[] = [];
   const service = new LocalApplyService({
     gate: new ReviewWriteGate(
       profiles,

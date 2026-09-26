@@ -56,6 +56,7 @@ import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { LocalReviewOpening } from "../services/local-review-opening";
 import { LocalApplyService } from "../services/local-apply-service";
+import { LocalApplySettlement } from "../services/local-apply-settlement";
 import { LocalChangeIntentService } from "../services/local-change-intent-service";
 import { LocalDraftService } from "../services/local-draft-service";
 import { createLocalNoteId } from "../domain/ids";
@@ -488,6 +489,13 @@ export async function buildLocalApiContainer(
       artifacts: storageArtifacts,
       coordinator: reviewOperations,
       retention: localRetention,
+      applySettlement: new LocalApplySettlement({
+        operations: localApplyOperations,
+        reviews,
+        git: readOnlyGit,
+        logs,
+        now: systemNow,
+      }),
     },
     systemNow,
   );

@@ -28,6 +28,7 @@ import {
 } from "../domain/review-source";
 import type { LocalReviewSession } from "../domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
+import type { LocalApplySettlement } from "./local-apply-settlement";
 import type {
   LocalReviewOpenRequest,
   LocalReviewPreparationFailure,
@@ -91,6 +92,10 @@ export class LocalReviewOpening {
         "withReviewLock" | "acquire" | "release"
       >;
       readonly retention: Pick<LocalReviewRetention, "pruneSuperseded">;
+      readonly applySettlement: Pick<
+        LocalApplySettlement,
+        "settleEarlierSession"
+      >;
     },
     private readonly now: () => IsoTimestamp,
   ) {}
@@ -235,6 +240,13 @@ export class LocalReviewOpening {
     const session = await this.preparation.prepare(resolved);
     if (session._tag === "err")
       return err(mapPreparationFailure(session.error));
+    // Before the Review is read: settling a confirmed Apply marks drafts on it (#484).
+    await this.lifecycle.applySettlement.settleEarlierSession({
+      profileId,
+      reviewId,
+      sessionId: session.value.id,
+      localPath: resolved.localPath,
+    });
     const existing = await this.lifecycle.reviews.load(profileId, reviewId);
     let stored: Review<LocalReviewSource> | undefined;
     if (existing._tag === "ok") {
