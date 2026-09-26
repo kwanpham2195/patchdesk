@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fixed a note or Finding draft that contains what looks like a credential failing with a generic "The note was not saved." Patchdesk now says the draft holds a credential it never stores and keeps the text so you can remove it. #487
+- Fixed a note on a file's first or last line becoming **Needs attention** and leaving the Diff when the agent rewrote that line. It now carries as **Changed since your note**. #521
+- Fixed a pending-review comment that GitHub refused being lost when you switched tabs or a Refresh moved the Review; the failed card now stays, and when the Review's diff no longer has its lines, **Select a new diff line to restore the saved draft** asks you to place it again. #526
+- Fixed pull request and commit diffs following your own git config (`diff.noprefix`, `color.diff`, `diff.context`, textconv drivers), which could break the patch Patchdesk reads. #494
+- Fixed a refused Insight start staying in the run dialog after you changed the Change intent, pressed Refresh, or reopened the dialog. #500
+- Fixed **Apply** saying a file no longer holds the suggested lines when the real cause was line-ending conversion, or when the suggestion already matched the file; each case now says so. #497
+- Fixed a spec-file Change intent that Git rewrites on checkout (LFS, a filter, or line endings) failing Analysis with a generic error; the run dialog now names the cause and suggests entering the goal as text. #498
+- Fixed **Pending review state unavailable** after a second Refresh on a pull request where you hold a pending review. #529
+- Fixed the file tree highlighting a file the Diff pane was not showing after you returned to Browse from a commit, and clicking that file doing nothing. #535
 - Added a one-command macOS installer that verifies the latest release ZIP, installs Patchdesk and its agent command, and stops before replacing an existing installation.
 
 - Fixed your own unsubmitted pending-review comments showing as published threads with **Resolve** and **Reply** when the pending review could not be read. Analysis, Walkthrough, and Brief no longer read them as published comments either. #537
