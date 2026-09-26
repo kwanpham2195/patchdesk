@@ -204,7 +204,7 @@ its review desk through the `patchdesk mcp` command. The agent opens a local
 Review of its change, asks for Insights, and reads the notes you drafted. You
 stay the reviewer: an Insight runs only after you press Run in Patchdesk, and
 the Review moves to the agent's newer changes only when you press Refresh.
-The agent cannot Apply, edit your notes, commit, or touch GitHub.
+Its tools cannot Apply, edit your notes, commit, or touch GitHub.
 [A coding agent over MCP](product-description/pull-requests/coding-agent-over-mcp.md)
 describes the whole loop.
 
