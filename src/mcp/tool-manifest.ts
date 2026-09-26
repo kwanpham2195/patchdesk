@@ -91,10 +91,11 @@ export const mcpToolManifest = {
       ),
       type: v.picklist(["analysis", "walkthrough", "brief"]),
     }),
+    // A repeat after an approved run settles records a new request, so repeats are not idempotent.
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
-      idempotentHint: true,
+      idempotentHint: false,
       openWorldHint: false,
     },
   },

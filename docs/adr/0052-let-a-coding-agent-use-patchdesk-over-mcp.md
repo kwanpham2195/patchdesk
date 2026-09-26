@@ -206,6 +206,10 @@ run of that type that no agent asked for is active on the session,
 shim reads the client's name from the SDK and sends it as `client` on the
 socket request line.
 
+Amended 2026-09-26 (slice 4b): `run_insight` is annotated
+`idempotentHint: false`, because a repeat after a settled approved run
+records a new request.
+
 Amended 2026-09-26 (slice 4): `get_insight` reports `awaiting_approval` or
 `declined` from the current session's request until a run of that type is
 active on the session or has retained a result generated after the request.
@@ -241,6 +245,13 @@ with an optional `requestId`. Decline is
 that is not awaiting approval with `request_not_awaiting`. The notification
 title is "Agent asks for Analysis". Its body is the source title with the
 checkout folder, plus "· <label> profile" when more than one profile exists.
+
+Amended 2026-09-26 (slice 4b): every Run approves the current session's
+awaiting request of its type, with or without a `requestId`, so a plain Run
+of a requested type leaves `run_insight`, `get_insight`, and the bar in
+agreement. The request check and the link run inside
+`InsightRunCoordinator.start`'s Review lock, so a Decline cannot land between
+them; a link that fails to save is logged and the run continues.
 
 ### Feedback hand-off
 

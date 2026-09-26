@@ -27,6 +27,7 @@ import {
   type Review,
 } from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
+import type { AppLogService } from "./app-log-service";
 import {
   postDesktopNotification,
   type DesktopNotifier,
@@ -94,6 +95,7 @@ type AgentRunRequestDependencies = {
     "acquire" | "release" | "withReviewLock"
   >;
   readonly notifier?: DesktopNotifier;
+  readonly logs?: Pick<AppLogService, "write">;
   readonly now: () => IsoTimestamp;
   readonly createRequestId: () => AgentRunRequestId;
 };
@@ -173,57 +175,52 @@ export class AgentRunRequestService {
   }
 
   /**
-   * Run on the Agent requests bar: starts the run as the Run button does and
-   * marks the request approved with its `runId`. A refused start leaves the
-   * request awaiting. The run is not undone when linking it fails, because it
-   * has already started.
+   * Run on the Insights tab. The start approves the session's awaiting
+   * request of that type, so `run_insight`, `get_insight`, and the Agent
+   * requests bar agree; with `requestId` it is refused unless that request
+   * still awaits. The check and the link run inside the start's Review lock,
+   * so a Decline cannot land between them.
    */
-  async approve(
+  async startRun(
     runs: Pick<InsightRunCoordinator, "start">,
-    input: InsightCoordinatorInput & { readonly requestId: AgentRunRequestId },
-  ): Promise<
-    Result<
-      InsightRunResponse,
-      InsightCoordinatorFailure | "request_not_awaiting"
-    >
-  > {
-    const loaded = await this.dependencies.reviews.load(
-      input.profileId,
-      input.reviewId,
-    );
-    if (loaded._tag === "err")
-      return err(
-        loaded.error.reason === "not_found"
-          ? "not_found"
-          : "storage_unavailable",
-      );
-    if (awaitingRequest(loaded.value, input) === undefined)
-      return err("request_not_awaiting");
-    const { requestId: _requestId, ...start } = input;
-    const started = await runs.start(start);
-    if (started._tag === "err") return started;
-    await this.dependencies.coordinator.withReviewLock(
-      input.profileId,
-      input.reviewId,
-      async () => {
-        const current = await this.dependencies.reviews.load(
-          input.profileId,
-          input.reviewId,
-        );
-        if (current._tag === "err" || !isLocalReview(current.value)) return;
-        const request = awaitingRequest(current.value, input);
-        if (request !== undefined)
-          await this.save(
-            current.value,
-            putAgentRunRequest(current.value.agentRunRequests, {
-              ...request,
-              status: "approved",
-              runId: started.value.runId,
-            }),
-          );
+    input: InsightCoordinatorInput & { readonly requestId?: AgentRunRequestId },
+  ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const { requestId, ...start } = input;
+    return runs.start(start, {
+      admit: (review) =>
+        requestId === undefined ||
+        awaitingRequestOf(review, input.type)?.requestId === requestId
+          ? undefined
+          : "request_not_awaiting",
+      started: async (review, runId) => {
+        const request = awaitingRequestOf(review, input.type);
+        if (request === undefined || !isLocalReview(review)) return;
+        const linked = await this.save(
+          review,
+          putAgentRunRequest(review.agentRunRequests, {
+            ...request,
+            status: "approved",
+            runId,
+          }),
+        ).catch(() => err({ reason: "storage" as const }));
+        // The run has already begun, so a failed link is logged rather than refused.
+        if (linked._tag === "err")
+          this.dependencies.logs?.write({
+            process: "main",
+            level: "warn",
+            topic: "agent-run-request",
+            message: "Started run was not linked to its agent run request",
+            profileId: input.profileId,
+            sessionId: review.currentSessionId,
+            meta: {
+              reviewId: input.reviewId,
+              requestId: request.requestId,
+              runId,
+              reason: linked.error.reason,
+            },
+          });
       },
-    );
-    return started;
+    });
   }
 
   /** Decline on the Agent requests bar: final for the request's session. */
@@ -336,6 +333,21 @@ function requestReply(
       runId: request.status === "approved" ? request.runId : undefined,
     }),
   };
+}
+
+/** The current session's request of `type`, while it awaits approval. */
+function awaitingRequestOf(
+  review: Review,
+  type: InsightType,
+): AgentRunRequest | undefined {
+  const request = isLocalReview(review)
+    ? findAgentRunRequest(
+        review.agentRunRequests,
+        review.currentSessionId,
+        type,
+      )
+    : undefined;
+  return request?.status === "awaiting_approval" ? request : undefined;
 }
 
 function awaitingRequest(

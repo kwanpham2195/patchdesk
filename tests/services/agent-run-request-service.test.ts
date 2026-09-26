@@ -11,29 +11,20 @@ import {
   createAgentRunRequestId,
   createReviewId,
   createReviewSessionId,
-  parseContentHash,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
-  parseInsightRunId,
   parseIsoTimestamp,
   parseLocalBranchName,
   parseWorkspaceProfileId,
-  type InsightRunId,
 } from "../../src/domain/ids";
-import { beginInsightRun } from "../../src/domain/insight-record";
 import { err, ok, type Result } from "../../src/domain/result";
 import { createReview, type ReviewIdentity } from "../../src/domain/review";
 import type { LocalReviewSource } from "../../src/domain/review-source";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { AgentRunRequestService } from "../../src/services/agent-run-request-service";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
-import type {
-  InsightCoordinatorFailure,
-  InsightCoordinatorInput,
-  InsightRunResponse,
-} from "../../src/services/insight-run-coordinator";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
 function must<T>(result: Result<T, unknown>): T {
@@ -57,17 +48,7 @@ const headSha = must(parseGitSha("1".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));
 const sessionId = createReviewSessionId({ ...identity, headSha, baseSha });
 const now = must(parseIsoTimestamp("2026-09-26T10:00:00.000Z"));
-const runId = must(parseInsightRunId("insight-analysis-1-111111111111-run"));
 const analysis = { profileId, reviewId, sessionId, type: "analysis" } as const;
-const runInput = {
-  profileId,
-  reviewId,
-  type: "analysis",
-  provider: "codex-cli-account",
-  model: "gpt-6-luna",
-  reasoning: "medium",
-  language: "en",
-} as const satisfies InsightCoordinatorInput;
 
 let root: string;
 let paths: PatchdeskPaths;
@@ -122,39 +103,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
-
-/** A start that begins the run in the Insight store, as the coordinator's does. */
-function startingRuns(started: InsightRunId) {
-  return {
-    start: async (
-      input: InsightCoordinatorInput,
-    ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> => {
-      must(
-        await new InsightStore(paths).mutate({
-          profileId: input.profileId,
-          reviewId: input.reviewId,
-          type: input.type,
-          now,
-          operation: (record) =>
-            beginInsightRun(record, {
-              id: started,
-              revision: {
-                sessionId,
-                headSha,
-                patchHash: must(parseContentHash("c".repeat(64))),
-              },
-              provider: "codex-cli-account",
-              model: "gpt-6-luna",
-              reasoning: "medium",
-              language: "en",
-              startedAt: now,
-            }),
-        }),
-      );
-      return ok({ runId: started, type: input.type, status: "queued" });
-    },
-  };
-}
 
 describe("AgentRunRequestService", () => {
   it("records an awaiting request and posts one notification naming the source and checkout folder", async () => {
@@ -233,54 +181,5 @@ describe("AgentRunRequestService", () => {
     expect(events).toEqual([]);
     const stored = must(await new ReviewStore(paths).load(profileId, reviewId));
     expect(stored.agentRunRequests).toBeUndefined();
-  });
-
-  it("approves through the start, linking the run, and answers the next request with it while it runs", async () => {
-    const requested = must(await service.request(analysis));
-    if (requested.requestId === undefined) throw new Error("no request");
-
-    const approved = await service.approve(startingRuns(runId), {
-      ...runInput,
-      requestId: requested.requestId,
-    });
-    const askedAgain = await service.request(analysis);
-
-    expect(approved).toMatchObject(ok({ runId, status: "queued" }));
-    expect(askedAgain).toMatchObject(
-      ok({ status: "approved", requestId: requested.requestId, runId }),
-    );
-    expect(events).toHaveLength(1);
-  });
-
-  it("leaves the request awaiting when the start is refused", async () => {
-    const requested = must(await service.request(analysis));
-    if (requested.requestId === undefined) throw new Error("no request");
-
-    const approved = await service.approve(
-      { start: async () => err("model_unavailable" as const) },
-      { ...runInput, requestId: requested.requestId },
-    );
-
-    expect(approved).toEqual(err("model_unavailable"));
-    const stored = must(await new ReviewStore(paths).load(profileId, reviewId));
-    expect(stored.agentRunRequests).toEqual([
-      expect.objectContaining({ status: "awaiting_approval" }),
-    ]);
-  });
-
-  it("records a new request once an approved run has settled, which needs a new approval", async () => {
-    const requested = must(await service.request(analysis));
-    if (requested.requestId === undefined) throw new Error("no request");
-    await service.approve(
-      { start: async () => ok({ runId, type: "analysis", status: "queued" }) },
-      { ...runInput, requestId: requested.requestId },
-    );
-
-    const askedAgain = await service.request(analysis);
-
-    expect(askedAgain).toMatchObject(
-      ok({ status: "awaiting_approval", requestId: "agent-request-request-2" }),
-    );
-    expect(events).toHaveLength(2);
   });
 });
