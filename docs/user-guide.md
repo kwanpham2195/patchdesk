@@ -212,7 +212,9 @@ describes the whole loop.
 
 Patchdesk bundles the command at
 `Patchdesk.app/Contents/Resources/bin/patchdesk`. It runs on the Node inside
-the app, so there is nothing else to install. Link it onto your PATH:
+the app, so there is nothing else to install. `brew install --cask
+patchdesk` links it onto your PATH as `patchdesk`. For a DMG install, link
+it yourself:
 
 ```bash
 ln -s /Applications/Patchdesk.app/Contents/Resources/bin/patchdesk /usr/local/bin/patchdesk
@@ -225,7 +227,6 @@ Homebrew's `bin` folder instead:
 ln -s /Applications/Patchdesk.app/Contents/Resources/bin/patchdesk "$(brew --prefix)/bin/patchdesk"
 ```
 
-Once the Homebrew cask links the command itself, you do not need this step.
 Running `patchdesk` with no arguments prints its usage.
 
 ### Register it with your agent
