@@ -31,3 +31,11 @@ Retention windows are fixed constants in the first version. They may become user
 > - A local Review is removed with its sessions and Insights when its repository still reads, its branch, base branch, or commit no longer exists, it has no Local drafts, and it was last opened over 14 days ago. A detached working-tree Review is kept.
 > - An active Brief run now counts as running state, as an Analysis or Walkthrough run does.
 > - Removing a worktree now deletes the managed refs it checked out. Discard, Clear local review data, and the pull request sweep remove session directories without Git, so their refs stay until the scheduled sweep deletes every managed ref of the profile that no stored session, worktree, or preparation names. That deletion refuses a ref that moved after it was listed. Git's records of those worktrees stay until the next `git worktree prune`, which runs before each new session worktree is added.
+
+> **Note, 2026-09-26 (#478):** an Open pull request Review kept every session it moved past after a push until it became Terminal. The superseded-session rule of the #474 note now covers every Open Review, local or pull request. As built:
+>
+> - A Refresh that moves a pull request Review to a new session prunes the ones it moved past under the Review lock it already holds; a Refresh that keeps the session prunes nothing. The background sweep prunes every Open Review.
+> - A superseded session is kept while it has running state. A session a retained Insight names keeps its record and patch and loses its worktree and refs.
+> - A Review keeps every session while it has a recorded GitHub write operation, or while any of its sessions holds an in-flight or outcome-unknown pending-review or summary write, so ADR 0035 recovery finds what it reads.
+> - A Terminal Review is not pruned; the 14-day rule above removes it.
+> - When the profile no longer names the repository's checkout, a superseded session with a worktree is kept, since only Git can remove the worktree; one without a worktree is removed.
