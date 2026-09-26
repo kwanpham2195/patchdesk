@@ -26,6 +26,8 @@ stateDiagram-v2
 
 The Local review button sits in the Pull requests header between the Repository picker and the freshness badge. It appears only when the workspace profile lists the Selected repository with a local checkout path; a repository without one shows no button. Pressing it opens the dialog with the Working tree tab selected and the Branch fields set to an empty Branch and a Base branch of `main`.
 
+When the repository has linked worktrees (`git worktree add`), the Working tree tab also shows a **Checkout** select listing the configured checkout and each live linked worktree, as `<folder> · <branch>` or `<folder> · detached HEAD`. It defaults to the configured checkout and is hidden when there is only one checkout. Patchdesk's own review worktrees are never listed. The Branch and Commit tabs always read the configured checkout.
+
 ### Leave unchanged
 
 Switching tabs, typing in the fields, pressing Cancel, pressing Close, or pressing Escape reads nothing and writes nothing. The dialog is created fresh each time it opens, so a cancelled draft does not return.
@@ -36,7 +38,7 @@ Open review stays disabled until the chosen tab is complete: Branch needs both a
 
 Pressing Open review sends the source to the main process. Patchdesk checks that the repository is in the active profile with a local checkout, then reads the source from that checkout:
 
-- **Working tree.** Patchdesk records the checkout as a _Local snapshot_, a commit object built from every staged, unstaged, and untracked file against `HEAD`. The branch `HEAD` names, or `detached HEAD`, identifies the Review, so switching branches opens a different Review.
+- **Working tree.** Patchdesk records the chosen checkout as a _Local snapshot_, a commit object built from every staged, unstaged, and untracked file against `HEAD`. The branch `HEAD` names, or `detached HEAD`, identifies the Review, so switching branches opens a different Review. A linked worktree is a different Review from the configured checkout on the same branch, with its own sessions and drafts, and its heading ends with `in <folder>`.
 - **Branch.** The branch tip is compared with its merge base with the base branch. Commits made on the base branch after the branch point do not appear.
 - **Commit.** The commit is compared with its first parent. A root commit is compared with an empty tree, so every file it adds appears as new.
 
@@ -275,6 +277,7 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - The outcome-unknown lock and Check files were checked in service and component tests, not live: interrupting the app between the two marks cannot be timed by hand.
 - Live pass on 2026-09-25 over CDP 9233 (#462 maintainer notes): a working-tree Review with an untracked probe file and no Analysis. A note on `notes-probe.ts:3` rendered inline, was edited in place, was still inline after opening the Review again, and copied as `### 2. Note from the maintainer` beside a note from an earlier session; Remove in the card and Remove note inline emptied the list and removed `localDrafts` from `review.json`. Dragging across line numbers over CDP opened the composer on the last line only, so a range note was checked in `tests/services/local-draft-service.test.ts`, not live.
 - Live pass on 2026-09-26 over CDP 9233 (#467 Change intent): a working-tree Review of the Patchdesk checkout with an untracked probe that sums order lines without rejecting negative values and adds an unrequested `formatTotal`. With a text intent asking for a RangeError on negative values and nothing else, Analysis (Codex CLI account, `gpt-6-luna`, high) returned P2 `Negative line values do not raise RangeError` and P2 on `formatTotal`, with `Checked against: change intent`; editing the text added `Intent changed since this run`. A spec-file intent on a missing path refused the next start in the run dialog. Reopening with an intent was not run live. Evidence: `/tmp/patchdesk-467/`.
+- Live pass on 2026-09-26 over CDP 9233 (#489): the Checkout select listed `patchdesk · feat/489-multi-checkout` and `pd-ux-pass · docs/product-description-ux-pass`, and none of the 45 worktrees under `~/.cache/patchdesk`. Opening `pd-ux-pass` showed `Working tree on docs/product-description-ux-pass in pd-ux-pass`; `git status` in both checkouts was identical before and after. A second clone, a directory outside the repository, and a removed worktree were checked in `tests/services/local-review-opening.test.ts` and `tests/services/local-review-retention.test.ts`, not live. Evidence: `/tmp/patchdesk-489/`.
 - The empty-patch workbench, the conflict refusal, the branch and commit sources, and the failure sentences were checked in service and component tests, not live.
 - Managed refs and worktrees of local sessions are not removed after a successful open; cleanup is not described here because it does not exist yet.
 

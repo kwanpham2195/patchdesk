@@ -58,6 +58,10 @@ _Avoid_: Prepared review
 What a Review's patch is computed from: a pull request, the working tree against `HEAD`, a local branch against its merge base with a chosen base branch, or one commit against its parent (ADR 0050). The last three make a local Review.
 _Avoid_: Diff mode, target, local PR
 
+**Checkout**:
+A working copy of a profile repository that a local Review reads: the configured checkout (the profile's `localPath`), or a linked worktree `git worktree list` names from it, never Patchdesk's own cache worktrees. A local Review names its checkout only when it is not the configured one, and each checkout keys its own Review (#489, ADR 0050).
+_Avoid_: Clone, workspace, local path
+
 **Local snapshot**:
 The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, built in a temporary index copy and committed with a fixed identity so the same content always has the same SHA. It is the head of a working-tree Review session, and the maintainer's index and branches never see it.
 _Avoid_: Stash, WIP commit, temp commit
