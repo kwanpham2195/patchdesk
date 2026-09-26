@@ -1,5 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 
+import { minLength, pipe, strictObject, string } from "valibot";
+
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import {
@@ -23,6 +25,7 @@ import {
 import { definedProps } from "../domain/defined-props";
 import type { FailureKinds } from "../domain/failure-kind";
 import {
+  localReviewSourceRequestSchema,
   reopenLocalSourceRequest,
   type LocalReviewSource,
   type LocalReviewSourceRequest,
@@ -72,6 +75,17 @@ export type LocalBranchMismatch = Extract<
 export type LocalReviewRefreshFailure =
   | LocalReviewOpenFailure
   | { readonly reason: "in_progress" | "not_applicable" };
+
+const nonEmpty = pipe(string(), minLength(1));
+
+/** The wire form of `open`'s request; the route parses each id and the source from it. */
+export const localReviewOpenRequestSchema = strictObject({
+  profileId: nonEmpty,
+  host: nonEmpty,
+  owner: nonEmpty,
+  repo: nonEmpty,
+  source: localReviewSourceRequestSchema,
+});
 
 /** How each open and Refresh refusal is classified (ADR 0052 "Error model"). */
 export const localReviewFailureKinds = {

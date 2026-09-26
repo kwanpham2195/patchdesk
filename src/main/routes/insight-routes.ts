@@ -21,11 +21,13 @@ import {
   parseReviewId,
   parseWorkspaceProfileId,
 } from "../../domain/ids";
-import { INSIGHT_LANGUAGES } from "../../domain/insight-provider";
 import type { InsightType } from "../../domain/insight-record";
 import { err } from "../../domain/result";
 import { readBriefPullRequestDescription } from "../../services/brief-pull-request-description";
-import type { InsightRunCoordinator } from "../../services/insight-run-coordinator";
+import {
+  insightRunRequestSchema,
+  type InsightRunCoordinator,
+} from "../../services/insight-run-coordinator";
 import type { InsightCoordinatorSeam } from "../local-api-configuration";
 import type { LocalApiContainer } from "../local-api-container";
 import { insightFailureStatus, response } from "./http-status";
@@ -155,15 +157,6 @@ export function registerInsightRoutes(
   });
 }
 
-const insightRunSchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  reviewId: pipe(string(), minLength(1)),
-  type: picklist(["analysis", "walkthrough", "brief"]),
-  provider: picklist(["pi", "codex-cli-account"]),
-  model: pipe(string(), minLength(1), maxLength(200)),
-  reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]),
-  language: picklist(INSIGHT_LANGUAGES),
-});
 const insightCancelSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
@@ -190,7 +183,7 @@ async function insightRunResponse(
 ): Promise<Response> {
   if (coordinator === undefined)
     return context.json({ error: "workflow_unavailable" }, 503);
-  const parsed = safeParse(insightRunSchema, body);
+  const parsed = safeParse(insightRunRequestSchema, body);
   if (!parsed.success || parsed.output.type !== type)
     return context.json({ error: "invalid_input" }, 400);
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);

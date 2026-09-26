@@ -1,5 +1,14 @@
 import { readFile } from "node:fs/promises";
 
+import {
+  maxLength,
+  minLength,
+  picklist,
+  pipe,
+  strictObject,
+  string,
+} from "valibot";
+
 import { definedProps } from "../domain/defined-props";
 import type { FailureKinds } from "../domain/failure-kind";
 
@@ -34,10 +43,11 @@ import {
   type InsightType,
   type WalkthroughProgress,
 } from "../domain/insight-record";
-import type {
-  InsightProvider,
-  InsightLanguage,
-  InsightReasoning,
+import {
+  INSIGHT_LANGUAGES,
+  type InsightProvider,
+  type InsightLanguage,
+  type InsightReasoning,
 } from "../domain/insight-provider";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import {
@@ -139,6 +149,16 @@ export type InsightCoordinatorInput = {
   readonly reasoning: InsightReasoning;
   readonly language: InsightLanguage;
 };
+/** The wire form of `start`'s request; the route checks `type` against its path and parses the ids. */
+export const insightRunRequestSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  type: picklist(["analysis", "walkthrough", "brief"]),
+  provider: picklist(["pi", "codex-cli-account"]),
+  model: pipe(string(), minLength(1), maxLength(200)),
+  reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]),
+  language: picklist(INSIGHT_LANGUAGES),
+});
 export type InsightCoordinatorFailure =
   | "invalid_request"
   | "not_found"
