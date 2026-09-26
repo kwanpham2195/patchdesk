@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -364,6 +364,24 @@ describe("LocalReviewRetention", () => {
     expect(await reviewKept(harness, workbench)).toBe(false);
     expect(localRefs(harness.repositoryPath)).toEqual([]);
     expect(sessionWorktrees(harness.repositoryPath)).toEqual([]);
+  });
+
+  it("keeps a Review of a locked linked worktree whose directory is missing, as on removable media", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    const linked = join(dirname(harness.repositoryPath), "linked");
+    git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
+    const workbench = await harness.open({
+      kind: "working_tree",
+      checkout: value(parseAbsolutePath(linked)),
+    });
+    git(harness.repositoryPath, "worktree", "lock", linked);
+    await rm(linked, { recursive: true, force: true });
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, workbench)).toBe(true);
   });
 
   it("keeps a Review of a removed linked worktree when Git cannot list worktrees", async () => {

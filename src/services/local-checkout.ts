@@ -73,6 +73,37 @@ export async function listRepositoryCheckouts(
   reads: LocalCheckoutReads,
   localPath: string,
 ): Promise<ReadonlyArray<RepositoryCheckout> | undefined> {
+  return (await readCheckoutListing(reads, localPath))?.live;
+}
+
+/**
+ * Whether a named checkout is gone: false while it is listed live, and
+ * undefined when that is unknown, because git failed or the worktree is
+ * locked (`git worktree lock`) with its directory missing, as on removable
+ * media. True otherwise.
+ */
+export async function isNamedCheckoutGone(
+  reads: LocalCheckoutReads,
+  localPath: string,
+  checkout: AbsolutePath,
+): Promise<boolean | undefined> {
+  const listing = await readCheckoutListing(reads, localPath);
+  if (listing === undefined || listing.unreachableLocked.includes(checkout))
+    return undefined;
+  return !listing.live.some((candidate) => candidate.path === checkout);
+}
+
+async function readCheckoutListing(
+  reads: LocalCheckoutReads,
+  localPath: string,
+): Promise<
+  | {
+      readonly live: ReadonlyArray<RepositoryCheckout>;
+      /** Locked worktrees whose directory is missing, as git lists them. */
+      readonly unreachableLocked: ReadonlyArray<string>;
+    }
+  | undefined
+> {
   const cacheDirectory = reads.paths.cacheDirectory();
   const [configured, listed, cache] = await Promise.all([
     resolveCheckoutRoot(reads.git, localPath),
@@ -92,36 +123,59 @@ export async function listRepositoryCheckouts(
   const entries = listed.value.stdout
     .split("\0\0")
     .map((entry) => entry.split("\0").filter((line) => line !== ""));
-  const checkouts = await Promise.all(
-    entries.map(async (lines): Promise<RepositoryCheckout | undefined> => {
-      const worktree = lines.find((line) => line.startsWith("worktree "));
-      if (
-        worktree === undefined ||
-        lines.some((line) => line === "bare" || line.startsWith("prunable"))
-      )
-        return undefined;
-      const resolved = await realpath(worktree.slice("worktree ".length)).catch(
-        () => undefined,
-      );
-      const path = parseAbsolutePath(resolved);
-      if (path._tag === "err" || isPathContained(cache, path.value))
-        return undefined;
-      const branch = parseLocalBranchName(
-        lines
-          .find((line) => line.startsWith("branch refs/heads/"))
-          ?.slice("branch refs/heads/".length),
-      );
-      return {
-        path: path.value,
-        head:
-          branch._tag === "ok"
-            ? { kind: "branch", branch: branch.value }
-            : { kind: "detached" },
-        configured: path.value === configured,
-      };
-    }),
+  const read = await Promise.all(
+    entries.map(
+      async (
+        lines,
+      ): Promise<
+        | { readonly live: RepositoryCheckout }
+        | { readonly unreachableLocked: string }
+        | undefined
+      > => {
+        const listedPath = lines
+          .find((line) => line.startsWith("worktree "))
+          ?.slice("worktree ".length);
+        if (
+          listedPath === undefined ||
+          lines.some((line) => line === "bare" || line.startsWith("prunable"))
+        )
+          return undefined;
+        const resolved = await realpath(listedPath).catch(() => undefined);
+        if (resolved === undefined)
+          return lines.some((line) => line.startsWith("locked"))
+            ? { unreachableLocked: listedPath }
+            : undefined;
+        const path = parseAbsolutePath(resolved);
+        if (path._tag === "err" || isPathContained(cache, path.value))
+          return undefined;
+        const branch = parseLocalBranchName(
+          lines
+            .find((line) => line.startsWith("branch refs/heads/"))
+            ?.slice("branch refs/heads/".length),
+        );
+        return {
+          live: {
+            path: path.value,
+            head:
+              branch._tag === "ok"
+                ? { kind: "branch", branch: branch.value }
+                : { kind: "detached" },
+            configured: path.value === configured,
+          },
+        };
+      },
+    ),
   );
-  return checkouts.filter((checkout) => checkout !== undefined);
+  return {
+    live: read.flatMap((entry) =>
+      entry !== undefined && "live" in entry ? [entry.live] : [],
+    ),
+    unreachableLocked: read.flatMap((entry) =>
+      entry !== undefined && "unreachableLocked" in entry
+        ? [entry.unreachableLocked]
+        : [],
+    ),
+  };
 }
 
 /**
