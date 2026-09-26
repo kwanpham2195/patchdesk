@@ -23,6 +23,7 @@ import { definedProps } from "../../src/domain/defined-props";
 import { ok } from "../../src/domain/result";
 import {
   createReview,
+  markReviewTerminal,
   type PullRequestReview,
   type PullRequestReviewIdentity,
 } from "../../src/domain/review";
@@ -250,6 +251,29 @@ describe("ReviewRetention of pull request Reviews", () => {
     expect(await present(harness.paths.patchFile(profileId, current.id))).toBe(
       true,
     );
+  });
+
+  it("keeps the current session of a Review that became Terminal after a push", async () => {
+    const harness = await localApplyHarness();
+    const pushed = await pushedPullRequest(harness, 1);
+    const current = pushed.sessions.at(-1);
+    if (current === undefined) throw new Error("fixture sessions");
+    // As a Refresh after a push leaves it when the pull request was merged meanwhile.
+    value(
+      await harness.reviews.save(
+        markReviewTerminal(pushed.review, "merged", now),
+        pushed.review.updatedAt,
+      ),
+    );
+
+    value(await harness.retention.pruneSuperseded(profileId, pushed.review.id));
+
+    expect(await present(harness.paths.patchFile(profileId, current.id))).toBe(
+      true,
+    );
+    expect(
+      await present(harness.paths.worktreeDirectory(profileId, current.id)),
+    ).toBe(true);
   });
 
   it("keeps the superseded session a Prepared Refresh names", async () => {
