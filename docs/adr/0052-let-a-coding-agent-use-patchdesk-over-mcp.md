@@ -363,6 +363,11 @@ becomes a pull request reference or a local source title
 agent-approved run adds "requested by the agent". The silence rule is
 unchanged.
 
+Amended 2026-09-26 (#496): the title is "Analysis finished" or "Analysis
+failed". The body is the source title with the checkout folder, then "·
+requested by the agent" when the run's id matches an approved agent run
+request, then "· <label> profile" when more than one profile exists.
+
 **Sidebar marker.** The local row shows "agent" while the Review has an
 `awaiting_approval` request or an active run an agent requested, and drops it
 when the last request is settled or declined. A state marker, not a count.

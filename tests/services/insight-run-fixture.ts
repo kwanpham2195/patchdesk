@@ -25,6 +25,7 @@ import {
   type ReviewSession,
 } from "../../src/domain/review-session";
 import type { LocalReviewSource } from "../../src/domain/review-source";
+import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { ok, type Result } from "../../src/domain/result";
 import type { DesktopNotifier } from "../../src/services/desktop-notifier";
 import type { BriefReachComputer } from "../../src/services/brief-reach-service";
@@ -127,6 +128,8 @@ type FixtureOptions = {
   >;
   /** Seeds a local Review on this source instead of pull request #42. */
   localSource?: LocalReviewSource;
+  /** The saved profiles a local run's notification names its checkout from. */
+  profiles?: ReadonlyArray<WorkspaceProfileConfig>;
 };
 
 export async function fixture(
@@ -138,6 +141,7 @@ export async function fixture(
     notifier,
     github,
     localSource,
+    profiles = [],
   }: FixtureOptions = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-current-"));
@@ -239,7 +243,9 @@ export async function fixture(
     undefined,
     providerCatalog,
     reach,
-    notifier,
+    notifier === undefined
+      ? undefined
+      : { notifier, profiles: { list: async () => ok(profiles) } },
   );
   return {
     coordinator,

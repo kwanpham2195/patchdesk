@@ -397,7 +397,7 @@ function createInsightCoordinator(
       paths,
       new CommandRunner(undefined, logUnclassifiedCommandFailure),
     ),
-    desktopNotifier,
+    { notifier: desktopNotifier, profiles: new ProfileStore(paths) },
   );
 }
 
