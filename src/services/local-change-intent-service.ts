@@ -1,6 +1,7 @@
 import { containsSensitiveData } from "../adapters/storage/json-file";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ChangeIntent, ChangeIntentView } from "../domain/change-intent";
+import type { FailureKinds } from "../domain/failure-kind";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, setChangeIntent } from "../domain/review";
@@ -25,6 +26,16 @@ export type ChangeIntentFailure = {
     | "change_intent_sensitive"
     | "storage";
 };
+
+/** How each Change intent refusal is classified (ADR 0052 "Error model"). */
+export const changeIntentFailureKinds = {
+  change_intent_sensitive: "invalid",
+  not_found: "not_found",
+  in_progress: "conflict",
+  terminal: "conflict",
+  not_applicable: "conflict",
+  storage: "unavailable",
+} as const satisfies FailureKinds<ChangeIntentFailure["reason"]>;
 
 /** What the Review holds after the write; `null` when it has no Change intent. */
 export type ChangeIntentState = {

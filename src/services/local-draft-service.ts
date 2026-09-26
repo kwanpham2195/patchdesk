@@ -4,6 +4,7 @@ import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import { definedProps } from "../domain/defined-props";
+import type { FailureKinds } from "../domain/failure-kind";
 import { fingerprintPatchAnchor } from "../domain/diff-anchor";
 import {
   isAcceptableSuggestionCode,
@@ -87,6 +88,16 @@ export type LocalDraftFailure = {
     | "invalid_input"
     | "storage";
 };
+
+/** How each Local draft refusal is classified (ADR 0052 "Error model"). */
+export const localDraftFailureKinds = {
+  invalid_input: "invalid",
+  not_found: "not_found",
+  in_progress: "conflict",
+  terminal: "conflict",
+  not_applicable: "conflict",
+  storage: "unavailable",
+} as const satisfies FailureKinds<LocalDraftFailure["reason"]>;
 
 export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;

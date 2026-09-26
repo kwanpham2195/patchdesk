@@ -21,6 +21,7 @@ import {
   type Review,
 } from "../domain/review";
 import { definedProps } from "../domain/defined-props";
+import type { FailureKinds } from "../domain/failure-kind";
 import {
   reopenLocalSourceRequest,
   type LocalReviewSource,
@@ -71,6 +72,20 @@ export type LocalBranchMismatch = Extract<
 export type LocalReviewRefreshFailure =
   | LocalReviewOpenFailure
   | { readonly reason: "in_progress" | "not_applicable" };
+
+/** How each open and Refresh refusal is classified (ADR 0052 "Error model"). */
+export const localReviewFailureKinds = {
+  not_found: "not_found",
+  repository_not_local: "not_found",
+  checkout_not_found: "not_found",
+  revision_not_found: "not_found",
+  unmerged_index: "conflict",
+  terminal: "conflict",
+  branch_mismatch: "conflict",
+  in_progress: "conflict",
+  not_applicable: "conflict",
+  storage: "unavailable",
+} as const satisfies FailureKinds<LocalReviewRefreshFailure["reason"]>;
 
 /**
  * Opens and refreshes a local Review (ADR 0050). Every open reads the source

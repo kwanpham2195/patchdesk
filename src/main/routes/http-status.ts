@@ -1,6 +1,10 @@
 import type { Context } from "hono";
 
-import type { InsightCoordinatorFailure } from "../../services/insight-run-coordinator";
+import type { FailureKind, FailureKinds } from "../../domain/failure-kind";
+import {
+  insightFailureKinds,
+  type InsightCoordinatorFailure,
+} from "../../services/insight-run-coordinator";
 
 /**
  * The eight write-failure reasons every review write route shares.
@@ -59,39 +63,18 @@ export function mapReviewWriteFailureStatus<Extra extends string = never>(
   return statuses[reason];
 }
 
-type InsightFailureStatus = 400 | 403 | 404 | 409 | 503;
-
-type InsightFailureStatuses = {
-  readonly [Reason in InsightCoordinatorFailure]: InsightFailureStatus;
-};
-
-/**
- * The status every Insight coordinator failure answers with, wherever it
- * surfaces. Total over the union, so a new reason fails the build here rather
- * than falling through to one this table never chose.
- */
-const insightFailureStatuses: InsightFailureStatuses = {
-  invalid_request: 400,
-  model_unavailable: 400,
-  ownership_mismatch: 403,
+/** The status each failure kind answers with, for every service that has a reason table. */
+const failureKindStatuses = {
+  invalid: 400,
+  unauthenticated: 401,
+  forbidden: 403,
   not_found: 404,
-  terminal_review: 409,
-  already_running: 409,
-  not_active: 409,
-  stale_request: 409,
-  not_available: 409,
-  change_intent_file_missing: 409,
-  change_intent_file_too_large: 409,
-  change_intent_file_not_text: 409,
-  change_intent_file_sensitive: 409,
-  catalog_unavailable: 503,
-  storage_unavailable: 503,
-};
+  conflict: 409,
+  unavailable: 503,
+} as const satisfies Record<FailureKind, ResponseFailureStatus>;
 
-export function insightFailureStatus(
-  failure: InsightCoordinatorFailure,
-): InsightFailureStatus {
-  return insightFailureStatuses[failure];
+export function insightFailureStatus(failure: InsightCoordinatorFailure) {
+  return failureKindStatuses[insightFailureKinds[failure]];
 }
 
 /** The statuses `response` answers a failed result with. */
@@ -189,28 +172,31 @@ export function response(
 }
 
 /**
- * `response`, except that a working-tree branch refusal names the checkout's
- * branch (null when detached) so the renderer can say which one to switch to.
+ * A service result on the wire: its value, or `{ error: reason }` with the
+ * status `kinds` classifies the reason as. A working-tree branch refusal also
+ * names the checkout's branch (null when detached) so the renderer can say
+ * which one to switch to.
  */
-export function localReviewResponse(
+export function serviceResponse<Reason extends string>(
   context: Context,
   result:
     | { readonly _tag: "ok"; readonly value: unknown }
     | {
         readonly _tag: "err";
         readonly error: {
-          readonly reason: string;
+          readonly reason: Reason;
           readonly currentBranch?: string;
         };
       },
+  kinds: FailureKinds<NoInfer<Reason>>,
 ): Response {
-  return result._tag === "err" && result.error.reason === "branch_mismatch"
+  if (result._tag === "ok") return context.json(result.value);
+  const { reason, currentBranch } = result.error;
+  const status: ResponseFailureStatus = failureKindStatuses[kinds[reason]];
+  return reason === "branch_mismatch"
     ? context.json(
-        {
-          error: result.error.reason,
-          currentBranch: result.error.currentBranch ?? null,
-        },
-        409,
+        { error: reason, currentBranch: currentBranch ?? null },
+        status,
       )
-    : response(context, result);
+    : context.json({ error: reason }, status);
 }
