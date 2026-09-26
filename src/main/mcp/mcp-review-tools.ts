@@ -1,5 +1,6 @@
 import type { InferOutput } from "valibot";
 
+import { COMMAND_OUTPUT_CAP_BYTES } from "../../adapters/github/command-runner";
 import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
 import type { ReviewStore } from "../../adapters/storage/review-store";
 import { definedProps } from "../../domain/defined-props";
@@ -76,7 +77,7 @@ export type McpReviewToolServices = {
 };
 
 /** Refusals whose message names the checkout's state, built by `localReviewRefusal`. */
-type DetailedLocalReason = "untracked_too_large";
+type DetailedLocalReason = "untracked_too_large" | "patch_too_large";
 
 type ServiceReason =
   | Exclude<LocalReviewAgentRefreshFailure["reason"], DetailedLocalReason>
@@ -130,8 +131,9 @@ function refusal(reason: ServiceReason): McpToolRefusal {
 
 /**
  * An open or refresh refusal; `branch_mismatch` names the branch the checkout
- * is on, `rate_limited` carries when to retry, and `untracked_too_large`
- * names the limit it is over and the untracked paths to ignore.
+ * is on, `rate_limited` carries when to retry, `untracked_too_large` names
+ * the limit it is over and the untracked paths to ignore, and
+ * `patch_too_large` names the largest changed files.
  */
 function localReviewRefusal(
   failure: LocalReviewAgentRefreshFailure,
@@ -148,6 +150,15 @@ function localReviewRefusal(
           ? "Add large untracked directories, such as dependencies or build output,"
           : `The largest untracked paths are ${failure.largestPaths.join(", ")}. Add them`
       } to .gitignore or remove them, then try again.`,
+    };
+  if (failure.reason === "patch_too_large")
+    return {
+      error: "patch_too_large",
+      message: `The patch is larger than the ${COMMAND_OUTPUT_CAP_BYTES / (1024 * 1024)} MiB Patchdesk reads from git. ${
+        failure.largestFiles.length === 0
+          ? "Leave large generated files out of the change"
+          : `The files with the most changes are ${failure.largestFiles.join(", ")}. Leave generated ones out of the change`
+      }, or review it in smaller parts, then try again.`,
     };
   if (failure.reason === "rate_limited")
     return { ...refusal("rate_limited"), retryAfterMs: failure.retryAfterMs };

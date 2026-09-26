@@ -32,7 +32,18 @@ export type LocalReviewRevisionFailure =
   /** `HEAD` has no commit, or the branch, base branch, merge base, or commit does not exist. */
   | { readonly _tag: "LocalRevisionNotFound" }
   | UntrackedTooLarge
+  | PatchTooLarge
   | { readonly _tag: "LocalGitFailed" };
+
+/** The patch is over the git output cap (#493). */
+export type PatchTooLarge = {
+  readonly _tag: "PatchTooLarge";
+  /** The changed files with the most changed lines, binary files first, relative to the repository root. */
+  readonly largestFiles: ReadonlyArray<string>;
+};
+
+/** How many of the largest changed files a refusal names. */
+const LARGEST_CHANGED_FILE_COUNT = 5;
 
 /** A local source spec and the head/base pair it resolved to, before any session exists. */
 export type ResolvedLocalRevision = {
@@ -90,11 +101,17 @@ export class LocalReviewRevisionService {
     }
   }
 
-  /** The session patch, byte for byte as `git diff` writes it; its hash is the canonical patch hash. */
+  /**
+   * The session patch, byte for byte as `git diff` writes it; its hash is the
+   * canonical patch hash. A patch over the git output cap is refused
+   * `PatchTooLarge` rather than truncated.
+   */
   async renderPatch(
     repositoryPath: string,
     revision: ReviewRevision,
-  ): Promise<Result<string, { readonly _tag: "LocalGitFailed" }>> {
+  ): Promise<
+    Result<string, { readonly _tag: "LocalGitFailed" } | PatchTooLarge>
+  > {
     const diff = await this.git.run([
       "git",
       "-C",
@@ -113,9 +130,50 @@ export class LocalReviewRevisionService {
       revision.baseSha,
       revision.headSha,
     ]);
-    return diff._tag === "ok"
-      ? ok(diff.value.stdout)
-      : err({ _tag: "LocalGitFailed" });
+    if (diff._tag === "ok") return ok(diff.value.stdout);
+    if (diff.error._tag !== "GitReadOutputExceeded")
+      return err({ _tag: "LocalGitFailed" });
+    return err({
+      _tag: "PatchTooLarge",
+      largestFiles: await this.largestChangedFiles(repositoryPath, revision),
+    });
+  }
+
+  /** Ranked by `--numstat`; a binary file has no line counts, and its `--binary` patch carries the whole file. */
+  private async largestChangedFiles(
+    repositoryPath: string,
+    revision: ReviewRevision,
+  ): Promise<ReadonlyArray<string>> {
+    const numstat = await this.git.run([
+      "git",
+      "-C",
+      repositoryPath,
+      "diff",
+      "--numstat",
+      "-z",
+      "--no-renames",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--no-relative",
+      revision.baseSha,
+      revision.headSha,
+    ]);
+    if (numstat._tag === "err") return [];
+    const files = numstat.value.stdout.split("\0").flatMap((record) => {
+      const [added, deleted, path] = record.split("\t");
+      if (added === undefined || deleted === undefined || path === undefined)
+        return [];
+      return [
+        {
+          path,
+          lines: added === "-" ? Infinity : Number(added) + Number(deleted),
+        },
+      ];
+    });
+    return files
+      .sort((a, b) => b.lines - a.lines || 0)
+      .slice(0, LARGEST_CHANGED_FILE_COUNT)
+      .map((file) => file.path);
   }
 
   private async snapshotWorkingTree(

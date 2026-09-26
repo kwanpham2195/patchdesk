@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -535,6 +536,39 @@ describe("LocalReviewOpening", () => {
     });
     expect(fileSize.paths).toEqual([]);
     expect(git(repositoryPath, "count-objects", "-v")).toBe(objectsBefore);
+  });
+
+  it("refuses a patch over git's output cap, naming the largest changed files and writing no session", async () => {
+    const { root, repositoryPath } = await checkout();
+    await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
+    await mkdir(join(repositoryPath, "generated"));
+    // Three MiB of short lines: over the 2 MiB cap, under the untracked limits.
+    await writeFile(
+      join(repositoryPath, "generated", "bundle.js"),
+      "export const line = 0;\n".repeat(140_000),
+    );
+
+    const opened = await (
+      await opening(root, repositoryPath)
+    ).open({ profileId, repository, request: workingTree });
+
+    expect(opened).toEqual({
+      _tag: "err",
+      error: {
+        reason: "patch_too_large",
+        largestFiles: ["generated/bundle.js", "tracked.txt"],
+      },
+    });
+    const paths = PatchdeskPaths.forTest(join(root, "app"));
+    const sessions = await readdir(paths.profileReviewsDirectory(profileId), {
+      recursive: true,
+    }).catch(() => []);
+    expect(sessions.filter((path) => path.endsWith("session.json"))).toEqual(
+      [],
+    );
+    await expect(
+      readdir(paths.profileWorkbenchesDirectory(profileId)),
+    ).rejects.toThrow();
   });
 
   it("compares a root commit with the empty tree", async () => {

@@ -23,6 +23,7 @@ const localReviewStatuses = {
   revision_not_found: 404,
   unmerged_index: 409,
   untracked_too_large: 409,
+  patch_too_large: 409,
   terminal: 409,
   branch_mismatch: 409,
   in_progress: 409,

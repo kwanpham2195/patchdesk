@@ -71,6 +71,11 @@ export type LocalReviewOpenFailure =
       readonly exceededLimit: UntrackedTooLarge["exceededLimit"];
       readonly largestPaths: ReadonlyArray<string>;
     }
+  /** The patch is over the git output cap; `largestFiles` are the ones to leave out or split (#493). */
+  | {
+      readonly reason: "patch_too_large";
+      readonly largestFiles: ReadonlyArray<string>;
+    }
   /** The checkout's `HEAD` is not the one the request expects; `currentBranch` is absent when it is detached. */
   | {
       readonly reason: "branch_mismatch";
@@ -130,6 +135,7 @@ export const localReviewFailureKinds = {
   revision_not_found: "not_found",
   unmerged_index: "conflict",
   untracked_too_large: "conflict",
+  patch_too_large: "conflict",
   terminal: "conflict",
   branch_mismatch: "conflict",
   in_progress: "conflict",
@@ -664,6 +670,8 @@ function mapPreparationFailure(
       };
     case "LocalRevisionNotFound":
       return { reason: "revision_not_found" };
+    case "PatchTooLarge":
+      return { reason: "patch_too_large", largestFiles: failure.largestFiles };
     case "ProfileUnavailable":
     case "LocalGitFailed":
     case "SessionStorageUnavailable":

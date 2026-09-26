@@ -10,6 +10,8 @@ import { discoverExecutable } from "../process/executable-discovery";
 import { whenLoginShellEnvironmentImported } from "../process/login-shell-import";
 
 const FORCE_KILL_AFTER_MS = 2_000;
+/** A child writing more than this to stdout or stderr is terminated as `OutputExceeded`. */
+export const COMMAND_OUTPUT_CAP_BYTES = 2 * 1024 * 1024;
 
 /**
  * Ambient cancellation for the current request. Threading an explicit
@@ -218,7 +220,6 @@ export class NodeCommandExecutor implements CommandExecutor {
       let timedOut = false;
       let aborted = false;
       let outputExceeded = false;
-      const maxOutputBytes = 2 * 1024 * 1024;
 
       let forceKill: ReturnType<typeof setTimeout> | undefined;
       const terminate = (): void => {
@@ -265,14 +266,14 @@ export class NodeCommandExecutor implements CommandExecutor {
       child.stderr?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
         stdout += chunk;
-        if (Buffer.byteLength(stdout) > maxOutputBytes) {
+        if (Buffer.byteLength(stdout) > COMMAND_OUTPUT_CAP_BYTES) {
           outputExceeded = true;
           terminate();
         }
       });
       child.stderr?.on("data", (chunk: string) => {
         stderr += chunk;
-        if (Buffer.byteLength(stderr) > maxOutputBytes) {
+        if (Buffer.byteLength(stderr) > COMMAND_OUTPUT_CAP_BYTES) {
           outputExceeded = true;
           terminate();
         }
