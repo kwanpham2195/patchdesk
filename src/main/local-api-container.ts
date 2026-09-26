@@ -88,7 +88,7 @@ export type LocalApiContainer = {
   readonly recovery: ReviewRecoveryService;
   readonly reviewWorkbench: ReviewWorkbenchSeam;
   readonly localReviewOpening: LocalReviewOpening;
-  /** Removes superseded local sessions (#474); the retention scheduler sweeps every profile through it. */
+  /** Removes the sessions an Open Review moved past (#474, #478); the retention scheduler sweeps every profile through it. */
   readonly reviewRetention: ReviewRetention;
   readonly localApply: LocalApplyService;
   readonly localDrafts: LocalDraftService;

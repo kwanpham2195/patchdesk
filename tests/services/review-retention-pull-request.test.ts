@@ -18,6 +18,7 @@ import {
   parsePendingReviewRequestId,
   parsePullRequestNumber,
 } from "../../src/domain/ids";
+import { definedProps } from "../../src/domain/defined-props";
 import { ok } from "../../src/domain/result";
 import {
   createReview,
@@ -69,14 +70,28 @@ type PushedPullRequest = {
  * An Open pull request Review of the harness repository, opened and then
  * pushed to `pushes` times. Each session is prepared as an open prepares it:
  * `origin` is the repository itself, so the managed fetch, its refs, and the
- * worktree all run through real Git.
+ * worktree all run through real Git. Without `checkout`, the profile names no
+ * local path and every session is metadata-only, with no worktree.
  */
 async function pushedPullRequest(
   harness: LocalApplyHarness,
   pushes: number,
+  checkout = true,
 ): Promise<PushedPullRequest> {
   const repositoryPath = harness.repositoryPath;
   git(repositoryPath, "remote", "add", "origin", repositoryPath);
+  const profiles = new ProfileStore(harness.paths);
+  if (!checkout) {
+    const configured = value(await profiles.load(profileId));
+    value(
+      await profiles.save({
+        ...configured,
+        repos: configured.repos.map(
+          ({ localPath: _localPath, ...repository }) => repository,
+        ),
+      }),
+    );
+  }
   const worktrees = new ReviewWorktreeService(
     harness.paths,
     createReadOnlyGitExecutor(new CommandRunner()),
@@ -85,7 +100,7 @@ async function pushedPullRequest(
     async () => "/usr/bin/false",
   );
   const sessionStore = new ReviewSessionStore(harness.paths);
-  const profile = value(await new ProfileStore(harness.paths).load(profileId));
+  const profile = value(await profiles.load(profileId));
   const baseSha = value(
     parseGitSha(git(repositoryPath, "rev-parse", "HEAD").trim()),
   );
@@ -110,10 +125,15 @@ async function pushedPullRequest(
         baseSha,
         sha: headSha,
         sessionId,
-        localPath: repositoryPath,
+        ...definedProps({ localPath: checkout ? repositoryPath : undefined }),
       }),
     );
-    if (worktree.mode !== "worktree") throw new Error("fixture worktree");
+    if ((worktree.mode === "worktree") !== checkout)
+      throw new Error("fixture worktree");
+    const worktreePath =
+      worktree.mode === "worktree"
+        ? worktree.path
+        : harness.paths.worktreeDirectory(profileId, sessionId);
     const session = createReviewSession({
       key,
       pr: { headSha, baseSha, isDraft: false, isOpen: true },
@@ -121,7 +141,7 @@ async function pushedPullRequest(
         parseAbsolutePath(harness.paths.patchFile(profileId, sessionId)),
       ),
       canonicalPatchHash: patchHash,
-      worktree: { path: value(parseAbsolutePath(worktree.path)), headSha },
+      worktree: { path: value(parseAbsolutePath(worktreePath)), headSha },
       createdAt: now,
     });
     value(await sessionStore.save(session));
@@ -212,6 +232,23 @@ describe("ReviewRetention of pull request Reviews", () => {
     expect(sessionWorktrees(harness.repositoryPath)).toEqual([
       expect.stringContaining(current.id),
     ]);
+  });
+
+  it("removes the superseded metadata-only sessions of a Review whose profile names no checkout", async () => {
+    const harness = await localApplyHarness();
+    const pushed = await pushedPullRequest(harness, 1, false);
+    const [opened, current] = pushed.sessions;
+    if (opened === undefined || current === undefined)
+      throw new Error("fixture sessions");
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await present(harness.paths.patchFile(profileId, opened.id))).toBe(
+      false,
+    );
+    expect(await present(harness.paths.patchFile(profileId, current.id))).toBe(
+      true,
+    );
   });
 
   it("keeps a superseded session while its Analysis run is active", async () => {
