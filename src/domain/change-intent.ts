@@ -61,8 +61,6 @@ export type ResolvedChangeIntent = {
   readonly sha256: ContentHash;
 };
 
-export const CHANGE_INTENT_HEADING = "## Change intent";
-
 /** The section `review-input.md` ends with when the Review has a Change intent; its heading starts a line nothing before it does. */
 export function renderChangeIntentSection(
   resolved: ResolvedChangeIntent,
@@ -72,7 +70,7 @@ export function renderChangeIntentSection(
       ? "text entered by the maintainer"
       : `spec file \`${resolved.intent.path}\` at the reviewed revision`;
   return [
-    CHANGE_INTENT_HEADING,
+    "## Change intent",
     "",
     `Source: ${source}`,
     "",
