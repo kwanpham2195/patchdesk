@@ -1,10 +1,11 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import {
+  parseAbsolutePath,
   parseContentHash,
   parseFindingId,
   parseInsightRunId,
@@ -118,6 +119,25 @@ async function reviewOfDeletedBranch(harness: LocalApplyHarness) {
   git(harness.repositoryPath, "checkout", "-q", "main");
   git(harness.repositoryPath, "branch", "-q", "-D", "feature");
   return first;
+}
+
+/** A working-tree Review opened in linked worktree `linked` on branch `feat`, which is then removed; the branch stays. */
+async function reviewOfRemovedWorktree(
+  harness: LocalApplyHarness,
+  beforeRemoval: (
+    workbench: ReviewWorkbenchProjection,
+  ) => Promise<void> = async () => undefined,
+) {
+  const linked = join(dirname(harness.repositoryPath), "linked");
+  git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
+  await writeFile(join(linked, "probe.txt"), "linked\n");
+  const workbench = await harness.open({
+    kind: "working_tree",
+    checkout: value(parseAbsolutePath(linked)),
+  });
+  await beforeRemoval(workbench);
+  git(harness.repositoryPath, "worktree", "remove", "--force", linked);
+  return workbench;
 }
 
 async function reviewKept(
@@ -327,6 +347,60 @@ describe("LocalReviewRetention", () => {
       { retentionNow: () => fifteenDaysLater },
     );
     const workbench = await reviewOfDeletedBranch(harness);
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, workbench)).toBe(true);
+  });
+
+  it("removes a Review of a linked worktree that was removed and left alone for 14 days", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    const workbench = await reviewOfRemovedWorktree(harness);
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, workbench)).toBe(false);
+    expect(localRefs(harness.repositoryPath)).toEqual([]);
+    expect(sessionWorktrees(harness.repositoryPath)).toEqual([]);
+  });
+
+  it("keeps a Review of a removed linked worktree when Git cannot list worktrees", async () => {
+    const harness = await localApplyHarness(
+      async (argv, run) =>
+        argv.includes("worktree") && argv.includes("list")
+          ? err({ _tag: "GitReadFailed" as const })
+          : run(),
+      { retentionNow: () => fifteenDaysLater },
+    );
+    const workbench = await reviewOfRemovedWorktree(harness);
+
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(await reviewKept(harness, workbench)).toBe(true);
+  });
+
+  it("keeps a Review of a removed linked worktree while it holds a Local draft", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    const workbench = await reviewOfRemovedWorktree(harness, async (opened) => {
+      value(
+        await harness.drafts.addNote({
+          profileId,
+          reviewId: opened.review.id,
+          sessionId: opened.session.id,
+          anchor: {
+            path: value(parseRepoRelativePath("probe.txt")),
+            side: "new",
+            startLine: 1,
+            line: 1,
+          },
+          text: "Keep this.",
+        }),
+      );
+    });
 
     value(await harness.retention.sweepProfile(profileId));
 

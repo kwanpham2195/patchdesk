@@ -2,7 +2,10 @@ import { realpath } from "node:fs/promises";
 
 import { casesHandled } from "../domain/result";
 import type { LocalReviewSource } from "../domain/review-source";
-import type { GitReadExecutor } from "./review-worktree-service";
+import {
+  listRepositoryCheckouts,
+  type LocalCheckoutReads,
+} from "./local-checkout";
 
 /**
  * True when the repository at `localPath` still reads and the Review's source
@@ -11,19 +14,26 @@ import type { GitReadExecutor } from "./review-worktree-service";
  * so a failed read (timeout, spawn failure) means unknown and keeps the
  * Review. Only ref and object lookups run, never the snapshot a working-tree
  * open writes. A detached working tree names nothing to lose, so it is never
- * gone.
+ * gone. A named checkout that `git worktree list` no longer lists as live is
+ * gone too (#489); a failed listing keeps the Review.
  */
 export async function isLocalSourceGone(
-  git: GitReadExecutor,
+  reads: LocalCheckoutReads,
   localPath: string,
   source: LocalReviewSource,
 ): Promise<boolean> {
   const repositoryPath = await realpath(localPath).catch(() => undefined);
   if (repositoryPath === undefined) return false;
+  if (source.checkout !== undefined) {
+    const checkouts = await listRepositoryCheckouts(reads, repositoryPath);
+    if (checkouts === undefined) return false;
+    if (!checkouts.some((checkout) => checkout.path === source.checkout))
+      return true;
+  }
   const read = async (
     ...args: ReadonlyArray<string>
   ): Promise<ReadonlyArray<string> | undefined> => {
-    const result = await git.run(["git", "-C", repositoryPath, ...args]);
+    const result = await reads.git.run(["git", "-C", repositoryPath, ...args]);
     return result._tag === "ok"
       ? result.value.stdout.split("\n").filter((line) => line !== "")
       : undefined;

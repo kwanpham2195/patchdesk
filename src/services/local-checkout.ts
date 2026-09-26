@@ -69,7 +69,7 @@ export function configuredLocalPath(
  * own worktrees under the cache directory are left out. Undefined when git
  * cannot list them.
  */
-async function listRepositoryCheckouts(
+export async function listRepositoryCheckouts(
   reads: LocalCheckoutReads,
   localPath: string,
 ): Promise<ReadonlyArray<RepositoryCheckout> | undefined> {
