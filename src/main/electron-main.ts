@@ -51,6 +51,7 @@ import {
 } from "./local-api";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { desktopMcpSocketPath } from "./mcp/mcp-socket-listener";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
@@ -230,6 +231,7 @@ const desktopLifecycle = createDesktopLifecycle({
           ),
         insightProviders,
         githubFetch,
+        mcpSocketPath: () => desktopMcpSocketPath(PatchdeskPaths.default()),
         lifecycleGate,
         retentionSweep: true,
         watchedPullRequestPolling: true,

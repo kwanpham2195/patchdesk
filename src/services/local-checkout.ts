@@ -3,6 +3,7 @@ import { realpath } from "node:fs/promises";
 import { isPathContained } from "../adapters/storage/path-containment";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import {
+  checkoutFolderName,
   parseAbsolutePath,
   parseLocalBranchName,
   type AbsolutePath,
@@ -45,6 +46,22 @@ export type LocalReviewCheckout = {
   readonly checkoutPath: string;
   readonly checkout?: AbsolutePath;
 };
+
+/** A checkout as the open dialog and the MCP `list_repositories` tool show it. */
+export type RepositoryCheckoutDescription = RepositoryCheckout & {
+  readonly name: string;
+};
+
+export function describeRepositoryCheckout(
+  checkout: RepositoryCheckout,
+): RepositoryCheckoutDescription {
+  return {
+    path: checkout.path,
+    name: checkoutFolderName(checkout.path),
+    head: checkout.head,
+    configured: checkout.configured,
+  };
+}
 
 export type LocalCheckoutFailure =
   /** The repository is not in the profile, or the profile gives it no `localPath`. */

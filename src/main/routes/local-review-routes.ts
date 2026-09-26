@@ -17,7 +17,6 @@ import {
 
 import { parseChangeIntent } from "../../domain/change-intent";
 import {
-  checkoutFolderName,
   parseFindingId,
   parseGitHubHost,
   parseGitHubOwner,
@@ -38,6 +37,7 @@ import {
   changeIntentFailureKinds,
   changeIntentRequestSchema,
 } from "../../services/local-change-intent-service";
+import { describeRepositoryCheckout } from "../../services/local-checkout";
 import { localDraftFailureKinds } from "../../services/local-draft-service";
 import {
   localReviewFailureKinds,
@@ -103,14 +103,7 @@ export function registerLocalReviewRoutes(
     return serviceResponse(
       context,
       listed._tag === "ok"
-        ? ok(
-            listed.value.map((checkout) => ({
-              path: checkout.path,
-              name: checkoutFolderName(checkout.path),
-              head: checkout.head,
-              configured: checkout.configured,
-            })),
-          )
+        ? ok(listed.value.map(describeRepositoryCheckout))
         : listed,
       localReviewFailureKinds,
     );

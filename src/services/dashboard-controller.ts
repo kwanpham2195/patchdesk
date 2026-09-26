@@ -428,7 +428,8 @@ export class DashboardController {
     return found === undefined ? failure("not_found") : ok(found);
   }
 
-  private async activeProfile(): Promise<
+  /** The profile `config.json` last selected, else the first configured one. */
+  async activeProfile(): Promise<
     Result<WorkspaceProfileConfig, DashboardControllerFailure>
   > {
     const profiles = await this.listProfiles();
