@@ -371,8 +371,9 @@ export class ReviewWorktreeService {
     repositoryPath: string,
     path: string,
   ): Promise<void> {
-    if ((await this.resolveInsideCache(path)) === undefined) return;
-    await unlink(joinMetadata(path)).catch(() => undefined);
+    const target = await this.resolveInsideCache(path);
+    if (target === undefined) return;
+    await unlink(joinMetadata(target)).catch(() => undefined);
     await this.git.run([
       "git",
       "-C",
@@ -381,9 +382,9 @@ export class ReviewWorktreeService {
       "remove",
       "--force",
       "--force",
-      path,
+      target,
     ]);
-    await rm(path, { recursive: true, force: true }).catch(() => undefined);
+    await rm(target, { recursive: true, force: true }).catch(() => undefined);
   }
 
   /** The resolved path when it is inside the cache root and not itself a symlink. */

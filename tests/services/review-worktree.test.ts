@@ -3,6 +3,7 @@ import {
   access,
   mkdtemp,
   mkdir,
+  readFile,
   realpath,
   rm,
   symlink,
@@ -811,6 +812,89 @@ describe("ReviewWorktreeService", () => {
           value: { path: paths.worktreeDirectory(ids.profileId, sessionId) },
         });
         expect(worktreeCount(local)).toBe(2);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("removes a worktree Git left locked when the add was killed mid-checkout", async () => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+      try {
+        const { local, headSha } = await repositoryWithCheckoutHook(root);
+        const realGit = createReadOnlyGitExecutor(new CommandRunner());
+        let killAdd = true;
+        // A killed add keeps the "initializing" lock Git writes before checkout.
+        const git: GitReadExecutor = {
+          async run(argv, environment) {
+            const ran = await realGit.run(argv, environment);
+            if (!killAdd || !argv.includes("worktree") || !argv.includes("add"))
+              return ran;
+            const pointer = await readFile(
+              join(argv.at(-2) ?? "", ".git"),
+              "utf8",
+            );
+            const adminDirectory = pointer.replace(/^gitdir: /, "").trim();
+            await writeFile(join(adminDirectory, "locked"), "initializing");
+            return err({ _tag: "GitReadFailed" as const });
+          },
+        };
+        const paths = PatchdeskPaths.forTest(join(root, "app"));
+        const service = new ReviewWorktreeService(
+          paths,
+          git,
+          credentials,
+          resolveGh,
+        );
+        const input = {
+          profileId: ids.profileId,
+          sessionId,
+          localPath: local,
+          headSha,
+        };
+
+        expect((await service.prepareLocal(input))._tag).toBe("err");
+        await expect(
+          access(paths.worktreeDirectory(ids.profileId, sessionId)),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        expect(worktreeCount(local)).toBe(1);
+
+        killAdd = false;
+        expect((await service.prepareLocal(input))._tag).toBe("ok");
+        expect(worktreeCount(local)).toBe(2);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps a directory that was already at the session path when the add fails", async () => {
+      const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+      try {
+        const { local, headSha } = await repositoryWithCheckoutHook(root);
+        const paths = PatchdeskPaths.forTest(join(root, "app"));
+        const target = paths.worktreeDirectory(ids.profileId, sessionId);
+        await mkdir(target, { recursive: true });
+        await writeFile(join(target, "leftover.txt"), "not Patchdesk's\n");
+        const service = new ReviewWorktreeService(
+          paths,
+          createReadOnlyGitExecutor(new CommandRunner()),
+          credentials,
+          resolveGh,
+        );
+
+        const prepared = await service.prepareLocal({
+          profileId: ids.profileId,
+          sessionId,
+          localPath: local,
+          headSha,
+        });
+
+        expect(prepared).toEqual({
+          _tag: "err",
+          error: { _tag: "GitWorktreeFailed" },
+        });
+        expect(await readFile(join(target, "leftover.txt"), "utf8")).toBe(
+          "not Patchdesk's\n",
+        );
       } finally {
         await rm(root, { recursive: true, force: true });
       }
