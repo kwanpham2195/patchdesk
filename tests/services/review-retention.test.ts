@@ -8,20 +8,16 @@ import {
   parseAbsolutePath,
   parseContentHash,
   parseFindingId,
-  parseInsightRunId,
   parseIsoTimestamp,
   parseRepoRelativePath,
   parseReviewSessionId,
   type ReviewSessionId,
 } from "../../src/domain/ids";
-import {
-  beginInsightRun,
-  type InsightType,
-} from "../../src/domain/insight-record";
 import { err } from "../../src/domain/result";
 import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
 import { ReviewPreparationJournal } from "../../src/services/review-preparation-journal";
 import {
+  beginRun,
   cleanupLocalApplyRoots,
   git,
   localApplyHarness,
@@ -66,39 +62,6 @@ function present(path: string): Promise<boolean> {
   return access(path).then(
     () => true,
     () => false,
-  );
-}
-
-/** Starts an Insight run on the workbench's session and leaves it running. */
-async function beginRun(
-  harness: LocalApplyHarness,
-  workbench: ReviewWorkbenchProjection,
-  type: InsightType,
-): Promise<void> {
-  const id = value(
-    parseInsightRunId(`insight-${type}-1-aaaaaaaaaaaa-${workbench.review.id}`),
-  );
-  value(
-    await harness.insights.mutate({
-      profileId,
-      reviewId: workbench.review.id,
-      type,
-      now,
-      operation: (record) =>
-        beginInsightRun(record, {
-          id,
-          revision: {
-            sessionId: workbench.session.id,
-            headSha: workbench.session.key.headSha,
-            patchHash: value(parseContentHash(workbench.revision.patchHash)),
-          },
-          provider: "pi",
-          model: "model",
-          reasoning: "medium",
-          language: "en",
-          startedAt: now,
-        }),
-    }),
   );
 }
 
@@ -162,7 +125,7 @@ async function refreshedReview(harness: LocalApplyHarness, edits: number) {
   return { first, latest };
 }
 
-describe("LocalReviewRetention", () => {
+describe("ReviewRetention", () => {
   it("leaves only the current session's ref and worktree after three edited Refreshes", async () => {
     const harness = await localApplyHarness();
     const { latest } = await refreshedReview(harness, 3);
@@ -494,7 +457,7 @@ describe("LocalReviewRetention", () => {
     [
       "an active Analysis run",
       (harness: LocalApplyHarness, workbench: ReviewWorkbenchProjection) =>
-        beginRun(harness, workbench, "analysis"),
+        beginRun(harness.insights, workbench, "analysis"),
     ],
   ] as const)(
     "keeps a Review whose branch was deleted while it has %s",
@@ -516,7 +479,7 @@ describe("LocalReviewRetention", () => {
     async (type) => {
       const harness = await localApplyHarness();
       const { first } = await refreshedReview(harness, 0);
-      await beginRun(harness, first, type);
+      await beginRun(harness.insights, first, type);
       await writeFile(join(harness.repositoryPath, "probe.txt"), "edit 1\n");
 
       value(await harness.opening.refresh(profileId, first.review.id));

@@ -1,5 +1,5 @@
 import type { WorkspaceProfileId } from "../domain/ids";
-import type { LocalReviewRetention } from "../services/local-review-retention";
+import type { ReviewRetention } from "../services/review-retention";
 import type { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import type { StorageManagementService } from "../services/storage-management-service";
 
@@ -14,7 +14,7 @@ export type RetentionSweepScheduler = {
 export function startRetentionSweepScheduler(input: {
   readonly profiles: ReadonlyArray<{ readonly id: WorkspaceProfileId }>;
   readonly storageManagement: Pick<StorageManagementService, "sweepRetained">;
-  readonly localRetention: Pick<LocalReviewRetention, "sweepProfile">;
+  readonly reviewRetention: Pick<ReviewRetention, "sweepProfile">;
   readonly enabled: boolean;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
 }): RetentionSweepScheduler {
@@ -52,16 +52,16 @@ export function startRetentionSweepScheduler(input: {
 async function sweepProfiles(input: {
   readonly profiles: ReadonlyArray<{ readonly id: WorkspaceProfileId }>;
   readonly storageManagement: Pick<StorageManagementService, "sweepRetained">;
-  readonly localRetention: Pick<LocalReviewRetention, "sweepProfile">;
+  readonly reviewRetention: Pick<ReviewRetention, "sweepProfile">;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
 }): Promise<void> {
   await Promise.all(
     input.profiles.map(async (profile) => {
       try {
         const result = await input.storageManagement.sweepRetained(profile.id);
-        // Local sessions next (#474): the pass above leaves every local Review's sessions.
-        const local = await input.localRetention.sweepProfile(profile.id);
-        if (result._tag === "err" || local._tag === "err")
+        // Superseded sessions next (#474, #478): the pass above leaves every Open Review's sessions.
+        const superseded = await input.reviewRetention.sweepProfile(profile.id);
+        if (result._tag === "err" || superseded._tag === "err")
           await recordSweepFailure(input.diagnostics, profile.id);
       } catch {
         await recordSweepFailure(input.diagnostics, profile.id);

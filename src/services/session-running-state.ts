@@ -82,15 +82,19 @@ export async function readSessionRunningState(
     )
   )
     return ok({ running: true });
-  if (
-    isPullRequestReviewSession(session) &&
-    (isPendingReviewLocked(session.pendingReview) ||
-      isDirectSummaryReviewLocked(session.directSummaryReview))
-  )
-    return ok({ running: true });
+  if (hasLockedGitHubWrite(session)) return ok({ running: true });
   return ok(
     merge._tag === "ok" && merge.value.state._tag !== "Rejected"
       ? { running: true }
       : { running: false, review },
+  );
+}
+
+/** A pending-review or summary write on the session is in flight or outcome-unknown (ADR 0035). */
+export function hasLockedGitHubWrite(session: ReviewSession): boolean {
+  return (
+    isPullRequestReviewSession(session) &&
+    (isPendingReviewLocked(session.pendingReview) ||
+      isDirectSummaryReviewLocked(session.directSummaryReview))
   );
 }
