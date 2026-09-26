@@ -509,6 +509,16 @@ describe("local Review source IDs", () => {
     ).toBe("err");
   });
 
+  it("caps a long checkout folder in the readable ID and keeps two such folders apart by the hash", () => {
+    const folder = "a-very-long-worktree-folder-name-for-an-agent";
+    const left = createReviewId(workingTreeIn(`/work/${folder}-one`));
+    const right = createReviewId(workingTreeIn(`/work/${folder}-two`));
+
+    expect(left).toContain(`local-working_tree-${folder.slice(0, 24)}--main__`);
+    expect(parseReviewId(left)._tag).toBe("ok");
+    expect(left).not.toBe(right);
+  });
+
   it("names a checkout's folder in the title of a Review read from it", () => {
     const configured = reviewSourceTitle(workingTreeIn().source);
     const linked = reviewSourceTitle(workingTreeIn("/work/linked").source);
