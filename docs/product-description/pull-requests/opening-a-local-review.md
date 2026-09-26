@@ -111,6 +111,8 @@ A spec file is read when Analysis starts, from the reviewed revision (the Local 
 | Not UTF-8 text                                | `The spec file is not UTF-8 text. Point Change intent at a Markdown or text file.`                                 |
 | Holds what looks like a credential            | `The spec file contains what looks like a credential. Remove it and press Refresh.`                                |
 
+The sentence goes away once the Change intent changes, Refresh moves the Review to a new snapshot, or the run dialog opens again.
+
 An Analysis run on a Review with an intent names it after the provider and model: `Checked against: change intent`, or `Checked against: spec <path>`. When the intent was edited, replaced, or cleared after the run, the line adds `Intent changed since this run`; a spec file counts as unchanged while its path is the same, because its bytes belong to the revision the run already names. Refresh and opening the Review again keep the intent.
 
 > Technical note: the intent is stored on the Review record, and each Analysis records the source and the sha256 of the text it read. It goes into `review-input.md` between `BEGIN CHANGE INTENT` and `END CHANGE INTENT`; changing it rebuilds that file at the next Analysis start.

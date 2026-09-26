@@ -37,6 +37,12 @@ type InsightRunRequestFailure =
   | "request_not_awaiting"
   | ChangeIntentRunRefusal;
 
+type RecordedRequestFailure = {
+  readonly failure: InsightRunRequestFailure;
+  /** Set on a start's failure, which stops showing once `refusalInputs` changes or the run dialog opens again (#500). */
+  readonly start?: { readonly refusalInputs: string | undefined };
+};
+
 /** What a start carries beyond the run options. */
 type InsightRunStartOptions = {
   /** The agent run request this Run approves (ADR 0052). */
@@ -63,6 +69,8 @@ export type InsightRunController = {
     options?: InsightRunStartOptions,
   ) => void;
   readonly cancel: () => void;
+  /** Drops the failure of the last start, for a run dialog that opens again. */
+  readonly dismissStartRefusal: () => void;
 };
 
 /** Workbench fields a terminal run's reload carries alongside the Insight itself. */
@@ -106,6 +114,8 @@ export function useInsightRun(input: {
     options?: InsightPatchOptions,
   ) => void;
   readonly onCompleted?: () => void;
+  /** Identifies what the main process judges a start on, such as the Change intent; a start's refusal stops showing once it changes. */
+  readonly refusalInputs?: string;
 }): InsightRunController {
   const {
     profileId,
@@ -115,6 +125,7 @@ export function useInsightRun(input: {
     onWorkbenchReplace,
     onInsightPatch,
     onCompleted,
+    refusalInputs,
   } = input;
   const persistedRunId = activeRun?.runId;
   const scope = `${profileId}\u0000${reviewId}\u0000${type}`;
@@ -122,8 +133,8 @@ export function useInsightRun(input: {
     persistedRunId === undefined ? "idle" : "running",
   );
   const [runId, setRunId] = useState<string | undefined>(persistedRunId);
-  const [requestFailure, setRequestFailure] =
-    useState<InsightRunRequestFailure>();
+  const [recordedFailure, setRecordedFailure] =
+    useState<RecordedRequestFailure>();
   const [failureReason, setFailureReason] =
     useState<InsightRunResponse["failureReason"]>();
   const [activity, setActivity] = useState<InsightRunResponse["activity"]>();
@@ -150,7 +161,7 @@ export function useInsightRun(input: {
       cancellingRef.current = false;
       setRunId(persistedRunId);
       setStatus(persistedRunId === undefined ? "idle" : "running");
-      setRequestFailure(undefined);
+      setRecordedFailure(undefined);
       setFailureReason(undefined);
       setActivity(undefined);
       setStarting(false);
@@ -170,7 +181,7 @@ export function useInsightRun(input: {
     cancellingRef.current = false;
     setRunId(persistedRunId);
     setStatus("running");
-    setRequestFailure(undefined);
+    setRecordedFailure(undefined);
     setFailureReason(undefined);
     setActivity(undefined);
     setCancelling(false);
@@ -202,7 +213,7 @@ export function useInsightRun(input: {
       generationRef.current = generation;
       startingRef.current = true;
       setStarting(true);
-      setRequestFailure(undefined);
+      setRecordedFailure(undefined);
       setFailureReason(undefined);
       setActivity(undefined);
       void requestJson(`/v1/reviews/insights/${type}/run`, {
@@ -232,11 +243,12 @@ export function useInsightRun(input: {
         .catch((cause: unknown) => {
           if (!mountedRef.current || generationRef.current !== generation)
             return;
-          setRequestFailure(
-            isApiErrorCode(cause, "request_not_awaiting")
+          setRecordedFailure({
+            failure: isApiErrorCode(cause, "request_not_awaiting")
               ? "request_not_awaiting"
               : (changeIntentRunRefusal(cause) ?? "start"),
-          );
+            start: { refusalInputs },
+          });
           setStatus("error");
         })
         .finally(() => {
@@ -246,8 +258,14 @@ export function useInsightRun(input: {
           setStarting(false);
         });
     },
-    [profileId, reviewId, type],
+    [profileId, refusalInputs, reviewId, type],
   );
+
+  const dismissStartRefusal = useCallback((): void => {
+    setRecordedFailure((current) =>
+      current?.start === undefined ? current : undefined,
+    );
+  }, []);
 
   const cancel = useCallback((): void => {
     const activeRunId = activeRunRef.current;
@@ -260,7 +278,7 @@ export function useInsightRun(input: {
     const generation = generationRef.current;
     cancellingRef.current = true;
     setCancelling(true);
-    setRequestFailure(undefined);
+    setRecordedFailure(undefined);
     void requestJson(`/v1/reviews/insights/${type}/cancel`, {
       method: "POST",
       body: { profileId, reviewId, type, runId: activeRunId },
@@ -288,7 +306,7 @@ export function useInsightRun(input: {
           activeRunRef.current !== activeRunId
         )
           return;
-        setRequestFailure("cancel");
+        setRecordedFailure({ failure: "cancel" });
       })
       .finally(() => {
         if (
@@ -327,7 +345,7 @@ export function useInsightRun(input: {
           setStatus(parsed.status);
           setFailureReason(parsed.failureReason);
           setActivity(parsed.activity);
-          setRequestFailure(undefined);
+          setRecordedFailure(undefined);
           if (
             parsed.status !== "completed" &&
             parsed.status !== "failed" &&
@@ -368,7 +386,7 @@ export function useInsightRun(input: {
         })
         .catch(() => {
           if (!ownsRun()) return;
-          setRequestFailure("status");
+          setRecordedFailure({ failure: "status" });
           setStatus("error");
         })
         .finally(() => {
@@ -390,6 +408,12 @@ export function useInsightRun(input: {
     type,
   ]);
 
+  const requestFailure =
+    recordedFailure === undefined ||
+    (recordedFailure.start !== undefined &&
+      recordedFailure.start.refusalInputs !== refusalInputs)
+      ? undefined
+      : recordedFailure.failure;
   return {
     status,
     ...definedProps({ runId }),
@@ -400,5 +424,6 @@ export function useInsightRun(input: {
     busy: starting || runId !== undefined || activeRun !== undefined,
     run,
     cancel,
+    dismissStartRefusal,
   };
 }

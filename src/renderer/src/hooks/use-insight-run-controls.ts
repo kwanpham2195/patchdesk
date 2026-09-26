@@ -95,6 +95,11 @@ export function useInsightRunControls({
     activeRun: workbench.insights.analysis.activeRun,
     onWorkbenchReplace,
     onInsightPatch,
+    // A spec-file refusal is judged on the Change intent in the reviewed session (#500).
+    refusalInputs: JSON.stringify([
+      workbench.session.id,
+      workbench.changeIntent?.setting ?? null,
+    ]),
   });
   const walkthroughRun = useInsightRun({
     profileId,
@@ -192,6 +197,7 @@ export function useInsightRunControls({
   ): void => {
     const dialogType = type ?? selectedInsight;
     if (catalogError) return;
+    runs[dialogType].dismissStartRefusal();
     setRunDialogRequestId(requestId);
     const preference = preferencesRef.current[dialogType];
     const nextModels =
