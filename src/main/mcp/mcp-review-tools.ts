@@ -139,7 +139,7 @@ function localReviewRefusal(
   if (failure.reason === "untracked_too_large")
     return {
       error: "untracked_too_large",
-      message: `The working tree has more untracked files than Patchdesk snapshots, over ${localSnapshotUntrackedLimits.files} files or ${localSnapshotUntrackedLimits.bytes / (1024 * 1024)} MiB. ${
+      message: `The working tree has more untracked files than Patchdesk snapshots, over ${localSnapshotUntrackedLimits.files.toLocaleString("en-US")} files or ${localSnapshotUntrackedLimits.bytes / (1024 * 1024)} MiB. ${
         failure.largestPaths.length === 0
           ? "Add large untracked directories, such as dependencies or build output,"
           : `The largest untracked paths are ${failure.largestPaths.join(", ")}. Add them`
