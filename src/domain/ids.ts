@@ -60,6 +60,8 @@ const sessionIdSyntax = new RegExp(
 );
 /** Keeps a local id segment well inside a 255-byte path component; the full name still enters the hash. */
 const LOCAL_SOURCE_SLUG_MAX_LENGTH = 64;
+/** A named checkout's folder prefixes that slug, so it is capped too; its full path enters the hash (#489). */
+const CHECKOUT_SLUG_MAX_LENGTH = 24;
 const LOCAL_BRANCH_NAME_MAX_LENGTH = 255;
 const isoTimestampSyntax = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const contentHashSyntax = /^[a-f0-9]{64}$/;
@@ -466,7 +468,7 @@ function reviewSourceIdSegment(source: ReviewSource): string {
 /** `<folder>--` for a named checkout, empty for the configured one, so its ids stay as they were. */
 function checkoutSlugPrefix(checkout: AbsolutePath | undefined): string {
   if (checkout === undefined) return "";
-  return `${localSourceSlug(checkoutFolderName(checkout))}--`;
+  return `${localSourceSlug(checkoutFolderName(checkout)).slice(0, CHECKOUT_SLUG_MAX_LENGTH)}--`;
 }
 
 /** The last segment of a checkout path: what ids, titles, and the sidebar name a checkout by (#489). */
