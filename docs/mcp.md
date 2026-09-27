@@ -267,7 +267,7 @@ error code and a sentence the agent can relay to you;
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
   - `type` (string, required): One of `analysis`, `walkthrough`, `brief`.
 
-- **get_feedback** (read-only): Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Pass nextCursor to read the next page.
+- **get_feedback** (read-only): Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against, the view it was written in (combined, committed, or uncommitted; its path, side, and lines are numbered in that view), inline (true when those lines sit inside a hunk of that view on the Review's current session), and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Pass nextCursor to read the next page.
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
   - `cursor` (string, optional, at most 64 characters): The nextCursor of the previous page.
 

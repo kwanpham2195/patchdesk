@@ -57,14 +57,25 @@ function describeReviewSession(
 }
 
 /**
- * A stored Review's current session, its patch hashed as read now: what
- * `get_feedback` and `list_local_reviews` answer with. An unreadable session
- * record is `storage`; an unreadable patch leaves `patchHash` out.
+ * A Review's current session as `get_feedback` and `list_local_reviews` read
+ * it: its description, the session record, and its Combined patch as read
+ * now, absent when the patch could not be read.
+ */
+export type CurrentSession = {
+  readonly description: ReviewSessionDescription;
+  readonly session: ReviewSession;
+  readonly patch?: string;
+};
+
+/**
+ * A stored Review's current session, its patch hashed as read now. An
+ * unreadable session record is `storage`; an unreadable patch leaves
+ * `patchHash` out.
  */
 export async function describeCurrentSession(
   sessions: Pick<ReviewSessionStore, "load">,
   review: Pick<Review, "id" | "identity" | "currentSessionId">,
-): Promise<Result<ReviewSessionDescription, { readonly reason: "storage" }>> {
+): Promise<Result<CurrentSession, { readonly reason: "storage" }>> {
   const session = await sessions.load(
     review.identity.profileId,
     review.currentSessionId,
@@ -77,13 +88,15 @@ export async function describeCurrentSession(
     patch === undefined
       ? undefined
       : parseContentHash(hashReviewArtifactContent(patch));
-  return ok(
-    describeReviewSession(
+  return ok({
+    description: describeReviewSession(
       review.id,
       session.value,
       patchHash?._tag === "ok" ? patchHash.value : undefined,
     ),
-  );
+    session: session.value,
+    ...definedProps({ patch }),
+  });
 }
 
 /** The projection omits the base revision, so the session record supplies it. */

@@ -34,7 +34,12 @@ import {
   type MaintainerNote,
 } from "../domain/local-draft";
 import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
-import type { LocalPatchView } from "../domain/local-patch-view";
+import {
+  indexPatchHunks,
+  placeInView,
+  type LocalPatchView,
+  type LocalPatchViewPaths,
+} from "../domain/local-patch-view";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import {
@@ -45,7 +50,10 @@ import {
   type Review,
 } from "../domain/review";
 import { parseReviewResult } from "../domain/review-result";
-import { isPullRequestReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type LocalSessionViewPatch,
+} from "../domain/review-session";
 import type { LocalReviewSource } from "../domain/review-source";
 import {
   pageLocalDrafts,
@@ -55,6 +63,7 @@ import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import {
   describeCurrentSession,
+  type CurrentSession,
   type ReviewSessionDescription,
 } from "./review-session-description";
 
@@ -129,18 +138,19 @@ export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;
 };
 
-/** Omits `state` and `view` from each member of a union, keeping the members apart. */
-type WithoutStateOrView<Entry> = Entry extends unknown
-  ? Omit<Entry, "state" | "view">
-  : never;
+/** Omits `state` from each member of a union, keeping the members apart. */
+type WithoutState<Entry> = Entry extends unknown ? Omit<Entry, "state"> : never;
 
 /**
  * A draft as the workbench lists it, with a state always present: `current`
  * for a draft written on the Review's current session, which the workbench
- * leaves unlabelled. A Finding draft adds its comment and verified suggestion.
+ * leaves unlabelled. `inline` says whether its lines sit inside a hunk of its
+ * origin view on the current session. A Finding draft adds its comment and
+ * verified suggestion.
  */
-type LocalFeedbackEntry = WithoutStateOrView<LocalDraftEntry> & {
+type LocalFeedbackEntry = WithoutState<LocalDraftEntry> & {
   readonly state: LocalDraftState | "current";
+  readonly inline: boolean;
   readonly comment?: string;
   readonly suggestion?: string;
 };
@@ -251,20 +261,18 @@ export class LocalDraftService {
   > {
     const review = await this.loadLocal(profileId, reviewId);
     if (review._tag === "err") return review;
-    const described = await describeCurrentSession(
+    const current = await describeCurrentSession(
       this.dependencies.sessions,
       review.value,
     );
-    if (described._tag === "err") return described;
-    const page = pageLocalDrafts(
-      review.value.localDrafts ?? [],
-      cursor,
-      (listed, prompted) => ({
-        ...described.value,
-        localDrafts: listed.map(projectFeedbackEntry),
-        markdown: renderLocalDraftsAsAgentPrompt(prompted),
-      }),
-    );
+    if (current._tag === "err") return current;
+    const drafts = review.value.localDrafts ?? [];
+    const inline = await inlineInOriginView(current.value, drafts);
+    const page = pageLocalDrafts(drafts, cursor, (listed, prompted) => ({
+      ...current.value.description,
+      localDrafts: listed.map((draft) => projectFeedbackEntry(draft, inline)),
+      markdown: renderLocalDraftsAsAgentPrompt(prompted),
+    }));
     if (page._tag === "err") return page;
     return ok({
       ...page.value.page,
@@ -473,12 +481,71 @@ export class LocalDraftService {
   }
 }
 
-function projectFeedbackEntry(draft: LocalDraft): LocalFeedbackEntry {
-  // `get_feedback` does not name a draft's view yet (#558).
-  const { view: _view, ...projected } = projectLocalDraft(draft);
+/**
+ * Whether a draft's lines sit inside a hunk of its origin view on the
+ * Review's current session (#558): `placeInView`, the workbench's placement,
+ * asked of that view's stored patch. A draft of an earlier session, or one
+ * whose view patch cannot be read, is not inline. Only the views the current
+ * session's drafts were written in are read.
+ */
+async function inlineInOriginView(
+  current: CurrentSession,
+  drafts: ReadonlyArray<LocalDraft>,
+): Promise<(entry: LocalDraftEntry) => boolean> {
+  const { session } = current;
+  const viewPatches = isPullRequestReviewSession(session)
+    ? undefined
+    : session.viewPatches;
+  const views = new Set<LocalPatchView>();
+  for (const draft of drafts)
+    if (draft.sessionId === session.id) views.add(draft.view ?? "combined");
+  const hunks = new Map(
+    await Promise.all(
+      [...views].map(async (view) => {
+        const patch =
+          view === "combined"
+            ? current.patch
+            : await readViewPatch(viewPatches?.[view]);
+        return [
+          view,
+          patch === undefined ? undefined : indexPatchHunks(patch),
+        ] as const;
+      }),
+    ),
+  );
+  // A session without views holds Combined drafts only, and a draft placed in its own view never reads another view's paths.
+  const paths: LocalPatchViewPaths = {
+    combined: viewPatches?.combined.paths ?? [],
+    committed: viewPatches?.committed.paths ?? [],
+    uncommitted: viewPatches?.uncommitted.paths ?? [],
+  };
+  return (entry) => {
+    const shownHunks = hunks.get(entry.view);
+    return (
+      entry.sessionId === session.id &&
+      shownHunks !== undefined &&
+      placeInView(entry, entry.view, { paths, shownHunks }).placement ===
+        "inline"
+    );
+  };
+}
+
+function readViewPatch(
+  stored: LocalSessionViewPatch | undefined,
+): Promise<string | undefined> {
+  return stored === undefined
+    ? Promise.resolve(undefined)
+    : readFile(stored.patchPath, "utf8").catch(() => undefined);
+}
+
+function projectFeedbackEntry(
+  draft: LocalDraft,
+  inline: (entry: LocalDraftEntry) => boolean,
+): LocalFeedbackEntry {
+  const projected = projectLocalDraft(draft);
   // A draft carries no state until the Review first moves to a new session, so it was written on the current one.
   const state: LocalFeedbackEntry["state"] = projected.state ?? "current";
-  const entry = { ...projected, state };
+  const entry = { ...projected, state, inline: inline(projected) };
   if (isMaintainerNote(draft)) return entry;
   return {
     ...entry,
