@@ -341,17 +341,13 @@ export class LocalReviewOpening {
     });
   }
 
-  /**
-   * The bases of `branch`'s open shared Reviews in this checkout, the one
-   * the maintainer opened last first. Empty when the Reviews cannot be listed:
-   * the caller then infers a base, as for a branch with none.
-   */
+  /** The bases of `branch`'s open shared Reviews, last opened first. A failed listing must not let an agent infer a different base. */
   private async reviewedBases(
     profileId: WorkspaceProfileId,
     repository: LocalReviewOpenRequest["repository"],
     checkout: AbsolutePath | undefined,
     branch: LocalBranchName,
-  ): Promise<ReadonlyArray<LocalBranchName>> {
+  ): Promise<Result<ReadonlyArray<LocalBranchName>, LocalReviewOpenFailure>> {
     const listed = await listOpenSharedReviews(
       this.lifecycle.reviews,
       profileId,
@@ -360,8 +356,8 @@ export class LocalReviewOpening {
       branch,
     );
     return listed._tag === "ok"
-      ? listed.value.map(({ source }) => source.baseBranch)
-      : [];
+      ? ok(listed.value.map(({ source }) => source.baseBranch))
+      : listed;
   }
 
   /**
@@ -456,17 +452,14 @@ export class LocalReviewOpening {
     );
     if (listed._tag === "err") return err(mapPreparationFailure(listed.error));
     const { listing } = listed.value;
-    return ok({
-      ...listing,
-      reviewedBases: await this.reviewedBases(
-        profileId,
-        repository,
-        listed.value.checkout,
-        listing.head.kind === "branch"
-          ? listing.head.branch
-          : detachedHeadBranch,
-      ),
-    });
+    const reviewedBases = await this.reviewedBases(
+      profileId,
+      repository,
+      listed.value.checkout,
+      listing.head.kind === "branch" ? listing.head.branch : detachedHeadBranch,
+    );
+    if (reviewedBases._tag === "err") return reviewedBases;
+    return ok({ ...listing, reviewedBases: reviewedBases.value });
   }
 
   /** The profile repository and checkout an agent's working directory is in (ADR 0052 `review_local`). */
