@@ -23,7 +23,7 @@ export const mcpToolManifest = {
   },
   review_local: {
     description:
-      "Open the Patchdesk Review of the checkout that contains cwd, so the maintainer reviews your change in Patchdesk. A new Review reads the checkout as it is now; an existing one is returned on the session the maintainer sees, and refresh_review reads newer changes. It changes no branch, index, or working-tree file; Patchdesk stores the snapshot as git objects, a refs/patchdesk/local/ ref, and a worktree in its cache. Returns the reviewId, the session (sessionId, headSha, baseSha, patchHash), the changed files, and which Insights are retained. intent is the task you were given, as Markdown; it is recorded only when the Review has no Change intent. With intent, intentRecorded says whether the Review now holds it: intentKept is false when this call recorded it, and true when the Review already held the same text. A refused intent still returns the opened Review, with intentRecorded: false, intentRefused (intent_exists when the Review holds a different intent, in_progress or storage when recording failed and a retry may work), and intentMessage. A working tree with more than 5,000 untracked files or 100 MiB of them is refused untracked_too_large before anything is stored; the message names the largest untracked paths to add to .gitignore. A change whose patch is over 2 MiB is refused patch_too_large and no session is stored; the message names the files with the most changes. A cwd in a repository whose configured checkout no longer exists, as after a move on disk, is refused checkout_missing; the message names the configured path.",
+      "Open the Patchdesk Review of the checkout that contains cwd, so the maintainer reviews your change in Patchdesk. By default this is the shared Review of the branch checked out there: every change since the branch left its base branch, committed or not, so your commits keep the maintainer's notes in place. Without base, the branch's open shared Review is returned when there is one (the one the maintainer opened last), else Patchdesk infers the base: the other local branch with the fewest commits between its merge base and HEAD, ties going to the default branch. The result names baseBranch, and baseInferred: true when Patchdesk picked it. A branch with no open Review and no other local branch behind HEAD is refused base_required; pass base. A new Review reads the checkout as it is now; an existing one is returned on the session the maintainer sees, and refresh_review reads newer changes. It changes no branch, index, or working-tree file; Patchdesk stores the snapshot as git objects, a refs/patchdesk/local/ ref, and a worktree in its cache. Returns the reviewId, the session (sessionId, headSha, baseSha, patchHash), the changed files, and which Insights are retained. intent is the task you were given, as Markdown; it is recorded only when the Review has no Change intent. With intent, intentRecorded says whether the Review now holds it: intentKept is false when this call recorded it, and true when the Review already held the same text. A refused intent still returns the opened Review, with intentRecorded: false, intentRefused (intent_exists when the Review holds a different intent, in_progress or storage when recording failed and a retry may work), and intentMessage. A working tree with more than 5,000 untracked files or 100 MiB of them is refused untracked_too_large before anything is stored; the message names the largest untracked paths to add to .gitignore. A change whose patch is over 2 MiB is refused patch_too_large and no session is stored; the message names the files with the most changes. A cwd in a repository whose configured checkout no longer exists, as after a move on disk, is refused checkout_missing; the message names the configured path.",
     inputSchema: v.strictObject({
       cwd: v.pipe(
         v.string(),
@@ -36,16 +36,21 @@ export const mcpToolManifest = {
       source: v.optional(
         v.pipe(
           v.variant("kind", [
-            v.strictObject({ kind: v.literal("working_tree") }),
-            v.strictObject({
-              kind: v.literal("branch"),
-              branch: nonEmpty,
-              baseBranch: nonEmpty,
-            }),
+            v.strictObject({ kind: v.literal("local_branch") }),
             v.strictObject({ kind: v.literal("commit"), commit: nonEmpty }),
           ]),
           v.description(
-            "What to review; defaults to the working tree, which includes uncommitted and untracked changes.",
+            "What to review; defaults to local_branch, the shared Review of the checked-out branch against its base, with committed, staged, unstaged, and untracked changes. commit reviews one commit against its parent.",
+          ),
+        ),
+      ),
+      base: v.optional(
+        v.pipe(
+          v.string(),
+          v.minLength(1),
+          v.maxLength(255),
+          v.description(
+            "The local branch the shared Review compares with, such as main. Omit it to reuse the branch's open Review or let Patchdesk infer one. Not allowed with source commit.",
           ),
         ),
       ),

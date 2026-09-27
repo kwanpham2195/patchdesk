@@ -76,22 +76,13 @@ export type LocalReviewSource =
 export type ReviewSource = PullRequestReviewSource | LocalReviewSource;
 
 /**
- * The local source a maintainer asks to open. A working tree names no branch:
- * the branch is read from `HEAD` when the checkout is read, and a commit may
- * be abbreviated until git resolves it.
+ * The local source a maintainer asks to open. A shared Review names only its
+ * base: the branch is read from `HEAD` when the checkout is read. A commit may
+ * be abbreviated until git resolves it. Working-tree and branch sources are
+ * no longer opened (#555).
  */
 export type LocalReviewSourceRequest = LocalCheckout &
   (
-    | {
-        readonly kind: "working_tree";
-        /** Set when reopening a stored working-tree Review, so a branch switch refuses instead of opening another Review. */
-        readonly expectedHead?: ExpectedCheckoutHead;
-      }
-    | {
-        readonly kind: "branch";
-        readonly branch: LocalBranchName;
-        readonly baseBranch: LocalBranchName;
-      }
     | {
         readonly kind: "local_branch";
         readonly baseBranch: LocalBranchName;
@@ -236,20 +227,9 @@ const expectedHeadSchema = v.optional(
 /** The wire form of the local source a maintainer asks to open; `parseLocalReviewSourceRequest` applies the name, SHA, and path rules. */
 export const localReviewSourceRequestSchema = v.variant("kind", [
   v.strictObject({
-    kind: v.literal("working_tree"),
-    expectedHead: expectedHeadSchema,
-    checkout: v.optional(nonEmpty),
-  }),
-  v.strictObject({
     kind: v.literal("local_branch"),
     baseBranch: nonEmpty,
     expectedHead: expectedHeadSchema,
-    checkout: v.optional(nonEmpty),
-  }),
-  v.strictObject({
-    kind: v.literal("branch"),
-    branch: nonEmpty,
-    baseBranch: nonEmpty,
     checkout: v.optional(nonEmpty),
   }),
   v.strictObject({
@@ -278,15 +258,6 @@ export function parseLocalReviewSourceRequest(
 function parseSourceRequestSpec(
   raw: LocalReviewSourceRequestInput,
 ): LocalReviewSourceRequest | undefined {
-  if (raw.kind === "working_tree") {
-    const expected = parseExpectedHead(raw.expectedHead);
-    return expected === undefined
-      ? undefined
-      : {
-          kind: "working_tree",
-          ...definedProps({ expectedHead: expected.head }),
-        };
-  }
   if (raw.kind === "local_branch") {
     const baseBranch = parseLocalBranchName(raw.baseBranch);
     const expected = parseExpectedHead(raw.expectedHead);
@@ -298,16 +269,9 @@ function parseSourceRequestSpec(
           ...definedProps({ expectedHead: expected.head }),
         };
   }
-  if (raw.kind === "commit") {
-    const commit = parseGitShaPrefix(raw.commit.toLowerCase());
-    return commit._tag === "ok"
-      ? { kind: "commit", commit: commit.value }
-      : undefined;
-  }
-  const branch = parseLocalBranchName(raw.branch);
-  const baseBranch = parseLocalBranchName(raw.baseBranch);
-  return branch._tag === "ok" && baseBranch._tag === "ok"
-    ? { kind: "branch", branch: branch.value, baseBranch: baseBranch.value }
+  const commit = parseGitShaPrefix(raw.commit.toLowerCase());
+  return commit._tag === "ok"
+    ? { kind: "commit", commit: commit.value }
     : undefined;
 }
 
@@ -325,31 +289,19 @@ function parseExpectedHead(
 
 /**
  * The request that reads a stored local source from the checkout again. A
- * working tree names the `HEAD` it was opened on, so a branch switch is
+ * shared Review names the branch it was opened on, so a branch switch is
  * refused rather than read as this Review. The request names the Review's
- * checkout, so it is read from that same checkout. Undefined only for a stored
- * commit SHA that is not a valid prefix.
+ * checkout, so it is read from that same checkout. Undefined for a stored
+ * commit SHA that is not a valid prefix, and for a working-tree or branch
+ * Review stored before the shared Review (#555), which nothing reads again.
  */
 export function reopenLocalSourceRequest(
   source: LocalReviewSource,
 ): LocalReviewSourceRequest | undefined {
   switch (source.kind) {
     case "working_tree":
-      return {
-        kind: "working_tree",
-        expectedHead:
-          source.branch === undefined
-            ? { kind: "detached" }
-            : { kind: "branch", branch: source.branch },
-        ...definedProps({ checkout: source.checkout }),
-      };
     case "branch":
-      return {
-        kind: "branch",
-        branch: source.branch,
-        baseBranch: source.baseBranch,
-        ...definedProps({ checkout: source.checkout }),
-      };
+      return undefined;
     case "local_branch":
       return {
         kind: "local_branch",

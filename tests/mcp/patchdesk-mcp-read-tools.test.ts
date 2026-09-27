@@ -74,6 +74,7 @@ describe.each(mcpProtocolEras)(
 
       const first = await call(client, "review_local", {
         cwd: join(app.linkedPath, "src"),
+        base: "main",
         intent: "Add the app entry point.",
       });
       const again = await call(client, "review_local", {
@@ -97,7 +98,9 @@ describe.each(mcpProtocolEras)(
           .toString()
           .trim(),
         patchHash: route.revision.patchHash,
-        title: "Working tree on feat/linked in linked",
+        title: "feat/linked against main in linked",
+        baseBranch: "main",
+        baseInferred: false,
         changedFiles: [
           { path: "src/app.ts", status: "added", additions: 1, deletions: 0 },
           {
@@ -131,6 +134,7 @@ describe.each(mcpProtocolEras)(
       const client = await connect(app.socketPath);
       const first = await call(client, "review_local", {
         cwd: app.repositoryPath,
+        base: "main",
         intent: "Ship the first goal.",
       });
       const { reviewId, sessionId } = v.parse(

@@ -66,7 +66,11 @@ const repository = {
   owner: value(parseGitHubOwner("octo-org")),
   repo: value(parseGitHubRepoName("patchdesk")),
 };
-const workingTree: LocalReviewSourceRequest = { kind: "working_tree" };
+/** The shared Review against `main`; on `main` it shows the checkout's changes against `HEAD`. */
+const sharedAgainstMain: LocalReviewSourceRequest = {
+  kind: "local_branch",
+  baseBranch: value(parseLocalBranchName("main")),
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -227,7 +231,7 @@ async function writeUntrackedTree(repositoryPath: string): Promise<void> {
 }
 
 describe("LocalReviewOpening", () => {
-  it("shows an untracked file in the working-tree patch without writing the maintainer's index", async () => {
+  it("shows an untracked file in the shared Review's patch without writing the maintainer's index", async () => {
     const { root, repositoryPath } = await checkout();
     await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
     await writeFile(join(repositoryPath, "untracked.txt"), "new file\n");
@@ -237,12 +241,13 @@ describe("LocalReviewOpening", () => {
 
     const opened = await (
       await opening(root, repositoryPath)
-    ).open({ profileId, repository, request: workingTree });
+    ).open({ profileId, repository, request: sharedAgainstMain });
 
     const projection = value(opened);
     expect(projection.session.key.source).toEqual({
-      kind: "working_tree",
+      kind: "local_branch",
       branch: "main",
+      baseBranch: "main",
     });
     expect(projection.fullPatch).toContain("+++ b/untracked.txt");
     expect(projection.fullPatch).toContain("+two");
@@ -268,7 +273,11 @@ describe("LocalReviewOpening", () => {
     const service = await opening(root, repositoryPath);
     const open = async () =>
       value(
-        await service.open({ profileId, repository, request: workingTree }),
+        await service.open({
+          profileId,
+          repository,
+          request: sharedAgainstMain,
+        }),
       );
 
     const first = await open();
@@ -288,7 +297,7 @@ describe("LocalReviewOpening", () => {
     const service = await opening(root, repositoryPath);
 
     const opened = value(
-      await service.open({ profileId, repository, request: workingTree }),
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
     );
 
     const stored = value(
@@ -300,10 +309,12 @@ describe("LocalReviewOpening", () => {
     expect(stored.lastOpenedAt).toBe(now);
   });
 
-  it("refuses to reopen a working-tree Review after a branch switch, creating nothing", async () => {
+  it("refuses to reopen a shared Review after a branch switch, creating nothing", async () => {
     const { root, repositoryPath } = await checkout();
     const service = await opening(root, repositoryPath);
-    value(await service.open({ profileId, repository, request: workingTree }));
+    value(
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
+    );
     const reviews = new ReviewStore(PatchdeskPaths.forTest(join(root, "app")));
     const refsBefore = git(repositoryPath, "for-each-ref", "refs/patchdesk");
     git(repositoryPath, "checkout", "-q", "-b", "other");
@@ -312,7 +323,7 @@ describe("LocalReviewOpening", () => {
       profileId,
       repository,
       request: {
-        kind: "working_tree",
+        ...sharedAgainstMain,
         expectedHead: {
           kind: "branch",
           branch: value(parseLocalBranchName("main")),
@@ -330,22 +341,22 @@ describe("LocalReviewOpening", () => {
     );
   });
 
-  it("reopens the first branch's working-tree Review on switching back after opening another branch's", async () => {
+  it("reopens the first branch's shared Review on switching back after opening another branch's", async () => {
     const { root, repositoryPath } = await checkout();
     const service = await opening(root, repositoryPath);
     const onMain = value(
-      await service.open({ profileId, repository, request: workingTree }),
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
     );
     git(repositoryPath, "checkout", "-q", "-b", "other");
     await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
     const onOther = value(
-      await service.open({ profileId, repository, request: workingTree }),
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
     );
     git(repositoryPath, "checkout", "-q", "main");
 
     // The sidebar row's open names no branch (#479), so the checkout decides which Review opens.
     const back = value(
-      await service.open({ profileId, repository, request: workingTree }),
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
     );
 
     expect(onOther.review.id).not.toBe(onMain.review.id);
@@ -362,7 +373,7 @@ describe("LocalReviewOpening", () => {
       onResolved: () => resolvedOnce(),
     });
     const reviewId = value(
-      await service.open({ profileId, repository, request: workingTree }),
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
     ).review.id;
     let releaseLock: () => void = () => undefined;
     const held = coordinator.withReviewLock(
@@ -380,7 +391,7 @@ describe("LocalReviewOpening", () => {
     const waiting = service.open({
       profileId,
       repository,
-      request: workingTree,
+      request: sharedAgainstMain,
     });
     await unlockedReadDone;
     // The checkout changes after the unlocked read, while this open waits for the lock.
@@ -402,7 +413,7 @@ describe("LocalReviewOpening", () => {
     const patch = value(
       await (
         await opening(root, repositoryPath)
-      ).open({ profileId, repository, request: workingTree }),
+      ).open({ profileId, repository, request: sharedAgainstMain }),
     ).fullPatch;
 
     expect(patch).toContain("diff --git a/tracked.txt b/tracked.txt");
@@ -428,13 +439,13 @@ describe("LocalReviewOpening", () => {
     const patch = value(
       await (
         await opening(root, repositoryPath)
-      ).open({ profileId, repository, request: workingTree }),
+      ).open({ profileId, repository, request: sharedAgainstMain }),
     ).fullPatch;
 
     expect(patch).toContain("+two");
   });
 
-  it("refuses a working tree whose index holds a merge conflict", async () => {
+  it("refuses a shared Review whose checkout index holds a merge conflict", async () => {
     const { root, repositoryPath } = await checkout();
     git(repositoryPath, "checkout", "-q", "-b", "other");
     await writeFile(join(repositoryPath, "tracked.txt"), "other\n");
@@ -447,7 +458,7 @@ describe("LocalReviewOpening", () => {
 
     const opened = await (
       await opening(root, repositoryPath)
-    ).open({ profileId, repository, request: workingTree });
+    ).open({ profileId, repository, request: sharedAgainstMain });
 
     expect(opened).toEqual({
       _tag: "err",
@@ -468,7 +479,7 @@ describe("LocalReviewOpening", () => {
         untrackedLimits: { files: 6, bytes: 1024 * 1024 },
         untrackedFileSize: fileSize.read,
       })
-    ).open({ profileId, repository, request: workingTree });
+    ).open({ profileId, repository, request: sharedAgainstMain });
 
     expect(opened).toEqual({
       _tag: "err",
@@ -494,7 +505,7 @@ describe("LocalReviewOpening", () => {
       await opening(root, repositoryPath, {
         untrackedLimits: { files: 100, bytes: 64 },
       })
-    ).open({ profileId, repository, request: workingTree });
+    ).open({ profileId, repository, request: sharedAgainstMain });
 
     expect(opened).toEqual({
       _tag: "err",
@@ -527,7 +538,7 @@ describe("LocalReviewOpening", () => {
               : real.run(argv, environment),
         }),
       })
-    ).open({ profileId, repository, request: workingTree });
+    ).open({ profileId, repository, request: sharedAgainstMain });
 
     expect(opened).toEqual({
       _tag: "err",
@@ -553,7 +564,7 @@ describe("LocalReviewOpening", () => {
 
     const opened = await (
       await opening(root, repositoryPath)
-    ).open({ profileId, repository, request: workingTree });
+    ).open({ profileId, repository, request: sharedAgainstMain });
 
     expect(opened).toEqual({
       _tag: "err",
@@ -625,41 +636,13 @@ describe("LocalReviewOpening", () => {
     });
   });
 
-  it("compares a branch with its merge base, not with the base branch tip", async () => {
-    const { root, repositoryPath } = await checkout();
-    git(repositoryPath, "checkout", "-q", "-b", "feature/local");
-    await writeFile(join(repositoryPath, "feature.txt"), "feature\n");
-    git(repositoryPath, "add", "feature.txt");
-    git(repositoryPath, "commit", "-q", "-m", "feature");
-    git(repositoryPath, "checkout", "-q", "main");
-    await writeFile(join(repositoryPath, "main-only.txt"), "main\n");
-    git(repositoryPath, "add", "main-only.txt");
-    git(repositoryPath, "commit", "-q", "-m", "main moves on");
-
-    const opened = await (
-      await opening(root, repositoryPath)
-    ).open({
-      profileId,
-      repository,
-      request: {
-        kind: "branch",
-        branch: value(parseLocalBranchName("feature/local")),
-        baseBranch: value(parseLocalBranchName("main")),
-      },
-    });
-
-    const patch = value(opened).fullPatch;
-    expect(patch).toContain("+++ b/feature.txt");
-    expect(patch).not.toContain("main-only.txt");
-  });
-
   it("refuses a repository that is not in the profile", async () => {
     const { root, repositoryPath } = await checkout();
     await writeFile(join(repositoryPath, "untracked.txt"), "new\n");
 
     const opened = await (
       await opening(root, undefined)
-    ).open({ profileId, repository, request: workingTree });
+    ).open({ profileId, repository, request: sharedAgainstMain });
 
     expect(opened).toEqual({
       _tag: "err",
@@ -683,32 +666,33 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
     );
     return { ...fixture, linkedPath: await realpath(linkedPath) };
   }
-  const workingTreeIn = (path: string): LocalReviewSourceRequest => ({
-    kind: "working_tree",
+  const sharedIn = (path: string): LocalReviewSourceRequest => ({
+    ...sharedAgainstMain,
     checkout: value(parseAbsolutePath(path)),
   });
 
-  it("opens the working tree of each checkout as its own Review with its own session and ref", async () => {
+  it("opens the shared Review of each checkout as its own Review with its own session and ref", async () => {
     const { root, repositoryPath, linkedPath } = await linkedCheckout();
     await writeFile(join(repositoryPath, "main-change.txt"), "main\n");
     await writeFile(join(linkedPath, "linked-change.txt"), "linked\n");
     const service = await opening(root, repositoryPath);
 
     const configured = value(
-      await service.open({ profileId, repository, request: workingTree }),
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
     );
     const linked = value(
       await service.open({
         profileId,
         repository,
-        request: workingTreeIn(linkedPath),
+        request: sharedIn(linkedPath),
       }),
     );
 
     expect(linked.review.id).not.toBe(configured.review.id);
     expect(linked.session.key.source).toEqual({
-      kind: "working_tree",
+      kind: "local_branch",
       branch: "feat",
+      baseBranch: "main",
       checkout: linkedPath,
     });
     expect(configured.fullPatch).toContain("+++ b/main-change.txt");
@@ -751,12 +735,10 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
     const reviewIdIn = async (request: LocalReviewSourceRequest) =>
       value(await service.open({ profileId, repository, request })).review.id;
 
-    const linked = await reviewIdIn(workingTreeIn(linkedPath));
+    const linked = await reviewIdIn(sharedIn(linkedPath));
 
-    expect(await reviewIdIn(workingTreeIn(join(linkedPath, "nested")))).toBe(
-      linked,
-    );
-    expect(await reviewIdIn(workingTreeIn(join(root, "alias")))).toBe(linked);
+    expect(await reviewIdIn(sharedIn(join(linkedPath, "nested")))).toBe(linked);
+    expect(await reviewIdIn(sharedIn(join(root, "alias")))).toBe(linked);
   });
 
   it("keys the configured checkout named by path to the Review that names no checkout", async () => {
@@ -765,8 +747,8 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
     const reviewIdIn = async (request: LocalReviewSourceRequest) =>
       value(await service.open({ profileId, repository, request })).review.id;
 
-    expect(await reviewIdIn(workingTreeIn(repositoryPath))).toBe(
-      await reviewIdIn(workingTree),
+    expect(await reviewIdIn(sharedIn(repositoryPath))).toBe(
+      await reviewIdIn(sharedAgainstMain),
     );
   });
 
@@ -783,7 +765,11 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
       value(
         parseReviewSessionId(
           value(
-            await service.open({ profileId, repository, request: workingTree }),
+            await service.open({
+              profileId,
+              repository,
+              request: sharedAgainstMain,
+            }),
           ).session.id,
         ),
       ),
@@ -794,7 +780,7 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
         await service.open({
           profileId,
           repository,
-          request: workingTreeIn(path),
+          request: sharedIn(path),
         }),
       ).toEqual({ _tag: "err", error: { reason: "checkout_not_found" } });
   });
@@ -807,7 +793,9 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
     git(repositoryPath, "worktree", "add", "-q", removed, "-b", "gone");
     await rm(removed, { recursive: true, force: true });
     const service = await opening(root, repositoryPath);
-    value(await service.open({ profileId, repository, request: workingTree }));
+    value(
+      await service.open({ profileId, repository, request: sharedAgainstMain }),
+    );
 
     const listed = value(await service.listCheckouts(profileId, repository));
 
@@ -838,7 +826,7 @@ describe("LocalReviewOpening after the repository moved on disk (#488)", () => {
     const first = value(
       await (
         await opening(root, repositoryPath)
-      ).open({ profileId, repository, request: workingTree }),
+      ).open({ profileId, repository, request: sharedAgainstMain }),
     );
     const movedPath = join(root, "moved");
     await rename(repositoryPath, movedPath);
@@ -856,7 +844,7 @@ describe("LocalReviewOpening after the repository moved on disk (#488)", () => {
     const reopened = await service.open({
       profileId,
       repository,
-      request: workingTree,
+      request: sharedAgainstMain,
     });
     const refreshed = await service.refresh(
       profileId,
@@ -875,7 +863,7 @@ describe("LocalReviewOpening after the repository moved on disk (#488)", () => {
     const reopened = value(
       await (
         await opening(root, movedPath)
-      ).open({ profileId, repository, request: workingTree }),
+      ).open({ profileId, repository, request: sharedAgainstMain }),
     );
 
     expect(reopened.review.id).toBe(first.review.id);

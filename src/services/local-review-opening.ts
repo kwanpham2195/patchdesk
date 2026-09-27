@@ -124,7 +124,7 @@ export type LocalBranchMismatch = Extract<
   { readonly reason: "branch_mismatch" }
 >;
 
-/** Refresh refuses while another command holds the Review, and on a Review that is not local. */
+/** Refresh refuses while another command holds the Review, and `not_applicable` on a pull request Review or on a working-tree or branch Review stored before the shared Review (#555). */
 export type LocalReviewRefreshFailure =
   | LocalReviewOpenFailure
   | { readonly reason: "in_progress" | "not_applicable" };
@@ -425,14 +425,16 @@ export class LocalReviewOpening {
       checkout,
     );
     if (listed._tag === "err") return err(mapPreparationFailure(listed.error));
-    const { head } = listed.value;
+    const { listing } = listed.value;
     return ok({
-      ...listed.value,
+      ...listing,
       reviewedBases: await this.reviewedBases(
         profileId,
         repository,
-        checkout,
-        head.kind === "branch" ? head.branch : detachedHeadBranch,
+        listed.value.checkout,
+        listing.head.kind === "branch"
+          ? listing.head.branch
+          : detachedHeadBranch,
       ),
     });
   }
@@ -541,8 +543,7 @@ export class LocalReviewOpening {
     review: Review<LocalReviewSource>,
   ): Promise<LocalBranchMismatch | undefined> {
     const { profileId, host, owner, repo, source } = review.identity;
-    if (source.kind !== "working_tree" && source.kind !== "local_branch")
-      return undefined;
+    if (source.kind !== "local_branch") return undefined;
     const request = reopenLocalSourceRequest(source);
     if (request === undefined) return undefined;
     const resolved = await this.preparation.resolve({
@@ -575,6 +576,9 @@ export class LocalReviewOpening {
       });
     if (!isLocalReview(stored.value)) return err({ reason: "not_applicable" });
     const { host, owner, repo, source } = stored.value.identity;
+    // A working-tree or branch Review stored before the shared Review (#555) is not read again.
+    if (source.kind === "working_tree" || source.kind === "branch")
+      return err({ reason: "not_applicable" });
     const request = reopenLocalSourceRequest(source);
     if (request === undefined) return err({ reason: "storage" });
     const resolved = await this.preparation.resolve({
@@ -812,23 +816,21 @@ function headMismatch(
   source: LocalReviewSource,
 ): LocalBranchMismatch | undefined {
   if (
-    (request.kind !== "working_tree" && request.kind !== "local_branch") ||
-    request.expectedHead === undefined
+    request.kind !== "local_branch" ||
+    request.expectedHead === undefined ||
+    source.kind !== "local_branch"
   )
     return undefined;
-  if (source.kind !== "working_tree" && source.kind !== "local_branch")
-    return undefined;
-  const detached =
-    source.kind === "local_branch" ? detachedHeadBranch : undefined;
   const expected =
     request.expectedHead.kind === "branch"
       ? request.expectedHead.branch
-      : detached;
+      : detachedHeadBranch;
   if (source.branch === expected) return undefined;
   return {
     reason: "branch_mismatch",
     ...definedProps({
-      currentBranch: source.branch === detached ? undefined : source.branch,
+      currentBranch:
+        source.branch === detachedHeadBranch ? undefined : source.branch,
     }),
   };
 }

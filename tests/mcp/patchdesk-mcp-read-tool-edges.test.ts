@@ -128,9 +128,12 @@ describe("review_local on the agent's side (the agent prepares, the maintainer m
     });
     const after = value(await reviews.load(profileId, reviewId));
 
+    // No base: the shared Review the maintainer opened supplies it.
     expect(called.content).toMatchObject({
       reviewId: shown.review.id,
       sessionId: shown.session.id,
+      baseBranch: "main",
+      baseInferred: false,
     });
     expect(after.currentSessionId).toBe(before.currentSessionId);
     expect(before.lastOpenedAt).toBeDefined();
@@ -143,6 +146,7 @@ describe("review_local on the agent's side (the agent prepares, the maintainer m
 
     const called = await call(client, "review_local", {
       cwd: app.repositoryPath,
+      base: "main",
     });
     const reviewId = v.parse(
       v.object({ reviewId: v.string() }),
@@ -189,6 +193,7 @@ describe("MCP read tool refusals", () => {
 
     const refused = await call(client, "review_local", {
       cwd: app.repositoryPath,
+      base: "main",
     });
 
     expect(refused).toMatchObject({
@@ -215,6 +220,7 @@ describe("MCP read tool refusals", () => {
 
     const refused = await call(client, "review_local", {
       cwd: app.repositoryPath,
+      base: "main",
     });
 
     expect(refused).toMatchObject({
@@ -283,6 +289,7 @@ describe("MCP read tool refusals", () => {
     const client = await connectLegacyClient(app.socketPath);
     const opened = await call(client, "review_local", {
       cwd: app.repositoryPath,
+      base: "main",
     });
     const reviewId = v.parse(
       v.object({ reviewId: v.string() }),
