@@ -48,12 +48,15 @@ describe("extractImageRewrites", () => {
     });
   });
 
-  it("returns an empty map for absent, empty, or malformed HTML", () => {
-    expect(extractImageRewrites(undefined)).toEqual({});
-    expect(extractImageRewrites("")).toEqual({});
-    expect(
-      extractImageRewrites('<img src="https://camo.example/a" data-canonical'),
-    ).toEqual({});
-    expect(extractImageRewrites("<<img >>> not really html")).toEqual({});
+  it.each([
+    { label: "absent HTML", html: undefined },
+    { label: "empty HTML", html: "" },
+    {
+      label: "an incomplete image tag",
+      html: '<img src="https://camo.example/a" data-canonical',
+    },
+    { label: "malformed markup", html: "<<img >>> not really html" },
+  ])("returns an empty map for $label", ({ html }) => {
+    expect(extractImageRewrites(html)).toEqual({});
   });
 });
