@@ -89,3 +89,18 @@ working tree of the branch checked out now, so a branch switch opens that
 branch's own Review. Review identity is unchanged: working-tree Reviews stay
 per branch, so drafts never cross branches. Branch and commit Reviews leave
 the sidebar and are reopened from the Local review picker.
+
+## A repository moved on disk (#488)
+
+> **Added 2026-09-27.**
+
+A configured `localPath` that is no longer a directory refuses open,
+Refresh, and the checkout list with `checkout_missing`, naming the path,
+before any git call. Once the maintainer saves the new path, the Reviews of
+the configured checkout reopen: their identity holds no path, so unchanged
+content lands on the same session and drafts stay. No path is migrated.
+A session worktree in the cache still names the old repository in its `.git`
+file, so reusing or removing one first runs `git worktree repair` in the
+repository. Git rewrites only broken links, which also repairs the
+maintainer's own linked worktrees. A Review of a linked worktree is keyed by
+that worktree's path, so a linked worktree that moved opens as a new Review.

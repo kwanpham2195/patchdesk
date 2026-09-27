@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, readdir, rm, truncate, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 
 import * as v from "valibot";
@@ -242,6 +249,33 @@ describe("MCP read tool refusals", () => {
       .toMatchObject({
         events: [{ category: "mcp", phase: "review_local checkout_not_found" }],
       });
+  });
+
+  it("refuses a cwd in a repository moved away from its configured path with checkout_missing naming that path (#488)", async () => {
+    app = await startAppWithLinkedWorktree();
+    execFileSync("git", [
+      "-C",
+      app.repositoryPath,
+      "remote",
+      "add",
+      "origin",
+      "git@github.com:octo-org/patchdesk.git",
+    ]);
+    const moved = `${app.repositoryPath}-moved`;
+    await rename(app.repositoryPath, moved);
+    const client = await connectLegacyClient(app.socketPath);
+
+    const refused = await call(client, "review_local", { cwd: moved });
+
+    expect(refused).toMatchObject({
+      isError: true,
+      content: {
+        error: "checkout_missing",
+        message: expect.stringContaining(
+          `checkout at ${app.repositoryPath} no longer exists`,
+        ),
+      },
+    });
   });
 
   it("refuses a Review of another profile with profile_changed naming the active one", async () => {

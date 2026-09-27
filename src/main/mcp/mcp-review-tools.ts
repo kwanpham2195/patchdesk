@@ -77,7 +77,10 @@ export type McpReviewToolServices = {
 };
 
 /** Refusals whose message names the checkout's state, built by `localReviewRefusal`. */
-type DetailedLocalReason = "untracked_too_large" | "patch_too_large";
+type DetailedLocalReason =
+  | "untracked_too_large"
+  | "patch_too_large"
+  | "checkout_missing";
 
 type ServiceReason =
   | Exclude<LocalReviewAgentRefreshFailure["reason"], DetailedLocalReason>
@@ -132,8 +135,9 @@ function refusal(reason: ServiceReason): McpToolRefusal {
 /**
  * An open or refresh refusal; `branch_mismatch` names the branch the checkout
  * is on, `rate_limited` carries when to retry, `untracked_too_large` names
- * the limit it is over and the untracked paths to ignore, and
- * `patch_too_large` names the largest changed files.
+ * the limit it is over and the untracked paths to ignore,
+ * `patch_too_large` names the largest changed files, and `checkout_missing`
+ * names the configured path that is gone.
  */
 function localReviewRefusal(
   failure: LocalReviewAgentRefreshFailure,
@@ -150,6 +154,11 @@ function localReviewRefusal(
           ? "Add large untracked directories, such as dependencies or build output,"
           : `The largest untracked paths are ${failure.largestPaths.join(", ")}. Add them`
       } to .gitignore or remove them, then try again.`,
+    };
+  if (failure.reason === "checkout_missing")
+    return {
+      error: "checkout_missing",
+      message: `The repository's checkout at ${failure.localPath} no longer exists. If it moved, ask the maintainer to update its path in Patchdesk: in Settings → Workspace, under Repositories, add the folder that holds it now if it is not listed, then untick the repository and tick it again. Then call again.`,
     };
   if (failure.reason === "patch_too_large")
     return {

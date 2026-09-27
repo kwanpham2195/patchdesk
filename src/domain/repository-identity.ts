@@ -1,3 +1,12 @@
+import {
+  parseGitHubHost,
+  parseGitHubOwner,
+  parseGitHubRepoName,
+  type GitHubHost,
+  type GitHubOwner,
+  type GitHubRepoName,
+} from "./ids";
+
 /**
  * One repository's identity — the `{host, owner, repo}` triple every layer
  * names a repository by — and the one equality check over it.
@@ -43,4 +52,23 @@ export function sameRepositoryIdentity(
     left.owner === right.owner &&
     left.repo === right.repo
   );
+}
+
+/** The repository a git `origin` URL names, in HTTPS or SSH form; undefined for any other URL. */
+export function parseGitHubOrigin(value: string):
+  | {
+      readonly host: GitHubHost;
+      readonly owner: GitHubOwner;
+      readonly repo: GitHubRepoName;
+    }
+  | undefined {
+  const match =
+    /^(?:https:\/\/|git@)([^/:]+)[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(value);
+  if (match === null) return undefined;
+  const host = parseGitHubHost(match[1]);
+  const owner = parseGitHubOwner(match[2]);
+  const repo = parseGitHubRepoName(match[3]);
+  return host._tag === "ok" && owner._tag === "ok" && repo._tag === "ok"
+    ? { host: host.value, owner: owner.value, repo: repo.value }
+    : undefined;
 }

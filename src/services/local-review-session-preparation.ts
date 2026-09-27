@@ -35,6 +35,7 @@ import {
   configuredLocalPath,
   listRepositoryCheckouts,
   findProfileCheckout,
+  missingCheckout,
   resolveLocalReviewCheckout,
   type LocalCheckoutFailure,
   type LocalReviewCheckout,
@@ -107,6 +108,8 @@ export class LocalReviewSessionPreparation {
     if (profile._tag === "err") return profile;
     const localPath = configuredLocalPath(profile.value, repository);
     if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
+    const missing = await missingCheckout(localPath);
+    if (missing !== undefined) return err(missing);
     const checkouts = await listRepositoryCheckouts(
       this.dependencies,
       localPath,
@@ -234,7 +237,13 @@ export class LocalReviewSessionPreparation {
     resolved: ResolvedLocalReview,
     session: LocalReviewSession,
   ): Promise<Result<LocalReviewSession, LocalReviewPreparationFailure>> {
-    if (await exists(session.worktree.path)) return ok(session);
+    if (await exists(session.worktree.path)) {
+      // A checkout moved on disk leaves the worktree's `.git` file naming its old place (#488).
+      await this.dependencies.worktrees.repairWorktrees(
+        resolved.repositoryPath,
+      );
+      return ok(session);
+    }
     const rebuilt = await this.dependencies.worktrees.prepareLocal({
       profileId: session.key.profileId,
       sessionId: session.id,

@@ -479,6 +479,15 @@ export class ReviewWorktreeService {
   }
 
   /**
+   * Points the linked worktrees of the repository at `localPath` back at it
+   * after it moved on disk, when each one's `.git` file still names the old
+   * place (#488). Git rewrites only broken links; best effort.
+   */
+  async repairWorktrees(localPath: string): Promise<void> {
+    await this.git.run(["git", "-C", localPath, "worktree", "repair"]);
+  }
+
+  /**
    * Remove only a verified Patchdesk-owned worktree, then the managed refs its
    * marker names; no broad filesystem deletion is allowed. The refs go only
    * after `git worktree remove` succeeded, which also drops Git's record of
@@ -533,6 +542,8 @@ export class ReviewWorktreeService {
     } catch {
       return err({ _tag: "GitWorktreeFailed" });
     }
+    // Git refuses to remove a worktree whose `.git` file names a moved checkout.
+    await this.repairWorktrees(repositoryPath);
     const removed = await this.git.run([
       "git",
       "-C",

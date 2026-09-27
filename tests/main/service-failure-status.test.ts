@@ -20,6 +20,7 @@ const localReviewStatuses = {
   not_found: 404,
   repository_not_local: 404,
   checkout_not_found: 404,
+  checkout_missing: 404,
   revision_not_found: 404,
   unmerged_index: 409,
   untracked_too_large: 409,
@@ -248,6 +249,7 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
   it.each([
     {
       name: "untracked-size refusal names the exceeded limit and largest paths",
+      status: 409,
       failure: {
         reason: "untracked_too_large",
         exceededLimit: "bytes",
@@ -261,6 +263,7 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
     },
     {
       name: "patch-size refusal names the largest changed files",
+      status: 409,
       failure: {
         reason: "patch_too_large",
         largestFiles: ["pnpm-lock.yaml", "dist/app.js"],
@@ -270,7 +273,13 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
         largestFiles: ["pnpm-lock.yaml", "dist/app.js"],
       },
     },
-  ])("a local $name", async ({ failure, body }) => {
+    {
+      name: "missing-checkout refusal names the configured path",
+      status: 404,
+      failure: { reason: "checkout_missing", localPath: "/work/moved-away" },
+      body: { error: "checkout_missing", localPath: "/work/moved-away" },
+    },
+  ])("a local $name", async ({ failure, status, body }) => {
     const app = new Hono();
     // SAFETY: the route under test reaches only the supplied service seam.
     registerLocalReviewRoutes(app, {
@@ -279,7 +288,7 @@ describe("service refusal statuses (ADR 0052 reason tables)", () => {
 
     const answered = await post(app, "/v1/reviews/local-refresh", identity);
 
-    expect(answered.status).toBe(409);
+    expect(answered.status).toBe(status);
     expect(await answered.json()).toEqual(body);
   });
 });

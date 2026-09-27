@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { isApiErrorCode, requestJson } from "../api-client";
 import {
   branchMismatchMessage,
+  checkoutMissingMessage,
   localReviewSourceInput,
   untrackedTooLargeMessage,
   patchTooLargeMessage,
@@ -28,6 +29,8 @@ function refreshFailure(
     return "Another action on this review is running. Refresh when it finishes.";
   if (isApiErrorCode(cause, "unmerged_index"))
     return "The working tree has unresolved merge conflicts.";
+  const missing = checkoutMissingMessage(cause);
+  if (missing !== undefined) return missing;
   const untracked = untrackedTooLargeMessage(cause);
   if (untracked !== undefined) return untracked;
   const patchTooLarge = patchTooLargeMessage(cause);

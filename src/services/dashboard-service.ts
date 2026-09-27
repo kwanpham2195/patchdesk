@@ -1,13 +1,10 @@
-import {
-  parseAbsolutePath,
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
-  type AbsolutePath,
-} from "../domain/ids";
+import { parseAbsolutePath, type AbsolutePath } from "../domain/ids";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { ok, type Result } from "../domain/result";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
+import {
+  parseGitHubOrigin,
+  sameRepositoryIdentity,
+} from "../domain/repository-identity";
 import type { WatchedRepoRef } from "./profile-service";
 
 type DiscoveredRepo = WatchedRepoRef & {
@@ -88,22 +85,9 @@ function parseGitOrigin(
   value: string,
   localPath: string,
 ): DiscoveredRepo | undefined {
-  const match =
-    /^(?:https:\/\/|git@)([^/:]+)[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(value);
-  if (match === null) return undefined;
-  const host = parseGitHubHost(match[1]);
-  const owner = parseGitHubOwner(match[2]);
-  const repo = parseGitHubRepoName(match[3]);
+  const repository = parseGitHubOrigin(value);
   const path = parseAbsolutePath(localPath);
-  return host._tag === "ok" &&
-    owner._tag === "ok" &&
-    repo._tag === "ok" &&
-    path._tag === "ok"
-    ? {
-        host: host.value,
-        owner: owner.value,
-        repo: repo.value,
-        localPath: path.value,
-      }
+  return repository !== undefined && path._tag === "ok"
+    ? { ...repository, localPath: path.value }
     : undefined;
 }

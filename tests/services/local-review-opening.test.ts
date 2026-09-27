@@ -5,6 +5,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   stat,
   symlink,
@@ -825,5 +826,66 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
         configured: false,
       },
     ]);
+  });
+});
+
+describe("LocalReviewOpening after the repository moved on disk (#488)", () => {
+  async function movedCheckout() {
+    const { root, repositoryPath } = await checkout();
+    await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
+    const first = value(
+      await (
+        await opening(root, repositoryPath)
+      ).open({ profileId, repository, request: workingTree }),
+    );
+    const movedPath = join(root, "moved");
+    await rename(repositoryPath, movedPath);
+    return { root, repositoryPath, movedPath, first };
+  }
+
+  it("refuses open, Refresh, and the checkout listing with checkout_missing naming the configured path", async () => {
+    const { root, repositoryPath, first } = await movedCheckout();
+    const service = await opening(root, repositoryPath);
+    const missing = {
+      _tag: "err",
+      error: { reason: "checkout_missing", localPath: repositoryPath },
+    };
+
+    const reopened = await service.open({
+      profileId,
+      repository,
+      request: workingTree,
+    });
+    const refreshed = await service.refresh(
+      profileId,
+      value(parseReviewId(first.review.id)),
+    );
+    const listed = await service.listCheckouts(profileId, repository);
+
+    expect(reopened).toEqual(missing);
+    expect(refreshed).toEqual(missing);
+    expect(listed).toEqual(missing);
+  });
+
+  it("reopens the same Review and session once the path is updated, with its worktree readable by git again", async () => {
+    const { root, movedPath, first } = await movedCheckout();
+
+    const reopened = value(
+      await (
+        await opening(root, movedPath)
+      ).open({ profileId, repository, request: workingTree }),
+    );
+
+    expect(reopened.review.id).toBe(first.review.id);
+    expect(reopened.session.id).toBe(first.session.id);
+    const worktree = PatchdeskPaths.forTest(
+      join(root, "app"),
+    ).worktreeDirectory(
+      profileId,
+      value(parseReviewSessionId(reopened.session.id)),
+    );
+    expect(git(worktree, "rev-parse", "--git-common-dir")).toBe(
+      join(await realpath(movedPath), ".git"),
+    );
   });
 });

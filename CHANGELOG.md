@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a local Review of a repository moved on disk failing with a sentence about a missing branch or commit. Patchdesk now names the checkout path it can no longer find and says how to save the new one in Settings, in the **Local review** picker, the sidebar, on **Refresh**, and in the `review_local` and `refresh_review` MCP tools. Once the path is saved, the Reviews reopen on their sessions and Patchdesk repairs its review worktrees with `git worktree repair`. #488
+
 - Fixed the Diff file tree cutting names badly: truncated names now start at the same edge as the names beside them, folder names that fit are no longer cut, names that start with digits keep their order, and the name tooltip opens beside the row instead of over the Browse, Commits, and Threads tabs. #448
 
 - Fixed a local Review of a working tree with a large un-ignored folder, such as `node_modules`, failing with "Patchdesk could not read the local checkout" after a long wait. Above 5,000 untracked files or 100 MiB of them, Patchdesk now refuses before storing anything, says which limit the working tree is over, and names the largest untracked folders to add to `.gitignore`, in the **Local review** picker, on **Refresh**, and in the `review_local` and `refresh_review` MCP tools. #485

@@ -76,6 +76,8 @@ export type LocalReviewOpenFailure =
       readonly reason: "patch_too_large";
       readonly largestFiles: ReadonlyArray<string>;
     }
+  /** The configured checkout at `localPath` is gone, as after the repository moved on disk (#488). */
+  | { readonly reason: "checkout_missing"; readonly localPath: AbsolutePath }
   /** The checkout's `HEAD` is not the one the request expects; `currentBranch` is absent when it is detached. */
   | {
       readonly reason: "branch_mismatch";
@@ -132,6 +134,7 @@ export const localReviewFailureKinds = {
   not_found: "not_found",
   repository_not_local: "not_found",
   checkout_not_found: "not_found",
+  checkout_missing: "not_found",
   revision_not_found: "not_found",
   unmerged_index: "conflict",
   untracked_too_large: "conflict",
@@ -660,6 +663,8 @@ function mapPreparationFailure(
       return { reason: "repository_not_local" };
     case "CheckoutNotInRepository":
       return { reason: "checkout_not_found" };
+    case "CheckoutMissing":
+      return { reason: "checkout_missing", localPath: failure.localPath };
     case "UnmergedIndex":
       return { reason: "unmerged_index" };
     case "UntrackedTooLarge":
