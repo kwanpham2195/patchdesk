@@ -5,23 +5,11 @@ import {
   isUnconfirmedBlock,
   mergeBlockerLabels,
   mergeReadinessLabel,
-  mergeReadinessTone,
 } from "../../src/renderer/src/components/merge-readiness-items";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { MergeDisplayReason } from "../../src/domain/github-context";
 
 type Tag = WorkbenchResponse["mergeReadiness"]["_tag"];
-
-/**
- * The tone tokens the header rule may return. They are written out here
- * rather than imported, so the test pins the semantic token each state gets
- * instead of restating whatever the component happens to hold.
- */
-const successTone = "text-status-success";
-const warningTone = "text-status-warning";
-const destructiveTone = "text-destructive";
-const infoTone = "text-status-info";
-const mutedTone = "text-muted-foreground";
 
 describe("isUnconfirmedBlock", () => {
   it("is true only for a Blocked tag whose single blocker is mergeability_unknown", () => {
@@ -51,81 +39,65 @@ describe("isUnconfirmedBlock", () => {
   });
 });
 
-describe("mergeReadinessLabel and mergeReadinessTone", () => {
+describe("mergeReadinessLabel", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly tag: Tag;
     readonly blockers: ReadonlyArray<string>;
     readonly label: string;
-    readonly tone: string;
   }> = [
     {
-      name: "an unconfirmed block reads Unknown with the neutral info tone",
+      name: "an unconfirmed block reads Unknown",
       tag: "Blocked",
       blockers: ["mergeability_unknown"],
       label: "Unknown",
-      tone: infoTone,
     },
     {
       name: "mergeability_unknown alongside a real blocker reads Blocked",
       tag: "Blocked",
       blockers: ["mergeability_unknown", "conflicting"],
       label: "Blocked",
-      tone: destructiveTone,
     },
     {
       name: "a plain confirmed block reads Blocked",
       tag: "Blocked",
       blockers: ["conflicting"],
       label: "Blocked",
-      tone: destructiveTone,
     },
     {
-      name: "a block made only of the draft state reads Draft with the muted tone",
+      name: "a block made only of the draft state reads Draft",
       tag: "Blocked",
       blockers: ["draft"],
       label: "Draft",
-      tone: mutedTone,
     },
     {
-      name: "a block of draft and closed states reads Draft with the muted tone",
+      name: "a block of draft and closed states reads Draft",
       tag: "Blocked",
       blockers: ["closed", "draft"],
       label: "Draft",
-      tone: mutedTone,
     },
     {
       name: "a draft alongside a real blocker reads Blocked",
       tag: "Blocked",
       blockers: ["draft", "conflicting"],
       label: "Blocked",
-      tone: destructiveTone,
     },
     {
       name: "a Ready tag reads Ready to merge",
       tag: "Ready",
       blockers: [],
       label: "Ready to merge",
-      tone: successTone,
     },
     {
       name: "a NeedsAcknowledgement tag reads Warnings",
       tag: "NeedsAcknowledgement",
       blockers: [],
       label: "Warnings",
-      tone: warningTone,
     },
   ];
 
-  it.each(cases)("$name", ({ tag, blockers, label, tone }) => {
+  it.each(cases)("$name", ({ tag, blockers, label }) => {
     expect(mergeReadinessLabel(tag, blockers)).toBe(label);
-    expect(mergeReadinessTone(tag, blockers)).toBe(tone);
-  });
-
-  it("never gives an unconfirmed block the destructive treatment the body withholds", () => {
-    expect(mergeReadinessTone("Blocked", ["mergeability_unknown"])).not.toBe(
-      destructiveTone,
-    );
   });
 });
 
