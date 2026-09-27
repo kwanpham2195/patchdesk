@@ -5,7 +5,6 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { definedProps } from "../../../domain/defined-props";
 import { changeScopeFromPatch } from "../../../domain/change-scope";
 import type { LocalPatchView } from "../../../domain/local-patch-view";
-import { parseUnifiedPatch } from "../../../domain/patch";
 import {
   deriveConversationThreadEntries,
   type ConversationThreadRow,
@@ -17,6 +16,7 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import { Conversation } from "./conversation";
 import { DiffWorkbench } from "./diff-workbench";
 import { ReviewDiffPane } from "./review-diff-pane";
+import { ReviewEmptyPatch } from "./review-empty-patch";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import {
@@ -70,6 +70,7 @@ import { useSinceReviewMode } from "../hooks/use-since-review-mode";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
 import type { ViewedFilesControls } from "../hooks/use-viewed-files";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
+import { useReviewFileSelection } from "../hooks/use-review-file-selection";
 import { useLocalNotesNavigation } from "../hooks/use-local-notes-navigation";
 import { usePendingReviewDrafts } from "../hooks/use-pending-review-drafts";
 import {
@@ -442,7 +443,11 @@ export function ReviewWorkbench({
   const narrowedDiff =
     selectedCommitSha !== undefined || sincePatch !== undefined;
   const commitDiff =
-    commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
+    selectedCommitSha !== undefined &&
+    commitDiffState._tag === "Ready" &&
+    commitDiffState.projection.commit.sha === selectedCommitSha
+      ? commitDiffState.projection
+      : undefined;
   // Only a diff whose new side is the represented head can anchor comments on GitHub.
   const headSideDiff =
     selectedCommitSha === undefined
@@ -551,23 +556,25 @@ export function ReviewWorkbench({
         : annotationsInPatch(annotations, sincePatch),
     [annotations, sincePatch],
   );
-  const narrowerPatch = sincePatch ?? (onOtherView ? reviewPatch : undefined);
-  const narrowerPaths = useMemo(
-    () =>
-      narrowerPatch === undefined
-        ? undefined
-        : new Set(parseUnifiedPatch(narrowerPatch).map((file) => file.newPath)),
-    [narrowerPatch],
-  );
-  // The full Review's selection drives the since-review diff or another patch view only while that file is still in it.
-  const diffSelectedPath =
-    selectedPath === undefined ||
-    selectedCommitSha !== undefined ||
-    narrowerPaths?.has(selectedPath) === false
-      ? undefined
-      : selectedPath;
-  const commitDiffError = commitDiffState._tag === "Failed";
+  const commitDiffError =
+    commitDiffState._tag === "Failed" &&
+    commitDiffState.sha === selectedCommitSha;
   const displayedPatch = commitDiff?.patch ?? sincePatch ?? reviewPatch;
+  const selectionReady =
+    (selectedCommitSha === undefined || commitDiff !== undefined) &&
+    (!onOtherView ||
+      selectedCommitSha !== undefined ||
+      localPatchView?.status === "ready");
+  const { selectedPath: diffSelectedPath, activePath: navigatorActivePath } =
+    useReviewFileSelection({
+      patch: displayedPatch,
+      ready: selectionReady,
+      visiblePaths: scopeFilteredPaths,
+      selectedPath,
+      activePath,
+      preferSelectedPath:
+        selectedCommitSha !== undefined || preferences.fileMode === "selected",
+    });
   const shownFindingCounts = onOtherView
     ? NO_FINDING_COUNTS
     : findingCountsByPath;
@@ -708,7 +715,11 @@ export function ReviewWorkbench({
               >
                 {navigatorVisible ? (
                   <ReviewNavigator
-                    patch={sincePatch ?? reviewPatch ?? ""}
+                    patch={
+                      selectedCommitSha !== undefined
+                        ? (commitDiff?.patch ?? "")
+                        : (sincePatch ?? reviewPatch ?? "")
+                    }
                     conversationThreadEntries={conversationThreadEntries}
                     findingCountsByPath={shownFindingCounts}
                     section={section}
@@ -731,8 +742,8 @@ export function ReviewWorkbench({
                               ),
                             },
                       visiblePaths: scopeFilteredPaths,
-                      selectedPath,
-                      activePath,
+                      selectedPath: diffSelectedPath,
+                      activePath: navigatorActivePath,
                       selectedCommitSha,
                       selectedThreadId,
                       lastLooked: model.review.lastLooked,
@@ -781,7 +792,8 @@ export function ReviewWorkbench({
                     >
                       Loading commit diff…
                     </p>
-                  ) : selectedCommitSha === undefined &&
+                  ) : selectedCommitSha !== undefined &&
+                    commitDiffError ? null : selectedCommitSha === undefined &&
                     onOtherView &&
                     localPatchView?.status !== "ready" ? (
                     <>
@@ -806,6 +818,8 @@ export function ReviewWorkbench({
                     <p className="p-6 text-sm text-muted-foreground">
                       {NO_PATCH_AVAILABLE}
                     </p>
+                  ) : selectionReady && diffSelectedPath === undefined ? (
+                    <ReviewEmptyPatch viewControl={localViewControl} />
                   ) : (
                     <>
                       <DiffWorkbench
@@ -830,19 +844,17 @@ export function ReviewWorkbench({
                                 }),
                               },
                             })}
-                        {...(diffSelectedPath === undefined
-                          ? {}
-                          : {
-                              controlledSelectedPath: diffSelectedPath,
-                              onSelectedPathChange: (path: string) => {
-                                commitWorkbenchPosition({
-                                  activeTab: "diff",
-                                  section,
-                                  selectedPath: path,
-                                });
-                                setActivePath(path);
-                              },
-                            })}
+                        {...definedProps({
+                          controlledSelectedPath: diffSelectedPath,
+                        })}
+                        onSelectedPathChange={(path: string) => {
+                          commitWorkbenchPosition({
+                            activeTab: "diff",
+                            section,
+                            selectedPath: path,
+                          });
+                          setActivePath(path);
+                        }}
                         {...(selectedCommitSha === undefined
                           ? {
                               onActiveFileChange: (path: string) =>

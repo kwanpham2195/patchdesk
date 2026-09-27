@@ -177,6 +177,11 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
         .getAttribute("data-selected-path"),
     ).toBe("src/commit-2.ts");
     expect(
+      document
+        .querySelector("[data-active-path]")
+        ?.getAttribute("data-active-path"),
+    ).toBe("src/commit-2.ts");
+    expect(
       screen.queryByRole("article", { name: "Note on src/a.ts:1" }),
     ).toBeNull();
     expect(screen.queryAllByRole("button", { name: /^Add note on/ })).toEqual(
@@ -192,6 +197,49 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
         .getByRole("button", { name: "Uncommitted" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("region", { name: "Review diff" })
+          .getAttribute("data-selected-path"),
+      ).toBe("src/a.ts"),
+    );
+    expect(
+      document
+        .querySelector("[data-active-path]")
+        ?.getAttribute("data-active-path"),
+    ).toBe("src/a.ts");
+  });
+
+  it("shows only the error when a commit slice cannot be read, then returns to the full diff", async () => {
+    bridge((input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/commit-diff")
+        throw new Error("Commit patch unreadable");
+      if (input.path === "/v1/reviews/diff-file")
+        return { state: "unavailable", reason: "path_unavailable" };
+      throw new Error(input.path);
+    });
+    const user = userEvent.setup();
+    render(
+      <SharedReviewScreen
+        initial={sharedReview({
+          kind: "local_branch",
+          branch: "feature",
+          baseBranch: "main",
+        })}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: /^Commits/ }));
+    await screen.findByText("This commit diff could not be loaded.");
+    expect(screen.queryByRole("region", { name: "Review diff" })).toBeNull();
+    await user.click(screen.getByRole("tab", { name: "Browse" }));
+    expect(
+      screen
+        .getByRole("region", { name: "Review diff" })
+        .getAttribute("data-selected-path"),
+    ).toBe("src/a.ts");
   });
 
   it("shows no Commits section on a commit Review", async () => {

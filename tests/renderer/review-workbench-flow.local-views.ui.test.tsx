@@ -222,6 +222,152 @@ describe("ReviewWorkbenchFlow patch views", () => {
   });
 });
 
+describe("ReviewWorkbenchFlow selection across patch views", () => {
+  it("reconciles the selected file and tree highlight across Committed and Combined", async () => {
+    bridge((input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/local-patch-view") {
+        return {
+          sessionId: "session-a",
+          view: "committed",
+          patch: filePatch("src/committed.ts"),
+          patchHash: "d".repeat(64),
+          viewedPaths: [],
+        };
+      }
+      if (input.path === "/v1/reviews/diff-file")
+        return { state: "unavailable", reason: "path_unavailable" };
+      throw new Error(input.path);
+    });
+    const user = setupCodeViewUser();
+    const initial = sharedReview();
+    render(
+      <ReviewWorkbenchFlow
+        workbench={initial}
+        initialUiState={{
+          activeTab: "diff",
+          section: "files",
+          selectedPath: "src/combined.ts",
+        }}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Committed" }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("region", { name: "Review diff" })
+          .getAttribute("data-selected-path"),
+      ).toBe("src/committed.ts"),
+    );
+    expect(
+      document
+        .querySelector("[data-active-path]")
+        ?.getAttribute("data-active-path"),
+    ).toBe("src/committed.ts");
+    await user.click(screen.getByRole("button", { name: "Combined" }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("region", { name: "Review diff" })
+          .getAttribute("data-selected-path"),
+      ).toBe("src/combined.ts"),
+    );
+    expect(
+      document
+        .querySelector("[data-active-path]")
+        ?.getAttribute("data-active-path"),
+    ).toBe("src/combined.ts");
+  });
+});
+
+describe("ReviewWorkbenchFlow empty patch view", () => {
+  it("shows no selected file in an empty view and restores a valid selection on Combined", async () => {
+    bridge((input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/local-patch-view")
+        return {
+          sessionId: "session-a",
+          view: "committed",
+          patch: "",
+          patchHash: "d".repeat(64),
+          viewedPaths: [],
+        };
+      if (input.path === "/v1/reviews/diff-file")
+        return { state: "unavailable", reason: "path_unavailable" };
+      throw new Error(input.path);
+    });
+    const user = setupCodeViewUser();
+    render(<SharedReviewScreen initial={sharedReview()} />);
+    await user.click(screen.getByRole("button", { name: "Committed" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Review diff" })).toBeNull(),
+    );
+    expect(screen.queryByRole("treeitem")).toBeNull();
+    expect(screen.getByRole("status")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Combined" }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("region", { name: "Review diff" })
+          .getAttribute("data-selected-path"),
+      ).toBe("src/combined.ts"),
+    );
+  });
+});
+
+describe("ReviewWorkbenchFlow selection after Refresh", () => {
+  it("shows a file in the new patch when the previously selected file disappears", async () => {
+    bridge((input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/diff-file")
+        return { state: "unavailable", reason: "path_unavailable" };
+      throw new Error(input.path);
+    });
+    const initial = sharedReview();
+    const props = {
+      initialUiState: {
+        activeTab: "diff" as const,
+        section: "files" as const,
+        selectedPath: "src/combined.ts",
+      },
+      onWorkbenchReplace: vi.fn(),
+      onWorkbenchPatch: vi.fn(),
+      onNavigationStateChange: vi.fn(),
+    };
+    const { rerender } = render(
+      <ReviewWorkbenchFlow workbench={initial} {...props} />,
+    );
+    rerender(
+      <ReviewWorkbenchFlow
+        workbench={{
+          ...initial,
+          fullPatch: filePatch("src/after-refresh.ts"),
+          revision: { ...initial.revision, reviewedHeadSha: "e".repeat(40) },
+        }}
+        {...props}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("region", { name: "Review diff" })
+          .getAttribute("data-selected-path"),
+      ).toBe("src/after-refresh.ts"),
+    );
+    expect(
+      document
+        .querySelector("[data-active-path]")
+        ?.getAttribute("data-active-path"),
+    ).toBe("src/after-refresh.ts");
+  });
+});
+
 describe("ReviewWorkbenchFlow notes across patch views", () => {
   // jsdom has no constructable stylesheets; Pierre's CodeView, which renders inline notes, only needs the call to exist.
   const stubbedReplaceSync = CSSStyleSheet.prototype.replaceSync === undefined;
