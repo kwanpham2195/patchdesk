@@ -7,27 +7,18 @@ import { casesHandled } from "../../domain/result";
 
 /**
  * The open request that reads a stored local source from the checkout again.
- * A working tree sends the `HEAD` it was opened on, so a branch switch is
- * refused rather than opening the current branch's Review.
+ * A shared Review sends the branch it was opened on, so a branch switch is
+ * refused rather than opening the current branch's Review. Undefined for a
+ * working-tree or branch Review stored before the shared Review (#555),
+ * which nothing reads again.
  */
 export function localReviewSourceInput(
   source: Exclude<WorkbenchReviewSource, { readonly kind: "pull_request" }>,
-): LocalReviewSourceInput {
+): LocalReviewSourceInput | undefined {
   switch (source.kind) {
     case "working_tree":
-      return {
-        kind: "working_tree",
-        expectedHead:
-          source.branch === undefined
-            ? { kind: "detached" }
-            : { kind: "branch", branch: source.branch },
-      };
     case "branch":
-      return {
-        kind: "branch",
-        branch: source.branch,
-        baseBranch: source.baseBranch,
-      };
+      return undefined;
     case "local_branch":
       return {
         kind: "local_branch",
@@ -50,7 +41,7 @@ const branchMismatchBodySchema = v.object({
   currentBranch: v.nullable(v.string()),
 });
 
-/** The sentence a working-tree reopen refused for a branch switch shows; undefined for any other failure. */
+/** The sentence a shared Review reopen refused for a branch switch shows; undefined for any other failure. */
 export function branchMismatchMessage(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this reads one refusal off it.
   cause: unknown,
@@ -58,7 +49,7 @@ export function branchMismatchMessage(
 ): string | undefined {
   if (
     !(cause instanceof PatchdeskApiError) ||
-    (source.kind !== "working_tree" && source.kind !== "local_branch") ||
+    source.kind !== "local_branch" ||
     source.expectedHead === undefined
   )
     return undefined;
@@ -73,7 +64,7 @@ export function branchMismatchMessage(
 }
 
 /**
- * The sentence for a stored working-tree Review whose load was refused for a
+ * The sentence for a stored shared Review whose load was refused for a
  * branch switch (#477). Only the checkout's branch is known there, since the
  * load names the Review by id. Undefined for any other failure.
  */

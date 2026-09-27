@@ -2,7 +2,13 @@ import { useState } from "react";
 import { FolderGit2 } from "lucide-react";
 
 import type { LocalReviewSourceInput } from "../flows/use-inbox-review-opening";
-import { useApiProbe } from "../hooks/use-api-probe";
+import { useApiProbe, type ApiProbeState } from "../hooks/use-api-probe";
+import {
+  inferredBaseReason,
+  parseLocalBranches,
+  sharedReviewSource,
+  type LocalBranches,
+} from "../local-branches";
 import { parseLocalCheckouts, type LocalCheckout } from "../local-checkouts";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -14,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { Field, FieldLabel } from "./ui/field";
+import { Field, FieldDescription, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import {
   Select,
@@ -26,22 +32,25 @@ import {
 } from "./ui/select";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
-type SourceKind = LocalReviewSourceInput["kind"];
+type SourceKind = "local_branch" | "commit";
 
 /**
  * The Pull requests screen's entry to a local Review (ADR 0050): a button for
- * the Selected repository that opens a picker for the working tree, a branch
- * against a base branch, or one commit. Shown only for a repository with a
- * local checkout.
+ * the Selected repository that opens a picker for the shared Review of the
+ * checked-out branch against a base branch (#555), or one commit. Shown only
+ * for a repository with a local checkout.
  */
 export function OpenLocalReviewAction({
   repositoryLabel,
   checkoutsPath,
+  branchesPath,
   onOpen,
 }: {
   readonly repositoryLabel: string;
-  /** Where the repository's checkouts are listed; a working tree can be read from any of them (#489). */
+  /** Where the repository's checkouts are listed; a shared Review can be read from any of them (#489). */
   readonly checkoutsPath: string;
+  /** Where a checkout's branches and inferred base are listed; `undefined` names the configured checkout. */
+  readonly branchesPath: (checkout: string | undefined) => string;
   /** Rejects with the sentence to show; resolves once the Review is open. */
   readonly onOpen: (source: LocalReviewSourceInput) => Promise<void>;
 }): React.JSX.Element {
@@ -55,6 +64,7 @@ export function OpenLocalReviewAction({
         <LocalReviewSourceDialog
           repositoryLabel={repositoryLabel}
           checkoutsPath={checkoutsPath}
+          branchesPath={branchesPath}
           onOpen={onOpen}
           onOpenChange={setOpen}
         />
@@ -63,21 +73,27 @@ export function OpenLocalReviewAction({
   );
 }
 
-/** Mounted only while open, so cancelling drops the draft. */
-function LocalReviewSourceDialog({
+/**
+ * Mounted only while open, so cancelling drops the draft. The sidebar mounts
+ * it too, for a checkout whose branch has no shared Review or several (#555).
+ */
+export function LocalReviewSourceDialog({
   repositoryLabel,
   checkoutsPath,
+  branchesPath,
+  initialCheckout,
   onOpen,
   onOpenChange,
 }: {
   readonly repositoryLabel: string;
   readonly checkoutsPath: string;
+  readonly branchesPath: (checkout: string | undefined) => string;
+  /** The linked worktree to start on; absent starts on the configured checkout. */
+  readonly initialCheckout?: string;
   readonly onOpen: (source: LocalReviewSourceInput) => Promise<void>;
   readonly onOpenChange: (open: boolean) => void;
 }): React.JSX.Element {
-  const [kind, setKind] = useState<SourceKind>("working_tree");
-  const [branch, setBranch] = useState("");
-  const [baseBranch, setBaseBranch] = useState("main");
+  const [kind, setKind] = useState<SourceKind>("local_branch");
   const [commit, setCommit] = useState("");
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
@@ -86,10 +102,21 @@ function LocalReviewSourceDialog({
     parseLocalCheckouts,
   );
   // Undefined reads the configured checkout; a listing that failed offers only that one.
-  const [checkout, setCheckout] = useState<string>();
+  const [checkout, setCheckout] = useState(initialCheckout);
   const listedCheckouts =
     checkouts.kind === "loaded" ? checkouts.value : ([] as const);
-  const source = sourceInput(kind, { branch, baseBranch, commit, checkout });
+  const path = branchesPath(checkout);
+  const branches = useApiProbe({ path, restartKey: path }, parseLocalBranches);
+  // Undefined takes the inferred base; the maintainer's pick replaces it.
+  const [pickedBase, setPickedBase] = useState<string>();
+  const listing = branches.kind === "loaded" ? branches.value : undefined;
+  const baseBranch = pickedBase ?? listing?.inferred?.baseBranch;
+  const source =
+    kind === "commit"
+      ? commitInput(commit)
+      : listing === undefined || baseBranch === undefined
+        ? undefined
+        : sharedReviewSource(baseBranch, listing.head, checkout);
 
   const submit = async (): Promise<void> => {
     if (source === undefined) return;
@@ -142,39 +169,28 @@ function LocalReviewSourceDialog({
             }}
           >
             <TabsList aria-label="Review source">
-              <TabsTrigger value="working_tree">Working tree</TabsTrigger>
-              <TabsTrigger value="branch">Branch</TabsTrigger>
+              <TabsTrigger value="local_branch">Shared</TabsTrigger>
               <TabsTrigger value="commit">Commit</TabsTrigger>
             </TabsList>
           </Tabs>
-          {kind === "working_tree" ? (
+          {kind === "local_branch" ? (
             <>
               {listedCheckouts.length > 1 ? (
                 <CheckoutSelect
                   checkouts={listedCheckouts}
                   value={checkout}
-                  onChange={setCheckout}
+                  onChange={(next) => {
+                    setCheckout(next);
+                    setPickedBase(undefined);
+                  }}
                 />
               ) : null}
-              <p className="text-sm text-muted-foreground">
-                Staged, unstaged, and untracked changes against HEAD.
-              </p>
+              <SharedReviewBase
+                branches={branches}
+                baseBranch={baseBranch}
+                onChange={setPickedBase}
+              />
             </>
-          ) : kind === "branch" ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <SourceField
-                id="local-review-branch"
-                label="Branch"
-                value={branch}
-                onChange={setBranch}
-              />
-              <SourceField
-                id="local-review-base-branch"
-                label="Base branch"
-                value={baseBranch}
-                onChange={setBaseBranch}
-              />
-            </div>
           ) : (
             <SourceField
               id="local-review-commit"
@@ -202,35 +218,88 @@ function LocalReviewSourceDialog({
   );
 }
 
-function sourceInput(
-  kind: SourceKind,
-  fields: {
-    readonly branch: string;
-    readonly baseBranch: string;
-    readonly commit: string;
-    readonly checkout: string | undefined;
-  },
-): LocalReviewSourceInput | undefined {
-  const branch = fields.branch.trim();
-  const baseBranch = fields.baseBranch.trim();
-  const commit = fields.commit.trim().toLowerCase();
-  switch (kind) {
-    case "working_tree":
-      return fields.checkout === undefined
-        ? { kind }
-        : { kind, checkout: fields.checkout };
-    case "branch":
-      return branch === "" || baseBranch === ""
-        ? undefined
-        : { kind, branch, baseBranch };
-    case "commit":
-      return /^[0-9a-f]{4,64}$/.test(commit) ? { kind, commit } : undefined;
-    case "local_branch":
-      return undefined;
-  }
+function commitInput(value: string): LocalReviewSourceInput | undefined {
+  const commit = value.trim().toLowerCase();
+  return /^[0-9a-f]{4,64}$/.test(commit)
+    ? { kind: "commit", commit }
+    : undefined;
 }
 
-/** Picks the checkout the working tree is read from; the configured one is the default and sends no path. */
+/**
+ * The shared Review's base: the checkout's other local branches with the
+ * inferred one preselected and its reason beside it, and the bases this
+ * branch already has an open Review against.
+ */
+function SharedReviewBase({
+  branches,
+  baseBranch,
+  onChange,
+}: {
+  readonly branches: ApiProbeState<LocalBranches>;
+  readonly baseBranch: string | undefined;
+  readonly onChange: (baseBranch: string) => void;
+}): React.JSX.Element {
+  if (branches.kind === "checking")
+    return (
+      <p className="text-sm text-muted-foreground">Reading the branches…</p>
+    );
+  if (branches.kind === "error")
+    return (
+      <p className="text-sm text-muted-foreground">
+        Patchdesk could not read the checkout&apos;s branches.
+      </p>
+    );
+  const { head, branches: bases, inferred, reviewedBases } = branches.value;
+  const branch = head.kind === "branch" ? head.branch : "detached HEAD";
+  if (bases.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground">
+        {branch} is the only local branch, so there is no base to compare it
+        with. Create the base branch, or open one commit.
+      </p>
+    );
+  return (
+    <>
+      <p className="text-sm text-muted-foreground">
+        Every change on {branch} since it left the base branch, committed or
+        not: commits, staged, unstaged, and untracked files.
+      </p>
+      <Field>
+        <FieldLabel htmlFor="local-review-base-branch">Base branch</FieldLabel>
+        <Select
+          value={baseBranch ?? null}
+          items={bases.map((base) => ({ label: base, value: base }))}
+          onValueChange={(base) => {
+            if (base !== null) onChange(base);
+          }}
+        >
+          <SelectTrigger id="local-review-base-branch" aria-label="Base branch">
+            <SelectValue placeholder="Pick a base branch" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {bases.map((base) => (
+                <SelectItem key={base} value={base}>
+                  {base}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {inferred !== undefined && baseBranch === inferred.baseBranch ? (
+          <FieldDescription>{inferredBaseReason(inferred)}</FieldDescription>
+        ) : null}
+      </Field>
+      {reviewedBases.length === 0 ? null : (
+        <p className="text-sm text-muted-foreground">
+          {branch} has open reviews against {reviewedBases.join(", ")}.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Picks the checkout the shared Review is read from; the configured one is the default and sends no path. */
 function CheckoutSelect({
   checkouts,
   value,

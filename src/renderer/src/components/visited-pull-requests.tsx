@@ -17,8 +17,8 @@ import {
 import type { AppDestination } from "@/routes";
 
 /**
- * Opens the working tree of the branch the repository's checkout is on now
- * (#479), through the local open path, which reads the checkout again.
+ * Opens the shared Review of the branch the repository's checkout is on now
+ * (#479, #555), through the local open path, which reads the checkout again.
  */
 export type LocalRepositoryOpen = (row: SidebarLocalRepositoryRow) => void;
 

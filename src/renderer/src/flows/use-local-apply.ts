@@ -33,7 +33,7 @@ function freshSessionState(sessionId: string): SessionApplyState {
   };
 }
 
-/** Selection, the Apply write, and the file check for one working-tree Review's Analysis. */
+/** Selection, the Apply write, and the file check for one shared Review's Analysis. */
 export type LocalApplyControls = {
   readonly selectedIds: ReadonlySet<string>;
   readonly setSelected: (findingId: string, selected: boolean) => void;
@@ -121,7 +121,7 @@ function refusalMessage(cause: unknown): string {
 }
 
 /**
- * Owns the Apply suggestion flow on a working-tree local Review (ADR 0050).
+ * Owns the Apply suggestion flow on a shared local Review (ADR 0050, #555).
  * The request names Findings only; the main process derives every change.
  * Undefined for any other Review, and while the Analysis is not current.
  */
@@ -302,7 +302,7 @@ export function useLocalApply({
   );
 
   if (
-    workbench.session.key.source.kind !== "working_tree" ||
+    workbench.session.key.source.kind !== "local_branch" ||
     workbench.review.status !== "open" ||
     workbench.insights.analysis.status !== "current" ||
     retained === undefined

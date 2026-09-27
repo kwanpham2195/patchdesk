@@ -52,8 +52,8 @@ type SidebarPullRequestRow = {
 
 /**
  * One checkout of a repository with at least one visited local Review (#479,
- * #489). A click opens the working tree of the branch checked out there at
- * that moment, so the row names no source and no branch. `reviewIds` holds
+ * #489). A click opens the shared Review of the branch checked out there at
+ * that moment (#555), so the row names no source and no branch. `reviewIds` holds
  * every local Review of that checkout, so the row reads as selected while any
  * of them is open.
  */

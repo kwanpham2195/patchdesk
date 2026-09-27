@@ -29,7 +29,14 @@ describe("useReviewWorkbenchPosition", () => {
       ...model,
       session: {
         ...session,
-        key: { ...session.key, source: { kind: "working_tree" as const } },
+        key: {
+          ...session.key,
+          source: {
+            kind: "local_branch" as const,
+            branch: "main",
+            baseBranch: "develop",
+          },
+        },
       },
     };
     const { result } = renderHook(() =>

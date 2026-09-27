@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { isApiErrorCode, requestJson } from "../api-client";
 import {
@@ -45,7 +45,9 @@ function refreshFailure(
  * under the Review lock: unchanged content answers with the same session, and
  * changed content with a new one that carries the Local drafts. There is no
  * timer; Refresh runs only when the maintainer asks (ADR 0032). Undefined on
- * a pull request Review, whose refresh reads GitHub.
+ * a pull request Review, whose refresh reads GitHub, and on a working-tree or
+ * branch Review stored before the shared Review (#555), which nothing reads
+ * again.
  */
 export function useLocalRefresh({
   workbench,
@@ -61,8 +63,15 @@ export function useLocalRefresh({
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
 
+  const reopen = useMemo(
+    () =>
+      source.kind === "pull_request"
+        ? undefined
+        : localReviewSourceInput(source),
+    [source],
+  );
   const refresh = useCallback(async (): Promise<void> => {
-    if (refreshingRef.current || source.kind === "pull_request") return;
+    if (refreshingRef.current || reopen === undefined) return;
     refreshingRef.current = true;
     setRefreshing(true);
     setError(undefined);
@@ -77,17 +86,14 @@ export function useLocalRefresh({
         setError("The refreshed review could not be read.");
       else onWorkbenchReplace(next);
     } catch (cause: unknown) {
-      setError(
-        branchMismatchMessage(cause, localReviewSourceInput(source)) ??
-          refreshFailure(cause),
-      );
+      setError(branchMismatchMessage(cause, reopen) ?? refreshFailure(cause));
     } finally {
       refreshingRef.current = false;
       setRefreshing(false);
     }
-  }, [onWorkbenchReplace, profileId, reviewId, source]);
+  }, [onWorkbenchReplace, profileId, reviewId, reopen]);
 
-  if (source.kind === "pull_request") return undefined;
+  if (reopen === undefined) return undefined;
   return error === undefined
     ? { refresh, refreshing }
     : { refresh, refreshing, error };

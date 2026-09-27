@@ -64,7 +64,7 @@ function workingTreeReview(
       id: sessionId,
       key: {
         ...base.session.key,
-        source: { kind: "working_tree", branch: "main" },
+        source: { kind: "local_branch", branch: "main", baseBranch: "develop" },
       },
     },
     pullRequest: undefined,

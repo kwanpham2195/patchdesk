@@ -15,6 +15,7 @@ import { Card, CardContent } from "./components/ui/card";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
 import { DiagnosticsModal } from "./components/diagnostics-modal";
+import { LocalReviewSourceDialog } from "./components/local-review-source-dialog";
 import { SettingsModal } from "./components/settings-modal";
 import type { DashboardScreenState } from "./renderer-models";
 import {
@@ -59,20 +60,20 @@ import { inboxFreshnessLabel } from "./inbox-freshness";
 import { firstInboxRequest } from "./inbox-request";
 import { parseGitHubHost } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import {
-  sameRepositoryIdentity,
-  type RepositoryIdentity,
-} from "../../domain/repository-identity";
+import { sameRepositoryIdentity } from "../../domain/repository-identity";
 import { definedProps } from "../../domain/defined-props";
 import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
+import {
+  useLocalRowOpen,
+  type LocalCheckoutTarget,
+} from "./flows/use-local-row-open";
 import type { SidebarLocalRepositoryRow } from "./sidebar-contracts";
 import { requestJson } from "./api-client";
+import { localBranchesPath } from "./local-branches";
+import { localCheckoutsPath } from "./local-checkouts";
 import { appLog } from "./lib/logger";
 
 export type { ReviewWorkbenchLoader };
-
-/** A repository checkout a sidebar row opens; `checkout` names a linked worktree (#489). */
-type LocalCheckoutTarget = RepositoryIdentity & { readonly checkout?: string };
 
 type FixtureContentComponent = React.ComponentType<{
   readonly hash: string;
@@ -304,25 +305,14 @@ function AppContent({
     reviewOpening;
   // The open that waits behind the leave-confirmation for a local row click (#479).
   const [parkedLocalOpen, setParkedLocalOpen] = useState<LocalCheckoutTarget>();
-  // Opens the working tree of whichever branch the checkout is on now, so a
-  // branch switch lands on that branch's own Review (#479). A refused open
-  // calls `leave` before reporting; a parked open has already left.
-  const openCurrentWorkingTree = useCallback(
-    async (target: LocalCheckoutTarget, leave: () => void): Promise<void> => {
-      try {
-        await openLocalReview(target, {
-          kind: "working_tree",
-          ...definedProps({ checkout: target.checkout }),
-        });
-      } catch (cause) {
-        leave();
-        reportOpenError(
-          cause instanceof Error ? cause.message : "Could not open review.",
-        );
-      }
-    },
-    [openLocalReview, reportOpenError],
-  );
+  const profileId = dashboard?.profile.id;
+  const localRowOpen = useLocalRowOpen({
+    profileId,
+    openLocalReview,
+    reportOpenError,
+  });
+  const { openRow: openLocalRow } = localRowOpen;
+  const rowDialogTarget = localRowOpen.dialogTarget;
   const openLocalRepositoryFromSidebar = useCallback(
     ({ host, owner, repo, checkout }: SidebarLocalRepositoryRow): void => {
       const target = { host, owner, repo, ...definedProps({ checkout }) };
@@ -330,11 +320,9 @@ function AppContent({
         setParkedLocalOpen(target);
         return;
       }
-      void openCurrentWorkingTree(target, () =>
-        navigate({ kind: "dashboard" }),
-      );
+      void openLocalRow(target, () => navigate({ kind: "dashboard" }));
     },
-    [navigate, navigationState, openCurrentWorkingTree],
+    [navigate, navigationState, openLocalRow],
   );
   const openPullRequestFromPalette = useCallback(
     (ref: PullRequestRef): void => {
@@ -477,10 +465,7 @@ function AppContent({
                   if (parkedLocalOpen !== undefined) {
                     // Leaving first unmounts the draft this confirmation discards.
                     performNavigation({ kind: "dashboard" });
-                    void openCurrentWorkingTree(
-                      parkedLocalOpen,
-                      () => undefined,
-                    );
+                    void openLocalRow(parkedLocalOpen, () => undefined);
                   } else if (pendingDestination !== undefined)
                     performNavigation(pendingDestination);
                   setNavigationState("clear");
@@ -494,6 +479,20 @@ function AppContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {rowDialogTarget === undefined || profileId === undefined ? null : (
+        <LocalReviewSourceDialog
+          repositoryLabel={`${rowDialogTarget.owner}/${rowDialogTarget.repo}`}
+          checkoutsPath={localCheckoutsPath(profileId, rowDialogTarget)}
+          branchesPath={(checkout) =>
+            localBranchesPath(profileId, rowDialogTarget, checkout)
+          }
+          {...definedProps({ initialCheckout: rowDialogTarget.checkout })}
+          onOpen={(source) => openLocalReview(rowDialogTarget, source)}
+          onOpenChange={(open) => {
+            if (!open) localRowOpen.closeDialog();
+          }}
+        />
+      )}
     </TooltipProvider>
   );
 

@@ -40,6 +40,7 @@ import {
   type RepositoryIdentity,
 } from "../../../domain/repository-identity";
 import { OpenLocalReviewAction } from "../components/local-review-source-dialog";
+import { localBranchesPath } from "../local-branches";
 import { localCheckoutsPath } from "../local-checkouts";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
@@ -148,7 +149,7 @@ export function InboxFlow({
    * Supplied only while `destination` is that restored one, so a Review the
    * maintainer opened in this session still reports its failure. */
   readonly onBootRestoreMissing?: () => void;
-  /** Leaves the workbench route when its stored working-tree Review is refused for a branch switch. */
+  /** Leaves the workbench route when its stored shared Review is refused for a branch switch. */
   readonly onStoredReviewRefused?: () => void;
   readonly reviewOpening: InboxReviewOpeningControls;
 }): React.JSX.Element {
@@ -261,6 +262,9 @@ export function InboxFlow({
           dashboard.profile.id,
           localRepository,
         )}
+        branchesPath={(checkout) =>
+          localBranchesPath(dashboard.profile.id, localRepository, checkout)
+        }
         onOpen={(source) =>
           reviewOpening.openLocalReview(localRepository, source)
         }
