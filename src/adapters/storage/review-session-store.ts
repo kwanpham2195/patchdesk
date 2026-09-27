@@ -110,6 +110,7 @@ const localSessionSchema = v.strictObject({
     headSha: v.string(),
     baseSha: v.string(),
   }),
+  checkoutHeadSha: v.optional(v.string()),
 });
 
 type RawPullRequestSession = v.InferOutput<typeof pullRequestSessionSchema>;
@@ -372,7 +373,15 @@ function parseLocalSession(
 ): Result<LocalReviewSession, StorageFailure> {
   const source = parseStoredLocalReviewSource(raw.key.source);
   if (source._tag === "err") return invalidRead();
-  return parseSessionFields(raw, source.value);
+  const fields = parseSessionFields(raw, source.value);
+  if (fields._tag === "err") return fields;
+  // A shared Review's session always records the checkout HEAD its snapshot was taken on; no other kind has one.
+  if (raw.checkoutHeadSha === undefined)
+    return source.value.kind === "local_branch" ? invalidRead() : fields;
+  const checkoutHeadSha = parseGitSha(raw.checkoutHeadSha);
+  if (source.value.kind !== "local_branch" || checkoutHeadSha._tag === "err")
+    return invalidRead();
+  return ok({ ...fields.value, checkoutHeadSha: checkoutHeadSha.value });
 }
 
 /** Parses the fields every kind shares and checks the id against the key. */

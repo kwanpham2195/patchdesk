@@ -1,5 +1,6 @@
 import { realpath } from "node:fs/promises";
 
+import { detachedHeadBranch } from "../domain/ids";
 import { casesHandled } from "../domain/result";
 import type { LocalReviewSource } from "../domain/review-source";
 import { isNamedCheckoutGone, type LocalCheckoutReads } from "./local-checkout";
@@ -9,11 +10,11 @@ import { isNamedCheckoutGone, type LocalCheckoutReads } from "./local-checkout";
  * certainly no longer resolves in it: its branch or base branch was deleted,
  * or its commit is gone. Every read exits 0 whether or not the name exists,
  * so a failed read (timeout, spawn failure) means unknown and keeps the
- * Review. Only ref and object lookups run, never the snapshot a working-tree
- * open writes. A detached working tree names nothing to lose, so it is never
- * gone. A named checkout that `git worktree list` no longer lists as live is
- * gone too (#489); a failed listing, or a locked worktree whose directory is
- * missing, keeps the Review.
+ * Review. Only ref and object lookups run, never the snapshot an open writes.
+ * A shared Review on a detached `HEAD` has only its base branch to lose. A
+ * named checkout that `git worktree list` no longer lists as live is gone too
+ * (#489); a failed listing, or a locked worktree whose directory is missing,
+ * keeps the Review.
  */
 export async function isLocalSourceGone(
   reads: LocalCheckoutReads,
@@ -49,9 +50,12 @@ export async function isLocalSourceGone(
         source.branch !== undefined &&
         (await branchGone(source.branch)) === true
       );
-    case "branch": {
+    case "branch":
+    case "local_branch": {
       const [branch, baseBranch] = await Promise.all([
-        branchGone(source.branch),
+        source.branch === detachedHeadBranch
+          ? false
+          : branchGone(source.branch),
         branchGone(source.baseBranch),
       ]);
       if (branch === undefined || baseBranch === undefined) return false;
