@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a queued Viewed mark disappearing when you switched patch views and marked another file before the earlier save answered. Pending marks now finish saving in their own view, and a failed save returns that view to its stored marks for retry. #573
+
 - Fixed losing a note's text when **Add note** was refused after switching patch views. Once the save is refused, the text returns as a Saved draft to place on another line; repeated selection keeps the restored text, and a successful save offers no duplicate. #567
 
 - Fixed Refresh marking a Committed-view note Needs attention when Git failed to read its file at `HEAD`. Refresh now refuses and keeps the Review and drafts unchanged; a genuinely missing file still follows the carry rule. #568
