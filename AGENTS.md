@@ -179,11 +179,18 @@ Tests and gates:
 Process:
 
 - Static copy, alert, and message changes go straight to main. Behaviour changes get their own PR with before/after screenshots in the body (`before-and-after` skill). Prompt and schema changes are reviewed in chat first.
-- Throwaway PRs are always fine for live checks, including writes. Real PRs still need a per-write ask.
+- Throwaway PRs are always fine for live checks, including writes. For real PRs, follow the scoped write approval under Standing authorization.
 - `Closes #n` auto-closes only the first number after it; repeat the keyword per issue, and close finished issues before starting the next.
 - A PR that fixes an issue says `Closes #n` in its body, and after it lands `gh issue view <n> --json state` must read `CLOSED`. A CHANGELOG citation alone closes nothing: nine fixed bugs stayed open for weeks that way (closed 2026-09-26). Before fixing an old issue, check CHANGELOG and `git log` for its number.
-- Once an action is approved, do not re-ask for its sub-steps. Ask again only for a new destructive or outward action.
+- Once an action is approved, do not re-ask for its sub-steps. Follow Standing authorization for approved programs and new actions.
 - One review pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
+
+## Standing authorization
+
+- When the maintainer approves execution of a plan or multi-issue program, record its scope, authorized actions, delegation budget, and completion condition in the owning plan. Continue approved slices without asking to proceed. Use the approved budget without repeated requests; do not exceed the plan or harness limit without approval.
+- Read-only screenshots and the dev-pane restarts authorized above need no additional approval. An approval to draft or review a plan does not authorize its execution.
+- Pushes, real-PR creation and updates, and merges are authorized across slices only when the approved execution plan explicitly names those actions and the slices they cover. The parent performs those writes after required gates and reviews. Otherwise ask before each outward write. Ask before removing code that looks intentional, changing scope, or taking a new destructive action; stop at a failed gate or required human review.
+- For a `/goal` to land a program, an open PR is unfinished. Finish when the specified PRs are merged and their issues verified closed, or report a concrete blocker only the maintainer can clear once. Do not repeat the same progress summary while the blocker is unchanged.
 
 ## Git
 
@@ -199,7 +206,7 @@ Committing:
 
 Stopping:
 
-- Stop for a user-requested human review, an explicit pause, a decision the plan does not cover, a failed gate, or a GitHub write. Name the review, pause, decision, or blocker; "Continue with the next step?" is not a stop. The `delegated-execution` skill has the full rule.
+- Stop for a user-requested human review, an explicit pause, a decision the plan does not cover, a failed gate, or a GitHub write that lacks scoped approval. Name the review, pause, decision, or blocker; "Continue with the next step?" is not a stop. The `delegated-execution` skill has the full rule.
 
 Never run (destroys other agents' work or bypasses checks):
 
