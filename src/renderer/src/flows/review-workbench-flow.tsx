@@ -160,12 +160,13 @@ export function ReviewWorkbenchFlow({
       workbench.insights.analysis.retained?.runId,
     ]),
   });
+  const localPatchView = useLocalPatchView({ workbench });
   const localApply = useLocalApply({
     workbench,
+    view: localPatchView?.selected,
     onWorkbenchReplace: replaceWorkbench,
     onWorkbenchPatch,
   });
-  const localPatchView = useLocalPatchView({ workbench });
   // One owner for the Insights tab's Local drafts card and the Diff tab's notes.
   const localDrafts = useLocalDrafts({
     workbench,
@@ -255,6 +256,9 @@ export function ReviewWorkbenchFlow({
               onWorkbenchPatch={onWorkbenchPatch}
               onReprepare={requestReprepare}
               {...(profileLabel === undefined ? {} : { profileLabel })}
+              {...(localPatchView === undefined
+                ? {}
+                : { patchView: localPatchView.selected })}
               {...(localApply === undefined ? {} : { localApply })}
               {...(localDrafts === undefined ? {} : { localDrafts })}
               {...(writeRecovery.githubWritesLocked

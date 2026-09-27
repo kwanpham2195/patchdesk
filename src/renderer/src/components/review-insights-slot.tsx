@@ -1,6 +1,7 @@
 import { XIcon } from "lucide-react";
 import { useMemo } from "react";
 import { definedProps } from "../../../domain/defined-props";
+import type { LocalPatchView } from "../../../domain/local-patch-view";
 import { parseUnifiedPatch, type ParsedPatchFile } from "../../../domain/patch";
 
 import type {
@@ -44,6 +45,7 @@ import {
   INSIGHT_LANGUAGE_LABELS,
   INSIGHT_PROVIDER_LABELS,
 } from "../insight-contracts";
+import { localPatchViewLabels } from "../review-source";
 import { RelativeTime } from "./relative-time";
 import type { InsightRunController } from "../hooks/use-insight-run";
 import {
@@ -72,6 +74,7 @@ function InsightDocumentMeta({
   selectedInsight,
   selectedIsOutdated,
   workbench,
+  patchView,
 }: {
   readonly retained:
     | Readonly<{
@@ -88,6 +91,7 @@ function InsightDocumentMeta({
   readonly selectedInsight: InsightRunDialogType;
   readonly selectedIsOutdated: boolean;
   readonly workbench: WorkbenchResponse;
+  readonly patchView: LocalPatchView | undefined;
 }): React.JSX.Element | null {
   if (retained === undefined) return null;
   // The Change intent a local Review's Analysis ran against (#467).
@@ -115,9 +119,24 @@ function InsightDocumentMeta({
         ? null
         : ` · ${INSIGHT_LANGUAGE_LABELS[language]}`}
       {changeIntentLine === undefined ? null : ` · ${changeIntentLine}`}
+      {/* Every Insight runs on Combined, so another view's diff is not what it read (ADR 0050). */}
+      {patchView === undefined || patchView === "combined"
+        ? null
+        : ` · ${localPatchViewLabels.combined} view`}
     </p>
   );
 }
+function insightRunEnabled(
+  configuration: InsightRunConfiguration,
+  reviewOpen: boolean,
+): boolean {
+  return (
+    !configuration.catalogError &&
+    hasAvailableInsightProvider(configuration) &&
+    reviewOpen
+  );
+}
+
 function hasAvailableInsightProvider(
   configuration: InsightRunConfiguration,
 ): boolean {
@@ -202,6 +221,7 @@ export function InsightsSlot({
   localDrafts,
   onFinishWithAnalysisSummary,
   profileLabel,
+  patchView,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly initialDetail?: "analysis" | "walkthrough";
@@ -216,6 +236,7 @@ export function InsightsSlot({
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
   /** The workspace profile's label, set when more than one profile is configured. */
   readonly profileLabel?: string;
+  readonly patchView?: LocalPatchView;
 }): React.JSX.Element {
   const {
     initialInsight,
@@ -278,10 +299,7 @@ export function InsightsSlot({
     brief: briefRun,
   };
   const reviewOpen = workbench.review.status === "open";
-  const runEnabled =
-    !configuration.catalogError &&
-    hasAvailableInsightProvider(configuration) &&
-    reviewOpen;
+  const runEnabled = insightRunEnabled(configuration, reviewOpen);
   const selectedProjection = projections[selectedInsight];
   const insightResultRef = useInsightResultEntrance({
     retainedRunIds: {
@@ -337,7 +355,6 @@ export function InsightsSlot({
     selectedInsight === "analysis" &&
     selectedProjection?.status === "running" &&
     selectedProjection.retained === undefined;
-  const selectedRequestFailure = selectedRunning?.requestFailure;
   const selectedInsightName = INSIGHT_NOUNS[selectedInsight];
   const walkthroughTitle =
     selectedInsight === "walkthrough" && selectedRetained !== undefined
@@ -346,7 +363,7 @@ export function InsightsSlot({
   const retryRun = reviewOpen ? () => openRunDialog("retry") : undefined;
   const selectedRequestFailureMessage = insightRequestFailureMessage(
     selectedInsightName,
-    selectedRequestFailure,
+    selectedRunning?.requestFailure,
   );
   return (
     <section
@@ -382,6 +399,7 @@ export function InsightsSlot({
                   selectedInsight={selectedInsight}
                   selectedIsOutdated={selectedIsOutdated}
                   workbench={workbench}
+                  patchView={patchView}
                 />
                 <InsightHeaderAction
                   running={selectedRunning}
@@ -486,6 +504,7 @@ export function InsightsSlot({
         activateCodex={activateCodex}
         confirmRun={confirmRun}
         runs={runs}
+        runsOnCombined={workbench.patchViews !== undefined}
       />
     </section>
   );
@@ -509,6 +528,7 @@ function InsightRunControls({
   activateCodex,
   confirmRun,
   runs,
+  runsOnCombined,
 }: {
   readonly configuration: InsightRunConfiguration;
   readonly closeRunDialog: () => void;
@@ -517,6 +537,7 @@ function InsightRunControls({
   readonly activateCodex: () => void;
   readonly confirmRun: () => void;
   readonly runs: Readonly<Record<InsightRunDialogType, InsightRunController>>;
+  readonly runsOnCombined: boolean;
 }): React.JSX.Element | null {
   const {
     models,
@@ -576,6 +597,7 @@ function InsightRunControls({
       }
       onConfirm={confirmRun}
       pending={dialogRun.starting}
+      runsOnCombined={runsOnCombined}
       {...definedProps({ errorMessage: runErrorMessage })}
     />
   );

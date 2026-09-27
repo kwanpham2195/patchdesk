@@ -58,6 +58,7 @@ export function InsightRunDialog({
   codexActivationError,
   pending,
   errorMessage,
+  runsOnCombined = false,
   onOpenChange,
   onProviderChange,
   onActivateCodex,
@@ -79,6 +80,8 @@ export function InsightRunDialog({
   readonly codexActivationError: boolean;
   readonly pending: boolean;
   readonly errorMessage?: string;
+  /** A shared local Review: the run reads its Combined patch whichever view the diff shows. */
+  readonly runsOnCombined?: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onProviderChange: (provider: InsightProvider) => void;
   readonly onActivateCodex: () => void;
@@ -114,7 +117,10 @@ export function InsightRunDialog({
       >
         <DialogHeader>
           <DialogTitle>{actionLabel}</DialogTitle>
-          <DialogDescription>{noun} for this revision.</DialogDescription>
+          <DialogDescription>
+            {noun} for this revision.
+            {runsOnCombined ? " It runs on the Combined view." : null}
+          </DialogDescription>
         </DialogHeader>
         {errorMessage === undefined ? null : (
           <Alert variant="destructive">

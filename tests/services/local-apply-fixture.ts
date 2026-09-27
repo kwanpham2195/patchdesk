@@ -459,5 +459,6 @@ export function applyRequest(
       headSha: workbench.session.key.headSha,
       patchHash: value(parseContentHash(workbench.revision.patchHash)),
     },
+    view: "combined",
   };
 }

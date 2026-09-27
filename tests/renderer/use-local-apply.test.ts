@@ -70,6 +70,7 @@ function renderApply(workbench: WorkbenchResponse) {
   const rendered = renderHook(() =>
     useLocalApply({
       workbench,
+      view: "combined",
       onWorkbenchReplace,
       onWorkbenchPatch: () => undefined,
     }),
@@ -100,6 +101,7 @@ describe("useLocalApply", () => {
       runId: "insight-analysis-1-fixture",
       findingIds: ["finding-1"],
       expected: { sessionId: "session-a", headSha: sha, patchHash },
+      view: "combined",
     });
     expect(onWorkbenchReplace).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -132,6 +134,7 @@ describe("useLocalApply", () => {
     const { result, rerender } = renderHook(() =>
       useLocalApply({
         workbench,
+        view: "combined",
         onWorkbenchReplace: () => undefined,
         onWorkbenchPatch: (patch) => {
           // SAFETY: the patch carries whole top-level fields, as the app's merge applies them.
@@ -151,6 +154,29 @@ describe("useLocalApply", () => {
 
     workbench = workingTreeAnalysis("session-b");
     rerender();
+
+    expect(result.current?.blocked).toBe(false);
+    expect(result.current?.refusal).toBeUndefined();
+  });
+
+  it("keeps Apply disabled with its reason while another patch view shows, and enables it on Combined", () => {
+    restore = installDesktopDouble({}).restore;
+    const workbench = workingTreeAnalysis();
+    const { result, rerender } = renderHook(
+      ({ view }: { readonly view: "combined" | "uncommitted" }) =>
+        useLocalApply({
+          workbench,
+          view,
+          onWorkbenchReplace: () => undefined,
+          onWorkbenchPatch: () => undefined,
+        }),
+      { initialProps: { view: "uncommitted" } },
+    );
+
+    expect(result.current?.blocked).toBe(true);
+    expect(result.current?.refusal).toBeDefined();
+
+    rerender({ view: "combined" });
 
     expect(result.current?.blocked).toBe(false);
     expect(result.current?.refusal).toBeUndefined();

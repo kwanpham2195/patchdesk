@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
+import type { LocalPatchView } from "../../../domain/local-patch-view";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import {
   parseWorkbenchResponse,
@@ -40,7 +41,7 @@ export type LocalApplyControls = {
   readonly apply: () => Promise<void>;
   readonly check: () => Promise<void>;
   readonly pending: boolean;
-  /** The session no longer matches the checkout, so Apply stays disabled. */
+  /** The session no longer matches the checkout, or another patch view shows, so Apply stays disabled. */
   readonly blocked: boolean;
   /** Why the last Apply was refused, shown beside the control. */
   readonly refusal?: string;
@@ -51,6 +52,9 @@ export type LocalApplyControls = {
 
 const REVISION_CHANGED_MESSAGE =
   "The working tree changed after this Analysis ran. Press Refresh, then run Analysis on the current files.";
+
+const VIEW_MISMATCH_MESSAGE =
+  "This Analysis ran on the Combined view. Switch to Combined to apply its suggestions.";
 
 /** The sentence for each reason the Apply route refuses with. */
 function refusalFor(reason: string): string | undefined {
@@ -82,6 +86,8 @@ function refusalFor(reason: string): string | undefined {
       return "Patchdesk could not read the local checkout.";
     case "not_local_branch":
       return "Apply works only on a branch review, not on a commit.";
+    case "view_mismatch":
+      return VIEW_MISMATCH_MESSAGE;
     default:
       return undefined;
   }
@@ -127,10 +133,13 @@ function refusalMessage(cause: unknown): string {
  */
 export function useLocalApply({
   workbench,
+  view,
   onWorkbenchReplace,
   onWorkbenchPatch,
 }: {
   readonly workbench: WorkbenchResponse;
+  /** The patch view the diff shows; undefined on a Review without views. */
+  readonly view: LocalPatchView | undefined;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
 }): LocalApplyControls | undefined {
@@ -203,6 +212,7 @@ export function useLocalApply({
                   headSha: workbench.session.key.headSha,
                   patchHash,
                 },
+                view: view ?? "combined",
               },
             }),
           );
@@ -234,6 +244,7 @@ export function useLocalApply({
       revision,
       run,
       sessionId,
+      view,
       workbench.review.id,
       workbench.session.key.headSha,
       workbench.session.key.profileId,
@@ -309,7 +320,13 @@ export function useLocalApply({
   )
     return undefined;
   // A refused Apply marked the Review RevisionChanged; only Refresh reads the checkout again.
-  const blocked = workbench.revision.freshness !== "fresh";
+  const blockedReason =
+    workbench.revision.freshness !== "fresh"
+      ? REVISION_CHANGED_MESSAGE
+      : view !== undefined && view !== "combined"
+        ? VIEW_MISMATCH_MESSAGE
+        : undefined;
+  const blocked = blockedReason !== undefined;
   return {
     selectedIds: current.selected,
     setSelected,
@@ -318,8 +335,7 @@ export function useLocalApply({
     pending,
     blocked,
     ...definedProps({
-      refusal:
-        current.refusal ?? (blocked ? REVISION_CHANGED_MESSAGE : undefined),
+      refusal: current.refusal ?? blockedReason,
       notice: current.notice,
       lock,
     }),
