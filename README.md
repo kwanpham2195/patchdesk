@@ -28,6 +28,44 @@
 
 <p align="center"><em>Start with the shape of the change, follow its implementation, then review the evidence.</em></p>
 
+## Features
+
+- **Pull request triage.** Filter a repository's pull requests by state,
+  labels, review status, checks, author, or base branch. Press <kbd>⌘K</kbd>
+  or paste a GitHub link to open any pull request.
+- **GitHub review.** Browse the diff by file, commit, or scope beside your
+  local checkout. Comment on diff lines, resolve conversations, build a pending
+  review, submit your decision, and merge.
+  [More](#review-the-whole-pull-request-in-one-place)
+- **Insights.** Three optional AI reads of a change, each kept with the
+  revision it analyzed:
+  - [Brief](#brief-finds-the-reading-path) shows which calls, states, or
+    exported contracts changed, which code outside the patch mentions them,
+    and where to start reading.
+  - [Walkthrough](#walkthrough-explains-the-implementation) explains the
+    change in chapters, each beside its cited diff hunks, and tracks which
+    chapters you reviewed.
+  - [Analysis](#analysis-reviews-the-evidence) checks the patch against its
+    description and lists Findings with file and line evidence. You add a
+    Finding to your review, sometimes as a GitHub suggested change, or dismiss
+    it.
+- **Your provider and model.** Run Insights with an API key for providers such
+  as Anthropic, OpenAI, or Google, or with your Codex CLI login. Pick the
+  model, reasoning level, and output language (English or Vietnamese) per run.
+  [More](#bring-your-preferred-model)
+- **Local Reviews.** Review a working tree, a branch, or a commit from your
+  checkout before it reaches GitHub.
+- **Coding agents over MCP.** Claude Code and Codex open a local Review of
+  their change, read your notes on its lines, and refresh the Review with
+  their fix. An Insight an agent requests waits until you press **Run**.
+  [More](#review-your-coding-agents-work)
+- **Watch.** Get a macOS notification when a watched pull request gets a
+  comment or review, new commits, or changed checks, or when it merges or
+  closes.
+- **Explicit GitHub writes.** Patchdesk writes to GitHub only from an action
+  you choose, such as **Add to review**. If it cannot confirm that a write
+  went through, it blocks further writes until you check GitHub again.
+
 ## Install Patchdesk
 
 Patchdesk runs on macOS with Apple Silicon. You need `git` and the GitHub CLI
@@ -116,7 +154,7 @@ all three with the provider, model, and reasoning level you choose.
 ### Brief finds the reading path
 
 Brief shows which calls, states, or exported contracts changed, with links from
-changed steps to their diff hunks. It groups files by ownership, finds uses of
+changed steps to their diff hunks. It groups files by directory, finds uses of
 changed names outside the patch, and opens its suggested reading path in the
 Diff.
 
