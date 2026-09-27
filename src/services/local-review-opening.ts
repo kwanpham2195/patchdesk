@@ -229,8 +229,8 @@ export class LocalReviewOpening {
       const resolved = await this.preparation.resolve(request);
       if (resolved._tag === "err")
         return err(mapPreparationFailure(resolved.error));
-      // The locked open proceeds only on this same Review id, and a working
-      // tree's id is keyed by its branch, so checking here also holds under the lock.
+      // The locked open proceeds only on this same Review id, and a shared
+      // Review's id is keyed by its branch, so checking here also holds under the lock.
       const mismatch = headMismatch(
         request.request,
         resolved.value.identity.source,
