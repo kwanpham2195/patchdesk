@@ -19,15 +19,20 @@ const savedViewedFilesSchema = v.strictObject({
 });
 
 type SaveQueue = {
+  readonly profileId: string;
+  readonly reviewId: string;
   readonly sessionId: string;
   readonly view: LocalPatchView | undefined;
   stored: ReadonlySet<string>;
   /** The set being saved; undefined while no save is in flight. */
   sending: ReadonlySet<string> | undefined;
   queued: ReadonlySet<string> | undefined;
+  saveFailed: boolean;
 };
 
 type ViewedFilesState = {
+  readonly profileId: string;
+  readonly reviewId: string;
   readonly sessionId: string;
   readonly view: LocalPatchView | undefined;
   readonly paths: ReadonlySet<string>;
@@ -57,37 +62,44 @@ export function useViewedFiles({
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
 }): ViewedFilesControls {
   const [state, setState] = useState<ViewedFilesState>(() => ({
+    profileId,
+    reviewId,
     sessionId,
     view,
     paths: new Set(savedPaths),
     saveFailed: false,
   }));
-  const latest = useLatestCommitted({ sessionId, view, onWorkbenchPatch });
-  const save = useRef<SaveQueue>({
+  const latest = useLatestCommitted({
+    profileId,
+    reviewId,
     sessionId,
     view,
-    stored: new Set(savedPaths),
-    sending: undefined,
-    queued: undefined,
+    onWorkbenchPatch,
   });
-  // A new head is a new session, and each view keeps its own marks; either starts from its stored marks.
-  if (state.sessionId !== sessionId || state.view !== view) {
-    // A return to a view starts from its latest save here, queued, in flight, or answered: the view's reread can predate it.
-    const pending = save.current;
+  const saves = useRef(new Map<string, SaveQueue>());
+  const key = JSON.stringify([profileId, reviewId, sessionId, view]);
+  // A return to a view can precede its last save's response or the workbench's reread.
+  if (
+    state.profileId !== profileId ||
+    state.reviewId !== reviewId ||
+    state.sessionId !== sessionId ||
+    state.view !== view
+  ) {
+    const pending = saves.current.get(key);
     setState({
+      profileId,
+      reviewId,
       sessionId,
       view,
-      paths:
-        pending.sessionId === sessionId && pending.view === view
-          ? (pending.queued ?? pending.sending ?? pending.stored)
-          : new Set(savedPaths),
-      saveFailed: false,
+      paths: pending
+        ? (pending.queued ?? pending.sending ?? pending.stored)
+        : new Set(savedPaths),
+      saveFailed: pending?.saveFailed ?? false,
     });
   }
 
-  // Each session and view owns its queue, so a switched-away Review's late answer cannot send the next one's marks.
+  // Each session and view sends its own queue even when another view is shown.
   const send = (current: SaveQueue): void => {
-    if (save.current !== current) return;
     const paths = current.queued;
     if (paths === undefined) return;
     current.queued = undefined;
@@ -95,30 +107,37 @@ export function useViewedFiles({
     void requestJson("/v1/reviews/viewed-files", {
       method: "POST",
       body: {
-        profileId,
-        reviewId,
-        sessionId,
+        profileId: current.profileId,
+        reviewId: current.reviewId,
+        sessionId: current.sessionId,
         paths: [...paths],
-        ...definedProps({ view }),
+        ...definedProps({ view: current.view }),
       },
     })
       .then((value) => {
         const parsed = v.safeParse(savedViewedFilesSchema, value);
         if (!parsed.success) throw new Error("invalid viewed files response");
         current.stored = new Set(parsed.output.paths);
+        current.saveFailed = false;
         // The projection's `viewedPaths` are Combined's; another view's marks come with its patch.
         if (
-          latest.current.sessionId === sessionId &&
-          latest.current.view === view &&
-          (view === undefined || view === "combined")
+          latest.current.profileId === current.profileId &&
+          latest.current.reviewId === current.reviewId &&
+          latest.current.sessionId === current.sessionId &&
+          latest.current.view === current.view &&
+          (current.view === undefined || current.view === "combined")
         )
           latest.current.onWorkbenchPatch({ viewedPaths: parsed.output.paths });
       })
       .catch(() => {
         // A later change is already queued and its save decides the stored set.
         if (current.queued !== undefined) return;
+        current.saveFailed = true;
         setState((state) =>
-          state.sessionId === sessionId && state.view === view
+          state.profileId === current.profileId &&
+          state.reviewId === current.reviewId &&
+          state.sessionId === current.sessionId &&
+          state.view === current.view
             ? { ...state, paths: current.stored, saveFailed: true }
             : state,
         );
@@ -130,17 +149,31 @@ export function useViewedFiles({
   };
 
   const setPaths = (paths: ReadonlySet<string>): void => {
-    if (save.current.sessionId !== sessionId || save.current.view !== view)
-      save.current = {
+    let current = saves.current.get(key);
+    if (current === undefined) {
+      current = {
+        profileId,
+        reviewId,
         sessionId,
         view,
         stored: new Set(savedPaths),
         sending: undefined,
         queued: undefined,
+        saveFailed: false,
       };
-    setState({ sessionId, view, paths, saveFailed: false });
-    save.current.queued = paths;
-    if (save.current.sending === undefined) send(save.current);
+      saves.current.set(key, current);
+    }
+    setState({
+      profileId,
+      reviewId,
+      sessionId,
+      view,
+      paths,
+      saveFailed: false,
+    });
+    current.saveFailed = false;
+    current.queued = paths;
+    if (current.sending === undefined) send(current);
   };
 
   return { paths: state.paths, saveFailed: state.saveFailed, setPaths };

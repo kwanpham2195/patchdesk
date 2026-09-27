@@ -26,6 +26,7 @@ const savedBody = v.object({ paths: v.array(v.string()) });
 const sentBody = v.object({
   reviewId: v.string(),
   sessionId: v.string(),
+  view: v.optional(v.picklist(["combined", "committed", "uncommitted"])),
   paths: v.array(v.string()),
 });
 const sentRequest = v.object({ body: savedBody });
@@ -188,14 +189,159 @@ describe("useViewedFiles", () => {
     await act(async () => held[2]?.());
 
     expect(sentBodies()).toEqual([
-      { reviewId: "review-a", sessionId: "session-a", paths: ["src/a.ts"] },
-      { reviewId: "review-b", sessionId: "session-b", paths: ["src/b.ts"] },
+      {
+        reviewId: "review-a",
+        sessionId: "session-a",
+        view: undefined,
+        paths: ["src/a.ts"],
+      },
       {
         reviewId: "review-b",
         sessionId: "session-b",
+        view: undefined,
+        paths: ["src/b.ts"],
+      },
+      {
+        reviewId: "review-b",
+        sessionId: "session-b",
+        view: undefined,
         paths: ["src/b.ts", "src/c.ts"],
       },
     ]);
+  });
+
+  it("finishes queued Committed marks after a Combined save and restores both views", async () => {
+    const saved = new Map<LocalPatchView, ReadonlyArray<string>>();
+    let releaseCommitted: (() => void) | undefined;
+    desktop = installDesktopDouble({
+      [viewedFilesPath]: (input) => {
+        const { view, paths } = v.parse(sentBody, input.body);
+        if (view === undefined) throw new Error("missing patch view");
+        if (view === "committed" && releaseCommitted === undefined)
+          return new Promise((resolve) => {
+            releaseCommitted = () => {
+              saved.set(view, paths);
+              resolve(echo(input));
+            };
+          });
+        saved.set(view, paths);
+        return echo(input);
+      },
+    });
+    const patches: ReviewWorkbenchPatch[] = [];
+    const { result, rerender } = renderViewedFiles(patches, {
+      sessionId: "session-1",
+      view: "committed",
+      savedPaths: [],
+    });
+
+    act(() => result.current.setPaths(new Set(["src/a.ts"])));
+    act(() => result.current.setPaths(new Set(["src/a.ts", "src/b.ts"])));
+    rerender({ sessionId: "session-1", view: "combined", savedPaths: [] });
+    act(() => result.current.setPaths(new Set(["src/c.ts"])));
+    await waitFor(() => expect(saved.get("combined")).toEqual(["src/c.ts"]));
+    await act(async () => releaseCommitted?.());
+    await waitFor(() =>
+      expect(saved.get("committed")).toEqual(["src/a.ts", "src/b.ts"]),
+    );
+    const committedPaths = saved.get("committed");
+    const combinedPaths = saved.get("combined");
+    if (committedPaths === undefined || combinedPaths === undefined)
+      throw new Error("missing saved patch view");
+
+    rerender({
+      sessionId: "session-1",
+      view: "committed",
+      savedPaths: committedPaths,
+    });
+    expect([...result.current.paths]).toEqual(["src/a.ts", "src/b.ts"]);
+    rerender({
+      sessionId: "session-1",
+      view: "combined",
+      savedPaths: combinedPaths,
+    });
+    expect([...result.current.paths]).toEqual(["src/c.ts"]);
+    expect(patches).toEqual([{ viewedPaths: ["src/c.ts"] }]);
+    expect(sentBodies()).toEqual([
+      {
+        reviewId: "review-42",
+        sessionId: "session-1",
+        view: "committed",
+        paths: ["src/a.ts"],
+      },
+      {
+        reviewId: "review-42",
+        sessionId: "session-1",
+        view: "combined",
+        paths: ["src/c.ts"],
+      },
+      {
+        reviewId: "review-42",
+        sessionId: "session-1",
+        view: "committed",
+        paths: ["src/a.ts", "src/b.ts"],
+      },
+    ]);
+  });
+
+  it("restores a switched-away view's stored marks after refusal and lets it retry", async () => {
+    let rejectCommitted: (() => void) | undefined;
+    desktop = installDesktopDouble({
+      [viewedFilesPath]: (input) => {
+        const { view } = v.parse(sentBody, input.body);
+        if (view === "committed" && rejectCommitted === undefined)
+          return new Promise((resolve) => {
+            rejectCommitted = () => resolve(failure({ error: "storage" }));
+          });
+        return echo(input);
+      },
+    });
+    const { result, rerender } = renderViewedFiles([], {
+      sessionId: "session-1",
+      view: "committed",
+      savedPaths: ["src/a.ts"],
+    });
+    act(() => result.current.setPaths(new Set(["src/a.ts", "src/b.ts"])));
+    rerender({
+      sessionId: "session-1",
+      view: "combined",
+      savedPaths: ["src/c.ts"],
+    });
+    act(() => result.current.setPaths(new Set(["src/c.ts", "src/d.ts"])));
+    await act(async () => rejectCommitted?.());
+
+    rerender({
+      sessionId: "session-1",
+      view: "committed",
+      savedPaths: ["src/a.ts"],
+    });
+    expect([...result.current.paths]).toEqual(["src/a.ts"]);
+    expect(result.current.saveFailed).toBe(true);
+    act(() => result.current.setPaths(new Set(["src/a.ts", "src/b.ts"])));
+    await waitFor(() => expect(result.current.saveFailed).toBe(false));
+    await waitFor(() => expect(sentBodies()).toHaveLength(3));
+    await act(async () => {
+      await desktop?.request.mock.results[2]?.value;
+    });
+    expect(sentBodies().at(-1)).toEqual({
+      reviewId: "review-42",
+      sessionId: "session-1",
+      view: "committed",
+      paths: ["src/a.ts", "src/b.ts"],
+    });
+    rerender({
+      sessionId: "session-1",
+      view: "combined",
+      savedPaths: ["src/c.ts"],
+    });
+    expect([...result.current.paths]).toEqual(["src/c.ts", "src/d.ts"]);
+    rerender({
+      sessionId: "session-1",
+      view: "committed",
+      savedPaths: ["src/a.ts"],
+    });
+    expect([...result.current.paths]).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(result.current.saveFailed).toBe(false);
   });
 
   it("starts a new session from its own stored marks", () => {
