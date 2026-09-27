@@ -346,8 +346,9 @@ server as failed.
   `.gitignore` or remove them, then call again. Patchdesk stores nothing
   for the refused call.
 - **The patch is too large.** `review_local` and `refresh_review` return
-  `patch_too_large` when the change's patch is over 2 MiB, usually a
-  lockfile or generated file. The message names the files with the most
+  `patch_too_large` when the change's patch, or its committed or
+  uncommitted part alone, is over 2 MiB, usually a lockfile or generated
+  file. The message names the files with the most
   changes; leave generated ones out of the change, or review it in smaller
   parts, then call again. Patchdesk stores no session for the refused call.
 - **No base branch.** `review_local` returns `base_required` when the
