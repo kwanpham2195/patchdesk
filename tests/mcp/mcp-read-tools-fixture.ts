@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -57,6 +58,58 @@ export async function openRoute(
       source: { kind: "local_branch", baseBranch: "main", checkout },
     }),
   );
+  return v.parse(workbenchSchema, opened.body);
+}
+
+/** Runs git for fixture setup only; the code under test runs git through the production executor. */
+function git(cwd: string, ...args: ReadonlyArray<string>): void {
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd },
+  );
+}
+
+/** `feat/linked` one commit past `main`, with `develop` created at `main`; `main` is the default branch whatever the maintainer's git config says. */
+export async function linkedBranchWithCommit(
+  fixture: McpAppFixture,
+): Promise<void> {
+  git(fixture.repositoryPath, "config", "init.defaultBranch", "main");
+  git(fixture.repositoryPath, "branch", "develop");
+  await writeFile(join(fixture.linkedPath, "feature.txt"), "feature\n");
+  git(fixture.linkedPath, "add", "feature.txt");
+  git(fixture.linkedPath, "commit", "-q", "-m", "feature");
+}
+
+/** Opens the linked worktree's shared Review against `base` the way the dialog does, in `profile`. */
+export async function openInApp(
+  fixture: McpAppFixture,
+  base: string,
+  profile = "acme",
+): Promise<Workbench> {
+  const opened = await fixture.route(
+    "v1/reviews/open-local",
+    JSON.stringify({
+      profileId: profile,
+      host: "github.com",
+      owner: "octo-org",
+      repo: "patchdesk",
+      source: {
+        kind: "local_branch",
+        baseBranch: base,
+        checkout: fixture.linkedPath,
+      },
+    }),
+  );
+  if (opened.status !== 200) throw new Error("shared Review not opened");
   return v.parse(workbenchSchema, opened.body);
 }
 

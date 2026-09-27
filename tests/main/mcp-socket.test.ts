@@ -64,6 +64,10 @@ function recordingTools(reply: McpToolReply = emptyListing()) {
       schema: mcpToolManifest.list_repositories.inputSchema,
       call: record("list_repositories"),
     },
+    list_local_reviews: {
+      schema: mcpToolManifest.list_local_reviews.inputSchema,
+      call: record("list_local_reviews"),
+    },
     review_local: {
       schema: mcpToolManifest.review_local.inputSchema,
       call: record("review_local"),
@@ -397,6 +401,7 @@ describe("MCP tool dispatcher", () => {
       localReviewOpening: {
         listCheckouts: unavailable,
         findCheckout: unavailable,
+        listSharedReviews: unavailable,
         openForAgent: unavailable,
         prepareForAgent: unavailable,
       },

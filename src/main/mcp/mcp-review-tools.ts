@@ -40,6 +40,7 @@ import type {
   LocalReviewOpening,
   LocalReviewPrepared,
 } from "../../services/local-review-opening";
+import type { CheckoutSharedReviews } from "../../services/local-shared-review-list";
 import { localSnapshotUntrackedLimits } from "../../services/local-untracked-size";
 import type {
   InsightReading,
@@ -71,7 +72,11 @@ export type McpReviewToolServices = {
   readonly dashboard: Pick<DashboardController, "savedProfiles">;
   readonly localReviewOpening: Pick<
     LocalReviewOpening,
-    "listCheckouts" | "findCheckout" | "openForAgent" | "prepareForAgent"
+    | "listCheckouts"
+    | "findCheckout"
+    | "listSharedReviews"
+    | "openForAgent"
+    | "prepareForAgent"
   >;
   readonly localChangeIntent: Pick<
     LocalChangeIntentService,
@@ -237,6 +242,22 @@ async function missingReviewRefusal(
 type ToolInput<Name extends keyof typeof mcpToolManifest> = InferOutput<
   (typeof mcpToolManifest)[Name]["inputSchema"]
 >;
+
+/** `list_local_reviews`: `LocalReviewOpening.listSharedReviews`, the list the open dialog's bases come from. It writes nothing. */
+export async function listLocalReviews(
+  services: McpReviewToolServices,
+  input: ToolInput<"list_local_reviews">,
+): Promise<Result<CheckoutSharedReviews, McpToolRefusal>> {
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const directory = parseAbsolutePath(input.cwd);
+  if (directory._tag === "err") return err(refusal("invalid_input"));
+  const listed = await services.localReviewOpening.listSharedReviews(
+    profiles.value.active.id,
+    directory.value,
+  );
+  return listed._tag === "ok" ? listed : err(localReviewRefusal(listed.error));
+}
 
 /** `review_local`: `LocalReviewOpening.openForAgent`, which returns an existing Review unmoved and creates a missing one as the open-local route does. */
 export async function reviewLocal(
