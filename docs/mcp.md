@@ -22,7 +22,8 @@ From your side, a session looks like this:
 - The agent asks for an Analysis, Walkthrough, or Brief. The request waits in
   Patchdesk until you press **Run**, and you pick the provider and model.
 - You leave notes on diff lines, then tell the agent "check Patchdesk". It
-  reads your notes and the Analysis Findings.
+  finds the Review you have open for its checkout without opening or moving
+  one, then reads your notes and the Analysis Findings.
 - The agent fixes the code and prepares the new revision. Patchdesk shows
   **Updates available**, and your **Refresh** moves the Review to the new code
   and carries your notes.
@@ -218,6 +219,7 @@ into your project's `CLAUDE.md` or `AGENTS.md`:
 
 - When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
 - To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
+- Before `get_feedback`, call `list_local_reviews` with your working directory as `cwd` to find the Review I am looking at, and use its `reviewId`. If it returns several Reviews for your branch, ask me which base I meant.
 - When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback`; address every Finding and comment, then call `refresh_review` and tell me the changes are ready.
 ```
 
@@ -358,6 +360,11 @@ server as failed.
   branch has no open Review and no other local branch is behind `HEAD`, as
   in a repository with one branch. Have the agent pass `base`, the local
   branch the change should be compared with, or create that branch first.
+- **The agent finds no Review.** `list_local_reviews` returns an empty
+  `reviews` list when no shared Review is open for the agent's checkout. A
+  Review you opened in another linked worktree of the repository is listed
+  only for that worktree. Open the Review of the agent's checkout in
+  Patchdesk, or have the agent call `review_local`.
 - **`patchdesk: command not found` in a terminal.** The link is missing or its
   folder is not on your PATH. Repeat [Install the command](#install-the-command).
 - **The server fails to start in a GUI host.** The host cannot find

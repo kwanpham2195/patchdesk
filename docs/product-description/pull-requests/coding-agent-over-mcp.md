@@ -30,9 +30,11 @@ The agent reaches Patchdesk through the tools its client lists. The tools are li
 
 `list_repositories` names the repositories of the active profile that have a local checkout, each with its configured checkout, its live linked worktrees, and the branch each is on. It reads local `git` only.
 
+`list_local_reviews` lets the agent find the Review the maintainer is looking at. It takes an absolute path inside a checkout, usually the agent's working directory, and answers with the branch checked out there and every open shared Review of that checkout, on any branch, the one the maintainer opened last first. Each entry names the Review's id, branch, base branch, when the maintainer last opened it, and its current session. A subfolder finds its checkout's Reviews; a Review opened in a linked worktree is listed only for that worktree. Commit Reviews, and working-tree or branch Reviews stored before the shared Review (#555), are left out. An empty list means no shared Review is open there. When several entries on the agent's branch differ only by base, the tool's description tells the agent to ask the maintainer which base they mean. The bases on the checked-out branch are the ones the Local review dialog names in `<branch> has open reviews against <bases>.`
+
 ### Leave unchanged
 
-`list_repositories`, `get_insight`, and `get_feedback` read and change nothing. A `review_local` call for a Review that already exists returns it on the session the maintainer sees and does not read the checkout again, so it neither moves the Review nor marks it opened. A `refresh_review` call on a checkout whose content still matches the Review's session answers `changed: false` and changes nothing.
+`list_repositories`, `get_insight`, and `get_feedback` read and change nothing. A successful `list_local_reviews` call writes no Review, session, snapshot, ref, or worktree, does not mark a Review opened, and leaves the order of the Visited pull requests column as it was. A refused call of any tool is recorded in Diagnostics. A `review_local` call for a Review that already exists returns it on the session the maintainer sees and does not read the checkout again, so it neither moves the Review nor marks it opened. A `refresh_review` call on a checkout whose content still matches the Review's session answers `changed: false` and changes nothing.
 
 ### Begin an action
 
@@ -81,6 +83,7 @@ The `agent` marker clears when the last request is settled or declined and no ru
 ## The tools in plain terms
 
 - `list_repositories`: which repositories and checkouts Patchdesk can review in the active profile.
+- `list_local_reviews`: which Reviews the maintainer has open for my checkout, so I read the one they are looking at.
 - `review_local`: open this checkout's Review so the maintainer can read my change, and record my task as the Change intent if the Review has none.
 - `refresh_review`: I changed the code; prepare it for the maintainer. The maintainer sees Updates available.
 - `run_insight`: ask the maintainer to run an Analysis, Walkthrough, or Brief on the current session.
@@ -99,13 +102,17 @@ The maintainer's [Refresh](opening-a-local-review.md#refresh) reads the checkout
 
 ## Feedback states
 
-`get_feedback` returns each Local draft with its kind (Finding or note), file, side, lines, text, suggestion when it has one, the session it was written against, and a state:
+`get_feedback` returns each Local draft with its kind (Finding or note), file, side, lines, text, suggestion when it has one, the session it was written against, its `view`, `inline`, and a state:
 
 - `current`: written on the Review's current session.
 - `unchanged`: the Review moved since, and the lines under the draft are the ones the maintainer saw.
 - `changed`: the Review moved since, and the lines under the draft differ from the ones the maintainer saw.
 - `needs_attention`: after a move, Patchdesk could not find the draft's lines.
 - `applied`: a Finding draft whose suggestion the maintainer applied in Patchdesk.
+
+`view` is the _Patch view_ the draft was written in: `combined`, `committed`, or `uncommitted`. The draft's file, side, and lines are numbered in that view. A Finding draft always reads `combined`, because Insights run on Combined.
+
+`inline` is `true` when the draft is on the Review's current session and its lines sit inside a hunk of its view, where the Diff shows it inline in that view. It is `false` for a draft that kept an earlier session, as a `needs_attention` draft does; for a carried draft whose lines left its view's diff, as when the agent reverts the lines under a note (usually `changed`); and when Patchdesk cannot read that view's stored patch. Patchdesk reads only the session's stored patches for this, never the checkout. The Markdown prompt does not name the view or `inline`.
 
 A page holds at most 25 drafts, and fewer when they are long, so a page stays within what a client accepts in one answer. The answer carries a cursor for the next page. When the drafts change between pages, the next page is refused `stale_cursor` and the agent starts again without a cursor.
 
@@ -142,7 +149,7 @@ A refused call returns an error code and a sentence the agent can relay. The one
 - `stale_session`: `run_insight` named a session the Review has moved past. The agent reads the current session from `get_insight` or `review_local` and asks again.
 - `stale_cursor`: the drafts changed since the `get_feedback` cursor was issued. The agent reads again from the first page.
 
-Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `base_required` for a branch with no open shared Review and no other local branch behind `HEAD`, `revision_not_found` for a base branch or commit Git cannot find, or a base that shares no history with `HEAD`, `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB (Combined, Committed, or Uncommitted), naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `intent_exists`, `not_applicable` for a pull request Review or, from `refresh_review`, a stored working-tree or branch Review, and `too_large` for an answer over 4 MiB.
+Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `base_required` for a branch with no open shared Review and no other local branch behind `HEAD`, `revision_not_found` for a base branch or commit Git cannot find, or a base that shares no history with `HEAD`, `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB (Combined, Committed, or Uncommitted), naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `storage` when Patchdesk cannot read a stored record, such as a listed Review's current session in `list_local_reviews`, `intent_exists`, `not_applicable` for a pull request Review or, from `refresh_review`, a stored working-tree or branch Review, and `too_large` for an answer over 4 MiB.
 
 ## Known limits
 
@@ -170,7 +177,7 @@ The fixed rows, each with the case before and while an agent action runs.
 
 ## Interactions with other systems
 
-**Workspace profile and identity.** The agent's Review is the same Review the maintainer opens for that checkout, branch, and base branch from the Local review dialog or the Visited pull requests column, with the same sessions and drafts. Two agents in two linked worktrees get two Reviews.
+**Workspace profile and identity.** The agent's Review is the same Review the maintainer opens for that checkout, branch, and base branch from the Local review dialog or the Visited pull requests column, with the same sessions and drafts. Two agents in two linked worktrees get two Reviews, and `list_local_reviews` in each worktree lists only that worktree's Reviews. `list_local_reviews` and the Local review dialog read the same list of a checkout's open shared Reviews, so the bases the dialog names for a branch are the bases the tool lists for it.
 
 **Review revision and freshness.** The Review moves to a new session only on the maintainer's Refresh, a reopen, or an Apply. A prepared session is kept by retention while Updates available points at it.
 
@@ -206,6 +213,7 @@ The fixed rows, each with the case before and while an agent action runs.
 - In both passes neither agent committed: `git log main` held only the initial commit. `patchdesk.jsonl` logged `desktop-notification` `shown` with `AgentRunRequested` and `InsightSettled` for each Review, and one `mcp` line per call. The screen was locked, so input went through CDP and no notification banner was seen. Decline (MCP-05), two `run_insight` calls in a row, and Codex on the 2026-07-28 MCP revision were not run in this pass.
 - Not observed live: the focused-window silence for `Agent asks for` and the banner text of `<Insight> finished` on a local Review (#496). The 2026-09-26 passes logged the settled notification as shown. Service and notifier tests cover both.
 - The shared Review (#555) replaced the working-tree default of `review_local` and fixed [#491](https://github.com/kwanpham2195/patchdesk/issues/491), where the agent's commit emptied the diff and left the notes needing attention. The base order, `base_required`, and `baseInferred` were checked in `tests/mcp/patchdesk-mcp-review-local-base.test.ts` and the read-tool tests; the live passes above ran before it, on working-tree Reviews.
+- `list_local_reviews` and the `view` and `inline` fields of `get_feedback` (#558) were checked against source at `97571725` and in `tests/services/local-review-shared.test.ts`, `tests/mcp/patchdesk-mcp-list-local-reviews.test.ts` (one Review, none, several bases, another profile, every stored file byte-identical after two calls, and the same bases as the dialog), and `tests/services/local-draft-service.test.ts`. Live results are in rows MCP-09 and MCP-10 of the verification page.
 - A new Review that `review_local` creates appears in the Visited pull requests column the next time the column reads; whether it should appear at once is not settled.
 - The page lists variants and interrupts as bullets rather than the template's tables, and walks the loop as numbered steps rather than a state diagram.
 

@@ -101,12 +101,13 @@ names the two flags for readers who want the modern era.
 ### Transport: a stdio shim over a Unix socket
 
 `patchdesk mcp` is a small stdio process the client spawns. It is the MCP
-endpoint: it runs `serveStdio` with the six tools registered, and each tool
-handler forwards one call. It opens one connection to the running app's Unix
-domain socket, writes one JSON line `{ tool, arguments }`, reads one JSON
-line back, and returns it as the tool result. The app side is a `net.Server`
-in the main process that parses the line with the tool's schema, calls the
-service, and writes the serialized `Result`. No MCP SDK runs in the app.
+endpoint: it runs `serveStdio` with the seven tools registered (six in v1;
+#558 added `list_local_reviews`), and each tool handler forwards one call. It
+opens one connection to the running app's Unix domain socket, writes one JSON
+line `{ tool, arguments }`, reads one JSON line back, and returns it as the
+tool result. The app side is a `net.Server` in the main process that parses
+the line with the tool's schema, calls the service, and writes the serialized
+`Result`. No MCP SDK runs in the app.
 
 - **Socket path.** `<dataDirectory>/mcp/patchdesk.sock`, so
   `~/.local/share/patchdesk/mcp/patchdesk.sock` (`PatchdeskPaths.default()`),
@@ -213,6 +214,8 @@ Amended 2026-09-27 (#488): `review_local` and `refresh_review` also refuse `chec
 
 Amended 2026-09-27 (#555): the tool is `review_local(cwd, source?, base?, intent?)`. `source` is `local_branch`, the default, or `commit`; `working_tree` and `branch` left the manifest. `base` names the shared Review's local base branch and is refused `invalid_input` with `commit`. Without `base`, the open is decided in this order: the base of the branch's open shared Review in that checkout, the most recently opened one when there are several (decided 2026-09-27 in #555); else the inferred base (ADR 0050, amended); else `base_required`, when no other local branch is behind `HEAD`. A reused or inferred base opens with the branch read when the base was chosen, so a branch switch in between is refused `branch_mismatch`. The result adds `baseBranch` and `baseInferred`, true only when Patchdesk inferred the base. `revision_not_found` also covers a base branch that does not exist or shares no history with `HEAD`. `refresh_review` refuses a stored working-tree or branch Review `not_applicable`, and `branch_mismatch` applies to shared Reviews.
 
+Amended 2026-09-27 (#558): a seventh tool, `list_local_reviews(cwd)` → the open shared Reviews of the checkout containing `cwd` in the active profile, on any branch, the one opened last first (`lastOpenedAt`, else `updatedAt`), with `head`, the branch checked out there. Each entry has `reviewId`, `branch`, `baseBranch`, `lastOpenedAt` when the maintainer opened it, and the current session description. `cwd` resolves as in `review_local`: a subfolder finds its checkout, and a linked worktree's Reviews are listed only for that worktree. Terminal, `commit`, and pre-#555 working-tree and branch Reviews are left out, as the dialog's reviewed bases leave them out; both read one list. A successful call writes nothing: no Review, session, snapshot, ref, worktree, or `lastOpenedAt`. A refused call is recorded in the Review diagnostics like every tool's. Refusals: `checkout_not_found`, `checkout_missing`, and `storage` when the profile's Reviews or a listed Review's current session cannot be read; one unreadable Review record is skipped. `reviewId` and `sessionId` inputs of the other tools name it as a source.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run
@@ -296,6 +299,18 @@ draft written on the Review's current session, `unchanged`, `changed`,
 `needs_attention`, or `applied`. `current` exists only in the tool's output;
 the stored draft is unchanged and still carries no state until the Review
 first moves.
+
+Amended 2026-09-27 (#558): every entry also has `view` and `inline`. `view`
+is the patch view the draft was written in (`combined`, `committed`, or
+`uncommitted`); its `path`, `side`, and lines are numbered in that view, and
+a Finding draft is always `combined`. `inline` is true when the draft is on
+the Review's current session and its lines sit inside a hunk of that view's
+stored patch, placed as the workbench places it (`placeInView`). It is false
+for a draft that kept an earlier session, as a `needs_attention` draft or an
+applied Finding does after a move, for a carried draft whose lines left that
+view's diff (usually `changed`), and when that view's patch cannot be read.
+Only the stored session patches are read, never the checkout. The Markdown
+prompt is unchanged.
 
 ### Multiple checkouts
 
@@ -469,7 +484,7 @@ when a client reports the server as failed.
 ## Test strategy
 
 - **Tool contracts, in process.** A `Client` from `@modelcontextprotocol/
-  client` over `StreamableHTTPClientTransport` with its `fetch` option
+client` over `StreamableHTTPClientTransport` with its `fetch` option
   pointed at `createMcpHandler(factory).fetch` serves the 2026-07-28 era with
   no port; `InMemoryTransport.createLinkedPair()` against `McpServer.connect`
   covers the 2025 era. Both drive the shim's factory. Each tool has one test
@@ -483,12 +498,12 @@ when a client reports the server as failed.
   negotiation modes, covering the stale-socket rule, `app_not_running`,
   `too_large`, and the 30 s bound.
 - **Protocol.** `npx @modelcontextprotocol/inspector --cli patchdesk mcp
-  --method tools/list` and one `tools/call` per tool, in both eras the
+--method tools/list` and one `tools/call` per tool, in both eras the
   Inspector negotiates (modelcontextprotocol.io/docs/2026-07-28/tools/
   inspector, Node 22.19+). Recorded in the PR body, not run in CI.
 - **Live end to end.** In a herdr pane, `claude -p --mcp-config
-  /tmp/patchdesk-mcp.json --strict-mcp-config "review this change in
-  Patchdesk"` against the dev app on CDP 9233, with screenshots of the agent
+/tmp/patchdesk-mcp.json --strict-mcp-config "review this change in
+Patchdesk"` against the dev app on CDP 9233, with screenshots of the agent
   marker, the Agent requests bar, the approval, the Findings, a note, and
   Updates available after the agent's refresh. Codex is the second client:
   `codex exec` with the server in `config.toml`, once legacy and once with
