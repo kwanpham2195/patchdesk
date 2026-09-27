@@ -16,12 +16,17 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { definedProps } from "../domain/defined-props";
+import {
+  listPatchTouchedPaths,
+  type LocalPatchView,
+} from "../domain/local-patch-view";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewIdentity } from "../domain/review";
 import {
   createLocalReviewSession,
   isPullRequestReviewSession,
   type LocalReviewSession,
+  type LocalSessionViewPatch,
   type ReviewRevision,
 } from "../domain/review-session";
 import type {
@@ -336,52 +341,106 @@ export class LocalReviewSessionPreparation {
             : "PreparationUnavailable",
       });
     }
-    const patch = await this.dependencies.revisions.renderPatch(
-      resolved.checkoutPath,
-      resolved.revision,
-    );
-    if (patch._tag === "err")
-      return this.abort(
-        journal,
-        patch.error._tag === "PatchTooLarge"
-          ? patch.error
-          : { _tag: "PreparationUnavailable" },
-      );
-    const patchPath = this.dependencies.paths.patchFile(profileId, sessionId);
-    if ((await journal.record(patchPath))._tag === "err")
-      return this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    const wrote = await writeAtomicFile(patchPath, patch.value);
-    if (wrote._tag === "err")
-      return this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    const canonicalPatchHash = parseContentHash(
-      hashReviewArtifactContent(patch.value),
-    );
-    const parsedPatchPath = parseAbsolutePath(patchPath);
-    const parsedWorktreePath = parseAbsolutePath(worktree.value.path);
+    const patches = await this.renderViewPatches(resolved);
+    if (patches._tag === "err") return this.abort(journal, patches.error);
+    const files = patches.value.map((rendered) => ({
+      ...rendered,
+      path:
+        rendered.view === "combined"
+          ? this.dependencies.paths.patchFile(profileId, sessionId)
+          : this.dependencies.paths.viewPatchFile(
+              profileId,
+              sessionId,
+              rendered.view,
+            ),
+    }));
     if (
-      canonicalPatchHash._tag === "err" ||
-      parsedPatchPath._tag === "err" ||
-      parsedWorktreePath._tag === "err"
+      (await journal.recordAll(files.map((file) => file.path)))._tag === "err"
     )
+      return this.abort(journal, { _tag: "SessionStorageUnavailable" });
+    const stored = new Map<LocalPatchView, LocalSessionViewPatch>();
+    for (const file of files) {
+      if ((await writeAtomicFile(file.path, file.patch))._tag === "err")
+        return this.abort(journal, { _tag: "SessionStorageUnavailable" });
+      const patchPath = parseAbsolutePath(file.path);
+      const patchHash = parseContentHash(hashReviewArtifactContent(file.patch));
+      if (patchPath._tag === "err" || patchHash._tag === "err")
+        return this.abort(journal, { _tag: "PreparationUnavailable" });
+      stored.set(file.view, {
+        patchPath: patchPath.value,
+        patchHash: patchHash.value,
+        paths: listPatchTouchedPaths(file.patch),
+      });
+    }
+    const combined = stored.get("combined");
+    const committed = stored.get("committed");
+    const uncommitted = stored.get("uncommitted");
+    const parsedWorktreePath = parseAbsolutePath(worktree.value.path);
+    if (combined === undefined || parsedWorktreePath._tag === "err")
       return this.abort(journal, { _tag: "PreparationUnavailable" });
     if ((await journal.markCommitting())._tag === "err")
       return this.abort(journal, { _tag: "SessionStorageUnavailable" });
     const session = createLocalReviewSession({
       key,
-      patchPath: parsedPatchPath.value,
-      canonicalPatchHash: canonicalPatchHash.value,
+      patchPath: combined.patchPath,
+      canonicalPatchHash: combined.patchHash,
       worktree: {
         path: parsedWorktreePath.value,
         headSha: resolved.revision.headSha,
       },
       createdAt: this.dependencies.now(),
-      ...definedProps({ checkoutHeadSha: resolved.checkoutHeadSha }),
+      ...definedProps({
+        checkoutHeadSha: resolved.checkoutHeadSha,
+        viewPatches:
+          committed === undefined || uncommitted === undefined
+            ? undefined
+            : { combined, committed, uncommitted },
+      }),
     });
     const saved = await this.dependencies.sessions.save(session);
     if (saved._tag === "err")
       return this.abort(journal, { _tag: "SessionStorageUnavailable" });
     await journal.complete();
     return ok(session);
+  }
+
+  /**
+   * The session's patches: Combined always, and on a shared Review also
+   * Committed and Uncommitted around the checkout `HEAD`. Any patch over the
+   * git output cap refuses the whole open (#556 D2).
+   */
+  private async renderViewPatches(
+    resolved: ResolvedLocalReview,
+  ): Promise<
+    Result<
+      ReadonlyArray<{ readonly view: LocalPatchView; readonly patch: string }>,
+      LocalReviewPreparationFailure
+    >
+  > {
+    const { baseSha, headSha } = resolved.revision;
+    const revisions: Array<readonly [LocalPatchView, ReviewRevision]> = [
+      ["combined", resolved.revision],
+    ];
+    if (resolved.checkoutHeadSha !== undefined)
+      revisions.push(
+        ["committed", { baseSha, headSha: resolved.checkoutHeadSha }],
+        ["uncommitted", { baseSha: resolved.checkoutHeadSha, headSha }],
+      );
+    const rendered: Array<{ view: LocalPatchView; patch: string }> = [];
+    for (const [view, revision] of revisions) {
+      const patch = await this.dependencies.revisions.renderPatch(
+        resolved.checkoutPath,
+        revision,
+      );
+      if (patch._tag === "err")
+        return err(
+          patch.error._tag === "PatchTooLarge"
+            ? patch.error
+            : { _tag: "PreparationUnavailable" },
+        );
+      rendered.push({ view, patch: patch.value });
+    }
+    return ok(rendered);
   }
 
   private async abort(

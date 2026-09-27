@@ -7,6 +7,7 @@ import {
   type ReviewSessionId,
 } from "./ids";
 import { definedProps } from "./defined-props";
+import type { LocalPatchView } from "./local-patch-view";
 import type { ReviewIdentity } from "./review";
 import type {
   LocalReviewSource,
@@ -65,7 +66,24 @@ export type LocalReviewSession = ReviewSessionFields & {
    * every `local_branch` session, absent on the other kinds.
    */
   readonly checkoutHeadSha?: GitSha;
+  /**
+   * The session's three patches, written at prepare so a view switch reads a
+   * stored file and runs no git. Present on every `local_branch` session,
+   * absent on the other kinds; Combined is `patchPath` itself.
+   */
+  readonly viewPatches?: LocalSessionViewPatches;
 };
+
+/** One stored patch of a local session and the paths it touches (`listPatchTouchedPaths`). */
+export type LocalSessionViewPatch = {
+  readonly patchPath: AbsolutePath;
+  readonly patchHash: ContentHash;
+  readonly paths: ReadonlyArray<string>;
+};
+
+export type LocalSessionViewPatches = Readonly<
+  Record<LocalPatchView, LocalSessionViewPatch>
+>;
 
 /** The local work for one pinned revision of a Review source. */
 export type ReviewSession = PullRequestReviewSession | LocalReviewSession;
@@ -129,8 +147,8 @@ export function createReviewSession(input: {
 /**
  * Constructs a local session; its patch hash is the hash of the patch as
  * written (ADR 0050). A `local_branch` session needs `checkoutHeadSha` and
- * the other kinds take none; the session store refuses to save or read one
- * that breaks this.
+ * `viewPatches` and the other kinds take neither; the session store refuses
+ * to save or read one that breaks this.
  */
 export function createLocalReviewSession(input: {
   readonly key: ReviewSessionKey<LocalReviewSource>;
@@ -139,6 +157,7 @@ export function createLocalReviewSession(input: {
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
   readonly checkoutHeadSha?: GitSha;
+  readonly viewPatches?: LocalSessionViewPatches;
 }): LocalReviewSession {
   return {
     schemaVersion: 6,
@@ -149,6 +168,9 @@ export function createLocalReviewSession(input: {
     worktree: input.worktree,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
-    ...definedProps({ checkoutHeadSha: input.checkoutHeadSha }),
+    ...definedProps({
+      checkoutHeadSha: input.checkoutHeadSha,
+      viewPatches: input.viewPatches,
+    }),
   };
 }
