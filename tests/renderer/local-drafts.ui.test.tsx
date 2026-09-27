@@ -27,6 +27,7 @@ import {
   callPath,
   projection,
   withAnalysis,
+  withoutViews,
 } from "./review-workbench-fixtures";
 
 const ADD = "/v1/reviews/local-drafts/add";
@@ -189,6 +190,8 @@ describe("Local drafts on a local Review", () => {
           loadAgentPrompt: async () => "",
           forFinding: () => ({ drafted: true, pending: false }),
         }}
+        placement={withoutViews("session-a")}
+        onReveal={vi.fn()}
       />,
     );
 
