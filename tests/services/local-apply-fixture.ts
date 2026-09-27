@@ -24,12 +24,15 @@ import {
   parseGitHubRepoName,
   parseInsightRunId,
   parseIsoTimestamp,
+  parseLocalBranchName,
   parseRepoRelativePath,
   parseWorkspaceProfileId,
+  type AbsolutePath,
   type FindingId,
   type InsightRunId,
   type IsoTimestamp,
 } from "../../src/domain/ids";
+import { definedProps } from "../../src/domain/defined-props";
 import {
   beginInsightRun,
   completeInsightRun,
@@ -292,8 +295,19 @@ export async function localApplyHarness(
     coordinator,
     retention,
     logs,
-    open: async (request = { kind: "working_tree" }) =>
+    open: async (request = sharedAgainstMain()) =>
       value(await opening.open({ profileId, repository, request })),
+  };
+}
+
+/** The shared Review of the checked-out branch against `main`; on `main` itself it shows the checkout's changes against `HEAD`. */
+export function sharedAgainstMain(
+  checkout?: AbsolutePath,
+): LocalReviewSourceRequest {
+  return {
+    kind: "local_branch",
+    baseBranch: value(parseLocalBranchName("main")),
+    ...definedProps({ checkout }),
   };
 }
 

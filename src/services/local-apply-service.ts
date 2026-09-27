@@ -21,7 +21,10 @@ import {
 import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, type Review } from "../domain/review";
-import type { LocalReviewSource } from "../domain/review-source";
+import {
+  reopenLocalSourceRequest,
+  type LocalReviewSource,
+} from "../domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import { resolveCheckoutRoot } from "./local-apply-checkout";
 import {
@@ -56,7 +59,8 @@ export type LocalApplyRequest = {
 export type LocalApplyFailure = {
   readonly reason:
     | LocalWriteGateFailure["reason"]
-    | "not_working_tree"
+    /** Apply writes the checkout a shared Review snapshots; a commit Review has no checkout content to write to. */
+    | "not_local_branch"
     /** An earlier Apply on this Review is not settled; recovery must run first. */
     | "apply_locked"
     | "in_progress"
@@ -198,8 +202,8 @@ export class LocalApplyService {
     );
     if (fresh._tag === "err") return fresh;
     const { review, session, checkoutPath } = fresh.value;
-    if (review.identity.source.kind !== "working_tree")
-      return err({ reason: "not_working_tree" });
+    if (review.identity.source.kind !== "local_branch")
+      return err({ reason: "not_local_branch" });
     const edits = await loadVerifiedEdits(
       this.dependencies.insights,
       request,
@@ -338,23 +342,25 @@ export class LocalApplyService {
       ).catch(() => false))
     )
       this.log("warn", "Local apply drafts not marked applied", operation, {});
-    const next = await this.dependencies.opening
-      .openLocked(
-        {
-          profileId: operation.profileId,
-          repository: {
-            host: review.identity.host,
-            owner: review.identity.owner,
-            repo: review.identity.repo,
-          },
-          request: {
-            kind: "working_tree",
-            ...definedProps({ checkout: review.identity.source.checkout }),
-          },
-        },
-        operation.reviewId,
-      )
-      .catch(() => undefined);
+    // The same branch and base, read again: the written files land in the next session.
+    const request = reopenLocalSourceRequest(review.identity.source);
+    const next =
+      request === undefined
+        ? undefined
+        : await this.dependencies.opening
+            .openLocked(
+              {
+                profileId: operation.profileId,
+                repository: {
+                  host: review.identity.host,
+                  owner: review.identity.owner,
+                  repo: review.identity.repo,
+                },
+                request,
+              },
+              operation.reviewId,
+            )
+            .catch(() => undefined);
     await this.dependencies.operations.remove(
       operation.profileId,
       operation.reviewId,

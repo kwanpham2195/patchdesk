@@ -14,13 +14,16 @@ import { isNamedCheckoutGone, type LocalCheckoutReads } from "./local-checkout";
  * A shared Review on a detached `HEAD` has only its base branch to lose. A
  * named checkout that `git worktree list` no longer lists as live is gone too
  * (#489); a failed listing, or a locked worktree whose directory is missing,
- * keeps the Review.
+ * keeps the Review. A working-tree or branch Review stored before the shared
+ * Review (#555) is always gone: nothing opens one again, and the caller's
+ * no-drafts rule still keeps one that holds notes.
  */
 export async function isLocalSourceGone(
   reads: LocalCheckoutReads,
   localPath: string,
   source: LocalReviewSource,
 ): Promise<boolean> {
+  if (source.kind === "working_tree" || source.kind === "branch") return true;
   const repositoryPath = await realpath(localPath).catch(() => undefined);
   if (repositoryPath === undefined) return false;
   if (source.checkout !== undefined) {
@@ -45,12 +48,6 @@ export async function isLocalSourceGone(
     return listed === undefined ? undefined : !listed.includes(ref);
   };
   switch (source.kind) {
-    case "working_tree":
-      return (
-        source.branch !== undefined &&
-        (await branchGone(source.branch)) === true
-      );
-    case "branch":
     case "local_branch": {
       const [branch, baseBranch] = await Promise.all([
         source.branch === detachedHeadBranch

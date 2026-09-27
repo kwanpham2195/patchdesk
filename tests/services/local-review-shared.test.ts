@@ -261,3 +261,69 @@ describe("the shared local Review (#555)", () => {
     expect(refreshed.session.id).toBe(opened.session.id);
   });
 });
+
+describe("an agent's open of the shared Review with no base (#555)", () => {
+  const agentOpen = (harness: LocalApplyHarness) =>
+    harness.opening.openForAgent({
+      profileId,
+      repository,
+      request: { kind: "local_branch" },
+    });
+
+  it("reuses the base of the branch's shared Review the maintainer opened, unmoved", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "branch", "-q", "develop");
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "untracked.txt"), "first\n");
+    const maintainers = await harness.open(
+      shared(value(parseLocalBranchName("develop"))),
+    );
+    await writeFile(join(repositoryPath, "untracked.txt"), "second\n");
+
+    const opened = value(await agentOpen(harness));
+
+    expect(opened.baseInferred).toBe(false);
+    expect(opened.workbench.review.id).toBe(maintainers.review.id);
+    expect(opened.workbench.session.id).toBe(maintainers.session.id);
+    expect(opened.workbench.session.key.source).toMatchObject({
+      baseBranch: "develop",
+    });
+  });
+
+  it("opens a new shared Review against the inferred base and says it was inferred", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "feature.txt"), "feature\n");
+    git(repositoryPath, "add", "feature.txt");
+    git(repositoryPath, "commit", "-q", "-m", "feature");
+
+    const opened = value(await agentOpen(harness));
+
+    expect(opened.baseInferred).toBe(true);
+    expect(opened.workbench.session.key.source).toEqual({
+      kind: "local_branch",
+      branch: "feature",
+      baseBranch: "main",
+    });
+    expect(
+      value(
+        await harness.reviews.load(
+          profileId,
+          value(parseReviewId(opened.workbench.review.id)),
+        ),
+      ).lastOpenedAt,
+    ).toBeUndefined();
+  });
+
+  it("refuses base_required on a lone branch, creating nothing", async () => {
+    const harness = await localApplyHarness();
+    await writeFile(join(harness.repositoryPath, "untracked.txt"), "new\n");
+
+    const opened = await agentOpen(harness);
+
+    expect(opened).toEqual({ _tag: "err", error: { reason: "base_required" } });
+    expect(value(await harness.reviews.list(profileId)).reviews).toEqual([]);
+  });
+});

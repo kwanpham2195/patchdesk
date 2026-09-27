@@ -16,6 +16,12 @@ const localReviewSourceSchema = v.variant("kind", [
     checkout: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
   v.strictObject({
+    kind: v.literal("local_branch"),
+    branch: v.pipe(v.string(), v.minLength(1)),
+    baseBranch: v.pipe(v.string(), v.minLength(1)),
+    checkout: v.optional(v.pipe(v.string(), v.minLength(1))),
+  }),
+  v.strictObject({
     kind: v.literal("commit"),
     commitSha: v.pipe(v.string(), v.minLength(7)),
     checkout: v.optional(v.pipe(v.string(), v.minLength(1))),
@@ -57,6 +63,8 @@ export function localRevisionLabel(
       return `Local snapshot ${short} · read from the local checkout`;
     case "branch":
       return `Branch tip ${short} · read from the local checkout`;
+    case "local_branch":
+      return `Local snapshot ${short} · ${source.branch === "detached" ? "detached HEAD" : source.branch} against ${source.baseBranch} · read from the local checkout`;
     case "commit":
       return `Commit ${short} · read from the local checkout`;
     default:
