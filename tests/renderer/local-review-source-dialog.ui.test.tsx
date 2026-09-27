@@ -132,7 +132,8 @@ describe("Open a local review", () => {
     renderAction(async () => undefined);
 
     await user.click(screen.getByRole("button", { name: "Local review" }));
-    await vi.waitFor(() => expect(installed?.request).toHaveBeenCalledTimes(2));
+    // The listing has loaded once the dialog names the lone branch.
+    await screen.findByText(/main is the only local branch/);
 
     expect(screen.queryByRole("combobox", { name: "Base branch" })).toBeNull();
     expect(screen.getByRole("button", { name: "Open review" })).toHaveProperty(
