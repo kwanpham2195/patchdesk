@@ -184,6 +184,8 @@ async function opening(
       },
       prepare: (resolved) => preparation.prepare(resolved),
       listCheckouts: (id, target) => preparation.listCheckouts(id, target),
+      listBranches: (id, target, checkout) =>
+        preparation.listBranches(id, target, checkout),
       findCheckout: (id, directory) => preparation.findCheckout(id, directory),
     },
     projection,

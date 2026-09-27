@@ -6,7 +6,10 @@ import { registerLocalReviewRoutes } from "../../src/main/routes/local-review-ro
 import type { LocalReviewOpening } from "../../src/services/local-review-opening";
 
 type OpenInput = Parameters<LocalReviewOpening["open"]>[0];
-type Opening = Pick<LocalReviewOpening, "open" | "listCheckouts">;
+type Opening = Pick<
+  LocalReviewOpening,
+  "open" | "listCheckouts" | "listBranches"
+>;
 
 const repository = {
   profileId: "acme",
@@ -42,6 +45,10 @@ function routeFixture(localReviewOpening: Partial<Opening> = {}) {
     list: (query: Record<string, string>) =>
       app.request(
         `/v1/reviews/local-checkouts?${new URLSearchParams(query).toString()}`,
+      ),
+    branches: (query: Record<string, string>) =>
+      app.request(
+        `/v1/reviews/local-branches?${new URLSearchParams(query).toString()}`,
       ),
     opens,
   };
@@ -120,5 +127,39 @@ describe("local Review checkout routes (#489)", () => {
 
     expect((await fixture.list(withoutRepo)).status).toBe(400);
     expect((await fixture.list(repository)).status).toBe(404);
+  });
+
+  it("answers the branch listing of the named checkout with the inferred base", async () => {
+    const asked: Array<string | undefined> = [];
+    const fixture = routeFixture({
+      listBranches: async (_profileId, _repository, checkout) => {
+        asked.push(checkout);
+        return ok({
+          head: { kind: "branch", branch: "feature" },
+          branches: ["main", "develop"],
+          defaultBranch: "main",
+          inferred: { baseBranch: "main", commitsBack: 3 },
+        } as never);
+      },
+    });
+
+    const listed = await fixture.branches({
+      ...repository,
+      checkout: "/work/linked",
+    });
+    const relative = await fixture.branches({
+      ...repository,
+      checkout: "linked",
+    });
+
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual({
+      head: { kind: "branch", branch: "feature" },
+      branches: ["main", "develop"],
+      defaultBranch: "main",
+      inferred: { baseBranch: "main", commitsBack: 3 },
+    });
+    expect(relative.status).toBe(400);
+    expect(asked).toEqual(["/work/linked"]);
   });
 });

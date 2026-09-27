@@ -223,6 +223,8 @@ export async function localApplyHarness(
         return prepared;
       },
       listCheckouts: (id, target) => preparation.listCheckouts(id, target),
+      listBranches: (id, target, checkout) =>
+        preparation.listBranches(id, target, checkout),
       findCheckout: (id, directory) => preparation.findCheckout(id, directory),
     },
     new ReviewWorkbenchProjectionService(
