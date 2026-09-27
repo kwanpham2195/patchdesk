@@ -134,7 +134,7 @@ A refused call returns an error code and a sentence the agent can relay. The one
 - `stale_session`: `run_insight` named a session the Review has moved past. The agent reads the current session from `get_insight` or `review_local` and asks again.
 - `stale_cursor`: the drafts changed since the `get_feedback` cursor was issued. The agent reads again from the first page.
 
-Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `repository_not_local`, `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB, naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `intent_exists`, `not_applicable` for a pull request Review, and `too_large` for an answer over 4 MiB.
+Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB, naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `intent_exists`, `not_applicable` for a pull request Review, and `too_large` for an answer over 4 MiB.
 
 ## Known limits
 

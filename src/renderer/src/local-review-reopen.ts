@@ -121,3 +121,19 @@ export function patchTooLargeMessage(
     ? "The change is larger than the 2 MiB patch Patchdesk can read. Leave large generated files out, or review it in smaller parts."
     : `The change is larger than the 2 MiB patch Patchdesk can read. The largest changes are in ${files.join(", ")}. Leave generated files out, or review it in smaller parts.`;
 }
+
+const checkoutMissingBodySchema = v.object({
+  error: v.literal("checkout_missing"),
+  localPath: v.string(),
+});
+
+/** The sentence for a repository whose configured checkout is gone, as after a move on disk (#488); undefined for any other failure. */
+export function checkoutMissingMessage(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this reads one refusal off it.
+  cause: unknown,
+): string | undefined {
+  if (!(cause instanceof PatchdeskApiError)) return undefined;
+  const body = v.safeParse(checkoutMissingBodySchema, cause.responseBody);
+  if (!body.success) return undefined;
+  return `Patchdesk cannot find this repository's checkout at ${body.output.localPath}. If you moved it, open Settings → Workspace and, under Repositories, add the folder that holds it now if it is not listed, then untick the repository and tick it again.`;
+}

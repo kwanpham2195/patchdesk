@@ -209,6 +209,8 @@ Amended 2026-09-27 (#485): `review_local` and `refresh_review` also refuse `untr
 
 Amended 2026-09-27 (#493): `review_local` and `refresh_review` also refuse `patch_too_large` when the patch is over the 2 MiB git output cap; no session is stored, the snapshot's ref and worktree are removed, and its git objects stay in the object store. The message names the files with the most changes.
 
+Amended 2026-09-27 (#488): `review_local` and `refresh_review` also refuse `checkout_missing` when the repository's configured `localPath` is no longer a directory, as after a move on disk. `review_local` finds that repository by the `origin` of the checkout holding `cwd`. The message names the configured path and the Settings steps that save the new one.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run

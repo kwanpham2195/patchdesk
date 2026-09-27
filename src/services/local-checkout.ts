@@ -1,5 +1,6 @@
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 
+import { isNotFound } from "../adapters/storage/json-file";
 import { isPathContained } from "../adapters/storage/path-containment";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import {
@@ -10,6 +11,7 @@ import {
   type LocalBranchName,
 } from "../domain/ids";
 import {
+  parseGitHubOrigin,
   sameRepositoryIdentity,
   type RepositoryIdentity,
 } from "../domain/repository-identity";
@@ -68,7 +70,24 @@ export type LocalCheckoutFailure =
   | { readonly _tag: "RepositoryNotLocal" }
   /** The path is not a live worktree of the configured checkout's repository. */
   | { readonly _tag: "CheckoutNotInRepository" }
+  /** The configured `localPath` is no longer a directory, as after the repository moved on disk (#488). */
+  | { readonly _tag: "CheckoutMissing"; readonly localPath: AbsolutePath }
   | { readonly _tag: "LocalGitFailed" };
+
+/**
+ * The refusal for a configured checkout whose directory is gone. Checked
+ * before any git call, because git's failure there names no cause (#488).
+ */
+export async function missingCheckout(
+  localPath: AbsolutePath,
+): Promise<LocalCheckoutFailure | undefined> {
+  try {
+    if ((await stat(localPath)).isDirectory()) return undefined;
+  } catch (cause) {
+    if (!isNotFound(cause)) return undefined;
+  }
+  return { _tag: "CheckoutMissing", localPath };
+}
 
 /** The profile's configured checkout of a repository, if it gives one. */
 export function configuredLocalPath(
@@ -213,6 +232,8 @@ export async function resolveLocalReviewCheckout(
 ): Promise<Result<LocalReviewCheckout, LocalCheckoutFailure>> {
   const localPath = configuredLocalPath(profile, repository);
   if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
+  const missing = await missingCheckout(localPath);
+  if (missing !== undefined) return err(missing);
   const configured = { repositoryPath: localPath, checkoutPath: localPath };
   if (checkout === undefined) return ok(configured);
   const picked = await resolveCheckoutRoot(reads.git, checkout);
@@ -232,7 +253,8 @@ export async function resolveLocalReviewCheckout(
  * The profile repository with a live checkout whose worktree top-level
  * contains `directory`, and that checkout (ADR 0052 `review_local`). A
  * repository git cannot list is skipped, so one broken `localPath` does not
- * hide the others.
+ * hide the others. A directory whose `origin` names a repository with a
+ * missing `localPath` is refused `CheckoutMissing`: the repository moved (#488).
  */
 export async function findProfileCheckout(
   reads: LocalCheckoutReads,
@@ -258,5 +280,23 @@ export async function findProfileCheckout(
     const match = checkouts?.find((candidate) => candidate.path === root);
     if (match !== undefined) return ok({ repository, checkout: match.path });
   }
-  return err({ _tag: "CheckoutNotInRepository" });
+  const origin = await reads.git.run([
+    "git",
+    "-C",
+    root,
+    "config",
+    "--get",
+    "remote.origin.url",
+  ]);
+  const moved = profile.repos.find((repository) =>
+    sameRepositoryIdentity(
+      repository,
+      origin._tag === "ok"
+        ? parseGitHubOrigin(origin.value.stdout.trim())
+        : undefined,
+    ),
+  )?.localPath;
+  const missing =
+    moved === undefined ? undefined : await missingCheckout(moved);
+  return err(missing ?? { _tag: "CheckoutNotInRepository" });
 }
