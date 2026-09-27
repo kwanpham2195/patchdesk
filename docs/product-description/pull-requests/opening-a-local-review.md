@@ -276,7 +276,7 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - Two branches whose names differ only in characters that cannot appear in a folder name still open two different Reviews.
 - A branch whose history shares nothing with the base branch is refused with the missing-revision sentence.
 - Files that `.gitignore` excludes never appear, even when they are open in an editor.
-- A patch larger than Patchdesk's 2 MiB command output limit is refused with `Patchdesk could not read the local checkout.`
+- A patch larger than Patchdesk's 2 MiB command output limit is refused `patch_too_large`, naming the largest changed files (#493).
 
 ## Open questions and verification
 
