@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Kept Viewed marks across a shared local Review's Refresh when the file's patch in that view is unchanged. A changed file loses its mark, and a mark in one view never carries into another. #566
+
 - Fixed a queued Viewed mark disappearing when you switched patch views and marked another file before the earlier save answered. Pending marks now finish saving in their own view, and a failed save returns that view to its stored marks for retry. #573
 
 - Fixed losing a note's text when **Add note** was refused after switching patch views. Once the save is refused, the text returns as a Saved draft to place on another line; repeated selection keeps the restored text, and a successful save offers no duplicate. #567
