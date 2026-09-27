@@ -9,7 +9,7 @@ import { requestJson } from "../api-client";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
 /** The patch the diff shows: one view of one session. */
-export type ShownLocalPatch = {
+type ShownLocalPatch = {
   readonly sessionId: string;
   readonly view: LocalPatchView;
   readonly patch: string | undefined;
