@@ -54,7 +54,7 @@ export async function openRoute(
       host: "github.com",
       owner: "octo-org",
       repo: "patchdesk",
-      source: { kind: "working_tree", checkout },
+      source: { kind: "local_branch", baseBranch: "main", checkout },
     }),
   );
   return v.parse(workbenchSchema, opened.body);

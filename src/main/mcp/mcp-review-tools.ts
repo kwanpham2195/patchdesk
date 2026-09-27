@@ -6,8 +6,10 @@ import type { ReviewStore } from "../../adapters/storage/review-store";
 import { definedProps } from "../../domain/defined-props";
 import {
   parseAbsolutePath,
+  parseLocalBranchName,
   parseReviewId,
   parseReviewSessionId,
+  type AbsolutePath,
   type ReviewId,
 } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
@@ -32,6 +34,7 @@ import type {
 } from "../../services/local-draft-service";
 import type { LocalFeedbackPageFailure } from "../../services/local-feedback-page";
 import type {
+  LocalReviewAgentOpenRequest,
   LocalReviewAgentRefreshFailure,
   LocalReviewBaseRequired,
   LocalReviewOpening,
@@ -54,6 +57,10 @@ import {
  * because the Review exists either way (#513).
  */
 export type ReviewLocalResult = LocalReviewOpened & {
+  /** The shared Review's base branch; absent for a commit Review. */
+  readonly baseBranch?: string;
+  /** True when Patchdesk inferred `baseBranch`; false when the agent named it or an open Review of the branch supplied it. */
+  readonly baseInferred?: boolean;
   readonly intentRecorded?: boolean;
   readonly intentKept?: boolean;
   readonly intentRefused?: AgentIntentFailure["reason"];
@@ -104,7 +111,7 @@ const refusalMessages = {
   base_required:
     "The checkout has no other local branch behind HEAD to compare with, and no Review of this branch is open. Pass base, the local branch this change should be compared with.",
   revision_not_found:
-    "Git could not find that branch or commit in the checkout.",
+    "Git could not find the base branch or the commit in the checkout, or the base shares no history with HEAD. Check the name with git branch, or omit base to reuse or infer one.",
   unmerged_index:
     "The checkout has unmerged paths. Finish or abort the merge, then try again.",
   branch_mismatch: "The checkout is now on another branch than the Review.",
@@ -114,7 +121,7 @@ const refusalMessages = {
     "This Review was refreshed less than 10 seconds ago. Retry after retryAfterMs.",
   terminal: "This Review is closed.",
   not_applicable:
-    "This is a pull request Review. These tools read local Reviews only.",
+    "These tools read shared and commit local Reviews only: this is a pull request Review, or a working-tree or branch Review from before the shared Review. Call review_local for the current one.",
   intent_exists:
     "The Review already has a different Change intent, which Patchdesk keeps. Ask the maintainer to change it in Patchdesk if yours should replace it.",
   change_intent_sensitive:
@@ -249,10 +256,7 @@ export async function reviewLocal(
     directory.value,
   );
   if (found._tag === "err") return err(localReviewRefusal(found.error));
-  const request = parseLocalReviewSourceRequest({
-    ...(input.source ?? { kind: "working_tree" }),
-    checkout: found.value.checkout,
-  });
+  const request = agentSourceRequest(input, found.value.checkout);
   if (request === undefined) return err(refusal("invalid_input"));
   const { host, owner, repo } = found.value.repository;
   const opened = await services.localReviewOpening.openForAgent({
@@ -261,7 +265,12 @@ export async function reviewLocal(
     request,
   });
   if (opened._tag === "err") return err(localReviewRefusal(opened.error));
-  const { workbench } = opened.value;
+  const { workbench, baseInferred } = opened.value;
+  const { source } = workbench.session.key;
+  const base =
+    source.kind === "local_branch"
+      ? { baseBranch: source.baseBranch, baseInferred }
+      : undefined;
   const recorded =
     input.intent === undefined
       ? undefined
@@ -275,9 +284,10 @@ export async function reviewLocal(
     workbench,
   );
   if (described._tag === "err") return err(refusal("storage"));
-  if (recorded === undefined) return ok(described.value);
+  if (recorded === undefined) return ok({ ...described.value, ...base });
   return ok({
     ...described.value,
+    ...base,
     ...(recorded._tag === "ok"
       ? { intentRecorded: true, intentKept: recorded.value.intentKept }
       : {
@@ -286,6 +296,32 @@ export async function reviewLocal(
           intentMessage: refusalMessages[recorded.error.reason],
         }),
   });
+}
+
+/**
+ * The source `review_local` names: the shared Review, with the base the
+ * agent passed if any, or one commit. Undefined for a base beside a commit,
+ * or a base or commit git would refuse as a name.
+ */
+function agentSourceRequest(
+  input: ToolInput<"review_local">,
+  checkout: AbsolutePath,
+): LocalReviewAgentOpenRequest["request"] | undefined {
+  const source = input.source ?? { kind: "local_branch" };
+  if (source.kind === "commit") {
+    if (input.base !== undefined) return undefined;
+    const commit = parseLocalReviewSourceRequest({
+      kind: "commit",
+      commit: source.commit,
+      checkout,
+    });
+    return commit?.kind === "commit" ? commit : undefined;
+  }
+  if (input.base === undefined) return { kind: "local_branch", checkout };
+  const baseBranch = parseLocalBranchName(input.base);
+  return baseBranch._tag === "ok"
+    ? { kind: "local_branch", baseBranch: baseBranch.value, checkout }
+    : undefined;
 }
 
 /** `refresh_review`: `LocalReviewOpening.prepareForAgent`, which prepares the checkout's content without moving the Review. */

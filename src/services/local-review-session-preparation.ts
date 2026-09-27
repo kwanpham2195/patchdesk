@@ -133,12 +133,24 @@ export class LocalReviewSessionPreparation {
     return findProfileCheckout(this.dependencies, profile.value, directory);
   }
 
-  /** The local branches of the checkout `checkout` names, and the base a shared Review opened there would infer (#555). */
+  /**
+   * The local branches of the checkout `checkout` names, and the base a
+   * shared Review opened there would infer (#555), with the checkout as a
+   * source stores it: absent for the configured one, however it was named.
+   */
   async listBranches(
     profileId: WorkspaceProfileId,
     repository: LocalReviewOpenRequest["repository"],
     checkout: AbsolutePath | undefined,
-  ): Promise<Result<LocalBranchListing, LocalReviewPreparationFailure>> {
+  ): Promise<
+    Result<
+      {
+        readonly listing: LocalBranchListing;
+        readonly checkout?: AbsolutePath;
+      },
+      LocalReviewPreparationFailure
+    >
+  > {
     const profile = await this.loadProfile(profileId);
     if (profile._tag === "err") return profile;
     const resolved = await resolveLocalReviewCheckout(
@@ -148,10 +160,16 @@ export class LocalReviewSessionPreparation {
       checkout,
     );
     if (resolved._tag === "err") return resolved;
-    return listLocalBranches(
+    const listing = await listLocalBranches(
       this.dependencies.git,
       resolved.value.checkoutPath,
     );
+    return listing._tag === "ok"
+      ? ok({
+          listing: listing.value,
+          ...definedProps({ checkout: resolved.value.checkout }),
+        })
+      : listing;
   }
 
   /** Reads the source from the checkout the request names; a working tree is snapshotted here. */

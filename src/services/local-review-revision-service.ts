@@ -90,18 +90,10 @@ export class LocalReviewRevisionService {
     request: LocalReviewSourceRequest,
   ): Promise<Result<ResolvedLocalRevision, LocalReviewRevisionFailure>> {
     switch (request.kind) {
-      case "working_tree":
-        return this.snapshotWorkingTree(profileId, repositoryPath);
       case "local_branch":
         return this.resolveLocalBranch(
           profileId,
           repositoryPath,
-          request.baseBranch,
-        );
-      case "branch":
-        return this.resolveBranch(
-          repositoryPath,
-          request.branch,
           request.baseBranch,
         );
       case "commit":
@@ -176,28 +168,6 @@ export class LocalReviewRevisionService {
       .sort((a, b) => b.lines - a.lines || 0)
       .slice(0, LARGEST_CHANGED_FILE_COUNT)
       .map((file) => file.path);
-  }
-
-  private async snapshotWorkingTree(
-    profileId: WorkspaceProfileId,
-    repositoryPath: string,
-  ): Promise<Result<ResolvedLocalRevision, LocalReviewRevisionFailure>> {
-    const head = await this.readCheckoutHead(repositoryPath);
-    if (head._tag === "err") return head;
-    const snapshot = await this.writeLocalSnapshot(
-      profileId,
-      repositoryPath,
-      head.value.sha,
-    );
-    if (snapshot._tag === "err") return snapshot;
-    const { branch } = head.value;
-    return ok({
-      source:
-        branch === undefined
-          ? { kind: "working_tree" }
-          : { kind: "working_tree", branch },
-      revision: { headSha: snapshot.value, baseSha: head.value.sha },
-    });
   }
 
   /**
@@ -367,38 +337,6 @@ export class LocalReviewRevisionService {
       scratchIndex,
     );
     return tree === undefined ? err({ _tag: "LocalGitFailed" }) : ok(tree);
-  }
-
-  private async resolveBranch(
-    repositoryPath: string,
-    branch: LocalBranchName,
-    baseBranch: LocalBranchName,
-  ): Promise<Result<ResolvedLocalRevision, LocalReviewRevisionFailure>> {
-    const [tip, baseTip] = await Promise.all([
-      this.readSha(repositoryPath, [
-        "rev-parse",
-        "--verify",
-        `refs/heads/${branch}^{commit}`,
-      ]),
-      this.readSha(repositoryPath, [
-        "rev-parse",
-        "--verify",
-        `refs/heads/${baseBranch}^{commit}`,
-      ]),
-    ]);
-    if (tip === undefined || baseTip === undefined)
-      return err({ _tag: "LocalRevisionNotFound" });
-    const mergeBase = await this.readSha(repositoryPath, [
-      "merge-base",
-      "--end-of-options",
-      tip,
-      baseTip,
-    ]);
-    if (mergeBase === undefined) return err({ _tag: "LocalRevisionNotFound" });
-    return ok({
-      source: { kind: "branch", branch, baseBranch },
-      revision: { headSha: tip, baseSha: mergeBase },
-    });
   }
 
   private async resolveCommit(
