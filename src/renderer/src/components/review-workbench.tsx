@@ -3,34 +3,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
-import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import { parseUnifiedPatch } from "../../../domain/patch";
 import {
   deriveConversationThreadEntries,
   type ConversationThreadRow,
 } from "../conversation-thread-entries";
-import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
-import {
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
-  parsePullRequestNumber,
-  parseRepoRelativePath,
-} from "../../../domain/ids";
-import type { PullRequestRef } from "../../../domain/pull-request";
 import { reviewSourceTitle } from "../../../domain/review-source";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 
 import type { WorkbenchResponse } from "../renderer-contracts";
-import { workbenchPullRequestNumber } from "../review-source";
 import { Conversation } from "./conversation";
 import { DiffWorkbench } from "./diff-workbench";
 import { ReviewDiffPane } from "./review-diff-pane";
-import type {
-  LocalCommentAuthoring,
-  LocalCommentLocation,
-  ReviewInlineAnnotation,
-} from "./review-diff-view";
-import type { ReviewConversationActions } from "./conversation-thread-card";
+import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import {
   ReviewNavigator,
@@ -65,6 +50,11 @@ import {
   buildRailProps,
 } from "./review-workbench-overview";
 import { ReviewNavigatorResizeHandle } from "./review-navigator-resize-handle";
+import {
+  createHeadSideCommentAuthoring,
+  directConversationActionProps,
+  pullRequestExternalRef,
+} from "./review-workbench-pull-request";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { useSinceReviewMode } from "../hooks/use-since-review-mode";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
@@ -94,136 +84,6 @@ import type {
 /** What the Diff tab shows in place of a diff, from both the tab itself and
  * the commit-slice pane below it. */
 const NO_PATCH_AVAILABLE = "No patch is available for this Review.";
-
-/** The subset of `Conversation`'s props built conditionally, so the
- * `conversationActions` prop is only added (never spread from a conditional
- * empty object) when at least one direct-conversation action is wired. */
-type ConversationTabProps = {
-  readonly conversationActions?: ReviewConversationActions;
-};
-
-/** Direct conversation actions for both `<Conversation>` (the Conversation
- * tab) and the diff view, derived from the same underlying `actions` so
- * Reply/Resolve/Edit/Delete wiring never drifts between the two surfaces;
- * Dismiss is consumed only by the Conversation tab's review summaries.
- * The diff view additionally only wires them when `selectedCommitSha` is
- * unset (viewing the full Review diff, not one commit's slice); the
- * Conversation tab is independent of that selection. */
-type DirectConversationActionProps = {
-  readonly conversationTabProps: ConversationTabProps;
-  readonly diffConversationActions: ReviewConversationActions | undefined;
-};
-function directConversationActionProps(
-  actions: Pick<
-    ReviewWorkbenchActions,
-    | "setThreadState"
-    | "replyToThread"
-    | "editComment"
-    | "deleteComment"
-    | "dismissReview"
-  >,
-  selectedCommitSha: string | undefined,
-): DirectConversationActionProps {
-  const hasAnyAction =
-    actions.setThreadState !== undefined ||
-    actions.replyToThread !== undefined ||
-    actions.editComment !== undefined ||
-    actions.deleteComment !== undefined ||
-    actions.dismissReview !== undefined;
-  const wired: ReviewConversationActions = definedProps({
-    setThreadState: actions.setThreadState,
-    replyToThread: actions.replyToThread,
-    editComment: actions.editComment,
-    deleteComment: actions.deleteComment,
-    dismissReview: actions.dismissReview,
-  });
-  return {
-    // `exactOptionalPropertyTypes` treats `conversationActions={undefined}` as
-    // distinct from omitting the prop, so the prop itself is only added here
-    // (never spread from a conditional empty-object).
-    conversationTabProps: definedProps({
-      conversationActions: hasAnyAction ? wired : undefined,
-    }),
-    diffConversationActions:
-      selectedCommitSha === undefined && hasAnyAction ? wired : undefined,
-  };
-}
-
-function pullRequestExternalRef(
-  model: WorkbenchResponse,
-): PullRequestRef | undefined {
-  const prNumber = workbenchPullRequestNumber(model.session.key.source);
-  if (prNumber === undefined) return undefined;
-  const source = model.pullRequest?.ref ?? {
-    host: model.session.key.host,
-    owner: model.session.key.owner,
-    repo: model.session.key.repo,
-    number: prNumber,
-  };
-  const host = parseGitHubHost(source.host);
-  const owner = parseGitHubOwner(source.owner);
-  const repo = parseGitHubRepoName(source.repo);
-  const number = parsePullRequestNumber(source.number);
-  if (
-    host._tag === "err" ||
-    owner._tag === "err" ||
-    repo._tag === "err" ||
-    number._tag === "err"
-  )
-    return undefined;
-  return {
-    host: host.value,
-    owner: owner.value,
-    repo: repo.value,
-    number: number.value,
-  };
-}
-
-function createHeadSideCommentAuthoring(
-  base: LocalCommentAuthoring | undefined,
-  fullPatch: string,
-): LocalCommentAuthoring | undefined {
-  if (base?.enabled !== true) return undefined;
-  const files = parseUnifiedPatch(fullPatch);
-  // This diff's new side is the pull request head, so a new-side line the full patch shows is the same GitHub coordinate; its old side is not the base.
-  const fullPatchAnchor = (location: LocalCommentLocation) => {
-    const path = parseRepoRelativePath(location.path);
-    if (location.side !== "new" || path._tag === "err") return undefined;
-    const mapped = mapFindingLocation(files, {
-      file: location.path,
-      lineStart: location.startLine,
-      lineEnd: location.line,
-      diffSide: "new",
-    });
-    return mapped.mappingStatus === "mapped" && mapped.path === location.path
-      ? {
-          path: path.value,
-          startLine: location.startLine,
-          line: location.line,
-          side: location.side,
-        }
-      : undefined;
-  };
-  return {
-    enabled: true,
-    ...definedProps({ kind: base.kind }),
-    canAuthor: (location) => fullPatchAnchor(location) !== undefined,
-    onSelectionChange: (location) => {
-      if (fullPatchAnchor(location) !== undefined)
-        base.onSelectionChange?.(location);
-    },
-    onSave: async (input) => {
-      const anchor = fullPatchAnchor(input);
-      if (anchor === undefined) return;
-      return base.onSave({
-        ...input,
-        ...definedProps({
-          fingerprint: fingerprintPatchAnchor(fullPatch, anchor),
-        }),
-      });
-    },
-  };
-}
 
 /** The workbench prop contracts, re-exported for this component's callers. */
 export type {
