@@ -169,8 +169,7 @@ describe("Refresh on a local Review", () => {
     render(<LocalReviewScreen />);
 
     await user.click(screen.getByRole("button", { name: "Refresh" }));
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
-    await user.click(screen.getByRole("tab", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Notes/ }));
     const items = within(
       await screen.findByRole("list", { name: "Local drafts" }),
     ).getAllByRole("listitem");

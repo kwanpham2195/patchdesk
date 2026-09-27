@@ -58,33 +58,36 @@ describe("useReviewWorkbenchPosition", () => {
     },
   );
 
+  const localBranch = {
+    kind: "local_branch" as const,
+    branch: "feature",
+    baseBranch: "main",
+  };
   it.each([
     {
       source: { kind: "commit" as const, commitSha: "a".repeat(40) },
-      section: "files",
+      saved: "commits",
+      opens: "files",
     },
-    {
-      source: {
-        kind: "local_branch" as const,
-        branch: "feature",
-        baseBranch: "main",
-      },
-      section: "commits",
-    },
-  ])(
-    "reopens a $source.kind Review saved on Commits on $section",
-    ({ source, section }) => {
-      const local = {
+    { source: localBranch, saved: "commits", opens: "commits" },
+    { source: localBranch, saved: "threads", opens: "files" },
+    { source: localBranch, saved: "notes", opens: "notes" },
+    { source: session.key.source, saved: "notes", opens: "files" },
+    { source: session.key.source, saved: "threads", opens: "threads" },
+  ] as const)(
+    "reopens a $source.kind Review saved on $saved on $opens",
+    ({ source, saved, opens }) => {
+      const reopened = {
         ...model,
         session: { ...session, key: { ...session.key, source } },
       };
       const { result } = renderHook(() =>
         useReviewWorkbenchPosition({
-          model: local,
-          initialState: { activeTab: "diff", section: "commits" },
+          model: reopened,
+          initialState: { activeTab: "diff", section: saved },
         }),
       );
-      expect(result.current.section).toBe(section);
+      expect(result.current.section).toBe(opens);
     },
   );
 

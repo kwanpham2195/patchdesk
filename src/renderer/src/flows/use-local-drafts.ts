@@ -32,7 +32,7 @@ export type LocalDraftControls = {
   readonly pending: ReadonlySet<string>;
   readonly error?: string;
   readonly add: (findingId: string) => Promise<void>;
-  /** Remove from the Local drafts card; a failure shows as `error`. */
+  /** Remove from the Notes list; a failure shows as `error`. */
   readonly remove: (entry: LocalDraftEntry) => Promise<void>;
   /** The drafts as one prompt for the coding agent, composed by the main process. */
   readonly loadAgentPrompt: () => Promise<string>;

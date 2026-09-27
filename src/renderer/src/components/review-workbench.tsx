@@ -48,6 +48,8 @@ import {
   type FileFindingCount,
 } from "../review-finding-counts";
 import type { LocalPatchViewSelection } from "../flows/use-local-patch-view";
+import type { LocalDraftControls } from "../flows/use-local-drafts";
+import { LocalNotesList } from "./local-notes-list";
 import { localPatchViewLabels, sourceListsCommits } from "../review-source";
 import { LocalPatchViewControl } from "./local-patch-view-control";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
@@ -117,6 +119,7 @@ export function ReviewWorkbench({
   onPositionCommitted,
   viewedFiles,
   localPatchView,
+  localDrafts,
 }: {
   readonly model: WorkbenchResponse;
   readonly actions: ReviewWorkbenchActions;
@@ -124,6 +127,8 @@ export function ReviewWorkbench({
   readonly viewedFiles?: ViewedFilesControls;
   /** The patch view a shared local Review shows; absent on a Review without views. */
   readonly localPatchView?: LocalPatchViewSelection;
+  /** A local Review's Local draft list, shown in the navigator's Notes section. */
+  readonly localDrafts?: LocalDraftControls;
   readonly slots: ReviewWorkbenchSlots;
   readonly initialState?: ReviewWorkbenchInitialState;
   /** Reports a visible navigation command so reloads can restore it. */
@@ -506,7 +511,7 @@ export function ReviewWorkbench({
       ),
     [conversationAnnotations, pendingReviewAnnotations],
   );
-  const { localDrafts, session, patchViews } = model;
+  const { session, patchViews } = model;
   const shownView = localPatchView?.shown.view;
   const notePlacement = useMemo(
     () =>
@@ -524,7 +529,7 @@ export function ReviewWorkbench({
         conversationThreadEntries,
       ),
       ...buildLocalNoteAnnotations(
-        { localDrafts, session },
+        { localDrafts: model.localDrafts, session },
         actions.localNotes,
         notePlacement,
       ),
@@ -533,7 +538,7 @@ export function ReviewWorkbench({
       actions.localNotes,
       conversationThreadEntries,
       findings,
-      localDrafts,
+      model.localDrafts,
       notePlacement,
       onOtherView,
       session,
@@ -712,6 +717,13 @@ export function ReviewWorkbench({
                         ? model.commits
                         : undefined,
                       localCommitTotal: model.commitTotal,
+                      notes:
+                        localDrafts === undefined
+                          ? undefined
+                          : {
+                              count: localDrafts.entries.length,
+                              list: <LocalNotesList controls={localDrafts} />,
+                            },
                       visiblePaths: scopeFilteredPaths,
                       selectedPath,
                       activePath,

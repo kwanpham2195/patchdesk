@@ -16,7 +16,13 @@ const WORKBENCH_ACTIVE_TABS = ["conversation", "diff", "insights"] as const;
 export type WorkbenchActiveTab = (typeof WORKBENCH_ACTIVE_TABS)[number];
 
 /** Every navigator section the workbench can restore to. */
-const WORKBENCH_SECTIONS = ["files", "commits", "insights", "threads"] as const;
+const WORKBENCH_SECTIONS = [
+  "files",
+  "commits",
+  "insights",
+  "threads",
+  "notes",
+] as const;
 export type WorkbenchSection = (typeof WORKBENCH_SECTIONS)[number];
 
 /** One committed, restorable workbench position: tab, navigator section, file. */

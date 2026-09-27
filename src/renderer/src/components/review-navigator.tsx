@@ -32,6 +32,8 @@ type ReviewNavigatorProps = {
   readonly commits?: WorkbenchResponse["commits"];
   /** A shared local Review's full commit count; `commits` keeps only the newest (#557 D3). */
   readonly localCommitTotal?: number;
+  /** A local Review's Local draft list and its count; given, Notes replaces Threads (#557). */
+  readonly notes?: { readonly list: React.ReactNode; readonly count: number };
   readonly conversationThreadEntries: ReadonlyArray<ReviewInlineAnnotation>;
   /** Threads count the comments dated after this cursor; absent counts none. */
   readonly lastLooked?: WorkbenchResponse["review"]["lastLooked"];
@@ -58,6 +60,7 @@ export function ReviewNavigator({
   patch,
   commits,
   localCommitTotal,
+  notes,
   conversationThreadEntries,
   lastLooked,
   findingCountsByPath,
@@ -120,8 +123,8 @@ export function ReviewNavigator({
         value={section}
         onValueChange={(value) =>
           // SAFETY: every TabsTrigger below is keyed by a ReviewNavigatorSection
-          // literal ("files" | "commits" | "threads"), so Base UI's reported
-          // value can only ever be one of those.
+          // literal ("files" | "commits" | "threads" | "notes"), so Base UI's
+          // reported value can only ever be one of those.
           onSectionChange(value as ReviewNavigatorSection)
         }
         className="flex min-h-0 flex-1 flex-col"
@@ -144,25 +147,37 @@ export function ReviewNavigator({
                 </Badge>
               </TabsTrigger>
             )}
-            <TabsTrigger value="threads" className="gap-1.5">
-              Threads
-              <Badge
-                variant="secondary"
-                className="h-4 min-w-4 px-1 text-[10px]"
-              >
-                {threadRows.length}
-              </Badge>
-              {needsReplyCount === 0 ? null : (
+            {notes === undefined ? (
+              <TabsTrigger value="threads" className="gap-1.5">
+                Threads
                 <Badge
-                  variant="warning"
+                  variant="secondary"
                   className="h-4 min-w-4 px-1 text-[10px]"
-                  title="Threads that need your reply"
                 >
-                  {needsReplyCount}
-                  <span className="sr-only"> need your reply</span>
+                  {threadRows.length}
                 </Badge>
-              )}
-            </TabsTrigger>
+                {needsReplyCount === 0 ? null : (
+                  <Badge
+                    variant="warning"
+                    className="h-4 min-w-4 px-1 text-[10px]"
+                    title="Threads that need your reply"
+                  >
+                    {needsReplyCount}
+                    <span className="sr-only"> need your reply</span>
+                  </Badge>
+                )}
+              </TabsTrigger>
+            ) : (
+              <TabsTrigger value="notes" className="gap-1.5">
+                Notes
+                <Badge
+                  variant="secondary"
+                  className="h-4 min-w-4 px-1 text-[10px]"
+                >
+                  {notes.count}
+                </Badge>
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
         <TabsContent
@@ -217,68 +232,78 @@ export function ReviewNavigator({
             </div>
           </TabsContent>
         )}
-        <TabsContent
-          value="threads"
-          className="min-h-0 flex-1 overflow-auto p-3"
-          keepMounted
-        >
-          <div
-            className="flex flex-col gap-1"
-            aria-label="Conversation threads"
+        {notes === undefined ? (
+          <TabsContent
+            value="threads"
+            className="min-h-0 flex-1 overflow-auto p-3"
+            keepMounted
           >
-            {threadRows.length === 0 ? (
-              <p className="p-2 text-sm text-muted-foreground">
-                No conversation threads on this revision.
-              </p>
-            ) : (
-              threadRows.map((row) => {
-                const badge = threadRowStateBadge(row.state);
-                return (
-                  <button
-                    key={row.id}
-                    type="button"
-                    aria-pressed={selectedThreadId === row.id}
-                    className="flex w-full min-w-0 flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
-                    onClick={() => onThreadSelect(row)}
-                  >
-                    <span className="flex w-full min-w-0 items-center justify-between gap-2">
-                      <span className="min-w-0 truncate font-medium">
-                        {row.author}
+            <div
+              className="flex flex-col gap-1"
+              aria-label="Conversation threads"
+            >
+              {threadRows.length === 0 ? (
+                <p className="p-2 text-sm text-muted-foreground">
+                  No conversation threads on this revision.
+                </p>
+              ) : (
+                threadRows.map((row) => {
+                  const badge = threadRowStateBadge(row.state);
+                  return (
+                    <button
+                      key={row.id}
+                      type="button"
+                      aria-pressed={selectedThreadId === row.id}
+                      className="flex w-full min-w-0 flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
+                      onClick={() => onThreadSelect(row)}
+                    >
+                      <span className="flex w-full min-w-0 items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium">
+                          {row.author}
+                        </span>
+                        <Badge variant={badge.variant}>
+                          <badge.Icon aria-hidden="true" />
+                          {badge.label}
+                        </Badge>
                       </span>
-                      <Badge variant={badge.variant}>
-                        <badge.Icon aria-hidden="true" />
-                        {badge.label}
-                      </Badge>
-                    </span>
-                    {row.needsReply || row.newCount > 0 ? (
-                      <span className="flex items-center gap-1">
-                        {row.needsReply ? <NeedsReplyBadge /> : null}
-                        {row.newCount > 0 ? (
-                          <Badge
-                            variant="outline"
-                            className="border-primary/40 text-primary"
-                            aria-label={`${row.newCount} new since you last looked`}
-                          >
-                            {row.newCount} new
-                          </Badge>
-                        ) : null}
+                      {row.needsReply || row.newCount > 0 ? (
+                        <span className="flex items-center gap-1">
+                          {row.needsReply ? <NeedsReplyBadge /> : null}
+                          {row.newCount > 0 ? (
+                            <Badge
+                              variant="outline"
+                              className="border-primary/40 text-primary"
+                              aria-label={`${row.newCount} new since you last looked`}
+                            >
+                              {row.newCount} new
+                            </Badge>
+                          ) : null}
+                        </span>
+                      ) : null}
+                      <span className="line-clamp-2 w-full text-xs text-muted-foreground">
+                        {row.preview.length === 0 ? "(no body)" : row.preview}
                       </span>
-                    ) : null}
-                    <span className="line-clamp-2 w-full text-xs text-muted-foreground">
-                      {row.preview.length === 0 ? "(no body)" : row.preview}
-                    </span>
-                    <span className="block w-full min-w-0 truncate text-xs text-muted-foreground">
-                      {row.path}:
-                      {row.start === row.end
-                        ? row.start
-                        : `${row.start}-${row.end}`}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </TabsContent>
+                      <span className="block w-full min-w-0 truncate text-xs text-muted-foreground">
+                        {row.path}:
+                        {row.start === row.end
+                          ? row.start
+                          : `${row.start}-${row.end}`}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </TabsContent>
+        ) : (
+          <TabsContent
+            value="notes"
+            className="min-h-0 flex-1 overflow-auto p-3"
+            keepMounted
+          >
+            {notes.list}
+          </TabsContent>
+        )}
       </Tabs>
     </aside>
   );

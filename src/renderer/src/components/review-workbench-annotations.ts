@@ -140,7 +140,7 @@ export function localNotePlacementInput(
 /**
  * A local Review's maintainer notes fingerprinted against the current session,
  * as diff annotations. A note from an earlier session has lines numbered for
- * another patch, so only the Local drafts card lists it. With `placement`, a
+ * another patch, so only the Notes list shows it. With `placement`, a
  * note shows only where `placeInView` puts it inline in the shown view;
  * without it (a Review without views), it shows at its stored lines.
  */

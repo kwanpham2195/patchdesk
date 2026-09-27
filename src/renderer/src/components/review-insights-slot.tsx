@@ -38,7 +38,6 @@ import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { LocalApplyControls } from "../flows/use-local-apply";
 import type { LocalDraftControls } from "../flows/use-local-drafts";
-import { LocalDraftsCard } from "./local-drafts-card";
 import { AgentRequestsBar } from "./agent-requests-bar";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 import {
@@ -472,13 +471,6 @@ export function InsightsSlot({
                   onRun: reviewOpen ? () => openRunDialog("run") : undefined,
                 })}
               />
-            ) : null}
-            {/* The Analysis reader lists the drafts itself; without an Analysis, notes still need their list. */}
-            {selectedInsight === "analysis" &&
-            workbench.insights.analysis.retained === undefined &&
-            localDrafts !== undefined &&
-            localDrafts.entries.length > 0 ? (
-              <LocalDraftsCard controls={localDrafts} />
             ) : null}
             {retainedReader === null ? null : (
               <div
