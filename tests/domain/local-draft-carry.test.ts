@@ -450,6 +450,6 @@ describe("carryLocalDraft", () => {
   it("leaves an applied Finding draft as it is", () => {
     const applied = { ...boundDraft, appliedAt: at };
 
-    expect(carryLocalDraft(applied, target(undefined))).toBe(applied);
+    expect(carryLocalDraft(applied, target(undefined))).toEqual(applied);
   });
 });

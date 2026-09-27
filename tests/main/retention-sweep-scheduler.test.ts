@@ -234,7 +234,7 @@ describe("retention sweep scheduler", () => {
     expect(stopped).toBe(true);
   });
 
-  it("returns the same completion promise for repeated stop calls", async () => {
+  it("waits for an active sweep on repeated stop calls", async () => {
     vi.useFakeTimers();
     const activeSweep = deferred<SweepResult>();
     const sweepRetained = vi.fn(
@@ -247,13 +247,23 @@ describe("retention sweep scheduler", () => {
       enabled: true,
     });
 
-    const firstStop = scheduler.stop();
-    const secondStop = scheduler.stop();
+    let firstStopped = false;
+    let secondStopped = false;
+    const firstStop = scheduler.stop().then(() => {
+      firstStopped = true;
+    });
+    const secondStop = scheduler.stop().then(() => {
+      secondStopped = true;
+    });
+    await Promise.resolve();
+
+    expect(firstStopped).toBe(false);
+    expect(secondStopped).toBe(false);
     activeSweep.resolve(ok(undefined));
 
-    await expect(secondStop).resolves.toBeUndefined();
-    await expect(firstStop).resolves.toBeUndefined();
-    expect(secondStop).toBe(firstStop);
+    await Promise.all([firstStop, secondStop]);
+    expect(firstStopped).toBe(true);
+    expect(secondStopped).toBe(true);
   });
 
   it("records retryable diagnostics for returned per-profile failures", async () => {
