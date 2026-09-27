@@ -33,6 +33,7 @@ import type {
 import type { LocalFeedbackPageFailure } from "../../services/local-feedback-page";
 import type {
   LocalReviewAgentRefreshFailure,
+  LocalReviewBaseRequired,
   LocalReviewOpening,
   LocalReviewPrepared,
 } from "../../services/local-review-opening";
@@ -84,6 +85,7 @@ type DetailedLocalReason =
 
 type ServiceReason =
   | Exclude<LocalReviewAgentRefreshFailure["reason"], DetailedLocalReason>
+  | LocalReviewBaseRequired["reason"]
   | AgentIntentFailure["reason"]
   | InsightReadingFailure["reason"]
   | LocalFeedbackPageFailure["reason"]
@@ -99,6 +101,8 @@ const refusalMessages = {
     "The repository has no local checkout in the active Patchdesk profile.",
   checkout_not_found:
     "The directory is not inside a checkout of a repository in the active Patchdesk profile. Call list_repositories to see the checkouts, or ask the maintainer to add the repository with its local path.",
+  base_required:
+    "The checkout has no other local branch behind HEAD to compare with, and no Review of this branch is open. Pass base, the local branch this change should be compared with.",
   revision_not_found:
     "Git could not find that branch or commit in the checkout.",
   unmerged_index:
@@ -140,7 +144,7 @@ function refusal(reason: ServiceReason): McpToolRefusal {
  * names the configured path that is gone.
  */
 function localReviewRefusal(
-  failure: LocalReviewAgentRefreshFailure,
+  failure: LocalReviewAgentRefreshFailure | LocalReviewBaseRequired,
 ): McpToolRefusal {
   if (failure.reason === "untracked_too_large")
     return {
@@ -257,17 +261,18 @@ export async function reviewLocal(
     request,
   });
   if (opened._tag === "err") return err(localReviewRefusal(opened.error));
+  const { workbench } = opened.value;
   const recorded =
     input.intent === undefined
       ? undefined
       : await services.localChangeIntent.recordAgentIntent({
           profileId,
-          reviewId: opened.value.review.id,
+          reviewId: workbench.review.id,
           markdown: input.intent,
         });
   const described = await describeOpenedLocalReview(
     services.sessions,
-    opened.value,
+    workbench,
   );
   if (described._tag === "err") return err(refusal("storage"));
   if (recorded === undefined) return ok(described.value);

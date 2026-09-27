@@ -103,37 +103,36 @@ function review(input: {
   };
 }
 
-/** A working-tree Review on `branch`, or a branch Review against main, opened at `lastOpenedAt`. */
+/** A shared Review of `branch` against main, or a Review of another source kind, opened at `lastOpenedAt`. */
 function localReview(
   branch: string,
   lastOpenedAt: string,
   options: {
-    readonly kind?: "working_tree" | "branch";
+    readonly kind?: "local_branch" | "commit" | "working_tree" | "branch";
     readonly repo?: string;
     readonly checkout?: string;
   } = {},
 ): Review {
   const branchName = must(parseLocalBranchName(branch));
+  const baseBranch = must(parseLocalBranchName("main"));
   const checkout = definedProps({
     checkout:
       options.checkout === undefined
         ? undefined
         : must(parseAbsolutePath(options.checkout)),
   });
+  const kind = options.kind ?? "local_branch";
   const identity: ReviewIdentity = {
     profileId,
     host,
     owner,
     repo: must(parseGitHubRepoName(options.repo ?? "patchdesk")),
     source:
-      options.kind === "branch"
-        ? {
-            kind: "branch",
-            branch: branchName,
-            baseBranch: must(parseLocalBranchName("main")),
-            ...checkout,
-          }
-        : { kind: "working_tree", branch: branchName, ...checkout },
+      kind === "commit"
+        ? { kind, commitSha: headSha, ...checkout }
+        : kind === "working_tree"
+          ? { kind, branch: branchName, ...checkout }
+          : { kind, branch: branchName, baseBranch, ...checkout },
   };
   return {
     ...createReview({
@@ -290,7 +289,7 @@ describe("SidebarListingService.list", () => {
     const mainTree = localReview("main", "2026-03-01T00:00:00.000Z");
     const featTree = localReview("feat/x", "2026-03-03T00:00:00.000Z");
     const featBranch = localReview("feat/x", "2026-03-02T00:00:00.000Z", {
-      kind: "branch",
+      kind: "commit",
     });
     const value = service(
       ok({
@@ -335,13 +334,43 @@ describe("SidebarListingService.list", () => {
     expect(Object.hasOwn(local ?? {}, "number")).toBe(false);
   });
 
+  it("leaves out working-tree and branch Reviews stored before the shared Review (#555)", async () => {
+    const shared = localReview("feat/x", "2026-03-01T00:00:00.000Z");
+    const value = service(
+      ok({
+        reviews: [
+          shared,
+          localReview("feat/x", "2026-03-02T00:00:00.000Z", {
+            kind: "working_tree",
+          }),
+          localReview("feat/x", "2026-03-03T00:00:00.000Z", { kind: "branch" }),
+          localReview("old", "2026-03-04T00:00:00.000Z", {
+            kind: "working_tree",
+            repo: "herdr",
+          }),
+        ],
+        unreadable: 0,
+      }),
+    );
+
+    const { rows } = must(await value.listed.list(profileId));
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        repo: "patchdesk",
+        reviewIds: [shared.id],
+        sortedAt: "2026-03-01T00:00:00.000Z",
+      }),
+    ]);
+  });
+
   it("projects each checkout of a repository as its own local row, naming only the linked one (#489)", async () => {
     const configured = localReview("main", "2026-03-01T00:00:00.000Z");
     const linked = localReview("feat", "2026-03-02T00:00:00.000Z", {
       checkout: "/work/pd-ux-pass",
     });
     const linkedBranch = localReview("feat", "2026-03-03T00:00:00.000Z", {
-      kind: "branch",
+      kind: "commit",
       checkout: "/work/pd-ux-pass",
     });
     const value = service(

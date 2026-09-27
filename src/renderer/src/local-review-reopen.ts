@@ -28,6 +28,15 @@ export function localReviewSourceInput(
         branch: source.branch,
         baseBranch: source.baseBranch,
       };
+    case "local_branch":
+      return {
+        kind: "local_branch",
+        baseBranch: source.baseBranch,
+        expectedHead:
+          source.branch === "detached"
+            ? { kind: "detached" }
+            : { kind: "branch", branch: source.branch },
+      };
     case "commit":
       return { kind: "commit", commit: source.commitSha };
     default:
@@ -49,7 +58,7 @@ export function branchMismatchMessage(
 ): string | undefined {
   if (
     !(cause instanceof PatchdeskApiError) ||
-    source.kind !== "working_tree" ||
+    (source.kind !== "working_tree" && source.kind !== "local_branch") ||
     source.expectedHead === undefined
   )
     return undefined;

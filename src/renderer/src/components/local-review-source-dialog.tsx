@@ -225,6 +225,8 @@ function sourceInput(
         : { kind, branch, baseBranch };
     case "commit":
       return /^[0-9a-f]{4,64}$/.test(commit) ? { kind, commit } : undefined;
+    case "local_branch":
+      return undefined;
   }
 }
 

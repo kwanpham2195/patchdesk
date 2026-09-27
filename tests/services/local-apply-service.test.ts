@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   parseAbsolutePath,
   parseFindingId,
-  parseLocalBranchName,
+  parseGitShaPrefix,
   parseRepoRelativePath,
 } from "../../src/domain/ids";
 import { dismissInsightFinding } from "../../src/domain/insight-record";
@@ -19,6 +19,7 @@ import {
   now,
   profileId,
   retainAnalysis,
+  sharedAgainstMain,
   suggestionFinding,
   value,
   type GitInterceptor,
@@ -55,15 +56,14 @@ function isApplyWrite(argv: ReadonlyArray<string>): boolean {
   return argv.includes("apply") && !argv.includes("--check");
 }
 
-/** Opens the working tree of a new linked worktree `linked` holding `probe.ts`, which the configured checkout lacks (#489). */
+/** Opens the shared Review of a new linked worktree `linked` holding `probe.ts`, which the configured checkout lacks (#489). */
 async function openLinkedProbe(harness: LocalApplyHarness) {
   const linked = join(dirname(harness.repositoryPath), "linked");
   git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
   await writeFile(join(linked, "probe.ts"), probe);
-  const workbench = await harness.open({
-    kind: "working_tree",
-    checkout: value(parseAbsolutePath(linked)),
-  });
+  const workbench = await harness.open(
+    sharedAgainstMain(value(parseAbsolutePath(linked))),
+  );
   return { linked, workbench };
 }
 
@@ -225,16 +225,19 @@ describe("LocalApplyService", () => {
     expect(next?.fullPatch).toContain("index < values.length");
   });
 
-  it("refuses a Review whose source is a branch", async () => {
+  it("refuses a Review whose source is a commit", async () => {
     const harness = await localApplyHarness();
     git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
     await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
     git(harness.repositoryPath, "add", "probe.ts");
     git(harness.repositoryPath, "commit", "-q", "-m", "probe");
     const workbench = await harness.open({
-      kind: "branch",
-      branch: value(parseLocalBranchName("feature")),
-      baseBranch: value(parseLocalBranchName("main")),
+      kind: "commit",
+      commit: value(
+        parseGitShaPrefix(
+          git(harness.repositoryPath, "rev-parse", "HEAD").trim(),
+        ),
+      ),
     });
     const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
 
@@ -242,7 +245,7 @@ describe("LocalApplyService", () => {
       applyRequest(workbench, runId, ["finding-bound"]),
     );
 
-    expect(refused).toEqual(err({ reason: "not_working_tree" }));
+    expect(refused).toEqual(err({ reason: "not_local_branch" }));
   });
 
   it("refuses a file reached through a symlink", async () => {

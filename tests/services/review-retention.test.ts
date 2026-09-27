@@ -5,14 +5,19 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import {
+  createLocalNoteId,
+  createReviewSessionId,
   parseAbsolutePath,
   parseContentHash,
   parseFindingId,
+  parseGitSha,
   parseIsoTimestamp,
+  parseLocalBranchName,
   parseRepoRelativePath,
   parseReviewSessionId,
   type ReviewSessionId,
 } from "../../src/domain/ids";
+import { createReview } from "../../src/domain/review";
 import { err } from "../../src/domain/result";
 import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
 import { ReviewPreparationJournal } from "../../src/services/review-preparation-journal";
@@ -23,7 +28,9 @@ import {
   localApplyHarness,
   now,
   profileId,
+  repository,
   retainAnalysis,
+  sharedAgainstMain,
   value,
   type LocalApplyHarness,
 } from "./local-apply-fixture";
@@ -75,7 +82,7 @@ async function beginPreparation(
   );
 }
 
-/** A working-tree Review opened on branch `feature`, which is then deleted. */
+/** A shared Review opened on branch `feature`, which is then deleted. */
 async function reviewOfDeletedBranch(harness: LocalApplyHarness) {
   git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
   const { first } = await refreshedReview(harness, 0);
@@ -84,7 +91,7 @@ async function reviewOfDeletedBranch(harness: LocalApplyHarness) {
   return first;
 }
 
-/** A working-tree Review opened in linked worktree `linked` on branch `feat`, which is then removed; the branch stays. */
+/** A shared Review opened in linked worktree `linked` on branch `feat`, which is then removed; the branch stays. */
 async function reviewOfRemovedWorktree(
   harness: LocalApplyHarness,
   beforeRemoval: (
@@ -94,10 +101,9 @@ async function reviewOfRemovedWorktree(
   const linked = join(dirname(harness.repositoryPath), "linked");
   git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
   await writeFile(join(linked, "probe.txt"), "linked\n");
-  const workbench = await harness.open({
-    kind: "working_tree",
-    checkout: value(parseAbsolutePath(linked)),
-  });
+  const workbench = await harness.open(
+    sharedAgainstMain(value(parseAbsolutePath(linked))),
+  );
   await beforeRemoval(workbench);
   git(harness.repositoryPath, "worktree", "remove", "--force", linked);
   return workbench;
@@ -112,7 +118,7 @@ async function reviewKept(
   );
 }
 
-/** Opens a working-tree Review of `probe.txt`, then edits and Refreshes it `edits` times. */
+/** Opens a shared Review of `probe.txt`, then edits and Refreshes it `edits` times. */
 async function refreshedReview(harness: LocalApplyHarness, edits: number) {
   const probe = join(harness.repositoryPath, "probe.txt");
   await writeFile(probe, "edit 0\n");
@@ -335,10 +341,9 @@ describe("ReviewRetention", () => {
     });
     const linked = join(dirname(harness.repositoryPath), "linked");
     git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
-    const workbench = await harness.open({
-      kind: "working_tree",
-      checkout: value(parseAbsolutePath(linked)),
-    });
+    const workbench = await harness.open(
+      sharedAgainstMain(value(parseAbsolutePath(linked))),
+    );
     const profiles = new ProfileStore(harness.paths);
     const profile = value(await profiles.load(profileId));
     value(
@@ -362,10 +367,9 @@ describe("ReviewRetention", () => {
     });
     const linked = join(dirname(harness.repositoryPath), "linked");
     git(harness.repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
-    const workbench = await harness.open({
-      kind: "working_tree",
-      checkout: value(parseAbsolutePath(linked)),
-    });
+    const workbench = await harness.open(
+      sharedAgainstMain(value(parseAbsolutePath(linked))),
+    );
     git(harness.repositoryPath, "worktree", "lock", linked);
     await rm(linked, { recursive: true, force: true });
 
@@ -516,7 +520,7 @@ describe("ReviewRetention", () => {
     expect(await reviewKept(harness, workbench)).toBe(true);
   });
 
-  it("keeps a detached working-tree Review past 14 days", async () => {
+  it("keeps a shared Review of a detached HEAD past 14 days while its base exists", async () => {
     const harness = await localApplyHarness(undefined, {
       retentionNow: () => fifteenDaysLater,
     });
@@ -527,4 +531,69 @@ describe("ReviewRetention", () => {
 
     expect(await reviewKept(harness, first)).toBe(true);
   });
+
+  it.each([
+    ["removes", false],
+    ["keeps", true],
+  ] as const)(
+    "%s a working-tree Review stored before the shared Review and left alone for 14 days (holds a note: %s)",
+    async (_action, withNote) => {
+      const harness = await localApplyHarness(undefined, {
+        retentionNow: () => fifteenDaysLater,
+      });
+      const identity = {
+        profileId,
+        ...repository,
+        source: {
+          kind: "working_tree" as const,
+          branch: value(parseLocalBranchName("main")),
+        },
+      };
+      const sessionId = createReviewSessionId({
+        ...identity,
+        headSha: value(parseGitSha("a".repeat(40))),
+        baseSha: value(parseGitSha("b".repeat(40))),
+      });
+      const stored = createReview({
+        identity,
+        currentSessionId: sessionId,
+        headSha: value(parseGitSha("a".repeat(40))),
+        createdAt: now,
+      });
+      value(
+        await harness.reviews.save(
+          withNote
+            ? {
+                ...stored,
+                localDrafts: [
+                  {
+                    author: "maintainer",
+                    noteId: createLocalNoteId("fixture-old"),
+                    sessionId,
+                    anchor: {
+                      path: value(parseRepoRelativePath("tracked.txt")),
+                      side: "new",
+                      startLine: 1,
+                      line: 1,
+                      selectedLines: ["one"],
+                      before: [],
+                      after: [],
+                    },
+                    text: "Written before the shared Review.",
+                    createdAt: now,
+                    updatedAt: now,
+                  },
+                ],
+              }
+            : stored,
+        ),
+      );
+
+      value(await harness.retention.sweepProfile(profileId));
+
+      expect((await harness.reviews.load(profileId, stored.id))._tag).toBe(
+        withNote ? "ok" : "err",
+      );
+    },
+  );
 });

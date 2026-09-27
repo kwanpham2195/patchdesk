@@ -80,8 +80,8 @@ function refusalFor(reason: string): string | undefined {
       return "Another action on this review is running. Try again when it finishes.";
     case "checkout_unavailable":
       return "Patchdesk could not read the local checkout.";
-    case "not_working_tree":
-      return "Apply works only on a working-tree review.";
+    case "not_local_branch":
+      return "Apply works only on a branch review, not on a commit.";
     default:
       return undefined;
   }

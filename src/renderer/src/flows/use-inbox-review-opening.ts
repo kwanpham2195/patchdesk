@@ -34,6 +34,16 @@ export type LocalReviewSourceInput =
       readonly branch: string;
       readonly baseBranch: string;
     }
+  | {
+      readonly kind: "local_branch";
+      readonly baseBranch: string;
+      /** A linked worktree to read instead of the configured checkout (#489). */
+      readonly checkout?: string;
+      /** The branch the Review was opened on, so a branch switch is refused rather than opening that branch's Review. */
+      readonly expectedHead?:
+        | { readonly kind: "branch"; readonly branch: string }
+        | { readonly kind: "detached" };
+    }
   | { readonly kind: "commit"; readonly commit: string };
 
 type PrRef = {

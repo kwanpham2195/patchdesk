@@ -112,7 +112,9 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["unmerged_index", 409],
   // Apply suggestion on a local Review (ADR 0050): refusals the maintainer resolves by reopening or checking.
   ["revision_changed", 409],
-  ["not_working_tree", 409],
+  ["not_local_branch", 409],
+  // An agent's shared Review open with no base, no open Review of the branch, and nothing to infer one from (#555).
+  ["base_required", 409],
   ["apply_locked", 409],
   ["in_progress", 409],
   ["not_applicable", 409],

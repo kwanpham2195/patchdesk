@@ -119,6 +119,8 @@ export class SidebarListingService {
         continue;
       }
       const { host, owner, repo, source } = review.identity;
+      // Working-tree and branch Reviews stored before the shared Review (#555) are not listed.
+      if (source.kind === "working_tree" || source.kind === "branch") continue;
       const key = JSON.stringify([host, owner, repo, source.checkout ?? null]);
       localReviews.set(key, [review, ...(localReviews.get(key) ?? [])]);
     }
