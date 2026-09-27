@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { LocalPatchView } from "../../src/domain/local-patch-view";
 import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
 import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
 import { useViewedFiles } from "../../src/renderer/src/hooks/use-viewed-files";
@@ -44,18 +45,21 @@ function renderViewedFiles(
   patches: ReviewWorkbenchPatch[],
   props: {
     readonly sessionId: string;
+    readonly view?: LocalPatchView;
     readonly savedPaths?: ReadonlyArray<string>;
   },
 ) {
   return renderHook(
     (current: {
       readonly sessionId: string;
+      readonly view?: LocalPatchView;
       readonly savedPaths?: ReadonlyArray<string>;
     }) =>
       useViewedFiles({
         profileId: "profile",
         reviewId: "review-42",
         sessionId: current.sessionId,
+        view: current.view,
         savedPaths: current.savedPaths,
         onWorkbenchPatch: (patch) => patches.push(patch),
       }),
@@ -165,6 +169,7 @@ describe("useViewedFiles", () => {
           profileId: "profile",
           reviewId: current.reviewId,
           sessionId: current.sessionId,
+          view: undefined,
           savedPaths: [],
           onWorkbenchPatch: () => undefined,
         }),
@@ -202,5 +207,38 @@ describe("useViewedFiles", () => {
     rerender({ sessionId: "session-2", savedPaths: [] });
 
     expect(result.current.paths.size).toBe(0);
+  });
+
+  it("keeps each patch view's marks apart and leaves Combined's projection to Combined saves", async () => {
+    desktop = installDesktopDouble({ [viewedFilesPath]: echo });
+    const patches: ReviewWorkbenchPatch[] = [];
+    const { result, rerender } = renderViewedFiles(patches, {
+      sessionId: "session-1",
+      view: "combined",
+      savedPaths: ["src/a.ts"],
+    });
+
+    rerender({
+      sessionId: "session-1",
+      view: "committed",
+      savedPaths: ["src/b.ts"],
+    });
+    expect([...result.current.paths]).toEqual(["src/b.ts"]);
+    act(() => result.current.setPaths(new Set(["src/b.ts", "src/c.ts"])));
+    await waitFor(() => expect(desktop?.request).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await desktop?.request.mock.results[0]?.value;
+    });
+    expect(desktop.request.mock.calls[0]?.[0]).toMatchObject({
+      body: { view: "committed", paths: ["src/b.ts", "src/c.ts"] },
+    });
+
+    rerender({
+      sessionId: "session-1",
+      view: "combined",
+      savedPaths: ["src/a.ts"],
+    });
+    expect([...result.current.paths]).toEqual(["src/a.ts"]);
+    expect(patches).toEqual([]);
   });
 });

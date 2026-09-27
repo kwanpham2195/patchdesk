@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
+import { changeScopeFromPatch } from "../../../domain/change-scope";
+import type { LocalPatchView } from "../../../domain/local-patch-view";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import {
   deriveConversationThreadEntries,
@@ -40,7 +42,13 @@ import {
   type FindingFocusRequest,
 } from "./review-workbench-finding-navigation";
 import type { InsightRunDialogType } from "./insight-run-dialog";
-import { countFindingsByPath } from "../review-finding-counts";
+import {
+  countFindingsByPath,
+  type FileFindingCount,
+} from "../review-finding-counts";
+import type { LocalPatchViewSelection } from "../flows/use-local-patch-view";
+import { localPatchViewLabels } from "../review-source";
+import { LocalPatchViewControl } from "./local-patch-view-control";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
 import { ReviewWorkbenchHeader } from "./review-workbench-header";
 import { revisionFreshnessLabel } from "../rail-freshness";
@@ -85,6 +93,9 @@ import type {
  * the commit-slice pane below it. */
 const NO_PATCH_AVAILABLE = "No patch is available for this Review.";
 
+const NO_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
+const NO_FINDING_COUNTS: ReadonlyMap<string, FileFindingCount> = new Map();
+
 /** The workbench prop contracts, re-exported for this component's callers. */
 export type {
   ReviewWorkbenchActions,
@@ -105,11 +116,14 @@ export function ReviewWorkbench({
   initialState,
   onPositionCommitted,
   viewedFiles,
+  localPatchView,
 }: {
   readonly model: WorkbenchResponse;
   readonly actions: ReviewWorkbenchActions;
-  /** Saved Viewed marks for the full Review diff; a commit slice keeps its own. */
+  /** Saved Viewed marks for the shown patch view; a commit slice keeps its own. */
   readonly viewedFiles?: ViewedFilesControls;
+  /** The patch view a shared local Review shows; absent on a Review without views. */
+  readonly localPatchView?: LocalPatchViewSelection;
   readonly slots: ReviewWorkbenchSlots;
   readonly initialState?: ReviewWorkbenchInitialState;
   /** Reports a visible navigation command so reloads can restore it. */
@@ -207,10 +221,25 @@ export function ReviewWorkbench({
     model.review.id,
     model.fullPatch,
   );
+  const selectedView = localPatchView?.selected ?? "combined";
+  // Findings and note authoring use Combined coordinates, so another view shows neither; notes are not placed there yet.
+  const onOtherView = selectedView !== "combined";
+  const reviewPatch = !onOtherView
+    ? model.fullPatch
+    : localPatchView?.status === "ready"
+      ? localPatchView.shown.patch
+      : undefined;
+  const viewScope = useMemo(
+    () =>
+      onOtherView && reviewPatch !== undefined
+        ? changeScopeFromPatch(reviewPatch)
+        : undefined,
+    [onOtherView, reviewPatch],
+  );
   const { scopeFilteredPaths, scopeFilter, clearScopeBucket } =
     useReviewScopeFilter({
-      fullPatch: model.fullPatch,
-      scope: model.scope,
+      fullPatch: reviewPatch,
+      scope: onOtherView ? viewScope : model.scope,
       selectedPath,
       commitSliceActive: selectedCommitSha !== undefined,
       commitWorkbenchPosition,
@@ -235,6 +264,16 @@ export function ReviewWorkbench({
       selectCommit(sha);
     },
     [clearScopeBucket, selectCommit],
+  );
+  // A bucket names files of the view it was picked on, so a switch drops it.
+  const selectLocalView = localPatchView?.select;
+  const selectPatchView = useCallback(
+    (view: LocalPatchView): void => {
+      if (selectLocalView === undefined || view === selectedView) return;
+      clearScopeBucket();
+      selectLocalView(view);
+    },
+    [clearScopeBucket, selectLocalView, selectedView],
   );
   const retainedAnalysis = model.insights.analysis.retained;
   const analysisIsCurrent =
@@ -266,6 +305,7 @@ export function ReviewWorkbench({
         finding.diffSide === undefined
       )
         return;
+      selectPatchView("combined");
       setSelectedThreadId(undefined);
       setSelectedRange({
         start: finding.lineStart,
@@ -281,6 +321,7 @@ export function ReviewWorkbench({
     },
     [
       commitWorkbenchPosition,
+      selectPatchView,
       setActivePath,
       setSelectedRange,
       setSelectedThreadId,
@@ -338,6 +379,7 @@ export function ReviewWorkbench({
     (path: string): void => {
       clearScopeBucket();
       leaveSinceReview?.(false);
+      selectPatchView("combined");
       selectSection("files");
       setSelectedThreadId(undefined);
       setSelectedRange(undefined);
@@ -352,6 +394,7 @@ export function ReviewWorkbench({
       clearScopeBucket,
       commitWorkbenchPosition,
       leaveSinceReview,
+      selectPatchView,
       selectSection,
       setActivePath,
       setSelectedRange,
@@ -483,22 +526,33 @@ export function ReviewWorkbench({
         : annotationsInPatch(annotations, sincePatch),
     [annotations, sincePatch],
   );
-  const sincePaths = useMemo(
+  const narrowerPatch = sincePatch ?? (onOtherView ? reviewPatch : undefined);
+  const narrowerPaths = useMemo(
     () =>
-      sincePatch === undefined
+      narrowerPatch === undefined
         ? undefined
-        : new Set(parseUnifiedPatch(sincePatch).map((file) => file.newPath)),
-    [sincePatch],
+        : new Set(parseUnifiedPatch(narrowerPatch).map((file) => file.newPath)),
+    [narrowerPatch],
   );
-  // The full Review's selection drives the since-review diff only while that file is still in it.
+  // The full Review's selection drives the since-review diff or another patch view only while that file is still in it.
   const diffSelectedPath =
     selectedPath === undefined ||
     selectedCommitSha !== undefined ||
-    sincePaths?.has(selectedPath) === false
+    narrowerPaths?.has(selectedPath) === false
       ? undefined
       : selectedPath;
   const commitDiffError = commitDiffState._tag === "Failed";
-  const displayedPatch = commitDiff?.patch ?? sincePatch ?? model.fullPatch;
+  const displayedPatch = commitDiff?.patch ?? sincePatch ?? reviewPatch;
+  const shownFindingCounts = onOtherView
+    ? NO_FINDING_COUNTS
+    : findingCountsByPath;
+  const localViewControl =
+    localPatchView === undefined || selectedCommitSha !== undefined ? null : (
+      <LocalPatchViewControl
+        selected={selectedView}
+        onSelect={selectPatchView}
+      />
+    );
   const externalPullRequest = pullRequestExternalRef(model);
   const overviewRevision = buildOverviewRevision(model);
   const overview = buildOverview({
@@ -560,6 +614,7 @@ export function ReviewWorkbench({
         externalPullRequest={externalPullRequest}
         openOverview={openOverview}
         setSummaryDialogOpen={setSummaryDialogOpen}
+        {...definedProps({ patchView: localPatchView?.selected })}
       />
 
       <div
@@ -628,10 +683,10 @@ export function ReviewWorkbench({
               >
                 {navigatorVisible ? (
                   <ReviewNavigator
-                    patch={sincePatch ?? model.fullPatch}
+                    patch={sincePatch ?? reviewPatch ?? ""}
                     commits={model.commits}
                     conversationThreadEntries={conversationThreadEntries}
-                    findingCountsByPath={findingCountsByPath}
+                    findingCountsByPath={shownFindingCounts}
                     section={section}
                     {...definedProps({
                       visiblePaths: scopeFilteredPaths,
@@ -685,6 +740,27 @@ export function ReviewWorkbench({
                     >
                       Loading commit diff…
                     </p>
+                  ) : selectedCommitSha === undefined &&
+                    onOtherView &&
+                    localPatchView?.status !== "ready" ? (
+                    <>
+                      <div className="flex min-h-9 items-center border-b px-2 py-1">
+                        {localViewControl}
+                      </div>
+                      {localPatchView?.status === "failed" ? (
+                        <InlineError className="px-4 py-2">
+                          The {localPatchViewLabels[selectedView]} view could
+                          not be loaded.
+                        </InlineError>
+                      ) : (
+                        <p
+                          className="p-6 text-sm text-muted-foreground"
+                          role="status"
+                        >
+                          Loading the {localPatchViewLabels[selectedView]} view…
+                        </p>
+                      )}
+                    </>
                   ) : displayedPatch === undefined ? (
                     <p className="p-6 text-sm text-muted-foreground">
                       {NO_PATCH_AVAILABLE}
@@ -694,9 +770,11 @@ export function ReviewWorkbench({
                       <DiffWorkbench
                         key={
                           selectedCommitSha ??
-                          (sincePatch === undefined
-                            ? model.revision.reviewedHeadSha
-                            : `since-${sinceReview.baseSha}`)
+                          (sincePatch !== undefined
+                            ? `since-${sinceReview.baseSha}`
+                            : onOtherView
+                              ? `${model.revision.reviewedHeadSha}-${selectedView}`
+                              : model.revision.reviewedHeadSha)
                         }
                         patch={displayedPatch}
                         {...definedProps({ sinceReview: sinceReview.control })}
@@ -706,6 +784,9 @@ export function ReviewWorkbench({
                               sourceSession: {
                                 profileId: model.session.key.profileId,
                                 sessionId: model.session.id,
+                                ...definedProps({
+                                  view: localPatchView?.shown.view,
+                                }),
                               },
                             })}
                         {...(diffSelectedPath === undefined
@@ -729,8 +810,10 @@ export function ReviewWorkbench({
                           : {})}
                         {...(selectedCommitSha === undefined
                           ? {
-                              annotations: sinceAnnotations ?? annotations,
-                              findingCountsByPath,
+                              annotations: onOtherView
+                                ? NO_ANNOTATIONS
+                                : (sinceAnnotations ?? annotations),
+                              findingCountsByPath: shownFindingCounts,
                               onOpenFindingInAnalysis: openFindingInAnalysis,
                             }
                           : {})}
@@ -745,7 +828,8 @@ export function ReviewWorkbench({
                           : { visiblePaths: scopeFilteredPaths })}
                         {...(scopeFilter === undefined ? {} : { scopeFilter })}
                         {...(!narrowedDiff
-                          ? actions.localCommentAuthoring === undefined
+                          ? actions.localCommentAuthoring === undefined ||
+                            onOtherView
                             ? {}
                             : {
                                 localCommentAuthoring:
@@ -769,36 +853,39 @@ export function ReviewWorkbench({
                         })}
                         hideFileNavigation
                         leadingAction={
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    setNavigatorVisible((visible) => !visible)
-                                  }
-                                  aria-label={
-                                    navigatorVisible
-                                      ? "Hide review navigator"
-                                      : "Show review navigator"
-                                  }
-                                  aria-expanded={navigatorVisible}
-                                />
-                              }
-                            >
-                              {navigatorVisible ? (
-                                <PanelLeftClose />
-                              ) : (
-                                <PanelLeftOpen />
-                              )}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {navigatorVisible
-                                ? "Hide review navigator"
-                                : "Show review navigator"}
-                            </TooltipContent>
-                          </Tooltip>
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    size="icon-xs"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      setNavigatorVisible((visible) => !visible)
+                                    }
+                                    aria-label={
+                                      navigatorVisible
+                                        ? "Hide review navigator"
+                                        : "Show review navigator"
+                                    }
+                                    aria-expanded={navigatorVisible}
+                                  />
+                                }
+                              >
+                                {navigatorVisible ? (
+                                  <PanelLeftClose />
+                                ) : (
+                                  <PanelLeftOpen />
+                                )}
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {navigatorVisible
+                                  ? "Hide review navigator"
+                                  : "Show review navigator"}
+                              </TooltipContent>
+                            </Tooltip>
+                            {localViewControl}
+                          </>
                         }
                         {...(commitHeader === undefined
                           ? {}

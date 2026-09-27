@@ -13,6 +13,7 @@ import { requestJson } from "@/api-client";
 import type { ReviewContextStatus } from "@/review-context-control";
 import { definedProps } from "../../../domain/defined-props";
 import type { RawJsonValue } from "../../../domain/json";
+import type { LocalPatchView } from "../../../domain/local-patch-view";
 import {
   matchUnifiedFileHeader,
   tokenizeUnifiedPatchLines,
@@ -27,6 +28,8 @@ type ProcessFileOptions = NonNullable<Parameters<typeof processFile>[1]>;
 export type ReviewDiffSourceSession = {
   readonly profileId: string;
   readonly sessionId: string;
+  /** The shared local Review's patch view whose trees supply the files; absent means Combined. */
+  readonly view?: LocalPatchView;
 };
 
 type DiffFileContents = { readonly name: string; readonly contents: string };
@@ -58,6 +61,8 @@ type HydrationSource = {
   readonly patch: string;
   readonly profileId?: string;
   readonly sessionId?: string;
+  // On a clean tree Combined and Committed have the same text, so the view alone must start a new generation.
+  readonly view?: LocalPatchView;
 };
 
 export type ReviewDiffHydration = {
@@ -99,11 +104,13 @@ export function useReviewDiffHydration({
     useState<ReviewContextStatus>("idle");
   const sourceProfileId = sourceSession?.profileId;
   const sourceSessionId = sourceSession?.sessionId;
+  const sourceView = sourceSession?.view;
   const currentSource: HydrationSource = {
     patch,
     ...definedProps({
       profileId: sourceProfileId,
       sessionId: sourceSessionId,
+      view: sourceView,
     }),
   };
   const [hydrationSource, setHydrationSource] =
@@ -112,7 +119,8 @@ export function useReviewDiffHydration({
   if (
     hydrationSource.patch !== currentSource.patch ||
     hydrationSource.profileId !== currentSource.profileId ||
-    hydrationSource.sessionId !== currentSource.sessionId
+    hydrationSource.sessionId !== currentSource.sessionId ||
+    hydrationSource.view !== currentSource.view
   ) {
     setHydrationSource(currentSource);
     setHydrationGeneration((current) => current + 1);
@@ -194,7 +202,12 @@ export function useReviewDiffHydration({
       const token = Symbol(path);
       const request = requestJson("/v1/reviews/diff-file", {
         method: "POST",
-        body: { profileId: sourceProfileId, sessionId: sourceSessionId, path },
+        body: {
+          profileId: sourceProfileId,
+          sessionId: sourceSessionId,
+          path,
+          ...definedProps({ view: sourceView }),
+        },
       })
         .then((value) => {
           if (generation !== committedHydrationGeneration.current) return false;
@@ -250,6 +263,7 @@ export function useReviewDiffHydration({
       scheduleHydratedFlush,
       sourceProfileId,
       sourceSessionId,
+      sourceView,
     ],
   );
 

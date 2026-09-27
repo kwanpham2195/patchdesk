@@ -1,6 +1,14 @@
 import * as v from "valibot";
 
+import type { LocalPatchView } from "../../domain/local-patch-view";
 import { casesHandled } from "../../domain/result";
+
+/** What the view control and the header call each patch view of a shared local Review. */
+export const localPatchViewLabels = {
+  combined: "Combined",
+  committed: "Committed",
+  uncommitted: "Uncommitted",
+} as const satisfies Record<LocalPatchView, string>;
 
 /** A local Review source (ADR 0050), as the workbench carries it. */
 const localReviewSourceSchema = v.variant("kind", [
@@ -48,12 +56,14 @@ export function workbenchPullRequestNumber(
 
 /**
  * What a local Review's header says about its revision: the commit it
- * represents and that it was read from the checkout. It names no GitHub state
- * because a local Review has none; absent for a pull request.
+ * represents, the patch view shown on a shared Review, and that it was read
+ * from the checkout. It names no GitHub state because a local Review has none;
+ * absent for a pull request.
  */
 export function localRevisionLabel(
   source: WorkbenchReviewSource,
   headSha: string,
+  view: LocalPatchView = "combined",
 ): string | undefined {
   const short = headSha.slice(0, 8);
   switch (source.kind) {
@@ -64,7 +74,7 @@ export function localRevisionLabel(
     case "branch":
       return `Branch tip ${short} · read from the local checkout`;
     case "local_branch":
-      return `Local snapshot ${short} · ${source.branch === "detached" ? "detached HEAD" : source.branch} against ${source.baseBranch} · read from the local checkout`;
+      return `${localPatchViewLabels[view]} view · Local snapshot ${short} · ${source.branch === "detached" ? "detached HEAD" : source.branch} against ${source.baseBranch} · read from the local checkout`;
     case "commit":
       return `Commit ${short} · read from the local checkout`;
     default:

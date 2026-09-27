@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useMarkdownPreviewPaths } from "@/hooks/use-markdown-preview-paths";
 import type { ViewedFilesControls } from "@/hooks/use-viewed-files";
+import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import type { PendingReviewDrafts } from "@/hooks/use-pending-review-drafts";
 import { InlineError } from "@/components/ui/inline-error";
 import {
@@ -75,10 +76,7 @@ export function DiffWorkbench({
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
-  readonly sourceSession?: {
-    readonly profileId: string;
-    readonly sessionId: string;
-  };
+  readonly sourceSession?: ReviewDiffSourceSession;
   readonly className?: string;
   readonly fillViewport?: boolean;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
