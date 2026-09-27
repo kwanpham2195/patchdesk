@@ -7,7 +7,10 @@ import type {
   WorkspaceProfileId,
 } from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
-import type { StoredLocalPatchView } from "../../domain/local-patch-view";
+import type {
+  LocalPatchView,
+  StoredLocalPatchView,
+} from "../../domain/local-patch-view";
 
 export type PatchdeskPathRoots = {
   readonly configDirectory: string;
@@ -211,25 +214,32 @@ export class PatchdeskPaths {
     return join(this.sessionDirectory(profileId, sessionId), "session.json");
   }
 
-  /** The files the reviewer marked Viewed in this session's Diff. */
+  /**
+   * The files the reviewer marked Viewed on one patch view of this session's
+   * Diff; Combined, the only view a pull request has, is `viewed-files.json`.
+   */
   viewedFilesFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
+    view: LocalPatchView,
   ): string {
     return join(
       this.sessionDirectory(profileId, sessionId),
-      "viewed-files.json",
+      view === "combined" ? "viewed-files.json" : `viewed-files-${view}.json`,
     );
   }
 
-  /** Fixed-name sibling an unreadable viewed-files record moves to, so a session keeps at most one copy. */
+  /** Fixed-name sibling an unreadable viewed-files record moves to, so a session keeps at most one copy per view. */
   viewedFilesQuarantineFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
+    view: LocalPatchView,
   ): string {
     return join(
       this.sessionDirectory(profileId, sessionId),
-      "viewed-files.quarantine.json",
+      view === "combined"
+        ? "viewed-files.quarantine.json"
+        : `viewed-files-${view}.quarantine.json`,
     );
   }
 

@@ -821,6 +821,12 @@ const analysisReviewActionsSchema = v.strictObject({
   canFinishWithAnalysisSummary: v.boolean(),
 });
 
+/** One patch view of a shared local Review: its hash and the paths it touches (ADR 0051 placement). */
+const patchViewSchema = v.strictObject({
+  patchHash: v.pipe(v.string(), v.minLength(64)),
+  paths: v.array(v.string()),
+});
+
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
   viewerLogin: viewerLoginSchema,
@@ -854,6 +860,13 @@ const workbenchProjectionSchema = v.strictObject({
   }),
   fullPatch: v.optional(v.string()),
   viewedPaths: v.optional(v.array(repoRelativePathSchema)),
+  patchViews: v.optional(
+    v.strictObject({
+      combined: patchViewSchema,
+      committed: patchViewSchema,
+      uncommitted: patchViewSchema,
+    }),
+  ),
   scope: v.optional(changeScopeSchema),
   pullRequest: v.optional(pullRequestSummarySchema),
   commits: v.array(commitSchema),

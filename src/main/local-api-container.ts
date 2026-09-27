@@ -60,6 +60,7 @@ import { LocalApplyService } from "../services/local-apply-service";
 import { LocalApplySettlement } from "../services/local-apply-settlement";
 import { LocalChangeIntentService } from "../services/local-change-intent-service";
 import { LocalDraftService } from "../services/local-draft-service";
+import { LocalPatchViewService } from "../services/local-patch-view-service";
 import { createAgentRunRequestId, createLocalNoteId } from "../domain/ids";
 import { AgentRunRequestService } from "../services/agent-run-request-service";
 import { ReviewRetention } from "../services/review-retention";
@@ -96,6 +97,8 @@ export type LocalApiContainer = {
   readonly reviewRetention: ReviewRetention;
   readonly localApply: LocalApplyService;
   readonly localDrafts: LocalDraftService;
+  /** A shared local Review's Committed and Uncommitted patches, read from the session's stored files (#556). */
+  readonly localPatchViews: LocalPatchViewService;
   readonly localChangeIntent: LocalChangeIntentService;
   /** Agent run requests over MCP and their approval in the app (ADR 0052). */
   readonly agentRunRequests: AgentRunRequestService;
@@ -595,6 +598,11 @@ export async function buildLocalApiContainer(
         coordinator: reviewOperations,
         now: systemNow,
         createNoteId: () => createLocalNoteId(randomUUID()),
+      }),
+      localPatchViews: new LocalPatchViewService({
+        reviews,
+        sessions,
+        viewedFiles,
       }),
       localChangeIntent: new LocalChangeIntentService({
         reviews,

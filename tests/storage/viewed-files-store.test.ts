@@ -46,14 +46,18 @@ describe("ViewedFilesStore", () => {
   it("writes the marks into the session directory and reads them back", async () => {
     const { paths, store } = await fixture();
 
-    const saved = await store.save(profile.value, session.value, [
+    const saved = await store.save(profile.value, session.value, "combined", [
       fileA.value,
       fileB.value,
       fileA.value,
     ]);
 
     expect(saved).toEqual({ _tag: "ok", value: [fileB.value, fileA.value] });
-    const file = paths.viewedFilesFile(profile.value, session.value);
+    const file = paths.viewedFilesFile(
+      profile.value,
+      session.value,
+      "combined",
+    );
     expect(dirname(file)).toBe(
       paths.sessionDirectory(profile.value, session.value),
     );
@@ -61,16 +65,47 @@ describe("ViewedFilesStore", () => {
       schemaVersion: 1,
       paths: ["docs/b.md", "src/a.ts"],
     });
-    expect(await store.load(profile.value, session.value)).toEqual({
+    expect(await store.load(profile.value, session.value, "combined")).toEqual({
       _tag: "ok",
       value: [fileB.value, fileA.value],
     });
   });
 
+  it("keeps each patch view's marks apart, with Combined in viewed-files.json (#556)", async () => {
+    const { paths, store } = await fixture();
+
+    await store.save(profile.value, session.value, "combined", [fileA.value]);
+    await store.save(profile.value, session.value, "uncommitted", [
+      fileB.value,
+    ]);
+
+    expect(await store.load(profile.value, session.value, "combined")).toEqual({
+      _tag: "ok",
+      value: [fileA.value],
+    });
+    expect(
+      await store.load(profile.value, session.value, "uncommitted"),
+    ).toEqual({ _tag: "ok", value: [fileB.value] });
+    expect(await store.load(profile.value, session.value, "committed")).toEqual(
+      { _tag: "ok", value: [] },
+    );
+    expect(
+      JSON.parse(
+        await readFile(
+          join(
+            paths.sessionDirectory(profile.value, session.value),
+            "viewed-files.json",
+          ),
+          "utf8",
+        ),
+      ),
+    ).toEqual({ schemaVersion: 1, paths: ["src/a.ts"] });
+  });
+
   it("reads a session with no record as no marks", async () => {
     const { store } = await fixture();
 
-    expect(await store.load(profile.value, session.value)).toEqual({
+    expect(await store.load(profile.value, session.value, "combined")).toEqual({
       _tag: "ok",
       value: [],
     });
@@ -86,22 +121,34 @@ describe("ViewedFilesStore", () => {
     "moves a record with %s aside and reads no marks",
     async (_case, contents) => {
       const { paths, store, logged } = await fixture();
-      const file = paths.viewedFilesFile(profile.value, session.value);
+      const file = paths.viewedFilesFile(
+        profile.value,
+        session.value,
+        "combined",
+      );
       await mkdir(dirname(file), { recursive: true });
       await writeFile(file, contents, "utf8");
 
-      expect(await store.load(profile.value, session.value)).toEqual({
+      expect(
+        await store.load(profile.value, session.value, "combined"),
+      ).toEqual({
         _tag: "ok",
         value: [],
       });
       expect(
         await readFile(
-          paths.viewedFilesQuarantineFile(profile.value, session.value),
+          paths.viewedFilesQuarantineFile(
+            profile.value,
+            session.value,
+            "combined",
+          ),
           "utf8",
         ),
       ).toBe(contents);
       expect(logged).toMatchObject([{ level: "warn", topic: "viewed-files" }]);
-      expect(await store.load(profile.value, session.value)).toEqual({
+      expect(
+        await store.load(profile.value, session.value, "combined"),
+      ).toEqual({
         _tag: "ok",
         value: [],
       });

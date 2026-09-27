@@ -5,7 +5,14 @@ import { tokenizeUnifiedPatch } from "./unified-patch";
  * runs merge base to Local snapshot, Committed merge base to checkout `HEAD`,
  * Uncommitted checkout `HEAD` to Local snapshot.
  */
-export type LocalPatchView = "combined" | "committed" | "uncommitted";
+export type LocalPatchView = (typeof localPatchViews)[number];
+
+/** Every patch view, for request schemas that name one. */
+export const localPatchViews = [
+  "combined",
+  "committed",
+  "uncommitted",
+] as const;
 
 /** A draft's origin view as stored: absent means Combined. */
 export type StoredLocalPatchView = Exclude<LocalPatchView, "combined">;
