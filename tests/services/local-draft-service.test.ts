@@ -342,7 +342,10 @@ describe("LocalDraftService", () => {
       },
       { id: "finding-open", dismissed: false, drafted: false, applied: false },
     ]);
-    expect(feedback.localDrafts).toMatchObject(shown.localDrafts ?? []);
+    // `get_feedback` names no origin view until #558.
+    expect(feedback.localDrafts).toMatchObject(
+      (shown.localDrafts ?? []).map(({ view: _view, ...entry }) => entry),
+    );
     expect(feedback.markdown).toContain(boundFix.title);
     expect(feedback.markdown).not.toContain(appliedFix.title);
   });
