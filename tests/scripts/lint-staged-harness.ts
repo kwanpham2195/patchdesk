@@ -1,9 +1,8 @@
 /**
  * The fixture `lint-staged.test.ts` drives the `lintStaged` gate through:
- * discovery, ordering, partial-staging, and size-ratchet cases. The
- * repo-wide Oxlint count-ratchet fields below are unused by `lintStaged`,
- * which no longer runs that ratchet -- `checkChangedSource`
- * (`tests/scripts/check-changed-source.test.ts`) does, with its own fixture.
+ * discovery, ordering, partial-staging, and size-ratchet cases. The repo-wide
+ * Oxlint count ratchet belongs to `checkChangedSource`, tested with its own
+ * fixture in `tests/scripts/check-changed-source.test.ts`.
  */
 
 type CommandCall = {
