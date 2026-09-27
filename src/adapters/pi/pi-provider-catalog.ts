@@ -139,20 +139,15 @@ const PROVIDER_BY_ID = new Map(
  * `no-known-value-widening` rejects as annotations, and only an annotation
  * gives the binding its `readonly` properties and `ReadonlyArray` entries — a
  * trailing `satisfies` leaves the binding with the literal's mutable inferred
- * type. `tests/adapters/pi-provider-catalog.test.ts` probes both guarantees.
+ * type.
  */
 type AmbientEnvironment = {
   readonly bedrock: ReadonlyArray<string>;
   readonly vertex: ReadonlyArray<string>;
 };
 
-/**
- * Exported only so the readonly probe in the test can name this binding. The
- * trailing `satisfies` is what keeps the key set tied to
- * `ProviderDefinition["ambient"]`: add an ambient source and this stops
- * compiling here rather than at the lookup below.
- */
-export const AMBIENT_ENVIRONMENT: AmbientEnvironment = {
+// The key set stays tied to ProviderDefinition["ambient"] at this declaration.
+const AMBIENT_ENVIRONMENT: AmbientEnvironment = {
   bedrock: [
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
