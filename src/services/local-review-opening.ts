@@ -39,6 +39,7 @@ import {
 import type { LocalReviewSession } from "../domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
 import type { LocalApplySettlement } from "./local-apply-settlement";
+import type { LocalBranchListing } from "./local-base-inference";
 import type { UntrackedTooLarge } from "./local-untracked-size";
 import type {
   LocalReviewOpenRequest,
@@ -161,7 +162,7 @@ export class LocalReviewOpening {
   constructor(
     private readonly preparation: Pick<
       LocalReviewSessionPreparation,
-      "resolve" | "prepare" | "listCheckouts" | "findCheckout"
+      "resolve" | "prepare" | "listCheckouts" | "listBranches" | "findCheckout"
     >,
     private readonly projection: Pick<
       ReviewWorkbenchProjectionService,
@@ -263,6 +264,22 @@ export class LocalReviewOpening {
     Result<ReadonlyArray<RepositoryCheckout>, LocalReviewOpenFailure>
   > {
     const listed = await this.preparation.listCheckouts(profileId, repository);
+    return listed._tag === "ok"
+      ? listed
+      : err(mapPreparationFailure(listed.error));
+  }
+
+  /** A checkout's local branches and the base a shared Review would infer there (#555); `checkout` absent is the configured one. */
+  async listBranches(
+    profileId: WorkspaceProfileId,
+    repository: LocalReviewOpenRequest["repository"],
+    checkout: AbsolutePath | undefined,
+  ): Promise<Result<LocalBranchListing, LocalReviewOpenFailure>> {
+    const listed = await this.preparation.listBranches(
+      profileId,
+      repository,
+      checkout,
+    );
     return listed._tag === "ok"
       ? listed
       : err(mapPreparationFailure(listed.error));

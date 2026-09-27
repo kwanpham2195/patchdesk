@@ -28,6 +28,10 @@ import type {
   LocalReviewSource,
   LocalReviewSourceRequest,
 } from "../domain/review-source";
+import {
+  listLocalBranches,
+  type LocalBranchListing,
+} from "./local-base-inference";
 import type {
   LocalReviewRevisionFailure,
   LocalReviewRevisionService,
@@ -127,6 +131,27 @@ export class LocalReviewSessionPreparation {
     const profile = await this.loadProfile(profileId);
     if (profile._tag === "err") return profile;
     return findProfileCheckout(this.dependencies, profile.value, directory);
+  }
+
+  /** The local branches of the checkout `checkout` names, and the base a shared Review opened there would infer (#555). */
+  async listBranches(
+    profileId: WorkspaceProfileId,
+    repository: LocalReviewOpenRequest["repository"],
+    checkout: AbsolutePath | undefined,
+  ): Promise<Result<LocalBranchListing, LocalReviewPreparationFailure>> {
+    const profile = await this.loadProfile(profileId);
+    if (profile._tag === "err") return profile;
+    const resolved = await resolveLocalReviewCheckout(
+      this.dependencies,
+      profile.value,
+      repository,
+      checkout,
+    );
+    if (resolved._tag === "err") return resolved;
+    return listLocalBranches(
+      this.dependencies.git,
+      resolved.value.checkoutPath,
+    );
   }
 
   /** Reads the source from the checkout the request names; a working tree is snapshotted here. */

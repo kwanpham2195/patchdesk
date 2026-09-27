@@ -17,6 +17,7 @@ import {
 
 import { parseChangeIntent } from "../../domain/change-intent";
 import {
+  parseAbsolutePath,
   parseFindingId,
   parseGitHubHost,
   parseGitHubOwner,
@@ -105,6 +106,34 @@ export function registerLocalReviewRoutes(
       listed._tag === "ok"
         ? ok(listed.value.map(describeRepositoryCheckout))
         : listed,
+      localReviewFailureKinds,
+    );
+  });
+
+  // The bases the open dialog offers for the shared Review, and the one it preselects (#555).
+  app.get("/v1/reviews/local-branches", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const host = parseGitHubHost(context.req.query("host"));
+    const owner = parseGitHubOwner(context.req.query("owner"));
+    const repo = parseGitHubRepoName(context.req.query("repo"));
+    const rawCheckout = context.req.query("checkout");
+    const checkout =
+      rawCheckout === undefined ? undefined : parseAbsolutePath(rawCheckout);
+    if (
+      profileId._tag === "err" ||
+      host._tag === "err" ||
+      owner._tag === "err" ||
+      repo._tag === "err" ||
+      checkout?._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return serviceResponse(
+      context,
+      await container.localReviewOpening.listBranches(
+        profileId.value,
+        { host: host.value, owner: owner.value, repo: repo.value },
+        checkout?.value,
+      ),
       localReviewFailureKinds,
     );
   });
