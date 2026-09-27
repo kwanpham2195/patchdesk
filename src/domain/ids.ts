@@ -52,8 +52,8 @@ export const GITHUB_LOGIN_MAX_LENGTH = 39;
 const hostSyntax = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
 const shaSyntax = /^[a-f0-9]{40,64}$/;
 const shaPrefixSyntax = /^[a-f0-9]{4,64}$/;
-/** The readable Review source segment: `pr-<n>` or `local-<kind>-<slug>` (ADR 0050). */
-const reviewSourceSegment = String.raw`(?:pr-[1-9]\d*|local-(?:working_tree|branch|commit)-[a-zA-Z0-9._-]+)`;
+/** The readable Review source segment: `pr-<n>` or `local-<kind>-<slug>` (ADR 0050); the shared Review's kind reads `shared`. */
+const reviewSourceSegment = String.raw`(?:pr-[1-9]\d*|local-(?:working_tree|branch|shared|commit)-[a-zA-Z0-9._-]+)`;
 const reviewIdSyntax = new RegExp(
   String.raw`^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__${reviewSourceSegment}__review-[a-f0-9]{12}$`,
 );
@@ -381,6 +381,13 @@ export function parseReviewSessionId(
   return ok(brand(input));
 }
 
+/**
+ * The branch a shared local Review names when the checkout's `HEAD` is
+ * detached (ADR 0050). A branch literally named `detached` keys the same
+ * Review; git allows the name, and nothing distinguishes the two in the id.
+ */
+export const detachedHeadBranch: LocalBranchName = brand("detached");
+
 /** Parse the UTC millisecond timestamp format stored in Patchdesk artifacts. */
 export function parseIsoTimestamp(
   input: unknown,
@@ -471,6 +478,9 @@ function reviewSourceIdSegment(source: ReviewSource): string {
       return `local-working_tree-${checkoutSlugPrefix(source.checkout)}${localSourceSlug(source.branch ?? "detached")}`;
     case "branch":
       return `local-branch-${checkoutSlugPrefix(source.checkout)}${localSourceSlug(source.branch)}`;
+    // `local-branch-` is the stored `branch` kind's segment, so the shared Review reads `shared`.
+    case "local_branch":
+      return `local-shared-${checkoutSlugPrefix(source.checkout)}${localSourceSlug(source.branch)}`;
     case "commit":
       return `local-commit-${checkoutSlugPrefix(source.checkout)}${source.commitSha.slice(0, 8)}`;
     default:
@@ -517,6 +527,8 @@ function reviewSourceSpecParts(
         : ["working_tree", "branch", source.branch];
     case "branch":
       return ["branch", source.branch, source.baseBranch];
+    case "local_branch":
+      return ["local_branch", source.branch, source.baseBranch];
     case "commit":
       return ["commit", source.commitSha];
     default:

@@ -234,7 +234,7 @@ describe("ReviewSession storage", () => {
     expect(written).toEqual(current);
   });
 
-  it("saves and loads a local branch session with its source and no pull request fields", async () => {
+  it("still loads a branch session stored before the shared Review, with no pull request fields", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-session-store-"));
     roots.push(root);
     const paths = PatchdeskPaths.forTest(root);
@@ -286,6 +286,57 @@ describe("ReviewSession storage", () => {
       key: {
         source: { kind: "branch", branch: "feat/login", baseBranch: "main" },
       },
+    });
+  });
+
+  it("saves a shared Review session with the checkout HEAD its snapshot was taken on, and refuses one without it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-session-store-"));
+    roots.push(root);
+    const paths = PatchdeskPaths.forTest(root);
+    const store = new ReviewSessionStore(paths);
+    const profileId = must(parseWorkspaceProfileId("acme"));
+    const key = {
+      profileId,
+      host: must(parseGitHubHost("github.com")),
+      owner: must(parseGitHubOwner("octo-org")),
+      repo: must(parseGitHubRepoName("patchdesk")),
+      source: {
+        kind: "local_branch" as const,
+        branch: must(parseLocalBranchName("feat/login")),
+        baseBranch: must(parseLocalBranchName("main")),
+      },
+      headSha: must(parseGitSha("a".repeat(40))),
+      baseSha: must(parseGitSha("b".repeat(40))),
+    };
+    const sessionId = createReviewSessionId(key);
+    const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
+    const withoutCheckoutHead: LocalReviewSession = {
+      schemaVersion: 6,
+      id: sessionId,
+      key,
+      patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionId))),
+      worktree: {
+        path: must(
+          parseAbsolutePath(paths.worktreeDirectory(profileId, sessionId)),
+        ),
+        headSha: key.headSha,
+      },
+      createdAt: at,
+      updatedAt: at,
+    };
+    const session: LocalReviewSession = {
+      ...withoutCheckoutHead,
+      checkoutHeadSha: must(parseGitSha("c".repeat(40))),
+    };
+
+    expect((await store.save(withoutCheckoutHead))._tag).toBe("err");
+    await expect(store.save(session)).resolves.toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    await expect(store.load(profileId, sessionId)).resolves.toEqual({
+      _tag: "ok",
+      value: session,
     });
   });
 });

@@ -59,6 +59,12 @@ export type PullRequestReviewSession = ReviewSessionFields & {
 /** Immutable local artifacts for one pinned revision of a local Review source. */
 export type LocalReviewSession = ReviewSessionFields & {
   readonly key: ReviewSessionKey<LocalReviewSource>;
+  /**
+   * The checkout's `HEAD` when a shared Review's Local snapshot was taken:
+   * the snapshot's parent, so it is not part of the session key. Present on
+   * every `local_branch` session, absent on the other kinds.
+   */
+  readonly checkoutHeadSha?: GitSha;
 };
 
 /** The local work for one pinned revision of a Review source. */
@@ -120,13 +126,19 @@ export function createReviewSession(input: {
   };
 }
 
-/** Constructs a local session; its patch hash is the hash of the patch as written (ADR 0050). */
+/**
+ * Constructs a local session; its patch hash is the hash of the patch as
+ * written (ADR 0050). A `local_branch` session needs `checkoutHeadSha` and
+ * the other kinds take none; the session store refuses to save or read one
+ * that breaks this.
+ */
 export function createLocalReviewSession(input: {
   readonly key: ReviewSessionKey<LocalReviewSource>;
   readonly patchPath: AbsolutePath;
   readonly canonicalPatchHash: ContentHash;
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
+  readonly checkoutHeadSha?: GitSha;
 }): LocalReviewSession {
   return {
     schemaVersion: 6,
@@ -137,5 +149,6 @@ export function createLocalReviewSession(input: {
     worktree: input.worktree,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
+    ...definedProps({ checkoutHeadSha: input.checkoutHeadSha }),
   };
 }

@@ -3,6 +3,7 @@ import * as v from "valibot";
 import { definedProps } from "./defined-props";
 import {
   checkoutFolderName,
+  detachedHeadBranch,
   parseAbsolutePath,
   parseGitSha,
   parseGitShaPrefix,
@@ -29,18 +30,31 @@ export type PullRequestReviewSource = {
 type LocalCheckout = { readonly checkout?: AbsolutePath };
 
 /**
- * The maintainer's checkout against `HEAD`. `branch` is the branch `HEAD`
- * names and is absent when `HEAD` is detached, so a branch switch opens a
- * different Review (ADR 0050).
+ * The maintainer's checkout against `HEAD`, stored before the shared Review
+ * (#555). Records still parse; nothing opens one again. `branch` is absent
+ * when `HEAD` was detached.
  */
 type WorkingTreeReviewSource = LocalCheckout & {
   readonly kind: "working_tree";
   readonly branch?: LocalBranchName;
 };
 
-/** A local branch against its merge base with a chosen local base branch. */
+/** A local branch tip against its merge base with a base branch, stored before the shared Review (#555); records still parse. */
 type BranchReviewSource = LocalCheckout & {
   readonly kind: "branch";
+  readonly branch: LocalBranchName;
+  readonly baseBranch: LocalBranchName;
+};
+
+/**
+ * The shared local Review (#555, ADR 0050): the checkout's Local snapshot
+ * against its merge base with `baseBranch`, so committed and uncommitted work
+ * on `branch` is one diff with one draft list. `branch` is the branch `HEAD`
+ * names, `detachedHeadBranch` when it is detached, so a branch switch keys
+ * another Review.
+ */
+type LocalBranchReviewSource = LocalCheckout & {
+  readonly kind: "local_branch";
   readonly branch: LocalBranchName;
   readonly baseBranch: LocalBranchName;
 };
@@ -55,6 +69,7 @@ type CommitReviewSource = LocalCheckout & {
 export type LocalReviewSource =
   | WorkingTreeReviewSource
   | BranchReviewSource
+  | LocalBranchReviewSource
   | CommitReviewSource;
 
 /** What a Review's patch is computed from (ADR 0050, CONTEXT.md "Review source"). */
@@ -70,7 +85,7 @@ export type LocalReviewSourceRequest = LocalCheckout &
     | {
         readonly kind: "working_tree";
         /** Set when reopening a stored working-tree Review, so a branch switch refuses instead of opening another Review. */
-        readonly expectedHead?: ExpectedWorkingTreeHead;
+        readonly expectedHead?: ExpectedCheckoutHead;
       }
     | {
         readonly kind: "branch";
@@ -80,8 +95,8 @@ export type LocalReviewSourceRequest = LocalCheckout &
     | { readonly kind: "commit"; readonly commit: GitShaPrefix }
   );
 
-/** The `HEAD` a working-tree open expects: a named branch, or detached. */
-type ExpectedWorkingTreeHead =
+/** The `HEAD` an open expects: a named branch, or detached. */
+type ExpectedCheckoutHead =
   | { readonly kind: "branch"; readonly branch: LocalBranchName }
   | { readonly kind: "detached" };
 
@@ -100,8 +115,9 @@ export function sameReviewSource(
         left.checkout === right.checkout
       );
     case "branch":
+    case "local_branch":
       return (
-        right.kind === "branch" &&
+        right.kind === left.kind &&
         left.branch === right.branch &&
         left.baseBranch === right.baseBranch &&
         left.checkout === right.checkout
@@ -129,6 +145,12 @@ export const storedLocalReviewSourceSchema = v.variant("kind", [
   }),
   v.strictObject({
     kind: v.literal("branch"),
+    branch: v.string(),
+    baseBranch: v.string(),
+    checkout: v.optional(v.string()),
+  }),
+  v.strictObject({
+    kind: v.literal("local_branch"),
     branch: v.string(),
     baseBranch: v.string(),
     checkout: v.optional(v.string()),
@@ -166,12 +188,13 @@ function parseStoredSourceSpec(
         ? ok({ kind: "working_tree", branch: branch.value })
         : invalidSource();
     }
-    case "branch": {
+    case "branch":
+    case "local_branch": {
       const branch = parseLocalBranchName(raw.branch);
       const baseBranch = parseLocalBranchName(raw.baseBranch);
       return branch._tag === "ok" && baseBranch._tag === "ok"
         ? ok({
-            kind: "branch",
+            kind: raw.kind,
             branch: branch.value,
             baseBranch: baseBranch.value,
           })
@@ -293,6 +316,9 @@ export function reopenLocalSourceRequest(
         baseBranch: source.baseBranch,
         ...definedProps({ checkout: source.checkout }),
       };
+    // Read from the checkout in the next slice.
+    case "local_branch":
+      return undefined;
     case "commit": {
       const commit = parseGitShaPrefix(source.commitSha);
       return commit._tag === "ok"
@@ -317,7 +343,7 @@ type ReviewSourceText =
       readonly checkout?: string | undefined;
     }
   | {
-      readonly kind: "branch";
+      readonly kind: "branch" | "local_branch";
       readonly branch: string;
       readonly baseBranch: string;
       readonly checkout?: string | undefined;
@@ -337,6 +363,8 @@ export function reviewSourceTitle(source: ReviewSourceText): string {
       return `Working tree on ${source.branch ?? "detached HEAD"}${checkoutSuffix(source.checkout)}`;
     case "branch":
       return `Branch ${source.branch} against ${source.baseBranch}${checkoutSuffix(source.checkout)}`;
+    case "local_branch":
+      return `${source.branch === detachedHeadBranch ? "Detached HEAD" : source.branch} against ${source.baseBranch}${checkoutSuffix(source.checkout)}`;
     case "commit":
       return `Commit ${source.commitSha.slice(0, 8)}${checkoutSuffix(source.checkout)}`;
     default:

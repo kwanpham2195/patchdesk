@@ -396,7 +396,48 @@ describe("local Review source IDs", () => {
     });
   });
 
+  function sharedIdentity(branch: string, baseBranch = "main"): ReviewIdentity {
+    return {
+      ...repository,
+      source: {
+        kind: "local_branch",
+        branch: must(parseLocalBranchName(branch)),
+        baseBranch: must(parseLocalBranchName(baseBranch)),
+      },
+    };
+  }
+
+  it("names a shared Review `local-shared-` so both ID parsers accept it and it never reads as the stored branch kind", () => {
+    const shared = sharedIdentity("feat/login");
+    const reviewId = createReviewId(shared);
+    const sessionId = createReviewSessionId({
+      ...shared,
+      headSha: firstSha,
+      baseSha,
+    });
+
+    expect(reviewId).toMatch(
+      /^github\.com__octo-org__patchdesk__local-shared-feat-login__review-[a-f0-9]{12}$/,
+    );
+    expect(sessionId).toContain("__local-shared-feat-login__sha-11111111__");
+    expect(parseReviewId(reviewId)).toEqual({ _tag: "ok", value: reviewId });
+    expect(parseReviewSessionId(sessionId)).toEqual({
+      _tag: "ok",
+      value: sessionId,
+    });
+  });
+
   it.each<[string, ReviewIdentity, ReviewIdentity]>([
+    [
+      "a shared Review and a stored branch Review of the same branch and base",
+      sharedIdentity("feat/login"),
+      branchIdentity("feat/login"),
+    ],
+    [
+      "one branch's shared Reviews against two bases",
+      sharedIdentity("feat/login", "main"),
+      sharedIdentity("feat/login", "develop"),
+    ],
     [
       "two branches that sanitize to the same slug",
       branchIdentity("feat/login"),
