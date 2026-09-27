@@ -4,10 +4,14 @@ import type { ReviewWorkbenchInitialState } from "../components/review-workbench
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { SelectedDiffRange } from "../components/review-diff-view";
 import type { WorkbenchResponse } from "../renderer-contracts";
-import { sourceListsCommits } from "../review-source";
+import {
+  sourceListsCommits,
+  type WorkbenchReviewSource,
+} from "../review-source";
 import type {
   WorkbenchActiveTab,
   WorkbenchPosition,
+  WorkbenchSection,
 } from "../lib/screen-restore";
 
 /** Where the workbench is pointed: tab, navigator section, file, commit, thread. */
@@ -28,6 +32,25 @@ export type ReviewWorkbenchPositionState = {
   readonly selectCommit: (sha: string) => void;
 };
 
+/** A restored section the source has no tab for opens Browse (#557). */
+function restoredSection(
+  saved: WorkbenchSection | undefined,
+  source: WorkbenchReviewSource,
+): ReviewNavigatorSection {
+  switch (saved) {
+    case "commits":
+      return sourceListsCommits(source) ? saved : "files";
+    case "threads":
+      return source.kind === "pull_request" ? saved : "files";
+    case "notes":
+      return source.kind === "pull_request" ? "files" : saved;
+    case "files":
+    case "insights":
+    case undefined:
+      return "files";
+  }
+}
+
 /** Owns the workbench position and resets it when the reviewed revision moves. */
 export function useReviewWorkbenchPosition({
   model,
@@ -38,14 +61,8 @@ export function useReviewWorkbenchPosition({
   readonly initialState?: ReviewWorkbenchInitialState;
   readonly onPositionCommitted?: (state: WorkbenchPosition) => void;
 }): ReviewWorkbenchPositionState {
-  // A restored section the source has no tab for opens Browse.
   const [section, setSection] = useState<ReviewNavigatorSection>(() =>
-    initialState?.section === undefined ||
-    initialState.section === "insights" ||
-    (initialState.section === "commits" &&
-      !sourceListsCommits(model.session.key.source))
-      ? "files"
-      : initialState.section,
+    restoredSection(initialState?.section, model.session.key.source),
   );
   // A Review with no saved position opens on Conversation: the description and
   // the discussion are what a reviewer reads before any code. A Review that

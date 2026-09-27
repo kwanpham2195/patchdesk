@@ -101,6 +101,41 @@ describe("review navigator", () => {
     expect(stamp?.title).not.toBe("");
   });
 
+  it.each([
+    {
+      review: "pull request",
+      notes: undefined,
+      shows: "Threads",
+      hides: "Notes",
+    },
+    {
+      review: "local",
+      notes: { list: <p>Local draft list</p>, count: 2 },
+      shows: "Notes",
+      hides: "Threads",
+    },
+  ])(
+    "shows $shows and no $hides on a $review Review",
+    ({ notes, shows, hides }) => {
+      render(
+        <ReviewNavigator
+          patch=""
+          conversationThreadEntries={[]}
+          section="files"
+          {...(notes === undefined ? {} : { notes })}
+          {...callbacks}
+        />,
+      );
+
+      expect(
+        screen.getByRole("tab", { name: new RegExp(`^${shows}`) }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("tab", { name: new RegExp(`^${hides}`) }),
+      ).toBeNull();
+    },
+  );
+
   it("browses only the Scope filter's files while Commits and Threads stay complete", () => {
     const patch = [
       "diff --git a/src/a.ts b/src/a.ts",

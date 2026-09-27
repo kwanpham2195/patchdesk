@@ -122,7 +122,7 @@ function notesCalls(double: ReturnType<typeof installDesktopDouble>) {
 }
 
 describe("Maintainer notes on a local Review", () => {
-  it("adds a note from the Diff composer and lists it in the Local drafts card, which removes it", async () => {
+  it("adds a note from the Diff composer and lists it in the Notes list, which removes it", async () => {
     const double = installDesktopDouble({
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
@@ -156,8 +156,7 @@ describe("Maintainer notes on a local Review", () => {
         screen.queryByRole("region", { name: "Note composer" }),
       ).toBeNull(),
     );
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
-    await user.click(screen.getByRole("tab", { name: /^Analysis/ }));
+    await user.click(screen.getByRole("tab", { name: /^Notes/ }));
     const list = await screen.findByRole("list", { name: "Local drafts" });
     expect(list.textContent).toContain("Guard the empty case.");
     await user.click(

@@ -30,7 +30,6 @@ import {
   type FindingActionState,
 } from "./analysis-finding-row";
 import { LocalApplyBar } from "./local-apply-bar";
-import { LocalDraftsCard } from "./local-drafts-card";
 import { ReviewWorkbenchFindingNavigationContext } from "./review-workbench-finding-navigation";
 import { GeneratedMarkdown } from "./generated-markdown";
 import { ReviewVerdictIcon } from "./review-verdict-icon";
@@ -336,10 +335,6 @@ export function AnalysisReader({
           </CardContent>
         )}
       </Card>
-
-      {localDrafts === undefined ? null : (
-        <LocalDraftsCard controls={localDrafts} />
-      )}
 
       <Card size="sm">
         <CardHeader>

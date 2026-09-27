@@ -167,7 +167,7 @@ export function ReviewWorkbenchFlow({
     onWorkbenchReplace: replaceWorkbench,
     onWorkbenchPatch,
   });
-  // One owner for the Insights tab's Local drafts card and the Diff tab's notes.
+  // One owner for the navigator's Notes list, the Diff tab's notes, and Analysis's Add to draft.
   const localDrafts = useLocalDrafts({
     workbench,
     view: localPatchView?.shown.view,
@@ -245,6 +245,7 @@ export function ReviewWorkbenchFlow({
         actions={workbenchActions}
         viewedFiles={viewedFiles}
         {...(localPatchView === undefined ? {} : { localPatchView })}
+        {...(localDrafts === undefined ? {} : { localDrafts })}
         slots={{
           insights: (
             <InsightsSlot
