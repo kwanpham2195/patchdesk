@@ -34,6 +34,7 @@ import type {
   LocalReviewSource,
   LocalReviewSourceRequest,
 } from "../domain/review-source";
+import { listLocalCommits } from "./local-commit-listing";
 import {
   listLocalBranches,
   type LocalBranchListing,
@@ -408,6 +409,17 @@ export class LocalReviewSessionPreparation {
     const parsedWorktreePath = parseAbsolutePath(worktree.value.path);
     if (combined === undefined || parsedWorktreePath._tag === "err")
       return this.abort(journal, { _tag: "PreparationUnavailable" });
+    const commits =
+      resolved.checkoutHeadSha === undefined
+        ? undefined
+        : await listLocalCommits(
+            this.dependencies.git,
+            parsedWorktreePath.value,
+            resolved.revision.baseSha,
+            resolved.checkoutHeadSha,
+          );
+    if (resolved.checkoutHeadSha !== undefined && commits === undefined)
+      return this.abort(journal, { _tag: "PreparationUnavailable" });
     if ((await journal.markCommitting())._tag === "err")
       return this.abort(journal, { _tag: "SessionStorageUnavailable" });
     const session = createLocalReviewSession({
@@ -425,6 +437,7 @@ export class LocalReviewSessionPreparation {
           committed === undefined || uncommitted === undefined
             ? undefined
             : { combined, committed, uncommitted },
+        commits,
       }),
     });
     const saved = await this.dependencies.sessions.save(session);

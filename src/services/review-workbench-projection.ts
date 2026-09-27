@@ -92,6 +92,7 @@ import type { ReviewSource } from "../domain/review-source";
 import { err, ok, type Result } from "../domain/result";
 import type { ChangeIntentView } from "../domain/change-intent";
 import { changeIntentView } from "./local-change-intent-service";
+import { asPullRequestCommit } from "./local-commit-listing";
 import { RetainedInsightReader } from "./retained-insight-reader";
 
 /** Renderer-safe Session identity. It deliberately omits patch/worktree paths and durable internals. */
@@ -158,7 +159,10 @@ export type ReviewWorkbenchProjection = {
    */
   readonly scope?: ChangeScope;
   readonly pullRequest?: PullRequestSummary;
+  /** A pull request's commits, or on a shared local Review the newest of its branch's (#557 D1). */
   readonly commits: ReadonlyArray<PullRequestCommit>;
+  /** Present exactly on a shared local Review: how many commits the branch has, which `commits` caps (#557 D3). */
+  readonly commitTotal?: number;
   readonly insights: {
     readonly analysis: InsightProjection<ReviewResult>;
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
@@ -677,7 +681,12 @@ export class ReviewWorkbenchProjectionService {
       },
       session: projectSession(session),
       revision,
-      commits: remote?.commits ?? [],
+      commits:
+        isPullRequestReviewSession(session) || session.commits === undefined
+          ? (remote?.commits ?? [])
+          : session.commits.newest.map((commit) =>
+              asPullRequestCommit(commit, session.checkoutHeadSha),
+            ),
       insights: {
         analysis,
         walkthrough,
@@ -750,6 +759,9 @@ export class ReviewWorkbenchProjectionService {
         patchViews: isPullRequestReviewSession(session)
           ? undefined
           : projectPatchViews(session.viewPatches),
+        commitTotal: isPullRequestReviewSession(session)
+          ? undefined
+          : session.commits?.total,
         scope:
           fullPatch === undefined ? undefined : changeScopeFromPatch(fullPatch),
         pullRequest,

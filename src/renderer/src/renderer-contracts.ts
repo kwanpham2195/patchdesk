@@ -870,6 +870,7 @@ const workbenchProjectionSchema = v.strictObject({
   scope: v.optional(changeScopeSchema),
   pullRequest: v.optional(pullRequestSummarySchema),
   commits: v.array(commitSchema),
+  commitTotal: v.optional(v.pipe(v.number(), v.safeInteger(), v.minValue(0))),
   insights: v.strictObject({
     analysis: analysisInsightSchema,
     walkthrough: walkthroughInsightSchema,

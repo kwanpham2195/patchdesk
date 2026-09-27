@@ -30,6 +30,7 @@ import { KeyedMutex } from "../../domain/keyed-mutex";
 import { mapConcurrent } from "../../domain/map-concurrent";
 import {
   isPullRequestReviewSession,
+  type LocalCommit,
   type LocalReviewSession,
   type LocalSessionViewPatch,
   type PullRequestReviewSession,
@@ -106,6 +107,13 @@ const viewPatchSchema = v.strictObject({
   paths: v.array(v.string()),
 });
 
+const localCommitSchema = v.strictObject({
+  sha: v.string(),
+  subject: v.string(),
+  authorName: v.string(),
+  authoredAt: v.string(),
+});
+
 const localSessionSchema = v.strictObject({
   ...sessionFieldEntries,
   key: v.strictObject({
@@ -123,6 +131,12 @@ const localSessionSchema = v.strictObject({
       combined: viewPatchSchema,
       committed: viewPatchSchema,
       uncommitted: viewPatchSchema,
+    }),
+  ),
+  commits: v.optional(
+    v.strictObject({
+      newest: v.array(localCommitSchema),
+      total: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
     }),
   ),
 });
@@ -390,22 +404,32 @@ function parseLocalSession(
   const fields = parseSessionFields(raw, source.value);
   if (fields._tag === "err") return fields;
   // A shared Review's session always records the checkout HEAD its snapshot
-  // was taken on and its three patches (#556 D7); no other kind has either.
+  // was taken on, its three patches (#556 D7), and its commits (#557 D1); no
+  // other kind has any of them.
   if (source.value.kind !== "local_branch")
-    return raw.checkoutHeadSha === undefined && raw.viewPatches === undefined
+    return raw.checkoutHeadSha === undefined &&
+      raw.viewPatches === undefined &&
+      raw.commits === undefined
       ? fields
       : invalidRead();
-  if (raw.checkoutHeadSha === undefined || raw.viewPatches === undefined)
+  if (
+    raw.checkoutHeadSha === undefined ||
+    raw.viewPatches === undefined ||
+    raw.commits === undefined
+  )
     return invalidRead();
   const checkoutHeadSha = parseGitSha(raw.checkoutHeadSha);
   const combined = parseViewPatch(raw.viewPatches.combined);
   const committed = parseViewPatch(raw.viewPatches.committed);
   const uncommitted = parseViewPatch(raw.viewPatches.uncommitted);
+  const newest = parseLocalCommits(raw.commits.newest);
   if (
     checkoutHeadSha._tag === "err" ||
     combined === undefined ||
     committed === undefined ||
     uncommitted === undefined ||
+    newest === undefined ||
+    newest.length > raw.commits.total ||
     combined.patchPath !== fields.value.patchPath ||
     combined.patchHash !== fields.value.canonicalPatchHash
   )
@@ -414,7 +438,26 @@ function parseLocalSession(
     ...fields.value,
     checkoutHeadSha: checkoutHeadSha.value,
     viewPatches: { combined, committed, uncommitted },
+    commits: { newest, total: raw.commits.total },
   });
+}
+
+function parseLocalCommits(
+  raw: ReadonlyArray<v.InferOutput<typeof localCommitSchema>>,
+): ReadonlyArray<LocalCommit> | undefined {
+  const commits: LocalCommit[] = [];
+  for (const commit of raw) {
+    const sha = parseGitSha(commit.sha);
+    const authoredAt = parseIsoTimestamp(commit.authoredAt);
+    if (sha._tag === "err" || authoredAt._tag === "err") return undefined;
+    commits.push({
+      sha: sha.value,
+      subject: commit.subject,
+      authorName: commit.authorName,
+      authoredAt: authoredAt.value,
+    });
+  }
+  return commits;
 }
 
 function parseViewPatch(

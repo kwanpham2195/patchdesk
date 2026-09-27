@@ -27,6 +27,7 @@ import {
 } from "./local-apply-fixture";
 import {
   featureWithCheckoutChanges,
+  indexBytes,
   loadSession,
   main,
   readViewPatches,
@@ -45,10 +46,6 @@ function reopenOn(branch: string): LocalReviewSourceRequest {
       branch: value(parseLocalBranchName(branch)),
     },
   };
-}
-
-function indexBytes(repositoryPath: string): Promise<Buffer> {
-  return readFile(join(repositoryPath, ".git", "index"));
 }
 
 describe("the shared local Review (#555)", () => {

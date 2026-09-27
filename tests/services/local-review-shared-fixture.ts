@@ -44,6 +44,11 @@ export async function loadSession(
   return session;
 }
 
+/** The checkout's index file as bytes; run `git status` first, since it refreshes the index. */
+export function indexBytes(repositoryPath: string): Promise<Buffer> {
+  return readFile(join(repositoryPath, ".git", "index"));
+}
+
 /** Each stored view patch's text and touched paths, read as a view switch would: from the session's files. */
 export async function readViewPatches(session: LocalReviewSession) {
   const views = session.viewPatches;

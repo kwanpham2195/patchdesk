@@ -289,7 +289,7 @@ describe("ReviewSession storage", () => {
     });
   });
 
-  it("saves a shared Review session with its checkout HEAD and three view patches, and refuses one missing either (#556 D7)", async () => {
+  it("saves a shared Review session with its checkout HEAD, three view patches, and commits, and refuses one missing any of them (#556 D7, #557 D1)", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-session-store-"));
     roots.push(root);
     const paths = PatchdeskPaths.forTest(root);
@@ -342,12 +342,25 @@ describe("ReviewSession storage", () => {
           "f",
         ),
       },
+      commits: {
+        newest: [
+          {
+            sha: must(parseGitSha("c".repeat(40))),
+            subject: "Add login",
+            authorName: "Fixture",
+            authoredAt: at,
+          },
+        ],
+        total: 1,
+      },
     };
     const { checkoutHeadSha: _head, ...withoutCheckoutHead } = session;
     const { viewPatches: _views, ...withoutViewPatches } = session;
+    const { commits: _commits, ...withoutCommits } = session;
 
     expect((await store.save(withoutCheckoutHead))._tag).toBe("err");
     expect((await store.save(withoutViewPatches))._tag).toBe("err");
+    expect((await store.save(withoutCommits))._tag).toBe("err");
     await expect(store.save(session)).resolves.toEqual({
       _tag: "ok",
       value: undefined,

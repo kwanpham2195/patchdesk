@@ -25,6 +25,7 @@ import {
   type UntrackedLimits,
   type UntrackedTooLarge,
 } from "./local-untracked-size";
+import { readFirstParentOrEmptyTree } from "./local-commit-listing";
 import { exists } from "./review-preparation-journal";
 import type { GitReadExecutor } from "./review-worktree-service";
 
@@ -351,29 +352,11 @@ export class LocalReviewRevisionService {
     // Git prefers a branch or tag named like the prefix over the object, with only a warning.
     if (commitSha === undefined || !commitSha.startsWith(commit))
       return err({ _tag: "LocalRevisionNotFound" });
-    const parents = await this.git.run([
-      "git",
-      "-C",
+    const baseSha = await readFirstParentOrEmptyTree(
+      this.git,
       repositoryPath,
-      "rev-list",
-      "--parents",
-      "-n",
-      "1",
-      "--end-of-options",
       commitSha,
-    ]);
-    if (parents._tag === "err") return err({ _tag: "LocalGitFailed" });
-    const firstParent = parents.value.stdout.trim().split(" ")[1];
-    // A root commit has no parent, so it is compared with the empty tree.
-    const baseSha =
-      firstParent === undefined
-        ? await this.readSha(repositoryPath, [
-            "hash-object",
-            "-t",
-            "tree",
-            "/dev/null",
-          ])
-        : parseGitShaOrUndefined(firstParent);
+    );
     if (baseSha === undefined) return err({ _tag: "LocalGitFailed" });
     return ok({
       source: { kind: "commit", commitSha },

@@ -141,6 +141,8 @@ export async function localApplyHarness(
     readonly openingNow?: () => IsoTimestamp;
     /** Awaited after each session the opening service prepares, to hold it between the snapshot and the save. */
     readonly afterPrepare?: () => Promise<void>;
+    /** Intercepts preparation's own git reads, such as the session's commit listing; the snapshot and patches still run real git. */
+    readonly preparationGit?: GitInterceptor;
   } = {},
 ): Promise<LocalApplyHarness> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-local-apply-"));
@@ -213,7 +215,12 @@ export async function localApplyHarness(
     worktrees,
     artifacts,
     paths,
-    git: realGit,
+    git: {
+      run: (argv, environment) =>
+        seams.preparationGit === undefined
+          ? realGit.run(argv, environment)
+          : seams.preparationGit(argv, () => realGit.run(argv, environment)),
+    },
     lifecycleGate,
     now: () => now,
   });
