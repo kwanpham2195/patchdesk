@@ -125,15 +125,17 @@ export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;
 };
 
-/** Omits `state` from each member of a union, keeping the members apart. */
-type WithoutState<Entry> = Entry extends unknown ? Omit<Entry, "state"> : never;
+/** Omits `state` and `view` from each member of a union, keeping the members apart. */
+type WithoutStateOrView<Entry> = Entry extends unknown
+  ? Omit<Entry, "state" | "view">
+  : never;
 
 /**
  * A draft as the workbench lists it, with a state always present: `current`
  * for a draft written on the Review's current session, which the workbench
  * leaves unlabelled. A Finding draft adds its comment and verified suggestion.
  */
-type LocalFeedbackEntry = WithoutState<LocalDraftEntry> & {
+type LocalFeedbackEntry = WithoutStateOrView<LocalDraftEntry> & {
   readonly state: LocalDraftState | "current";
   readonly comment?: string;
   readonly suggestion?: string;
@@ -471,7 +473,8 @@ export class LocalDraftService {
 }
 
 function projectFeedbackEntry(draft: LocalDraft): LocalFeedbackEntry {
-  const projected = projectLocalDraft(draft);
+  // `get_feedback` does not name a draft's view yet (#558).
+  const { view: _view, ...projected } = projectLocalDraft(draft);
   // A draft carries no state until the Review first moves to a new session, so it was written on the current one.
   const state: LocalFeedbackEntry["state"] = projected.state ?? "current";
   const entry = { ...projected, state };

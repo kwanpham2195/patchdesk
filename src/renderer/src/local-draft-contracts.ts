@@ -4,6 +4,8 @@ const nonEmpty = v.pipe(v.string(), v.minLength(1));
 const lineNumber = v.pipe(v.number(), v.integer(), v.minValue(1));
 const location = {
   sessionId: nonEmpty,
+  /** The patch view the draft was made on. */
+  view: v.picklist(["combined", "committed", "uncommitted"]),
   path: nonEmpty,
   side: v.picklist(["new", "old"]),
   startLine: lineNumber,

@@ -15,6 +15,7 @@ import {
   type LocalNoteId,
   type ReviewSessionId,
 } from "./ids";
+import type { LocalPatchView, StoredLocalPatchView } from "./local-patch-view";
 import { err, ok, type Result } from "./result";
 import type { FindingSuggestedReplacement } from "./review-result";
 
@@ -29,6 +30,8 @@ export type FindingDraft = {
   readonly analysisRunId: InsightRunId;
   /** The session whose patch the anchor was fingerprinted against. */
   readonly sessionId: ReviewSessionId;
+  /** The patch view the anchor was fingerprinted against; absent means Combined. */
+  readonly view?: StoredLocalPatchView;
   readonly anchor: ReviewAnchorFingerprint;
   readonly title: string;
   /** The Finding's suggested comment, or its explanation when it has none. */
@@ -47,6 +50,8 @@ export type MaintainerNote = {
   readonly noteId: LocalNoteId;
   /** The session whose patch the anchor was fingerprinted against. */
   readonly sessionId: ReviewSessionId;
+  /** The patch view the anchor was fingerprinted against; absent means Combined. */
+  readonly view?: StoredLocalPatchView;
   readonly anchor: ReviewAnchorFingerprint;
   readonly text: string;
   readonly createdAt: IsoTimestamp;
@@ -84,6 +89,7 @@ export type LocalDraftEntry =
       readonly findingId: FindingId;
       readonly analysisRunId: InsightRunId;
       readonly sessionId: ReviewSessionId;
+      readonly view: LocalPatchView;
       readonly path: string;
       readonly side: "new" | "old";
       readonly startLine: number;
@@ -96,6 +102,7 @@ export type LocalDraftEntry =
       readonly kind: "note";
       readonly noteId: LocalNoteId;
       readonly sessionId: ReviewSessionId;
+      readonly view: LocalPatchView;
       readonly path: string;
       readonly side: "new" | "old";
       readonly startLine: number;
@@ -130,6 +137,7 @@ const storedCarrySchema = v.optional(
     notedLines: v.array(v.string()),
   }),
 );
+const storedViewSchema = v.optional(v.picklist(["committed", "uncommitted"]));
 
 /** The stored form of one Local draft; unknown fields are refused. A Finding draft has no `author`. */
 export const storedLocalDraftSchema = v.union([
@@ -137,6 +145,7 @@ export const storedLocalDraftSchema = v.union([
     findingId: nonEmpty,
     analysisRunId: nonEmpty,
     sessionId: nonEmpty,
+    view: storedViewSchema,
     anchor: storedAnchorSchema,
     title: nonEmpty,
     comment: nonEmpty,
@@ -149,6 +158,7 @@ export const storedLocalDraftSchema = v.union([
     author: v.literal("maintainer"),
     noteId: nonEmpty,
     sessionId: nonEmpty,
+    view: storedViewSchema,
     anchor: storedAnchorSchema,
     text: v.pipe(v.string(), v.maxLength(MAX_MAINTAINER_NOTE_LENGTH)),
     createdAt: nonEmpty,
@@ -213,6 +223,7 @@ function parseStoredLocalDraft(
       author: "maintainer",
       noteId: noteId.value,
       sessionId: sessionId.value,
+      ...definedProps({ view: entry.view }),
       anchor,
       text: text.value,
       createdAt: createdAt.value,
@@ -238,6 +249,7 @@ function parseStoredLocalDraft(
     findingId: findingId.value,
     analysisRunId: analysisRunId.value,
     sessionId: sessionId.value,
+    ...definedProps({ view: entry.view }),
     anchor,
     title: entry.title,
     comment: entry.comment,
@@ -291,8 +303,10 @@ export function localDraftState(
 }
 
 export function projectLocalDraft(draft: LocalDraft): LocalDraftEntry {
+  const view: LocalPatchView = draft.view ?? "combined";
   const location = {
     sessionId: draft.sessionId,
+    view,
     path: draft.anchor.path,
     side: draft.anchor.side,
     startLine: draft.anchor.startLine,
