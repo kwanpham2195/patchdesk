@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
@@ -26,8 +26,16 @@ import {
 } from "../../src/domain/ids";
 import { createReviewSession } from "../../src/domain/review-session";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { CommandRunner } from "../../src/adapters/github/command-runner";
+import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import { ReviewDiffSourceService } from "../../src/services/review-diff-source-service";
 import type { GitReadExecutor } from "../../src/services/review-worktree-service";
+import {
+  cleanupLocalApplyRoots,
+  git,
+  localApplyHarness,
+  profileId as localProfileId,
+} from "./local-apply-fixture";
 
 function must<T>(
   value: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" },
@@ -678,4 +686,73 @@ describe("ReviewDiffSourceService", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+});
+
+describe("ReviewDiffSourceService on a shared local Review's patch views (#556)", () => {
+  afterEach(cleanupLocalApplyRoots);
+
+  it.each([
+    {
+      view: "committed",
+      oldContents: "one\n",
+      newContents: "one\ncommitted\n",
+    },
+    {
+      view: "uncommitted",
+      oldContents: "one\ncommitted\n",
+      newContents: "one\ncommitted\nuncommitted\n",
+    },
+  ])(
+    "hydrates $view from its own two trees in the Patchdesk worktree, never the checkout",
+    async ({ view, oldContents, newContents }) => {
+      const harness = await localApplyHarness();
+      const { repositoryPath } = harness;
+      git(repositoryPath, "checkout", "-q", "-b", "feature");
+      await writeFile(join(repositoryPath, "tracked.txt"), "one\ncommitted\n");
+      git(repositoryPath, "commit", "-q", "-am", "feature");
+      await writeFile(
+        join(repositoryPath, "tracked.txt"),
+        "one\ncommitted\nuncommitted\n",
+      );
+      const opened = await harness.open();
+      await writeFile(join(repositoryPath, "tracked.txt"), "edited later\n");
+      const realGit = createReadOnlyGitExecutor(new CommandRunner());
+      const calls: Array<ReadonlyArray<string>> = [];
+      const sessions = new ReviewSessionStore(harness.paths);
+      const service = new ReviewDiffSourceService(
+        new ProfileStore(harness.paths),
+        sessions,
+        {
+          run: (argv, environment) => {
+            calls.push(argv);
+            return realGit.run(argv, environment);
+          },
+        },
+      );
+
+      const loaded = await service.load({
+        profileId: localProfileId,
+        sessionId: opened.session.id,
+        path: "tracked.txt",
+        view,
+      });
+
+      expect(loaded).toEqual({
+        _tag: "ok",
+        value: {
+          state: "ready",
+          oldFile: { name: "tracked.txt", contents: oldContents },
+          newFile: { name: "tracked.txt", contents: newContents },
+        },
+      });
+      const session = must(
+        await sessions.load(localProfileId, opened.session.id),
+      );
+      expect(calls.length).toBeGreaterThan(0);
+      for (const argv of calls) {
+        expect(argv.slice(0, 3)).toEqual(["git", "-C", session.worktree.path]);
+      }
+      expect(session.worktree.path).not.toBe(repositoryPath);
+    },
+  );
 });

@@ -31,6 +31,7 @@ import {
   type FindingId,
 } from "../../domain/ids";
 import { MAX_MAINTAINER_NOTE_LENGTH } from "../../domain/local-draft";
+import { localPatchViews } from "../../domain/local-patch-view";
 import { ok } from "../../domain/result";
 import { reviewRequestSchema } from "../../domain/review";
 import { parseLocalReviewSourceRequest } from "../../domain/review-source";
@@ -40,6 +41,7 @@ import {
 } from "../../services/local-change-intent-service";
 import { describeRepositoryCheckout } from "../../services/local-checkout";
 import { localDraftFailureKinds } from "../../services/local-draft-service";
+import { localPatchViewFailureKinds } from "../../services/local-patch-view-service";
 import {
   localReviewFailureKinds,
   localReviewOpenRequestSchema,
@@ -151,6 +153,22 @@ export function registerLocalReviewRoutes(
       reviewId.value,
     );
     return serviceResponse(context, refreshed, localReviewFailureKinds);
+  });
+
+  // One patch view of the shared Review's current session, read from its stored file; no git runs (ADR 0050).
+  app.post("/v1/reviews/local-patch-view", async (context) => {
+    const parsed = safeParse(localPatchViewSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const key = parseDraftWriteKey(parsed.output);
+    if (key === undefined) return context.json({ error: "invalid_input" }, 400);
+    return serviceResponse(
+      context,
+      await container.localPatchViews.load({
+        ...key,
+        view: parsed.output.view,
+      }),
+      localPatchViewFailureKinds,
+    );
   });
 
   // Identity only: the main process derives every range and replacement (ADR 0048).
@@ -366,6 +384,11 @@ function parseDraftWriteKey(raw: {
         sessionId: sessionId.value,
       };
 }
+
+const localPatchViewSchema = strictObject({
+  ...draftWriteKeySchema,
+  view: picklist(localPatchViews),
+});
 
 const localDraftSchema = strictObject({
   ...draftWriteKeySchema,

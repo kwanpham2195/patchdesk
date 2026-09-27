@@ -18,7 +18,7 @@ const input = {
 } as const;
 
 describe("ReviewWorkbenchProjectionService Viewed marks", () => {
-  it("projects the Viewed marks stored for the represented session", async () => {
+  it("projects the Combined Viewed marks stored for the represented session", async () => {
     const value = fixture();
     value.viewedFiles.load.mockResolvedValueOnce(
       // SAFETY: a plain repository-relative path satisfies RepoRelativePath's runtime shape.
@@ -27,7 +27,11 @@ describe("ReviewWorkbenchProjectionService Viewed marks", () => {
 
     const result = await value.service.loadRepresented(input);
 
-    expect(value.viewedFiles.load).toHaveBeenCalledWith(profileId, sessionId);
+    expect(value.viewedFiles.load).toHaveBeenCalledWith(
+      profileId,
+      sessionId,
+      "combined",
+    );
     expect(result).toMatchObject({
       _tag: "ok",
       value: { viewedPaths: ["src/a.ts"] },

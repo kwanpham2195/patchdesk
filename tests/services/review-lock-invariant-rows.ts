@@ -318,6 +318,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
           profileId,
           reviewId,
           sessionId: expected.sessionId,
+          view: "combined",
           paths: [anchor.path],
         });
     },

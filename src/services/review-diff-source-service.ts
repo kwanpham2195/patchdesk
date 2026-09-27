@@ -11,9 +11,14 @@ import {
   type GitSha,
 } from "../domain/ids";
 import { definedProps } from "../domain/defined-props";
+import {
+  localPatchViews,
+  type LocalPatchView,
+} from "../domain/local-patch-view";
 import { err, ok, type Result } from "../domain/result";
 import {
   isPullRequestReviewSession,
+  type LocalReviewSession,
   type ReviewSession,
 } from "../domain/review-session";
 import type { GitReadExecutor } from "./review-worktree-service";
@@ -65,7 +70,9 @@ export type ReviewDiffSourceFailure = {
 /**
  * Reads the exact managed merge-base/head blobs needed by Pierre to expand omitted
  * hunk context. It only uses main-process argv-array Git reads and returns
- * bounded text that matches the immutable saved patch.
+ * bounded text that matches the immutable saved patch. A shared local Review
+ * names the patch view it shows; each view reads its own stored patch and
+ * the two session trees that view spans.
  */
 export class ReviewDiffSourceService {
   private readonly patches = new Map<string, CachedPatch>();
@@ -86,10 +93,14 @@ export class ReviewDiffSourceService {
     );
     const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
     const requestedPath = parseRepoRelativePath(readObjectField(input, "path"));
+    // Absent is Combined, the only view a pull request Review has.
+    const rawView = readObjectField(input, "view") ?? "combined";
+    const view = localPatchViews.find((known) => known === rawView);
     if (
       profileId._tag === "err" ||
       sessionId._tag === "err" ||
-      requestedPath._tag === "err"
+      requestedPath._tag === "err" ||
+      view === undefined
     ) {
       return err({ reason: "invalid_input" });
     }
@@ -101,8 +112,18 @@ export class ReviewDiffSourceService {
     if (profile._tag === "err" || session._tag === "err") {
       return err({ reason: "not_found" });
     }
+    const localTrees = isPullRequestReviewSession(session.value)
+      ? undefined
+      : localViewTrees(session.value, view);
+    if (view !== "combined" && localTrees === undefined)
+      return err({ reason: "invalid_input" });
 
-    const index = await this.loadPatchIndex(profileId.value, session.value);
+    const index = await this.loadPatchIndex(
+      profileId.value,
+      session.value,
+      view,
+      localTrees?.patchPath ?? session.value.patchPath,
+    );
     if (index === undefined) {
       return ok({ state: "unavailable", reason: "patch_unavailable" });
     }
@@ -119,7 +140,8 @@ export class ReviewDiffSourceService {
     }
 
     // A pull request resolves through its fetched managed refs; a local
-    // session's head and base SHAs are already objects in the checkout.
+    // session's trees are commits already in the object store its
+    // Patchdesk worktree shares, so no read touches the checkout's files.
     const pullRequest = isPullRequestReviewSession(session.value);
     if (pullRequest && session.value.pr.baseSha === undefined) {
       return ok({ state: "unavailable", reason: "revision_unavailable" });
@@ -134,15 +156,16 @@ export class ReviewDiffSourceService {
     const newAbsent = /^\+\+\+ \/dev\/null$/m.test(rawFilePatch);
     const oldRef = oldAbsent
       ? undefined
-      : pullRequest
+      : localTrees === undefined
         ? await this.resolveMergeBase(session.value)
-        : ok(session.value.key.baseSha);
+        : ok(localTrees.oldSha);
     if (oldRef !== undefined && oldRef._tag === "err") {
       return ok({ state: "unavailable", reason: "github_read" });
     }
-    const headRef = pullRequest
-      ? `refs/patchdesk/reviews/${session.value.key.profileId}/${session.value.id}/head`
-      : session.value.key.headSha;
+    const headRef =
+      localTrees === undefined
+        ? `refs/patchdesk/reviews/${session.value.key.profileId}/${session.value.id}/head`
+        : localTrees.newSha;
     const [oldResult, newResult] = await Promise.all([
       oldRef === undefined
         ? Promise.resolve(undefined)
@@ -172,12 +195,14 @@ export class ReviewDiffSourceService {
   private async loadPatchIndex(
     profileId: string,
     session: ReviewSession,
+    view: LocalPatchView,
+    patchPath: string,
   ): Promise<ReviewPatchIndex | undefined> {
     const identity = await this.patchReader
-      .stat(session.patchPath)
+      .stat(patchPath)
       .catch(() => undefined);
     if (identity === undefined) return undefined;
-    const key = `${profileId}:${session.id}`;
+    const key = `${profileId}:${session.id}:${view}`;
     const cached = this.patches.get(key);
     if (
       cached !== undefined &&
@@ -189,7 +214,7 @@ export class ReviewDiffSourceService {
       return cached.index;
     }
     const source = await this.patchReader
-      .read(session.patchPath)
+      .read(patchPath)
       .catch(() => undefined);
     if (source === undefined) return undefined;
     const next = {
@@ -264,6 +289,44 @@ export class ReviewDiffSourceService {
     if (blob.value.stdout.includes("\0")) return ok({ state: "binary" });
     return ok({ state: "available", contents: blob.value.stdout });
   }
+}
+
+/**
+ * The stored patch and the two commits one view of a local session spans:
+ * Combined merge base to snapshot, Committed merge base to checkout `HEAD`,
+ * Uncommitted checkout `HEAD` to snapshot. Undefined when the session has no
+ * such view, which is every view but Combined outside a shared Review.
+ */
+function localViewTrees(
+  session: LocalReviewSession,
+  view: LocalPatchView,
+):
+  | {
+      readonly patchPath: string;
+      readonly oldSha: GitSha;
+      readonly newSha: GitSha;
+    }
+  | undefined {
+  if (view === "combined")
+    return {
+      patchPath: session.patchPath,
+      oldSha: session.key.baseSha,
+      newSha: session.key.headSha,
+    };
+  const stored = session.viewPatches?.[view];
+  const checkoutHeadSha = session.checkoutHeadSha;
+  if (stored === undefined || checkoutHeadSha === undefined) return undefined;
+  return view === "committed"
+    ? {
+        patchPath: stored.patchPath,
+        oldSha: session.key.baseSha,
+        newSha: checkoutHeadSha,
+      }
+    : {
+        patchPath: stored.patchPath,
+        oldSha: checkoutHeadSha,
+        newSha: session.key.headSha,
+      };
 }
 
 function sourceContents(

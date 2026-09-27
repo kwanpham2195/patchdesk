@@ -47,17 +47,21 @@ describe("ReviewViewedFilesService", () => {
       profileId: values.profileId,
       reviewId: values.review.id,
       sessionId: values.sessionId,
+      view: "combined",
       paths: [fileB, fileA],
     });
     const saved = await service.save({
       profileId: values.profileId,
       reviewId: values.review.id,
       sessionId: values.sessionId,
+      view: "combined",
       paths: [fileA],
     });
 
     expect(saved).toEqual({ _tag: "ok", value: { paths: [fileA] } });
-    expect(await viewedFiles.load(values.profileId, values.sessionId)).toEqual({
+    expect(
+      await viewedFiles.load(values.profileId, values.sessionId, "combined"),
+    ).toEqual({
       _tag: "ok",
       value: [fileA],
     });
@@ -76,14 +80,38 @@ describe("ReviewViewedFilesService", () => {
       profileId: values.profileId,
       reviewId: values.review.id,
       sessionId: oldSessionId,
+      view: "combined",
       paths: [fileA],
     });
 
     expect(saved).toEqual({ _tag: "err", error: { reason: "stale_head" } });
-    expect(await viewedFiles.load(values.profileId, oldSessionId)).toEqual({
+    expect(
+      await viewedFiles.load(values.profileId, oldSessionId, "combined"),
+    ).toEqual({
       _tag: "ok",
       value: [],
     });
+  });
+
+  it("refuses Committed marks on a pull request Review, which has only Combined", async () => {
+    const { reviews, viewedFiles, service } = await fixture();
+    await reviews.save(values.review);
+
+    const saved = await service.save({
+      profileId: values.profileId,
+      reviewId: values.review.id,
+      sessionId: values.sessionId,
+      view: "committed",
+      paths: [fileA],
+    });
+
+    expect(saved).toEqual({
+      _tag: "err",
+      error: { reason: "not_local_branch" },
+    });
+    expect(
+      await viewedFiles.load(values.profileId, values.sessionId, "committed"),
+    ).toEqual({ _tag: "ok", value: [] });
   });
 
   it("keeps marks editable after the pull request merges", async () => {
@@ -95,6 +123,7 @@ describe("ReviewViewedFilesService", () => {
         profileId: values.profileId,
         reviewId: values.review.id,
         sessionId: values.sessionId,
+        view: "combined",
         paths: [fileA],
       }),
     ).toEqual({ _tag: "ok", value: { paths: [fileA] } });

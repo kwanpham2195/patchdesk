@@ -8,6 +8,7 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
+import type { LocalPatchView } from "../../domain/local-patch-view";
 import type { LogEntryInput } from "../../domain/log-entry";
 import { err, ok, type Result } from "../../domain/result";
 import {
@@ -28,9 +29,9 @@ const viewedFilesSchema = v.strictObject({
 type PersistedViewedFiles = v.InferOutput<typeof viewedFilesSchema>;
 
 /**
- * The files a reviewer marked Viewed in one Review session's Diff, keyed by
- * path. It lives in the session directory, so a new head starts empty and the
- * record goes when the session's local data goes.
+ * The files a reviewer marked Viewed in one Review session's Diff, one record
+ * per patch view, keyed by path. It lives in the session directory, so a new
+ * head starts empty and the record goes when the session's local data goes.
  */
 export class ViewedFilesStore {
   constructor(
@@ -42,18 +43,24 @@ export class ViewedFilesStore {
   async load(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
+    view: LocalPatchView,
   ): Promise<Result<ReadonlyArray<RepoRelativePath>, StorageFailure>> {
     const stored = await readJsonFile(
-      this.paths.viewedFilesFile(profileId, sessionId),
+      this.paths.viewedFilesFile(profileId, sessionId, view),
     );
     if (stored._tag === "err") {
       if (stored.error.reason === "not_found") return ok([]);
       if (stored.error.reason !== "invalid_json") return stored;
-      return this.quarantine(profileId, sessionId, "invalid_json");
+      return this.quarantine(profileId, sessionId, view, "invalid_json");
     }
     const parsed = parseViewedPaths(stored.value);
     if (parsed === undefined)
-      return this.quarantine(profileId, sessionId, "invalid_stored_value");
+      return this.quarantine(
+        profileId,
+        sessionId,
+        view,
+        "invalid_stored_value",
+      );
     return ok(parsed);
   }
 
@@ -61,6 +68,7 @@ export class ViewedFilesStore {
   async save(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
+    view: LocalPatchView,
     paths: ReadonlyArray<RepoRelativePath>,
   ): Promise<Result<ReadonlyArray<RepoRelativePath>, StorageFailure>> {
     const unique = [...new Set(paths)].sort();
@@ -72,7 +80,7 @@ export class ViewedFilesStore {
       });
     const next: PersistedViewedFiles = { schemaVersion: 1, paths: unique };
     const written = await writeAtomicJson(
-      this.paths.viewedFilesFile(profileId, sessionId),
+      this.paths.viewedFilesFile(profileId, sessionId, view),
       next,
     );
     return written._tag === "ok" ? ok(unique) : written;
@@ -81,12 +89,13 @@ export class ViewedFilesStore {
   private async quarantine(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
+    view: LocalPatchView,
     reason: "invalid_json" | "invalid_stored_value",
   ): Promise<Result<ReadonlyArray<RepoRelativePath>, StorageFailure>> {
     try {
       await rename(
-        this.paths.viewedFilesFile(profileId, sessionId),
-        this.paths.viewedFilesQuarantineFile(profileId, sessionId),
+        this.paths.viewedFilesFile(profileId, sessionId, view),
+        this.paths.viewedFilesQuarantineFile(profileId, sessionId, view),
       );
     } catch {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
@@ -97,7 +106,7 @@ export class ViewedFilesStore {
       topic: "viewed-files",
       message: "viewed files unreadable; moved aside and restarted empty",
       profileId,
-      meta: { reason, sessionId },
+      meta: { reason, sessionId, view },
     });
     return ok([]);
   }

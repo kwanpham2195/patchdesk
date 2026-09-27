@@ -6,14 +6,15 @@ import type {
   ReviewSessionId,
   WorkspaceProfileId,
 } from "../domain/ids";
+import type { LocalPatchView } from "../domain/local-patch-view";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
 export type ViewedFilesFailure = {
-  readonly reason: "not_found" | "stale_head" | "storage";
+  readonly reason: "not_found" | "stale_head" | "not_local_branch" | "storage";
 };
 
-/** Saves the Viewed marks of a Review's current session under the Review lock. */
+/** Saves the Viewed marks of one patch view of a Review's current session under the Review lock. */
 export class ReviewViewedFilesService {
   constructor(
     private readonly reviews: Pick<ReviewStore, "load">,
@@ -28,6 +29,8 @@ export class ReviewViewedFilesService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly sessionId: ReviewSessionId;
+    /** Only a shared local Review has views other than Combined (ADR 0050). */
+    readonly view: LocalPatchView;
     readonly paths: ReadonlyArray<RepoRelativePath>;
   }): Promise<
     Result<
@@ -49,9 +52,15 @@ export class ReviewViewedFilesService {
         // A session the Review no longer represents belongs to an old head; its marks are not carried forward.
         if (review.value.currentSessionId !== input.sessionId)
           return err({ reason: "stale_head" });
+        if (
+          input.view !== "combined" &&
+          review.value.identity.source.kind !== "local_branch"
+        )
+          return err({ reason: "not_local_branch" });
         const saved = await this.viewedFiles.save(
           input.profileId,
           input.sessionId,
+          input.view,
           input.paths,
         );
         return saved._tag === "ok"

@@ -2,6 +2,8 @@ import type { Hono } from "hono";
 import {
   array,
   maxLength,
+  optional,
+  picklist,
   pipe,
   safeParse,
   strictObject,
@@ -16,6 +18,7 @@ import {
   parseWorkspaceProfileId,
   type RepoRelativePath,
 } from "../../domain/ids";
+import { localPatchViews } from "../../domain/local-patch-view";
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
@@ -24,13 +27,15 @@ const viewedFilesSchema = strictObject({
   profileId: string(),
   reviewId: string(),
   sessionId: string(),
+  /** Absent is Combined, the only view a pull request Review has. */
+  view: optional(picklist(localPatchViews)),
   paths: pipe(
     array(pipe(string(), maxLength(1_024))),
     maxLength(MAX_VIEWED_FILES),
   ),
 });
 
-/** Saves the full set of files marked Viewed in a Review session's Diff. */
+/** Saves the full set of files marked Viewed on one patch view of a Review session's Diff. */
 export function registerReviewViewedFilesRoutes(
   app: Hono,
   container: LocalApiContainer,
@@ -61,6 +66,7 @@ export function registerReviewViewedFilesRoutes(
         profileId: profileId.value,
         reviewId: reviewId.value,
         sessionId: sessionId.value,
+        view: parsed.output.view ?? "combined",
         paths,
       }),
     );

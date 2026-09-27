@@ -24,6 +24,7 @@ import {
   type ReviewFreshness,
 } from "../domain/review";
 import { projectLocalDraft, type LocalDraftEntry } from "../domain/local-draft";
+import type { LocalPatchView } from "../domain/local-patch-view";
 import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
 import type {
   CheckSummary,
@@ -83,6 +84,8 @@ import type { PendingReviewState } from "../domain/pending-review";
 import type { ReviewResult } from "../domain/review-result";
 import {
   isPullRequestReviewSession,
+  type LocalSessionViewPatch,
+  type LocalSessionViewPatches,
   type ReviewSession,
 } from "../domain/review-session";
 import type { ReviewSource } from "../domain/review-source";
@@ -132,8 +135,22 @@ export type ReviewWorkbenchProjection = {
     readonly refreshedAt: IsoTimestamp;
   };
   readonly fullPatch?: string;
-  /** Files marked Viewed in this session's Diff; absent when the record could not be read. */
+  /** Files marked Viewed on this session's Combined Diff; absent when the record could not be read. */
   readonly viewedPaths?: ReadonlyArray<RepoRelativePath>;
+  /**
+   * Present exactly on a shared local Review: each patch view's hash and the
+   * paths it touches, so a note is placed in any view before that view's
+   * patch is fetched (ADR 0051). Read off the session record, not the files.
+   */
+  readonly patchViews?: Readonly<
+    Record<
+      LocalPatchView,
+      {
+        readonly patchHash: ContentHash;
+        readonly paths: ReadonlyArray<string>;
+      }
+    >
+  >;
   /**
    * The represented patch bucketed into core/tests/generated/docs/config.
    * Absent exactly when `fullPatch` is: an all-zero gauge would claim the
@@ -474,7 +491,7 @@ export class ReviewWorkbenchProjectionService {
     const [patch, storedInsights, viewed] = await Promise.all([
       readPatchFile(session.patchPath),
       this.retainedInsights.loadStoredInsights(session),
-      this.viewedFiles.load(session.key.profileId, session.id),
+      this.viewedFiles.load(session.key.profileId, session.id, "combined"),
     ]);
     if (storedInsights._tag === "err") return storedInsights;
     const fullPatch = patch?.contents;
@@ -730,6 +747,9 @@ export class ReviewWorkbenchProjectionService {
         ),
         fullPatch,
         viewedPaths: viewed._tag === "ok" ? viewed.value : undefined,
+        patchViews: isPullRequestReviewSession(session)
+          ? undefined
+          : projectPatchViews(session.viewPatches),
         scope:
           fullPatch === undefined ? undefined : changeScopeFromPatch(fullPatch),
         pullRequest,
@@ -761,6 +781,21 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
       source: session.key.source,
       headSha: session.key.headSha,
     },
+  };
+}
+
+function projectPatchViews(
+  views: LocalSessionViewPatches | undefined,
+): ReviewWorkbenchProjection["patchViews"] {
+  if (views === undefined) return undefined;
+  const project = ({ patchHash, paths }: LocalSessionViewPatch) => ({
+    patchHash,
+    paths,
+  });
+  return {
+    combined: project(views.combined),
+    committed: project(views.committed),
+    uncommitted: project(views.uncommitted),
   };
 }
 

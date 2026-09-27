@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import { err, ok } from "../../src/domain/result";
 import { registerLocalReviewRoutes } from "../../src/main/routes/local-review-routes";
+import type { LocalPatchViewService } from "../../src/services/local-patch-view-service";
 import type { LocalReviewOpening } from "../../src/services/local-review-opening";
 
 type OpenInput = Parameters<LocalReviewOpening["open"]>[0];
+type PatchViewInput = Parameters<LocalPatchViewService["load"]>[0];
 type Opening = Pick<
   LocalReviewOpening,
   "open" | "listCheckouts" | "listBranches"
@@ -21,7 +23,14 @@ const repository = {
 function routeFixture(localReviewOpening: Partial<Opening> = {}) {
   const app = new Hono();
   const opens: OpenInput[] = [];
+  const patchViewLoads: PatchViewInput[] = [];
   const container = {
+    localPatchViews: {
+      load: async (input: PatchViewInput) => {
+        patchViewLoads.push(input);
+        return err({ reason: "stale_head" as const });
+      },
+    },
     localReviewOpening: {
       open: async (input: OpenInput) => {
         opens.push(input);
@@ -51,7 +60,14 @@ function routeFixture(localReviewOpening: Partial<Opening> = {}) {
       app.request(
         `/v1/reviews/local-branches?${new URLSearchParams(query).toString()}`,
       ),
+    patchView: (body: Record<string, string>) =>
+      app.request("/v1/reviews/local-patch-view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
     opens,
+    patchViewLoads,
   };
 }
 
@@ -164,5 +180,23 @@ describe("local Review checkout routes (#489)", () => {
     });
     expect(relative.status).toBe(400);
     expect(asked).toEqual(["/work/linked"]);
+  });
+
+  it("forwards the named patch view, answers a moved-past session 409, and refuses an unknown view (#556)", async () => {
+    const fixture = routeFixture();
+    const key = {
+      profileId: "acme",
+      reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
+      sessionId:
+        "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-bbbbbbbb__0123456789ab",
+    };
+
+    const stale = await fixture.patchView({ ...key, view: "uncommitted" });
+    const unknown = await fixture.patchView({ ...key, view: "staged" });
+
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({ error: "stale_head" });
+    expect(unknown.status).toBe(400);
+    expect(fixture.patchViewLoads).toEqual([{ ...key, view: "uncommitted" }]);
   });
 });
