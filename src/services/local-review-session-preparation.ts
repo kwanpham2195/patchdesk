@@ -11,6 +11,7 @@ import {
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
+  type GitSha,
   type IsoTimestamp,
   type WorkspaceProfileId,
 } from "../domain/ids";
@@ -65,6 +66,8 @@ export type LocalReviewOpenRequest = {
 export type ResolvedLocalReview = LocalReviewCheckout & {
   readonly identity: ReviewIdentity<LocalReviewSource>;
   readonly revision: ReviewRevision;
+  /** The checkout `HEAD` under a shared Review's Local snapshot; absent for the other kinds. */
+  readonly checkoutHeadSha?: GitSha;
 };
 
 export type LocalReviewPreparationFailure =
@@ -158,6 +161,7 @@ export class LocalReviewSessionPreparation {
         },
       },
       revision: resolved.value.revision,
+      ...definedProps({ checkoutHeadSha: resolved.value.checkoutHeadSha }),
     });
   }
 
@@ -328,6 +332,7 @@ export class LocalReviewSessionPreparation {
         headSha: resolved.revision.headSha,
       },
       createdAt: this.dependencies.now(),
+      ...definedProps({ checkoutHeadSha: resolved.checkoutHeadSha }),
     });
     const saved = await this.dependencies.sessions.save(session);
     if (saved._tag === "err")

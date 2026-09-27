@@ -92,6 +92,12 @@ export type LocalReviewSourceRequest = LocalCheckout &
         readonly branch: LocalBranchName;
         readonly baseBranch: LocalBranchName;
       }
+    | {
+        readonly kind: "local_branch";
+        readonly baseBranch: LocalBranchName;
+        /** The branch the Review names; a checkout on another branch is refused instead of opening that branch's Review. */
+        readonly expectedHead?: ExpectedCheckoutHead;
+      }
     | { readonly kind: "commit"; readonly commit: GitShaPrefix }
   );
 
@@ -220,16 +226,24 @@ function invalidSource(): Result<
 
 const nonEmpty = v.pipe(v.string(), v.minLength(1));
 
+const expectedHeadSchema = v.optional(
+  v.variant("kind", [
+    v.strictObject({ kind: v.literal("branch"), branch: nonEmpty }),
+    v.strictObject({ kind: v.literal("detached") }),
+  ]),
+);
+
 /** The wire form of the local source a maintainer asks to open; `parseLocalReviewSourceRequest` applies the name, SHA, and path rules. */
 export const localReviewSourceRequestSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("working_tree"),
-    expectedHead: v.optional(
-      v.variant("kind", [
-        v.strictObject({ kind: v.literal("branch"), branch: nonEmpty }),
-        v.strictObject({ kind: v.literal("detached") }),
-      ]),
-    ),
+    expectedHead: expectedHeadSchema,
+    checkout: v.optional(nonEmpty),
+  }),
+  v.strictObject({
+    kind: v.literal("local_branch"),
+    baseBranch: nonEmpty,
+    expectedHead: expectedHeadSchema,
     checkout: v.optional(nonEmpty),
   }),
   v.strictObject({
@@ -265,16 +279,24 @@ function parseSourceRequestSpec(
   raw: LocalReviewSourceRequestInput,
 ): LocalReviewSourceRequest | undefined {
   if (raw.kind === "working_tree") {
-    if (raw.expectedHead === undefined) return { kind: "working_tree" };
-    if (raw.expectedHead.kind === "detached")
-      return { kind: "working_tree", expectedHead: { kind: "detached" } };
-    const expected = parseLocalBranchName(raw.expectedHead.branch);
-    return expected._tag === "ok"
-      ? {
+    const expected = parseExpectedHead(raw.expectedHead);
+    return expected === undefined
+      ? undefined
+      : {
           kind: "working_tree",
-          expectedHead: { kind: "branch", branch: expected.value },
-        }
-      : undefined;
+          ...definedProps({ expectedHead: expected.head }),
+        };
+  }
+  if (raw.kind === "local_branch") {
+    const baseBranch = parseLocalBranchName(raw.baseBranch);
+    const expected = parseExpectedHead(raw.expectedHead);
+    return baseBranch._tag === "err" || expected === undefined
+      ? undefined
+      : {
+          kind: "local_branch",
+          baseBranch: baseBranch.value,
+          ...definedProps({ expectedHead: expected.head }),
+        };
   }
   if (raw.kind === "commit") {
     const commit = parseGitShaPrefix(raw.commit.toLowerCase());
@@ -286,6 +308,18 @@ function parseSourceRequestSpec(
   const baseBranch = parseLocalBranchName(raw.baseBranch);
   return branch._tag === "ok" && baseBranch._tag === "ok"
     ? { kind: "branch", branch: branch.value, baseBranch: baseBranch.value }
+    : undefined;
+}
+
+/** `{}` when no `HEAD` is expected, `{ head }` for a valid one, undefined for a branch name git would refuse. */
+function parseExpectedHead(
+  raw: v.InferOutput<typeof expectedHeadSchema>,
+): { readonly head?: ExpectedCheckoutHead } | undefined {
+  if (raw === undefined) return {};
+  if (raw.kind === "detached") return { head: { kind: "detached" } };
+  const branch = parseLocalBranchName(raw.branch);
+  return branch._tag === "ok"
+    ? { head: { kind: "branch", branch: branch.value } }
     : undefined;
 }
 
@@ -316,9 +350,16 @@ export function reopenLocalSourceRequest(
         baseBranch: source.baseBranch,
         ...definedProps({ checkout: source.checkout }),
       };
-    // Read from the checkout in the next slice.
     case "local_branch":
-      return undefined;
+      return {
+        kind: "local_branch",
+        baseBranch: source.baseBranch,
+        expectedHead:
+          source.branch === detachedHeadBranch
+            ? { kind: "detached" }
+            : { kind: "branch", branch: source.branch },
+        ...definedProps({ checkout: source.checkout }),
+      };
     case "commit": {
       const commit = parseGitShaPrefix(source.commitSha);
       return commit._tag === "ok"
