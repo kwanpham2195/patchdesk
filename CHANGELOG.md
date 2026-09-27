@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed losing a note's text when **Add note** was refused after switching patch views. Once the save is refused, the text returns as a Saved draft to place on another line; repeated selection keeps the restored text, and a successful save offers no duplicate. #567
+
 - Fixed Refresh marking a Committed-view note Needs attention when Git failed to read its file at `HEAD`. Refresh now refuses and keeps the Review and drafts unchanged; a genuinely missing file still follows the carry rule. #568
 
 - Fixed `review_local` repeating an unhelpful refusal when a saved Review's base branch was deleted. It now names that branch and asks the agent to pass an explicit `base`, without opening another Review. #570
