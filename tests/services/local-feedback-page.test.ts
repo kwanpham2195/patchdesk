@@ -33,6 +33,7 @@ async function reviewWithNotes(texts: ReadonlyArray<string>) {
   for (const [index, text] of texts.entries())
     value(
       await harness.drafts.addNote({
+        view: "combined",
         profileId,
         reviewId: workbench.review.id,
         sessionId: workbench.session.id,

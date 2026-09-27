@@ -18,7 +18,11 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { LocalDraft } from "../domain/local-draft";
-import { carryLocalDraft } from "../domain/local-draft-carry";
+import {
+  carryLocalDraft,
+  type LocalDraftCarryTarget,
+} from "../domain/local-draft-carry";
+import type { LocalPatchView } from "../domain/local-patch-view";
 import { casesHandled, err, ok, type Result } from "../domain/result";
 import {
   createReview,
@@ -197,7 +201,12 @@ export class LocalReviewOpening {
   constructor(
     private readonly preparation: Pick<
       LocalReviewSessionPreparation,
-      "resolve" | "prepare" | "listCheckouts" | "listBranches" | "findCheckout"
+      | "resolve"
+      | "prepare"
+      | "listCheckouts"
+      | "listBranches"
+      | "findCheckout"
+      | "readCommitFiles"
     >,
     private readonly projection: Pick<
       ReviewWorkbenchProjectionService,
@@ -731,7 +740,7 @@ export class LocalReviewOpening {
     const drafts = stored?.localDrafts;
     let carried: ReadonlyArray<LocalDraft> | undefined;
     if (drafts !== undefined && stored?.currentSessionId !== session.value.id) {
-      carried = await carryToSession(drafts, session.value);
+      carried = await carryToSession(drafts, session.value, this.preparation);
       if (carried === undefined) return err({ reason: "storage" });
     }
     const moved = moveLocalReviewToSession(
@@ -783,31 +792,73 @@ export class LocalReviewOpening {
 }
 
 /**
- * The drafts carried to `session` by ADR 0002's rule, reading the new patch
- * and each drafted file from the session's own worktree at its head, never
- * from the maintainer's checkout. Undefined when the session cannot be read.
+ * The drafts carried to `session` by ADR 0002's rule, each against the new
+ * session's patch of its origin view (#556 D6). Never reads the maintainer's
+ * checkout. Undefined when the session cannot be read.
  */
 async function carryToSession(
   drafts: ReadonlyArray<LocalDraft>,
   session: LocalReviewSession,
+  preparation: Pick<LocalReviewSessionPreparation, "readCommitFiles">,
 ): Promise<ReadonlyArray<LocalDraft> | undefined> {
-  const [patch, root] = await Promise.all([
-    readFile(session.patchPath, "utf8").catch(() => undefined),
-    // `readCheckoutFile` refuses any path whose resolution differs, so the root is resolved first.
-    realpath(session.worktree.path).catch(() => undefined),
-  ]);
-  if (patch === undefined || root === undefined) return undefined;
-  const paths = new Set(drafts.map((draft) => draft.anchor.path));
+  const originView = (draft: LocalDraft): LocalPatchView =>
+    draft.view ?? "combined";
+  const pathsByView = new Map<LocalPatchView, Set<RepoRelativePath>>();
+  for (const draft of drafts) {
+    const paths = pathsByView.get(originView(draft)) ?? new Set();
+    pathsByView.set(originView(draft), paths.add(draft.anchor.path));
+  }
+  const targets = new Map<LocalPatchView, LocalDraftCarryTarget>();
+  for (const [view, paths] of pathsByView) {
+    const target = await carryTargetOf(session, view, [...paths], preparation);
+    if (target === undefined) return undefined;
+    targets.set(view, target);
+  }
+  return drafts.map((draft) => {
+    const target = targets.get(originView(draft));
+    return target === undefined ? draft : carryLocalDraft(draft, target);
+  });
+}
+
+/**
+ * One view's patch of `session` and the text of `paths` in that view's new
+ * tree: the Local snapshot, read from the session's worktree, for Combined
+ * and Uncommitted; the checkout `HEAD` commit, read as git objects, for
+ * Committed.
+ */
+async function carryTargetOf(
+  session: LocalReviewSession,
+  view: LocalPatchView,
+  paths: ReadonlyArray<RepoRelativePath>,
+  preparation: Pick<LocalReviewSessionPreparation, "readCommitFiles">,
+): Promise<LocalDraftCarryTarget | undefined> {
+  const patchPath =
+    view === "combined"
+      ? session.patchPath
+      : session.viewPatches?.[view].patchPath;
+  if (patchPath === undefined) return undefined;
+  const patch = await readFile(patchPath, "utf8").catch(() => undefined);
+  if (patch === undefined) return undefined;
+  if (view === "committed") {
+    if (session.checkoutHeadSha === undefined) return undefined;
+    const files = await preparation.readCommitFiles(
+      session,
+      session.checkoutHeadSha,
+      paths,
+    );
+    return { sessionId: session.id, patch, files };
+  }
+  // `readCheckoutFile` refuses any path whose resolution differs, so the root is resolved first.
+  const root = await realpath(session.worktree.path).catch(() => undefined);
+  if (root === undefined) return undefined;
   const files = new Map<RepoRelativePath, string>();
   await Promise.all(
-    [...paths].map(async (path) => {
+    paths.map(async (path) => {
       const bytes = await readCheckoutFile(root, path);
       if (bytes !== undefined) files.set(path, bytes.toString("utf8"));
     }),
   );
-  return drafts.map((draft) =>
-    carryLocalDraft(draft, { sessionId: session.id, patch, files }),
-  );
+  return { sessionId: session.id, patch, files };
 }
 
 /** `branch_mismatch` when the checkout's `HEAD` is not the one the request expects; a shared Review names a detached `HEAD` `detachedHeadBranch`. */

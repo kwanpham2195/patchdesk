@@ -34,6 +34,7 @@ import {
   type MaintainerNote,
 } from "../domain/local-draft";
 import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
+import type { LocalPatchView } from "../domain/local-patch-view";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import {
@@ -44,6 +45,7 @@ import {
   type Review,
 } from "../domain/review";
 import { parseReviewResult } from "../domain/review-result";
+import { isPullRequestReviewSession } from "../domain/review-session";
 import type { LocalReviewSource } from "../domain/review-source";
 import {
   pageLocalDrafts,
@@ -72,8 +74,10 @@ export type LocalDraftRequest = ReviewKey & {
   readonly findingId: FindingId;
 };
 
-/** A new maintainer note: the lines the maintainer selected and the text; the main process fingerprints the anchor. */
+/** A new maintainer note: the lines the maintainer selected on one patch view and the text; the main process fingerprints the anchor. */
 export type LocalNoteRequest = ReviewKey & {
+  /** Only a shared local Review has views other than Combined (ADR 0050). */
+  readonly view: LocalPatchView;
   readonly anchor: {
     readonly path: RepoRelativePath;
     readonly side: "new" | "old";
@@ -93,7 +97,7 @@ export type LocalDraftFailure = {
     | "in_progress"
     | "not_found"
     | "terminal"
-    /** Not a local Review; the Review moved to another session than the one named; the Finding is not a current, open, Mapped Finding; or a note's lines are not in the current patch. */
+    /** Not a local Review; the Review moved to another session than the one named; the Finding is not a current, open, Mapped Finding; or a note's lines are not in the named view's patch, or the session has no such view. */
     | "not_applicable"
     /** A note's text is empty or longer than the comment limit. */
     | "invalid_input"
@@ -187,7 +191,7 @@ export class LocalDraftService {
     );
   }
 
-  /** A note on lines of the current session's patch; lines the patch does not show are refused. */
+  /** A note on lines of one view's patch of the current session; lines that patch does not show are refused. */
   addNote(
     request: LocalNoteRequest,
   ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
@@ -364,9 +368,15 @@ export class LocalDraftService {
       review.currentSessionId,
     );
     if (session._tag === "err") return err({ reason: "storage" });
-    const patch = await readFile(session.value.patchPath, "utf8").catch(
-      () => undefined,
-    );
+    if (isPullRequestReviewSession(session.value))
+      return err({ reason: "not_applicable" });
+    // Only a shared Review's session stores Committed and Uncommitted (#556).
+    const patchPath =
+      request.view === "combined"
+        ? session.value.patchPath
+        : session.value.viewPatches?.[request.view].patchPath;
+    if (patchPath === undefined) return err({ reason: "not_applicable" });
+    const patch = await readFile(patchPath, "utf8").catch(() => undefined);
     if (patch === undefined) return err({ reason: "storage" });
     const anchor = fingerprintPatchAnchor(patch, request.anchor);
     if (anchor === undefined) return err({ reason: "not_applicable" });
@@ -375,6 +385,9 @@ export class LocalDraftService {
       author: "maintainer",
       noteId: this.dependencies.createNoteId(),
       sessionId: session.value.id,
+      ...definedProps({
+        view: request.view === "combined" ? undefined : request.view,
+      }),
       anchor,
       text,
       createdAt: now,

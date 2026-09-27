@@ -15,6 +15,7 @@ import { ReviewSessionStore } from "../../src/adapters/storage/review-session-st
 import { ReviewInsightReader } from "../../src/services/review-insight-reading";
 import {
   cleanupLocalApplyRoots,
+  git,
   localApplyHarness,
   now,
   profileId,
@@ -161,6 +162,7 @@ describe("LocalDraftService", () => {
     value(await harness.drafts.add(request));
     value(
       await harness.drafts.addNote({
+        view: "combined",
         ...request,
         anchor: {
           path: value(parseRepoRelativePath("probe.ts")),
@@ -187,6 +189,7 @@ describe("LocalDraftService", () => {
       await harness.drafts.add(request),
       await harness.drafts.remove(request),
       await harness.drafts.addNote({
+        view: "combined",
         ...staleSession,
         anchor: {
           path: value(parseRepoRelativePath("probe.ts")),
@@ -372,6 +375,7 @@ describe("LocalDraftService", () => {
       const { harness, workbench, key } = await notedReview();
 
       const added = await harness.drafts.addNote({
+        view: "combined",
         ...key,
         anchor: { path: probePath, side: "new", startLine: 2, line: 3 },
         text: "Start from the first index.",
@@ -432,6 +436,56 @@ describe("LocalDraftService", () => {
       expect(removed).toEqual({ _tag: "ok", value: { localDrafts: [] } });
     });
 
+    it("fingerprints a note made on Committed against the Committed patch and stores its view (#556)", async () => {
+      const harness = await localApplyHarness();
+      const { repositoryPath } = harness;
+      git(repositoryPath, "checkout", "-q", "-b", "feature");
+      await writeFile(join(repositoryPath, "probe.ts"), probe);
+      git(repositoryPath, "add", "probe.ts");
+      git(repositoryPath, "commit", "-q", "-m", "probe");
+      // Uncommitted lines above the function move every Combined line of it down by two.
+      await writeFile(
+        join(repositoryPath, "probe.ts"),
+        `// one\n// two\n${probe}`,
+      );
+      const workbench = await harness.open();
+
+      const added = await harness.drafts.addNote({
+        profileId,
+        reviewId: workbench.review.id,
+        sessionId: workbench.session.id,
+        view: "committed",
+        anchor: { path: probePath, side: "new", startLine: 3, line: 3 },
+        text: "Off by one.",
+      });
+
+      expect(added).toMatchObject({
+        _tag: "ok",
+        value: {
+          localDrafts: [
+            { kind: "note", view: "committed", startLine: 3, line: 3 },
+          ],
+        },
+      });
+      const stored = value(
+        await harness.reviews.load(profileId, workbench.review.id),
+      );
+      expect(stored.localDrafts).toMatchObject([
+        {
+          view: "committed",
+          anchor: {
+            selectedLines: [
+              "  for (let index = 0; index <= values.length; index += 1) {",
+            ],
+            before: [
+              "export function sum(values: number[]): number {",
+              "  let total = 0;",
+            ],
+          },
+        },
+      ]);
+    });
+
     it.each([
       [
         "lines the current patch does not show",
@@ -462,7 +516,12 @@ describe("LocalDraftService", () => {
       async (_case, anchor, text, reason) => {
         const { harness, key } = await notedReview();
 
-        const refused = await harness.drafts.addNote({ ...key, anchor, text });
+        const refused = await harness.drafts.addNote({
+          ...key,
+          view: "combined",
+          anchor,
+          text,
+        });
 
         expect(refused).toEqual({ _tag: "err", error: { reason } });
         const stored = value(
@@ -476,6 +535,7 @@ describe("LocalDraftService", () => {
       const { harness, key } = await notedReview();
       value(
         await harness.drafts.addNote({
+          view: "combined",
           ...key,
           anchor: { path: probePath, side: "new", startLine: 3, line: 3 },
           text: "Off by one.",
@@ -485,6 +545,7 @@ describe("LocalDraftService", () => {
       expect(harness.coordinator.acquire(lock)).toBe(true);
 
       const add = await harness.drafts.addNote({
+        view: "combined",
         ...key,
         anchor: { path: probePath, side: "new", startLine: 2, line: 2 },
         text: "Second note.",
@@ -510,6 +571,7 @@ describe("LocalDraftService", () => {
       const { harness, key } = await notedReview();
       value(
         await harness.drafts.addNote({
+          view: "combined",
           ...key,
           anchor: { path: probePath, side: "new", startLine: 3, line: 3 },
           text: "Off by one.",

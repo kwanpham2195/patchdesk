@@ -10,7 +10,7 @@ import { isMaintainerNote, type LocalDraft } from "./local-draft";
 export type LocalDraftCarryTarget = {
   readonly sessionId: ReviewSessionId;
   readonly patch: string;
-  /** New-side text at the session head of each drafted path; a path is absent when its file is gone. */
+  /** New-side text of each drafted path in the new tree of the drafts' view; a path is absent when its file is gone. */
   readonly files: ReadonlyMap<RepoRelativePath, string>;
 };
 

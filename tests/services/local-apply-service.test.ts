@@ -448,6 +448,7 @@ describe("LocalApplyService after confirmation", () => {
     );
     value(
       await harness.drafts.addNote({
+        view: "combined",
         ...key,
         anchor: {
           path: value(parseRepoRelativePath("probe.ts")),

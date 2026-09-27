@@ -9,12 +9,7 @@ import {
   parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
-  type LocalBranchName,
 } from "../../src/domain/ids";
-import {
-  isPullRequestReviewSession,
-  type LocalReviewSession,
-} from "../../src/domain/review-session";
 import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import {
   cleanupLocalApplyRoots,
@@ -25,14 +20,15 @@ import {
   value,
   type LocalApplyHarness,
 } from "./local-apply-fixture";
+import {
+  featureWithCheckoutChanges,
+  loadSession,
+  main,
+  readViewPatches,
+  shared,
+} from "./local-review-shared-fixture";
 
 afterEach(cleanupLocalApplyRoots);
-
-const main = value(parseLocalBranchName("main"));
-
-function shared(baseBranch: LocalBranchName = main): LocalReviewSourceRequest {
-  return { kind: "local_branch", baseBranch };
-}
 
 /** The reopen of a shared Review the maintainer opened on `branch`. */
 function reopenOn(branch: string): LocalReviewSourceRequest {
@@ -48,59 +44,6 @@ function reopenOn(branch: string): LocalReviewSourceRequest {
 
 function indexBytes(repositoryPath: string): Promise<Buffer> {
   return readFile(join(repositoryPath, ".git", "index"));
-}
-
-async function loadSession(
-  harness: LocalApplyHarness,
-  sessionId: string,
-): Promise<LocalReviewSession> {
-  const session = value(
-    await new ReviewSessionStore(harness.paths).load(
-      profileId,
-      value(parseReviewSessionId(sessionId)),
-    ),
-  );
-  if (isPullRequestReviewSession(session))
-    throw new Error("Expected a local session");
-  return session;
-}
-
-/** Each stored view patch's text and touched paths, read as a view switch would: from the session's files. */
-async function readViewPatches(session: LocalReviewSession) {
-  const views = session.viewPatches;
-  if (views === undefined) throw new Error("Expected view patches");
-  const read = async (view: keyof typeof views) => ({
-    text: await readFile(views[view].patchPath, "utf8"),
-    paths: views[view].paths,
-  });
-  return {
-    combined: await read("combined"),
-    committed: await read("committed"),
-    uncommitted: await read("uncommitted"),
-  };
-}
-
-/**
- * Branch `feature` off `main` with one commit, `main` moved on past the fork,
- * and on `feature` a staged edit, an unstaged edit, and an untracked file.
- */
-async function featureWithCheckoutChanges(
-  harness: LocalApplyHarness,
-): Promise<void> {
-  const { repositoryPath } = harness;
-  git(repositoryPath, "checkout", "-q", "-b", "feature");
-  await writeFile(join(repositoryPath, "feature.txt"), "committed\n");
-  git(repositoryPath, "add", "feature.txt");
-  git(repositoryPath, "commit", "-q", "-m", "feature");
-  git(repositoryPath, "checkout", "-q", "main");
-  await writeFile(join(repositoryPath, "main-only.txt"), "main\n");
-  git(repositoryPath, "add", "main-only.txt");
-  git(repositoryPath, "commit", "-q", "-m", "main moves on");
-  git(repositoryPath, "checkout", "-q", "feature");
-  await writeFile(join(repositoryPath, "tracked.txt"), "staged\n");
-  git(repositoryPath, "add", "tracked.txt");
-  await writeFile(join(repositoryPath, "feature.txt"), "committed\nunstaged\n");
-  await writeFile(join(repositoryPath, "untracked.txt"), "untracked\n");
 }
 
 describe("the shared local Review (#555)", () => {
@@ -234,6 +177,7 @@ describe("the shared local Review (#555)", () => {
     const reviewId = value(parseReviewId(opened.review.id));
     const sessionId = value(parseReviewSessionId(opened.session.id));
     await harness.drafts.addNote({
+      view: "combined",
       profileId,
       reviewId,
       sessionId,
@@ -289,6 +233,7 @@ describe("the shared local Review (#555)", () => {
     const reviewId = value(parseReviewId(opened.review.id));
     const noted = value(
       await harness.drafts.addNote({
+        view: "combined",
         profileId,
         reviewId,
         sessionId: value(parseReviewSessionId(opened.session.id)),

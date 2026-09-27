@@ -68,6 +68,7 @@ async function draftedReview() {
   );
   value(
     await harness.drafts.addNote({
+      view: "combined",
       ...key,
       anchor: { path, side: "new", startLine: 10, line: 10 },
       text: "Use a template literal type.",

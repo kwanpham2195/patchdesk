@@ -13,6 +13,7 @@ import {
   type GitHubRepoName,
   type GitSha,
   type IsoTimestamp,
+  type RepoRelativePath,
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { definedProps } from "../domain/defined-props";
@@ -211,6 +212,35 @@ export class LocalReviewSessionPreparation {
       revision: resolved.value.revision,
       ...definedProps({ checkoutHeadSha: resolved.value.checkoutHeadSha }),
     });
+  }
+
+  /**
+   * Each of `paths` as it is in commit `commitSha`, read as git objects
+   * through the session's own worktree, so no read touches the maintainer's
+   * checkout files (#556 D6). A path the commit does not hold, or that git
+   * cannot show, is absent.
+   */
+  async readCommitFiles(
+    session: LocalReviewSession,
+    commitSha: GitSha,
+    paths: ReadonlyArray<RepoRelativePath>,
+  ): Promise<ReadonlyMap<RepoRelativePath, string>> {
+    const files = new Map<RepoRelativePath, string>();
+    await Promise.all(
+      paths.map(async (path) => {
+        const shown = await this.dependencies.git.run([
+          "git",
+          "-C",
+          session.worktree.path,
+          "show",
+          "--no-textconv",
+          "--end-of-options",
+          `${commitSha}:${path}`,
+        ]);
+        if (shown._tag === "ok") files.set(path, shown.value.stdout);
+      }),
+    );
+    return files;
   }
 
   private async loadProfile(profileId: WorkspaceProfileId) {
