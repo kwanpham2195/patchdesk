@@ -21,20 +21,6 @@ import type { RepositoryIdentity } from "../../../domain/repository-identity";
 /** The local Review source a maintainer picks, as `POST /v1/reviews/open-local` takes it (ADR 0050). */
 export type LocalReviewSourceInput =
   | {
-      readonly kind: "working_tree";
-      /** A linked worktree to read instead of the configured checkout (#489). */
-      readonly checkout?: string;
-      /** Sent by a sidebar reopen: the `HEAD` the stored Review was opened on. */
-      readonly expectedHead?:
-        | { readonly kind: "branch"; readonly branch: string }
-        | { readonly kind: "detached" };
-    }
-  | {
-      readonly kind: "branch";
-      readonly branch: string;
-      readonly baseBranch: string;
-    }
-  | {
       readonly kind: "local_branch";
       readonly baseBranch: string;
       /** A linked worktree to read instead of the configured checkout (#489). */
@@ -74,7 +60,7 @@ export type InboxReviewOpeningControls = {
      * Review the maintainer never asked for in this session.
      */
     onMissingRecord?: () => void,
-    /** Called after the refusal of a working-tree Review whose checkout is on another branch, so the route is left. */
+    /** Called after the refusal of a shared Review whose checkout is on another branch, so the route is left. */
     onBranchMismatch?: () => void,
   ) => Promise<void>;
   /** Opens a local Review on the Selected repository; rejects with the sentence the source picker shows. */
@@ -544,7 +530,8 @@ export function useInboxReviewOpening({
   };
 }
 
-function localReviewOpenFailure(
+/** The sentence for a refused local open or checkout read, as the picker and the sidebar show it. */
+export function localReviewOpenFailure(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this maps it to the picker's sentence.
   cause: unknown,
 ): string {

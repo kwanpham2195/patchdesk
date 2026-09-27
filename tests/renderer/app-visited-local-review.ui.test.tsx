@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -36,11 +42,20 @@ const profile = {
 };
 const repository = { host: "github.com", owner: "acme", repo: "widgets" };
 
-// One repository's local row (#479), standing for its working-tree Reviews on two branches.
+// One repository's local row (#479), standing for its shared Reviews on two branches.
 const localRow = {
   ...repository,
   reviewIds: ["review-local-main", "review-local-feat"],
   sortedAt: "2026-08-01T00:00:00.000Z",
+};
+
+/** The checkout is on `feat`, which has one shared Review, against `main` (#555). */
+const featWithOneReview = {
+  head: { kind: "branch", branch: "feat" },
+  branches: ["develop", "main"],
+  defaultBranch: "main",
+  inferred: { baseBranch: "main", commitsBack: 2 },
+  reviewedBases: ["main"],
 };
 
 /** A Review the open-local route answers with, as a local Review of `feat`. */
@@ -58,7 +73,7 @@ function openLocalRequest(
 }
 
 describe("App visited local Review", () => {
-  it("opens the working tree of the checkout's current branch from a repository's local row", async () => {
+  it("opens the one shared Review of the checkout's current branch from a repository's local row", async () => {
     const user = userEvent.setup();
     installed = installDesktopDouble(
       {
@@ -77,6 +92,7 @@ describe("App visited local Review", () => {
           }),
         "/v1/sidebar/reviews": () =>
           success({ rows: [localRow], unreadable: 0 }),
+        "/v1/reviews/local-branches": () => success(featWithOneReview),
         "/v1/reviews/open-local": () => success(asJsonBody(openedLocal)),
       },
       { operations: APP_BOOT_OPERATIONS },
@@ -98,19 +114,72 @@ describe("App visited local Review", () => {
     expect(request).toMatchObject({
       body: { profileId: "profile", ...repository },
     });
-    // No expected branch: the open follows whatever branch the checkout is on.
+    // The branch read at the click is expected, so a switch before the open is refused.
     expect(callBody(request)).toMatchObject({
-      source: { kind: "working_tree" },
+      source: {
+        kind: "local_branch",
+        baseBranch: "main",
+        expectedHead: { kind: "branch", branch: "feat" },
+      },
     });
-    expect(JSON.stringify(callBody(request)).includes("expectedHead")).toBe(
-      false,
-    );
     expect(window.localStorage.getItem("patchdesk.destination")).toBe(
       "workbench:review-local-feat",
     );
   });
 
-  it("opens the working tree of a linked worktree from its own row (#489)", async () => {
+  it.each([
+    ["no shared Review", []],
+    ["shared Reviews against several bases", ["develop", "main"]],
+  ])(
+    "opens the Local review dialog on the inferred base when the branch has %s",
+    async (_case, reviewedBases) => {
+      const user = userEvent.setup();
+      installed = installDesktopDouble(
+        {
+          ...APP_BOOT_ROUTES,
+          "/v1/profiles": () => success([profile]),
+          "/v1/inbox": () =>
+            success({
+              profile,
+              inbox: {
+                state: "open",
+                pageSize: 25,
+                rows: [],
+                repositories: [],
+                dataFreshness: "fresh",
+              },
+            }),
+          "/v1/sidebar/reviews": () =>
+            success({ rows: [localRow], unreadable: 0 }),
+          "/v1/reviews/local-checkouts": () => success([]),
+          "/v1/reviews/local-branches": () =>
+            success({ ...featWithOneReview, reviewedBases }),
+          "/v1/reviews/open-local": () => success(asJsonBody(openedLocal)),
+        },
+        { operations: APP_BOOT_OPERATIONS },
+      );
+      render(<App />);
+
+      await user.click(
+        await screen.findByRole("button", { name: /acme\/widgets/ }),
+      );
+
+      const dialog = await screen.findByRole("dialog");
+      const base = await within(dialog).findByRole("combobox", {
+        name: "Base branch",
+      });
+      expect(base.textContent).toContain("main");
+      expect(openLocalRequest(installed)).toBeUndefined();
+      await user.click(
+        within(dialog).getByRole("button", { name: "Open review" }),
+      );
+      expect(callBody(openLocalRequest(installed))).toMatchObject({
+        source: { kind: "local_branch", baseBranch: "main" },
+      });
+    },
+  );
+
+  it("opens the shared Review of a linked worktree from its own row (#489)", async () => {
     const user = userEvent.setup();
     const linkedRow = {
       ...repository,
@@ -136,6 +205,10 @@ describe("App visited local Review", () => {
           }),
         "/v1/sidebar/reviews": () =>
           success({ rows: [linkedRow, localRow], unreadable: 0 }),
+        "/v1/reviews/local-branches": (input) =>
+          input.path.includes("checkout=%2Fwork%2Fpd-ux-pass")
+            ? success(featWithOneReview)
+            : failure({ error: "checkout_not_found" }, 404),
         "/v1/reviews/open-local": () => success(asJsonBody(openedLocal)),
       },
       { operations: APP_BOOT_OPERATIONS },
@@ -152,11 +225,11 @@ describe("App visited local Review", () => {
 
     await screen.findByRole("heading", { name: "Review destination" });
     expect(callBody(openLocalRequest(installed))).toMatchObject({
-      source: { kind: "working_tree", checkout: "/work/pd-ux-pass" },
+      source: { kind: "local_branch", checkout: "/work/pd-ux-pass" },
     });
   });
 
-  it("opens the current working tree once the maintainer leaves a draft for a parked local row click", async () => {
+  it("opens the current branch's shared Review once the maintainer leaves a draft for a parked local row click", async () => {
     const double = await leaveDraftForParkedLocalClick(() =>
       success(asJsonBody(openedLocal)),
     );
@@ -165,7 +238,7 @@ describe("App visited local Review", () => {
       name: "Hold a draft on review-local-feat",
     });
     expect(callBody(openLocalRequest(double))).toMatchObject({
-      source: { kind: "working_tree" },
+      source: { kind: "local_branch", baseBranch: "main" },
     });
     expect(openErrorAlert()).toBeUndefined();
   });
@@ -204,6 +277,7 @@ async function leaveDraftForParkedLocalClick(
           inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
         }),
       "/v1/sidebar/reviews": () => success({ rows: [localRow], unreadable: 0 }),
+      "/v1/reviews/local-branches": () => success(featWithOneReview),
       "/v1/reviews/leave": () => success(null),
       "/v1/reviews/load": () => success(asJsonBody(projection())),
       "/v1/reviews/open-local": openLocal,

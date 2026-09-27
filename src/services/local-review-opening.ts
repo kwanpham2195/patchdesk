@@ -107,13 +107,18 @@ export type LocalReviewAgentOpenRequest = Omit<
       };
 };
 
+/** What the Local review dialog offers for the shared Review: the listing, and the bases the checkout's branch already has an open shared Review against, the one opened last first. */
+export type LocalReviewBranches = LocalBranchListing & {
+  readonly reviewedBases: ReadonlyArray<LocalBranchName>;
+};
+
 /** An agent's open: the Review on its current session, and whether its base was inferred rather than named or reused. */
 export type LocalReviewAgentOpened = {
   readonly workbench: ReviewWorkbenchProjection;
   readonly baseInferred: boolean;
 };
 
-/** A working-tree Review refused because the checkout's `HEAD` moved to another branch. */
+/** A shared Review refused because the checkout's `HEAD` moved to another branch. */
 export type LocalBranchMismatch = Extract<
   LocalReviewOpenFailure,
   { readonly reason: "branch_mismatch" }
@@ -220,7 +225,7 @@ export class LocalReviewOpening {
     // A branch switch between the unlocked read and the locked one keys
     // another Review, so the open starts once more under that Review's lock.
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      // Reading the source decides the Review id: a working tree is keyed by the branch `HEAD` names.
+      // Reading the source decides the Review id: a shared Review is keyed by the branch `HEAD` names.
       const resolved = await this.preparation.resolve(request);
       if (resolved._tag === "err")
         return err(mapPreparationFailure(resolved.error));
@@ -254,6 +259,7 @@ export class LocalReviewOpening {
    * never stamps `lastOpenedAt`, so the agent does not reorder the sidebar.
    * A shared Review named without a base takes the base of the branch's
    * shared Review the maintainer opened last, else the inferred one (#555).
+   * Several such Reviews are expected only after a base change in the dialog.
    */
   async openForAgent(
     input: LocalReviewAgentOpenRequest,
@@ -303,12 +309,8 @@ export class LocalReviewOpening {
       checkout,
     );
     if (listing._tag === "err") return listing;
-    const { head, inferred } = listing.value;
-    const reused = await this.lastOpenedSharedBase(
-      input,
-      checkout,
-      head.kind === "branch" ? head.branch : detachedHeadBranch,
-    );
+    const { head, inferred, reviewedBases } = listing.value;
+    const [reused] = reviewedBases;
     const base = reused ?? inferred?.baseBranch;
     if (base === undefined) return err({ reason: "base_required" });
     return ok({
@@ -323,34 +325,42 @@ export class LocalReviewOpening {
     });
   }
 
-  /** The base of `branch`'s open shared Review in this checkout that the maintainer opened last; undefined when there is none. */
-  private async lastOpenedSharedBase(
-    input: Omit<LocalReviewOpenRequest, "request">,
+  /**
+   * The bases of `branch`'s open shared Reviews in this checkout, the one
+   * the maintainer opened last first. Empty when the Reviews cannot be listed:
+   * the caller then infers a base, as for a branch with none.
+   */
+  private async reviewedBases(
+    profileId: WorkspaceProfileId,
+    repository: LocalReviewOpenRequest["repository"],
     checkout: AbsolutePath | undefined,
     branch: LocalBranchName,
-  ): Promise<LocalBranchName | undefined> {
-    const listed = await this.lifecycle.reviews.list(input.profileId);
-    if (listed._tag === "err") return undefined;
-    let latest:
-      | { readonly base: LocalBranchName; readonly at: string }
-      | undefined;
+  ): Promise<ReadonlyArray<LocalBranchName>> {
+    const listed = await this.lifecycle.reviews.list(profileId);
+    if (listed._tag === "err") return [];
+    const reviewed: Array<{
+      readonly base: LocalBranchName;
+      readonly at: string;
+    }> = [];
     for (const review of listed.value.reviews) {
       if (!isLocalReview(review) || review.status._tag === "Terminal") continue;
       const { host, owner, repo, source } = review.identity;
       if (
-        source.kind !== "local_branch" ||
-        source.branch !== branch ||
-        source.checkout !== checkout ||
-        host !== input.repository.host ||
-        owner !== input.repository.owner ||
-        repo !== input.repository.repo
+        source.kind === "local_branch" &&
+        source.branch === branch &&
+        source.checkout === checkout &&
+        host === repository.host &&
+        owner === repository.owner &&
+        repo === repository.repo
       )
-        continue;
-      const at = review.lastOpenedAt ?? review.updatedAt;
-      if (latest === undefined || at > latest.at)
-        latest = { base: source.baseBranch, at };
+        reviewed.push({
+          base: source.baseBranch,
+          at: review.lastOpenedAt ?? review.updatedAt,
+        });
     }
-    return latest?.base;
+    return reviewed
+      .sort((left, right) => right.at.localeCompare(left.at))
+      .map((entry) => entry.base);
   }
 
   private async openExistingOrCreate(
@@ -399,20 +409,32 @@ export class LocalReviewOpening {
       : err(mapPreparationFailure(listed.error));
   }
 
-  /** A checkout's local branches and the base a shared Review would infer there (#555); `checkout` absent is the configured one. */
+  /**
+   * A checkout's local branches, the base a shared Review would infer there,
+   * and the bases of the open shared Reviews of the branch `HEAD` names
+   * (#555); `checkout` absent is the configured one.
+   */
   async listBranches(
     profileId: WorkspaceProfileId,
     repository: LocalReviewOpenRequest["repository"],
     checkout: AbsolutePath | undefined,
-  ): Promise<Result<LocalBranchListing, LocalReviewOpenFailure>> {
+  ): Promise<Result<LocalReviewBranches, LocalReviewOpenFailure>> {
     const listed = await this.preparation.listBranches(
       profileId,
       repository,
       checkout,
     );
-    return listed._tag === "ok"
-      ? listed
-      : err(mapPreparationFailure(listed.error));
+    if (listed._tag === "err") return err(mapPreparationFailure(listed.error));
+    const { head } = listed.value;
+    return ok({
+      ...listed.value,
+      reviewedBases: await this.reviewedBases(
+        profileId,
+        repository,
+        checkout,
+        head.kind === "branch" ? head.branch : detachedHeadBranch,
+      ),
+    });
   }
 
   /** The profile repository and checkout an agent's working directory is in (ADR 0052 `review_local`). */
@@ -437,7 +459,7 @@ export class LocalReviewOpening {
   /**
    * Refresh (#452): reads the stored source from the checkout again. It is a
    * command, so it refuses rather than waits while another one holds the
-   * Review, and a working tree on another branch is refused as a reopen is.
+   * Review, and a shared Review on another branch is refused as a reopen is.
    */
   async refresh(
     profileId: WorkspaceProfileId,
@@ -510,7 +532,7 @@ export class LocalReviewOpening {
   }
 
   /**
-   * The refusal for opening a stored working-tree Review as stored while the
+   * The refusal for opening a stored shared Review as stored while the
    * checkout is on another branch (#477), the rule `open` and `refresh` apply.
    * Undefined for any other source, and when the checkout cannot be read,
    * because a stored session shows without it.

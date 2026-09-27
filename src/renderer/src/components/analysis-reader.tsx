@@ -90,7 +90,7 @@ export type AnalysisReaderProps = {
   readonly verification?: AnalysisVerificationControls;
   /** Batch Add; offered only alongside `onAddFinding`. */
   readonly addAllFindings?: AddAllFindingsControls;
-  /** Apply suggestion on a working-tree local Review (ADR 0050). */
+  /** Apply suggestion on a shared local Review (ADR 0050, #555). */
   readonly localApply?: LocalApplyControls;
   /** A local Review's Local draft list; its Remove works on an outdated Analysis too. */
   readonly localDrafts?: LocalDraftControls;
@@ -367,7 +367,7 @@ export function AnalysisReader({
   );
 }
 
-/** A row's Apply checkbox; absent outside a working-tree Review. */
+/** A row's Apply checkbox; absent outside a shared Review. */
 function applySelectionFor(
   localApply: LocalApplyControls | undefined,
   findingId: string,

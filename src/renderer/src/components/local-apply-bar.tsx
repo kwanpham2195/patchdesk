@@ -23,7 +23,7 @@ import { Spinner } from "./ui/spinner";
 type AnalysisFinding = AnalysisResult["findings"][number];
 
 /**
- * The Apply control of a working-tree Review's Analysis: one confirmation
+ * The Apply control of a shared Review's Analysis: one confirmation
  * names every selected suggestion, and a refusal reads beside the button.
  * With nothing to apply and nothing to check or report, it renders nothing.
  */

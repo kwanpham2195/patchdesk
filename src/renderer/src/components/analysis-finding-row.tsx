@@ -105,7 +105,7 @@ export function AnalysisFindingRow({
     finding: AnalysisFinding,
     reason: string,
   ) => Promise<void>;
-  /** Offered on a working-tree Review; shown only when the suggestion resolves in the patch. */
+  /** Offered on a shared Review; shown only when the suggestion resolves in the patch. */
   readonly applySelection?: {
     readonly selected: boolean;
     readonly disabled: boolean;
