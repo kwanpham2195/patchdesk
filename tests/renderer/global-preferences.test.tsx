@@ -251,7 +251,7 @@ describe("file-backed renderer preferences", () => {
     await act(async () => {
       await first.result.current.updateAppearance("light");
     });
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.dataset.appearance).toBe("light");
 
     first.unmount();
     const reportedBeforeRemount = reported.length;
@@ -260,7 +260,7 @@ describe("file-backed renderer preferences", () => {
     // GET /v1/settings has not answered yet, so nothing has corrected the
     // remount: it must start from what the document is showing, not from the
     // appearance the window booted with.
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.dataset.appearance).toBe("light");
     expect(reported.slice(reportedBeforeRemount)).not.toContain("dark");
   });
 
