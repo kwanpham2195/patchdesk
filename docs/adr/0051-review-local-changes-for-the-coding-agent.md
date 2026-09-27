@@ -100,7 +100,7 @@ before any git call. Once the maintainer saves the new path, the Reviews of
 the configured checkout reopen: their identity holds no path, so unchanged
 content lands on the same session and drafts stay. No path is migrated.
 A session worktree in the cache still names the old repository in its `.git`
-file, so reusing or removing one first runs `git worktree repair` in the
-repository. Git rewrites only broken links, which also repairs the
-maintainer's own linked worktrees. A Review of a linked worktree is keyed by
+file, so reusing or removing one first runs `git worktree repair <worktree>`
+in the repository, naming only that Patchdesk worktree, so the maintainer's
+own linked worktrees are left as they are. A Review of a linked worktree is keyed by
 that worktree's path, so a linked worktree that moved opens as a new Review.

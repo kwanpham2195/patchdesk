@@ -239,8 +239,9 @@ export class LocalReviewSessionPreparation {
   ): Promise<Result<LocalReviewSession, LocalReviewPreparationFailure>> {
     if (await exists(session.worktree.path)) {
       // A checkout moved on disk leaves the worktree's `.git` file naming its old place (#488).
-      await this.dependencies.worktrees.repairWorktrees(
+      await this.dependencies.worktrees.repairWorktree(
         resolved.repositoryPath,
+        session.worktree.path,
       );
       return ok(session);
     }
