@@ -251,7 +251,8 @@ export async function resolveLocalReviewCheckout(
 
 /**
  * The profile repository with a live checkout whose worktree top-level
- * contains `directory`, and that checkout (ADR 0052 `review_local`). A
+ * contains `directory`, and that checkout with its `HEAD` and whether it is
+ * the configured one (ADR 0052 `review_local`, `list_local_reviews`). A
  * repository git cannot list is skipped, so one broken `localPath` does not
  * hide the others. A directory whose `origin` names a repository with a
  * missing `localPath` is refused `CheckoutMissing`: the repository moved (#488).
@@ -265,7 +266,7 @@ export async function findProfileCheckout(
     {
       readonly repository: WorkspaceProfileConfig["repos"][number];
       readonly checkout: AbsolutePath;
-    },
+    } & Pick<RepositoryCheckout, "head" | "configured">,
     LocalCheckoutFailure
   >
 > {
@@ -278,7 +279,13 @@ export async function findProfileCheckout(
       repository.localPath,
     );
     const match = checkouts?.find((candidate) => candidate.path === root);
-    if (match !== undefined) return ok({ repository, checkout: match.path });
+    if (match !== undefined)
+      return ok({
+        repository,
+        checkout: match.path,
+        head: match.head,
+        configured: match.configured,
+      });
   }
   const origin = await reads.git.run([
     "git",

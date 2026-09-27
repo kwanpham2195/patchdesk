@@ -1,20 +1,25 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import {
+  parseAbsolutePath,
+  parseIsoTimestamp,
   parseLocalBranchName,
   parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
+  type IsoTimestamp,
 } from "../../src/domain/ids";
+import { markReviewTerminal } from "../../src/domain/review";
 import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import {
   cleanupLocalApplyRoots,
   git,
   localApplyHarness,
+  now,
   profileId,
   repository,
   value,
@@ -437,5 +442,132 @@ describe("an agent's open of the shared Review with no base (#555)", () => {
 
     expect(opened).toEqual({ _tag: "err", error: { reason: "base_required" } });
     expect(value(await harness.reviews.list(profileId)).reviews).toEqual([]);
+  });
+});
+
+describe("the checkout's shared Reviews an agent looks up (#558)", () => {
+  const listFrom = async (harness: LocalApplyHarness, directory: string) =>
+    value(
+      await harness.opening.listSharedReviews(
+        profileId,
+        value(parseAbsolutePath(directory)),
+      ),
+    );
+
+  /** A clock one second later on each read, so each open stamps a later `lastOpenedAt`. */
+  const tickingClock = (): (() => IsoTimestamp) => {
+    let seconds = 0;
+    return () =>
+      value(
+        parseIsoTimestamp(
+          new Date(Date.parse(now) + ++seconds * 1000).toISOString(),
+        ),
+      );
+  };
+
+  it("lists the configured checkout's Review from a subfolder, on its current session", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "feature.txt"), "feature\n");
+    const opened = await harness.open(shared());
+    const subfolder = join(repositoryPath, "src", "deep");
+    await mkdir(subfolder, { recursive: true });
+
+    const listed = await listFrom(harness, subfolder);
+
+    expect(listed.head).toEqual({ kind: "branch", branch: "feature" });
+    expect(listed.reviews).toHaveLength(1);
+    expect(listed.reviews[0]).toMatchObject({
+      reviewId: opened.review.id,
+      sessionId: opened.session.id,
+      headSha: opened.session.key.headSha,
+      patchHash: opened.revision.patchHash,
+      branch: "feature",
+      baseBranch: "main",
+      lastOpenedAt: now,
+    });
+  });
+
+  it("lists a linked worktree's Review for that worktree and not for the configured checkout", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    const linked = join(dirname(repositoryPath), "linked");
+    git(repositoryPath, "worktree", "add", "-q", linked, "-b", "feat");
+    await writeFile(join(linked, "probe.txt"), "linked\n");
+    const opened = await harness.open({
+      ...shared(),
+      checkout: value(parseAbsolutePath(linked)),
+    });
+
+    const fromConfigured = await listFrom(harness, repositoryPath);
+    const fromLinked = await listFrom(harness, linked);
+
+    expect(fromConfigured).toEqual({
+      head: { kind: "branch", branch: "main" },
+      reviews: [],
+    });
+    expect(fromLinked.head).toEqual({ kind: "branch", branch: "feat" });
+    expect(fromLinked.reviews.map((review) => review.reviewId)).toEqual([
+      opened.review.id,
+    ]);
+  });
+
+  it("lists every branch's Reviews, the one the maintainer opened last first", async () => {
+    const harness = await localApplyHarness(undefined, {
+      openingNow: tickingClock(),
+    });
+    const { repositoryPath } = harness;
+    const develop = value(parseLocalBranchName("develop"));
+    git(repositoryPath, "branch", "-q", "develop");
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "untracked.txt"), "new\n");
+    const againstDevelop = await harness.open(shared(develop));
+    const againstMain = await harness.open(shared());
+    git(repositoryPath, "checkout", "-q", "-b", "later");
+    const later = await harness.open(shared());
+    git(repositoryPath, "checkout", "-q", "feature");
+    await harness.open(shared(develop));
+
+    const listed = await listFrom(harness, repositoryPath);
+
+    expect(listed.head).toEqual({ kind: "branch", branch: "feature" });
+    expect(
+      listed.reviews.map(({ reviewId, branch, baseBranch }) => ({
+        reviewId,
+        branch,
+        baseBranch,
+      })),
+    ).toEqual([
+      {
+        reviewId: againstDevelop.review.id,
+        branch: "feature",
+        baseBranch: "develop",
+      },
+      { reviewId: later.review.id, branch: "later", baseBranch: "main" },
+      {
+        reviewId: againstMain.review.id,
+        branch: "feature",
+        baseBranch: "main",
+      },
+    ]);
+  });
+
+  it("leaves out a terminal Review", async () => {
+    const harness = await localApplyHarness();
+    git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
+    const opened = await harness.open(shared());
+    const reviewId = value(parseReviewId(opened.review.id));
+    const stored = value(await harness.reviews.load(profileId, reviewId));
+    value(
+      await harness.reviews.save(
+        markReviewTerminal(stored, "closed", now),
+        stored.updatedAt,
+      ),
+    );
+
+    const listed = await listFrom(harness, harness.repositoryPath);
+
+    expect(listed.reviews).toEqual([]);
   });
 });

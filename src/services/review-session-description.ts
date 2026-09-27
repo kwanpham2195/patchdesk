@@ -1,10 +1,13 @@
+import { readFile } from "node:fs/promises";
+
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { definedProps } from "../domain/defined-props";
-import type {
-  ContentHash,
-  GitSha,
-  ReviewId,
-  ReviewSessionId,
+import {
+  parseContentHash,
+  type ContentHash,
+  type GitSha,
+  type ReviewId,
+  type ReviewSessionId,
 } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
 import {
@@ -12,8 +15,10 @@ import {
   type PatchChangedFile,
 } from "../domain/patch-changed-files";
 import { err, ok, type Result } from "../domain/result";
+import type { Review } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import { reviewSourceTitle } from "../domain/review-source";
+import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewWorkbenchProjection } from "./review-workbench-projection";
 
 /**
@@ -37,7 +42,7 @@ export type LocalReviewOpened = ReviewSessionDescription & {
   readonly retainedInsights: ReadonlyArray<InsightType>;
 };
 
-export function describeReviewSession(
+function describeReviewSession(
   reviewId: ReviewId,
   session: ReviewSession,
   patchHash: ContentHash | undefined,
@@ -49,6 +54,36 @@ export function describeReviewSession(
     baseSha: session.key.baseSha,
     ...definedProps({ patchHash }),
   };
+}
+
+/**
+ * A stored Review's current session, its patch hashed as read now: what
+ * `get_feedback` and `list_local_reviews` answer with. An unreadable session
+ * record is `storage`; an unreadable patch leaves `patchHash` out.
+ */
+export async function describeCurrentSession(
+  sessions: Pick<ReviewSessionStore, "load">,
+  review: Pick<Review, "id" | "identity" | "currentSessionId">,
+): Promise<Result<ReviewSessionDescription, { readonly reason: "storage" }>> {
+  const session = await sessions.load(
+    review.identity.profileId,
+    review.currentSessionId,
+  );
+  if (session._tag === "err") return err({ reason: "storage" });
+  const patch = await readFile(session.value.patchPath, "utf8").catch(
+    () => undefined,
+  );
+  const patchHash =
+    patch === undefined
+      ? undefined
+      : parseContentHash(hashReviewArtifactContent(patch));
+  return ok(
+    describeReviewSession(
+      review.id,
+      session.value,
+      patchHash?._tag === "ok" ? patchHash.value : undefined,
+    ),
+  );
 }
 
 /** The projection omits the base revision, so the session record supplies it. */

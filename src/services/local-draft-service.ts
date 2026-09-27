@@ -54,7 +54,7 @@ import {
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import {
-  describeReviewSession,
+  describeCurrentSession,
   type ReviewSessionDescription,
 } from "./review-session-description";
 
@@ -251,28 +251,16 @@ export class LocalDraftService {
   > {
     const review = await this.loadLocal(profileId, reviewId);
     if (review._tag === "err") return review;
-    const session = await this.dependencies.sessions.load(
-      profileId,
-      review.value.currentSessionId,
+    const described = await describeCurrentSession(
+      this.dependencies.sessions,
+      review.value,
     );
-    if (session._tag === "err") return err({ reason: "storage" });
-    const patch = await readFile(session.value.patchPath, "utf8").catch(
-      () => undefined,
-    );
-    const patchHash =
-      patch === undefined
-        ? undefined
-        : parseContentHash(hashReviewArtifactContent(patch));
-    const described = describeReviewSession(
-      reviewId,
-      session.value,
-      patchHash?._tag === "ok" ? patchHash.value : undefined,
-    );
+    if (described._tag === "err") return described;
     const page = pageLocalDrafts(
       review.value.localDrafts ?? [],
       cursor,
       (listed, prompted) => ({
-        ...described,
+        ...described.value,
         localDrafts: listed.map(projectFeedbackEntry),
         markdown: renderLocalDraftsAsAgentPrompt(prompted),
       }),

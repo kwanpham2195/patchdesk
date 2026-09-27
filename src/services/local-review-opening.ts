@@ -3,6 +3,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { minLength, pipe, strictObject, string } from "valibot";
 
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
+import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   createReviewId,
@@ -53,6 +54,11 @@ import type {
 } from "./local-review-session-preparation";
 import type { ReviewRetention } from "./review-retention";
 import type { RepositoryCheckout } from "./local-checkout";
+import {
+  describeSharedReviews,
+  listOpenSharedReviews,
+  type CheckoutSharedReviews,
+} from "./local-shared-review-list";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
   ReviewWorkbenchProjection,
@@ -214,6 +220,7 @@ export class LocalReviewOpening {
     >,
     private readonly lifecycle: {
       readonly reviews: Pick<ReviewStore, "load" | "save" | "list">;
+      readonly sessions: Pick<ReviewSessionStore, "load">;
       readonly artifacts: Pick<ReviewArtifactStorage, "quarantineReview">;
       readonly coordinator: Pick<
         ReviewOperationCoordinator,
@@ -345,31 +352,45 @@ export class LocalReviewOpening {
     checkout: AbsolutePath | undefined,
     branch: LocalBranchName,
   ): Promise<ReadonlyArray<LocalBranchName>> {
-    const listed = await this.lifecycle.reviews.list(profileId);
-    if (listed._tag === "err") return [];
-    const reviewed: Array<{
-      readonly base: LocalBranchName;
-      readonly at: string;
-    }> = [];
-    for (const review of listed.value.reviews) {
-      if (!isLocalReview(review) || review.status._tag === "Terminal") continue;
-      const { host, owner, repo, source } = review.identity;
-      if (
-        source.kind === "local_branch" &&
-        source.branch === branch &&
-        source.checkout === checkout &&
-        host === repository.host &&
-        owner === repository.owner &&
-        repo === repository.repo
-      )
-        reviewed.push({
-          base: source.baseBranch,
-          at: review.lastOpenedAt ?? review.updatedAt,
-        });
-    }
-    return reviewed
-      .sort((left, right) => right.at.localeCompare(left.at))
-      .map((entry) => entry.base);
+    const listed = await listOpenSharedReviews(
+      this.lifecycle.reviews,
+      profileId,
+      repository,
+      checkout,
+      branch,
+    );
+    return listed._tag === "ok"
+      ? listed.value.map(({ source }) => source.baseBranch)
+      : [];
+  }
+
+  /**
+   * The open shared Reviews of the checkout containing `directory`, each on
+   * its current session (ADR 0052 `list_local_reviews`). A read: it prepares
+   * nothing and stamps no `lastOpenedAt`. A current session that cannot be
+   * read refuses the whole list `storage` rather than hide that Review.
+   */
+  async listSharedReviews(
+    profileId: WorkspaceProfileId,
+    directory: AbsolutePath,
+  ): Promise<Result<CheckoutSharedReviews, LocalReviewOpenFailure>> {
+    const found = await this.findCheckout(profileId, directory);
+    if (found._tag === "err") return found;
+    const { repository, checkout, configured, head } = found.value;
+    const shared = await listOpenSharedReviews(
+      this.lifecycle.reviews,
+      profileId,
+      repository,
+      configured ? undefined : checkout,
+    );
+    if (shared._tag === "err") return shared;
+    const reviews = await describeSharedReviews(
+      this.lifecycle.sessions,
+      shared.value,
+    );
+    return reviews._tag === "ok"
+      ? ok({ head, reviews: reviews.value })
+      : reviews;
   }
 
   private async openExistingOrCreate(
@@ -457,7 +478,7 @@ export class LocalReviewOpening {
       {
         readonly repository: LocalReviewOpenRequest["repository"];
         readonly checkout: AbsolutePath;
-      },
+      } & Pick<RepositoryCheckout, "head" | "configured">,
       LocalReviewOpenFailure
     >
   > {
