@@ -9,6 +9,7 @@ import {
   parseReviewSessionId,
 } from "../../src/domain/ids";
 import type { LocalDraftEntry } from "../../src/domain/local-draft";
+import { err } from "../../src/domain/result";
 import {
   indexPatchHunks,
   placeInView,
@@ -114,6 +115,95 @@ describe("Local drafts across the shared Review's patch views (#556)", () => {
     expect(
       await placementIn(harness, refreshed.session.id, carried, "committed"),
     ).toEqual(inline);
+  });
+
+  it.each(["GitReadFailed", "GitReadOutputExceeded"] as const)(
+    "refuses Refresh on %s while reading a Committed note without changing its state",
+    async (failure) => {
+      let failRead = false;
+      const harness = await localApplyHarness(undefined, {
+        preparationGit: (argv, run) =>
+          failRead &&
+          argv.includes("show") &&
+          argv.at(-1)?.endsWith(":notes.txt")
+            ? Promise.resolve(err({ _tag: failure }))
+            : run(),
+      });
+      const { repositoryPath } = harness;
+      git(repositoryPath, "checkout", "-q", "-b", "feature");
+      await writeFile(join(repositoryPath, "notes.txt"), "a\nb\nc\nd\ne\n");
+      git(repositoryPath, "add", "notes.txt");
+      git(repositoryPath, "commit", "-q", "-m", "notes");
+      const opened = await harness.open(shared());
+      const reviewId = value(parseReviewId(opened.review.id));
+      value(
+        await harness.drafts.addNote({
+          profileId,
+          reviewId,
+          sessionId: value(parseReviewSessionId(opened.session.id)),
+          view: "committed",
+          anchor: {
+            path: value(parseRepoRelativePath("notes.txt")),
+            side: "new",
+            startLine: 3,
+            line: 3,
+          },
+          text: "Explain c.",
+        }),
+      );
+      const before = value(await harness.reviews.load(profileId, reviewId));
+      git(repositoryPath, "branch", "-f", "main", "HEAD");
+      failRead = true;
+
+      const refused = await harness.opening.refresh(profileId, reviewId);
+
+      expect(refused).toEqual({ _tag: "err", error: { reason: "storage" } });
+      const stored = value(await harness.reviews.load(profileId, reviewId));
+      expect(stored.currentSessionId).toBe(opened.session.id);
+      expect(stored.localDrafts).toEqual(before.localDrafts);
+      expect(
+        value(await harness.drafts.feedback(profileId, reviewId)).localDrafts,
+      ).toMatchObject([{ state: "current", text: "Explain c." }]);
+    },
+  );
+
+  it("keeps the existing carry rule when a Committed note's file is absent at HEAD", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "notes.txt"), "a\nb\nc\nd\ne\n");
+    git(repositoryPath, "add", "notes.txt");
+    git(repositoryPath, "commit", "-q", "-m", "notes");
+    const opened = await harness.open(shared());
+    const reviewId = value(parseReviewId(opened.review.id));
+    value(
+      await harness.drafts.addNote({
+        profileId,
+        reviewId,
+        sessionId: value(parseReviewSessionId(opened.session.id)),
+        view: "committed",
+        anchor: {
+          path: value(parseRepoRelativePath("notes.txt")),
+          side: "new",
+          startLine: 3,
+          line: 3,
+        },
+        text: "Explain c.",
+      }),
+    );
+    git(repositoryPath, "rm", "-q", "notes.txt");
+    git(repositoryPath, "commit", "-q", "-m", "remove notes");
+
+    const refreshed = value(await harness.opening.refresh(profileId, reviewId));
+
+    expect(refreshed.localDrafts).toMatchObject([
+      {
+        kind: "note",
+        text: "Explain c.",
+        view: "committed",
+        state: "needs_attention",
+      },
+    ]);
   });
 
   it("carries a note made on Committed against the checkout HEAD's file, not the Local snapshot's, once its lines leave the Committed patch", async () => {

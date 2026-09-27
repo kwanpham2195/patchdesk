@@ -870,7 +870,9 @@ async function carryTargetOf(
       session.checkoutHeadSha,
       paths,
     );
-    return { sessionId: session.id, patch, files };
+    return files._tag === "ok"
+      ? { sessionId: session.id, patch, files: files.value }
+      : undefined;
   }
   // `readCheckoutFile` refuses any path whose resolution differs, so the root is resolved first.
   const root = await realpath(session.worktree.path).catch(() => undefined);
