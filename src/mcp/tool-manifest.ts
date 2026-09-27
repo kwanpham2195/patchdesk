@@ -6,7 +6,16 @@ const reviewId = v.pipe(
   v.string(),
   v.minLength(1),
   v.maxLength(512),
-  v.description("The reviewId review_local returned."),
+  v.description("The reviewId review_local or list_local_reviews returned."),
+);
+
+const cwd = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.maxLength(4_096),
+  v.description(
+    "An absolute path inside the checkout, usually your working directory.",
+  ),
 );
 
 /**
@@ -21,18 +30,17 @@ export const mcpToolManifest = {
     inputSchema: v.strictObject({}),
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
+  list_local_reviews: {
+    description:
+      "List the shared Reviews the maintainer has open for the checkout that contains cwd, in the active Patchdesk profile, the one opened last first. Read-only: it opens, prepares, and moves nothing, takes no snapshot, and does not mark a Review opened. head names the branch the checkout is on. Each entry has the reviewId, branch, baseBranch, lastOpenedAt when the maintainer opened it, and the Review's current session (sessionId, headSha, baseSha, patchHash). Use it to find the Review the maintainer means before get_feedback or get_insight. When several entries on your branch differ only by base, ask the maintainer which base they mean. An empty list means no shared Review is open here; review_local opens one. A cwd outside every checkout of the profile is refused checkout_not_found; a repository whose configured checkout no longer exists is refused checkout_missing, naming the path.",
+    inputSchema: v.strictObject({ cwd }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
   review_local: {
     description:
       "Open the Patchdesk Review of the checkout that contains cwd, so the maintainer reviews your change in Patchdesk. By default this is the shared Review of the branch checked out there: every change since the branch left its base branch, committed or not, so your commits keep the maintainer's notes in place. Without base, the branch's open shared Review is returned when there is one (the one the maintainer opened last), else Patchdesk infers the base: the other local branch with the fewest commits between its merge base and HEAD, ties going to the default branch. The result names baseBranch, and baseInferred: true when Patchdesk picked it. A branch with no open Review and no other local branch behind HEAD is refused base_required; pass base. A new Review reads the checkout as it is now; an existing one is returned on the session the maintainer sees, and refresh_review reads newer changes. It changes no branch, index, or working-tree file; Patchdesk stores the snapshot as git objects, a refs/patchdesk/local/ ref, and a worktree in its cache. Returns the reviewId, the session (sessionId, headSha, baseSha, patchHash), the changed files, and which Insights are retained. intent is the task you were given, as Markdown; it is recorded only when the Review has no Change intent. With intent, intentRecorded says whether the Review now holds it: intentKept is false when this call recorded it, and true when the Review already held the same text. A refused intent still returns the opened Review, with intentRecorded: false, intentRefused (intent_exists when the Review holds a different intent, in_progress or storage when recording failed and a retry may work), and intentMessage. A working tree with more than 5,000 untracked files or 100 MiB of them is refused untracked_too_large before anything is stored; the message names the largest untracked paths to add to .gitignore. A change whose patch is over 2 MiB is refused patch_too_large and no session is stored; the message names the files with the most changes. A cwd in a repository whose configured checkout no longer exists, as after a move on disk, is refused checkout_missing; the message names the configured path.",
     inputSchema: v.strictObject({
-      cwd: v.pipe(
-        v.string(),
-        v.minLength(1),
-        v.maxLength(4_096),
-        v.description(
-          "An absolute path inside the checkout, usually your working directory.",
-        ),
-      ),
+      cwd,
       source: v.optional(
         v.pipe(
           v.variant("kind", [
@@ -92,7 +100,9 @@ export const mcpToolManifest = {
         v.string(),
         v.minLength(1),
         v.maxLength(512),
-        v.description("The sessionId review_local or get_insight returned."),
+        v.description(
+          "The sessionId review_local, list_local_reviews, or get_insight returned.",
+        ),
       ),
       type: v.picklist(["analysis", "walkthrough", "brief"]),
     }),
