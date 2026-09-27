@@ -32,6 +32,7 @@ const WORKBENCH_PATHS = [
   "/v1/reviews/since-review-diff",
   "/v1/reviews/assignees",
   "/v1/reviews/reviewers",
+  "/v1/reviews/draft-state/command",
   "/v1/reviews/merge",
   "/v1/reviews/merge/recover",
   "/v1/reviews/direct-summary/submit",

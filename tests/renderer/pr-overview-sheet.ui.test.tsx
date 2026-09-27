@@ -427,7 +427,40 @@ describe("pr overview sheet on a merged Review", () => {
   });
 });
 
+function DraftToggleOverview(): React.JSX.Element {
+  const [isDraft, setIsDraft] = useState(true);
+  return (
+    <CanonicalReviewOverviewSheet
+      open
+      onOpenChange={() => undefined}
+      overview={baseOverview({ isDraft })}
+      onSetDraftState={async (draft) => setIsDraft(draft)}
+    />
+  );
+}
+
 describe("pr overview sheet draft toggle", () => {
+  it("updates the toggle label as the review moves between draft states", async () => {
+    const user = userEvent.setup();
+    render(<DraftToggleOverview />);
+
+    const publish = await screen.findByRole("button", {
+      name: "Ready for review",
+    });
+    await user.click(publish);
+    const convert = await screen.findByRole("button", {
+      name: "Convert to draft",
+    });
+    expect(
+      screen.queryByRole("button", { name: "Ready for review" }),
+    ).toBeNull();
+
+    await user.click(convert);
+    expect(
+      await screen.findByRole("button", { name: "Ready for review" }),
+    ).toBeTruthy();
+  });
+
   it("keeps the toggle usable and shows a local error after rejection", async () => {
     const user = userEvent.setup();
     render(
