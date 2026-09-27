@@ -31,6 +31,6 @@ For the same reason a journal write is never fatal: once GitHub has confirmed a 
 
 ## Update (2026-09-24): viewed files and Insight records
 
-Viewed-file marks (`viewed-files.json` in a Review session's directory, #358) are a fifth artifact class that rebuilds empty, like the recent-write journal. An invalid file moves aside to the fixed-name `viewed-files.quarantine.json` and reads as no marks; the reviewer re-marks files. It goes when the session directory goes.
+Viewed-file marks (`viewed-files.json` in a Review session's directory, #358) are a fifth artifact class that rebuilds empty, like the recent-write journal. An invalid file moves aside to the fixed-name `viewed-files.quarantine.json` and reads as no marks; the reviewer re-marks files. It goes when the session directory goes. Updated 2026-09-27 (#556): on a shared local Review each Patch view keeps its own marks, `viewed-files.json` for Combined and `viewed-files-committed.json` and `viewed-files-uncommitted.json` for the other two, and each file has its own fixed-name quarantine copy (`viewed-files-committed.quarantine.json`, `viewed-files-uncommitted.quarantine.json`).
 
 An invalid Insight record is now overwritten by the next run start instead of failing it with a storage error (#348, PR #392). Only starting a run can write over it; every other Insight mutation needs a matching active or retained run and refuses on the blank record.

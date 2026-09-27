@@ -42,6 +42,11 @@ tools.
   note's first or last line, so the note is placed when the lines on its
   other side still match; with no matching lines on either side it still
   needs attention.
+  Updated 2026-09-27 (#556): on a shared Review, Refresh carries each draft
+  against the new session's patch of its origin view, reading the new-side
+  text from that view's new tree: the Local snapshot in the session worktree
+  for Combined and Uncommitted, and `git show <checkoutHeadSha>:<path>` in
+  the session worktree for Committed. The origin view stays as recorded.
 - **Copy Brief as PR description** stays: it is a copy action, and the
   maintainer opens the pull request with their own tools.
 
@@ -125,3 +130,31 @@ the same line, and it reads unchanged when the committed lines are the ones
 the maintainer saw. Drafts still never cross branches: another branch keys
 another shared Review. Drafts on stored working-tree and branch Reviews are
 not moved into a shared Review.
+
+## Notes across patch views (#556)
+
+> **Added 2026-09-27** (contract for #556).
+
+A shared Review shows three Patch views of one session (ADR 0050, amended),
+and each view's sides are trees the session captured: Combined runs from the
+merge base to the Local snapshot, Committed from the merge base to the
+checkout's `HEAD`, and Uncommitted from `HEAD` to the Local snapshot.
+
+- **A note keeps its side.** A note sits on the old or new side of its
+  origin view, so on one tree. Another view's side stands in for that tree
+  when the file is identical in both trees, which the session's patches
+  prove by the path being absent from the patch between them: Uncommitted
+  for the snapshot and `HEAD`, Committed for the merge base and `HEAD`,
+  Combined for the merge base and the snapshot. The note then shows inline
+  at its own line numbers when its lines sit inside one hunk of the shown
+  view; otherwise only the Local drafts card lists it. A note never crosses
+  sides. Example: the agent commits a change to `c.ts` and then undoes it in
+  the working tree. Combined shows no change to `c.ts`, and Committed and
+  Uncommitted show opposite patches. A note on Uncommitted's new side (the
+  snapshot) shows on no side of Committed, even though Committed's old side,
+  the merge base, holds the same file.
+- **Findings stay on Combined.** A drafted Finding shows inline through its
+  Finding, and only on Combined.
+- **A switch changes no draft.** A note keeps its ID, text, origin view, and
+  state. The text of an unsaved note composer becomes a recoverable draft,
+  and the next selected line takes it.
