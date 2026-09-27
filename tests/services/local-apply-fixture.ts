@@ -59,7 +59,7 @@ import { ReviewWorktreeService } from "../../src/services/review-worktree-servic
 const roots: string[] = [];
 export const now = value(parseIsoTimestamp("2026-09-25T00:00:00.000Z"));
 export const profileId = value(parseWorkspaceProfileId("acme"));
-const repository = {
+export const repository = {
   host: value(parseGitHubHost("github.com")),
   owner: value(parseGitHubOwner("octo-org")),
   repo: value(parseGitHubRepoName("patchdesk")),

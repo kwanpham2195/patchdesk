@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { canonicalPatchFlags } from "../adapters/process/git-patch-flags";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import {
+  detachedHeadBranch,
   parseGitSha,
   parseLocalBranchName,
   type GitSha,
@@ -50,6 +51,8 @@ const LARGEST_CHANGED_FILE_COUNT = 5;
 export type ResolvedLocalRevision = {
   readonly source: LocalReviewSource;
   readonly revision: ReviewRevision;
+  /** The checkout `HEAD` a shared Review's Local snapshot was taken on; absent for the other kinds. */
+  readonly checkoutHeadSha?: GitSha;
 };
 
 /**
@@ -89,6 +92,12 @@ export class LocalReviewRevisionService {
     switch (request.kind) {
       case "working_tree":
         return this.snapshotWorkingTree(profileId, repositoryPath);
+      case "local_branch":
+        return this.resolveLocalBranch(
+          profileId,
+          repositoryPath,
+          request.baseBranch,
+        );
       case "branch":
         return this.resolveBranch(
           repositoryPath,
@@ -173,6 +182,76 @@ export class LocalReviewRevisionService {
     profileId: WorkspaceProfileId,
     repositoryPath: string,
   ): Promise<Result<ResolvedLocalRevision, LocalReviewRevisionFailure>> {
+    const head = await this.readCheckoutHead(repositoryPath);
+    if (head._tag === "err") return head;
+    const snapshot = await this.writeLocalSnapshot(
+      profileId,
+      repositoryPath,
+      head.value.sha,
+    );
+    if (snapshot._tag === "err") return snapshot;
+    const { branch } = head.value;
+    return ok({
+      source:
+        branch === undefined
+          ? { kind: "working_tree" }
+          : { kind: "working_tree", branch },
+      revision: { headSha: snapshot.value, baseSha: head.value.sha },
+    });
+  }
+
+  /**
+   * The shared Review (#555): the Local snapshot against the merge base of
+   * `HEAD` and the base branch tip, so the diff holds every change the branch
+   * carries, committed or not. The base is read before the snapshot, so a
+   * missing base writes no objects.
+   */
+  private async resolveLocalBranch(
+    profileId: WorkspaceProfileId,
+    repositoryPath: string,
+    baseBranch: LocalBranchName,
+  ): Promise<Result<ResolvedLocalRevision, LocalReviewRevisionFailure>> {
+    const head = await this.readCheckoutHead(repositoryPath);
+    if (head._tag === "err") return head;
+    const baseTip = await this.readSha(repositoryPath, [
+      "rev-parse",
+      "--verify",
+      `refs/heads/${baseBranch}^{commit}`,
+    ]);
+    if (baseTip === undefined) return err({ _tag: "LocalRevisionNotFound" });
+    const mergeBase = await this.readSha(repositoryPath, [
+      "merge-base",
+      "--end-of-options",
+      baseTip,
+      head.value.sha,
+    ]);
+    if (mergeBase === undefined) return err({ _tag: "LocalRevisionNotFound" });
+    const snapshot = await this.writeLocalSnapshot(
+      profileId,
+      repositoryPath,
+      head.value.sha,
+    );
+    if (snapshot._tag === "err") return snapshot;
+    return ok({
+      source: {
+        kind: "local_branch",
+        branch: head.value.branch ?? detachedHeadBranch,
+        baseBranch,
+      },
+      revision: { headSha: snapshot.value, baseSha: mergeBase },
+      checkoutHeadSha: head.value.sha,
+    });
+  }
+
+  /** The checkout's `HEAD` commit and the branch it names; `branch` is absent when `HEAD` is detached. */
+  private async readCheckoutHead(
+    repositoryPath: string,
+  ): Promise<
+    Result<
+      { readonly sha: GitSha; readonly branch?: LocalBranchName },
+      LocalReviewRevisionFailure
+    >
+  > {
     const head = await this.readSha(repositoryPath, [
       "rev-parse",
       "--verify",
@@ -189,12 +268,19 @@ export class LocalReviewRevisionService {
       "--short",
       "HEAD",
     ]);
-    let branch: LocalBranchName | undefined;
-    if (symbolic._tag === "ok") {
-      const parsed = parseLocalBranchName(symbolic.value.stdout.trim());
-      if (parsed._tag === "err") return err({ _tag: "LocalGitFailed" });
-      branch = parsed.value;
-    }
+    if (symbolic._tag === "err") return ok({ sha: head });
+    const branch = parseLocalBranchName(symbolic.value.stdout.trim());
+    return branch._tag === "ok"
+      ? ok({ sha: head, branch: branch.value })
+      : err({ _tag: "LocalGitFailed" });
+  }
+
+  /** Commits the working tree as a Local snapshot whose parent is `head` (ADR 0050 "The Local snapshot"). */
+  private async writeLocalSnapshot(
+    profileId: WorkspaceProfileId,
+    repositoryPath: string,
+    head: GitSha,
+  ): Promise<Result<GitSha, LocalReviewRevisionFailure>> {
     const indexPath = await this.git.run([
       "git",
       "-C",
@@ -234,14 +320,9 @@ export class LocalReviewRevisionService {
         ],
         localSnapshotIdentity,
       );
-      if (snapshot === undefined) return err({ _tag: "LocalGitFailed" });
-      return ok({
-        source:
-          branch === undefined
-            ? { kind: "working_tree" }
-            : { kind: "working_tree", branch },
-        revision: { headSha: snapshot, baseSha: head },
-      });
+      return snapshot === undefined
+        ? err({ _tag: "LocalGitFailed" })
+        : ok(snapshot);
     } finally {
       await rm(scratch, { recursive: true, force: true }).catch(
         () => undefined,

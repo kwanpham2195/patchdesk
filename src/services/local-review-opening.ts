@@ -6,6 +6,7 @@ import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-
 import type { ReviewStore } from "../adapters/storage/review-store";
 import {
   createReviewId,
+  detachedHeadBranch,
   type AbsolutePath,
   type ContentHash,
   type GitSha,
@@ -371,7 +372,8 @@ export class LocalReviewOpening {
     review: Review<LocalReviewSource>,
   ): Promise<LocalBranchMismatch | undefined> {
     const { profileId, host, owner, repo, source } = review.identity;
-    if (source.kind !== "working_tree") return undefined;
+    if (source.kind !== "working_tree" && source.kind !== "local_branch")
+      return undefined;
     const request = reopenLocalSourceRequest(source);
     if (request === undefined) return undefined;
     const resolved = await this.preparation.resolve({
@@ -635,21 +637,30 @@ async function carryToSession(
   );
 }
 
+/** `branch_mismatch` when the checkout's `HEAD` is not the one the request expects; a shared Review names a detached `HEAD` `detachedHeadBranch`. */
 function headMismatch(
   request: LocalReviewSourceRequest,
   source: LocalReviewSource,
 ): LocalBranchMismatch | undefined {
-  if (request.kind !== "working_tree" || request.expectedHead === undefined)
+  if (
+    (request.kind !== "working_tree" && request.kind !== "local_branch") ||
+    request.expectedHead === undefined
+  )
     return undefined;
-  if (source.kind !== "working_tree") return undefined;
+  if (source.kind !== "working_tree" && source.kind !== "local_branch")
+    return undefined;
+  const detached =
+    source.kind === "local_branch" ? detachedHeadBranch : undefined;
   const expected =
     request.expectedHead.kind === "branch"
       ? request.expectedHead.branch
-      : undefined;
+      : detached;
   if (source.branch === expected) return undefined;
   return {
     reason: "branch_mismatch",
-    ...definedProps({ currentBranch: source.branch }),
+    ...definedProps({
+      currentBranch: source.branch === detached ? undefined : source.branch,
+    }),
   };
 }
 
