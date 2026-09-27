@@ -246,6 +246,20 @@ draft is ever discarded by Refresh.
 > state. ADR 0051 "Notes across patch views" records where a note shows in
 > each view, and "Addressed or not" how Refresh carries it.
 
+> **Amended 2026-09-27 (#557).** The Local draft list lives in the Diff
+> tab's navigator, as its Notes section, and the Insights tab no longer shows
+> it; Analysis rows keep Add to draft. Each row names the draft's kind, its
+> origin view on a shared Review, and its state. The Notes section and the
+> diff's inline note cards place a draft by the same rule, so a draft is a
+> button in the list exactly when the shown diff renders it inline. Pressing
+> that button reveals its lines: it clears a Scope filter, leaves a commit
+> slice, and selects the file. Any other row states why the shown diff does
+> not render it, and selecting it moves nothing. The reasons are a draft
+> from an earlier session, a view whose tree holds another version of the
+> file, a view that does not show the lines, a Finding draft off Combined,
+> and a Finding the current Analysis does not render. Showing a draft on
+> another view where it is inline is a separate decision.
+
 ## Git writes the main process may perform
 
 This is the complete list. Anything else is a new decision.
@@ -405,6 +419,29 @@ manifest is diff hunks only, as ADR 0040 made it for every source (amended
 > view is selected, an Insight's meta line ends "Combined view" and Apply is
 > disabled with its reason beside it. Running an Insight on another view is
 > a separate decision.
+
+> **Amended 2026-09-27 (#557): the local navigator.** A local Review's
+> navigator reads Browse, Commits, and Notes, and a pull request Review keeps
+> Browse, Commits, and Threads. A `commit` Review and a stored `working_tree`
+> or `branch` Review have no captured `HEAD`, so they show Browse and Notes
+> only. A Review saved on a section its source does not have reopens on
+> Browse. A shared Review's commits are listed once at prepare, after the
+> session worktree exists: every commit in `baseSha..checkoutHeadSha`,
+> newest first in topological order, so a merge is listed and so is each
+> commit it brought in. The session stores the newest 250, the pull request
+> cap, with the total, and the navigator reads "Newest 250 of N" when the
+> branch is longer. A failed listing fails preparation. The list is required
+> on a `local_branch` session, so a session stored before #557 reads as
+> invalid and the next open prepares it again under the same session ID, as
+> for #556. Selecting a commit diffs it against its first parent, or a root
+> commit from a merged unrelated history against the empty tree, whose ID
+> `hash-object` computes without writing an object. The listing and the
+> commit patch run git in the session worktree, never the checkout, and a
+> SHA outside the stored list is refused `foreign_commit`. The slice shows
+> no notes, Findings, note composer, or Patch view control, and its bar reads
+> "Notes show on a Patch view, not on a single commit." Browse or Notes
+> returns to the view shown before, and a commit selection moves neither the
+> Review nor its session.
 
 ## Rejected alternatives
 
