@@ -47,6 +47,11 @@ test("switching the diff appearance genuinely re-colours the rendered code", asy
 
     await expect.poll(firstTokenColor, { timeout: 5_000 }).not.toBeNull();
     const before = await firstTokenColor();
+    const mainBackground = () =>
+      page
+        .locator("#main-content")
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+    const backgroundBefore = await mainBackground();
 
     // `appearance` is no longer part of `codeViewKey` (see the comment on
     // `codeViewKey` in `review-diff-view.tsx`), so this switch re-options
@@ -65,6 +70,9 @@ test("switching the diff appearance genuinely re-colours the rendered code", asy
     // dark half of each token's baked-in pair back up; poll rather than
     // assert once.
     await expect.poll(firstTokenColor, { timeout: 5_000 }).not.toBe(before);
+    await expect
+      .poll(mainBackground, { timeout: 5_000 })
+      .not.toBe(backgroundBefore);
   } finally {
     await closeServer(server);
   }
