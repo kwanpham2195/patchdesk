@@ -289,7 +289,7 @@ describe("ReviewSession storage", () => {
     });
   });
 
-  it("saves a shared Review session with the checkout HEAD its snapshot was taken on, and refuses one without it", async () => {
+  it("saves a shared Review session with its checkout HEAD and three view patches, and refuses one missing either (#556 D7)", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-session-store-"));
     roots.push(root);
     const paths = PatchdeskPaths.forTest(root);
@@ -310,11 +310,18 @@ describe("ReviewSession storage", () => {
     };
     const sessionId = createReviewSessionId(key);
     const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
-    const withoutCheckoutHead: LocalReviewSession = {
+    const viewPatch = (path: string, hash: string) => ({
+      patchPath: must(parseAbsolutePath(path)),
+      patchHash: must(parseContentHash(hash.repeat(64))),
+      paths: ["src/a.ts"],
+    });
+    const combined = viewPatch(paths.patchFile(profileId, sessionId), "d");
+    const session: LocalReviewSession = {
       schemaVersion: 6,
       id: sessionId,
       key,
-      patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionId))),
+      patchPath: combined.patchPath,
+      canonicalPatchHash: combined.patchHash,
       worktree: {
         path: must(
           parseAbsolutePath(paths.worktreeDirectory(profileId, sessionId)),
@@ -323,13 +330,24 @@ describe("ReviewSession storage", () => {
       },
       createdAt: at,
       updatedAt: at,
-    };
-    const session: LocalReviewSession = {
-      ...withoutCheckoutHead,
       checkoutHeadSha: must(parseGitSha("c".repeat(40))),
+      viewPatches: {
+        combined,
+        committed: viewPatch(
+          paths.viewPatchFile(profileId, sessionId, "committed"),
+          "e",
+        ),
+        uncommitted: viewPatch(
+          paths.viewPatchFile(profileId, sessionId, "uncommitted"),
+          "f",
+        ),
+      },
     };
+    const { checkoutHeadSha: _head, ...withoutCheckoutHead } = session;
+    const { viewPatches: _views, ...withoutViewPatches } = session;
 
     expect((await store.save(withoutCheckoutHead))._tag).toBe("err");
+    expect((await store.save(withoutViewPatches))._tag).toBe("err");
     await expect(store.save(session)).resolves.toEqual({
       _tag: "ok",
       value: undefined,

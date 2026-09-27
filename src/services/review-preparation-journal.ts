@@ -658,6 +658,8 @@ export class ReviewPreparationJournal {
 
     const allowedTargets = new Set([
       this.paths.patchFile(profileId, sessionId),
+      this.paths.viewPatchFile(profileId, sessionId, "committed"),
+      this.paths.viewPatchFile(profileId, sessionId, "uncommitted"),
       this.paths.preparedContextFile(profileId, sessionId),
       this.paths.preparedReviewInputFile(profileId, sessionId),
       this.paths.preparedDebugFile(profileId, sessionId),

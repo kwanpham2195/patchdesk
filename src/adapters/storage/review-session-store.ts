@@ -31,6 +31,7 @@ import { mapConcurrent } from "../../domain/map-concurrent";
 import {
   isPullRequestReviewSession,
   type LocalReviewSession,
+  type LocalSessionViewPatch,
   type PullRequestReviewSession,
   type ReviewSession,
   type ReviewSessionFields,
@@ -99,6 +100,12 @@ const pullRequestSessionSchema = v.strictObject({
   directSummaryReview: v.optional(v.unknown()),
 });
 
+const viewPatchSchema = v.strictObject({
+  patchPath: v.string(),
+  patchHash: v.string(),
+  paths: v.array(v.string()),
+});
+
 const localSessionSchema = v.strictObject({
   ...sessionFieldEntries,
   key: v.strictObject({
@@ -111,6 +118,13 @@ const localSessionSchema = v.strictObject({
     baseSha: v.string(),
   }),
   checkoutHeadSha: v.optional(v.string()),
+  viewPatches: v.optional(
+    v.strictObject({
+      combined: viewPatchSchema,
+      committed: viewPatchSchema,
+      uncommitted: viewPatchSchema,
+    }),
+  ),
 });
 
 type RawPullRequestSession = v.InferOutput<typeof pullRequestSessionSchema>;
@@ -375,13 +389,46 @@ function parseLocalSession(
   if (source._tag === "err") return invalidRead();
   const fields = parseSessionFields(raw, source.value);
   if (fields._tag === "err") return fields;
-  // A shared Review's session always records the checkout HEAD its snapshot was taken on; no other kind has one.
-  if (raw.checkoutHeadSha === undefined)
-    return source.value.kind === "local_branch" ? invalidRead() : fields;
-  const checkoutHeadSha = parseGitSha(raw.checkoutHeadSha);
-  if (source.value.kind !== "local_branch" || checkoutHeadSha._tag === "err")
+  // A shared Review's session always records the checkout HEAD its snapshot
+  // was taken on and its three patches (#556 D7); no other kind has either.
+  if (source.value.kind !== "local_branch")
+    return raw.checkoutHeadSha === undefined && raw.viewPatches === undefined
+      ? fields
+      : invalidRead();
+  if (raw.checkoutHeadSha === undefined || raw.viewPatches === undefined)
     return invalidRead();
-  return ok({ ...fields.value, checkoutHeadSha: checkoutHeadSha.value });
+  const checkoutHeadSha = parseGitSha(raw.checkoutHeadSha);
+  const combined = parseViewPatch(raw.viewPatches.combined);
+  const committed = parseViewPatch(raw.viewPatches.committed);
+  const uncommitted = parseViewPatch(raw.viewPatches.uncommitted);
+  if (
+    checkoutHeadSha._tag === "err" ||
+    combined === undefined ||
+    committed === undefined ||
+    uncommitted === undefined ||
+    combined.patchPath !== fields.value.patchPath ||
+    combined.patchHash !== fields.value.canonicalPatchHash
+  )
+    return invalidRead();
+  return ok({
+    ...fields.value,
+    checkoutHeadSha: checkoutHeadSha.value,
+    viewPatches: { combined, committed, uncommitted },
+  });
+}
+
+function parseViewPatch(
+  raw: v.InferOutput<typeof viewPatchSchema>,
+): LocalSessionViewPatch | undefined {
+  const patchPath = parseAbsolutePath(raw.patchPath);
+  const patchHash = parseContentHash(raw.patchHash);
+  return patchPath._tag === "ok" && patchHash._tag === "ok"
+    ? {
+        patchPath: patchPath.value,
+        patchHash: patchHash.value,
+        paths: raw.paths,
+      }
+    : undefined;
 }
 
 /** Parses the fields every kind shares and checks the id against the key. */

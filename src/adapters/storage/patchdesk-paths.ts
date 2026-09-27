@@ -7,6 +7,7 @@ import type {
   WorkspaceProfileId,
 } from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
+import type { StoredLocalPatchView } from "../../domain/local-patch-view";
 
 export type PatchdeskPathRoots = {
   readonly configDirectory: string;
@@ -244,6 +245,18 @@ export class PatchdeskPaths {
 
   patchFile(profileId: WorkspaceProfileId, sessionId: ReviewSessionId): string {
     return join(this.sessionDirectory(profileId, sessionId), "patch.diff");
+  }
+
+  /** A shared Review session's Committed or Uncommitted patch; Combined is `patchFile`. */
+  viewPatchFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    view: StoredLocalPatchView,
+  ): string {
+    return join(
+      this.sessionDirectory(profileId, sessionId),
+      `patch-${view}.diff`,
+    );
   }
 
   /** Immutable prepared inputs shared by every Insight for this exact PR head. */
