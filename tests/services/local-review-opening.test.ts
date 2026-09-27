@@ -39,7 +39,7 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
@@ -126,6 +126,7 @@ async function opening(
     readonly untrackedFileSize?: UntrackedFileSize;
     /** Stands in for git answers the fixture cannot produce cheaply, such as output over the cap. */
     readonly git?: (git: GitReadExecutor) => GitReadExecutor;
+    readonly listReviews?: ReviewStore["list"];
   } = {},
 ): Promise<LocalReviewOpening> {
   const paths = PatchdeskPaths.forTest(join(root, "app"));
@@ -196,7 +197,11 @@ async function opening(
     },
     projection,
     {
-      reviews,
+      reviews: {
+        load: (id, reviewId) => reviews.load(id, reviewId),
+        save: (review, updatedAt) => reviews.save(review, updatedAt),
+        list: seams.listReviews ?? ((id) => reviews.list(id)),
+      },
       sessions,
       artifacts,
       coordinator: seams.coordinator ?? new ReviewOperationCoordinator(),
@@ -293,6 +298,64 @@ describe("LocalReviewOpening", () => {
     expect(edited.session.id).not.toBe(first.session.id);
     expect(edited.review.id).toBe(first.review.id);
     expect(edited.fullPatch).toContain("+second");
+  });
+
+  it("refuses an agent open when saved Reviews cannot be listed without creating another Review", async () => {
+    const { root, repositoryPath } = await checkout();
+    git(repositoryPath, "branch", "develop");
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "tracked.txt"), "feature\n");
+    git(repositoryPath, "commit", "-q", "-am", "feature");
+    const existing = value(
+      await (
+        await opening(root, repositoryPath)
+      ).open({
+        profileId,
+        repository,
+        request: {
+          kind: "local_branch",
+          baseBranch: value(parseLocalBranchName("develop")),
+        },
+      }),
+    );
+    const paths = PatchdeskPaths.forTest(join(root, "app"));
+    const reviews = new ReviewStore(paths);
+    const recordBefore = await readFile(
+      paths.reviewFile(profileId, value(parseReviewId(existing.review.id))),
+    );
+    const sessionsBefore = await readdir(
+      paths.profileReviewsDirectory(profileId),
+      { recursive: true },
+    );
+    const refsBefore = git(repositoryPath, "for-each-ref", "refs/patchdesk");
+    const service = await opening(root, repositoryPath, {
+      listReviews: async () =>
+        err({ _tag: "StorageFailure", operation: "read", reason: "io" }),
+    });
+
+    const refused = await service.openForAgent({
+      profileId,
+      repository,
+      request: { kind: "local_branch" },
+    });
+
+    expect(refused).toEqual({ _tag: "err", error: { reason: "storage" } });
+    expect(
+      value(await reviews.list(profileId)).reviews.map(({ id }) => id),
+    ).toEqual([existing.review.id]);
+    expect(
+      await readFile(
+        paths.reviewFile(profileId, value(parseReviewId(existing.review.id))),
+      ),
+    ).toEqual(recordBefore);
+    expect(
+      await readdir(paths.profileReviewsDirectory(profileId), {
+        recursive: true,
+      }),
+    ).toEqual(sessionsBefore);
+    expect(git(repositoryPath, "for-each-ref", "refs/patchdesk")).toBe(
+      refsBefore,
+    );
   });
 
   it("records the open on the Review so the sidebar can order and date it", async () => {

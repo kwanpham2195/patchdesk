@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed `review_local` inferring a different base when Patchdesk could not list saved Reviews. It now refuses with `storage` before creating another Review, so the agent cannot miss the maintainer's notes. #572
+
 - Added **Local review**: the navigator lists the branch's commits and your notes in place of Threads. On a shared Review, **Commits** lists every commit since the merge base, newest first with `HEAD` marked, and selecting one shows it against its first parent without moving the Review; a branch longer than 250 commits shows the newest 250 of the total. **Notes** replaces the Local drafts card on the Insights tab: each note and drafted Finding shows its kind, view, and state, with **Copy as agent prompt** and **Remove**. A row the diff shows inline jumps to its lines and clears a Scope filter, and any other row says why the shown view does not show it. A commit Review shows Browse and Notes only. #557
 
 - Added **MCP**: `list_local_reviews` lists the shared Reviews you have open for the checkout that holds the agent's working directory, with each Review's ID, branch, base, and current session, so the agent reads your notes on the Review you are looking at without opening or moving one. A successful call writes nothing. `get_feedback` now names the view each note was written in (`combined`, `committed`, or `uncommitted`) and says with `inline` whether its lines are in that view's diff on the current session. #558
