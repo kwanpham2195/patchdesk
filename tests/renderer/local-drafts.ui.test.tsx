@@ -164,6 +164,31 @@ describe("Local drafts on a local Review", () => {
     ]);
   });
 
+  it("shows a refused Add to draft on the Insights tab", async () => {
+    const double = installDesktopDouble({
+      "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
+      "/v1/insight-providers": () => failure({ error: "storage" }, 503),
+      "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
+      [ADD]: () => failure({ error: "in_progress" }, 409),
+    });
+    restore = double.restore;
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
+    render(<DraftingReview />);
+
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: /^Analysis/ }));
+    await user.click(
+      await screen.findByRole("button", { name: "Add to draft" }),
+    );
+    expect(
+      await screen.findByText(
+        "Another action on this review is running. Try again when it finishes.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("names each Remove in the Notes list by kind when a note and a Finding share lines", async () => {
     const remove = vi.fn<LocalDraftControls["remove"]>(async () => undefined);
     const note = {

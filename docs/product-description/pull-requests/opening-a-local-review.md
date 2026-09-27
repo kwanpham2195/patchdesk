@@ -185,7 +185,7 @@ Adding and removing write only the Review record in the app's data folder. They 
 
 Drafts belong to the Review, not the session. Opening the Review again lists them. When Refresh, Apply, or opening the Review again moves it to a new session, every draft is carried to that session as [Refresh](#refresh) describes; the earlier Analysis reads Outdated and offers no Add to draft.
 
-| Cause                                                                                     | Sentence in the Notes section                                                                                         |
+| Cause                                                                                     | Sentence in the Notes section and on the Analysis tab                                                                 |
 | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Another action on the Review is running                                                   | `Another action on this review is running. Try again when it finishes.`                                               |
 | The Finding is no longer current, mapped, or open, or the Review moved to another session | `The review changed or this finding can no longer be drafted. Press Refresh, then run Analysis on the current files.` |

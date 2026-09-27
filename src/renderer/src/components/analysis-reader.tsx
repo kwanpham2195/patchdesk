@@ -336,6 +336,10 @@ export function AnalysisReader({
         )}
       </Card>
 
+      {localDrafts?.error === undefined ? null : (
+        <InlineError>{localDrafts.error}</InlineError>
+      )}
+
       <Card size="sm">
         <CardHeader>
           <CardTitle>What changed</CardTitle>
