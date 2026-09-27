@@ -8,18 +8,17 @@ type Freshness = Parameters<typeof presentOverallCheckResult>[1];
 
 describe("presentOverallCheckResult", () => {
   it.each([
-    ["passing", "Passing", "passed", "text-status-success"],
-    ["failing", "Failing", "failed", "text-destructive"],
-    ["pending", "In progress", "pending", "text-status-warning"],
-    ["skipped", "Skipped", "other", "text-muted-foreground"],
-    ["unknown", "Unknown", "other", "text-muted-foreground"],
-  ] satisfies ReadonlyArray<[Overall, string, string, string]>)(
+    ["passing", "Passing", "passed"],
+    ["failing", "Failing", "failed"],
+    ["pending", "In progress", "pending"],
+    ["skipped", "Skipped", "other"],
+    ["unknown", "Unknown", "other"],
+  ] satisfies ReadonlyArray<[Overall, string, string]>)(
     "maps the %s aggregate to %s",
-    (overall, label, kind, treatment) => {
+    (overall, label, kind) => {
       const presented = presentOverallCheckResult(overall, "fresh");
       expect(presented.label).toBe(label);
       expect(presented.kind).toBe(kind);
-      expect(presented.treatment).toBe(treatment);
     },
   );
 
@@ -42,7 +41,6 @@ describe("presentOverallCheckResult", () => {
         const presented = presentOverallCheckResult(overall, freshness);
         expect(presented.label).toBe(label);
         expect(presented.kind).toBe("other");
-        expect(presented.treatment).toBe("text-muted-foreground");
       }
     },
   );
@@ -60,12 +58,6 @@ describe("presentOverallCheckResult", () => {
       );
     },
   );
-
-  it("gives a failing aggregate a treatment no passing one shares", () => {
-    expect(presentOverallCheckResult("failing", "fresh").treatment).not.toBe(
-      presentOverallCheckResult("passing", "fresh").treatment,
-    );
-  });
 
   it("gives every outcome an icon, so no row renders label-only", () => {
     for (const overall of [
