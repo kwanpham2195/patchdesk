@@ -53,8 +53,8 @@
   as Anthropic, OpenAI, or Google, or with your Codex CLI login. Pick the
   model, reasoning level, and output language (English or Vietnamese) per run.
   [More](#bring-your-preferred-model)
-- **Local Reviews.** Review a working tree, a branch, or a commit from your
-  checkout before it reaches GitHub.
+- **Local Reviews.** Review your branch against its base branch, committed
+  and uncommitted changes together, or one commit, before it reaches GitHub.
 - **Coding agents over MCP.** Claude Code and Codex open a local Review of
   their change, read your notes on its lines, and refresh the Review with
   their fix. An Insight an agent requests waits until you press **Run**.
@@ -208,8 +208,9 @@ AI Insights sit inside a complete GitHub review workflow:
 
 ## Review your coding agent's work
 
-Patchdesk also reviews changes that are not on GitHub yet, such as the
-working tree, a branch, or a commit in your checkout. Claude Code and Codex
+Patchdesk also reviews changes that are not on GitHub yet: a branch in your
+checkout against its base branch, with its uncommitted changes, or one
+commit. Claude Code and Codex
 can send their work to Patchdesk over MCP:
 
 1. The agent opens a local Review of its change and asks for an Analysis.
@@ -265,8 +266,8 @@ After a disk-image install, [link it yourself](docs/mcp.md#install-the-command).
    - Do not commit until I say the review is done.
    ```
 
-Review the change before the agent commits it. After a commit, a working-tree
-Review compares against the new `HEAD`, so a clean tree shows an empty diff.
+The Review compares the agent's branch with its base branch, so the agent's
+commits stay in the diff and your notes stay on their lines after it commits.
 [The MCP server page](docs/mcp.md) covers a disk-image install, other MCP
 hosts, each tool, and troubleshooting.
 

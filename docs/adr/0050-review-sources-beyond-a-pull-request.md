@@ -40,6 +40,30 @@ kinds. Only the first exists today.
 - `commit`: one commit against its first parent (the empty tree for a root
   commit).
 
+> **Amended 2026-09-27 (#555): the shared Review replaces `working_tree` and
+> `branch`.** A fifth kind, `local_branch`, is what the Local review dialog
+> and `review_local` open: the checkout's Local snapshot against its merge
+> base with a chosen local base branch. The branch's commits and the
+> checkout's staged, unstaged, and untracked changes are one diff with one
+> Local draft list, so a note on an uncommitted line is still in the diff
+> after the agent commits that line (#491). Stored `working_tree` and
+> `branch` records still parse, and nothing opens or reads them again:
+> Refresh refuses them `not_applicable`, the sidebar and the dialog leave
+> them out, and retention counts their source as gone, so its 14-day and
+> no-drafts rules remove the ones without drafts (records with drafts wait
+> for #511). `commit` is unchanged.
+>
+> The base is a local branch, read as `refs/heads/<base>`. When none is
+> named, Patchdesk infers it from the other local branches: a branch whose
+> merge base with `HEAD` is `HEAD` itself (its tip is `HEAD` or descends from
+> it) is not a candidate, and of the rest the one with the fewest commits
+> from its merge base to `HEAD` wins. A tie goes to the default branch
+> (`origin/HEAD`, else `init.defaultBranch`, else `main` when that branch
+> exists), then to the most recently committed branch. With no candidate
+> there is no inferred base. The dialog preselects the inferred base with its
+> reason, such as "nearest branch: main, 3 commits back", and the maintainer
+> may pick another; ADR 0052 records the order `review_local` uses.
+
 A local source is opened only on a repository the workspace profile lists with
 a `localPath`. Patchdesk reads local refs only; it never fetches for a local
 source.
@@ -74,6 +98,20 @@ A local Review is keyed by `profileId`, the profile repository
   switch.
 - `branch`: the branch name and the base branch name.
 - `commit`: the commit SHA.
+
+> **Amended 2026-09-27 (#555).** A `local_branch` Review is keyed by the
+> branch `HEAD` names, or `detached` when it names none, and the base branch
+> name. A branch literally named `detached` keys the same Review as a
+> detached `HEAD`. Its readable id segment is `local-shared-<slug>`, because
+> `local-branch-` is already the `branch` kind's, and its collision hash
+> input is `local_branch`, the branch, and the base branch, with the checkout
+> appended as above. Its session's `headSha` is the Local snapshot and
+> `baseSha` is the merge base of the base branch tip and `HEAD`. The session
+> also records the checkout's `HEAD` as `checkoutHeadSha`; it is the
+> snapshot's parent, so it is not part of the session key. An open or Refresh
+> that finds the checkout on another branch than the Review names is refused
+> `branch_mismatch`. Its title is `<branch> against <base>`, or
+> `Detached HEAD against <base>`.
 
 A local session is keyed by that Review key plus `headSha` and `baseSha`,
 exactly as a pull request session is. For `branch` and `commit`, `headSha` is
@@ -140,6 +178,9 @@ gives the same `headSha` and `baseSha`:
   tree.
 - `branch`: the branch tip and the merge base are unchanged.
 - `commit`: the commit still exists.
+- `local_branch` (amended 2026-09-27, #555): the snapshot steps give the same
+  commit and the merge base of the base branch tip and `HEAD` is unchanged.
+  The base is read before the snapshot, so a missing base writes no objects.
 
 The recomputation runs inside `requireFresh`, immediately before Apply and
 Commit, the same place `requireCurrentHead` reads GitHub today. It is not
@@ -225,7 +266,10 @@ nor Open PR can follow a Fresh session: after Commit, `HEAD` is no longer the
 session's `baseSha`. Each write therefore has its own precondition, checked
 in the write gate immediately before it:
 
-- **Apply**: `working_tree` source; `requireFresh` passes.
+- **Apply**: `working_tree` source; `requireFresh` passes. Amended
+  2026-09-27 (#555): `local_branch` source, else refused `not_local_branch`.
+  The snapshot is the checkout, so the write is the same, and the confirmed
+  Apply reopens the Review with the same branch and base.
 - **Commit**: `working_tree` source; `requireFresh` passes.
 - **Push**: `requireCurrentSession` passes, and `git rev-parse <branch>`
   equals the Commit receipt's SHA (`working_tree`) or the session's `headSha`

@@ -35,9 +35,9 @@ type ChangeIntentReadFailed = { readonly _tag: "ChangeIntentReadFailed" };
 
 /**
  * The Markdown an Analysis run reads for a Change intent. A spec file is the
- * blob at the session's head commit (the Local snapshot of a working-tree
- * Review), never the maintainer's working tree, so an edit made after the
- * snapshot does not reach the run.
+ * blob at the session's head commit (the Local snapshot of a shared Review),
+ * never the maintainer's working tree, so an edit made after the snapshot
+ * does not reach the run.
  */
 export async function resolveChangeIntent(
   git: GitReadExecutor,

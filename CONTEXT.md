@@ -55,15 +55,19 @@ The local work for a review, anchored to one pinned revision of its Review sourc
 _Avoid_: Prepared review
 
 **Review source**:
-What a Review's patch is computed from: a pull request, the working tree against `HEAD`, a local branch against its merge base with a chosen base branch, or one commit against its parent (ADR 0050). The last three make a local Review.
+What a Review's patch is computed from: a pull request, a checkout's current branch with its uncommitted changes against a base branch (a shared Review), or one commit against its parent (ADR 0050). The last two make a local Review. Working-tree and branch sources from before the shared Review remain only in stored Reviews.
 _Avoid_: Diff mode, target, local PR
 
 **Checkout**:
 A working copy of a profile repository that a local Review reads: the configured checkout (the profile's `localPath`), or a linked worktree `git worktree list` names from it, never Patchdesk's own cache worktrees. A local Review names its checkout only when it is not the configured one, and each checkout keys its own Review (#489, ADR 0050).
 _Avoid_: Clone, workspace, local path
 
+**Shared Review**:
+The one local Review of a checkout's current branch against a base branch: every change since the branch left the base, committed or not, in one diff with one Local draft list, so a note stays with its line after the agent commits it. The base is inferred from the nearest other local branch and the maintainer may change it; another branch or base is another shared Review (#555, ADR 0050).
+_Avoid_: Working-tree Review, Branch Review, combined Review
+
 **Local snapshot**:
-The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, built in a temporary index copy and committed with a fixed identity so the same content always has the same SHA. It is the head of a working-tree Review session, and the maintainer's index and branches never see it.
+The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, built in a temporary index copy and committed with a fixed identity so the same content always has the same SHA. It is the head of a shared Review session, and the maintainer's index and branches never see it.
 _Avoid_: Stash, WIP commit, temp commit
 
 **Local draft**:
@@ -71,7 +75,7 @@ A Finding a maintainer added to a local Review's draft list, or a note the maint
 _Avoid_: Local comment, queued finding, offline draft
 
 **Change intent**:
-The spec a local Review's change is checked against: Markdown the maintainer entered, or a repository-relative spec file read from the reviewed head commit (the Local snapshot of a working-tree Review), never from the working tree. Only Analysis reads it, as the change's stated goal; an Analysis result records the intent it ran against. A pull request Review has none (#467, ADR 0051).
+The spec a local Review's change is checked against: Markdown the maintainer entered, or a repository-relative spec file read from the reviewed head commit (the Local snapshot of a shared Review), never from the working tree. Only Analysis reads it, as the change's stated goal; an Analysis result records the intent it ran against. A pull request Review has none (#467, ADR 0051).
 _Avoid_: Task, prompt, requirements, PR description
 
 **Agent run request**:

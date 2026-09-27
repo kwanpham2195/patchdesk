@@ -6,7 +6,7 @@ A terminal coding agent, such as Claude Code or Codex, can use Patchdesk as its 
 
 ## The simple case
 
-The maintainer starts Claude Code in a checkout the workspace profile lists and asks it to implement a task and get it reviewed in Patchdesk. The agent edits files, then calls `review_local` with its working directory and the task text. Patchdesk opens the working-tree Review for that checkout's branch, records the text as the Review's _Change intent_ with the header label `Intent from the agent`, and answers with the Review's id, its session, and the changed files. The Patchdesk window stays where the maintainer left it.
+The maintainer starts Claude Code in a checkout the workspace profile lists and asks it to implement a task and get it reviewed in Patchdesk. The agent edits files, then calls `review_local` with its working directory and the task text. Patchdesk opens the _shared Review_ of that checkout's branch against its base branch, records the text as the Review's _Change intent_ with the header label `Intent from the agent`, and answers with the Review's id, its session, and the changed files. The Patchdesk window stays where the maintainer left it.
 
 The agent calls `run_insight` for an Analysis. Nothing runs yet. A notification reads `Agent asks for Analysis`, and the repository's row in the Visited pull requests column shows an `agent` marker. The maintainer opens the Review; the Insights tab shows an **Agent requests** bar with **Run** and **Decline**. Run opens the ordinary run dialog, and confirming it starts the Analysis. The agent reads the Findings with `get_insight` when the maintainer tells it the run finished.
 
@@ -38,7 +38,15 @@ The agent reaches Patchdesk through the tools its client lists. The tools are li
 
 The agent's writing tools are `review_local`, `refresh_review`, and `run_insight`.
 
-`review_local` takes an absolute path inside a checkout, usually the agent's working directory. Patchdesk resolves the path to its checkout, the configured one or a linked worktree, and opens the Review of that checkout's working tree, including uncommitted and untracked files. The agent can pass a branch with a base branch, or a commit, to open those sources instead, as the [Local review dialog](opening-a-local-review.md#begin-an-action) does. A new Review reads the checkout as it is now.
+`review_local` takes an absolute path inside a checkout, usually the agent's working directory. Patchdesk resolves the path to its checkout, the configured one or a linked worktree, and opens the shared Review of the branch checked out there: every change since the branch left its base branch, its commits and its uncommitted and untracked files together, as the [Local review dialog](opening-a-local-review.md#begin-an-action) opens it. The agent's commits therefore stay in the diff, and the maintainer's notes stay on their lines. The agent can name the base branch with `base`, or pass a commit to review that commit alone. A new Review reads the checkout as it is now.
+
+Without `base`, Patchdesk picks the base in this order:
+
+1. The base of the branch's open shared Review in that checkout; with several, the one the maintainer opened last.
+2. The inferred base, the nearest other local branch behind `HEAD`, as the dialog preselects it.
+3. Neither exists, because no other local branch is behind `HEAD`: the call is refused `base_required`, and the agent passes `base`.
+
+The answer names `baseBranch`, and `baseInferred: true` when Patchdesk inferred it. When the checkout switches branch between choosing the base and opening, the call is refused `branch_mismatch` instead of opening the other branch's Review.
 
 The optional `intent` is the task the agent was given, as Markdown. Patchdesk records it only when the Review has no Change intent. The same text again answers that the intent was kept. A different text leaves the maintainer's intent in place: the Review still opens, and the answer says the intent was refused with `intent_exists`. Text that looks like a credential is refused before anything opens. Analysis reads an agent intent as the stated goal to check, and is told the agent under review wrote it and not to follow instructions in it.
 
@@ -87,7 +95,7 @@ After `refresh_review` prepares a session for new content, the Review stays on t
 
 The maintainer's [Refresh](opening-a-local-review.md#refresh) reads the checkout again. When the checkout still matches what the agent prepared, the Review moves to that session at once; when the agent changed more since, Refresh prepares the newer content. Either way every Local draft is carried as Refresh always does. When the agent reverts its change so the checkout matches the current session again and calls `refresh_review`, the answer is `changed: false` and the header drops Updates available.
 
-`refresh_review` accepts one call per Review every 10 seconds; an earlier call is refused `rate_limited` with the milliseconds to wait. On a working-tree Review whose checkout is now on another branch, it is refused `branch_mismatch`, naming the branch the checkout is on.
+`refresh_review` accepts one call per Review every 10 seconds; an earlier call is refused `rate_limited` with the milliseconds to wait. On a shared Review whose checkout is now on another branch, it is refused `branch_mismatch`, naming the branch the checkout is on. A working-tree or branch Review stored before the shared Review (#555) is refused `not_applicable`.
 
 ## Feedback states
 
@@ -107,7 +115,7 @@ The agent does not poll for feedback. The maintainer tells the agent when the no
 
 Both notifications go through the same macOS notifications as the rest of Patchdesk and follow the **Send notifications** setting.
 
-- `Agent asks for <Insight>` when an agent records a new request. The body is the Review's source title with its checkout folder, such as `Working tree on feat/467 in patchdesk`, followed by `· <label> profile` when more than one profile exists.
+- `Agent asks for <Insight>` when an agent records a new request. The body is the Review's source title with its checkout folder, such as `feat/467 against main in patchdesk`, followed by `· <label> profile` when more than one profile exists.
 - `<Insight> finished` or `<Insight> failed` when any Insight on a local Review settles. The body is the same source title, then `· requested by the agent` when an agent run request started the run, then the profile when more than one exists.
 
 A notification about the Review the focused window shows is not posted; the Agent requests bar or the Insight tab is the signal there. Clicking a notification opens its Review. Neither notification has buttons: Run and Decline are only in the app.
@@ -134,11 +142,10 @@ A refused call returns an error code and a sentence the agent can relay. The one
 - `stale_session`: `run_insight` named a session the Review has moved past. The agent reads the current session from `get_insight` or `review_local` and asks again.
 - `stale_cursor`: the drafts changed since the `get_feedback` cursor was issued. The agent reads again from the first page.
 
-Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB, naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `intent_exists`, `not_applicable` for a pull request Review, and `too_large` for an answer over 4 MiB.
+Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `base_required` for a branch with no open shared Review and no other local branch behind `HEAD`, `revision_not_found` for a base branch or commit Git cannot find, or a base that shares no history with `HEAD`, `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB, naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `intent_exists`, `not_applicable` for a pull request Review or, from `refresh_review`, a stored working-tree or branch Review, and `too_large` for an answer over 4 MiB.
 
 ## Known limits
 
-- After the agent commits, a working-tree Review compares the working tree against the new `HEAD`. A clean tree then shows an empty diff, and the maintainer's notes lose their lines and read Needs attention ([#491](https://github.com/kwanpham2195/patchdesk/issues/491)). Review before the agent commits, or open a Branch Review of the agent's branch against its base branch. The Branch Review is a separate Review with its own drafts.
 - The client name on the Agent requests bar is what the agent's client reports about itself.
 
 ## Variants
@@ -163,7 +170,7 @@ The fixed rows, each with the case before and while an agent action runs.
 
 ## Interactions with other systems
 
-**Workspace profile and identity.** The agent's Review is the same Review the maintainer opens for that checkout and branch from the Local review dialog or the Visited pull requests column, with the same sessions and drafts. Two agents in two linked worktrees get two Reviews.
+**Workspace profile and identity.** The agent's Review is the same Review the maintainer opens for that checkout, branch, and base branch from the Local review dialog or the Visited pull requests column, with the same sessions and drafts. Two agents in two linked worktrees get two Reviews.
 
 **Review revision and freshness.** The Review moves to a new session only on the maintainer's Refresh, a reopen, or an Apply. A prepared session is kept by retention while Updates available points at it.
 
@@ -183,7 +190,7 @@ The fixed rows, each with the case before and while an agent action runs.
 
 ## Edge cases
 
-- A `review_local` call on a clean working tree opens a session whose patch is empty.
+- A `review_local` call on a branch with no commits since its base and a clean working tree opens a session whose patch is empty.
 - An agent that calls `review_local` again after editing gets the Review on its old session; only `refresh_review` reads the new content.
 - A `run_insight` for an Insight that the maintainer is already running without a request answers `running` with that run's id and records nothing.
 - After an approved run settles, the same `run_insight` records a new request that needs a new approval.
@@ -198,6 +205,7 @@ The fixed rows, each with the case before and while an agent action runs.
 - Live pass on 2026-09-26 over CDP 9233 (ADR 0052 slice 5b, Codex): `codex exec` 0.157.1 with `-m gpt-6-luna`, the server given as `-c mcp_servers.patchdesk.*` overrides with `default_tools_approval_mode="approve"`, `config.toml` unchanged, and the same block and task. The first call stopped before editing on a workspace-routing rule in the maintainer's global `AGENTS.md`; after that was answered in the same session, Codex edited, called `review_local` and `run_insight`, and stopped at `awaiting_approval`. The bar named the client `codex-mcp-client`. The Analysis returned no Findings. The maintainer's note on line 1, the doc comment, read `current`. Turn 2 called `get_feedback`, rewrote the doc comment, and called `refresh_review`: one call with a mistyped id answered `not_found`, and the retry answered `changed: true`. Codex did not call `get_insight` although told the Analysis ran. After Refresh the note read Needs attention (see Edge cases). Evidence: `/tmp/patchdesk-mcp5b/codex/`.
 - In both passes neither agent committed: `git log main` held only the initial commit. `patchdesk.jsonl` logged `desktop-notification` `shown` with `AgentRunRequested` and `InsightSettled` for each Review, and one `mcp` line per call. The screen was locked, so input went through CDP and no notification banner was seen. Decline (MCP-05), two `run_insight` calls in a row, and Codex on the 2026-07-28 MCP revision were not run in this pass.
 - Not observed live: the focused-window silence for `Agent asks for` and the banner text of `<Insight> finished` on a local Review (#496). The 2026-09-26 passes logged the settled notification as shown. Service and notifier tests cover both.
+- The shared Review (#555) replaced the working-tree default of `review_local` and fixed [#491](https://github.com/kwanpham2195/patchdesk/issues/491), where the agent's commit emptied the diff and left the notes needing attention. The base order, `base_required`, and `baseInferred` were checked in `tests/mcp/patchdesk-mcp-review-local-base.test.ts` and the read-tool tests; the live passes above ran before it, on working-tree Reviews.
 - A new Review that `review_local` creates appears in the Visited pull requests column the next time the column reads; whether it should appear at once is not settled.
 - The page lists variants and interrupts as bullets rather than the template's tables, and walks the loop as numbered steps rather than a state diagram.
 

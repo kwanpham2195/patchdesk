@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added **Local review**: one Review per branch and base, with the branch's commits and its staged, unstaged, and untracked changes in one diff, so a note stays on its line after the coding agent commits and you press **Refresh**, fixes #491. The dialog preselects the nearest local branch as the base and says why ("nearest branch: main, 3 commits back"), and you can pick another; the sidebar row opens the branch's Review, or the dialog when the branch has none or has Reviews against several bases. The `review_local` MCP tool opens the same Review and takes an optional `base`: without one it reuses the branch's open Review, else infers the base and returns `baseInferred: true`, else refuses `base_required`. It replaces the Working tree and Branch sources: existing working-tree and branch Reviews leave the sidebar and the dialog and have no **Refresh**, and retention removes the ones without notes 14 days after their last open. #555
+
 - Fixed a local Review of a repository moved on disk failing with a sentence about a missing branch or commit. Patchdesk now names the checkout path it can no longer find and says how to save the new one in Settings, in the **Local review** picker, the sidebar, on **Refresh**, and in the `review_local` and `refresh_review` MCP tools. Once the path is saved, the Reviews reopen on their sessions and Patchdesk repairs its review worktrees with `git worktree repair`. #488
 
 - Fixed the Diff file tree cutting names badly: truncated names now start at the same edge as the names beside them, folder names that fit are no longer cut, names that start with digits keep their order, and the name tooltip opens beside the row instead of over the Browse, Commits, and Threads tabs. #448

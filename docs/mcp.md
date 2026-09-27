@@ -14,9 +14,11 @@ only when you press **Refresh**.
 
 From your side, a session looks like this:
 
-- The agent opens a Review of its working tree in Patchdesk and records the
-  task you gave it as the Review's Change intent, so an Analysis checks the
-  patch against that task.
+- The agent opens the Review of its branch in Patchdesk: every change since
+  the branch left its base branch, committed or not. It records the task you
+  gave it as the Review's Change intent, so an Analysis checks the patch
+  against that task. The agent's commits stay in the diff, so your notes stay
+  on their lines after it commits.
 - The agent asks for an Analysis, Walkthrough, or Brief. The request waits in
   Patchdesk until you press **Run**, and you pick the provider and model.
 - You leave notes on diff lines, then tell the agent "check Patchdesk". It
@@ -220,8 +222,6 @@ into your project's `CLAUDE.md` or `AGENTS.md`:
 - Do not commit until I say the review is done.
 ```
 
-The last rule matters; see [Known limits](#known-limits).
-
 ## Example prompts
 
 With the block above in place, short prompts are enough:
@@ -351,6 +351,10 @@ server as failed.
   lockfile or generated file. The message names the files with the most
   changes; leave generated ones out of the change, or review it in smaller
   parts, then call again. Patchdesk stores no session for the refused call.
+- **No base branch.** `review_local` returns `base_required` when the
+  branch has no open Review and no other local branch is behind `HEAD`, as
+  in a repository with one branch. Have the agent pass `base`, the local
+  branch the change should be compared with, or create that branch first.
 - **`patchdesk: command not found` in a terminal.** The link is missing or its
   folder is not on your PATH. Repeat [Install the command](#install-the-command).
 - **The server fails to start in a GUI host.** The host cannot find
@@ -369,12 +373,3 @@ Patchdesk also logs every call to
 `~/.local/share/patchdesk/logs/patchdesk.jsonl` with topic `mcp`, without the
 intent, note text, or file contents. Help → Diagnostics → Review activity
 lists refused calls.
-
-## Known limits
-
-- After the agent commits, a working-tree Review compares the working tree
-  against the new `HEAD`. A clean tree then shows an empty diff, and your
-  notes lose their lines and read **Needs attention**
-  ([#491](https://github.com/kwanpham2195/patchdesk/issues/491)). Review
-  before the agent commits. To review work the agent already committed, open
-  a Branch Review of its branch against the base branch.
