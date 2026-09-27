@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -345,10 +345,14 @@ describe("LocalDraftService", () => {
       },
       { id: "finding-open", dismissed: false, drafted: false, applied: false },
     ]);
-    // `get_feedback` names no origin view until #558.
-    expect(feedback.localDrafts).toMatchObject(
-      (shown.localDrafts ?? []).map(({ view: _view, ...entry }) => entry),
-    );
+    expect(feedback.localDrafts).toMatchObject(shown.localDrafts ?? []);
+    // Both drafted Findings were written on the current session, in Combined, on lines of its patch.
+    expect(
+      feedback.localDrafts.map(({ view, inline }) => ({ view, inline })),
+    ).toEqual([
+      { view: "combined", inline: true },
+      { view: "combined", inline: true },
+    ]);
     expect(feedback.markdown).toContain(boundFix.title);
     expect(feedback.markdown).not.toContain(appliedFix.title);
   });
@@ -484,6 +488,84 @@ describe("LocalDraftService", () => {
           },
         },
       ]);
+    });
+
+    it("says in get_feedback which view each note was written in and whether its lines are in that view's diff now (#558)", async () => {
+      const harness = await localApplyHarness();
+      const { repositoryPath } = harness;
+      await writeFile(join(repositoryPath, "probe.ts"), probe);
+      git(repositoryPath, "add", "probe.ts");
+      git(repositoryPath, "commit", "-q", "-m", "probe");
+      git(repositoryPath, "checkout", "-q", "-b", "feature");
+      await writeFile(join(repositoryPath, "other.ts"), "one\ntwo\nthree\n");
+      git(repositoryPath, "add", "other.ts");
+      git(repositoryPath, "commit", "-q", "-m", "other");
+      // Combined adds other.ts whole, so only Uncommitted shows its old side.
+      await writeFile(join(repositoryPath, "other.ts"), "one\nTWO\nthree\n");
+      await writeFile(
+        join(repositoryPath, "probe.ts"),
+        probe.replace("index <= values", "index < values"),
+      );
+      await writeFile(join(repositoryPath, "gone.ts"), "a\nb\nc\n");
+      const first = await harness.open();
+      const noteOn = (
+        path: string,
+        side: "new" | "old",
+        line: number,
+        view: "combined" | "uncommitted",
+      ) =>
+        harness.drafts.addNote({
+          profileId,
+          reviewId: first.review.id,
+          sessionId: first.session.id,
+          view,
+          anchor: {
+            path: value(parseRepoRelativePath(path)),
+            side,
+            startLine: line,
+            line,
+          },
+          text: `On ${path}.`,
+        });
+      value(await noteOn("gone.ts", "new", 2, "combined"));
+      value(await noteOn("other.ts", "old", 2, "uncommitted"));
+      value(await noteOn("probe.ts", "new", 3, "combined"));
+
+      const before = value(
+        await harness.drafts.feedback(profileId, first.review.id),
+      );
+      // The agent reverts the loop fix and deletes gone.ts.
+      await writeFile(join(repositoryPath, "probe.ts"), probe);
+      await rm(join(repositoryPath, "gone.ts"));
+      const second = await harness.open();
+      const after = value(
+        await harness.drafts.feedback(profileId, first.review.id),
+      );
+
+      const described = (feedback: typeof before) =>
+        feedback.localDrafts.map(({ path, view, state, inline }) => [
+          path,
+          view,
+          state,
+          inline,
+        ]);
+      expect(described(before)).toEqual([
+        ["gone.ts", "combined", "current", true],
+        ["other.ts", "uncommitted", "current", true],
+        ["probe.ts", "combined", "current", true],
+      ]);
+      expect(second.session.id).not.toBe(first.session.id);
+      // The reverted loop is found between its context, so the note moves to it though the line left the patch.
+      expect(described(after)).toEqual([
+        ["gone.ts", "combined", "needs_attention", false],
+        ["other.ts", "uncommitted", "unchanged", true],
+        ["probe.ts", "combined", "changed", false],
+      ]);
+      expect(after.localDrafts[2]).toMatchObject({
+        sessionId: second.session.id,
+        startLine: 3,
+        line: 3,
+      });
     });
 
     it.each([

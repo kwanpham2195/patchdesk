@@ -89,7 +89,7 @@ export async function describeSharedReviews(
     const session = await describeCurrentSession(sessions, review);
     if (session._tag === "err") return session;
     described.push({
-      ...session.value,
+      ...session.value.description,
       branch: source.branch,
       baseBranch: source.baseBranch,
       ...definedProps({ lastOpenedAt: review.lastOpenedAt }),

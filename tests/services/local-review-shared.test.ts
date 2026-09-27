@@ -271,6 +271,8 @@ describe("the shared local Review (#555)", () => {
         side: "new",
         line: 2,
         state: "unchanged",
+        view: "combined",
+        inline: true,
       }),
     ]);
   });
