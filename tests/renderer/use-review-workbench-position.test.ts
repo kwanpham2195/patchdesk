@@ -58,6 +58,36 @@ describe("useReviewWorkbenchPosition", () => {
     },
   );
 
+  it.each([
+    {
+      source: { kind: "commit" as const, commitSha: "a".repeat(40) },
+      section: "files",
+    },
+    {
+      source: {
+        kind: "local_branch" as const,
+        branch: "feature",
+        baseBranch: "main",
+      },
+      section: "commits",
+    },
+  ])(
+    "reopens a $source.kind Review saved on Commits on $section",
+    ({ source, section }) => {
+      const local = {
+        ...model,
+        session: { ...session, key: { ...session.key, source } },
+      };
+      const { result } = renderHook(() =>
+        useReviewWorkbenchPosition({
+          model: local,
+          initialState: { activeTab: "diff", section: "commits" },
+        }),
+      );
+      expect(result.current.section).toBe(section);
+    },
+  );
+
   it("opens on Insights when only an insights section was saved", () => {
     expect(openAt({ section: "insights" }).result.current.activeTab).toBe(
       "insights",

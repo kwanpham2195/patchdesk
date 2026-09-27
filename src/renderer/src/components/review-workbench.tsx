@@ -48,7 +48,7 @@ import {
   type FileFindingCount,
 } from "../review-finding-counts";
 import type { LocalPatchViewSelection } from "../flows/use-local-patch-view";
-import { localPatchViewLabels } from "../review-source";
+import { localPatchViewLabels, sourceListsCommits } from "../review-source";
 import { LocalPatchViewControl } from "./local-patch-view-control";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
 import { ReviewWorkbenchHeader } from "./review-workbench-header";
@@ -442,10 +442,14 @@ export function ReviewWorkbench({
     selectedCommitSha === undefined
       ? sincePatch !== undefined
       : selectedCommitSha === model.revision.reviewedHeadSha;
-  const commentsUnavailableInSlice =
-    selectedCommitSha !== undefined &&
-    !headSideDiff &&
-    actions.localCommentAuthoring?.enabled === true;
+  const sliceAuthoringNote =
+    selectedCommitSha === undefined ||
+    headSideDiff ||
+    actions.localCommentAuthoring?.enabled !== true
+      ? undefined
+      : actions.localCommentAuthoring.kind === "note"
+        ? "Notes show on a Patch view, not on a single commit."
+        : "Comments are available on the latest commit or All files.";
   const commitCommentAuthoring = useMemo(
     () =>
       !headSideDiff || model.fullPatch === undefined
@@ -594,11 +598,11 @@ export function ReviewWorkbench({
               {commitDiff.position} of {commitDiff.total} ·{" "}
               {commitDiff.fileCount} files · +{commitDiff.additions}/-
               {commitDiff.deletions}
-              {commentsUnavailableInSlice ? (
+              {sliceAuthoringNote === undefined ? null : (
                 <span role="note" className="block">
-                  Comments are available on the latest commit or All files.
+                  {sliceAuthoringNote}
                 </span>
-              ) : null}
+              )}
             </>
           ),
         };
@@ -700,11 +704,14 @@ export function ReviewWorkbench({
                 {navigatorVisible ? (
                   <ReviewNavigator
                     patch={sincePatch ?? reviewPatch ?? ""}
-                    commits={model.commits}
                     conversationThreadEntries={conversationThreadEntries}
                     findingCountsByPath={shownFindingCounts}
                     section={section}
                     {...definedProps({
+                      commits: sourceListsCommits(model.session.key.source)
+                        ? model.commits
+                        : undefined,
+                      localCommitTotal: model.commitTotal,
                       visiblePaths: scopeFilteredPaths,
                       selectedPath,
                       activePath,

@@ -58,6 +58,29 @@ describe("review navigator", () => {
     expect(screen.getByRole("tab", { name: "Commits 2" })).toBeTruthy();
   });
 
+  it("counts a shared local Review's full commit total beside Commits when the list keeps only the newest", () => {
+    render(
+      <ReviewNavigator
+        patch=""
+        commits={[
+          {
+            sha: "a".repeat(40),
+            message: "Newest commit",
+            author: "Author",
+            authoredAt: "2026-08-02T00:00:00.000Z",
+            isHead: true,
+          },
+        ]}
+        localCommitTotal={300}
+        conversationThreadEntries={[]}
+        section="commits"
+        {...callbacks}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Commits 300" })).toBeTruthy();
+  });
+
   it("dates a commit row as an age with the exact time on hover", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-02T00:00:00.000Z"));

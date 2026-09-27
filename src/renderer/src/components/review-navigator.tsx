@@ -28,7 +28,10 @@ export type ReviewNavigatorSection = Exclude<WorkbenchSection, "insights">;
 
 type ReviewNavigatorProps = {
   readonly patch: string;
-  readonly commits: WorkbenchResponse["commits"];
+  /** Absent hides the Commits section (#557 D4). */
+  readonly commits?: WorkbenchResponse["commits"];
+  /** A shared local Review's full commit count; `commits` keeps only the newest (#557 D3). */
+  readonly localCommitTotal?: number;
   readonly conversationThreadEntries: ReadonlyArray<ReviewInlineAnnotation>;
   /** Threads count the comments dated after this cursor; absent counts none. */
   readonly lastLooked?: WorkbenchResponse["review"]["lastLooked"];
@@ -54,6 +57,7 @@ const commitSubject = (message: string): string =>
 export function ReviewNavigator({
   patch,
   commits,
+  localCommitTotal,
   conversationThreadEntries,
   lastLooked,
   findingCountsByPath,
@@ -129,15 +133,17 @@ export function ReviewNavigator({
             className="min-w-0 shrink-0"
           >
             <TabsTrigger value="files">Browse</TabsTrigger>
-            <TabsTrigger value="commits" className="gap-1.5">
-              Commits
-              <Badge
-                variant="secondary"
-                className="h-4 min-w-4 px-1 text-[10px]"
-              >
-                {commits.length}
-              </Badge>
-            </TabsTrigger>
+            {commits === undefined ? null : (
+              <TabsTrigger value="commits" className="gap-1.5">
+                Commits
+                <Badge
+                  variant="secondary"
+                  className="h-4 min-w-4 px-1 text-[10px]"
+                >
+                  {localCommitTotal ?? commits.length}
+                </Badge>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="threads" className="gap-1.5">
               Threads
               <Badge
@@ -179,48 +185,38 @@ export function ReviewNavigator({
             />
           )}
         </TabsContent>
-        <TabsContent
-          value="commits"
-          className="min-h-0 flex-1 overflow-auto p-3"
-          keepMounted
-        >
-          <div className="flex flex-col gap-1" aria-label="Review commits">
-            {commits.length === 0 ? (
-              <p className="p-2 text-sm text-muted-foreground">
-                No commits recorded.
-              </p>
-            ) : (
-              commits.map((commit) => (
-                <button
-                  key={commit.sha}
-                  type="button"
-                  aria-pressed={selectedCommitSha === commit.sha}
-                  className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
-                  onClick={() => onCommitSelect(commit.sha)}
-                >
-                  <span className="flex w-full min-w-0 items-start gap-2">
-                    {/* Two lines, because sibling commits often share their first dozen characters. */}
-                    <span
-                      className="line-clamp-2 min-w-0 font-medium break-words"
-                      title={commitSubject(commit.message)}
-                    >
-                      {commitSubject(commit.message)}
-                    </span>
-                    {commit.isHead ? (
-                      <Badge variant="secondary" className="shrink-0">
-                        HEAD
-                      </Badge>
-                    ) : null}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {commit.author} · {commit.sha.slice(0, 8)} ·{" "}
-                    <RelativeTime iso={commit.authoredAt} />
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </TabsContent>
+        {commits === undefined ? null : (
+          <TabsContent
+            value="commits"
+            className="min-h-0 flex-1 overflow-auto p-3"
+            keepMounted
+          >
+            <div className="flex flex-col gap-1" aria-label="Review commits">
+              {localCommitTotal !== undefined &&
+              localCommitTotal > commits.length ? (
+                <p className="px-2 pb-1 text-xs text-muted-foreground">
+                  Newest {commits.length} of {localCommitTotal}
+                </p>
+              ) : null}
+              {commits.length === 0 ? (
+                <p className="p-2 text-sm text-muted-foreground">
+                  {localCommitTotal === undefined
+                    ? "No commits recorded."
+                    : "No commits since the base."}
+                </p>
+              ) : (
+                commits.map((commit) => (
+                  <CommitRow
+                    key={commit.sha}
+                    commit={commit}
+                    selected={selectedCommitSha === commit.sha}
+                    onSelect={onCommitSelect}
+                  />
+                ))
+              )}
+            </div>
+          </TabsContent>
+        )}
         <TabsContent
           value="threads"
           className="min-h-0 flex-1 overflow-auto p-3"
@@ -285,6 +281,44 @@ export function ReviewNavigator({
         </TabsContent>
       </Tabs>
     </aside>
+  );
+}
+
+function CommitRow({
+  commit,
+  selected,
+  onSelect,
+}: {
+  readonly commit: WorkbenchResponse["commits"][number];
+  readonly selected: boolean;
+  readonly onSelect: (sha: string) => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
+      onClick={() => onSelect(commit.sha)}
+    >
+      <span className="flex w-full min-w-0 items-start gap-2">
+        {/* Two lines, because sibling commits often share their first dozen characters. */}
+        <span
+          className="line-clamp-2 min-w-0 font-medium break-words"
+          title={commitSubject(commit.message)}
+        >
+          {commitSubject(commit.message)}
+        </span>
+        {commit.isHead ? (
+          <Badge variant="secondary" className="shrink-0">
+            HEAD
+          </Badge>
+        ) : null}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {commit.author} · {commit.sha.slice(0, 8)} ·{" "}
+        <RelativeTime iso={commit.authoredAt} />
+      </span>
+    </button>
   );
 }
 
