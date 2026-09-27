@@ -108,6 +108,7 @@ export type LocalApplyHarness = {
   readonly service: LocalApplyService;
   readonly opening: LocalReviewOpening;
   readonly reviews: ReviewStore;
+  readonly viewedFiles: ViewedFilesStore;
   readonly operations: LocalApplyOperationStore;
   readonly insights: InsightStore;
   /** Add to draft, maintainer notes, and Remove over the same stores and Review coordinator; note ids count up from `note-fixture-1`. */
@@ -137,6 +138,12 @@ export async function localApplyHarness(
     ) => Pick<LocalReviewOpening, "openLocked">;
     /** The clock retention ages a Review by; every other clock stays at `now`. */
     readonly retentionNow?: () => IsoTimestamp;
+    /** Keep the previous session available so a carry test can check its stored data. */
+    readonly retainSupersededSessions?: boolean;
+    /** Inject a Viewed store failure during a local session's carry. */
+    readonly viewedFilesCarry?: (
+      store: ViewedFilesStore,
+    ) => Pick<ViewedFilesStore, "load" | "save">;
     /** The clock the opening service rate-limits an agent's refresh by. */
     readonly openingNow?: () => IsoTimestamp;
     /** Awaited after each session the opening service prepares, to hold it between the snapshot and the save. */
@@ -170,6 +177,7 @@ export async function localApplyHarness(
   const sessions = new ReviewSessionStore(paths);
   let notes = 0;
   const reviews = new ReviewStore(paths);
+  const viewedFiles = new ViewedFilesStore(paths, { write: () => undefined });
   const insights = new InsightStore(paths);
   const operations = new LocalApplyOperationStore(paths);
   const artifacts = new ReviewArtifactStorage(paths, () => now);
@@ -246,15 +254,18 @@ export async function localApplyHarness(
       insights,
       paths,
       new ReviewWriteOperationStore(paths),
-      new ViewedFilesStore(paths, { write: () => undefined }),
+      viewedFiles,
       operations,
     ),
     {
       reviews,
       sessions,
+      viewedFiles: seams.viewedFilesCarry?.(viewedFiles) ?? viewedFiles,
       artifacts,
       coordinator,
-      retention,
+      retention: seams.retainSupersededSessions
+        ? { pruneSuperseded: async () => ok(undefined) }
+        : retention,
       applySettlement: new LocalApplySettlement({
         operations,
         reviews,
@@ -292,6 +303,7 @@ export async function localApplyHarness(
     service,
     opening,
     reviews,
+    viewedFiles,
     operations,
     insights,
     drafts: new LocalDraftService({

@@ -505,6 +505,7 @@ export async function buildLocalApiContainer(
     {
       reviews,
       sessions,
+      viewedFiles,
       artifacts: storageArtifacts,
       coordinator: reviewOperations,
       retention: reviewRetention,

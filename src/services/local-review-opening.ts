@@ -5,6 +5,7 @@ import { minLength, pipe, strictObject, string } from "valibot";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import {
   createReviewId,
   detachedHeadBranch,
@@ -53,6 +54,7 @@ import type {
   ResolvedLocalReview,
 } from "./local-review-session-preparation";
 import type { ReviewRetention } from "./review-retention";
+import { carryViewedFiles } from "./local-viewed-files-carry";
 import type { RepositoryCheckout } from "./local-checkout";
 import {
   describeSharedReviews,
@@ -225,6 +227,7 @@ export class LocalReviewOpening {
     private readonly lifecycle: {
       readonly reviews: Pick<ReviewStore, "load" | "save" | "list">;
       readonly sessions: Pick<ReviewSessionStore, "load">;
+      readonly viewedFiles: Pick<ViewedFilesStore, "load" | "save">;
       readonly artifacts: Pick<ReviewArtifactStorage, "quarantineReview">;
       readonly coordinator: Pick<
         ReviewOperationCoordinator,
@@ -762,6 +765,19 @@ export class LocalReviewOpening {
       ? await readCarryTargets(drafts, session.value, this.preparation)
       : undefined;
     if (needsCarry && targets === undefined) return err({ reason: "storage" });
+    if (
+      stored?.identity.source.kind === "local_branch" &&
+      stored.currentSessionId !== session.value.id
+    ) {
+      const carriedViewed = await carryViewedFiles(
+        profileId,
+        stored.currentSessionId,
+        session.value,
+        this.lifecycle.sessions,
+        this.lifecycle.viewedFiles,
+      );
+      if (carriedViewed._tag === "err") return carriedViewed;
+    }
     await this.lifecycle.applySettlement.settleEarlierSession({
       profileId,
       reviewId,

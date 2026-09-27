@@ -14,6 +14,7 @@ import {
   type IsoTimestamp,
 } from "../../src/domain/ids";
 import { markReviewTerminal } from "../../src/domain/review";
+import { err } from "../../src/domain/result";
 import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import {
   cleanupLocalApplyRoots,
@@ -225,6 +226,133 @@ describe("the shared local Review (#555)", () => {
       }),
     ]);
     expect(git(repositoryPath, "status", "--porcelain")).toBe(statusBefore);
+  });
+
+  it("carries Viewed marks only for identical file patches in their own view on Refresh", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retainSupersededSessions: true,
+    });
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "committed-only.txt"), "stable\n");
+    await writeFile(join(repositoryPath, "changed-committed.txt"), "before\n");
+    git(repositoryPath, "add", "committed-only.txt", "changed-committed.txt");
+    git(repositoryPath, "commit", "-q", "-m", "initial feature");
+    await writeFile(join(repositoryPath, "combined-only.txt"), "stable\n");
+    await writeFile(join(repositoryPath, "uncommitted-only.txt"), "stable\n");
+    await writeFile(
+      join(repositoryPath, "changed-uncommitted.txt"),
+      "before\n",
+    );
+    const opened = await harness.open(shared());
+    const oldSessionId = value(parseReviewSessionId(opened.session.id));
+    const oldMarks = {
+      combined: [
+        "combined-only.txt",
+        "changed-committed.txt",
+        "changed-uncommitted.txt",
+      ],
+      committed: ["committed-only.txt", "changed-committed.txt"],
+      uncommitted: ["uncommitted-only.txt", "changed-uncommitted.txt"],
+    } as const;
+    for (const view of ["combined", "committed", "uncommitted"] as const)
+      value(
+        await harness.viewedFiles.save(
+          profileId,
+          oldSessionId,
+          view,
+          oldMarks[view].map((path) => value(parseRepoRelativePath(path))),
+        ),
+      );
+
+    await writeFile(join(repositoryPath, "changed-committed.txt"), "after\n");
+    git(repositoryPath, "commit", "-q", "-am", "change committed patch");
+    await writeFile(join(repositoryPath, "changed-uncommitted.txt"), "after\n");
+    const refreshed = value(
+      await harness.opening.refresh(
+        profileId,
+        value(parseReviewId(opened.review.id)),
+      ),
+    );
+    const newSessionId = value(parseReviewSessionId(refreshed.session.id));
+
+    expect(newSessionId).not.toBe(oldSessionId);
+    expect(refreshed.viewedPaths).toEqual(["combined-only.txt"]);
+    for (const [view, kept] of [
+      ["combined", ["combined-only.txt"]],
+      ["committed", ["committed-only.txt"]],
+      ["uncommitted", ["uncommitted-only.txt"]],
+    ] as const) {
+      expect(
+        value(await harness.viewedFiles.load(profileId, newSessionId, view)),
+      ).toEqual(kept);
+      expect(
+        value(await harness.viewedFiles.load(profileId, oldSessionId, view)),
+      ).toEqual([...oldMarks[view]].sort());
+    }
+  });
+
+  it("refuses a failed Viewed carry before moving the Review and clears partial marks on retry", async () => {
+    let failCarry = true;
+    const harness = await localApplyHarness(undefined, {
+      viewedFilesCarry: (store) => ({
+        load: store.load.bind(store),
+        save: (profile, session, view, paths) =>
+          failCarry && view === "committed"
+            ? Promise.resolve(
+                err({
+                  _tag: "StorageFailure" as const,
+                  operation: "write" as const,
+                  reason: "io" as const,
+                }),
+              )
+            : store.save(profile, session, view, paths),
+      }),
+    });
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "keep.txt"), "stable\n");
+    git(repositoryPath, "add", "keep.txt");
+    git(repositoryPath, "commit", "-q", "-m", "keep file");
+    await writeFile(join(repositoryPath, "new.txt"), "before\n");
+    const opened = await harness.open(shared());
+    const reviewId = value(parseReviewId(opened.review.id));
+    const oldSessionId = value(parseReviewSessionId(opened.session.id));
+    const keep = value(parseRepoRelativePath("keep.txt"));
+    for (const view of ["combined", "committed"] as const)
+      value(
+        await harness.viewedFiles.save(profileId, oldSessionId, view, [keep]),
+      );
+    await writeFile(join(repositoryPath, "new.txt"), "after\n");
+
+    const refused = await harness.opening.refresh(profileId, reviewId);
+
+    expect(refused).toEqual({ _tag: "err", error: { reason: "storage" } });
+    expect(
+      value(await harness.reviews.load(profileId, reviewId)).currentSessionId,
+    ).toBe(oldSessionId);
+    expect(
+      value(
+        await harness.viewedFiles.load(profileId, oldSessionId, "combined"),
+      ),
+    ).toEqual([keep]);
+    value(
+      await harness.viewedFiles.save(profileId, oldSessionId, "combined", []),
+    );
+    failCarry = false;
+
+    const retried = value(await harness.opening.refresh(profileId, reviewId));
+    const newSessionId = value(parseReviewSessionId(retried.session.id));
+    expect(
+      value(
+        await harness.viewedFiles.load(profileId, newSessionId, "combined"),
+      ),
+    ).toEqual([]);
+    expect(
+      value(
+        await harness.viewedFiles.load(profileId, newSessionId, "committed"),
+      ),
+    ).toEqual([keep]);
   });
 
   it("keeps a note on an uncommitted line inline after the agent commits it and the maintainer Refreshes (#491)", async () => {

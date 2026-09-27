@@ -147,6 +147,7 @@ async function opening(
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
   const artifacts = new ReviewArtifactStorage(paths, () => now);
+  const viewedFiles = new ViewedFilesStore(paths, { write: () => undefined });
   const productionGit = createReadOnlyGitExecutor(new CommandRunner());
   const readOnlyGit = seams.git?.(productionGit) ?? productionGit;
   const preparation = new LocalReviewSessionPreparation({
@@ -177,7 +178,7 @@ async function opening(
     new InsightStore(paths),
     paths,
     new ReviewWriteOperationStore(paths),
-    new ViewedFilesStore(paths, { write: () => undefined }),
+    viewedFiles,
     new LocalApplyOperationStore(paths),
   );
   return new LocalReviewOpening(
@@ -203,6 +204,7 @@ async function opening(
         list: seams.listReviews ?? ((id) => reviews.list(id)),
       },
       sessions,
+      viewedFiles,
       artifacts,
       coordinator: seams.coordinator ?? new ReviewOperationCoordinator(),
       // Retention has its own suite; these scenarios open one session each.
