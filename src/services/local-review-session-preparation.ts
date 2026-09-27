@@ -218,17 +218,37 @@ export class LocalReviewSessionPreparation {
   /**
    * Each of `paths` as it is in commit `commitSha`, read as git objects
    * through the session's own worktree, so no read touches the maintainer's
-   * checkout files (#556 D6). A path the commit does not hold, or that git
-   * cannot show, is absent.
+   * checkout files (#556 D6). A missing path is absent; a Git failure must
+   * refuse Refresh before it can mark a note as needing attention (#568).
    */
   async readCommitFiles(
     session: LocalReviewSession,
     commitSha: GitSha,
     paths: ReadonlyArray<RepoRelativePath>,
-  ): Promise<ReadonlyMap<RepoRelativePath, string>> {
-    const files = new Map<RepoRelativePath, string>();
-    await Promise.all(
+  ): Promise<
+    Result<
+      ReadonlyMap<RepoRelativePath, string>,
+      { readonly _tag: "LocalGitFailed" }
+    >
+  > {
+    const read = await Promise.all(
       paths.map(async (path) => {
+        const listed = await this.dependencies.git.run([
+          "git",
+          "--literal-pathspecs",
+          "-C",
+          session.worktree.path,
+          "ls-tree",
+          "-z",
+          "--name-only",
+          "--end-of-options",
+          commitSha,
+          "--",
+          path,
+        ]);
+        if (listed._tag === "err")
+          return err({ _tag: "LocalGitFailed" as const });
+        if (listed.value.stdout === "") return ok({ path, text: undefined });
         const shown = await this.dependencies.git.run([
           "git",
           "-C",
@@ -238,10 +258,18 @@ export class LocalReviewSessionPreparation {
           "--end-of-options",
           `${commitSha}:${path}`,
         ]);
-        if (shown._tag === "ok") files.set(path, shown.value.stdout);
+        return shown._tag === "ok"
+          ? ok({ path, text: shown.value.stdout })
+          : err({ _tag: "LocalGitFailed" as const });
       }),
     );
-    return files;
+    const files = new Map<RepoRelativePath, string>();
+    for (const entry of read) {
+      if (entry._tag === "err") return entry;
+      if (entry.value.text !== undefined)
+        files.set(entry.value.path, entry.value.text);
+    }
+    return ok(files);
   }
 
   private async loadProfile(profileId: WorkspaceProfileId) {

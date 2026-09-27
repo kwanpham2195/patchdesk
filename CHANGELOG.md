@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Refresh marking a Committed-view note Needs attention when Git failed to read its file at `HEAD`. Refresh now refuses and keeps the Review and drafts unchanged; a genuinely missing file still follows the carry rule. #568
+
 - Fixed `review_local` repeating an unhelpful refusal when a saved Review's base branch was deleted. It now names that branch and asks the agent to pass an explicit `base`, without opening another Review. #570
 
 - Fixed `review_local` inferring a different base when Patchdesk could not list every saved Review. The agent tool, Local review dialog, and `list_local_reviews` now refuse an incomplete list with `storage` instead of hiding the maintainer's notes. #572
