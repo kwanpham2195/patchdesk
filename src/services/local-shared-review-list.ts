@@ -55,7 +55,10 @@ export async function listOpenSharedReviews(
   Result<ReadonlyArray<OpenSharedReview>, { readonly reason: "storage" }>
 > {
   const listed = await reviews.list(profileId);
-  if (listed._tag === "err") return err({ reason: "storage" });
+  if (listed._tag === "err" || listed.value.unreadable > 0) {
+    // An unreadable row may be the maintainer's Review, so shared lookups require a complete list.
+    return err({ reason: "storage" });
+  }
   const shared: Array<OpenSharedReview> = [];
   for (const review of listed.value.reviews) {
     if (!isLocalReview(review) || review.status._tag === "Terminal") continue;

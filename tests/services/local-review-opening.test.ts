@@ -300,63 +300,89 @@ describe("LocalReviewOpening", () => {
     expect(edited.fullPatch).toContain("+second");
   });
 
-  it("refuses an agent open when saved Reviews cannot be listed without creating another Review", async () => {
-    const { root, repositoryPath } = await checkout();
-    git(repositoryPath, "branch", "develop");
-    git(repositoryPath, "checkout", "-q", "-b", "feature");
-    await writeFile(join(repositoryPath, "tracked.txt"), "feature\n");
-    git(repositoryPath, "commit", "-q", "-am", "feature");
-    const existing = value(
-      await (
-        await opening(root, repositoryPath)
-      ).open({
+  it.each([
+    {
+      name: "failed",
+      listReviews: async () =>
+        err({
+          _tag: "StorageFailure" as const,
+          operation: "read" as const,
+          reason: "io" as const,
+        }),
+    },
+    {
+      name: "incomplete",
+      listReviews: async () => ok({ reviews: [], unreadable: 1 }),
+    },
+  ])(
+    "refuses a $name saved-Review listing without creating another Review",
+    async ({ listReviews }) => {
+      const { root, repositoryPath } = await checkout();
+      git(repositoryPath, "branch", "develop");
+      git(repositoryPath, "checkout", "-q", "-b", "feature");
+      await writeFile(join(repositoryPath, "tracked.txt"), "feature\n");
+      git(repositoryPath, "commit", "-q", "-am", "feature");
+      const existing = value(
+        await (
+          await opening(root, repositoryPath)
+        ).open({
+          profileId,
+          repository,
+          request: {
+            kind: "local_branch",
+            baseBranch: value(parseLocalBranchName("develop")),
+          },
+        }),
+      );
+      const paths = PatchdeskPaths.forTest(join(root, "app"));
+      const reviews = new ReviewStore(paths);
+      const recordBefore = await readFile(
+        paths.reviewFile(profileId, value(parseReviewId(existing.review.id))),
+      );
+      const sessionsBefore = await readdir(
+        paths.profileReviewsDirectory(profileId),
+        { recursive: true },
+      );
+      const refsBefore = git(repositoryPath, "for-each-ref", "refs/patchdesk");
+      const service = await opening(root, repositoryPath, { listReviews });
+
+      const refused = await service.openForAgent({
         profileId,
         repository,
-        request: {
-          kind: "local_branch",
-          baseBranch: value(parseLocalBranchName("develop")),
-        },
-      }),
-    );
-    const paths = PatchdeskPaths.forTest(join(root, "app"));
-    const reviews = new ReviewStore(paths);
-    const recordBefore = await readFile(
-      paths.reviewFile(profileId, value(parseReviewId(existing.review.id))),
-    );
-    const sessionsBefore = await readdir(
-      paths.profileReviewsDirectory(profileId),
-      { recursive: true },
-    );
-    const refsBefore = git(repositoryPath, "for-each-ref", "refs/patchdesk");
-    const service = await opening(root, repositoryPath, {
-      listReviews: async () =>
-        err({ _tag: "StorageFailure", operation: "read", reason: "io" }),
-    });
+        request: { kind: "local_branch" },
+      });
 
-    const refused = await service.openForAgent({
-      profileId,
-      repository,
-      request: { kind: "local_branch" },
-    });
-
-    expect(refused).toEqual({ _tag: "err", error: { reason: "storage" } });
-    expect(
-      value(await reviews.list(profileId)).reviews.map(({ id }) => id),
-    ).toEqual([existing.review.id]);
-    expect(
-      await readFile(
-        paths.reviewFile(profileId, value(parseReviewId(existing.review.id))),
-      ),
-    ).toEqual(recordBefore);
-    expect(
-      await readdir(paths.profileReviewsDirectory(profileId), {
-        recursive: true,
-      }),
-    ).toEqual(sessionsBefore);
-    expect(git(repositoryPath, "for-each-ref", "refs/patchdesk")).toBe(
-      refsBefore,
-    );
-  });
+      expect(refused).toEqual({ _tag: "err", error: { reason: "storage" } });
+      expect(
+        await service.listBranches(profileId, repository, undefined),
+      ).toEqual({
+        _tag: "err",
+        error: { reason: "storage" },
+      });
+      expect(
+        await service.listSharedReviews(
+          profileId,
+          value(parseAbsolutePath(repositoryPath)),
+        ),
+      ).toEqual({ _tag: "err", error: { reason: "storage" } });
+      expect(
+        value(await reviews.list(profileId)).reviews.map(({ id }) => id),
+      ).toEqual([existing.review.id]);
+      expect(
+        await readFile(
+          paths.reviewFile(profileId, value(parseReviewId(existing.review.id))),
+        ),
+      ).toEqual(recordBefore);
+      expect(
+        await readdir(paths.profileReviewsDirectory(profileId), {
+          recursive: true,
+        }),
+      ).toEqual(sessionsBefore);
+      expect(git(repositoryPath, "for-each-ref", "refs/patchdesk")).toBe(
+        refsBefore,
+      );
+    },
+  );
 
   it("records the open on the Review so the sidebar can order and date it", async () => {
     const { root, repositoryPath } = await checkout();
