@@ -30,6 +30,7 @@ import {
   buildLocalNoteAnnotations,
   buildPendingReviewAnnotations,
   buildReadOnlyConversationAnnotations,
+  localNotePlacementInput,
   type MappedFinding,
 } from "./review-workbench-annotations";
 import type {
@@ -93,7 +94,6 @@ import type {
  * the commit-slice pane below it. */
 const NO_PATCH_AVAILABLE = "No patch is available for this Review.";
 
-const NO_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
 const NO_FINDING_COUNTS: ReadonlyMap<string, FileFindingCount> = new Map();
 
 /** The workbench prop contracts, re-exported for this component's callers. */
@@ -222,7 +222,7 @@ export function ReviewWorkbench({
     model.fullPatch,
   );
   const selectedView = localPatchView?.selected ?? "combined";
-  // Findings and note authoring use Combined coordinates, so another view shows neither; notes are not placed there yet.
+  // Findings use Combined coordinates, so another view shows none (#556 D3); notes are placed per view.
   const onOtherView = selectedView !== "combined";
   const reviewPatch = !onOtherView
     ? model.fullPatch
@@ -502,13 +502,27 @@ export function ReviewWorkbench({
       ),
     [conversationAnnotations, pendingReviewAnnotations],
   );
-  const { localDrafts, session } = model;
+  const { localDrafts, session, patchViews } = model;
+  const shownView = localPatchView?.shown.view;
+  const notePlacement = useMemo(
+    () =>
+      patchViews === undefined ||
+      shownView === undefined ||
+      reviewPatch === undefined
+        ? undefined
+        : localNotePlacementInput(patchViews, shownView, reviewPatch),
+    [patchViews, reviewPatch, shownView],
+  );
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
     () => [
-      ...buildAnnotations(findings, conversationThreadEntries),
+      ...buildAnnotations(
+        onOtherView ? [] : findings,
+        conversationThreadEntries,
+      ),
       ...buildLocalNoteAnnotations(
         { localDrafts, session },
         actions.localNotes,
+        notePlacement,
       ),
     ],
     [
@@ -516,6 +530,8 @@ export function ReviewWorkbench({
       conversationThreadEntries,
       findings,
       localDrafts,
+      notePlacement,
+      onOtherView,
       session,
     ],
   );
@@ -810,9 +826,7 @@ export function ReviewWorkbench({
                           : {})}
                         {...(selectedCommitSha === undefined
                           ? {
-                              annotations: onOtherView
-                                ? NO_ANNOTATIONS
-                                : (sinceAnnotations ?? annotations),
+                              annotations: sinceAnnotations ?? annotations,
                               findingCountsByPath: shownFindingCounts,
                               onOpenFindingInAnalysis: openFindingInAnalysis,
                             }
@@ -828,8 +842,7 @@ export function ReviewWorkbench({
                           : { visiblePaths: scopeFilteredPaths })}
                         {...(scopeFilter === undefined ? {} : { scopeFilter })}
                         {...(!narrowedDiff
-                          ? actions.localCommentAuthoring === undefined ||
-                            onOtherView
+                          ? actions.localCommentAuthoring === undefined
                             ? {}
                             : {
                                 localCommentAuthoring:

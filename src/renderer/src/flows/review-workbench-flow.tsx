@@ -165,8 +165,13 @@ export function ReviewWorkbenchFlow({
     onWorkbenchReplace: replaceWorkbench,
     onWorkbenchPatch,
   });
+  const localPatchView = useLocalPatchView({ workbench });
   // One owner for the Insights tab's Local drafts card and the Diff tab's notes.
-  const localDrafts = useLocalDrafts({ workbench, onWorkbenchPatch });
+  const localDrafts = useLocalDrafts({
+    workbench,
+    view: localPatchView?.shown.view,
+    onWorkbenchPatch,
+  });
   // A local Review refreshes from the checkout, not from GitHub (#452).
   const changeIntent = useChangeIntent({ workbench, onWorkbenchPatch });
   const localRefresh = useLocalRefresh({
@@ -176,7 +181,6 @@ export function ReviewWorkbenchFlow({
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
 
-  const localPatchView = useLocalPatchView({ workbench });
   const viewedFiles = useViewedFiles({
     profileId: workbench.session.key.profileId,
     reviewId: workbench.review.id,

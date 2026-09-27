@@ -3,6 +3,7 @@ import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
 import { findingDraftStates } from "../../../domain/local-draft";
+import type { LocalPatchView } from "../../../domain/local-patch-view";
 import { isApiErrorCode, requestJson } from "../api-client";
 import type { LocalCommentLocation } from "../components/review-diff-view";
 import {
@@ -48,7 +49,10 @@ export type LocalDraftControls = {
 /** What a command names beside the Review: a Finding, a note's lines and text, or a note. */
 type LocalDraftCommand =
   | { readonly runId: string; readonly findingId: string }
-  | (LocalCommentLocation & { readonly text: string })
+  | (LocalCommentLocation & {
+      readonly text: string;
+      readonly view?: LocalPatchView;
+    })
   | { readonly noteId: string; readonly text?: string };
 
 const agentPromptSchema = v.strictObject({ markdown: v.string() });
@@ -94,9 +98,12 @@ function noteFailureMessage(cause: unknown): string {
  */
 export function useLocalDrafts({
   workbench,
+  view,
   onWorkbenchPatch,
 }: {
   readonly workbench: WorkbenchResponse;
+  /** The shown patch view, which a new note's lines are numbered in; absent on a Review without views. */
+  readonly view: LocalPatchView | undefined;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
 }): LocalDraftControls | undefined {
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
@@ -172,6 +179,7 @@ export function useLocalDrafts({
         send("note\nnew", "/v1/reviews/local-drafts/notes/add", {
           ...location,
           text,
+          ...definedProps({ view }),
         }),
       edit: (noteId, text) =>
         send(localDraftKey({ noteId }), "/v1/reviews/local-drafts/notes/edit", {
@@ -185,7 +193,7 @@ export function useLocalDrafts({
           { noteId },
         ),
     };
-  }, [post]);
+  }, [post, view]);
 
   const runId = workbench.insights.analysis.retained?.runId;
   const add = useCallback(

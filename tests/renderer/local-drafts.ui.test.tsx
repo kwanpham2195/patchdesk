@@ -66,6 +66,7 @@ function DraftingReader(): React.JSX.Element | null {
   const [workbench, setWorkbench] = useState(workingTreeReview);
   const localDrafts = useLocalDrafts({
     workbench,
+    view: undefined,
     onWorkbenchPatch: (patch) =>
       setWorkbench(
         (current) => ({ ...current, ...patch }) as WorkbenchResponse,

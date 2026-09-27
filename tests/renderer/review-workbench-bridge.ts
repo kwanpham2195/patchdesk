@@ -29,6 +29,7 @@ const WORKBENCH_PATHS = [
   "/v1/reviews/diff-file",
   "/v1/reviews/viewed-files",
   "/v1/reviews/local-patch-view",
+  "/v1/reviews/local-drafts/notes/add",
   "/v1/reviews/commit-diff",
   "/v1/reviews/since-review-diff",
   "/v1/reviews/assignees",

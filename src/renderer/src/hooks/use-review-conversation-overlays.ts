@@ -229,12 +229,36 @@ export function useReviewConversationOverlays({
     setPendingWriteOverlays,
     strandedWrite,
   ]);
+  // An open note composer's text, kept as a recoverable draft when the diff unmounts under it, as a patch view switch does (#556 D5).
+  const unsavedNote = useRef<{ body: string | undefined; saving: boolean }>({
+    body: undefined,
+    saving: false,
+  });
+  const reportNoteBody = useCallback((body: string): void => {
+    unsavedNote.current.body = body;
+  }, []);
+  const keepUnsavedNote = useLatestCommitted({
+    note: localCommentAuthoring?.kind === "note",
+    setOrphanedDraftBody,
+  });
+  useEffect(() => {
+    const unsaved = unsavedNote.current;
+    const latest = keepUnsavedNote;
+    return () => {
+      const { note, setOrphanedDraftBody: keep } = latest.current;
+      if (note && !unsaved.saving && unsaved.body?.trim()) keep?.(unsaved.body);
+    };
+  }, [keepUnsavedNote]);
+
   const takeRecoverableDraft = useCallback((): void => {
+    // A new composer starts from the recovered text, or empty.
+    unsavedNote.current.body = recoverableDraftBody;
     setAuthoringInitialBody(recoverableDraftBody);
     releaseRecoverableDraft();
   }, [recoverableDraftBody, releaseRecoverableDraft]);
 
   const clearAuthoring = useCallback((): void => {
+    unsavedNote.current.body = undefined;
     setAuthoringSelection(null);
     setAuthoringInitialBody(undefined);
     viewer.current?.clearSelectedLines();
@@ -282,7 +306,12 @@ export function useReviewConversationOverlays({
       if (anchor === undefined) return;
       // A note is saved to the Review record, which then renders it; a refusal keeps the composer open with its text.
       if (localCommentAuthoring.kind === "note") {
-        await localCommentAuthoring.onSave({ ...anchor, body });
+        unsavedNote.current.saving = true;
+        try {
+          await localCommentAuthoring.onSave({ ...anchor, body });
+        } finally {
+          unsavedNote.current.saving = false;
+        }
         clearAuthoring();
         return;
       }
@@ -467,6 +496,8 @@ export function useReviewConversationOverlays({
         ...definedProps({
           pendingReview: wrappedPendingReview,
           kind: localCommentAuthoring.kind,
+          onBodyChange:
+            localCommentAuthoring.kind === "note" ? reportNoteBody : undefined,
         }),
       },
     };
@@ -478,6 +509,7 @@ export function useReviewConversationOverlays({
     localCommentAuthoring?.kind,
     pendingReviewComposer,
     pendingReviewDrafts,
+    reportNoteBody,
     saveAuthoring,
     submitPendingWrite,
   ]);

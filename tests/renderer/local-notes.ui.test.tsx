@@ -95,6 +95,7 @@ function InlineNotes(): React.JSX.Element {
   );
   const localDrafts = useLocalDrafts({
     workbench,
+    view: undefined,
     onWorkbenchPatch: (patch) =>
       setWorkbench(
         (current) => ({ ...current, ...patch }) as WorkbenchResponse,
@@ -102,7 +103,7 @@ function InlineNotes(): React.JSX.Element {
   });
   return (
     <>
-      {buildLocalNoteAnnotations(workbench, localDrafts?.notes).map(
+      {buildLocalNoteAnnotations(workbench, localDrafts?.notes, undefined).map(
         (annotation) =>
           annotation.localNote === undefined ? null : (
             <LocalNoteCard key={annotation.id} {...annotation.localNote} />

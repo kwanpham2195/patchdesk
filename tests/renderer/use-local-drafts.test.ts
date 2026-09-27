@@ -66,7 +66,7 @@ function localReview(
 function renderDrafts(workbench: WorkbenchResponse) {
   const onWorkbenchPatch = vi.fn();
   const rendered = renderHook(() =>
-    useLocalDrafts({ workbench, onWorkbenchPatch }),
+    useLocalDrafts({ workbench, view: undefined, onWorkbenchPatch }),
   );
   return { ...rendered, onWorkbenchPatch };
 }

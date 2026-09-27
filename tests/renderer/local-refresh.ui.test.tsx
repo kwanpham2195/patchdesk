@@ -127,10 +127,11 @@ describe("Local drafts inline after a Refresh", () => {
     ]);
     render(
       <>
-        {buildLocalNoteAnnotations(workbench, undefined).map((annotation) =>
-          annotation.localNote === undefined ? null : (
-            <LocalNoteCard key={annotation.id} {...annotation.localNote} />
-          ),
+        {buildLocalNoteAnnotations(workbench, undefined, undefined).map(
+          (annotation) =>
+            annotation.localNote === undefined ? null : (
+              <LocalNoteCard key={annotation.id} {...annotation.localNote} />
+            ),
         )}
       </>,
     );
