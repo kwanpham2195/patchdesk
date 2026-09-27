@@ -283,6 +283,7 @@ describe("ReviewRetention", () => {
     const { first } = await refreshedReview(harness, 0);
     value(
       await harness.drafts.addNote({
+        view: "combined",
         profileId,
         reviewId: first.review.id,
         sessionId: first.session.id,
@@ -400,6 +401,7 @@ describe("ReviewRetention", () => {
     const workbench = await reviewOfRemovedWorktree(harness, async (opened) => {
       value(
         await harness.drafts.addNote({
+          view: "combined",
           profileId,
           reviewId: opened.review.id,
           sessionId: opened.session.id,

@@ -68,6 +68,7 @@ async function notedReview(harness: LocalApplyHarness) {
   const reviewId = value(parseReviewId(workbench.review.id));
   value(
     await harness.drafts.addNote({
+      view: "combined",
       profileId,
       reviewId,
       sessionId: workbench.session.id,
@@ -268,6 +269,7 @@ describe("LocalReviewOpening.prepareForAgent", () => {
     await hold.reached;
 
     const noted = await harness.drafts.addNote({
+      view: "combined",
       profileId,
       reviewId,
       sessionId: workbench.session.id,

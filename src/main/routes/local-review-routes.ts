@@ -6,6 +6,7 @@ import {
   minLength,
   minValue,
   number,
+  optional,
   picklist,
   pipe,
   safeParse,
@@ -223,7 +224,7 @@ export function registerLocalReviewRoutes(
     ),
   );
 
-  // The renderer names the lines; the main process fingerprints them against the session patch (ADR 0051 "Maintainer notes").
+  // The renderer names the view and lines; the main process fingerprints them against that view's session patch (ADR 0051 "Maintainer notes").
   app.post("/v1/reviews/local-drafts/notes/add", async (context) => {
     const parsed = safeParse(localNoteAddSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
@@ -245,6 +246,7 @@ export function registerLocalReviewRoutes(
           startLine: parsed.output.startLine,
           line: parsed.output.line,
         },
+        view: parsed.output.view ?? "combined",
         text: parsed.output.text,
       }),
       localDraftFailureKinds,
@@ -401,6 +403,8 @@ const lineNumber = pipe(number(), integer(), minValue(1));
 
 const localNoteAddSchema = strictObject({
   ...draftWriteKeySchema,
+  /** Absent is Combined, the only view a Review other than a shared one has. */
+  view: optional(picklist(localPatchViews)),
   path: pipe(string(), minLength(1)),
   side: picklist(["new", "old"]),
   startLine: lineNumber,

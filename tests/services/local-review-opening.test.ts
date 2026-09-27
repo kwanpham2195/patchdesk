@@ -191,6 +191,8 @@ async function opening(
       listBranches: (id, target, checkout) =>
         preparation.listBranches(id, target, checkout),
       findCheckout: (id, directory) => preparation.findCheckout(id, directory),
+      readCommitFiles: (session, commitSha, paths) =>
+        preparation.readCommitFiles(session, commitSha, paths),
     },
     projection,
     {
