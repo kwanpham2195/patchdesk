@@ -803,6 +803,75 @@ describe("LocalApplyService after a move to another session (#484)", () => {
     ).toContain("export const last = 2;");
   });
 
+  it("keeps an unknown Apply and its Finding unchanged when a Committed note read refuses Refresh", async () => {
+    let failRead = false;
+    const harness = await localApplyHarness(landsThenFails, {
+      preparationGit: (argv, run) =>
+        failRead && argv.includes("show") && argv.at(-1)?.endsWith(":notes.txt")
+          ? Promise.resolve(err({ _tag: "GitReadFailed" as const }))
+          : run(),
+    });
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "notes.txt"), "a\nb\nc\nd\ne\n");
+    git(repositoryPath, "add", "notes.txt");
+    git(repositoryPath, "commit", "-q", "-m", "notes");
+    await writeFile(join(repositoryPath, "probe.ts"), probe);
+    const workbench = await harness.open();
+    const runId = await retainAnalysis(harness.insights, workbench, [boundFix]);
+    value(
+      await harness.drafts.add({
+        profileId,
+        reviewId: workbench.review.id,
+        sessionId: workbench.session.id,
+        runId,
+        findingId: value(parseFindingId("finding-bound")),
+      }),
+    );
+    value(
+      await harness.drafts.addNote({
+        profileId,
+        reviewId: workbench.review.id,
+        sessionId: workbench.session.id,
+        view: "committed",
+        anchor: {
+          path: value(parseRepoRelativePath("notes.txt")),
+          side: "new",
+          startLine: 3,
+          line: 3,
+        },
+        text: "Explain c.",
+      }),
+    );
+    expect(
+      value(
+        await harness.service.apply(
+          applyRequest(workbench, runId, ["finding-bound"]),
+        ),
+      ).status,
+    ).toBe("outcome_unknown");
+    const before = value(
+      await harness.reviews.load(profileId, workbench.review.id),
+    );
+    failRead = true;
+
+    const refused = await harness.opening.refresh(
+      profileId,
+      workbench.review.id,
+    );
+
+    expect(refused).toEqual({ _tag: "err", error: { reason: "storage" } });
+    const stored = value(
+      await harness.reviews.load(profileId, workbench.review.id),
+    );
+    expect(stored.currentSessionId).toBe(workbench.session.id);
+    expect(stored.localDrafts).toEqual(before.localDrafts);
+    expect(
+      value(await harness.operations.load(profileId, workbench.review.id))
+        ?.state,
+    ).toBe("OutcomeUnknown");
+  });
+
   it("marks the drafted Finding applied when Refresh finds an unknown Apply landed", async () => {
     const harness = await localApplyHarness(async (argv, run) => {
       if (!isApplyWrite(argv)) return run();

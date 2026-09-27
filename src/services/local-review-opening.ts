@@ -738,13 +738,6 @@ export class LocalReviewOpening {
     const session = await this.preparation.prepare(resolved);
     if (session._tag === "err")
       return err(mapPreparationFailure(session.error));
-    // Before the Review is read: settling a confirmed Apply marks drafts on it (#484).
-    await this.lifecycle.applySettlement.settleEarlierSession({
-      profileId,
-      reviewId,
-      sessionId: session.value.id,
-      checkoutPath: resolved.checkoutPath,
-    });
     const existing = await this.lifecycle.reviews.load(profileId, reviewId);
     let stored: Review<LocalReviewSource> | undefined;
     if (existing._tag === "ok") {
@@ -762,10 +755,29 @@ export class LocalReviewOpening {
     }
     const now = this.now();
     const drafts = stored?.localDrafts;
+    const needsCarry =
+      drafts !== undefined && stored?.currentSessionId !== session.value.id;
+    // Read every carry target before Apply settlement can change a Finding draft (#568).
+    const targets = needsCarry
+      ? await readCarryTargets(drafts, session.value, this.preparation)
+      : undefined;
+    if (needsCarry && targets === undefined) return err({ reason: "storage" });
+    await this.lifecycle.applySettlement.settleEarlierSession({
+      profileId,
+      reviewId,
+      sessionId: session.value.id,
+      checkoutPath: resolved.checkoutPath,
+    });
+    if (stored !== undefined) {
+      const settled = await this.lifecycle.reviews.load(profileId, reviewId);
+      if (settled._tag === "err" || !isLocalReview(settled.value))
+        return err({ reason: "storage" });
+      stored = settled.value;
+    }
     let carried: ReadonlyArray<LocalDraft> | undefined;
-    if (drafts !== undefined && stored?.currentSessionId !== session.value.id) {
-      carried = await carryToSession(drafts, session.value, this.preparation);
-      if (carried === undefined) return err({ reason: "storage" });
+    if (targets !== undefined) {
+      if (stored?.localDrafts === undefined) return err({ reason: "storage" });
+      carried = carryToSession(stored.localDrafts, targets);
     }
     const moved = moveLocalReviewToSession(
       stored ??
@@ -815,16 +827,12 @@ export class LocalReviewOpening {
   }
 }
 
-/**
- * The drafts carried to `session` by ADR 0002's rule, each against the new
- * session's patch of its origin view (#556 D6). Never reads the maintainer's
- * checkout. Undefined when the session cannot be read.
- */
-async function carryToSession(
+/** Read every draft's new view before Apply settlement can change the stored Finding drafts (#568). */
+async function readCarryTargets(
   drafts: ReadonlyArray<LocalDraft>,
   session: LocalReviewSession,
   preparation: Pick<LocalReviewSessionPreparation, "readCommitFiles">,
-): Promise<ReadonlyArray<LocalDraft> | undefined> {
+): Promise<ReadonlyMap<LocalPatchView, LocalDraftCarryTarget> | undefined> {
   const originView = (draft: LocalDraft): LocalPatchView =>
     draft.view ?? "combined";
   const pathsByView = new Map<LocalPatchView, Set<RepoRelativePath>>();
@@ -838,8 +846,16 @@ async function carryToSession(
     if (target === undefined) return undefined;
     targets.set(view, target);
   }
+  return targets;
+}
+
+/** Carry drafts after settlement using the target files read before it, preserving applied Findings. */
+function carryToSession(
+  drafts: ReadonlyArray<LocalDraft>,
+  targets: ReadonlyMap<LocalPatchView, LocalDraftCarryTarget>,
+): ReadonlyArray<LocalDraft> {
   return drafts.map((draft) => {
-    const target = targets.get(originView(draft));
+    const target = targets.get(draft.view ?? "combined");
     return target === undefined ? draft : carryLocalDraft(draft, target);
   });
 }
