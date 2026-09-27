@@ -197,6 +197,7 @@ async function opening(
     projection,
     {
       reviews,
+      sessions,
       artifacts,
       coordinator: seams.coordinator ?? new ReviewOperationCoordinator(),
       // Retention has its own suite; these scenarios open one session each.

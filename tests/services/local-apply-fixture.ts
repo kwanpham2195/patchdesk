@@ -244,6 +244,7 @@ export async function localApplyHarness(
     ),
     {
       reviews,
+      sessions,
       artifacts,
       coordinator,
       retention,
