@@ -63,8 +63,12 @@ A working copy of a profile repository that a local Review reads: the configured
 _Avoid_: Clone, workspace, local path
 
 **Shared Review**:
-The one local Review of a checkout's current branch against a base branch: every change since the branch left the base, committed or not, in one diff with one Local draft list, so a note stays with its line after the agent commits it. The base is inferred from the nearest other local branch and the maintainer may change it; another branch or base is another shared Review (#555, ADR 0050).
+The one local Review of a checkout's current branch against a base branch: every change since the branch left the base, committed or not, in one diff with one Local draft list, so a note stays with its line after the agent commits it. The maintainer can narrow the diff to what is committed or what is not with a Patch view. The base is inferred from the nearest other local branch and the maintainer may change it; another branch or base is another shared Review (#555, ADR 0050).
 _Avoid_: Working-tree Review, Branch Review, combined Review
+
+**Patch view**:
+One of the three diffs a shared Review session holds: Combined, from the merge base to the Local snapshot; Committed, from the merge base to the checkout's `HEAD`; and Uncommitted, from `HEAD` to the Local snapshot. Switching views moves neither the Review nor its session. A note records the view it was written on and shows in another view only where that view has the same file content on the note's side; Viewed marks belong to one view; Insights always run on Combined (#556, ADR 0050, ADR 0051).
+_Avoid_: Diff mode, staged view, working-tree view, committed Review, uncommitted Review
 
 **Local snapshot**:
 The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, built in a temporary index copy and committed with a fixed identity so the same content always has the same SHA. It is the head of a shared Review session, and the maintainer's index and branches never see it.

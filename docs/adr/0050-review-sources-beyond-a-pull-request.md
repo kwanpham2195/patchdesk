@@ -157,6 +157,26 @@ flags keep the maintainer's `diff.noprefix`, `color.diff`, and
 `diff.relative` settings out of the patch (amended 2026-09-25, #449). A local source has one renderer, so ADR 0026's two-renderer problem
 does not arise and no normalization is applied.
 
+> **Amended 2026-09-27 (#556): a shared Review session holds three
+> patches.** A `local_branch` session writes one patch per **Patch view** at
+> prepare, each with its own sha256: Combined (`baseSha` to `headSha`, the
+> merge base to the Local snapshot) in `patch.diff`, Committed (`baseSha` to
+> `checkoutHeadSha`) in `patch-committed.diff`, and Uncommitted
+> (`checkoutHeadSha` to `headSha`) in `patch-uncommitted.diff`. Combined is
+> the session's patch and its hash is the canonical patch hash, so the
+> session key stays the two SHAs. The session record also stores, per view,
+> the patch path, its hash, and every path the patch touches on either side.
+> Switching views reads a stored file: it runs no git, reads nothing from the
+> checkout, and moves neither the Review nor the session. When any of the
+> three patches is over the 2 MiB git output cap, the open, Refresh,
+> `review_local`, and `refresh_review` are refused `patch_too_large`, naming
+> the largest files of that patch; no view is stored as too large. A
+> `local_branch` session stored before #556 has no view patches and reads as
+> invalid, so the next open quarantines it and prepares it again under the
+> same session ID (ADR 0019). Drafts and Insights are stored on the Review
+> and survive; the session's Viewed marks go aside with its directory. A
+> `commit` session keeps one patch.
+
 The goal record proposed "a detached worktree at `HEAD` with the patch
 applied". The snapshot commit replaces it because of one concrete failure:
 Brief Reach counts names with `git grep ... <headSha>` in
@@ -219,6 +239,13 @@ draft is ever discarded by Refresh.
 > **unchanged** otherwise. Any other draft needs attention and keeps its
 > original file, lines, and session. No draft is discarded.
 
+> **Amended 2026-09-27 (#556).** A note records the Patch view it was
+> written on, its origin view, stored only when it is not Combined, and its
+> lines are checked against that view's patch. A Finding draft is always
+> Combined. Switching views changes no draft's ID, text, origin view, or
+> state. ADR 0051 "Notes across patch views" records where a note shows in
+> each view, and "Addressed or not" how Refresh carries it.
+
 ## Git writes the main process may perform
 
 This is the complete list. Anything else is a new decision.
@@ -269,7 +296,11 @@ in the write gate immediately before it:
 - **Apply**: `working_tree` source; `requireFresh` passes. Amended
   2026-09-27 (#555): `local_branch` source, else refused `not_local_branch`.
   The snapshot is the checkout, so the write is the same, and the confirmed
-  Apply reopens the Review with the same branch and base.
+  Apply reopens the Review with the same branch and base. Amended
+  2026-09-27 (#556): the request names the Patch view the diff shows, and
+  any view other than Combined is refused `view_mismatch` before the
+  operation record and the freshness gate, so nothing is written and the
+  Review is not marked `RevisionChanged`.
 - **Commit**: `working_tree` source; `requireFresh` passes.
 - **Push**: `requireCurrentSession` passes, and `git rev-parse <branch>`
   equals the Commit receipt's SHA (`working_tree`) or the session's `headSha`
@@ -363,6 +394,17 @@ command. The context pack skips comments and checks. The Brief has no
 Description vs diff block, because there is no description. Its citation
 manifest is diff hunks only, as ADR 0040 made it for every source (amended
 2026-09-25, #450; this record first said `c*` for `branch` sources).
+
+> **Amended 2026-09-27 (#556).** A shared Review's diff toolbar has a Patch
+> view control with Combined, Committed, and Uncommitted. The diff opens on
+> Combined and keeps the picked view across Refresh, and the header's
+> revision line starts with the view's name. Viewed marks belong to the view
+> they were made on, one file per view in the session directory. Insights
+> run on Combined whichever view the diff shows, and the run dialog says so.
+> Findings show inline and in the file counts on Combined only. While another
+> view is selected, an Insight's meta line ends "Combined view" and Apply is
+> disabled with its reason beside it. Running an Insight on another view is
+> a separate decision.
 
 ## Rejected alternatives
 

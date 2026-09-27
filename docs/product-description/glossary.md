@@ -66,6 +66,8 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Shared Review.** The one local Review of a checkout's current branch against a base branch: the branch's commits and the checkout's staged, unstaged, and untracked changes in one diff, from the merge base to the Local snapshot. Its notes stay on their lines after the coding agent commits. Patchdesk preselects the nearest other local branch as the base, and the maintainer may pick another; another branch or base is another shared Review.
 
+**Patch view.** One of a *shared Review*'s three diffs of the same session: Combined, from the merge base to the Local snapshot; Committed, from the merge base to the checkout's `HEAD`; and Uncommitted, from `HEAD` to the Local snapshot. Switching views moves neither the Review nor its session. Notes keep their state across views, Viewed marks belong to one view, and Insights run on Combined.
+
 **Local Review.** A Review of a branch or commit in a local checkout the workspace profile lists, opened before any pull request exists. It has no Conversation, checks, merge, or pending review.
 
 **Local snapshot.** The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, committed with a fixed identity so the same content always has the same SHA. The maintainer's index and branches never see it.
