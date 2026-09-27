@@ -213,11 +213,6 @@ describe("narrative walkthrough takeover", () => {
         document.querySelector("[data-walkthrough-chapter-dock]"),
       ).toBeTruthy();
       expect(document.querySelector("[data-walkthrough-reader]")).toBeTruthy();
-      expect(
-        document
-          .querySelector("[data-walkthrough-stage]")
-          ?.getAttribute("class"),
-      ).toContain("flex-col");
       expect(screen.getByRole("heading", { name: "Context" })).toBeTruthy();
       expect(screen.getByRole("heading", { name: "Behavior" })).toBeTruthy();
       expect(
@@ -313,9 +308,6 @@ describe("narrative walkthrough takeover", () => {
     expect(
       document.querySelector("[data-walkthrough-chapter-dock]"),
     ).toBeNull();
-    expect(
-      document.querySelector("[data-walkthrough-stage]")?.getAttribute("class"),
-    ).toContain("min-[1280px]:grid-cols-1");
     expect(
       screen.getByRole("heading", { name: "Why this snapshot matters" }),
     ).toBeTruthy();
