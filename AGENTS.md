@@ -190,7 +190,6 @@ Process:
 - When the maintainer approves execution of a plan or multi-issue program, record its scope, authorized actions, delegation budget, and completion condition in the owning plan. Continue approved slices without asking to proceed. Use the approved budget without repeated requests; do not exceed the plan or harness limit without approval.
 - Read-only screenshots and the dev-pane restarts authorized above need no additional approval. An approval to draft or review a plan does not authorize its execution.
 - Pushes, real-PR creation and updates, and merges are authorized across slices only when the approved execution plan explicitly names those actions and the slices they cover. The parent performs those writes after required gates and reviews. Otherwise ask before each outward write. Ask before removing code that looks intentional, changing scope, or taking a new destructive action; stop at a failed gate or required human review.
-- For a `/goal` to land a program, an open PR is unfinished. Finish when the specified PRs are merged and their issues verified closed, or report a concrete blocker only the maintainer can clear once. Do not repeat the same progress summary while the blocker is unchanged.
 
 ## Git
 
