@@ -10,7 +10,7 @@ The UX pass added sixteen entries after deduplication: seven medium and nine low
 
 B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issues/185) to [#188](https://github.com/kwanpham2195/patchdesk/issues/188) and are fixed at `737c515c`, as is the raw start-time slip inside B-22; each entry records its fix commit. Eleven remain open: B-13 to B-18, B-20, B-21, and B-23 to B-24, plus B-22's three other slips. The largest remaining cluster is the Visited pull requests column's recovery from removed Review records (B-15, B-16); B-19, the last merged or closed Review entry, is fixed under #348. The open entries are not filed as issues. Every fix here is read from source at `737c515c`; none has post-fix live evidence.
 
-B-25 comes from the 2026-09-26 coding-agent page and is filed as [#491](https://github.com/kwanpham2195/patchdesk/issues/491); ADR 0052 plans to pin a working-tree Review's base as its fix.
+B-25 comes from the 2026-09-26 coding-agent page and is filed as [#491](https://github.com/kwanpham2195/patchdesk/issues/491); the shared Review (#555) fixes it.
 
 | ID   | Title                                                                                    | Severity | Area                               | Resolution or decision        | Issue                                                        |
 | ---- | ---------------------------------------------------------------------------------------- | -------- | ---------------------------------- | ----------------------------- | ------------------------------------------------------------ |
@@ -22,7 +22,7 @@ B-25 comes from the 2026-09-26 coding-agent page and is filed as [#491](https://
 | B-13 | Context and Preview stay unavailable when the Review worktree is missing                 | medium   | Review workbench / Diff            | fix (named follow-up)         | —                                                            |
 | B-15 | A failed load from a Visited row leaves the destination on the missing Review            | medium   | Visited pull requests column       | fix                           | —                                                            |
 | B-17 | The inline composer shortcut starts a review while its hint says comment                 | medium   | Review workbench / Inline comments | fix                           | —                                                            |
-| B-25 | Local drafts lose their lines after the coding agent commits                             | medium   | Local Review / coding agent        | fix (named follow-up)         | [#491](https://github.com/kwanpham2195/patchdesk/issues/491) |
+| B-25 | Local drafts lose their lines after the coding agent commits                             | medium   | Local Review / coding agent        | fixed (#555)                  | [#491](https://github.com/kwanpham2195/patchdesk/issues/491) |
 | B-02 | Scalar profile validation falls through to a generic request error                       | medium   | Settings / Workspace               | fixed (`8dce9e7`)             | —                                                            |
 | B-03 | Open Review recommendation preempts ready-to-merge action                                | medium   | Pull requests                      | fixed (`b66a0a9`), superseded | —                                                            |
 | B-04 | Stale Review-opening error remains on the first-run screen                               | medium   | First run / Pull requests          | fixed (`8d372ab`)             | —                                                            |
@@ -230,8 +230,9 @@ B-25 comes from the 2026-09-26 coding-agent page and is filed as [#491](https://
 - **Reproduce:** Open a working-tree Review of a checkout with an uncommitted change, add a note on a changed line, commit the change, and press Refresh.
 - **Why (from the code):** `src/services/local-review-revision-service.ts:111-115` reads `HEAD` as a working-tree session's base on every read, so each commit moves the base with it.
 - **Severity:** `medium`. Review notes stop reaching the agent inline once it commits; nothing is lost, and the Local drafts card still lists them.
-- **Decision needed:** `fix`. ADR 0052 "Notes after the agent commits" records a pinned base as the planned change. Until then: review before the agent commits, or open a Branch Review against the base branch.
+- **Decision needed:** `fix`. ADR 0052 first recorded a pinned base as the planned change; that plan was struck.
 - **Raised by:** [A coding agent over MCP](pull-requests/coding-agent-over-mcp.md#known-limits).
+- **Status:** fixed by #555. The Local review dialog and `review_local` open the shared Review, which diffs the Local snapshot against the merge base with a base branch, so a commit stays in the diff and Refresh keeps the note on its line with state `unchanged`. Checked in `tests/services/local-review-shared.test.ts`; not yet observed live.
 - **Issue:** [#491](https://github.com/kwanpham2195/patchdesk/issues/491)
 
 ## Low
@@ -355,4 +356,4 @@ From the 2026-09-14 UX pass:
 - The stale comment at `src/renderer/src/components/finish-review-dialog.tsx:44`, which says Discard is not offered while the dialog offers Discard review, has no user-visible effect.
 - The blank Visited pull requests column on a fresh install, before the first workspace exists, is unobserved and stays an open question in [Visited pull requests](foundations/visited-pull-requests.md#open-questions-and-verification).
 
-B-09 to B-12 were filed as GitHub issues #185 to #188, all four now closed as completed, and B-25 is open as #491; no issue or external tracker entry has been created for any other entry. The first pass's source snapshot is `3100615`; the UX pass drafted against `dd613996` and rechecked every entry against `737c515c`.
+B-09 to B-12 were filed as GitHub issues #185 to #188, all four now closed as completed, and B-25 is filed as #491 and fixed by #555; no issue or external tracker entry has been created for any other entry. The first pass's source snapshot is `3100615`; the UX pass drafted against `dd613996` and rechecked every entry against `737c515c`.

@@ -142,7 +142,7 @@ pull-requests/
   filters-pagination-and-refresh.md   GitHub filters, pages, manual refresh, and freshness
   repository-listing.md               rows, indicators, and recommended actions
   opening-a-review.md                 preparation, progress, failure, and workbench entry
-  opening-a-local-review.md           working tree, branch, or commit Review from a local checkout
+  opening-a-local-review.md           shared or commit Review from a local checkout
   coding-agent-over-mcp.md            a coding agent opening, refreshing, and reading a local Review over MCP
 
 review-workbench/

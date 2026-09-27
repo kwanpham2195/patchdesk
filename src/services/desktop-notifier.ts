@@ -15,7 +15,7 @@ type DesktopNotificationSubject = {
  */
 /** How a notification names a local Review (ADR 0052). */
 export type LocalReviewNotificationSubject = {
-  /** The local Review's source title with its checkout folder, such as "Working tree on feat/x in patchdesk". */
+  /** The local Review's source title with its checkout folder, such as "feat/x against main in patchdesk". */
   readonly localTitle: string;
   /** Set when more than one workspace profile is configured (ADR 0052 "Profile switch"). */
   readonly profileLabel?: string;

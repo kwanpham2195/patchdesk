@@ -90,6 +90,13 @@ branch's own Review. Review identity is unchanged: working-tree Reviews stay
 per branch, so drafts never cross branches. Branch and commit Reviews leave
 the sidebar and are reopened from the Local review picker.
 
+Amended 2026-09-27 (#555): the row opens the one open shared Review of the
+branch checked out now. With none, or with shared Reviews against more than
+one base, it opens the Local review dialog for that checkout, which
+preselects the inferred base and names the bases already reviewed. The row
+still stands for every local Review of the checkout; stored working-tree and
+branch Reviews are no longer listed.
+
 ## A repository moved on disk (#488)
 
 > **Added 2026-09-27.**
@@ -104,3 +111,17 @@ file, so reusing or removing one first runs `git worktree repair <worktree>`
 in the repository, naming only that Patchdesk worktree, so the maintainer's
 own linked worktrees are left as they are. A Review of a linked worktree is keyed by
 that worktree's path, so a linked worktree that moved opens as a new Review.
+
+## Drafts follow the agent's commits (#555)
+
+> **Added 2026-09-27** (contract for #555, fixes #491).
+
+A working-tree Review diffed the snapshot against `HEAD`, so a line the
+agent committed left the diff, and after Refresh a note on it needed
+attention. The shared Review (ADR 0050, amended) diffs the snapshot against
+the merge base with a base branch instead, so a committed line stays in the
+diff. After the maintainer's Refresh, the carry rule above places the note on
+the same line, and it reads unchanged when the committed lines are the ones
+the maintainer saw. Drafts still never cross branches: another branch keys
+another shared Review. Drafts on stored working-tree and branch Reviews are
+not moved into a shared Review.

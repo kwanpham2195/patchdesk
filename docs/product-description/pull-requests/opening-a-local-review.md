@@ -2,13 +2,13 @@
 
 ## Summary
 
-Opening a local Review turns a change that has no pull request yet into a readable Review workbench. The maintainer reaches it from the Local review button on the Pull requests screen, beside the Repository picker, and it appears only when the Selected repository has a local checkout in the active workspace profile. The maintainer picks a _Review source_: the working tree against `HEAD`, a local branch against a base branch, or one commit. Patchdesk reads the checkout, prepares a _Review session_ for that exact revision, and opens the workbench on the Diff tab. Opening changes no file, index, or branch in the maintainer's checkout and performs no GitHub read or write; Patchdesk keeps the snapshot as git objects, a `refs/patchdesk/local/` ref, and a worktree in its cache. A coding agent can open and refresh the same Review over MCP; see [A coding agent over MCP](coding-agent-over-mcp.md).
+Opening a local Review turns a change that has no pull request yet into a readable Review workbench. The maintainer reaches it from the Local review button on the Pull requests screen, beside the Repository picker, and it appears only when the Selected repository has a local checkout in the active workspace profile. The maintainer picks a _Review source_: the _shared Review_ of the checked-out branch against a base branch, which shows the branch's commits and the checkout's uncommitted changes as one diff, or one commit. Patchdesk reads the checkout, prepares a _Review session_ for that exact revision, and opens the workbench on the Diff tab. Opening changes no file, index, or branch in the maintainer's checkout and performs no GitHub read or write; Patchdesk keeps the snapshot as git objects, a `refs/patchdesk/local/` ref, and a worktree in its cache. A coding agent can open and refresh the same Review over MCP; see [A coding agent over MCP](coding-agent-over-mcp.md).
 
 ## The simple case
 
-The maintainer selects a repository that has a local checkout and presses Local review. The Open a local review dialog names the repository and offers three tabs: Working tree, Branch, and Commit. Working tree is selected, with the note `Staged, unstaged, and untracked changes against HEAD.` The maintainer presses Open review. The button reads Opening… and the shared busy indicator reads Opening Review… while Patchdesk records the working tree and prepares the session.
+The maintainer selects a repository that has a local checkout and presses Local review. The Open a local review dialog names the repository and offers two tabs: Shared and Commit. Shared is selected, with the note `Every change on <branch> since it left the base branch, committed or not: commits, staged, unstaged, and untracked files.` The **Base branch** select holds the nearest branch, with the reason under it, such as `nearest branch: main, 3 commits back`. The maintainer presses Open review. The button reads Opening… and the shared busy indicator reads Opening Review… while Patchdesk records the working tree and prepares the session.
 
-When preparation succeeds, the dialog closes and the Review workbench opens on the Diff tab. The heading names the source, for example `Working tree on feat/449-local-review-source`. Every staged, unstaged, and untracked file that `.gitignore` does not exclude appears in the file tree and the diff, each untracked file marked NEW.
+When preparation succeeds, the dialog closes and the Review workbench opens on the Diff tab. The heading names the branch and the base, for example `feat/449-local-review-source against main`. Every file the branch's commits changed since it left `main`, and every staged, unstaged, and untracked file that `.gitignore` does not exclude, appears in the file tree and the diff, each new file marked NEW.
 
 ## The task, event by event
 
@@ -24,22 +24,25 @@ stateDiagram-v2
 
 ### Arrive
 
-The Local review button sits in the Pull requests header between the Repository picker and the freshness badge. It appears only when the workspace profile lists the Selected repository with a local checkout path; a repository without one shows no button. Pressing it opens the dialog with the Working tree tab selected and the Branch fields set to an empty Branch and a Base branch of `main`.
+The Local review button sits in the Pull requests header between the Repository picker and the freshness badge. It appears only when the workspace profile lists the Selected repository with a local checkout path; a repository without one shows no button. Pressing it opens the dialog with the Shared tab selected. Patchdesk reads the checkout's local branches; `Reading the branches…` shows until they arrive, and `Patchdesk could not read the checkout's branches.` replaces the select when the read fails.
 
-When the repository has linked worktrees (`git worktree add`), the Working tree tab also shows a **Checkout** select listing the configured checkout and each live linked worktree, as `<folder> · <branch>` or `<folder> · detached HEAD`. It defaults to the configured checkout and is hidden when there is only one checkout. Patchdesk's own review worktrees are never listed. The Branch and Commit tabs always read the configured checkout.
+The Base branch select lists every other local branch, the most recently committed first. It preselects the inferred base: of the branches whose merge base with `HEAD` is behind `HEAD`, the one with the fewest commits from that merge base to `HEAD`. A tie goes to the repository's default branch, then to the most recently committed branch. The reason line shows only while the inferred base is selected. The maintainer may pick any listed branch instead. When no branch is behind `HEAD`, for example when every other branch was created at `HEAD`, nothing is preselected and the select reads `Pick a base branch`. When the checked-out branch is the only local branch, the select is replaced by `<branch> is the only local branch, so there is no base to compare it with. Create the base branch, or open one commit.` When the branch already has open shared Reviews, a line under the select names their bases: `<branch> has open reviews against main, develop.`
+
+> Technical note: the default branch is `origin/HEAD`, else the `init.defaultBranch` setting, else `main` when that branch exists. Only local branches are read; Patchdesk does not fetch.
+
+When the repository has linked worktrees (`git worktree add`), the Shared tab also shows a **Checkout** select listing the configured checkout and each live linked worktree, as `<folder> · <branch>` or `<folder> · detached HEAD`. It defaults to the configured checkout and is hidden when there is only one checkout. Picking another checkout reads that checkout's branches and drops a base picked by hand. Patchdesk's own review worktrees are never listed. The Commit tab always reads the configured checkout.
 
 ### Leave unchanged
 
-Switching tabs, typing in the fields, pressing Cancel, pressing Close, or pressing Escape reads nothing and writes nothing. The dialog is created fresh each time it opens, so a cancelled draft does not return.
+Switching tabs, picking a base, typing in the fields, pressing Cancel, pressing Close, or pressing Escape writes nothing. Opening the dialog and picking a checkout read that checkout's branches and write nothing. The dialog is created fresh each time it opens, so a cancelled draft does not return.
 
-Open review stays disabled until the chosen tab is complete: Branch needs both a branch and a base branch, and Commit needs a SHA of 4 to 64 hexadecimal characters, full or abbreviated, in either case. Spaces around a value are ignored.
+Open review stays disabled until the chosen tab is complete: Shared needs a base branch, and Commit needs a SHA of 4 to 64 hexadecimal characters, full or abbreviated, in either case. Spaces around a value are ignored.
 
 ### Begin an action
 
 Pressing Open review sends the source to the main process. Patchdesk checks that the repository is in the active profile with a local checkout, then reads the source from that checkout:
 
-- **Working tree.** Patchdesk records the chosen checkout as a _Local snapshot_, a commit object built from every staged, unstaged, and untracked file against `HEAD`. The branch `HEAD` names, or `detached HEAD`, identifies the Review, so switching branches opens a different Review. A linked worktree is a different Review from the configured checkout on the same branch, with its own sessions and drafts, and its heading ends with `in <folder>`.
-- **Branch.** The branch tip is compared with its merge base with the base branch. Commits made on the base branch after the branch point do not appear.
+- **Shared.** Patchdesk records the chosen checkout as a _Local snapshot_, a commit object built from every staged, unstaged, and untracked file on top of `HEAD`, and compares it with the merge base of `HEAD` and the base branch. The diff holds the branch's commits and its uncommitted changes together; commits made on the base branch after the branch point do not appear. The branch `HEAD` names, or `detached` on a detached `HEAD`, and the base branch identify the Review, so switching branches or picking another base opens a different Review. A linked worktree is a different Review from the configured checkout on the same branch, with its own sessions and drafts, and its heading ends with `in <folder>`. When the checkout is on another branch than the dialog read, the open is refused instead of opening that branch's Review.
 - **Commit.** The commit is compared with its first parent. A root commit is compared with an empty tree, so every file it adds appears as new.
 
 > Technical note: the Local snapshot is built in a temporary copy of the checkout's index and committed with a fixed author, committer, date, and message, so the same content on the same `HEAD` always has the same SHA. The maintainer's index, branches, and working files are never written. The snapshot's objects go into the repository's object store and are reachable only from a ref under `refs/patchdesk/local/` (ADR 0050).
@@ -56,13 +59,13 @@ Patchdesk prepares the session for the resolved head and base: it pins the head 
 
 On success the dialog closes and the Review workbench replaces the Pull requests screen, on the Diff tab. The workbench differs from a pull-request Review:
 
-- The heading names the source: `Working tree on <branch>`, `Working tree on detached HEAD`, `Branch <branch> against <base>`, or `Commit <first eight characters>`.
+- The heading names the source: `<branch> against <base>`, `Detached HEAD against <base>`, or `Commit <first eight characters>`.
 - The tab strip shows Diff and Insights; there is no Conversation tab.
-- The header shows the Scope gauge and a line with the repository and the revision it represents: `Local snapshot <first eight characters> · read from the local checkout` for a working tree, `Branch tip <…>` for a branch, and `Commit <…>` for a commit. It makes no claim about GitHub: there is no freshness label or checked time, no Checks or Merge chips, no Open on GitHub or Watch button, and no Start a review or Finish review button. The line ends with a **Refresh** button that reads the checkout again; see [Refresh](#refresh).
+- The header shows the Scope gauge and a line with the repository and the revision it represents: `Local snapshot <first eight characters> · <branch> against <base> · read from the local checkout` for a shared Review, and `Commit <…> · read from the local checkout` for a commit. It makes no claim about GitHub: there is no freshness label or checked time, no Checks or Merge chips, no Open on GitHub or Watch button, and no Start a review or Finish review button. The line ends with a **Refresh** button that reads the checkout again; see [Refresh](#refresh).
 - The Diff tab behaves as described in [Files, diff, and navigation](../review-workbench/files-diff-and-navigation.md), including expanding unchanged context around a hunk. Its Commits section lists no commits, its Threads section lists no threads, and selecting lines opens a note composer instead of an inline comment; see [Maintainer notes](#maintainer-notes).
 - The Insights tab runs Brief, Walkthrough, and Analysis as described in [Insights on a local Review](#insights-on-a-local-review).
 
-Opening the same source again with unchanged content lands on the same Review session. An edit to any file, or a new `HEAD`, prepares a new session, and the same Review moves to it.
+Opening the same source again with unchanged content lands on the same Review session. An edit to any file, a new commit, or a new merge base prepares a new session, and the same Review moves to it.
 
 On failure the dialog stays open with a `Review not opened` alert that gives the reason in one sentence:
 
@@ -74,6 +77,7 @@ On failure the dialog stays open with a `Review not opened` alert that gives the
 | The patch is larger than 2 MiB                                                         | `The change is larger than the 2 MiB patch Patchdesk can read. The largest changes are in <files>. Leave generated files out, or review it in smaller parts.`                                                                         |
 | The branch, base branch, merge base, or commit does not exist, or `HEAD` has no commit | `This checkout has no such branch, base branch, or commit.`                                                                                                                                                                           |
 | The repository's configured checkout folder no longer exists, as after a move on disk  | `Patchdesk cannot find this repository's checkout at <path>. If you moved it, open Settings → Workspace and, under Repositories, add the folder that holds it now if it is not listed, then untick the repository and tick it again.` |
+| The checkout is on another branch than the dialog read                                 | `The checkout is on <branch>. Switch to <branch> to reopen this review.` (or `Detach HEAD`)                                                                                                                                           |
 | The repository is no longer in the profile with a local checkout                       | `This repository has no local checkout in the workspace.`                                                                                                                                                                             |
 | Any other read, storage, or worktree failure                                           | `Patchdesk could not read the local checkout.`                                                                                                                                                                                        |
 
@@ -81,14 +85,14 @@ The fields keep their values, and pressing Open review again retries.
 
 ## Insights on a local Review
 
-Brief, Walkthrough, and Analysis run on a local Review from the same run dialog, with the same provider, model, effort, and language choices, as on a pull request Review. Each run is bound to the local session's head, base, and patch hash, so a run on a working tree analyzes the Local snapshot, including untracked files. A result is retained and read back the same way; a later session makes it Outdated.
+Brief, Walkthrough, and Analysis run on a local Review from the same run dialog, with the same provider, model, effort, and language choices, as on a pull request Review. Each run is bound to the local session's head, base, and patch hash, so a run on a shared Review analyzes the Local snapshot, including untracked files. A result is retained and read back the same way; a later session makes it Outdated.
 
 What differs is what a local Review has no source for:
 
 - The model's context carries the repository's rule files and the changed-file list, but no pull request comments and no check results. Patchdesk makes no GitHub read to start the run.
-- Analysis shows its Findings and their evidence hunks, with Dismiss and Copy as markdown prompt. There is no Add to review, no Add all, no Finish with the Analysis summary, and no CI badge, because a local Review has no pull request to write to or checks to report. A mapped Finding offers Add to draft instead; see [Local drafts](#local-drafts). On a working tree, a Finding that carries a suggestion also offers an Apply checkbox; see [Apply suggestions to the working tree](#apply-suggestions-to-the-working-tree). A Finding that is not mapped to the diff reads Unavailable.
+- Analysis shows its Findings and their evidence hunks, with Dismiss and Copy as markdown prompt. There is no Add to review, no Add all, no Finish with the Analysis summary, and no CI badge, because a local Review has no pull request to write to or checks to report. A mapped Finding offers Add to draft instead; see [Local drafts](#local-drafts). On a shared Review, a Finding that carries a suggestion also offers an Apply checkbox; see [Apply suggestions to the working tree](#apply-suggestions-to-the-working-tree). A Finding that is not mapped to the diff reads Unavailable.
 - Walkthrough shows no discussion note, because a local Review has no Conversation.
-- Brief draws Flow, Shape, Blast radius, and Start here. Blast radius counts names by text search at the session head, which for a working tree is the Local snapshot, so a name the uncommitted change adds is found. Brief has no Description vs diff block for any Review (ADR 0040), and no citation names a commit. A current Brief offers **Copy as PR description** in its Provenance card; see [Copy Brief as PR description](#copy-brief-as-pr-description).
+- Brief draws Flow, Shape, Blast radius, and Start here. Blast radius counts names by text search at the session head, which for a shared Review is the Local snapshot, so a name the uncommitted change adds is found. Brief has no Description vs diff block for any Review (ADR 0040), and no citation names a commit. A current Brief offers **Copy as PR description** in its Provenance card; see [Copy Brief as PR description](#copy-brief-as-pr-description).
 - A settled run posts `<Insight> finished` or `<Insight> failed`, naming the source title and checkout folder, under the same silence rule as a pull request Review (#496); see [Notifications](coding-agent-over-mcp.md#notifications).
 
 ## Change intent
@@ -106,7 +110,7 @@ Saving writes only the Review record. A refused save keeps the dialog open with 
 | Another action on the Review is running                        | `Another action on this review is running. Try again when it finishes.`                    |
 | Any other failure                                              | `The change intent was not saved.`                                                         |
 
-A spec file is read when Analysis starts, from the reviewed revision (the Local snapshot on a working tree), never from the working tree, so an edit after the snapshot reaches Analysis only after Refresh. When the file cannot be used, the run does not start and the run dialog says why:
+A spec file is read when Analysis starts, from the reviewed revision (the Local snapshot on a shared Review), never from the working tree, so an edit after the snapshot reaches Analysis only after Refresh. When the file cannot be used, the run does not start and the run dialog says why:
 
 | Cause                                                                                                                    | Sentence                                                                                                                                                         |
 | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -180,7 +184,7 @@ No draft is discarded. A Finding draft keeps its suggestion only when the new pa
 
 | Cause                                                                                 | Sentence under the workbench                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A working-tree Review whose checkout is now on another branch or a detached `HEAD`    | `The checkout is on <branch>. Switch to <branch> to reopen this review.` (or `Detach HEAD`)                                                                                                                                           |
+| A shared Review whose checkout is now on another branch or a detached `HEAD`          | `The checkout is on <branch>. Switch to <branch> to reopen this review.` (or `Detach HEAD`)                                                                                                                                           |
 | Another action on the Review is running                                               | `Another action on this review is running. Refresh when it finishes.`                                                                                                                                                                 |
 | The working tree's index holds an unresolved merge conflict                           | `The working tree has unresolved merge conflicts.`                                                                                                                                                                                    |
 | The working tree has more than 5,000 untracked files                                  | `The working tree has more than 5,000 untracked files, more than Patchdesk snapshots. Add <paths> to .gitignore or remove them, then try again.`                                                                                      |
@@ -191,6 +195,8 @@ No draft is discarded. A Finding draft keeps its suggestion only when the new pa
 | Any other read or storage failure                                                     | `Patchdesk could not read the local checkout.`                                                                                                                                                                                        |
 
 A refused Refresh changes nothing: the Review stays on its session with its drafts as they were.
+
+A working-tree or branch Review stored before the shared Review (#555) shows no Refresh button: nothing reads its checkout again.
 
 A repository moved on disk keeps its local Reviews. Once its path is saved again in Settings, opening it returns the same Review on the same session when the content is unchanged, and Patchdesk runs `git worktree repair` so the Review's cache worktree reads from the moved repository.
 
@@ -204,7 +210,7 @@ Each Flow step that shows citation chips in the reader carries its hunks as `(pa
 
 ## Apply suggestions to the working tree
 
-On a working-tree Review with a current Analysis, a Finding whose suggestion resolves in the session's patch shows an **Apply** checkbox beside Dismiss, and the Needs attention card shows an Apply bar above the Findings. With no open Finding whose suggestion resolves, the bar is left out, unless it still has an unsettled Apply to check or a message from the last Apply to show. The maintainer ticks one or more Findings; the button reads `Apply 1 suggestion` or `Apply <n> suggestions` and stays disabled while nothing is ticked. Pressing it opens a confirmation that lists every selected Finding by title and location. **Apply to working tree** writes; Cancel, Escape, or a click outside writes nothing.
+On a shared Review with a current Analysis, a Finding whose suggestion resolves in the session's patch shows an **Apply** checkbox beside Dismiss, and the Needs attention card shows an Apply bar above the Findings. With no open Finding whose suggestion resolves, the bar is left out, unless it still has an unsettled Apply to check or a message from the last Apply to show. The maintainer ticks one or more Findings; the button reads `Apply 1 suggestion` or `Apply <n> suggestions` and stays disabled while nothing is ticked. Pressing it opens a confirmation that lists every selected Finding by title and location. **Apply to working tree** writes; Cancel, Escape, or a click outside writes nothing.
 
 Patchdesk first reads the checkout again. When the working tree differs from the session the Analysis ran on, nothing is written, the Review records that its revision changed, and the bar shows `The working tree changed after this Analysis ran. Press Refresh, then run Analysis on the current files.` beside the button. Otherwise it rebuilds each change from the retained Analysis and the file's current bytes, runs `git apply` on the checkout, and confirms every file reached its expected content. The maintainer's index is not written and nothing is staged.
 
@@ -223,7 +229,7 @@ On success the Review moves to a new session for the changed working tree and th
 
 When Patchdesk cannot prove the outcome, for example the app quits while `git apply` runs, the bar replaces Apply with `An Apply may have changed files. Check them before applying more.` and a **Check files** button. Checking, and every app start, compares each file's sha256 with the hashes recorded before the write: every file at its new content confirms the Apply and prepares the next session; every file at its old content clears the lock; anything else keeps the lock and reads `An Apply left the files in an unexpected state.` Patchdesk never runs `git apply` again on its own. Each decision is logged to `patchdesk.jsonl` with topic `local-apply` and message `Local apply recovery decided`. A Refresh or reopen that moves the Review to a new session also ends the lock, since the Apply's suggestions cannot be applied to the new session: it reads the hashes once, marks the drafted Findings applied when every file is at its new content, and logs `Local apply settled by a move to another session`. A Refresh that finds the checkout unchanged keeps the lock.
 
-> Technical note: the operation record in the Review's folder (`local-apply-operation.json`) stores each file's path and pre- and post-image sha256 before `git apply` runs, and is marked outcome-unknown immediately before it (ADR 0050, ADR 0035). Branch and commit Reviews offer no Apply.
+> Technical note: the operation record in the Review's folder (`local-apply-operation.json`) stores each file's path and pre- and post-image sha256 before `git apply` runs, and is marked outcome-unknown immediately before it (ADR 0050, ADR 0035). Commit Reviews, and working-tree or branch Reviews stored before the shared Review, offer no Apply.
 
 ## Variants
 
@@ -251,9 +257,9 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 
 **Workspace profile and identity.** A local Review is keyed by the profile, the repository, and the source spec. The repository must be in the profile with a local checkout path at the time of opening.
 
-**Review revision and freshness.** The session pins a head and base as [Review session and revision](../foundations/review-session-and-revision.md) describes for pull requests. For a working tree the head is the Local snapshot and the base is `HEAD`; for a branch, the tip and the merge base; for a commit, the commit and its first parent. Opening recomputes the source, so a just-opened local Review is Fresh.
+**Review revision and freshness.** The session pins a head and base as [Review session and revision](../foundations/review-session-and-revision.md) describes for pull requests. For a shared Review the head is the Local snapshot and the base is the merge base of `HEAD` and the base branch; for a commit, the commit and its first parent. Opening recomputes the source, so a just-opened local Review is Fresh.
 
-**Local persistence and recovery.** The Review, its session, the patch, and the worktree are stored with the pull-request Reviews and recovered by the same journal. A saved destination naming a local Review reopens the stored session at launch without reading the checkout again. A local Review does not appear in the Repository listing. The [Visited pull requests](../foundations/visited-pull-requests.md) column shows one row per repository with local Reviews; its click opens the working tree of the branch the checkout is on now, so it reaches only working-tree Reviews. A branch or commit Review is reopened from this picker: the same source opens the same Review with its drafts.
+**Local persistence and recovery.** The Review, its session, the patch, and the worktree are stored with the pull-request Reviews and recovered by the same journal. A saved destination naming a local Review reopens the stored session at launch without reading the checkout again. A local Review does not appear in the Repository listing. The [Visited pull requests](../foundations/visited-pull-requests.md) column shows one row per repository with local Reviews; its click opens the one open shared Review of the branch the checkout is on now, or this dialog when that branch has none or has shared Reviews against more than one base. A commit Review is reopened from this picker: the same source opens the same Review with its drafts. Working-tree and branch Reviews stored before the shared Review are listed in neither place.
 
 **GitHub permissions and write authority.** No GitHub read or write happens. The checkout is read; the only writes to the repository are the snapshot objects, the managed ref, and the worktree registration.
 
@@ -269,12 +275,14 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 
 ## Edge cases
 
-- A detached `HEAD` opens a Review named `Working tree on detached HEAD`, distinct from every branch's working-tree Review.
-- Switching branch and opening the working tree again, from this picker or the column's local row, opens that branch's own working-tree Review with its own drafts; switching back reopens the first one. Drafts never cross branches.
-- A working tree with no changes opens a session whose patch is empty.
+- A detached `HEAD` opens a Review named `Detached HEAD against <base>`. A branch literally named `detached` opens the same Review.
+- Switching branch and opening again, from this picker or the column's local row, opens that branch's own shared Review with its own drafts; switching back reopens the first one. Drafts never cross branches.
+- After the agent commits a line the maintainer noted, Refresh keeps the note inline on that line, because the commit stays in the diff (#491).
+- A branch created at `HEAD`, or ahead of it, is listed as a base but never preselected.
+- A branch with no commits since its base and no uncommitted changes opens a session whose patch is empty.
 - A root commit opens with every file as NEW.
 - Two branches whose names differ only in characters that cannot appear in a folder name still open two different Reviews.
-- A branch whose history shares nothing with the base branch is refused with the missing-revision sentence.
+- A base branch whose history shares nothing with `HEAD` is refused with the missing-revision sentence.
 - Files that `.gitignore` excludes never appear, even when they are open in an editor.
 - A patch larger than Patchdesk's 2 MiB command output limit is refused `patch_too_large`, naming the largest changed files (#493).
 
@@ -294,6 +302,7 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - Live pass on 2026-09-26 over CDP 9233 (#467 Change intent): a working-tree Review of the Patchdesk checkout with an untracked probe that sums order lines without rejecting negative values and adds an unrequested `formatTotal`. With a text intent asking for a RangeError on negative values and nothing else, Analysis (Codex CLI account, `gpt-6-luna`, high) returned P2 `Negative line values do not raise RangeError` and P2 on `formatTotal`, with `Checked against: change intent`; editing the text added `Intent changed since this run`. A spec-file intent on a missing path refused the next start in the run dialog. Reopening with an intent was not run live. Evidence: `/tmp/patchdesk-467/`.
 - Live pass on 2026-09-26 over CDP 9233 (#489): the Checkout select listed `patchdesk · feat/489-multi-checkout` and `pd-ux-pass · docs/product-description-ux-pass`, and none of the 45 worktrees under `~/.cache/patchdesk`. Opening `pd-ux-pass` showed `Working tree on docs/product-description-ux-pass in pd-ux-pass`; `git status` in both checkouts was identical before and after. A second clone, a directory outside the repository, and a removed worktree were checked in `tests/services/local-review-opening.test.ts` and `tests/services/local-review-retention.test.ts`, not live. Evidence: `/tmp/patchdesk-489/`.
 - The empty-patch workbench, the conflict refusal, the branch and commit sources, and the failure sentences were checked in service and component tests, not live.
+- The shared Review (#555) replaced the Working tree and Branch tabs. Its snapshot and merge base, base inference, the refusals, the sidebar row rule, and the dialog were checked in service, route, and component tests (`tests/services/local-review-shared.test.ts`, `tests/main/local-review-checkout-routes.test.ts`, `tests/renderer/local-review-source-dialog.ui.test.tsx`, `tests/renderer/app-visited-local-review.ui.test.tsx`); the live passes above ran on working-tree Reviews before it.
 - Since #474, moving a local Review to a new session removes the sessions it moved past, and the background sweep removes their refs and worktrees; see the retention rules in the CHANGELOG entry for #474.
 
-Drafted from Patchdesk application source commit `502acfd8`; the Insights section from `7d9a660a`. The live pass ran on `88434b1b`, which lacks two later fixes: the patch command's config-proof flags (`eaa6f3e0`) and the index copy that keeps its mtime (`502acfd8`).
+Drafted from Patchdesk application source commit `502acfd8`; the Insights section from `7d9a660a`; the shared Review from `d893476a`. The live pass ran on `88434b1b`, which lacks two later fixes: the patch command's config-proof flags (`eaa6f3e0`) and the index copy that keeps its mtime (`502acfd8`).

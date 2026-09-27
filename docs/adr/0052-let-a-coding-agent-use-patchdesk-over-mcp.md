@@ -211,6 +211,8 @@ Amended 2026-09-27 (#493): `review_local` and `refresh_review` also refuse `patc
 
 Amended 2026-09-27 (#488): `review_local` and `refresh_review` also refuse `checkout_missing` when the repository's configured `localPath` is no longer a directory, as after a move on disk. `review_local` finds that repository by the `origin` of the checkout holding `cwd`. The message names the configured path and the Settings steps that save the new one.
 
+Amended 2026-09-27 (#555): the tool is `review_local(cwd, source?, base?, intent?)`. `source` is `local_branch`, the default, or `commit`; `working_tree` and `branch` left the manifest. `base` names the shared Review's local base branch and is refused `invalid_input` with `commit`. Without `base`, the open is decided in this order: the base of the branch's open shared Review in that checkout, the most recently opened one when there are several (decided 2026-09-27 in #555); else the inferred base (ADR 0050, amended); else `base_required`, when no other local branch is behind `HEAD`. A reused or inferred base opens with the branch read when the base was chosen, so a branch switch in between is refused `branch_mismatch`. The result adds `baseBranch` and `baseInferred`, true only when Patchdesk inferred the base. `revision_not_found` also covers a base branch that does not exist or shares no history with `HEAD`. `refresh_review` refuses a stored working-tree or branch Review `not_applicable`, and `branch_mismatch` applies to shared Reviews.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run
@@ -381,7 +383,7 @@ in the Local snapshot to be read (ADR 0051); an agent that has the file sends
 its text, and a path would add the `change_intent_file_*` refusals to a tool
 that cannot fix them.
 
-**Notes after the agent commits (#491): pin the base.** A working-tree
+**Notes after the agent commits (#491): pin the base.** ~~A working-tree
 Review records `baseSha` at creation, the `HEAD` it was opened on or the
 `base` the agent passes to `review_local` (the commit it started from), and
 every later session diffs the Local snapshot against that base instead of
@@ -393,7 +395,14 @@ carried. A base that is no longer an ancestor of `HEAD` (rebase, reset)
 refuses Refresh with `base_not_ancestor` and names that control. The other
 option, carrying drafts into the branch Review when the tree is clean, needs
 a cross-Review carry and a guessed base branch, and still loses the notes on
-the first commit of a partly committed tree.
+the first commit of a partly committed tree.~~
+
+Struck 2026-09-27: this plan was not built. #555 fixes #491 with the shared
+Review instead: one Review per checkout, branch, and base branch, diffed from
+the merge base with a named local base branch to the Local snapshot (ADR
+0050 and ADR 0051, amended). There is no pinned `baseSha`, no **Set base to
+HEAD**, and no `base_not_ancestor`; `review_local` takes a base branch name,
+not a commit.
 
 **Settled notification for local runs (#496).** The notification subject
 becomes a pull request reference or a local source title
@@ -531,7 +540,8 @@ codex mcp add patchdesk -- patchdesk mcp
    `docs/architecture.md` (`src/main/mcp/`, the shim), CHANGELOG.
 
 The pinned base (#491) and the intent prompt sentence follow as their own
-PRs, each behind its own chat review.
+PRs, each behind its own chat review. (Amended 2026-09-27: the pinned base
+was replaced by the shared Review, #555.)
 
 ## Consequences
 
