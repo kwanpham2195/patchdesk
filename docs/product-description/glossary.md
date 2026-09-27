@@ -74,7 +74,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Change intent.** The spec a local Review's change is checked against: Markdown the maintainer entered, or a repository-relative spec file read at the reviewed revision. Only Analysis reads it, as the change's stated goal, and an Analysis result names the intent it was checked against.
 
-**Local draft.** A Finding the maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent, copied as one prompt or read over MCP, and never becomes a GitHub comment.
+**Local draft.** A Finding the maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent, listed in the Diff navigator's Notes section, copied as one prompt or read over MCP, and never becomes a GitHub comment.
 
 **Coding agent.** A terminal agent, such as Claude Code or Codex, that edits a checkout and reaches Patchdesk through the `patchdesk mcp` command. It can open and refresh a local Review, ask for Insights, and read results and Local drafts; its tools cannot run an Insight, Apply, or change the maintainer's notes.
 
@@ -98,7 +98,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **PR overview.** The drawer on the right of the Review workbench, titled "PR overview", that both the Checks and Merge status controls in the Review header open. Its collapsible rows are Revision, Checks, Review status, and Merge readiness, and Merge readiness holds the merge command. Closing it returns focus to the control that opened it.
 
-**Browse.** The Diff navigator's first tab, listing the displayed patch's changed files as a tree. A Scope filter narrows it; the Commits and Threads tabs beside it stay complete.
+**Browse.** The Diff navigator's first tab, listing the displayed patch's changed files as a tree. A Scope filter narrows it; the Commits tab and the Threads or Notes tab beside it stay complete.
 
 **File display mode.** The diff toolbar choice between All files, which draws every file of the displayed patch in one scrolling pane, and Selected, which draws only the selected file. The default is All files, and the choice is saved per workspace profile with the View options. File, hunk, and unresolved-comment keyboard commands work only in All files.
 

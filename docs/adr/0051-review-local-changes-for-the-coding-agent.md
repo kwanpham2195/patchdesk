@@ -147,7 +147,8 @@ checkout's `HEAD`, and Uncommitted from `HEAD` to the Local snapshot.
   for the snapshot and `HEAD`, Committed for the merge base and `HEAD`,
   Combined for the merge base and the snapshot. The note then shows inline
   at its own line numbers when its lines sit inside one hunk of the shown
-  view; otherwise only the Local drafts card lists it. A note never crosses
+  view; otherwise only the Notes section lists it, with the reason (the
+  Local drafts card until #557). A note never crosses
   sides. Example: the agent commits a change to `c.ts` and then undoes it in
   the working tree. Combined shows no change to `c.ts`, and Committed and
   Uncommitted show opposite patches. A note on Uncommitted's new side (the

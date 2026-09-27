@@ -253,8 +253,12 @@ One item in the Conversation screen's chronological timeline. Types: PR descript
 _Avoid_: Timeline entry, discussion entry
 
 **Threads section**:
-The Review workbench navigator section, beside Files and Commits, that lists exactly the Conversation threads the diff renders as annotations for the current revision: Mapped conversation threads and the viewer's pending-review threads. Selecting an entry reveals and marks its anchored lines in the diff; the section carries no thread actions, which stay with the thread itself. Threads the diff cannot place do not appear.
+The pull request Review workbench navigator section, beside Browse and Commits, that lists exactly the Conversation threads the diff renders as annotations for the current revision: Mapped conversation threads and the viewer's pending-review threads. Selecting an entry reveals and marks its anchored lines in the diff; the section carries no thread actions, which stay with the thread itself. Threads the diff cannot place do not appear.
 _Avoid_: Thread inbox, thread roster, unresolved list, discussion queue
+
+**Notes section**:
+The local Review workbench navigator section, in place of the Threads section, that lists every Local draft of the Review with its kind, its state, and on a shared Review the Patch view it was written on. A draft the shown diff renders inline is a row that reveals its lines; any other row says why the diff does not show it, and selecting it moves nothing (#557, ADR 0050).
+_Avoid_: Local drafts card, drafts panel, notes inbox
 
 **Pull request metadata rail**:
 The Conversation screen's persistent side rail for the people and tags on the represented pull request: its Reviewers, Assignees, and Labels, each shown as of the maintainer's last refresh and each editable from there. It holds no lifecycle action and is not a second pull request overview.
