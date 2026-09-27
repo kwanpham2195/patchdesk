@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import type { LocalPatchView } from "../../../domain/local-patch-view";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   openPullRequestExternalUrl,
@@ -47,6 +48,7 @@ export function ReviewWorkbenchHeader({
   externalPullRequest,
   openOverview,
   setSummaryDialogOpen,
+  patchView,
 }: {
   readonly model: WorkbenchResponse;
   readonly actions: ReviewWorkbenchActions;
@@ -61,6 +63,8 @@ export function ReviewWorkbenchHeader({
   /** Opens PR overview, landing focus on `section` when one is named. */
   readonly openOverview: (section?: OverviewFocusSection) => void;
   readonly setSummaryDialogOpen: (open: boolean) => void;
+  /** The patch view the diff shows on a shared local Review. */
+  readonly patchView?: LocalPatchView;
 }): React.JSX.Element {
   const checksText =
     model.checks.overall === "none" ? checksLabel : `Checks · ${checksLabel}`;
@@ -217,6 +221,7 @@ export function ReviewWorkbenchHeader({
             localRevisionLabel(
               model.session.key.source,
               model.revision.reviewedHeadSha,
+              patchView,
             )
           ) : (
             <>

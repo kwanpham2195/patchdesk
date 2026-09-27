@@ -135,6 +135,52 @@ describe("useReviewDiffHydration", () => {
     expect(result.current.contextStatus).toBe("idle");
   });
 
+  it("drops a late response after a patch view switch with identical text", async () => {
+    const combinedSource = deferred<RawJsonValue>();
+    const calls = installBridge(() => combinedSource.promise);
+    const { result, rerender } = renderHook(
+      ({ view }) =>
+        useReviewDiffHydration({
+          patch: patchA,
+          sourceSession: { profileId: "profile", sessionId: "session-a", view },
+        }),
+      {
+        initialProps: {
+          view: "combined" as "combined" | "committed",
+        },
+      },
+    );
+
+    let hydration!: Promise<void>;
+    act(() => {
+      hydration = result.current.hydrateFiles(["src/a.ts"]);
+    });
+    rerender({ view: "committed" });
+    await act(async () => {
+      combinedSource.resolve(ready());
+      await hydration;
+    });
+    expect(result.current.hydratedFiles.size).toBe(0);
+
+    act(() => {
+      void result.current.hydrateFiles(["src/a.ts"]);
+    });
+    expect(calls.map((call) => call.body)).toEqual([
+      {
+        profileId: "profile",
+        sessionId: "session-a",
+        path: "src/a.ts",
+        view: "combined",
+      },
+      {
+        profileId: "profile",
+        sessionId: "session-a",
+        path: "src/a.ts",
+        view: "committed",
+      },
+    ]);
+  });
+
   it("keeps selected-path status owned while switching from A to B", async () => {
     const first = deferred<RawJsonValue>();
     const second = deferred<RawJsonValue>();

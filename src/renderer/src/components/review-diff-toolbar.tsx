@@ -36,7 +36,7 @@ import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
 
 // `secondary` alone is the same fill as an idle button, so a pressed segment
 // takes the selection accent the file tree and commit list use.
-const PRESSED_SEGMENT_CLASS =
+export const PRESSED_SEGMENT_CLASS =
   "aria-pressed:bg-accent aria-pressed:text-accent-foreground";
 
 /** The Scope buckets the diff can be narrowed to, and the state of that choice. */

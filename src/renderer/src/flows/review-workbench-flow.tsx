@@ -10,6 +10,7 @@ import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useAddAllFindings } from "./use-add-all-findings";
 import { useLocalApply } from "./use-local-apply";
 import { useLocalDrafts } from "./use-local-drafts";
+import { useLocalPatchView } from "./use-local-patch-view";
 import { useLocalRefresh } from "./use-local-refresh";
 import { useChangeIntent } from "./use-change-intent";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
@@ -175,11 +176,16 @@ export function ReviewWorkbenchFlow({
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
 
+  const localPatchView = useLocalPatchView({ workbench });
   const viewedFiles = useViewedFiles({
     profileId: workbench.session.key.profileId,
     reviewId: workbench.review.id,
     sessionId: workbench.session.id,
-    savedPaths: workbench.viewedPaths,
+    view: localPatchView?.shown.view,
+    savedPaths:
+      localPatchView === undefined
+        ? workbench.viewedPaths
+        : localPatchView.shown.viewedPaths,
     onWorkbenchPatch,
   });
 
@@ -233,6 +239,7 @@ export function ReviewWorkbenchFlow({
           : { onPositionCommitted: onUiStateChange })}
         actions={workbenchActions}
         viewedFiles={viewedFiles}
+        {...(localPatchView === undefined ? {} : { localPatchView })}
         slots={{
           insights: (
             <InsightsSlot
