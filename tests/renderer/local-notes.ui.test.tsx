@@ -42,6 +42,7 @@ function note(text: string): LocalDraftEntry {
     kind: "note",
     noteId: "note-1",
     sessionId: "session-a",
+    view: "combined",
     path: "src/a.ts",
     side: "new",
     startLine: 1,

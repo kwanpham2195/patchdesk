@@ -17,10 +17,11 @@ import {
   parseRepoRelativePath,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
-import type {
-  FindingDraft,
-  LocalDraft,
-  MaintainerNote,
+import {
+  projectLocalDraft,
+  type FindingDraft,
+  type LocalDraft,
+  type MaintainerNote,
 } from "../../src/domain/local-draft";
 import type { Result } from "../../src/domain/result";
 import {
@@ -221,7 +222,7 @@ describe("Local drafts on a Review", () => {
     expect(removed.localDrafts).toEqual([draft("finding-bound")]);
   });
 
-  it("round-trips a local Review's Finding draft and maintainer note, with their carry and applied marks, through its stored form", () => {
+  it("round-trips a local Review's Finding draft and maintainer note, with their carry, applied mark, and origin view, through its stored form", () => {
     const sessionId = localReview().currentSessionId;
     const review = added(
       added(localReview(), {
@@ -231,12 +232,21 @@ describe("Local drafts on a Review", () => {
       }),
       {
         ...note("Name this total."),
+        view: "uncommitted",
         carry: { state: "needs_attention", sessionId, notedLines: [] },
       },
     );
     const stored = structuredClone(serializeReview(review));
 
     expect(parseReview(stored)).toEqual({ _tag: "ok", value: review });
+  });
+
+  it("lists a draft stored without a view as made on Combined, and a note stored with one on that view", () => {
+    expect(projectLocalDraft(draft("finding-bound")).view).toBe("combined");
+    expect(
+      projectLocalDraft({ ...note("Name this total."), view: "committed" })
+        .view,
+    ).toBe("committed");
   });
 
   const stored = structuredClone(
@@ -255,6 +265,10 @@ describe("Local drafts on a Review", () => {
     [
       "an unknown carry state",
       { ...entry, carry: { state: "moved", sessionId: entry.sessionId } },
+    ],
+    [
+      "a Combined view, which is stored as no view",
+      { ...entry, view: "combined" },
     ],
     [
       "a Finding draft marked as a maintainer's",

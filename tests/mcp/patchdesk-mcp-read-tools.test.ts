@@ -356,9 +356,10 @@ describe.each(mcpProtocolEras)(
         sessionId: workbench.session.id,
         headSha: workbench.session.key.headSha,
         patchHash: workbench.revision.patchHash,
-        localDrafts: [...projected.localDrafts].sort(
-          (left, right) => left.line - right.line,
-        ),
+        // `get_feedback` names no origin view until #558.
+        localDrafts: [...projected.localDrafts]
+          .sort((left, right) => left.line - right.line)
+          .map(({ view: _view, ...entry }) => entry),
         markdown: v.parse(v.object({ markdown: v.string() }), prompt.body)
           .markdown,
       });
@@ -374,6 +375,15 @@ describe.each(mcpProtocolEras)(
           )
           .localDrafts.map(({ state }) => state),
       ).toEqual(["current", "current"]);
+      expect(
+        v.parse(
+          v.object({ localDrafts: v.array(v.looseObject({})) }),
+          feedback.content,
+        ).localDrafts,
+      ).toEqual([
+        expect.not.objectContaining({ view: expect.anything() }),
+        expect.not.objectContaining({ view: expect.anything() }),
+      ]);
     });
   },
 );
