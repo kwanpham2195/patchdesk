@@ -30,7 +30,6 @@ import {
   buildLocalNoteAnnotations,
   buildPendingReviewAnnotations,
   buildReadOnlyConversationAnnotations,
-  localNotePlacementInput,
   type MappedFinding,
 } from "./review-workbench-annotations";
 import type {
@@ -71,6 +70,7 @@ import { useSinceReviewMode } from "../hooks/use-since-review-mode";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
 import type { ViewedFilesControls } from "../hooks/use-viewed-files";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
+import { useLocalNotesNavigation } from "../hooks/use-local-notes-navigation";
 import { usePendingReviewDrafts } from "../hooks/use-pending-review-drafts";
 import {
   loadReviewViewPreferences,
@@ -203,6 +203,10 @@ export function ReviewWorkbench({
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() =>
     loadReviewViewPreferences(model.session.key.profileId),
   );
+  const position = useReviewWorkbenchPosition({
+    model,
+    ...definedProps({ initialState, onPositionCommitted }),
+  });
   const {
     section,
     activeTab,
@@ -217,10 +221,7 @@ export function ReviewWorkbench({
     commitWorkbenchPosition,
     selectSection,
     selectCommit,
-  } = useReviewWorkbenchPosition({
-    model,
-    ...definedProps({ initialState, onPositionCommitted }),
-  });
+  } = position;
   // The Diff tab unmounts on a tab switch and remounts on a new head, so its failed drafts live here (#526).
   const pendingReviewDrafts = usePendingReviewDrafts(
     model.review.id,
@@ -511,17 +512,17 @@ export function ReviewWorkbench({
       ),
     [conversationAnnotations, pendingReviewAnnotations],
   );
-  const { session, patchViews } = model;
-  const shownView = localPatchView?.shown.view;
-  const notePlacement = useMemo(
-    () =>
-      patchViews === undefined ||
-      shownView === undefined ||
-      reviewPatch === undefined
-        ? undefined
-        : localNotePlacementInput(patchViews, shownView, reviewPatch),
-    [patchViews, reviewPatch, shownView],
-  );
+  const localNotes = useLocalNotesNavigation({
+    model,
+    localPatchView,
+    reviewPatch,
+    analysis: {
+      analysisRunId: analysisIsCurrent ? retainedAnalysis.runId : undefined,
+      findings,
+    },
+    position,
+    clearScopeBucket,
+  });
   const annotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
     () => [
       ...buildAnnotations(
@@ -529,19 +530,18 @@ export function ReviewWorkbench({
         conversationThreadEntries,
       ),
       ...buildLocalNoteAnnotations(
-        { localDrafts: model.localDrafts, session },
+        model.localDrafts ?? [],
         actions.localNotes,
-        notePlacement,
+        localNotes.placement,
       ),
     ],
     [
       actions.localNotes,
       conversationThreadEntries,
       findings,
+      localNotes.placement,
       model.localDrafts,
-      notePlacement,
       onOtherView,
-      session,
     ],
   );
   const sinceAnnotations = useMemo(
@@ -722,7 +722,13 @@ export function ReviewWorkbench({
                           ? undefined
                           : {
                               count: localDrafts.entries.length,
-                              list: <LocalNotesList controls={localDrafts} />,
+                              list: (
+                                <LocalNotesList
+                                  controls={localDrafts}
+                                  placement={localNotes.placement}
+                                  onReveal={localNotes.reveal}
+                                />
+                              ),
                             },
                       visiblePaths: scopeFilteredPaths,
                       selectedPath,

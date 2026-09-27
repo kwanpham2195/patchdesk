@@ -18,7 +18,12 @@ import {
   installDesktopDouble,
   success,
 } from "./fake-desktop-response";
-import { callBody, callPath, projection } from "./review-workbench-fixtures";
+import {
+  callBody,
+  callPath,
+  projection,
+  withoutViews,
+} from "./review-workbench-fixtures";
 
 const REFRESH = "/v1/reviews/local-refresh";
 let restore: (() => void) | undefined;
@@ -127,11 +132,14 @@ describe("Local drafts inline after a Refresh", () => {
     ]);
     render(
       <>
-        {buildLocalNoteAnnotations(workbench, undefined, undefined).map(
-          (annotation) =>
-            annotation.localNote === undefined ? null : (
-              <LocalNoteCard key={annotation.id} {...annotation.localNote} />
-            ),
+        {buildLocalNoteAnnotations(
+          workbench.localDrafts ?? [],
+          undefined,
+          withoutViews(workbench.session.id),
+        ).map((annotation) =>
+          annotation.localNote === undefined ? null : (
+            <LocalNoteCard key={annotation.id} {...annotation.localNote} />
+          ),
         )}
       </>,
     );

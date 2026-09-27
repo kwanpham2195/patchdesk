@@ -5,6 +5,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
+import type { LocalDraftPlacementContext } from "../../src/renderer/src/local-draft-placement";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 
 /**
@@ -355,4 +356,15 @@ export function withWalkthrough(): WorkbenchResponse {
       },
     },
   });
+}
+
+/** The placement context of a Review without patch views or a current Analysis: a note of `sessionId` shows at its stored lines. */
+export function withoutViews(sessionId: string): LocalDraftPlacementContext {
+  return {
+    sessionId,
+    view: undefined,
+    notes: undefined,
+    analysisRunId: undefined,
+    findings: [],
+  };
 }

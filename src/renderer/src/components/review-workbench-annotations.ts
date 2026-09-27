@@ -10,13 +10,11 @@ import type { ReviewWorkbenchActions } from "./review-workbench";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { ConversationThreadCardData } from "./conversation-thread-card";
 import type { LocalNoteControls } from "../flows/use-local-drafts";
+import type { LocalDraftEntry } from "../local-draft-contracts";
 import {
-  indexPatchHunks,
-  placeInView,
-  type LocalPatchView,
-  type LocalPatchViewPaths,
-  type PatchHunkIndex,
-} from "../../../domain/local-patch-view";
+  placeLocalDraft,
+  type LocalDraftPlacementContext,
+} from "../local-draft-placement";
 
 /** The mapped Analysis findings the diff renders as inline annotations. */
 export type MappedFinding = NonNullable<
@@ -113,79 +111,51 @@ export function buildPendingReviewAnnotations(
   });
 }
 
-/** The shown patch view of a shared local Review, which places notes across views (ADR 0051). */
-export type LocalNotePlacementInput = {
-  readonly view: LocalPatchView;
-  readonly paths: LocalPatchViewPaths;
-  readonly shownHunks: PatchHunkIndex;
-};
-
-/** The placement input for `patch` shown as `view`, from the projection's per-view touched paths. */
-export function localNotePlacementInput(
-  patchViews: NonNullable<WorkbenchResponse["patchViews"]>,
-  view: LocalPatchView,
-  patch: string,
-): LocalNotePlacementInput {
-  return {
-    view,
-    paths: {
-      combined: patchViews.combined.paths,
-      committed: patchViews.committed.paths,
-      uncommitted: patchViews.uncommitted.paths,
-    },
-    shownHunks: indexPatchHunks(patch),
-  };
-}
-
 /**
- * A local Review's maintainer notes fingerprinted against the current session,
- * as diff annotations. A note from an earlier session has lines numbered for
- * another patch, so only the Notes list shows it. With `placement`, a
- * note shows only where `placeInView` puts it inline in the shown view;
- * without it (a Review without views), it shows at its stored lines.
+ * A local Review's maintainer notes as diff annotations, each at the place
+ * `placeLocalDraft` gives it in the shown diff; a note with no inline place
+ * shows only in the Notes list.
  */
 export function buildLocalNoteAnnotations(
-  model: Pick<WorkbenchResponse, "localDrafts" | "session">,
+  entries: ReadonlyArray<LocalDraftEntry>,
   notes: LocalNoteControls | undefined,
-  placement: LocalNotePlacementInput | undefined,
+  context: LocalDraftPlacementContext,
 ): ReadonlyArray<ReviewInlineAnnotation> {
-  return (model.localDrafts ?? []).flatMap((entry) =>
-    entry.kind !== "note" ||
-    entry.sessionId !== model.session.id ||
-    (placement !== undefined &&
-      placeInView(entry, placement.view, placement).placement !== "inline")
-      ? []
-      : [
-          {
-            id: `local-note:${entry.noteId}`,
-            path: entry.path,
-            start: entry.startLine,
-            end: entry.line,
-            side: entry.side,
-            severity: "note",
-            title: "Note",
-            explanation: "",
-            localNote: {
-              noteId: entry.noteId,
-              path: entry.path,
-              startLine: entry.startLine,
-              line: entry.line,
-              text: entry.text,
-              ...definedProps({
-                state: entry.state,
-                onEdit:
-                  notes === undefined
-                    ? undefined
-                    : (text: string) => notes.edit(entry.noteId, text),
-                onRemove:
-                  notes === undefined
-                    ? undefined
-                    : () => notes.remove(entry.noteId),
-              }),
-            },
-          },
-        ],
-  );
+  return entries.flatMap((entry) => {
+    if (entry.kind !== "note") return [];
+    const place = placeLocalDraft(entry, context);
+    if (place.placement !== "inline") return [];
+    return [
+      {
+        id: `local-note:${entry.noteId}`,
+        path: place.path,
+        start: place.startLine,
+        end: place.line,
+        side: place.side,
+        severity: "note",
+        title: "Note",
+        explanation: "",
+        localNote: {
+          noteId: entry.noteId,
+          path: entry.path,
+          startLine: entry.startLine,
+          line: entry.line,
+          text: entry.text,
+          ...definedProps({
+            state: entry.state,
+            onEdit:
+              notes === undefined
+                ? undefined
+                : (text: string) => notes.edit(entry.noteId, text),
+            onRemove:
+              notes === undefined
+                ? undefined
+                : () => notes.remove(entry.noteId),
+          }),
+        },
+      },
+    ];
+  });
 }
 
 /** Every inline annotation the diff renders: findings, then conversation threads. */

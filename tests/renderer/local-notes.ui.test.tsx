@@ -24,7 +24,12 @@ import {
   installDesktopDouble,
   success,
 } from "./fake-desktop-response";
-import { callBody, callPath, projection } from "./review-workbench-fixtures";
+import {
+  callBody,
+  callPath,
+  projection,
+  withoutViews,
+} from "./review-workbench-fixtures";
 
 const ADD = "/v1/reviews/local-drafts/notes/add";
 const EDIT = "/v1/reviews/local-drafts/notes/edit";
@@ -103,11 +108,14 @@ function InlineNotes(): React.JSX.Element {
   });
   return (
     <>
-      {buildLocalNoteAnnotations(workbench, localDrafts?.notes, undefined).map(
-        (annotation) =>
-          annotation.localNote === undefined ? null : (
-            <LocalNoteCard key={annotation.id} {...annotation.localNote} />
-          ),
+      {buildLocalNoteAnnotations(
+        workbench.localDrafts ?? [],
+        localDrafts?.notes,
+        withoutViews(workbench.session.id),
+      ).map((annotation) =>
+        annotation.localNote === undefined ? null : (
+          <LocalNoteCard key={annotation.id} {...annotation.localNote} />
+        ),
       )}
     </>
   );
