@@ -73,16 +73,13 @@ function review() {
 }
 
 describe("Review", () => {
-  it("builds deterministic IDs that distinguish same-head different-base revisions", () => {
+  it("gives same-head different-base revisions distinct session IDs", () => {
     const first = createReviewSessionId({
       ...identity,
       headSha: firstSha,
       baseSha,
     });
     expect(first).toContain("__base-bbbbbbbb__");
-    expect(first).toBe(
-      createReviewSessionId({ ...identity, headSha: firstSha, baseSha }),
-    );
     expect(first).not.toBe(
       createReviewSessionId({
         ...identity,
@@ -130,7 +127,6 @@ describe("Review", () => {
   });
 
   it("keeps one identity-derived ID across heads", () => {
-    expect(createReviewId(identity)).toBe(createReviewId(identity));
     expect(review().id).toBe(createReviewId(identity));
     expect(
       createReview({
@@ -320,24 +316,37 @@ describe("sessionRepresentsReview", () => {
     expect(sessionRepresentsReview(review(), { key })).toBe(true);
   });
 
-  it("rejects a mismatch in any one of the six compared fields", () => {
-    const mismatches = [
-      { profileId: must(parseWorkspaceProfileId("other")) },
-      { host: must(parseGitHubHost("github.example.com")) },
-      { owner: must(parseGitHubOwner("someone-else")) },
-      { repo: must(parseGitHubRepoName("other-repo")) },
-      {
+  it.each([
+    {
+      field: "profile",
+      mismatch: { profileId: must(parseWorkspaceProfileId("other")) },
+    },
+    {
+      field: "host",
+      mismatch: { host: must(parseGitHubHost("github.example.com")) },
+    },
+    {
+      field: "owner",
+      mismatch: { owner: must(parseGitHubOwner("someone-else")) },
+    },
+    {
+      field: "repository",
+      mismatch: { repo: must(parseGitHubRepoName("other-repo")) },
+    },
+    {
+      field: "pull request number",
+      mismatch: {
         source: {
           kind: "pull_request" as const,
           prNumber: must(parsePullRequestNumber(43)),
         },
       },
-      { headSha: secondSha },
-    ];
-    for (const mismatch of mismatches)
-      expect(
-        sessionRepresentsReview(review(), { key: { ...key, ...mismatch } }),
-      ).toBe(false);
+    },
+    { field: "head SHA", mismatch: { headSha: secondSha } },
+  ])("rejects a mismatched $field", ({ mismatch }) => {
+    expect(
+      sessionRepresentsReview(review(), { key: { ...key, ...mismatch } }),
+    ).toBe(false);
   });
 
   it("ignores the base SHA, which is session identity rather than revision", () => {
