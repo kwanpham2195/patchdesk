@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed `review_local` repeating an unhelpful refusal when a saved Review's base branch was deleted. It now names that branch and asks the agent to pass an explicit `base`, without opening another Review. #570
+
 - Fixed `review_local` inferring a different base when Patchdesk could not list every saved Review. The agent tool, Local review dialog, and `list_local_reviews` now refuse an incomplete list with `storage` instead of hiding the maintainer's notes. #572
 
 - Added **Local review**: the navigator lists the branch's commits and your notes in place of Threads. On a shared Review, **Commits** lists every commit since the merge base, newest first with `HEAD` marked, and selecting one shows it against its first parent without moving the Review; a branch longer than 250 commits shows the newest 250 of the total. **Notes** replaces the Local drafts card on the Insights tab: each note and drafted Finding shows its kind, view, and state, with **Copy as agent prompt** and **Remove**. A row the diff shows inline jumps to its lines and clears a Scope filter, and any other row says why the shown view does not show it. A commit Review shows Browse and Notes only. #557

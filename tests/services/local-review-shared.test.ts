@@ -433,6 +433,43 @@ describe("an agent's open of the shared Review with no base (#555)", () => {
     ).toBeUndefined();
   });
 
+  it("names a deleted saved base without opening another Review", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "branch", "topic");
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "feature.txt"), "feature\n");
+    git(repositoryPath, "add", "feature.txt");
+    git(repositoryPath, "commit", "-q", "-m", "feature");
+    const maintainer = await harness.open(
+      shared(value(parseLocalBranchName("topic"))),
+    );
+    const storedBefore = await readdir(
+      harness.paths.profileReviewsDirectory(profileId),
+      { recursive: true },
+    );
+    const refsBefore = git(repositoryPath, "for-each-ref", "refs/patchdesk");
+    git(repositoryPath, "branch", "-D", "topic");
+
+    const refused = await agentOpen(harness);
+
+    expect(refused).toEqual({
+      _tag: "err",
+      error: { reason: "revision_not_found", savedBaseBranch: "topic" },
+    });
+    expect(
+      value(await harness.reviews.list(profileId)).reviews.map(({ id }) => id),
+    ).toEqual([maintainer.review.id]);
+    expect(
+      await readdir(harness.paths.profileReviewsDirectory(profileId), {
+        recursive: true,
+      }),
+    ).toEqual(storedBefore);
+    expect(git(repositoryPath, "for-each-ref", "refs/patchdesk")).toBe(
+      refsBefore,
+    );
+  });
+
   it("refuses base_required on a lone branch, creating nothing", async () => {
     const harness = await localApplyHarness();
     await writeFile(join(harness.repositoryPath, "untracked.txt"), "new\n");

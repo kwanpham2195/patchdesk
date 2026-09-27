@@ -171,6 +171,14 @@ function localReviewRefusal(
           : `The largest untracked paths are ${failure.largestPaths.join(", ")}. Add them`
       } to .gitignore or remove them, then try again.`,
     };
+  if (
+    failure.reason === "revision_not_found" &&
+    failure.savedBaseBranch !== undefined
+  )
+    return {
+      error: "revision_not_found",
+      message: `The saved Review uses base branch ${failure.savedBaseBranch}, which no longer exists locally. Pass base with the local branch to compare this change with.`,
+    };
   if (failure.reason === "checkout_missing")
     return {
       error: "checkout_missing",

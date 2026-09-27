@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -78,6 +79,45 @@ describe("review_local base (#555)", () => {
         baseInferred: true,
         changedFiles: [expect.objectContaining({ path: "feature.txt" })],
       },
+    });
+  });
+
+  it("names a deleted saved base and asks for an explicit base without creating a Review", async () => {
+    app = await startAppWithLinkedWorktree();
+    await linkedBranchWithCommit(app);
+    execFileSync("git", ["branch", "topic"], { cwd: app.repositoryPath });
+    const maintainer = await openInApp(app, "topic");
+    const storedBefore = await readdir(
+      app.paths.profileReviewsDirectory(profileId),
+      { recursive: true },
+    );
+    execFileSync("git", ["branch", "-D", "topic"], {
+      cwd: app.repositoryPath,
+    });
+    const client = await connectLegacyClient(app.socketPath);
+
+    const refused = await call(client, "review_local", { cwd: app.linkedPath });
+
+    expect(refused).toMatchObject({
+      isError: true,
+      content: {
+        error: "revision_not_found",
+        message: expect.stringMatching(/topic.*Pass base/),
+      },
+    });
+    expect(refused.content).toMatchObject({
+      message: expect.not.stringContaining("omit base"),
+    });
+    expect(
+      await readdir(app.paths.profileReviewsDirectory(profileId), {
+        recursive: true,
+      }),
+    ).toEqual(storedBefore);
+    expect(
+      await call(client, "list_local_reviews", { cwd: app.linkedPath }),
+    ).toMatchObject({
+      isError: false,
+      content: { reviews: [{ reviewId: maintainer.review.id }] },
     });
   });
 

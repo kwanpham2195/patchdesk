@@ -73,9 +73,13 @@ export type LocalReviewOpenFailure =
         /** The named checkout is not a live worktree of the repository (#489). */
         | "checkout_not_found"
         | "unmerged_index"
-        | "revision_not_found"
         | "storage"
         | "terminal";
+    }
+  /** `savedBaseBranch` names a deleted base that a base-less agent open would otherwise reuse (#570). */
+  | {
+      readonly reason: "revision_not_found";
+      readonly savedBaseBranch?: LocalBranchName;
     }
   /** The working tree's untracked files are over the `exceededLimit` snapshot limit; `largestPaths` are the ones to ignore (#485). */
   | {
@@ -327,6 +331,12 @@ export class LocalReviewOpening {
     if (listing._tag === "err") return listing;
     const { head, inferred, reviewedBases } = listing.value;
     const [reused] = reviewedBases;
+    if (
+      reused !== undefined &&
+      (head.kind !== "branch" || head.branch !== reused) &&
+      !listing.value.branches.includes(reused)
+    )
+      return err({ reason: "revision_not_found", savedBaseBranch: reused });
     const base = reused ?? inferred?.baseBranch;
     if (base === undefined) return err({ reason: "base_required" });
     return ok({
