@@ -4,6 +4,7 @@ import type { ReviewWorkbenchInitialState } from "../components/review-workbench
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { SelectedDiffRange } from "../components/review-diff-view";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { sourceListsCommits } from "../review-source";
 import type {
   WorkbenchActiveTab,
   WorkbenchPosition,
@@ -37,10 +38,14 @@ export function useReviewWorkbenchPosition({
   readonly initialState?: ReviewWorkbenchInitialState;
   readonly onPositionCommitted?: (state: WorkbenchPosition) => void;
 }): ReviewWorkbenchPositionState {
-  const [section, setSection] = useState<ReviewNavigatorSection>(
-    initialState?.section === "insights"
+  // A restored section the source has no tab for opens Browse.
+  const [section, setSection] = useState<ReviewNavigatorSection>(() =>
+    initialState?.section === undefined ||
+    initialState.section === "insights" ||
+    (initialState.section === "commits" &&
+      !sourceListsCommits(model.session.key.source))
       ? "files"
-      : (initialState?.section ?? "files"),
+      : initialState.section,
   );
   // A Review with no saved position opens on Conversation: the description and
   // the discussion are what a reviewer reads before any code. A Review that

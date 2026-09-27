@@ -54,6 +54,11 @@ export function workbenchPullRequestNumber(
   return source.kind === "pull_request" ? source.prNumber : undefined;
 }
 
+/** Whether the navigator has a Commits section; a `commit` or pre-#555 local Review has no branch history to list (#557 D4). */
+export function sourceListsCommits(source: WorkbenchReviewSource): boolean {
+  return source.kind === "pull_request" || source.kind === "local_branch";
+}
+
 /**
  * What a local Review's header says about its revision: the commit it
  * represents, the patch view shown on a shared Review, and that it was read
