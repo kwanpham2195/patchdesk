@@ -72,6 +72,26 @@ export type LocalReviewSession = ReviewSessionFields & {
    * absent on the other kinds; Combined is `patchPath` itself.
    */
   readonly viewPatches?: LocalSessionViewPatches;
+  /**
+   * The commits in `baseSha..checkoutHeadSha`, listed at prepare so the
+   * navigator runs no git (#557 D1). Present on every `local_branch` session,
+   * absent on the other kinds.
+   */
+  readonly commits?: LocalSessionCommits;
+};
+
+/** One commit of a shared Review's branch, as `git log` reports it. */
+export type LocalCommit = {
+  readonly sha: GitSha;
+  readonly subject: string;
+  readonly authorName: string;
+  readonly authoredAt: IsoTimestamp;
+};
+
+/** The newest commits of a shared Review's branch, capped (#557 D3), and how many there are in all. */
+export type LocalSessionCommits = {
+  readonly newest: ReadonlyArray<LocalCommit>;
+  readonly total: number;
 };
 
 /** One stored patch of a local session and the paths it touches (`listPatchTouchedPaths`). */
@@ -146,8 +166,8 @@ export function createReviewSession(input: {
 
 /**
  * Constructs a local session; its patch hash is the hash of the patch as
- * written (ADR 0050). A `local_branch` session needs `checkoutHeadSha` and
- * `viewPatches` and the other kinds take neither; the session store refuses
+ * written (ADR 0050). A `local_branch` session needs `checkoutHeadSha`,
+ * `viewPatches`, and `commits`, and the other kinds take none; the session store refuses
  * to save or read one that breaks this.
  */
 export function createLocalReviewSession(input: {
@@ -158,6 +178,7 @@ export function createLocalReviewSession(input: {
   readonly createdAt: IsoTimestamp;
   readonly checkoutHeadSha?: GitSha;
   readonly viewPatches?: LocalSessionViewPatches;
+  readonly commits?: LocalSessionCommits;
 }): LocalReviewSession {
   return {
     schemaVersion: 6,
@@ -171,6 +192,7 @@ export function createLocalReviewSession(input: {
     ...definedProps({
       checkoutHeadSha: input.checkoutHeadSha,
       viewPatches: input.viewPatches,
+      commits: input.commits,
     }),
   };
 }

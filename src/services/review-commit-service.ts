@@ -10,9 +10,20 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { GitSha, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import type { PullRequestCommit } from "../domain/github-context";
 import { err, ok, type Result } from "../domain/result";
-import { isPullRequestReview, sessionRepresentsReview } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReview,
+  sessionRepresentsReview,
+  type Review,
+} from "../domain/review";
+import {
+  isPullRequestReviewSession,
+  type ReviewSession,
+} from "../domain/review-session";
 import { selectSinceReviewBaseline } from "../domain/since-review-baseline";
+import {
+  asPullRequestCommit,
+  readFirstParentOrEmptyTree,
+} from "./local-commit-listing";
 import type { GitReadExecutor } from "./review-worktree-service";
 
 const maxCommitPatchBytes = 1_500_000;
@@ -66,7 +77,11 @@ export class ReviewCommitService {
     readonly reviewId: ReviewId;
     readonly commitSha: GitSha;
   }): Promise<Result<CommitDiffProjection, ReviewCommitFailure>> {
-    const represented = await this.loadRepresented(input);
+    const review = await this.loadReview(input);
+    if (review._tag === "err") return review;
+    if (!isPullRequestReview(review.value))
+      return this.diffLocalCommit(review.value, input.commitSha);
+    const represented = await this.loadRepresented(input, review.value);
     if (represented._tag === "err") return represented;
     const { snapshot, session } = represented.value;
     const position = snapshot.commits.findIndex(
@@ -86,17 +101,47 @@ export class ReviewCommitService {
       input.commitSha,
     );
     if (patch._tag === "err") return patch;
-    if (patch.value.length === 0) return err({ reason: "binary_only" });
-    const files = parseUnifiedPatch(patch.value);
-    return ok({
+    return commitDiffProjection(
       commit,
-      position: position + 1,
-      total: snapshot.commits.length,
-      patch: patch.value,
-      fileCount: files.length,
-      additions: files.reduce((total, file) => total + file.additions, 0),
-      deletions: files.reduce((total, file) => total + file.deletions, 0),
-    });
+      position + 1,
+      snapshot.commits.length,
+      patch.value,
+    );
+  }
+
+  /**
+   * A commit of a shared Review's stored list against its first parent, or a
+   * root commit against the empty tree (#557 D2), read in the session's
+   * worktree so the maintainer's checkout is never touched.
+   */
+  private async diffLocalCommit(
+    review: Review,
+    commitSha: GitSha,
+  ): Promise<Result<CommitDiffProjection, ReviewCommitFailure>> {
+    const session = await this.loadCurrentSession(review);
+    if (session._tag === "err") return session;
+    if (isPullRequestReviewSession(session.value))
+      return err({ reason: "stale_head" });
+    const { commits, checkoutHeadSha, worktree } = session.value;
+    const position =
+      commits?.newest.findIndex((commit) => commit.sha === commitSha) ?? -1;
+    const commit = commits?.newest[position];
+    if (commits === undefined || commit === undefined)
+      return err({ reason: "foreign_commit" });
+    const parent = await readFirstParentOrEmptyTree(
+      this.git,
+      worktree.path,
+      commitSha,
+    );
+    if (parent === undefined) return err({ reason: "git_unavailable" });
+    const patch = await this.gitDiff(session.value, parent, commitSha);
+    if (patch._tag === "err") return patch;
+    return commitDiffProjection(
+      asPullRequestCommit(commit, checkoutHeadSha),
+      position + 1,
+      commits.total,
+      patch.value,
+    );
   }
 
   /** Diffs the represented head against the head commit of the viewer's last submitted review. */
@@ -109,7 +154,9 @@ export class ReviewCommitService {
       return err({
         reason: profile.error.reason === "not_found" ? "not_found" : "storage",
       });
-    const represented = await this.loadRepresented(input);
+    const review = await this.loadReview(input);
+    if (review._tag === "err") return review;
+    const represented = await this.loadRepresented(input, review.value);
     if (represented._tag === "err") return represented;
     const { snapshot, session, managedHeadRef } = represented.value;
     const baseline = selectSinceReviewBaseline({
@@ -143,57 +190,73 @@ export class ReviewCommitService {
     });
   }
 
-  /** Loads the Review's represented snapshot and Session, and proves the worktree's managed head ref still names that head. */
-  private async loadRepresented(input: {
+  private async loadReview(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
-  }): Promise<Result<RepresentedWorktree, ReviewCommitFailure>> {
+  }): Promise<Result<Review, ReviewCommitFailure>> {
     const review = await this.reviews.load(input.profileId, input.reviewId);
-    if (review._tag === "err")
-      return err({
-        reason: review.error.reason === "not_found" ? "not_found" : "storage",
-      });
+    return review._tag === "ok"
+      ? review
+      : err({
+          reason: review.error.reason === "not_found" ? "not_found" : "storage",
+        });
+  }
+
+  /** Loads the Review's represented snapshot and Session, and proves the worktree's managed head ref still names that head. */
+  private async loadRepresented(
+    input: {
+      readonly profileId: WorkspaceProfileId;
+      readonly reviewId: ReviewId;
+    },
+    review: Review,
+  ): Promise<Result<RepresentedWorktree, ReviewCommitFailure>> {
     if (
-      review.value.currentHeadSha !== review.value.representedRemote?.headSha ||
-      review.value.representedRemote === undefined
+      review.currentHeadSha !== review.representedRemote?.headSha ||
+      review.representedRemote === undefined
     )
       return err({ reason: "stale_head" });
     const snapshot = await this.remote.load({
       profileId: input.profileId,
       reviewId: input.reviewId,
-      snapshotHash: review.value.representedRemote.snapshotHash,
+      snapshotHash: review.representedRemote.snapshotHash,
     });
     if (snapshot._tag === "err") return err({ reason: "storage" });
     const snapshotIdentity = snapshot.value.pullRequest.ref;
     if (
-      snapshot.value.pullRequest.headSha !== review.value.currentHeadSha ||
-      snapshotIdentity.host !== review.value.identity.host ||
-      snapshotIdentity.owner !== review.value.identity.owner ||
-      snapshotIdentity.repo !== review.value.identity.repo ||
-      !isPullRequestReview(review.value) ||
-      snapshotIdentity.number !== review.value.identity.source.prNumber
+      snapshot.value.pullRequest.headSha !== review.currentHeadSha ||
+      snapshotIdentity.host !== review.identity.host ||
+      snapshotIdentity.owner !== review.identity.owner ||
+      snapshotIdentity.repo !== review.identity.repo ||
+      !isPullRequestReview(review) ||
+      snapshotIdentity.number !== review.identity.source.prNumber
     )
       return err({ reason: "stale_head" });
-    const session = await this.sessions.load(
-      input.profileId,
-      review.value.currentSessionId,
-    );
-    if (session._tag === "err")
-      return err({
-        reason: session.error.reason === "not_found" ? "not_found" : "storage",
-      });
-    if (
-      session.value.id !== review.value.currentSessionId ||
-      !sessionRepresentsReview(review.value, session.value)
-    )
-      return err({ reason: "stale_head" });
-
+    const session = await this.loadCurrentSession(review);
+    if (session._tag === "err") return session;
     const managedHeadRef = `refs/patchdesk/reviews/${input.profileId}/${session.value.id}/head`;
     return ok({
       snapshot: snapshot.value,
       session: session.value,
       managedHeadRef,
     });
+  }
+
+  /** The Review's current Session, refused as `stale_head` when it no longer represents the Review. */
+  private async loadCurrentSession(
+    review: Review,
+  ): Promise<Result<ReviewSession, ReviewCommitFailure>> {
+    const session = await this.sessions.load(
+      review.identity.profileId,
+      review.currentSessionId,
+    );
+    if (session._tag === "err")
+      return err({
+        reason: session.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    return session.value.id === review.currentSessionId &&
+      sessionRepresentsReview(review, session.value)
+      ? session
+      : err({ reason: "stale_head" });
   }
 
   /** Proves the managed head ref still names the Session head, then that `commitSha` is one of its ancestors. */
@@ -243,6 +306,7 @@ export class ReviewCommitService {
       ...canonicalPatchFlags,
       "--patch",
       "--binary",
+      "--end-of-options",
       from,
       to,
     ]);
@@ -256,4 +320,23 @@ export class ReviewCommitService {
       return err({ reason: "too_large" });
     return ok(patch.value.stdout);
   }
+}
+
+function commitDiffProjection(
+  commit: PullRequestCommit,
+  position: number,
+  total: number,
+  patch: string,
+): Result<CommitDiffProjection, ReviewCommitFailure> {
+  if (patch.length === 0) return err({ reason: "binary_only" });
+  const files = parseUnifiedPatch(patch);
+  return ok({
+    commit,
+    position,
+    total,
+    patch,
+    fileCount: files.length,
+    additions: files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+  });
 }
