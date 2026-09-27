@@ -10,7 +10,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { GitReadExecutor } from "./review-worktree-service";
 
 /** The checkout's `HEAD`: the branch it names, or detached. */
-export type LocalCheckoutHead =
+type LocalCheckoutHead =
   | { readonly kind: "branch"; readonly branch: LocalBranchName }
   | { readonly kind: "detached" };
 
@@ -18,7 +18,7 @@ export type LocalCheckoutHead =
  * The base a shared Review takes when none is named (#555): the other local
  * branch whose merge base with `HEAD` has the fewest commits to `HEAD`.
  */
-export type InferredLocalBase = {
+type InferredLocalBase = {
   readonly baseBranch: LocalBranchName;
   /** Commits from the merge base to `HEAD`, the "3 commits back" the dialog shows. */
   readonly commitsBack: number;
