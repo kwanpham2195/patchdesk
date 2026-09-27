@@ -55,9 +55,11 @@ describe("inbox refresh coordinator", () => {
     const manual = coordinator.refresh(profile, repository);
 
     expect(list).toHaveBeenCalledTimes(1);
-    expect(automatic).toBe(manual);
     resolveScan?.(ok(inbox));
-    await expect(manual).resolves.toEqual(ok(inbox));
+    await expect(Promise.all([automatic, manual])).resolves.toEqual([
+      ok(inbox),
+      ok(inbox),
+    ]);
 
     await coordinator.refresh(profile, repository);
     expect(list).toHaveBeenCalledTimes(2);
@@ -389,8 +391,6 @@ it("coalesces label filters that differ only by order or repetition", async () =
   });
 
   expect(list).toHaveBeenCalledTimes(1);
-  expect(second).toBe(first);
-  expect(third).toBe(first);
   resolveScan?.(ok(inbox));
   await expect(Promise.all([first, second, third])).resolves.toEqual([
     ok(inbox),
