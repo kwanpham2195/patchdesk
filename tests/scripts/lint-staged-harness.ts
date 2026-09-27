@@ -45,21 +45,6 @@ type HarnessOptions = {
    * `head`, valued by its name at `base`. Defaults to no renames.
    */
   readonly renameMap?: ReadonlyMap<string, string>;
-  /**
-   * `lint-baseline.json`'s `findings` value, as the count ratchet reads it
-   * out of the index (`git show :lint-baseline.json`). Defaults to 0, which
-   * matches the default repo-wide diagnostic count, so tests that are not
-   * about the ratchet never trip it.
-   */
-  readonly baselineFindings?: number;
-  /** Raw indexed `lint-baseline.json` content. Overrides `baselineFindings`. */
-  readonly baselineContent?: string;
-  /** Raw `git show :lint-baseline.json` result. Overrides both of the above. */
-  readonly baselineResult?: CommandResult;
-  /** Diagnostic count the repo-wide ratchet Oxlint run reports. Defaults to 0. */
-  readonly ratchetDiagnosticsCount?: number;
-  /** Raw repo-wide ratchet Oxlint result. Overrides `ratchetDiagnosticsCount`. */
-  readonly ratchetResult?: CommandResult;
   /** Makes `HEAD` unresolvable, the way an unborn branch does. */
   readonly unbornHead?: boolean;
 };
@@ -68,8 +53,6 @@ export const cwd = "/fixture/project";
 
 /** Git's empty tree, which `stagedBase` falls back to on an unborn branch. */
 export const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
-const BASELINE_SPEC_SUFFIX = ":lint-baseline.json";
 
 /**
  * Git reads EVERY argument after `--end-of-options` as a revision, so an
@@ -140,22 +123,6 @@ export function createHarness(options: HarnessOptions = {}) {
   const partiallyStagedPaths =
     options.partiallyStagedPaths ?? new Set<string>();
   const toolResults = options.toolResults ?? new Map<string, CommandResult>();
-  const baselineResult =
-    options.baselineResult ??
-    success(
-      options.baselineContent ??
-        JSON.stringify({ findings: options.baselineFindings ?? 0 }),
-    );
-  const ratchetResult =
-    options.ratchetResult ??
-    success(
-      JSON.stringify({
-        diagnostics: Array.from(
-          { length: options.ratchetDiagnosticsCount ?? 0 },
-          () => ({}),
-        ),
-      }),
-    );
 
   const run = async (
     command: string,
@@ -172,15 +139,6 @@ export function createHarness(options: HarnessOptions = {}) {
     }
     if (command === "git" && args[0] === "hash-object")
       return success(`${EMPTY_TREE}\n`);
-    if (command === "git" && args[0] === "ls-files") {
-      // Real `git ls-files --stage -- lint-baseline.json` prints an index
-      // entry for a tracked file whether or not this change touches it, so
-      // the only honest answer here is "yes, always" -- which is exactly why
-      // the configuration rule cannot be built on it. Throwing keeps any
-      // regression that reaches for it visible instead of letting a fake
-      // "yes" or "no" decide the gate.
-      throw new Error("the configuration rule must not ask git ls-files");
-    }
     if (
       command === "git" &&
       args[0] === "diff" &&
@@ -197,10 +155,6 @@ export function createHarness(options: HarnessOptions = {}) {
     }
     if (command === "git" && args[0] === "show") {
       const spec = args[1];
-      // The count ratchet's baseline read is answered before `showResults`,
-      // which only ever describes source files for the size ratchet.
-      if (spec !== undefined && spec.endsWith(BASELINE_SPEC_SUFFIX))
-        return baselineResult;
       const configured =
         spec === undefined ? undefined : options.showResults?.get(spec);
       if (configured !== undefined) return configured;
@@ -213,10 +167,6 @@ export function createHarness(options: HarnessOptions = {}) {
       ? command.slice(`${cwd}/node_modules/.bin/`.length)
       : command;
     if (options.rejectedCommand === tool) throw new Error("spawn failed");
-    // The repo-wide ratchet run and the staged-file run are the same binary;
-    // only `--format=json` tells them apart.
-    if (tool === "oxlint" && args.includes("--format=json"))
-      return ratchetResult;
     const result = toolResults.get(tool);
     return result ?? success();
   };
