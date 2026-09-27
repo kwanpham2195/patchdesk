@@ -267,6 +267,7 @@ export function InlineCommentComposer({
   onSave,
   pendingReview,
   kind,
+  onBodyChange,
 }: {
   readonly path: string;
   readonly startLine: number;
@@ -278,6 +279,8 @@ export function InlineCommentComposer({
   readonly pendingReview?: PendingReviewComposerActions;
   /** A maintainer note on a local Review, saved to the Review record (ADR 0051). */
   readonly kind?: "note";
+  /** Reports the text as it changes, so the diff can keep an unsaved note when it unmounts (#556 D5). */
+  readonly onBodyChange?: (body: string) => void;
 }): React.JSX.Element {
   const note = kind === "note";
   type ComposerAction = "comment" | "start" | "add" | "comment-now";
@@ -375,7 +378,10 @@ export function InlineCommentComposer({
           aria-invalid={error !== undefined || undefined}
           aria-describedby={error === undefined ? undefined : errorId}
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => {
+            setBody(event.target.value);
+            onBodyChange?.(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();

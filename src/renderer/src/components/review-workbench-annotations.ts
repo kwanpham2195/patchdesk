@@ -10,6 +10,13 @@ import type { ReviewWorkbenchActions } from "./review-workbench";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { ConversationThreadCardData } from "./conversation-thread-card";
 import type { LocalNoteControls } from "../flows/use-local-drafts";
+import {
+  indexPatchHunks,
+  placeInView,
+  type LocalPatchView,
+  type LocalPatchViewPaths,
+  type PatchHunkIndex,
+} from "../../../domain/local-patch-view";
 
 /** The mapped Analysis findings the diff renders as inline annotations. */
 export type MappedFinding = NonNullable<
@@ -106,17 +113,47 @@ export function buildPendingReviewAnnotations(
   });
 }
 
+/** The shown patch view of a shared local Review, which places notes across views (ADR 0051). */
+export type LocalNotePlacementInput = {
+  readonly view: LocalPatchView;
+  readonly paths: LocalPatchViewPaths;
+  readonly shownHunks: PatchHunkIndex;
+};
+
+/** The placement input for `patch` shown as `view`, from the projection's per-view touched paths. */
+export function localNotePlacementInput(
+  patchViews: NonNullable<WorkbenchResponse["patchViews"]>,
+  view: LocalPatchView,
+  patch: string,
+): LocalNotePlacementInput {
+  return {
+    view,
+    paths: {
+      combined: patchViews.combined.paths,
+      committed: patchViews.committed.paths,
+      uncommitted: patchViews.uncommitted.paths,
+    },
+    shownHunks: indexPatchHunks(patch),
+  };
+}
+
 /**
  * A local Review's maintainer notes fingerprinted against the current session,
  * as diff annotations. A note from an earlier session has lines numbered for
- * another patch, so only the Local drafts card lists it.
+ * another patch, so only the Local drafts card lists it. With `placement`, a
+ * note shows only where `placeInView` puts it inline in the shown view;
+ * without it (a Review without views), it shows at its stored lines.
  */
 export function buildLocalNoteAnnotations(
   model: Pick<WorkbenchResponse, "localDrafts" | "session">,
   notes: LocalNoteControls | undefined,
+  placement: LocalNotePlacementInput | undefined,
 ): ReadonlyArray<ReviewInlineAnnotation> {
   return (model.localDrafts ?? []).flatMap((entry) =>
-    entry.kind !== "note" || entry.sessionId !== model.session.id
+    entry.kind !== "note" ||
+    entry.sessionId !== model.session.id ||
+    (placement !== undefined &&
+      placeInView(entry, placement.view, placement).placement !== "inline")
       ? []
       : [
           {
