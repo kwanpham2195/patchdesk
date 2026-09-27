@@ -95,7 +95,7 @@ The Review opens on Combined, and the picked view stays across Refresh. The cont
 
 A switch changes what the Diff tab reads:
 
-- The file tree, the diff, and the Scope picker's buckets and counts follow the shown view, and a switch clears a picked Scope bucket.
+- The file tree, the diff, and the Scope picker's buckets and counts follow the shown view, and a switch clears a picked Scope bucket. If the selected file is absent from the new view, Browse and the Selected diff move to a file in that view. They also reconcile after Refresh changes the patch or after leaving a commit slice. An empty view says there are no changed files and keeps the Patch view control available.
 - Viewed marks belong to the view they were made on. A file marked Viewed on Committed is not marked on Combined, and its mark is there again after a switch back. If another mark is waiting to save when you switch views and mark a file there, both views finish saving their own marks. A refused save restores that view's stored marks so you can retry. On Refresh, a mark stays only when that file's patch is identical in the same view of the new session; a changed file loses its mark. Mark all viewed marks the shown view's files.
 - Findings show inline, and in the file tree's counts, on Combined only. Opening a file or a Finding in the diff from Insights switches to Combined first, because their line numbers are Combined's.
 

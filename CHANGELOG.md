@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the local Review file tree and Selected diff drifting apart after switching Patch views, pressing Refresh, or returning from a commit slice. Selection now follows a file in the displayed patch. #564
+
 - Kept Viewed marks across a shared local Review's Refresh when the file's patch in that view is unchanged. A changed file loses its mark, and a mark in one view never carries into another. #566
 
 - Fixed a queued Viewed mark disappearing when you switched patch views and marked another file before the earlier save answered. Pending marks now finish saving in their own view, and a failed save returns that view to its stored marks for retry. #573
