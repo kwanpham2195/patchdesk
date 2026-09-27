@@ -202,6 +202,7 @@ export function registerLocalReviewRoutes(
         runId: runId.value,
         findingIds,
         expected,
+        view: parsed.output.view,
       }),
     );
   });
@@ -436,4 +437,5 @@ const localApplySchema = strictObject({
   runId: pipe(string(), minLength(1)),
   findingIds: pipe(array(string()), minLength(1), maxLength(50)),
   expected: reviewWriteExpectationSchema,
+  view: picklist(localPatchViews),
 });

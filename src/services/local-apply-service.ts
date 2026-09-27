@@ -19,6 +19,7 @@ import {
   type LocalApplyRecoveryDecision,
 } from "../domain/local-apply-operation";
 import { definedProps } from "../domain/defined-props";
+import type { LocalPatchView } from "../domain/local-patch-view";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, type Review } from "../domain/review";
 import {
@@ -54,6 +55,8 @@ export type LocalApplyRequest = {
   readonly runId: InsightRunId;
   readonly findingIds: ReadonlyArray<FindingId>;
   readonly expected: ReviewWriteExpectation;
+  /** The patch view the renderer shows; Insights run on Combined, so only Combined can authorize Apply. */
+  readonly view: LocalPatchView;
 };
 
 export type LocalApplyFailure = {
@@ -61,6 +64,8 @@ export type LocalApplyFailure = {
     | LocalWriteGateFailure["reason"]
     /** Apply writes the checkout a shared Review snapshots; a commit Review has no checkout content to write to. */
     | "not_local_branch"
+    /** The request came from a view other than Combined, the patch every Insight runs on. */
+    | "view_mismatch"
     /** An earlier Apply on this Review is not settled; recovery must run first. */
     | "apply_locked"
     | "in_progress"
@@ -187,6 +192,8 @@ export class LocalApplyService {
   private async applyLocked(
     request: LocalApplyRequest,
   ): Promise<Result<LocalApplyOutcome, LocalApplyFailure>> {
+    // Before the gate, which records a changed checkout on the Review: a refused view writes nothing.
+    if (request.view !== "combined") return err({ reason: "view_mismatch" });
     const { profileId, reviewId } = request;
     const existing = await this.dependencies.operations.load(
       profileId,
