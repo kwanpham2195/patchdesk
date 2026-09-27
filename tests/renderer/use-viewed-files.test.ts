@@ -241,4 +241,30 @@ describe("useViewedFiles", () => {
     expect([...result.current.paths]).toEqual(["src/a.ts"]);
     expect(patches).toEqual([]);
   });
+
+  it("returns to a view with its in-flight save rather than a reread that predates it", async () => {
+    let release: (() => void) | undefined;
+    desktop = installDesktopDouble({
+      [viewedFilesPath]: (input) =>
+        new Promise((resolve) => {
+          release = () => resolve(echo(input));
+        }),
+    });
+    const { result, rerender } = renderViewedFiles([], {
+      sessionId: "session-1",
+      view: "committed",
+      savedPaths: [],
+    });
+    act(() => result.current.setPaths(new Set(["src/b.ts"])));
+    await waitFor(() => expect(release).toBeDefined());
+
+    rerender({ sessionId: "session-1", view: "combined", savedPaths: [] });
+    rerender({ sessionId: "session-1", view: "committed", savedPaths: [] });
+    expect([...result.current.paths]).toEqual(["src/b.ts"]);
+
+    await act(async () => release?.());
+    rerender({ sessionId: "session-1", view: "combined", savedPaths: [] });
+    rerender({ sessionId: "session-1", view: "committed", savedPaths: [] });
+    expect([...result.current.paths]).toEqual(["src/b.ts"]);
+  });
 });
