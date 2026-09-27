@@ -22,7 +22,8 @@ type SaveQueue = {
   readonly sessionId: string;
   readonly view: LocalPatchView | undefined;
   stored: ReadonlySet<string>;
-  inFlight: boolean;
+  /** The set being saved; undefined while no save is in flight. */
+  sending: ReadonlySet<string> | undefined;
   queued: ReadonlySet<string> | undefined;
 };
 
@@ -61,22 +62,28 @@ export function useViewedFiles({
     paths: new Set(savedPaths),
     saveFailed: false,
   }));
-  // A new head is a new session, and each view keeps its own marks; either starts from its stored marks.
-  if (state.sessionId !== sessionId || state.view !== view)
-    setState({
-      sessionId,
-      view,
-      paths: new Set(savedPaths),
-      saveFailed: false,
-    });
   const latest = useLatestCommitted({ sessionId, view, onWorkbenchPatch });
   const save = useRef<SaveQueue>({
     sessionId,
     view,
     stored: new Set(savedPaths),
-    inFlight: false,
+    sending: undefined,
     queued: undefined,
   });
+  // A new head is a new session, and each view keeps its own marks; either starts from its stored marks.
+  if (state.sessionId !== sessionId || state.view !== view) {
+    // A return to a view starts from its latest save here, queued, in flight, or answered: the view's reread can predate it.
+    const pending = save.current;
+    setState({
+      sessionId,
+      view,
+      paths:
+        pending.sessionId === sessionId && pending.view === view
+          ? (pending.queued ?? pending.sending ?? pending.stored)
+          : new Set(savedPaths),
+      saveFailed: false,
+    });
+  }
 
   // Each session and view owns its queue, so a switched-away Review's late answer cannot send the next one's marks.
   const send = (current: SaveQueue): void => {
@@ -84,7 +91,7 @@ export function useViewedFiles({
     const paths = current.queued;
     if (paths === undefined) return;
     current.queued = undefined;
-    current.inFlight = true;
+    current.sending = paths;
     void requestJson("/v1/reviews/viewed-files", {
       method: "POST",
       body: {
@@ -117,7 +124,7 @@ export function useViewedFiles({
         );
       })
       .finally(() => {
-        current.inFlight = false;
+        current.sending = undefined;
         send(current);
       });
   };
@@ -128,12 +135,12 @@ export function useViewedFiles({
         sessionId,
         view,
         stored: new Set(savedPaths),
-        inFlight: false,
+        sending: undefined,
         queued: undefined,
       };
     setState({ sessionId, view, paths, saveFailed: false });
     save.current.queued = paths;
-    if (!save.current.inFlight) send(save.current);
+    if (save.current.sending === undefined) send(save.current);
   };
 
   return { paths: state.paths, saveFailed: state.saveFailed, setPaths };
