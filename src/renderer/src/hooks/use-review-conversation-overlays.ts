@@ -230,10 +230,11 @@ export function useReviewConversationOverlays({
     strandedWrite,
   ]);
   // An open note composer's text, kept as a recoverable draft when the diff unmounts under it, as a patch view switch does (#556 D5).
-  const unsavedNote = useRef<{ body: string | undefined; saving: boolean }>({
-    body: undefined,
-    saving: false,
-  });
+  const unsavedNote = useRef<{
+    body: string | undefined;
+    saving: boolean;
+    unmounted: boolean;
+  }>({ body: undefined, saving: false, unmounted: false });
   const reportNoteBody = useCallback((body: string): void => {
     unsavedNote.current.body = body;
   }, []);
@@ -244,7 +245,9 @@ export function useReviewConversationOverlays({
   useEffect(() => {
     const unsaved = unsavedNote.current;
     const latest = keepUnsavedNote;
+    unsaved.unmounted = false;
     return () => {
+      unsaved.unmounted = true;
       const { note, setOrphanedDraftBody: keep } = latest.current;
       if (note && !unsaved.saving && unsaved.body?.trim()) keep?.(unsaved.body);
     };
@@ -274,14 +277,20 @@ export function useReviewConversationOverlays({
         side: side === "additions" ? "new" : "old",
       };
       if (localCommentAuthoring.canAuthor?.(location) === false) return;
-      localCommentAuthoring.onSelectionChange?.(location);
-      takeRecoverableDraft();
-      setAuthoringSelection({
+      const selection = {
         id: path,
         range: { start: line, end: line, side },
-      });
+      };
+      if (
+        localCommentAuthoring.kind === "note" &&
+        isSameNoteSelection(authoringSelection, selection)
+      )
+        return;
+      localCommentAuthoring.onSelectionChange?.(location);
+      takeRecoverableDraft();
+      setAuthoringSelection(selection);
     },
-    [localCommentAuthoring, takeRecoverableDraft],
+    [authoringSelection, localCommentAuthoring, takeRecoverableDraft],
   );
 
   const saveAuthoring = useCallback(
@@ -306,11 +315,20 @@ export function useReviewConversationOverlays({
       if (anchor === undefined) return;
       // A note is saved to the Review record, which then renders it; a refusal keeps the composer open with its text.
       if (localCommentAuthoring.kind === "note") {
-        unsavedNote.current.saving = true;
+        const unsaved = unsavedNote.current;
+        unsaved.body = body;
+        unsaved.saving = true;
         try {
           await localCommentAuthoring.onSave({ ...anchor, body });
+        } catch (cause) {
+          if (unsaved.unmounted && unsaved.body?.trim()) {
+            const { note, setOrphanedDraftBody: keep } =
+              keepUnsavedNote.current;
+            if (note) keep?.(unsaved.body);
+          }
+          throw cause;
         } finally {
-          unsavedNote.current.saving = false;
+          unsaved.saving = false;
         }
         clearAuthoring();
         return;
@@ -400,7 +418,13 @@ export function useReviewConversationOverlays({
         );
       }
     },
-    [authoringSelection, clearAuthoring, localCommentAuthoring, patch],
+    [
+      authoringSelection,
+      clearAuthoring,
+      keepUnsavedNote,
+      localCommentAuthoring,
+      patch,
+    ],
   );
 
   const submitPendingWrite = useCallback(
@@ -820,11 +844,16 @@ export function useReviewConversationOverlays({
         side: range.side === "additions" ? "new" : "old",
       };
       if (localCommentAuthoring.canAuthor?.(location) === false) return;
+      if (
+        localCommentAuthoring.kind === "note" &&
+        isSameNoteSelection(authoringSelection, selection)
+      )
+        return;
       localCommentAuthoring.onSelectionChange?.(location);
       takeRecoverableDraft();
       setAuthoringSelection(selection);
     },
-    [localCommentAuthoring, takeRecoverableDraft],
+    [authoringSelection, localCommentAuthoring, takeRecoverableDraft],
   );
 
   return {
@@ -841,6 +870,20 @@ export function useReviewConversationOverlays({
     beginAuthoring,
     decorateConversationThread,
   };
+}
+
+/** Pierre reports the same line selection repeatedly; the open note keeps its text. */
+function isSameNoteSelection(
+  current: CodeViewLineSelection | null,
+  next: CodeViewLineSelection,
+): boolean {
+  return (
+    current !== null &&
+    current.id === next.id &&
+    current.range.start === next.range.start &&
+    current.range.end === next.range.end &&
+    current.range.side === next.range.side
+  );
 }
 
 /** The text of a draft's lines in `patch`, or undefined when `patch` does not show them. */

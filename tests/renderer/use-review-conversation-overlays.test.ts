@@ -187,6 +187,23 @@ function mountDiff(
   );
 }
 
+function mountNoteDiff(
+  workbench: ReturnType<typeof renderWorkbenchDrafts>,
+  onSave: LocalCommentAuthoring["onSave"],
+) {
+  return renderHook(() =>
+    useReviewConversationOverlays({
+      ...pendingOverlaysInput(
+        PATCH,
+        rejectedStart,
+        () => true,
+        workbench.result.current,
+      ),
+      localCommentAuthoring: { enabled: true, kind: "note", onSave },
+    }),
+  );
+}
+
 function failedDraftBodies(overlays: ReviewConversationOverlays) {
   return overlays.displayedAnnotations.flatMap((annotation) =>
     annotation.pendingReviewWrite?.status === "failed"
@@ -527,6 +544,100 @@ describe("pending-review drafts held by the workbench", () => {
     expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([]);
     workbench.rerender({ reviewId: "review-a" });
     expect(failedDraftBodies(mountDiff(workbench).result.current)).toEqual([]);
+  });
+});
+
+describe("local note draft recovery", () => {
+  it("offers the exact note text after its save is refused while a view switch unmounts the diff", async () => {
+    const workbench = renderWorkbenchDrafts();
+    let refuse: () => void = () => undefined;
+    const first = mountNoteDiff(
+      workbench,
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          refuse = () => reject(new Error("Note save refused"));
+        }),
+    );
+    act(() =>
+      first.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+    );
+    const composer =
+      first.result.current.localComposerAnnotation?.localComposer;
+    if (composer?.onBodyChange === undefined)
+      throw new Error("expected note composer");
+    act(() => composer.onBodyChange?.("Exact unsaved note text"));
+    let sending: Promise<void> = Promise.resolve();
+    act(() => {
+      sending = composer
+        .onSave("Exact unsaved note text")
+        .catch(() => undefined);
+    });
+
+    first.unmount();
+    await act(async () => {
+      refuse();
+      await sending;
+    });
+    const next = mountNoteDiff(workbench, async () => undefined);
+    expect(next.result.current.draftRecovery).toBeDefined();
+    const selection = {
+      id: PATH,
+      range: { start: 2, end: 2, side: "additions" as const },
+    };
+    act(() => next.result.current.beginAuthoring(selection));
+    expect(
+      next.result.current.localComposerAnnotation?.localComposer?.initialBody,
+    ).toBe("Exact unsaved note text");
+    next.rerender();
+    expect(next.result.current.draftRecovery).toBeUndefined();
+    act(() => next.result.current.beginAuthoring(selection));
+    next.unmount();
+    const afterAnotherSwitch = mountNoteDiff(workbench, async () => undefined);
+    expect(afterAnotherSwitch.result.current.draftRecovery).toBeDefined();
+    act(() => afterAnotherSwitch.result.current.beginAuthoring(selection));
+    expect(
+      afterAnotherSwitch.result.current.localComposerAnnotation?.localComposer
+        ?.initialBody,
+    ).toBe("Exact unsaved note text");
+  });
+
+  it("does not offer a Saved draft after the note save succeeds while the diff is unmounted", async () => {
+    const workbench = renderWorkbenchDrafts();
+    let succeed: () => void = () => undefined;
+    const submitted: string[] = [];
+    const first = mountNoteDiff(workbench, ({ body }) => {
+      submitted.push(body);
+      return new Promise<void>((resolve) => {
+        succeed = resolve;
+      });
+    });
+    act(() =>
+      first.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+    );
+    const composer =
+      first.result.current.localComposerAnnotation?.localComposer;
+    if (composer?.onBodyChange === undefined)
+      throw new Error("expected note composer");
+    act(() => composer.onBodyChange?.("One saved note"));
+    let sending: Promise<void> = Promise.resolve();
+    act(() => {
+      sending = composer.onSave("One saved note");
+    });
+
+    first.unmount();
+    await act(async () => {
+      succeed();
+      await sending;
+    });
+    const next = mountNoteDiff(workbench, async () => undefined);
+    expect(submitted).toEqual(["One saved note"]);
+    expect(next.result.current.draftRecovery).toBeUndefined();
+    act(() =>
+      next.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+    );
+    expect(
+      next.result.current.localComposerAnnotation?.localComposer?.initialBody,
+    ).toBeUndefined();
   });
 });
 
