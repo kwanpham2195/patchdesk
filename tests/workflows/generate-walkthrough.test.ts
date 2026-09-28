@@ -10,6 +10,7 @@ import {
   parseWalkthroughOutput,
   prepareWalkthroughPrompt,
   walkthroughOutputSchema,
+  walkthroughOutputLimitDiagnostic,
 } from "../../src/services/walkthrough-operation";
 
 const validOutput = {
@@ -69,6 +70,71 @@ describe("walkthrough raw output boundary", () => {
         .success,
     ).toBe(false);
   });
+
+  it("reports only bounded field counts for oversized generated sections", () => {
+    const result = {
+      ...validOutput,
+      chapters: [
+        {
+          ...baseChapter,
+          sections: [
+            {
+              ...baseSection,
+              prose: "private prose ".repeat(27),
+              hunkIds: Array.from({ length: 127 }, () => "h1"),
+            },
+          ],
+        },
+      ],
+    };
+    expect(walkthroughOutputLimitDiagnostic(result)).toBe(
+      "chapters[0].sections[0].prose_378_gt_320,chapters[0].sections[0].hunkIds_127_gt_32",
+    );
+    expect(walkthroughOutputLimitDiagnostic(validOutput)).toBeUndefined();
+  });
+
+  it.each([
+    ["focus", { ...validOutput, focus: "x".repeat(321) }, "focus_321_gt_320"],
+    [
+      "chapter title",
+      {
+        ...validOutput,
+        chapters: [{ ...baseChapter, title: "x".repeat(81) }],
+      },
+      "chapters[0].title_81_gt_80",
+    ],
+    [
+      "section title",
+      {
+        ...validOutput,
+        chapters: [
+          {
+            ...baseChapter,
+            sections: [{ ...baseSection, title: "x".repeat(161) }],
+          },
+        ],
+      },
+      "chapters[0].sections[0].title_161_gt_160",
+    ],
+    [
+      "hunk alias",
+      {
+        ...validOutput,
+        chapters: [
+          {
+            ...baseChapter,
+            sections: [{ ...baseSection, hunkIds: [`h${"1".repeat(16)}`] }],
+          },
+        ],
+      },
+      "chapters[0].sections[0].hunkIds[0]_17_gt_16",
+    ],
+  ])(
+    "reports the rejected %s limit without field text",
+    (_field, result, detail) => {
+      expect(walkthroughOutputLimitDiagnostic(result)).toBe(detail);
+    },
+  );
 
   it("rejects wrong shapes and extra keys", () => {
     expect(
@@ -194,7 +260,13 @@ describe("walkthrough prompt preparation", () => {
       expect(prompt).toContain("HUNK ALIAS MANIFEST");
       expect(prompt).toContain("h1 | src/recovery.ts | @@ -1,1 +1,1 @@");
       expect(prompt).toContain("citationVersion to 2");
-      expect(prompt).toContain("Support");
+      expect(prompt).toContain("representative hunks");
+      expect(prompt).toContain("at most 36 distinct hunks");
+      expect(prompt).not.toContain("This patch spans");
+      expect(prompt).toContain(
+        "Hunks you do not cite are not explained in the reading path",
+      );
+      expect(prompt).not.toContain("Cite every hunk that carries behavior");
       expect(prompt).toContain("context artifact");
       expect(prompt).not.toMatch(
         /review completion|review failure|workflow:review-pr|commenting|persist(?:ence|ed|ing)/i,
@@ -208,6 +280,57 @@ describe("walkthrough prompt preparation", () => {
       expect(prompt).not.toContain("Create at most");
       expect(prompt.split("each section's prose within 320").length - 1).toBe(
         1,
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("offers a bounded reading path for a patch with 200 files and 952 hunks", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "patchdesk-walkthrough-large-"),
+    );
+    const contextPath = join(directory, "context.json");
+    const patchPath = join(directory, "patch.diff");
+    const patch =
+      Array.from({ length: 200 }, (_, fileIndex) => {
+        const path = `src/module-${fileIndex + 1}.ts`;
+        const hunkCount = fileIndex < 152 ? 5 : 4;
+        return [
+          `diff --git a/${path} b/${path}`,
+          `--- a/${path}`,
+          `+++ b/${path}`,
+          ...Array.from({ length: hunkCount }, (_, hunkIndex) =>
+            [
+              `@@ -${hunkIndex},0 +${hunkIndex + 1} @@`,
+              `+const value${hunkIndex} = true;`,
+            ].join("\n"),
+          ),
+        ].join("\n");
+      }).join("\n") + "\n";
+    await writeFile(contextPath, "context artifact");
+    await writeFile(patchPath, patch);
+    try {
+      const prepared = await prepareWalkthroughPrompt({
+        contextPath,
+        patchPath,
+        language: "vi",
+      });
+      if (prepared._tag === "err")
+        throw new Error("Expected a large patch prompt");
+      expect(prepared.value).toContain("h952 | src/module-200.ts");
+      expect(prepared.value).toContain("at most 36 distinct hunks");
+      expect(prepared.value).toContain(
+        "This patch spans 200 files and 952 hunks",
+      );
+      expect(prepared.value).toContain(
+        "aim for 3–6 chapters and 8–12 sections",
+      );
+      expect(prepared.value).toContain(
+        "Hunks you do not cite are not explained",
+      );
+      expect(prepared.value).not.toContain(
+        "Cite every hunk that carries behavior",
       );
     } finally {
       await rm(directory, { recursive: true, force: true });

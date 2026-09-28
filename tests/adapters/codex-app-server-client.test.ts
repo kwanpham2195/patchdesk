@@ -213,6 +213,12 @@ describe("CodexAppServerClient", () => {
       model: "fixture-codex",
       reasoning: "low",
       prompt: "Return JSON.",
+      outputSchema: {
+        type: "object",
+        properties: { title: { type: "string" } },
+        required: ["title"],
+        additionalProperties: false,
+      },
     });
     expect(result).toEqual({ _tag: "ok", value: { title: "Fixture" } });
     expect(children).toHaveLength(2);
@@ -220,6 +226,17 @@ describe("CodexAppServerClient", () => {
     expect(children[1]?.received).toContainEqual({
       id: "approval-fixture",
       result: { decision: "accept" },
+    });
+    expect(
+      children[1]?.received.find((message) => message.method === "turn/start")
+        ?.params,
+    ).toMatchObject({
+      outputSchema: {
+        type: "object",
+        properties: { title: { type: "string" } },
+        required: ["title"],
+        additionalProperties: false,
+      },
     });
   });
 

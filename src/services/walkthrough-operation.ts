@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { toJsonSchema } from "@valibot/to-json-schema";
 
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
 import {
@@ -24,6 +25,9 @@ const MAX_PROSE_LENGTH = 320;
 const MAX_HUNKS_PER_SECTION = 32;
 const MAX_HUNK_ALIAS_LENGTH = 16;
 const MAX_TOTAL_SECTIONS = 32;
+const MAX_GUIDED_SECTIONS = 12;
+const MAX_GUIDED_HUNKS_PER_SECTION = 3;
+const MAX_GUIDED_HUNKS = MAX_GUIDED_SECTIONS * MAX_GUIDED_HUNKS_PER_SECTION;
 const HUNK_ALIAS = /^h[1-9]\d*$/;
 
 const boundedIdentifier = (maxLength: number) =>
@@ -92,6 +96,19 @@ export const walkthroughOutputSchema = v.pipe(
   ),
 );
 
+/** Codex constrains its final JSON with the same field schema; Patchdesk still checks the aggregate section rule after the turn. */
+export const walkthroughCodexOutputSchema = toJsonSchema(
+  walkthroughOutputSchema,
+  {
+    errorMode: "ignore",
+    // Codex requires a type on literal fields; Valibot emits only { const: 2 }.
+    overrideSchema: ({ valibotSchema, jsonSchema }) =>
+      valibotSchema.type === "literal" && jsonSchema.const === 2
+        ? { type: "integer", enum: [2] }
+        : undefined,
+  },
+);
+
 export type WalkthroughInput = v.InferOutput<typeof walkthroughInputSchema>;
 export type WalkthroughOutput = v.InferOutput<typeof walkthroughOutputSchema>;
 export type InvalidWalkthroughOutput = {
@@ -106,6 +123,77 @@ export function parseWalkthroughOutput(
   return parsed.success
     ? ok(parsed.output)
     : err({ _tag: "InvalidWalkthroughOutput" });
+}
+
+/** Summarize at most two schema limit violations without logging model text or repository paths. */
+export function walkthroughOutputLimitDiagnostic(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the schema below parses the provider result before issue fields are inspected.
+  input: unknown,
+): string | undefined {
+  const parsed = v.safeParse(walkthroughOutputSchema, input);
+  if (parsed.success) return undefined;
+  const details: Array<string> = [];
+  for (const issue of parsed.issues) {
+    if (issue.type !== "max_length") continue;
+    const path = issue.path?.map((segment) => segment.key);
+    if (path === undefined) continue;
+    let label: string | undefined;
+    let limit: number | undefined;
+    if (path.length === 1) {
+      if (path[0] === "title") [label, limit] = ["title", MAX_TITLE_LENGTH];
+      if (path[0] === "focus") [label, limit] = ["focus", MAX_FOCUS_LENGTH];
+      if (path[0] === "chapters") [label, limit] = ["chapters", MAX_CHAPTERS];
+    } else if (path[0] === "chapters") {
+      const chapter = boundedIndex(path[1], MAX_CHAPTERS);
+      if (chapter === undefined) continue;
+      const chapterPath = `chapters[${chapter}]`;
+      if (path.length === 3 && path[2] === "title")
+        [label, limit] = [`${chapterPath}.title`, MAX_CHAPTER_TITLE_LENGTH];
+      if (path.length === 3 && path[2] === "sections")
+        [label, limit] = [`${chapterPath}.sections`, MAX_SECTIONS];
+      if (path[2] === "sections" && path.length >= 5) {
+        const section = boundedIndex(path[3], MAX_SECTIONS);
+        if (section === undefined) continue;
+        const sectionPath = `${chapterPath}.sections[${section}]`;
+        if (path.length === 5) {
+          if (path[4] === "title")
+            [label, limit] = [`${sectionPath}.title`, MAX_SECTION_TITLE_LENGTH];
+          if (path[4] === "prose")
+            [label, limit] = [`${sectionPath}.prose`, MAX_PROSE_LENGTH];
+          if (path[4] === "hunkIds")
+            [label, limit] = [`${sectionPath}.hunkIds`, MAX_HUNKS_PER_SECTION];
+        } else if (path.length === 6 && path[4] === "hunkIds") {
+          const alias = boundedIndex(path[5], MAX_HUNKS_PER_SECTION);
+          if (alias !== undefined)
+            [label, limit] = [
+              `${sectionPath}.hunkIds[${alias}]`,
+              MAX_HUNK_ALIAS_LENGTH,
+            ];
+        }
+      }
+    }
+    if (label === undefined || limit === undefined) continue;
+    const measured = v.safeParse(
+      v.union([v.string(), v.array(v.unknown())]),
+      issue.input,
+    );
+    if (!measured.success) continue;
+    details.push(`${label}_${measured.output.length}_gt_${limit}`);
+    if (details.length === 2) break;
+  }
+  return details.length === 0 ? undefined : details.join(",");
+}
+
+function boundedIndex(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Valibot issue paths are untrusted; the parser below proves a bounded numeric index before it is rendered.
+  value: unknown,
+  max: number,
+): number | undefined {
+  const index = v.safeParse(
+    v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(max - 1)),
+    value,
+  );
+  return index.success ? index.output : undefined;
 }
 
 /** Why a walkthrough prompt could not be composed from its artifacts. */
@@ -145,14 +233,22 @@ export async function prepareWalkthroughPrompt(input: {
   const patch = patchRead.value;
   const manifest = narrativeHunkManifest(patch);
   if (manifest._tag === "err") return err({ reason: "patch_not_indexable" });
+  const changedFileCount = new Set(manifest.value.map((hunk) => hunk.path))
+    .size;
+  const largePatchGuidance =
+    manifest.value.length >= 100 && changedFileCount >= 20
+      ? `This patch spans ${changedFileCount} files and ${manifest.value.length} hunks. Build a substantive guided path: aim for 3–6 chapters and 8–12 sections across distinct behavior areas, citing 18–36 representative hunks in total. Start with the main behavior and interface changes; include relevant consequences, tests, and deployment. Do not focus on a single file or area while other major changes go unexplained. Avoid duplicate sections for repeated moves or other repetitive edits.`
+      : "For a smaller patch, keep the path proportional to the distinct changes.";
   return ok(
     [
       "Generate a read-only walkthrough for the supplied immutable patch.",
       insightOutputGuidance("walkthrough", input.language),
       "The persistent reader shows the chapters in order on a rail and their sections on one continuous reading surface.",
       "Write the top-level focus as a summary of what the patch does; keep hunk aliases and paths out of it.",
-      "Cite every hunk that carries behavior. Patchdesk collects the hunks you leave uncited into a Support group the reader sees last, so leaving a mechanical or low-signal hunk uncited is how it reaches Support.",
-      "Each chapter cites the coherent cluster of hunks that establishes one behavior; a chapter for a single isolated hunk is the exception.",
+      `Select representative hunks that establish the main behavior changes. Use at most ${MAX_GUIDED_SECTIONS} sections, cite at most ${MAX_GUIDED_HUNKS} distinct hunks across the whole walkthrough, and cite at most ${MAX_GUIDED_HUNKS_PER_SECTION} hunks per section. Do not list extra hunks simply to claim coverage.`,
+      largePatchGuidance,
+      "Hunks you do not cite are not explained in the reading path. Patchdesk counts all uncited hunks and offers the full Diff, including changes that may matter. Do not describe them as mechanical or unimportant.",
+      "Each chapter follows a coherent behavior; a chapter for a single isolated hunk is the exception.",
       "Set citationVersion to 2. In each section's prose, state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
       `Use at most ${MAX_CHAPTERS} chapters and at most ${MAX_TOTAL_SECTIONS} sections in total. Keep the title within ${MAX_TITLE_LENGTH} characters, the focus within ${MAX_FOCUS_LENGTH}, each chapter title within ${MAX_CHAPTER_TITLE_LENGTH}, each section title within ${MAX_SECTION_TITLE_LENGTH}, and each section's prose within ${MAX_PROSE_LENGTH}.`,
       "HUNK ALIAS MANIFEST:",

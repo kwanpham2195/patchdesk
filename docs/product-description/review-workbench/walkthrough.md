@@ -2,11 +2,11 @@
 
 ## Summary
 
-Walkthrough is a generated, guided reading sequence for one represented Review revision. It groups chapters and sections, pairs prose with focused diff hunks, keeps a compact Support group, and records local reviewed markers. The maintainer reaches it from the Walkthrough tab or card in Insights, or from Open walkthrough on the Brief's Start here card. It opens in a docked layout beside the ordinary Insights chrome; Focus section switches to a focused layout that hides that chrome. It is a reader inside the Review, not a GitHub review action.
+Walkthrough is a generated, guided reading sequence for one represented Review revision. It groups chapters and sections, pairs prose with representative diff hunks, counts hunks it does not explain, and records local section-reviewed markers. The maintainer reaches it from the Walkthrough tab or card in Insights, or from Open walkthrough on the Brief's Start here card. It opens in a docked layout beside the ordinary Insights chrome; Focus section switches to a focused layout that hides that chrome. It is a reader inside the Review, not a GitHub review action.
 
 ## The simple case
 
-The maintainer opens the Walkthrough. If none exists, a borderless empty state centers the Walkthrough icon, the heading "No walkthrough yet", a one-line explanation, and the Generate walkthrough action in the available reader space. With a retained Walkthrough, they read the active section and its cited diff hunks, move with Previous section, Next section, the chapter rail, the arrow keys, or plain `j` and `k`, and mark sections reviewed. When they want fewer distractions they choose Focus section, and Escape brings the docked layout back. At the end they can open Support in the chapter rail and mark Support reviewed.
+The maintainer opens the Walkthrough. If none exists, a borderless empty state centers the Walkthrough icon, the heading "No walkthrough yet", a one-line explanation, and the Generate walkthrough action in the available reader space. With a retained Walkthrough, they read the active section and its cited diff hunks, move with Previous section, Next section, the chapter rail, the arrow keys, or plain `j` and `k`, and mark sections reviewed. When they want fewer distractions they choose Focus section, and Escape brings the docked layout back. The chapter rail shows how many hunks the reading path does not explain and links to the full Diff.
 
 ## The task, event by event
 
@@ -20,8 +20,7 @@ stateDiagram-v2
     reviewed --> docked : choose another section
     docked --> focused : Focus section
     focused --> docked : Exit focus or Escape
-    docked --> support : open Support in the rail
-    support --> complete : Mark Support reviewed
+    docked --> diff : Open Diff for the full patch
     docked --> configuring : Regenerate
 ```
 
@@ -31,23 +30,23 @@ The reader opens on the saved current section when it is still valid, or on the 
 
 The docked layout keeps the Insight tab strip and the Walkthrough's own title above the reader. A muted meta line at the right end of the tab strip shows when it was generated ("Generated 7h", or "Outdated · generated 7h"), the provider and model, the language when it is not English (for example "Vietnamese"), and a Regenerate button. On a window at least 1280 pixels wide, the chapter rail sits in a column on the left; on a narrower window it sits above the reading surface with a limited height.
 
-The chapter rail is headed Chapters and shows progress as the current position and the reviewed count, for example "2/5 · 1 of 5 reviewed" on one line beside the heading. It lists each chapter's sections with a two-digit number, the section title with the full title on hover, and a "done" badge for a reviewed section. The active section is highlighted. Below the chapters, a collapsed Support disclosure holds the Support group.
+The chapter rail is headed Chapters and shows progress as the current position and the reviewed count, for example "2/5 · 1 of 5 reviewed" on one line beside the heading. It lists each chapter's sections with a two-digit number, the section title with the full title on hover, and a "done" badge for a reviewed section. The active section is highlighted. Below the chapters, a visible count shows cited hunks out of all changed hunks and labels the remainder as not explained in the reading path. Open Diff switches to the full patch; the uncited hunks are not listed or marked reviewed as a group in the Walkthrough.
 
 The reading surface shows a chapter-context eyebrow, the complete current section title, the generated prose, a badge counting the section's hunks, a "reviewed" badge when the section is reviewed, and the Focus section button. The cited hunks follow, then Mark section reviewed, Previous section and Next section. The focused layout adds the position as "N of M"; the docked layout leaves it to the chapter rail. A one-section Walkthrough omits Previous section and Next section. A zero-section Walkthrough reports 0, omits Mark section reviewed, and keeps no fabricated active section.
 
 When the Walkthrough is current and its inline discussion is available, the cited hunks show the pull request's open and resolved inline conversation threads that fall on those lines. These threads are read-only in the Walkthrough: there is no reply, resolve, or comment control. [Inline conversations](inline-conversations.md) owns thread writes. Inline discussion is available only when the Walkthrough is current and verified, the Review is Fresh, the represented patch is loaded, the inline conversation has fully loaded, and the Walkthrough was generated for this exact profile, session, head, and patch. Otherwise the reading surface names the next step: an outdated Walkthrough says "Older revision; regenerate to see replies.", and every other cause says "Discussion unavailable; refresh to check."
 
-A Walkthrough retained before hunk citations were verified shows "Diff links need regeneration" and asks for a rerun. A section with no verified hunk shows "No verified hunks for this section" in place of the diff, and says they are listed under Support until it is regenerated. Repeated files use unique block identifiers so separate cited hunks do not collapse into one render target.
+A Walkthrough retained before hunk citations were verified shows "Diff links need regeneration" and asks for a rerun. A section with no verified hunk shows "No verified hunks for this section" in place of the diff, and suggests regeneration or reading the full Diff. Repeated files use unique block identifiers so separate cited hunks do not collapse into one render target.
 
 ### Leave unchanged
 
-Reading, scrolling, changing diff layout or wrapping, opening Support, switching between docked and focused layouts, and leaving without marking reviewed do not change GitHub or the generated Walkthrough. Moving to another section saves the current section locally; it records no reviewed marker.
+Reading, scrolling, changing diff layout or wrapping, switching between docked and focused layouts, and leaving without marking reviewed do not change GitHub or the generated Walkthrough. Moving to another section saves the current section locally; it records no reviewed marker.
 
 ### Begin an action
 
 For multiple sections, Previous section and Next section move one section and disable at the first and last boundaries. The chapter rail can jump directly to a section. The Left arrow and `k` move to the previous section; the Right arrow and `j` move to the next, matching the Vim convention. These keys act only when no text field, select, or combobox has focus. One-section and zero-section Walkthroughs omit the movement buttons.
 
-Mark section reviewed records the current section's stable identity. Mark Support reviewed, inside the Support disclosure, records the Support group. Both are offered only while the Review is open.
+Mark section reviewed records the current section's stable identity and is offered only while the Review is open. Open Diff switches to the full patch without marking any hunk reviewed.
 
 Focus section hides the Insight tab strip with its meta line, the Walkthrough title, and the chapter rail, and leaves a single reading column. The same button, now named Exit focus, returns to the docked layout. The layout change fades out and back in.
 
@@ -57,7 +56,7 @@ Regenerate opens the shared Insight run dialog described in [Brief](brief.md#beg
 
 Section movement updates the active prose and cited hunks together, and scrolls the chosen section into view in the chapter rail. Each cited hunk keeps its original file header, uses natural height, and lets the reader own scrolling. It respects unified or split layout, wrapping, app appearance, and diff theme.
 
-Reviewed markers and the current section are shown at once and saved locally in the background. Controls stay usable while the save runs. Generation follows the Insight run lifecycle described in [Brief](brief.md#while-the-action-runs) and keeps any retained Walkthrough until a replacement succeeds.
+Reviewed markers and the current section are shown at once and saved locally in the background. Controls stay usable while the save runs. Generation follows the Insight run lifecycle described in [Brief](brief.md#while-the-action-runs) and keeps any retained Walkthrough until a replacement succeeds. It asks the model for a short path through the main behaviors, citing representative hunks rather than every behavior-changing hunk. Codex receives the Walkthrough JSON Schema with its turn request; Patchdesk still validates the returned result and its citations. A failed result that exceeds an output field's length or item limit records only the field and counts in local diagnostics, without storing the generated prose there.
 
 A Codex CLI account run also shows what it is doing. The panel reads **Preparing…** until Codex starts the turn, then how long ago the run started. Below that it shows the last line of the model's reasoning summary, when the model sends one, and a **Commands** list with one row per command Codex ran: its exit status, **declined**, or a spinner while it runs; the command as plain text; and its duration. Codex asks Patchdesk before it runs any command. Patchdesk accepts commands requested from inside the represented worktree and declines network, stdin-write, file-change, permission, and outside-worktree requests. An API key run shows only the spinner and start time. When the run fails, times out, or is cancelled, the failure notice keeps the last command list until another run starts or the renderer reloads.
 
@@ -69,7 +68,7 @@ After movement, focus moves to the selected section heading and progress reflect
 
 Escape in the focused layout returns to the docked layout and puts focus on the Focus section button. Escape in the docked layout moves focus to the current section heading. Escape never leaves the Walkthrough.
 
-A reviewed section shows "Section reviewed" on a disabled button and a "done" badge in the rail. Support shows "Support reviewed"; that button stays enabled and choosing it again saves the same state. On a merged or closed Review, markers saved earlier still show, with both buttons disabled; an unreviewed section or Support shows no mark button. Moving between sections there changes only the screen and saves nothing. If a save fails, the reader shows "Walkthrough progress could not be saved." above the Walkthrough while the marker stays on screen.
+A reviewed section shows "Section reviewed" on a disabled button and a "done" badge in the rail. On a merged or closed Review, saved section markers still show, but the mark button is disabled for a reviewed section and absent for an unreviewed section. Moving between sections there changes only the screen and saves nothing. If a save fails, the reader shows "Walkthrough progress could not be saved." above the Walkthrough while the marker stays on screen.
 
 Reviewed indicators are projected for the exact Walkthrough revision. They do not submit a GitHub review, mark files viewed on GitHub, or change pending-review state.
 
@@ -123,9 +122,9 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - Repeated files use unique block IDs, so different hunks stay separate.
 - Deletion-only hunks remain renderable with a preserved file header.
 - Full section titles remain available on hover in the chapter rail even when a title is truncated.
-- Support stays compact and excludes legacy unverified citations.
-- Support and Mark Support reviewed live in the chapter rail, so they are unavailable in the focused layout.
-- An already reviewed section keeps its indicator and disables another Mark action. Mark Support reviewed stays enabled after Support is reviewed.
+- The chapter rail counts every uncited hunk, including those from legacy unverified citations, without listing them as a Walkthrough section. Open Diff leads to the full patch when it is loaded.
+- The count and Open Diff are in the chapter rail, so they are unavailable in the focused layout.
+- An already reviewed section keeps its indicator and disables another Mark action.
 - `j` moves to the next section and `k` to the previous, so the letters follow Vim while the arrows follow reading direction.
 - The Left and Right arrows move between sections rather than scrolling a wide hunk sideways.
 - Arrow keys, `j`, and `k` do nothing while a text field, select, or combobox has focus.

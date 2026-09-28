@@ -15,7 +15,6 @@ export type WalkthroughProgressControls = {
   readonly saveFailed: boolean;
   /** Absent on a merged or closed Review, whose progress the server refuses to change. */
   readonly markSectionReviewed?: (sectionId: string) => void;
-  readonly markSupportReviewed?: () => void;
   readonly selectSection: (sectionId: string) => void;
 };
 
@@ -98,7 +97,6 @@ export function useWalkthroughProgress({
           ? progress.reviewedSectionIds
           : [...progress.reviewedSectionIds, sectionId],
       }),
-    markSupportReviewed: () => save({ ...progress, supportReviewed: true }),
     selectSection,
   };
 }

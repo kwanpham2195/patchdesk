@@ -27,7 +27,6 @@ export function WalkthroughFixtureControls({
   walkthrough,
   actions,
   reviewedSectionIds,
-  supportReviewed,
   open,
   openButtonRef,
 }: {
@@ -46,11 +45,9 @@ export function WalkthroughFixtureControls({
     readonly onConfirm: () => void;
     readonly onOpen: () => void;
     readonly onMarkSectionReviewed: (sectionId: string) => void;
-    readonly onMarkSupportReviewed: () => void;
     readonly onSelectSection: (sectionId: string) => void;
   };
   readonly reviewedSectionIds: ReadonlyArray<string>;
-  readonly supportReviewed: boolean;
   readonly open: boolean;
   readonly openButtonRef: React.RefObject<HTMLButtonElement | null>;
 }): React.JSX.Element {
@@ -146,12 +143,10 @@ export function WalkthroughFixtureControls({
         <NarrativeWalkthrough
           walkthrough={walkthrough}
           reviewedSectionIds={reviewedSectionIds}
-          supportReviewed={supportReviewed}
           rawPatch={walkthroughFixturePatch}
           sourceSession={{ profileId: "fixture", sessionId: "fixture-session" }}
           actions={{
             onMarkSectionReviewed: actions.onMarkSectionReviewed,
-            onMarkSupportReviewed: actions.onMarkSupportReviewed,
             onSelectSection: actions.onSelectSection,
           }}
         />

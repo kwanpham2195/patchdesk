@@ -229,6 +229,7 @@ export function buildInsightReaders({
           workbench.conversation.inline?.threads ?? [],
         )
       : undefined;
+  const firstDiffPath = patchFiles[0]?.newPath;
   const retainedWalkthrough =
     selectedInsight === "walkthrough" &&
     workbench.insights.walkthrough.retained !== undefined ? (
@@ -253,6 +254,9 @@ export function buildInsightReaders({
           : { discussionUnavailable: walkthroughDiscussion })}
         focused={walkthroughFocused}
         onFocusedChange={setWalkthroughFocused}
+        {...(onOpenFileInDiff === undefined || firstDiffPath === undefined
+          ? {}
+          : { onOpenDiff: () => onOpenFileInDiff(firstDiffPath) })}
       />
     ) : null;
   const briefRetained = workbench.insights.brief?.retained;

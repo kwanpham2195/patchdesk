@@ -38,7 +38,11 @@ test("production walkthrough stays manual, supports review actions, and keeps th
       page.getByRole("button", { name: "Back to files" }),
     ).toHaveCount(0);
     await expect(page.getByText("Citations verified")).toHaveCount(0);
-    await expect(page.getByText("Reading")).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("region", { name: "Walkthrough chapters" })
+        .getByText("Reading", { exact: true }),
+    ).toHaveCount(0);
     await expect(
       page.getByRole("region", { name: "Walkthrough chapters" }),
     ).toBeVisible();
@@ -58,11 +62,13 @@ test("production walkthrough stays manual, supports review actions, and keeps th
     await expect(
       page.getByRole("button", { name: "Section reviewed" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Support" }).click();
-    await page.getByRole("button", { name: "Mark Support reviewed" }).click();
     await expect(
-      page.getByRole("button", { name: "Support reviewed" }),
-    ).toBeVisible();
+      page.getByRole("status", { name: "Walkthrough hunk coverage" }),
+    ).toContainText("1 hunk not explained");
+    await expect(page.getByRole("button", { name: "Support" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Mark Support reviewed" }),
+    ).toHaveCount(0);
     const walkthroughDiff = page.locator(
       '[data-walkthrough-diff-block="section-1::h1::0"]',
     );

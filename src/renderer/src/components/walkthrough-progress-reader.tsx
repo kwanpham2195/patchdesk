@@ -5,7 +5,7 @@ import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progr
 
 type WalkthroughProgressReaderProps = Omit<
   React.ComponentProps<typeof NarrativeWalkthrough>,
-  "reviewedSectionIds" | "supportReviewed" | "currentSectionId" | "actions"
+  "reviewedSectionIds" | "currentSectionId" | "actions"
 > & {
   readonly controls: WalkthroughProgressControls;
 };
@@ -24,14 +24,12 @@ export function WalkthroughProgressReader({
       <NarrativeWalkthrough
         {...props}
         reviewedSectionIds={progress.reviewedSectionIds}
-        supportReviewed={progress.supportReviewed}
         {...(progress.currentSectionId === undefined
           ? {}
           : { currentSectionId: progress.currentSectionId })}
         actions={{
           ...definedProps({
             onMarkSectionReviewed: controls.markSectionReviewed,
-            onMarkSupportReviewed: controls.markSupportReviewed,
           }),
           onSelectSection: controls.selectSection,
         }}

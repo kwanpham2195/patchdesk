@@ -239,6 +239,15 @@ describe("CodexInsightInvoker", () => {
     expect(prompt).toContain("diff --git a/a.ts b/a.ts");
     expect(invocation.maxPromptBytes).toBe(MAX_WALKTHROUGH_PROMPT_BYTES);
     expect(invocation.runTimeoutMs).toBe(EXPECTED_WALKTHROUGH_TIMEOUT_MS);
+    expect(value.calls[0]?.[0].outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        citationVersion: { type: "integer", enum: [2] },
+        focus: { type: "string", maxLength: 320 },
+        chapters: { type: "array", maxItems: 12 },
+      },
+    });
   });
 
   it("names the prompt-preparation failure in the phase for an oversized patch", async () => {
@@ -278,6 +287,7 @@ describe("CodexInsightInvoker", () => {
     );
     expect(invocation.maxPromptBytes).toBe(MAX_ANALYSIS_CODEX_PROMPT_BYTES);
     expect(invocation.runTimeoutMs).toBe(EXPECTED_ANALYSIS_TIMEOUT_MS);
+    expect(value.calls[0]?.[0].outputSchema).toBeUndefined();
   });
 
   it.each(["analysis", "walkthrough", "brief"] as const)(

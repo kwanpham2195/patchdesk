@@ -34,6 +34,7 @@ import {
 } from "../domain/review-result";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightInvocationInput } from "./insight-run-coordinator";
+import { parseWalkthroughOutput } from "./walkthrough-operation";
 
 /** Bounded validateResult rejection reason, surfaced only in the diagnostic detail. */
 export type ValidateResultReason =
@@ -134,8 +135,11 @@ export async function validateInsightResult(
   }
   // This result came from the current alias-manifest workflow. Persist its
   // marker even when a provider omits the requested constant JSON field.
+  const currentOutput = currentWalkthroughOutput(value);
+  const parsedWalkthrough = parseWalkthroughOutput(currentOutput);
+  if (parsedWalkthrough._tag === "err") return err("malformed");
   const normalized = normalizeNarrativeWalkthrough(
-    currentWalkthroughOutput(value),
+    parsedWalkthrough.value,
     patch,
     {
       profileId: input.profileId,

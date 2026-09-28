@@ -23,6 +23,7 @@ import { prepareBriefPrompt, type BriefPromptFailure } from "./brief-operation";
 import { composeReviewPrompt } from "./review-rubric";
 import {
   prepareWalkthroughPrompt,
+  walkthroughCodexOutputSchema,
   type WalkthroughPromptFailure,
 } from "./walkthrough-operation";
 import {
@@ -130,6 +131,7 @@ export class CodexInsightInvoker implements InsightInvoker {
           model: input.model,
           reasoning: input.reasoning,
           prompt: prompt.value,
+          outputSchema: walkthroughCodexOutputSchema,
           maxPromptBytes: MAX_WALKTHROUGH_PROMPT_BYTES,
           runTimeoutMs,
         },

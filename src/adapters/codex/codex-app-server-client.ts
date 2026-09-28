@@ -6,6 +6,7 @@ import {
 import { realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import * as v from "valibot";
+import type { JsonSchema } from "@valibot/to-json-schema";
 
 import { err, ok, type Result } from "../../domain/result";
 import type { InsightReasoning } from "../../domain/insight-provider";
@@ -70,6 +71,7 @@ export type CodexRunInput = {
   readonly model: string;
   readonly reasoning: InsightReasoning;
   readonly prompt: string;
+  readonly outputSchema?: JsonSchema;
   readonly maxPromptBytes?: number;
   readonly runTimeoutMs?: number;
 };
@@ -441,6 +443,7 @@ export class CodexAppServerClient {
       input.prompt,
       input.reasoning,
       input.worktreePath,
+      input.outputSchema,
       signal,
       onActivity,
     );
@@ -638,6 +641,7 @@ class RpcChild {
     prompt: string,
     reasoning: InsightReasoning,
     worktreePath: string,
+    outputSchema: JsonSchema | undefined,
     signal?: AbortSignal,
     onActivity?: InsightActivitySink,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
@@ -703,6 +707,7 @@ class RpcChild {
           threadId,
           input: [{ type: "text", text: prompt, text_elements: [] }],
           effort: reasoning,
+          outputSchema,
         },
         signal,
       );
