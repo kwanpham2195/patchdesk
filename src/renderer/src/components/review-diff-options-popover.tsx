@@ -95,7 +95,17 @@ export function ReviewDiffOptionsPopover({
           </Button>
         }
       />
-      <PopoverContent className="w-64" align="end">
+      <PopoverContent
+        className="w-64"
+        align="end"
+        hideWhenAnchorHidden
+        // The options must remain under the toolbar button, even when the chapter pane cannot fit the popup below it.
+        collisionAvoidance={{
+          side: "none",
+          align: "shift",
+          fallbackAxisSide: "none",
+        }}
+      >
         <PopoverHeader>
           <PopoverTitle>View options</PopoverTitle>
         </PopoverHeader>
