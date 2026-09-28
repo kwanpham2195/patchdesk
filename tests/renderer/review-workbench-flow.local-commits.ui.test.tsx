@@ -211,6 +211,82 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
     ).toBe("src/a.ts");
   });
 
+  it("opens an empty commit with metadata and no file, then Browse restores the prior view", async () => {
+    bridge((input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/local-patch-view") {
+        const { view } = input.body as { readonly view: string };
+        return {
+          sessionId: "session-a",
+          view,
+          patch: filePatch("src/a.ts"),
+          patchHash: "d".repeat(64),
+          viewedPaths: [],
+        };
+      }
+      if (input.path === "/v1/reviews/commit-diff")
+        return {
+          commit: { ...commits[0], message: "Checkpoint" },
+          position: 1,
+          total: 2,
+          patch: "",
+          fileCount: 0,
+          additions: 0,
+          deletions: 0,
+        };
+      if (input.path === "/v1/reviews/diff-file")
+        return { state: "unavailable", reason: "path_unavailable" };
+      throw new Error(input.path);
+    });
+    const initial = sharedReview({
+      kind: "local_branch",
+      branch: "feature",
+      baseBranch: "main",
+    });
+    const user = userEvent.setup();
+    render(
+      <SharedReviewScreen
+        initial={{
+          ...initial,
+          commits: commits.map((commit, index) =>
+            index === 0 ? { ...commit, message: "Checkpoint" } : commit,
+          ),
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await user.click(screen.getByRole("button", { name: "Uncommitted" }));
+    await waitFor(() =>
+      expect(screen.queryByText(/^Loading the .* view/)).toBeNull(),
+    );
+    await user.click(screen.getByRole("tab", { name: /^Commits/ }));
+
+    await screen.findByText(/1 of 2 · 0 files/);
+    expect(
+      screen.getByRole("button", { name: "Copy commit SHA" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(screen.queryByRole("treeitem")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Review diff" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Patch view" })).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "Browse" }));
+    const views = await screen.findByRole("group", { name: "Patch view" });
+    expect(
+      within(views)
+        .getByRole("button", { name: "Uncommitted" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("region", { name: "Review diff" })
+          .getAttribute("data-selected-path"),
+      ).toBe("src/a.ts"),
+    );
+  });
+
   it("shows only the error when a commit slice cannot be read, then returns to the full diff", async () => {
     bridge((input) => {
       if (input.path === "/v1/reviews/detect-updates")

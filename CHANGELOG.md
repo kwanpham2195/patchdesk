@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed listed empty commits failing to open in a shared local Review. They now show a zero-file slice with commit details, and Browse returns to the prior patch view. #574
+
 - Fixed the local Review header showing Combined line counts on Committed and Uncommitted. It now shows the selected patch's counts and labels its status as local. #565
 
 - Made the local Review's Notes list readable at the default navigator width: the count and copy action have separate rows, each note keeps its full text width, and its kind, view, and state fit beside one another. #582

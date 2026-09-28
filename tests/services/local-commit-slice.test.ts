@@ -8,6 +8,7 @@ import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewRemoteStore } from "../../src/adapters/storage/review-remote-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { parseGitSha, parseReviewId } from "../../src/domain/ids";
+import { err, ok } from "../../src/domain/result";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import { ReviewCommitService } from "../../src/services/review-commit-service";
 import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
@@ -154,6 +155,85 @@ describe("a shared Review's commits (#557)", () => {
     expect(git(repositoryPath, "status", "--porcelain")).toBe(statusBefore);
     expect(await indexBytes(repositoryPath)).toEqual(indexBefore);
   });
+
+  it("opens a listed empty commit as a zero-file slice without touching the checkout", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await commitFile(repositoryPath, "feature.txt", "feature\n", "Add feature");
+    git(repositoryPath, "commit", "--allow-empty", "-q", "-m", "Checkpoint");
+    const opened = await harness.open(shared());
+    const empty = commitNamed(opened, "Checkpoint");
+    const session = await loadSession(harness, opened.session.id);
+    const { service, calls } = commitService(harness);
+    const statusBefore = git(repositoryPath, "status", "--porcelain");
+    const indexBefore = await indexBytes(repositoryPath);
+
+    const diffed = value(
+      await service.diff({
+        profileId,
+        reviewId: value(parseReviewId(opened.review.id)),
+        commitSha: empty.sha,
+      }),
+    );
+
+    expect(diffed).toMatchObject({
+      commit: { sha: empty.sha, isHead: true },
+      position: 1,
+      total: 2,
+      patch: "",
+      fileCount: 0,
+      additions: 0,
+      deletions: 0,
+    });
+    expect(calls.some((argv) => argv.includes("diff"))).toBe(true);
+    for (const argv of calls)
+      expect(argv.slice(0, 3)).toEqual(["git", "-C", session.worktree.path]);
+    expect(git(repositoryPath, "status", "--porcelain")).toBe(statusBefore);
+    expect(await indexBytes(repositoryPath)).toEqual(indexBefore);
+  });
+
+  it.each(["failure", "malformed"] as const)(
+    "refuses a %s Git diff instead of showing an empty local commit",
+    async (outcome) => {
+      const harness = await localApplyHarness();
+      const { repositoryPath } = harness;
+      git(repositoryPath, "checkout", "-q", "-b", "feature");
+      await commitFile(
+        repositoryPath,
+        "feature.txt",
+        "feature\n",
+        "Add feature",
+      );
+      const opened = await harness.open(shared());
+      const commit = commitNamed(opened, "Add feature");
+      const realGit = createReadOnlyGitExecutor(new CommandRunner());
+      const service = new ReviewCommitService(
+        harness.reviews,
+        new ReviewRemoteStore(harness.paths),
+        new ReviewSessionStore(harness.paths),
+        {
+          run: (argv, environment) =>
+            argv.includes("diff")
+              ? Promise.resolve(
+                  outcome === "failure"
+                    ? err({ _tag: "GitReadFailed" as const })
+                    : ok({ stdout: "not a unified patch" }),
+                )
+              : realGit.run(argv, environment),
+        },
+        new ProfileStore(harness.paths),
+      );
+
+      expect(
+        await service.diff({
+          profileId,
+          reviewId: value(parseReviewId(opened.review.id)),
+          commitSha: commit.sha,
+        }),
+      ).toEqual({ _tag: "err", error: { reason: "git_unavailable" } });
+    },
+  );
 
   it("lists the root of a merged unrelated history and shows it against the empty tree", async () => {
     const harness = await localApplyHarness();
