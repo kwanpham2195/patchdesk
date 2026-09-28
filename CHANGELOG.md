@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the local Review header showing Combined line counts on Committed and Uncommitted. It now shows the selected patch's counts and labels its status as local. #565
+
 - Made the local Review's Notes list readable at the default navigator width: the count and copy action have separate rows, each note keeps its full text width, and its kind, view, and state fit beside one another. #582
 
 - Fixed the local Review file tree and Selected diff drifting apart after switching Patch views, pressing Refresh, or returning from a commit slice. Selection now follows a file in the displayed patch. #564

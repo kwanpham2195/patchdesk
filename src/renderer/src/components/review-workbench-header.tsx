@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import type { ChangeScope } from "../../../domain/change-scope";
 import type { LocalPatchView } from "../../../domain/local-patch-view";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
@@ -37,6 +38,7 @@ import { InlineError } from "./ui/inline-error";
 /** The workbench toolbar: title, status pills, external link, review actions. */
 export function ReviewWorkbenchHeader({
   model,
+  scope,
   actions,
   title,
   repository,
@@ -51,6 +53,7 @@ export function ReviewWorkbenchHeader({
   patchView,
 }: {
   readonly model: WorkbenchResponse;
+  readonly scope: ChangeScope | undefined;
   readonly actions: ReviewWorkbenchActions;
   readonly title: string;
   readonly repository: string;
@@ -100,19 +103,19 @@ export function ReviewWorkbenchHeader({
         <div
           className="flex flex-wrap items-center gap-2"
           role="group"
-          aria-label="Pull request status"
+          aria-label={local ? "Local review status" : "Pull request status"}
         >
           {model.pullRequest?.isDraft === true ? (
             <Badge variant="outline" className="h-6 px-2 text-[10px]">
               Draft
             </Badge>
           ) : null}
-          {model.scope === undefined ? null : (
+          {scope === undefined ? null : (
             // The Checks and Merge chips beside it are outline `xs` buttons;
             // the Scope chip carries no action, so it borrows their geometry
             // without their hover affordance.
             <span className="inline-flex h-6 items-center rounded-[min(var(--radius-md),10px)] border border-border bg-background px-2 dark:border-input dark:bg-input/30">
-              <ScopeGauge scope={model.scope} size="mini" />
+              <ScopeGauge scope={scope} size="mini" />
             </span>
           )}
           {showChecksChip && !local ? (

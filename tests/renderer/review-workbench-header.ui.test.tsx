@@ -169,6 +169,7 @@ describe("ReviewWorkbenchHeader pending-review notice", () => {
     render(
       <ReviewWorkbenchHeader
         model={model}
+        scope={model.scope}
         actions={{
           detectUpdates: async () => undefined,
           refresh: async () => undefined,
