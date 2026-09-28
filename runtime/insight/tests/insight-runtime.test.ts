@@ -784,11 +784,11 @@ describe("one-shot insight runtime", () => {
   it.each([
     {
       language: "en" as const,
-      rule: "ASD-STE100 / Simplified Technical English",
+      rule: 'BCP 47 tag "en"',
     },
     {
       language: "vi" as const,
-      rule: "Write all human-readable text in Vietnamese.",
+      rule: 'BCP 47 tag "vi"',
     },
   ])(
     "builds one $language Brief prompt from the production invocation and returns a brief-schema result",

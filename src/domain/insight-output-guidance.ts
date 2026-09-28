@@ -8,18 +8,14 @@ import type { InsightLanguage } from "./insight-provider";
 
 export type GuidedInsightType = "analysis" | "walkthrough" | "brief";
 
-const SIMPLIFIED_TECHNICAL_ENGLISH = [
-  "Write all human-readable text in ASD-STE100 / Simplified Technical English.",
+const INSIGHT_LANGUAGE_GUIDANCE = [
   "Use short, direct sentences in the active voice. Put one main idea in each sentence.",
   "Prefer common words. Define an uncommon technical term when the reader needs it.",
-  "Keep exact code identifiers, paths, commands, and API names. Do not replace them with approximate terms.",
+  "Keep exact code identifiers, paths, commands, API names, JSON keys, and enum values as written.",
+  "Do not translate technical terms into the output language; use the terms established by the supplied repository evidence or common software engineering usage. Keep domain names in the form used by that evidence. Translate the surrounding explanation. Do not invent translations or infer full names from identifiers or paths.",
   "Do not use idioms, promotional language, ornamental prose, or rhetorical questions.",
   "The reader knows GitHub, pull requests, diffs, tests, and AI tooling. Never explain what those are. Never add a purpose clause that tells the reader why they would want a fact, such as 'so you can' or 'to help you'.",
 ].join(" ");
-
-// Replaces only the Simplified Technical English rule; the rest of the guidance stays English because the model reads it, the reviewer does not.
-const PLAIN_VIETNAMESE =
-  "Write all human-readable text in Vietnamese. Use plain, simple Vietnamese: short, direct sentences in the active voice, one main idea in each sentence, common words. Keep exact code identifiers, paths, commands, and API names as written; never translate them. Keep JSON keys and enum values exactly as the schema defines them. Technical terms Vietnamese developers use as-is (pull request, commit, diff, merge, test, hunk) stay in English.";
 
 const ANALYSIS_REVIEWER_FRAMING = [
   "Write for a reviewer who knows this codebase but has not read the diff. Their time is the scarce resource: give them the framing the code cannot give them, then stop.",
@@ -36,8 +32,7 @@ export function insightOutputGuidance(
   type: GuidedInsightType,
   language: InsightLanguage,
 ): string {
-  const languageRule =
-    language === "vi" ? PLAIN_VIETNAMESE : SIMPLIFIED_TECHNICAL_ENGLISH;
+  const languageRule = `Write human-readable titles and explanatory prose in the language identified by the BCP 47 tag "${language}". ${INSIGHT_LANGUAGE_GUIDANCE}`;
   if (type === "analysis") {
     return [
       languageRule,

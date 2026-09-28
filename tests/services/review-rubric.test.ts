@@ -19,7 +19,7 @@ describe("review rubric", () => {
   });
 
   it("carries the Analysis writing guidance", () => {
-    expect(prompt).toContain("ASD-STE100 / Simplified Technical English");
+    expect(prompt).toContain('BCP 47 tag "en"');
     expect(prompt).toContain("Never invent the why.");
     expect(prompt).toContain(
       "Keep facts, assumptions, and unresolved questions separate.",

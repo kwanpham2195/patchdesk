@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Updated Brief, Walkthrough, and Analysis prompts to write prose in the selected language while preserving domain names and technical terms from the reviewed repository. Removed the English-only Simplified Technical English rule.
+
 - Fixed retention repeatedly failing on old working-tree and branch Reviews whose repository path is missing. It keeps the Review and cached worktree and records one skip reason until the path returns. #569
 
 - Fixed listed empty commits failing to open in a shared local Review. They now show a zero-file slice with commit details, and Browse returns to the prior patch view. #574

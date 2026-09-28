@@ -177,7 +177,10 @@ describe("walkthrough prompt preparation", () => {
         );
       const prompt = prepared.value;
       expect(prompt).toContain("behavior before consequences and validation");
-      expect(prompt).toContain("ASD-STE100 / Simplified Technical English");
+      expect(prompt).toContain('BCP 47 tag "en"');
+      expect(prompt).toContain(
+        "Do not translate technical terms into the output language; use the terms established by the supplied repository evidence or common software engineering usage.",
+      );
       expect(prompt).toContain(
         "Use short, direct sentences in the active voice",
       );

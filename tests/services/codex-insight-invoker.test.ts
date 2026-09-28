@@ -288,10 +288,12 @@ describe("CodexInsightInvoker", () => {
         signal: new AbortController().signal,
       });
       const prompt = value.calls[0]?.[0].prompt;
+      expect(prompt).toEqual(expect.stringContaining('BCP 47 tag "vi"'));
       expect(prompt).toEqual(
-        expect.stringContaining("Write all human-readable text in Vietnamese."),
+        expect.stringContaining(
+          "Keep domain names in the form used by that evidence. Translate the surrounding explanation.",
+        ),
       );
-      expect(prompt).toEqual(expect.not.stringContaining("ASD-STE100"));
     },
   );
 });

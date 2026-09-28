@@ -51,7 +51,7 @@ Mark section reviewed records the current section's stable identity. Mark Suppor
 
 Focus section hides the Insight tab strip with its meta line, the Walkthrough title, and the chapter rail, and leaves a single reading column. The same button, now named Exit focus, returns to the docked layout. The layout change fades out and back in.
 
-Regenerate opens the shared Insight run dialog described in [Brief](brief.md#begin-an-action). A Walkthrough run in Vietnamese writes its chapter titles, section titles, and prose in Vietnamese and keeps paths and identifiers as written. It is shown only in the docked layout, only while a retained Walkthrough is current and the Review is open, and is disabled unless an Insight provider is available.
+Regenerate opens the shared Insight run dialog described in [Brief](brief.md#begin-an-action). A Walkthrough run in Vietnamese writes its chapter titles, section titles, and prose in Vietnamese. For every language, the prompt asks the model to keep repository domain names, technical terms, paths, and identifiers as written. It is shown only in the docked layout, only while a retained Walkthrough is current and the Review is open, and is disabled unless an Insight provider is available.
 
 ### While the action runs
 
@@ -144,4 +144,4 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - Confirm persistence of the current section and reviewed markers across app quit, not only rerender.
 - Confirm fallback presentation when syntax highlighting fails inside a Walkthrough block.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; command approval behavior revised from source commit `2e2fac4c` and not live-verified.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified.

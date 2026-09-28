@@ -741,7 +741,7 @@ describe("buildCodexAnalysisPrompt", () => {
     expect(result._tag).toBe("ok");
     if (result._tag !== "ok") return;
     expect(result.value).toContain(shared);
-    expect(result.value).toContain("ASD-STE100 / Simplified Technical English");
+    expect(result.value).toContain('BCP 47 tag "en"');
     expect(result.value).toContain("Never invent the why.");
     expect(result.value).toContain(
       "P0 is a defect that loses data, breaks security, or blocks the release.",

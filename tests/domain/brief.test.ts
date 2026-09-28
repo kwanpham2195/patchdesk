@@ -201,23 +201,26 @@ describe("normalizeBrief", () => {
 });
 
 describe("insightOutputGuidance", () => {
-  const STE_RULE_END = "such as 'so you can' or 'to help you'.";
-  const VIETNAMESE_RULE =
-    "Write all human-readable text in Vietnamese. Use plain, simple Vietnamese: short, direct sentences in the active voice, one main idea in each sentence, common words. Keep exact code identifiers, paths, commands, and API names as written; never translate them. Keep JSON keys and enum values exactly as the schema defines them. Technical terms Vietnamese developers use as-is (pull request, commit, diff, merge, test, hunk) stay in English.";
-
   it.each(["brief", "walkthrough", "analysis"] as const)(
-    "replaces only the Simplified Technical English rule for a Vietnamese %s",
+    "uses the same terminology rule for %s in every output language",
     (type) => {
       const english = insightOutputGuidance(type, "en");
       const vietnamese = insightOutputGuidance(type, "vi");
-      expect(english).toMatch(
-        /^Write all human-readable text in ASD-STE100 \/ Simplified Technical English\./,
-      );
-      expect(vietnamese.startsWith(VIETNAMESE_RULE)).toBe(true);
-      expect(vietnamese).not.toContain("ASD-STE100");
-      expect(vietnamese.slice(VIETNAMESE_RULE.length)).toBe(
-        english.slice(english.indexOf(STE_RULE_END) + STE_RULE_END.length),
-      );
+      expect(english).toContain('BCP 47 tag "en"');
+      expect(vietnamese).toContain('BCP 47 tag "vi"');
+      for (const guidance of [english, vietnamese]) {
+        expect(guidance).toContain(
+          "Do not translate technical terms into the output language; use the terms established by the supplied repository evidence or common software engineering usage.",
+        );
+        expect(guidance).toContain(
+          "Keep domain names in the form used by that evidence. Translate the surrounding explanation.",
+        );
+        expect(guidance).toContain(
+          "Keep exact code identifiers, paths, commands, API names, JSON keys, and enum values as written.",
+        );
+        expect(guidance).not.toContain("ASD-STE100");
+      }
+      expect(vietnamese.replace('tag "vi"', 'tag "en"')).toBe(english);
     },
   );
   it("gives the Brief its own framing and leaves the Walkthrough unchanged", () => {
