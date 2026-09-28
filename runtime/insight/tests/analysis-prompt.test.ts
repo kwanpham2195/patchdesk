@@ -56,7 +56,10 @@ describe("Pi Analysis system prompt", () => {
 
   it("carries the Analysis writing guidance", () => {
     const systemPrompt = analysisSystemPrompt();
-    expect(systemPrompt).toContain("ASD-STE100 / Simplified Technical English");
+    expect(systemPrompt).toContain('BCP 47 tag "en"');
+    expect(systemPrompt).toContain(
+      "Keep domain names in the form used by that evidence. Translate the surrounding explanation.",
+    );
     expect(systemPrompt).toContain("Never invent the why.");
   });
 
