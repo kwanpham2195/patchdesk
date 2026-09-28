@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
 import type { ProfileStore } from "../adapters/storage/profile-store";
@@ -18,6 +20,7 @@ import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
+import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { configuredLocalPath } from "./local-checkout";
@@ -51,6 +54,7 @@ type Dependencies = SessionRunningStateDependencies & {
   readonly git: GitReadExecutor;
   readonly lifecycleGate: ReviewLifecycleGate;
   readonly coordinator: Pick<ReviewOperationCoordinator, "withReviewLock">;
+  readonly diagnostics?: Pick<ReviewDiagnosticService, "record" | "recent">;
   readonly now: () => IsoTimestamp;
 };
 
@@ -146,6 +150,19 @@ export class ReviewRetention {
       return pruned._tag === "ok" ? "kept" : "failed";
     }
     const localPath = configuredLocalPath(profile.value, review.value.identity);
+    const sourceKind = review.value.identity.source.kind;
+    if (
+      localPath !== undefined &&
+      (sourceKind === "working_tree" || sourceKind === "branch") &&
+      !(await exists(localPath))
+    ) {
+      await this.recordMissingLegacyRepository(
+        profileId,
+        reviewId,
+        review.value.currentSessionId,
+      );
+      return "kept";
+    }
     const lastUsed = review.value.lastOpenedAt ?? review.value.updatedAt;
     const abandoned =
       localPath !== undefined &&
@@ -242,6 +259,7 @@ export class ReviewRetention {
       ),
     ];
     const deleted = await mapConcurrent(localPaths, 1, async (localPath) => {
+      if (!(await exists(localPath))) return 0;
       const refs = await this.dependencies.worktrees.listManagedRefs(
         profileId,
         localPath,
@@ -454,6 +472,31 @@ export class ReviewRetention {
       true,
     );
     return "kept";
+  }
+
+  /** The bounded diagnostic log remembers the skip across scheduled sweeps and restarts. */
+  private async recordMissingLegacyRepository(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    sessionId: ReviewSessionId,
+  ): Promise<void> {
+    const diagnostics = this.dependencies.diagnostics;
+    if (diagnostics === undefined) return;
+    const recent = await diagnostics.recent(profileId);
+    if (recent._tag === "err") return;
+    const incidentId = `retention-missing-${createHash("sha256")
+      .update(`${profileId}\n${reviewId}`)
+      .digest("hex")}`;
+    if (recent.value.some((event) => event.incidentId === incidentId)) return;
+    await diagnostics.record({
+      incidentId,
+      profileId,
+      sessionId,
+      category: "cleanup",
+      phase: "review_retention",
+      retryable: false,
+      detail: "skipped legacy local Review: repository path is missing",
+    });
   }
 
   private async record(

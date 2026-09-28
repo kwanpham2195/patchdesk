@@ -15,17 +15,17 @@ import { isNamedCheckoutGone, type LocalCheckoutReads } from "./local-checkout";
  * named checkout that `git worktree list` no longer lists as live is gone too
  * (#489); a failed listing, or a locked worktree whose directory is missing,
  * keeps the Review. A working-tree or branch Review stored before the shared
- * Review (#555) is always gone: nothing opens one again, and the caller's
- * no-drafts rule still keeps one that holds notes.
+ * Review (#555) is gone only while its repository still exists: nothing opens
+ * one again, and the caller's no-drafts rule keeps one that holds notes.
  */
 export async function isLocalSourceGone(
   reads: LocalCheckoutReads,
   localPath: string,
   source: LocalReviewSource,
 ): Promise<boolean> {
-  if (source.kind === "working_tree" || source.kind === "branch") return true;
   const repositoryPath = await realpath(localPath).catch(() => undefined);
   if (repositoryPath === undefined) return false;
+  if (source.kind === "working_tree" || source.kind === "branch") return true;
   if (source.checkout !== undefined) {
     const gone = await isNamedCheckoutGone(
       reads,

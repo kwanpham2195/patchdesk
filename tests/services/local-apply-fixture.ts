@@ -48,6 +48,7 @@ import { LocalApplyService } from "../../src/services/local-apply-service";
 import { LocalApplySettlement } from "../../src/services/local-apply-settlement";
 import { LocalDraftService } from "../../src/services/local-draft-service";
 import { LocalReviewOpening } from "../../src/services/local-review-opening";
+import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 import { ReviewRetention } from "../../src/services/review-retention";
 import { LocalReviewRevisionService } from "../../src/services/local-review-revision-service";
 import { LocalReviewSessionPreparation } from "../../src/services/local-review-session-preparation";
@@ -115,6 +116,7 @@ export type LocalApplyHarness = {
   readonly drafts: LocalDraftService;
   readonly coordinator: ReviewOperationCoordinator;
   readonly retention: ReviewRetention;
+  readonly diagnostics: ReviewDiagnosticService;
   readonly logs: ReadonlyArray<LogEntryInput>;
   readonly open: (
     request?: LocalReviewSourceRequest,
@@ -193,6 +195,7 @@ export async function localApplyHarness(
   const coordinator = new ReviewOperationCoordinator();
   const logs: LogEntryInput[] = [];
   const lifecycleGate = new ReviewLifecycleGate();
+  const diagnostics = new ReviewDiagnosticService(paths, () => now);
   const worktrees = new ReviewWorktreeService(
     paths,
     realGit,
@@ -214,6 +217,7 @@ export async function localApplyHarness(
     git: interceptedGit,
     lifecycleGate,
     coordinator,
+    diagnostics,
     now: seams.retentionNow ?? (() => now),
   });
   const preparation = new LocalReviewSessionPreparation({
@@ -316,6 +320,7 @@ export async function localApplyHarness(
     }),
     coordinator,
     retention,
+    diagnostics,
     logs,
     open: async (request = sharedAgainstMain()) =>
       value(await opening.open({ profileId, repository, request })),
