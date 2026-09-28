@@ -144,10 +144,9 @@ export type McpRefusedCall = {
 };
 
 /**
- * Records refused and failed calls in the active profile's diagnostics, so
- * Settings → Data & recovery lists them (ADR 0052 "Logging and
- * diagnostics"). Best effort: with no saved profile there is nowhere to
- * record, and the call is already in `patchdesk.jsonl`.
+ * Records refused and failed calls in Help → Diagnostics → Review activity
+ * (ADR 0052 "Logging and diagnostics"). With no saved profile there is nowhere
+ * to record, and the call is already in `patchdesk.jsonl`.
  */
 export function createMcpRefusalRecorder(services: {
   readonly dashboard: Pick<DashboardController, "savedProfiles">;
