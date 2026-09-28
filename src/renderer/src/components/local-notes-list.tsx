@@ -43,7 +43,7 @@ export function LocalNotesList({
           your feedback for the coding agent.
         </p>
       ) : (
-        <div className="flex items-center justify-between gap-2 px-2">
+        <div className="flex flex-col items-start gap-2 px-2">
           <p className="text-xs text-muted-foreground">
             {count} {count === 1 ? "draft" : "drafts"} for the coding agent
           </p>
@@ -75,19 +75,19 @@ export function LocalNotesList({
             return (
               <li
                 key={localDraftKey(entry)}
-                className="flex items-start gap-1 text-sm"
+                className="min-w-0 rounded-md bg-muted/40 p-1 text-sm"
               >
                 {place.placement === "inline" ? (
                   <button
                     type="button"
                     aria-label={`Show ${entry.kind} at ${location} in the diff`}
-                    className="flex min-w-0 flex-1 flex-col items-start gap-1 rounded-md px-2 py-2 text-left hover:bg-accent"
+                    className="flex w-full min-w-0 flex-col items-start gap-1 rounded-md px-1 py-1 text-left hover:bg-accent"
                     onClick={() => onReveal(place)}
                   >
                     {details}
                   </button>
                 ) : (
-                  <div className="flex min-w-0 flex-1 flex-col items-start gap-1 px-2 py-2">
+                  <div className="flex w-full min-w-0 flex-col items-start gap-1 px-1 py-1">
                     {details}
                     <span
                       data-local-draft-reason={place.reason}
@@ -97,19 +97,20 @@ export function LocalNotesList({
                     </span>
                   </div>
                 )}
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  className="mt-1.5 shrink-0"
-                  aria-label={`Remove ${entry.kind} at ${location} from drafts`}
-                  disabled={
-                    !controls.canRemove ||
-                    controls.pending.has(localDraftKey(entry))
-                  }
-                  onClick={() => void controls.remove(entry)}
-                >
-                  Remove
-                </Button>
+                <div className="flex justify-end px-1">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    aria-label={`Remove ${entry.kind} at ${location} from drafts`}
+                    disabled={
+                      !controls.canRemove ||
+                      controls.pending.has(localDraftKey(entry))
+                    }
+                    onClick={() => void controls.remove(entry)}
+                  >
+                    Remove
+                  </Button>
+                </div>
               </li>
             );
           })}
@@ -146,9 +147,7 @@ function LocalDraftDetails({
           <Badge variant="outline">Suggestion</Badge>
         ) : null}
         {showsView ? (
-          <Badge variant="secondary">
-            {localPatchViewLabels[entry.view]} view
-          </Badge>
+          <Badge variant="secondary">{localPatchViewLabels[entry.view]}</Badge>
         ) : null}
         <LocalDraftStateBadge state={entry.state} />
       </span>
