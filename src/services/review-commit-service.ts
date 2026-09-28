@@ -106,6 +106,7 @@ export class ReviewCommitService {
       position + 1,
       snapshot.commits.length,
       patch.value,
+      "pull_request",
     );
   }
 
@@ -141,6 +142,7 @@ export class ReviewCommitService {
       position + 1,
       commits.total,
       patch.value,
+      "local",
     );
   }
 
@@ -327,9 +329,13 @@ function commitDiffProjection(
   position: number,
   total: number,
   patch: string,
+  source: "local" | "pull_request",
 ): Result<CommitDiffProjection, ReviewCommitFailure> {
-  if (patch.length === 0) return err({ reason: "binary_only" });
+  if (patch.length === 0 && source === "pull_request")
+    return err({ reason: "binary_only" });
   const files = parseUnifiedPatch(patch);
+  if (patch.length > 0 && source === "local" && files.length === 0)
+    return err({ reason: "git_unavailable" });
   return ok({
     commit,
     position,

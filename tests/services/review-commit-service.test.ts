@@ -153,6 +153,40 @@ describe("ReviewCommitService", () => {
     );
   });
 
+  it("still refuses an empty pull request commit diff", async () => {
+    const service = new ReviewCommitService(
+      {
+        async load() {
+          return ok(review);
+        },
+      },
+      {
+        async load() {
+          // SAFETY: This fake storage returns the complete snapshot fixture consumed by ReviewCommitService.
+          return ok(snapshot as never);
+        },
+      },
+      {
+        async load() {
+          // SAFETY: This fake storage returns the complete session fixture consumed by ReviewCommitService.
+          return ok(session as never);
+        },
+      },
+      {
+        async run(argv) {
+          return ok({
+            stdout: argv.includes("rev-parse") ? `${headSha}\n` : "",
+          });
+        },
+      },
+      profiles,
+    );
+
+    await expect(
+      service.diff({ profileId, reviewId: review.id, commitSha }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "binary_only" } });
+  });
+
   it("rejects a commit that is not in the represented commit list", async () => {
     const service = new ReviewCommitService(
       {

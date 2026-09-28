@@ -820,7 +820,10 @@ export function ReviewWorkbench({
                       {NO_PATCH_AVAILABLE}
                     </p>
                   ) : selectionReady && diffSelectedPath === undefined ? (
-                    <ReviewEmptyPatch viewControl={localViewControl} />
+                    <ReviewEmptyPatch
+                      viewControl={localViewControl}
+                      {...definedProps({ commitHeader })}
+                    />
                   ) : (
                     <>
                       <DiffWorkbench
