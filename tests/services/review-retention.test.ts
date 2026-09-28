@@ -131,6 +131,62 @@ async function refreshedReview(harness: LocalApplyHarness, edits: number) {
   return { first, latest };
 }
 
+async function storeLegacyReview(
+  harness: LocalApplyHarness,
+  withNote: boolean,
+  kind: "working_tree" | "branch" = "working_tree",
+) {
+  const branch = value(parseLocalBranchName("main"));
+  const identity = {
+    profileId,
+    ...repository,
+    source:
+      kind === "branch"
+        ? { kind, branch, baseBranch: branch }
+        : { kind, branch },
+  };
+  const sessionId = createReviewSessionId({
+    ...identity,
+    headSha: value(parseGitSha("a".repeat(40))),
+    baseSha: value(parseGitSha("b".repeat(40))),
+  });
+  const stored = createReview({
+    identity,
+    currentSessionId: sessionId,
+    headSha: value(parseGitSha("a".repeat(40))),
+    createdAt: now,
+  });
+  value(
+    await harness.reviews.save(
+      withNote
+        ? {
+            ...stored,
+            localDrafts: [
+              {
+                author: "maintainer",
+                noteId: createLocalNoteId("fixture-old"),
+                sessionId,
+                anchor: {
+                  path: value(parseRepoRelativePath("tracked.txt")),
+                  side: "new",
+                  startLine: 1,
+                  line: 1,
+                  selectedLines: ["one"],
+                  before: [],
+                  after: [],
+                },
+                text: "Written before the shared Review.",
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+          }
+        : stored,
+    ),
+  );
+  return stored;
+}
+
 describe("ReviewRetention", () => {
   it("leaves only the current session's ref and worktree after three edited Refreshes", async () => {
     const harness = await localApplyHarness();
@@ -535,6 +591,54 @@ describe("ReviewRetention", () => {
   });
 
   it.each([
+    ["working_tree", false],
+    ["working_tree", true],
+    ["branch", false],
+    ["branch", true],
+  ] as const)(
+    "keeps a legacy %s Review when its repository path is missing (holds a note: %s)",
+    async (kind, withNote) => {
+      let gitReads = 0;
+      const harness = await localApplyHarness(
+        (argv, run) => {
+          if (argv.includes("-C")) gitReads += 1;
+          return run();
+        },
+        { retentionNow: () => fifteenDaysLater },
+      );
+      const stored = await storeLegacyReview(harness, withNote, kind);
+      const cache = harness.paths.worktreeDirectory(
+        profileId,
+        stored.currentSessionId,
+      );
+      await mkdir(cache, { recursive: true });
+      await rm(harness.repositoryPath, { recursive: true });
+
+      value(await harness.retention.sweepProfile(profileId));
+      value(await harness.retention.sweepProfile(profileId));
+
+      expect((await harness.reviews.load(profileId, stored.id))._tag).toBe(
+        "ok",
+      );
+      expect(await present(cache)).toBe(true);
+      expect(gitReads).toBe(0);
+      const events = value(await harness.diagnostics.recent(profileId));
+      expect(
+        events.filter((event) =>
+          event.detail?.includes("repository path is missing"),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          category: "cleanup",
+          retryable: false,
+          sessionId: stored.currentSessionId,
+        }),
+      ]);
+      expect(events.filter((event) => event.retryable)).toHaveLength(0);
+    },
+  );
+
+  it.each([
     ["removes", false],
     ["keeps", true],
   ] as const)(
@@ -543,53 +647,7 @@ describe("ReviewRetention", () => {
       const harness = await localApplyHarness(undefined, {
         retentionNow: () => fifteenDaysLater,
       });
-      const identity = {
-        profileId,
-        ...repository,
-        source: {
-          kind: "working_tree" as const,
-          branch: value(parseLocalBranchName("main")),
-        },
-      };
-      const sessionId = createReviewSessionId({
-        ...identity,
-        headSha: value(parseGitSha("a".repeat(40))),
-        baseSha: value(parseGitSha("b".repeat(40))),
-      });
-      const stored = createReview({
-        identity,
-        currentSessionId: sessionId,
-        headSha: value(parseGitSha("a".repeat(40))),
-        createdAt: now,
-      });
-      value(
-        await harness.reviews.save(
-          withNote
-            ? {
-                ...stored,
-                localDrafts: [
-                  {
-                    author: "maintainer",
-                    noteId: createLocalNoteId("fixture-old"),
-                    sessionId,
-                    anchor: {
-                      path: value(parseRepoRelativePath("tracked.txt")),
-                      side: "new",
-                      startLine: 1,
-                      line: 1,
-                      selectedLines: ["one"],
-                      before: [],
-                      after: [],
-                    },
-                    text: "Written before the shared Review.",
-                    createdAt: now,
-                    updatedAt: now,
-                  },
-                ],
-              }
-            : stored,
-        ),
-      );
+      const stored = await storeLegacyReview(harness, withNote);
 
       value(await harness.retention.sweepProfile(profileId));
 
