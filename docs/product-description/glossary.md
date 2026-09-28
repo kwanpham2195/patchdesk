@@ -162,7 +162,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Focused layout.** The Walkthrough layout that Focus section switches to, hiding the tab strip, header, and chapter rail for one reading column. Exit focus or Escape returns to the Docked layout.
 
-**Support.** The Walkthrough group that holds the changed hunks no section cites, in a collapsed disclosure below the chapters in the chapter rail. Mark Support reviewed records it as read.
+**Support.** The Walkthrough's retained set of changed hunks that no section cites. The reader counts these hunks as not explained in the reading path and links to the full Diff; it does not list or mark them reviewed in the Walkthrough.
 
 **Analysis.** The latest successful review body and evidence-backed Findings produced for a represented revision. The maintainer can dismiss Findings or use current mapped Findings to create GitHub pending-review comments.
 

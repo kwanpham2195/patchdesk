@@ -36,6 +36,7 @@ import type { InsightProviderCatalog } from "../../src/services/insight-provider
 import { ReviewContextPackService } from "../../src/services/review-context-pack-service";
 import { ReviewContextService } from "../../src/services/review-context-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 import {
   InsightRunCoordinator,
   type InsightInvoker,
@@ -119,6 +120,7 @@ export function contextPackFixture(
 
 type FixtureOptions = {
   operations?: ReviewOperationCoordinator;
+  recordDiagnostics?: boolean;
   reach?: BriefReachComputer;
   providerCatalog?: InsightProviderCatalog;
   notifier?: DesktopNotifier;
@@ -136,6 +138,7 @@ export async function fixture(
   invoker: InsightInvoker,
   {
     operations = new ReviewOperationCoordinator(),
+    recordDiagnostics = false,
     reach,
     providerCatalog,
     notifier,
@@ -150,6 +153,9 @@ export async function fixture(
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
   const insights = new InsightStore(paths);
+  const diagnostics = recordDiagnostics
+    ? new ReviewDiagnosticService(paths, () => now)
+    : undefined;
   const identity = {
     profileId,
     host: must(parseGitHubHost("github.com")),
@@ -240,7 +246,7 @@ export async function fixture(
     operations,
     contextPack.service,
     () => now,
-    undefined,
+    diagnostics,
     providerCatalog,
     reach,
     notifier === undefined
@@ -257,6 +263,7 @@ export async function fixture(
     paths,
     operations,
     contextPack: contextPack.counted,
+    diagnostics,
   };
 }
 

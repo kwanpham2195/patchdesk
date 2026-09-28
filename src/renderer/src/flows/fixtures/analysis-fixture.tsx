@@ -62,7 +62,6 @@ export function AnalysisFixture(): React.ReactNode {
           progress: { reviewedSectionIds: [], supportReviewed: false },
           saveFailed: false,
           markSectionReviewed: () => undefined,
-          markSupportReviewed: () => undefined,
           selectSection: () => undefined,
         },
         walkthroughFocused: false,

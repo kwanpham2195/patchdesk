@@ -71,15 +71,15 @@ describe("useWalkthroughProgress", () => {
     const { result } = renderProgress(patches);
 
     act(() => result.current.markSectionReviewed?.("section-1"));
-    act(() => result.current.markSupportReviewed?.());
+    act(() => result.current.markSectionReviewed?.("section-2"));
     await waitFor(() => expect(answers).toHaveLength(2));
     await act(async () => answers[1]?.(success({ status: "saved" })));
     await act(async () => answers[0]?.(success({ status: "saved" })));
 
     expect(patches).toHaveLength(1);
     expect(patches[0]?.insights?.walkthrough?.progress).toEqual({
-      reviewedSectionIds: ["section-1"],
-      supportReviewed: true,
+      reviewedSectionIds: ["section-1", "section-2"],
+      supportReviewed: false,
     });
   });
 });

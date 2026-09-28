@@ -33,7 +33,10 @@ import {
 } from "../../../src/services/model-review-runner";
 import type { ReviewInspector } from "../../../src/services/review-inspector";
 import { prepareBriefPrompt } from "../../../src/services/brief-operation";
-import { prepareWalkthroughPrompt } from "../../../src/services/walkthrough-operation";
+import {
+  prepareWalkthroughPrompt,
+  walkthroughOutputLimitDiagnostic,
+} from "../../../src/services/walkthrough-operation";
 
 import {
   MAX_RUNTIME_STDIN_BYTES,
@@ -215,7 +218,16 @@ export async function runPatchdeskChild(
             raw.output,
             parsed.issues,
           );
-        return { ok: false, reason: "invalid_result" };
+        return {
+          ok: false,
+          reason: "invalid_result",
+          ...definedProps({
+            detail:
+              invocation.type === "walkthrough" && raw.success
+                ? walkthroughLimitDetail(raw.output)
+                : undefined,
+          }),
+        };
       }
       const failure = runFailureMessage(agent);
       if (failure !== undefined)
@@ -234,7 +246,10 @@ export async function runPatchdeskChild(
         ok: false,
         reason: "invalid_result",
         ...definedProps({
-          detail: turnCapReached() ? TURN_CAP_DETAIL : undefined,
+          detail:
+            (invocation.type === "walkthrough"
+              ? rejectedWalkthroughLimitDetail(agent)
+              : undefined) ?? (turnCapReached() ? TURN_CAP_DETAIL : undefined),
         }),
       };
     } catch (cause: unknown) {
@@ -252,6 +267,34 @@ export async function runPatchdeskChild(
     void cause;
     return { ok: false, reason: "runtime_unavailable" };
   }
+}
+
+function walkthroughLimitDetail(value: RawJsonValue): string | undefined {
+  const limits = walkthroughOutputLimitDiagnostic(value);
+  return limits === undefined ? undefined : `walkthrough_${limits}`;
+}
+
+/** The last submitted tool arguments are available even when Pi rejects them before tool execution. */
+function rejectedWalkthroughLimitDetail(agent: Agent): string | undefined {
+  const messages = agent.state.messages;
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex--
+  ) {
+    const message = messages[messageIndex];
+    if (message?.role !== "assistant") continue;
+    for (
+      let partIndex = message.content.length - 1;
+      partIndex >= 0;
+      partIndex--
+    ) {
+      const part = message.content[partIndex];
+      if (part?.type === "toolCall" && part.name === "submit_patchdesk_result")
+        return walkthroughLimitDetail(part.arguments);
+    }
+  }
+  return undefined;
 }
 
 /**

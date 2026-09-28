@@ -26,7 +26,6 @@ export function WalkthroughFixture({
   const [reviewedSectionIds, setReviewedSectionIds] = useState<
     ReadonlyArray<string>
   >([]);
-  const [supportReviewed, setSupportReviewed] = useState(false);
   const walkthrough = useMemo(
     () => ({
       snapshot: {
@@ -138,11 +137,9 @@ export function WalkthroughFixture({
             setOpen(true);
           },
           onMarkSectionReviewed: markSectionReviewed,
-          onMarkSupportReviewed: () => setSupportReviewed(true),
           onSelectSection: () => undefined,
         }}
         reviewedSectionIds={reviewedSectionIds}
-        supportReviewed={supportReviewed}
         open={open}
         openButtonRef={openButtonRef}
       />

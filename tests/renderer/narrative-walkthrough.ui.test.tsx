@@ -171,7 +171,6 @@ function buildActions(
 ): NarrativeWalkthroughActions {
   return {
     onMarkSectionReviewed: vi.fn(),
-    onMarkSupportReviewed: vi.fn(),
     onSelectSection: vi.fn(),
     ...overrides,
   };
@@ -183,7 +182,6 @@ function FocusableNarrativeWalkthrough(): React.JSX.Element {
     <NarrativeWalkthrough
       walkthrough={buildWalkthrough()}
       reviewedSectionIds={[]}
-      supportReviewed={false}
       focused={focused}
       onFocusedChange={setFocused}
       actions={buildActions()}
@@ -201,7 +199,6 @@ describe("narrative walkthrough takeover", () => {
         <NarrativeWalkthrough
           walkthrough={buildLongWalkthrough()}
           reviewedSectionIds={[]}
-          supportReviewed={false}
           actions={buildActions()}
         />,
       );
@@ -259,7 +256,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={buildActions()}
       />,
     );
@@ -284,7 +280,6 @@ describe("narrative walkthrough takeover", () => {
         }}
         currentSectionId="section-2"
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={buildActions()}
       />,
     );
@@ -341,7 +336,6 @@ describe("narrative walkthrough takeover", () => {
         <NarrativeWalkthrough
           walkthrough={buildWalkthrough()}
           reviewedSectionIds={[]}
-          supportReviewed={false}
           actions={buildActions()}
         />
       </StrictMode>,
@@ -350,13 +344,12 @@ describe("narrative walkthrough takeover", () => {
     opener.remove();
   });
 
-  it("renders the chapter rail, current section prose, and Support group", () => {
+  it("renders the chapter rail and current section prose", () => {
     const actions = buildActions();
     render(
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={actions}
       />,
     );
@@ -373,7 +366,34 @@ describe("narrative walkthrough takeover", () => {
     expect(
       screen.getByRole("button", { name: "Mark section reviewed" }),
     ).toBeTruthy();
-    expect(screen.getByText("Support")).toBeTruthy();
+  });
+
+  it("counts unexplained hunks and opens the full Diff without a Support list", () => {
+    const onOpenDiff = vi.fn();
+    render(
+      <NarrativeWalkthrough
+        walkthrough={buildWalkthrough()}
+        reviewedSectionIds={[]}
+        onOpenDiff={onOpenDiff}
+        actions={buildActions()}
+      />,
+    );
+    const coverage = screen.getByRole("status", {
+      name: "Walkthrough hunk coverage",
+    });
+    expect(coverage.textContent).toContain("2 of 4");
+    expect(coverage.textContent).toContain("2 hunks not explained");
+    expect(screen.queryByRole("button", { name: "Support" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Mark Support reviewed" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("list", {
+        name: "Hunks not explained in reading path",
+      }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open Diff" }));
+    expect(onOpenDiff).toHaveBeenCalledTimes(1);
   });
 
   it("withholds legacy unverified citations", () => {
@@ -385,7 +405,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={walkthrough}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={buildActions()}
       />,
     );
@@ -398,7 +417,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={buildActions()}
       />,
     );
@@ -413,7 +431,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildEmptyWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={buildActions({ onMarkSectionReviewed })}
       />,
     );
@@ -439,7 +456,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildSingleSectionWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={buildActions()}
       />,
     );
@@ -463,7 +479,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={actions}
       />,
     );
@@ -498,7 +513,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={walkthrough}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={actions}
         currentSectionId="section-1"
       />,
@@ -533,44 +547,19 @@ describe("narrative walkthrough takeover", () => {
     ).toBe(false);
   });
 
-  it("dispatches Mark section reviewed and Mark Support reviewed", () => {
+  it("dispatches Mark section reviewed", () => {
     const onMarkSectionReviewed = vi.fn();
-    const onMarkSupportReviewed = vi.fn();
-    const actions = buildActions({
-      onMarkSectionReviewed,
-      onMarkSupportReviewed,
-    });
     render(
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
-        actions={actions}
+        actions={buildActions({ onMarkSectionReviewed })}
       />,
     );
-    expect(
-      document.querySelector('[data-disclosure-motion="panel"]'),
-    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Mark section reviewed" }),
     );
     expect(onMarkSectionReviewed).toHaveBeenCalledWith("section-1");
-    const supportToggle = screen.getByRole("button", { name: "Support" });
-    expect(
-      supportToggle.querySelector('[data-disclosure-motion="chevron"]')
-        ?.tagName,
-    ).toBe("svg");
-    fireEvent.click(supportToggle);
-    expect(
-      document.querySelector('[data-disclosure-motion="panel"]'),
-    ).not.toBeNull();
-    expect(
-      document.querySelector('[data-disclosure-motion="chevron"]'),
-    ).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Mark Support reviewed" }),
-    );
-    expect(onMarkSupportReviewed).toHaveBeenCalledTimes(1);
   });
 
   it("preserves reviewed indicators and disables the toggle when already reviewed", () => {
@@ -580,7 +569,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={["section-1"]}
-        supportReviewed={false}
         actions={actions}
       />,
     );
@@ -641,7 +629,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={walkthrough}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={actions}
       />,
     );
@@ -658,7 +645,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={actions}
       />,
     );
@@ -679,7 +665,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={actions}
       />,
     );
@@ -709,7 +694,6 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={buildWalkthrough()}
         reviewedSectionIds={[]}
-        supportReviewed={false}
         actions={buildActions()}
       />,
     );

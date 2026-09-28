@@ -7,23 +7,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import {
-  ArrowLeft,
-  CheckCircle2,
-  CircleAlert,
-  ChevronDown,
-  Focus,
-  Square,
-} from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleAlert, Focus } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -82,7 +70,6 @@ type NarrativeWalkthroughModel = {
 export type NarrativeWalkthroughActions = {
   /** Absent on a merged or closed Review: reviewed marks stay visible but cannot change. */
   readonly onMarkSectionReviewed?: (sectionId: string) => void;
-  readonly onMarkSupportReviewed?: () => void;
   readonly onSelectSection: (sectionId: string) => void;
 };
 
@@ -98,9 +85,9 @@ export type NarrativeWalkthroughActions = {
 export function NarrativeWalkthrough({
   walkthrough,
   reviewedSectionIds,
-  supportReviewed,
   currentSectionId,
   actions,
+  onOpenDiff,
   preferences,
   rawPatch,
   sourceSession,
@@ -111,8 +98,8 @@ export function NarrativeWalkthrough({
 }: {
   readonly walkthrough: NarrativeWalkthroughModel;
   readonly reviewedSectionIds: ReadonlyArray<string>;
-  readonly supportReviewed: boolean;
   readonly currentSectionId?: string;
+  readonly onOpenDiff?: () => void;
   readonly rawPatch?: string;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
@@ -151,7 +138,6 @@ export function NarrativeWalkthrough({
       ),
     [activeSection.id, walkthrough.chapters],
   );
-  const [supportOpen, setSupportOpen] = useState(false);
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusToggleRef = useRef<HTMLButtonElement>(null);
   const restoreFocusAfterExitRef = useRef(false);
@@ -276,6 +262,11 @@ export function NarrativeWalkthrough({
   const reviewedCount = sections.filter((section) =>
     reviewedSet.has(section.id),
   ).length;
+  const citedHunkCount = sections.reduce(
+    (count, section) => count + section.hunks.length,
+    0,
+  );
+  const totalHunkCount = citedHunkCount + walkthrough.support.hunks.length;
 
   return (
     <div
@@ -397,60 +388,28 @@ export function NarrativeWalkthrough({
               ))}
             </ol>
             <Separator className="my-1.5" />
-            <Collapsible open={supportOpen} onOpenChange={setSupportOpen}>
-              <CollapsibleTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-full justify-between px-1 text-xs"
-                  />
-                }
+            <div className="space-y-2 px-1">
+              <p
+                role="status"
+                aria-label="Walkthrough hunk coverage"
+                className="text-xs text-muted-foreground"
               >
-                <span className="min-w-0">Support</span>
-                <ChevronDown
-                  data-disclosure-motion="chevron"
-                  className={supportOpen ? "size-4" : "size-4 -rotate-90"}
-                  aria-hidden="true"
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent motion="disclosure" className="pt-2">
-                <p className="px-1 text-xs text-muted-foreground">
-                  {walkthrough.support.hunks.length} supporting or mechanical
-                  hunk
-                  {walkthrough.support.hunks.length === 1 ? "" : "s"} outside
-                  the reading path.
-                </p>
-                <ul
-                  className="mt-2 max-h-48 overflow-y-auto px-1 text-xs text-muted-foreground"
-                  aria-label="Support hunks"
+                {citedHunkCount} of {totalHunkCount} hunks cited in the reading
+                path. {walkthrough.support.hunks.length}{" "}
+                {walkthrough.support.hunks.length === 1 ? "hunk" : "hunks"} not
+                explained in the reading path.
+              </p>
+              {onOpenDiff === undefined ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenDiff}
                 >
-                  {walkthrough.support.hunks.map((hunk) => (
-                    <li key={hunk.id} className="break-all py-0.5">
-                      {hunk.id} · {hunk.path}
-                    </li>
-                  ))}
-                </ul>
-                {actions.onMarkSupportReviewed === undefined &&
-                !supportReviewed ? null : (
-                  <Button
-                    type="button"
-                    variant={supportReviewed ? "secondary" : "outline"}
-                    size="sm"
-                    className="mt-3 w-full"
-                    aria-pressed={supportReviewed}
-                    onClick={actions.onMarkSupportReviewed}
-                    disabled={actions.onMarkSupportReviewed === undefined}
-                  >
-                    <Square />
-                    {supportReviewed
-                      ? "Support reviewed"
-                      : "Mark Support reviewed"}
-                  </Button>
-                )}
-              </CollapsibleContent>
-            </Collapsible>
+                  Open Diff
+                </Button>
+              )}
+            </div>
           </aside>
         )}
         <ScrollArea
@@ -533,7 +492,7 @@ export function NarrativeWalkthrough({
               <Alert>
                 <AlertTitle>No verified hunks for this section</AlertTitle>
                 <AlertDescription>
-                  Its hunks are listed under Support until you regenerate.
+                  Regenerate to restore citations, or review the full Diff.
                 </AlertDescription>
               </Alert>
             ) : (
