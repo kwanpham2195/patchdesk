@@ -216,6 +216,8 @@ Amended 2026-09-27 (#555): the tool is `review_local(cwd, source?, base?, intent
 
 Amended 2026-09-27 (#558): a seventh tool, `list_local_reviews(cwd)` → the open shared Reviews of the checkout containing `cwd` in the active profile, on any branch, the one opened last first (`lastOpenedAt`, else `updatedAt`), with `head`, the branch checked out there. Each entry has `reviewId`, `branch`, `baseBranch`, `lastOpenedAt` when the maintainer opened it, and the current session description. `cwd` resolves as in `review_local`: a subfolder finds its checkout, and a linked worktree's Reviews are listed only for that worktree. Terminal, `commit`, and pre-#555 working-tree and branch Reviews are left out, as the dialog's reviewed bases leave them out; both read one list. A successful call writes nothing: no Review, session, snapshot, ref, worktree, or `lastOpenedAt`. A refused call is recorded in the Review diagnostics like every tool's. Refusals: `checkout_not_found`, `checkout_missing`, and `storage` when the profile's Reviews or a listed Review's current session cannot be read; one unreadable Review record is skipped. `reviewId` and `sessionId` inputs of the other tools name it as a source.
 
+Amended 2026-09-28 (#572, #571): an unreadable saved Review record now refuses `storage` for `list_local_reviews`, `review_local`, and the Local review dialog. Skipping it could hide the Review the maintainer meant.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run
@@ -473,9 +475,9 @@ The app logs topic `mcp` to `patchdesk.jsonl`: `listening` with the socket
 path, `tool called` with tool, `reviewId`, duration, and outcome (`ok` or
 the reason), `refused` for `too_large` and parse failures, and `stale socket
 removed`. Intent text, note text, and file contents are never logged. Refused
-and failed calls also go through `review-diagnostic-service.ts`, so Settings
-→ Data & recovery lists them. The shim writes only to stderr (stdout is the
-protocol), one line per failed connect or malformed response;
+and failed calls also go through `review-diagnostic-service.ts`, so Help →
+Diagnostics → Review activity lists them. The shim writes only to stderr
+(stdout is the protocol), one line per failed connect or malformed response;
 `PATCHDESK_MCP_DEBUG=1` adds one line per call. `patchdesk mcp --check`
 connects, calls `list_repositories`, prints the socket path and result, and
 exits non-zero when the app is not running; it is the first thing to run
