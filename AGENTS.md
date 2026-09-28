@@ -38,7 +38,7 @@ For runtime work, make sure the dev log tails are live in herdr:
 - The maintainer authorizes restarting the dev app and log tail in this workspace's `devapp` and `logs` Herdr tabs. Find their current pane IDs with `herdr tab list --workspace "$HERDR_WORKSPACE_ID"` and `herdr pane list --workspace "$HERDR_WORKSPACE_ID"`; verify the tab, cwd, and pane output before control. Inspect with `herdr pane process-info --pane <id>`. If a process group is present, SIGINT that group before restarting; ctrl+c to the pane does not stop it. Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; `herdr pane wait-output` can match old scrollback. Report restarts. If the tabs are missing or ownership is unclear, ask before stopping or creating a pane. Never kill a process outside those panes.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
-- `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits.
+- `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits. The Pull request gates and Release GitHub workflows are paused; follow CONTRIBUTING.md for the local gates and do not assume GitHub status checks will run.
 - Run it as `pnpm check > /tmp/check.txt 2>&1; echo "EXIT=$?"` and read the
   file. Piping it into `tail`, `head`, or `grep` reports the pipeline's exit
   status rather than the command's, so a failing gate reads as a passing one.
@@ -56,7 +56,7 @@ For runtime work, make sure the dev log tails are live in herdr:
 - CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, and never kills a process outside the dev panes. Restarting 9233 itself is pre-authorized; report it. `pnpm cdp:ready` checks the port: run it before claiming runtime evidence, reporting live verification, or delegating a live-verification slice.
 - Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use `gpt-6-luna` on the Codex CLI account provider, not a Sol model; pick it in the run dialog rather than changing the maintainer's stored preference. If it is missing from the model list, press Refresh models.
-- Before delegating or resuming a child, read `~/.agents/skills/delegated-execution/references/model-policy.md`. It owns role, model, effort, concurrency, and unavailable-model rules; the active harness owns launch and failure protocol.
+- Before delegating or resuming a child, read `~/.agents/skills/delegated-execution/references/model-policy.md`. It owns role, model, effort, concurrency, and unavailable-model rules; the active harness owns launch and failure protocol. For multi-slice implementation plans, use one worker per slice, sequentially, and pass the previous report forward instead of its full history.
 
 - An audit or inventory ships with a disposition per finding: fix now, a named follow-up, or an evidence-backed rejection.
 - A remediation program pins its metric to one exact command in its plan file; every progress report reruns it.
@@ -68,6 +68,7 @@ For runtime work, make sure the dev log tails are live in herdr:
 - Inline single-line helpers that have only one call site.
 - Comments preserve non-obvious intent, invariants, trade-offs, or external constraints. Prefer one sentence explaining why; let code describe what and how. Use longer comments only when a complex invariant cannot be expressed clearly in code. The codebase still carries long comments from before this rule; they are not a pattern to copy. Follow this rule, not the neighbouring code.
 - Documentation ownership: ADRs record durable decisions and consequences; code comments explain local constraints; commit messages record change history. Link to the owning source instead of repeating it.
+- Keep UI and MCP as thin adapters over the same service. Put shared decisions, validation, and result shaping in domain or service code; see `docs/architecture.md`.
 - When a later ADR changes current guidance, add a supersession note to the earlier ADR. Keep its historical decision intact.
 - Check node_modules for external API types; don't guess.
 
@@ -153,10 +154,12 @@ Dev app and live checks:
 - App data is `~/.local/share/patchdesk` for every instance; a separate `--user-data-dir` does not give a separate workspace or review store.
 - After a renderer `.ts` -> `.tsx` rename, restart `pnpm dev`. Vite's transform cache keeps the old import path in every importer, the lazy route fails on MIME, and `agent-browser reload` does not clear it.
 - When several sessions drive CDP 9233 at once, each passes its own `agent-browser --namespace <name> --cdp 9233`; without it they rebind the shared daemon and clicks land on another session's target (2026-09-27). A namespace is not a named session.
-- `agent-browser` must use the default session: named sessions call `Target.createTarget`, which Electron's CDP does not implement. After `tab_gone`, run `agent-browser --namespace <name> --cdp 9233 tab list --json`, find the `http://localhost:5173/` target's `targetId`, then run `agent-browser --namespace <name> --cdp 9233 tab <targetId>` to rebind. Do not use `tab new` on Electron. Base UI `Select` opens with focus then Enter, not a click. Fixture hashes route only on a full load, so `agent-browser reload` after changing the hash.
+- `agent-browser` must use the default session: named sessions call `Target.createTarget`, which Electron's CDP does not implement. After `tab_gone`, run `agent-browser --namespace <name> --cdp 9233 tab list --json`, find the `http://localhost:5173/` target's `targetId`, then run `agent-browser --namespace <name> --cdp 9233 tab <targetId>` to rebind. Do not use `tab new` on Electron. Base UI `Select` opens with focus then Enter, not a click. Fixture hashes route only on a full load, so `agent-browser reload` after changing the hash. If a pointer-level browser command stalls, use `eval` to scroll the relevant element.
 - Before a live check, `agent-browser eval 'document.visibilityState'` must say `visible`. A covered or off-screen window drops CDP input while `agent-browser click` still prints Done, and Base UI dialogs never finish closing; bring it forward with `aerospace focus --window-id <id>` (`aerospace list-windows --all | grep Patchdesk`).
 - Inline finding cards on the Diff tab are slotted into `<diffs-container>` only while their row is in the render window; scroll `.review-diff-viewport`, not the card.
-- Behaviour that needs a second GitHub actor (someone else's last comment, a push while away) cannot be self-verified live. Say so and name the state a reviewer should check.
+- Behaviour that needs a second GitHub actor (someone else's last comment, a push while away) cannot be self-verified live. Say so and name the state a reviewer should check. CDP 9233 serves the main checkout, so a worker in a worktree cannot verify that worktree's renderer change there; name the screen and state for a reviewer to verify instead.
+- In the dev app, macOS may list desktop notifications under Electron. Check `~/.local/share/patchdesk/logs/patchdesk.jsonl` for a `shown` event before diagnosing a missing banner as an app defect.
+- In agent shells, `cp` may be interactive. Use `command cp -f` when restoring over an existing file, then verify the diff.
 
 Main process and GitHub:
 
@@ -184,7 +187,7 @@ Process:
 - `Closes #n` auto-closes only the first number after it; repeat the keyword per issue, and close finished issues before starting the next.
 - A PR that fixes an issue says `Closes #n` in its body, and after it lands `gh issue view <n> --json state` must read `CLOSED`. A CHANGELOG citation alone closes nothing: nine fixed bugs stayed open for weeks that way (closed 2026-09-26). Before fixing an old issue, check CHANGELOG and `git log` for its number.
 - Once an action is approved, do not re-ask for its sub-steps. Follow Standing authorization for approved programs and new actions.
-- One review pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
+- Before merging, get one independent blocker-focused review for changes to storage, GitHub writes, locking, or the main process, and for PRs over 300 changed lines. Smaller renderer or copy PRs need a self-review. Make one fix pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
 
 ## Standing authorization
 
@@ -242,4 +245,11 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 
 ## Memory
 
+- Put durable project rules and preferences here so every agent harness can use them. Other harnesses do not load Claude Code project memory. Keep dated project status and scoped authorizations in the workspace context or tracker; check current state before relying on historical permissions.
+- The issue tracker is GitHub Issues on this repository. Use the `issue` skill. For repository-authored specs, state the problem, then use `Why it matters`, `Scope`, and `Verification`; add `Open questions` and `Confidence` only when a real decision is pending.
+- Read the summaries in `docs/product-description/` and `bug-triage.md` before feature inventory or roadmap work. They describe shipped behavior and known gaps. Local Review is for reviewing agent changes, not for committing, pushing, or opening pull requests; read ADR 0051 before proposing changes to that workflow.
+- Frame Brief, Analysis, and Walkthrough Insights for the PR reviewer. Explain what the diff does, its structure, and its risks. The PR description and comments own the author's rationale and decisions.
+- Poll only explicitly watched pull requests. Their polling may notify and set a freshness-badge dot, but must not replace displayed rows, Review sessions, or diffs. Read ADR 0032 and ADR 0045 before changing refresh or polling behavior.
+- Do not use Mermaid in chat. Use numbered steps or plain-text diagrams.
+- Ask before removing or replacing README screenshots, adding light-theme variants, or starting another screenshot capture round; the existing dark-theme tour was deliberate.
 - Route new private work records with `~/.agents/skills/references/context-routing.md` to the registered workspace context. Do not create local repository folders for them.
