@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the Walkthrough View options menu moving away from its button while scrolling. It stays below the button and hides when the button leaves the reader. #593
+
 - Fixed large-pull-request Walkthroughs failing when generated sections exceed output limits. Codex now receives the Walkthrough schema, the reader shows a bounded guided path with an uncited-hunk count and a link to the full Diff instead of a Support list, and failed runs record safe field-limit details. #590
 
 - Updated Brief, Walkthrough, and Analysis prompts to write prose in the selected language while preserving domain names and technical terms from the reviewed repository. Removed the English-only Simplified Technical English rule.
