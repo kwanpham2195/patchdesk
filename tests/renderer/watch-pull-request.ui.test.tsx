@@ -310,6 +310,7 @@ describe("Watch toggle surfaces", () => {
       <WatchedPullRequestsProvider profileId="acme">
         <ReviewWorkbenchHeader
           model={model}
+          scope={model.scope}
           actions={{
             detectUpdates: vi.fn(),
             refresh: vi.fn(),
@@ -345,10 +346,12 @@ describe("Watch toggle surfaces", () => {
     const parsed = parsePullRequestInput("acme/widgets#7");
     if (parsed._tag === "err") throw new Error("invalid fixture");
     const detectUpdates = vi.fn(async () => undefined);
+    const model = projection();
     render(
       <WatchedPullRequestsProvider profileId="acme">
         <ReviewWorkbenchHeader
-          model={projection()}
+          model={model}
+          scope={model.scope}
           actions={{
             detectUpdates,
             refresh: vi.fn(),

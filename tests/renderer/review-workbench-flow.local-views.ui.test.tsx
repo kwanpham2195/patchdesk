@@ -222,6 +222,57 @@ describe("ReviewWorkbenchFlow patch views", () => {
   });
 });
 
+describe("ReviewWorkbenchFlow header across patch views", () => {
+  it("shows each view's patch counts under a local status label", async () => {
+    const combined =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,2 @@\n-old\n+new\n+more\n";
+    const committed =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,2 +1 @@\n-old\n-old2\n+committed\n";
+    const uncommitted =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,3 @@\n-committed\n+fresh\n+extra\n+done\n";
+    bridge((input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/local-patch-view") {
+        const { view } = input.body as { readonly view: string };
+        return {
+          sessionId: "session-a",
+          view,
+          patch: view === "committed" ? committed : uncommitted,
+          patchHash: "d".repeat(64),
+          viewedPaths: [],
+        };
+      }
+      if (input.path === "/v1/reviews/diff-file")
+        return { state: "unavailable", reason: "path_unavailable" };
+      throw new Error(input.path);
+    });
+    const initial = sharedReviewOnA([]);
+    render(
+      <SharedReviewScreen
+        initial={{
+          ...initial,
+          fullPatch: combined,
+          scope: {
+            buckets: [{ bucket: "core", files: 1, additions: 2, deletions: 1 }],
+            total: { files: 1, additions: 2, deletions: 1 },
+          },
+        }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    const status = screen.getByRole("group", { name: "Local review status" });
+    expect(within(status).getByText("+2 −1")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Committed" }));
+    await waitFor(() => expect(within(status).getByText("+1 −2")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: "Uncommitted" }));
+    await waitFor(() => expect(within(status).getByText("+3 −1")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: "Combined" }));
+    expect(within(status).getByText("+2 −1")).toBeTruthy();
+  });
+});
+
 describe("ReviewWorkbenchFlow selection across patch views", () => {
   it("reconciles the selected file and tree highlight across Committed and Combined", async () => {
     bridge((input) => {

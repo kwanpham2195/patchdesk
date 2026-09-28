@@ -635,6 +635,7 @@ export function ReviewWorkbench({
     >
       <ReviewWorkbenchHeader
         model={model}
+        scope={onOtherView ? viewScope : model.scope}
         actions={actions}
         title={title}
         repository={repository}
