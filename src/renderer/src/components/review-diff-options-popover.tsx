@@ -99,9 +99,9 @@ export function ReviewDiffOptionsPopover({
         className="w-64"
         align="end"
         hideWhenAnchorHidden
-        // The options must remain under the toolbar button, even when the chapter pane cannot fit the popup below it.
+        // Flip above the button when needed so every option stays visible.
         collisionAvoidance={{
-          side: "none",
+          side: "flip",
           align: "shift",
           fallbackAxisSide: "none",
         }}

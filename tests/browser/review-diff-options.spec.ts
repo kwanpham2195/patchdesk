@@ -1,5 +1,18 @@
-import { expect, test } from "playwright/test";
+import { expect, test, type Page } from "playwright/test";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
+
+async function openWalkthroughFixture(
+  page: Page,
+  origin: string,
+): Promise<void> {
+  await page.goto(`${origin}/#walkthrough-fixture`);
+  await page.getByRole("button", { name: "Generate walkthrough" }).click();
+  const dialog = page.getByRole("dialog", { name: "Generate walkthrough" });
+  await dialog.getByRole("combobox", { name: "Model" }).click();
+  await page.getByRole("option", { name: "Design model" }).click();
+  await dialog.getByRole("button", { name: "Generate walkthrough" }).click();
+  await page.getByRole("button", { name: "Open walkthrough" }).click();
+}
 
 test("Walkthrough View options stay with their trigger while the reader scrolls", async ({
   page,
@@ -7,13 +20,7 @@ test("Walkthrough View options stay with their trigger while the reader scrolls"
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#walkthrough-fixture`);
-    await page.getByRole("button", { name: "Generate walkthrough" }).click();
-    const dialog = page.getByRole("dialog", { name: "Generate walkthrough" });
-    await dialog.getByRole("combobox", { name: "Model" }).click();
-    await page.getByRole("option", { name: "Design model" }).click();
-    await dialog.getByRole("button", { name: "Generate walkthrough" }).click();
-    await page.getByRole("button", { name: "Open walkthrough" }).click();
+    await openWalkthroughFixture(page, serverOrigin(server));
 
     const reader = page
       .getByRole("region", { name: "Walkthrough reading surface" })
@@ -101,6 +108,49 @@ test("Walkthrough View options stay with their trigger while the reader scrolls"
         triggerRect.top >= readerRect.bottom,
     ).toBe(true);
     await expect(popup).toBeHidden();
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("Walkthrough View options flip above their trigger near the viewport bottom", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 300 });
+    await openWalkthroughFixture(page, serverOrigin(server));
+
+    const trigger = page
+      .locator('[data-walkthrough-diff-block="section-1::h1::0"]')
+      .getByRole("button", { name: "View options" });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+
+    const popup = page.getByRole("dialog", { name: "View options" });
+    await expect(popup).toBeVisible();
+    const [triggerBounds, popupBounds] = await Promise.all([
+      trigger.boundingBox(),
+      popup.boundingBox(),
+    ]);
+    const viewport = page.viewportSize();
+    if (triggerBounds === null || popupBounds === null || viewport === null)
+      throw new Error("Walkthrough View options have no layout box");
+
+    expect(popupBounds.y).toBeLessThan(triggerBounds.y);
+    expect(
+      triggerBounds.y - (popupBounds.y + popupBounds.height),
+    ).toBeGreaterThan(-5);
+    expect(triggerBounds.y - (popupBounds.y + popupBounds.height)).toBeLessThan(
+      9,
+    );
+    expect(popupBounds.y).toBeGreaterThanOrEqual(0);
+    expect(popupBounds.y + popupBounds.height).toBeLessThanOrEqual(
+      viewport.height,
+    );
+    expect(
+      triggerBounds.y + triggerBounds.height + popupBounds.height,
+    ).toBeGreaterThan(viewport.height);
   } finally {
     await closeServer(server);
   }
