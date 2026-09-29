@@ -53,6 +53,10 @@ import {
   describeOpenedLocalReview,
   type LocalReviewOpened,
 } from "../../services/review-session-description";
+import {
+  readReviewStatus,
+  type ReviewStatus,
+} from "../../services/review-status-reading";
 
 /**
  * What `review_local` answers. The intent fields are present when the call
@@ -87,7 +91,7 @@ export type McpReviewToolServices = {
   >;
   readonly localDrafts: Pick<LocalDraftService, "feedback">;
   readonly agentRunRequests: Pick<AgentRunRequestService, "request">;
-  readonly insightReader: Pick<ReviewInsightReader, "read">;
+  readonly insightReader: Pick<ReviewInsightReader, "read" | "readStatuses">;
   readonly sessions: Pick<ReviewSessionStore, "load">;
   readonly reviews: Pick<ReviewStore, "load">;
   /** The desktop window `show_review` switches; absent outside the Electron app. */
@@ -423,6 +427,27 @@ export async function getFeedback(
     feedback.error.reason === "not_found"
       ? await missingReviewRefusal(services, profiles.value, reviewId.value)
       : refusal(feedback.error.reason),
+  );
+}
+
+/** `get_review_status`: `readReviewStatus`, over the reader `get_insight` uses and the Review record's Local drafts. */
+export async function getReviewStatus(
+  services: McpReviewToolServices,
+  input: ToolInput<"get_review_status">,
+): Promise<Result<ReviewStatus, McpToolRefusal>> {
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const reviewId = parseReviewId(input.reviewId);
+  if (reviewId._tag === "err") return err(refusal("invalid_input"));
+  const status = await readReviewStatus(services.insightReader, {
+    profileId: profiles.value.active.id,
+    reviewId: reviewId.value,
+  });
+  if (status._tag === "ok") return status;
+  return err(
+    status.error.reason === "not_found"
+      ? await missingReviewRefusal(services, profiles.value, reviewId.value)
+      : refusal(status.error.reason),
   );
 }
 

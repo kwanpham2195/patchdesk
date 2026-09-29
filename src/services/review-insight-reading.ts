@@ -22,7 +22,8 @@ import { findingDraftStates } from "../domain/local-draft";
 import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import type { ReviewResult } from "../domain/review-result";
 import { casesHandled, err, ok, type Result } from "../domain/result";
-import { isLocalReview } from "../domain/review";
+import { isLocalReview, type Review } from "../domain/review";
+import type { LocalReviewSource } from "../domain/review-source";
 import type { LocalBranchMismatch } from "./local-review-opening";
 import {
   describeProjectedSession,
@@ -95,6 +96,16 @@ export type InsightReading = ReviewSessionDescription & {
   readonly result?: RetainedInsightReading;
 };
 
+/** One Insight's status and agent run request as `get_insight` reports them, without the result. */
+type InsightStatusReading = Pick<InsightReading, "status" | "requestId">;
+
+/** Every Insight's status on a local Review's current session, and the Review record their requests were read from. */
+export type InsightStatusesReading = {
+  readonly review: Review<LocalReviewSource>;
+  readonly session: ReviewSessionDescription;
+  readonly insights: { readonly [Type in InsightType]: InsightStatusReading };
+};
+
 export type InsightReadingFailure =
   | ReviewWorkbenchFailure
   | LocalBranchMismatch
@@ -102,9 +113,9 @@ export type InsightReadingFailure =
   | { readonly reason: "not_applicable" };
 
 /**
- * Reads one Insight through the workbench projection the renderer displays
- * (ADR 0052 `get_insight`), so the agent and the UI never disagree on a
- * Finding's dismissed, drafted, or applied state.
+ * Reads Insights through the workbench projection the renderer displays
+ * (ADR 0052 `get_insight` and `get_review_status`), so the agent and the UI
+ * never disagree on a Finding's dismissed, drafted, or applied state.
  */
 export class ReviewInsightReader {
   constructor(
@@ -118,13 +129,64 @@ export class ReviewInsightReader {
     readonly reviewId: ReviewId;
     readonly type: InsightType;
   }): Promise<Result<InsightReading, InsightReadingFailure>> {
+    const loaded = await this.load(request);
+    if (loaded._tag === "err") return loaded;
+    const { review, projection, session } = loaded.value;
+    const insight = projection.insights[request.type];
+    return ok({
+      ...session,
+      type: request.type,
+      ...readInsightStatus(review, projection, request.type),
+      ...definedProps({
+        failure:
+          insight.replacementFailure === undefined
+            ? undefined
+            : {
+                ...definedProps({
+                  category: insight.replacementFailure.category,
+                }),
+                retryable: insight.replacementFailure.retryable,
+              },
+        result: readRetained(projection, request.type),
+      }),
+    });
+  }
+
+  /** Every Insight's status on the current session, read from one projection (ADR 0052 `get_review_status`). */
+  async readStatuses(request: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<Result<InsightStatusesReading, InsightReadingFailure>> {
+    const loaded = await this.load(request);
+    if (loaded._tag === "err") return loaded;
+    const { review, projection, session } = loaded.value;
+    return ok({
+      review,
+      session,
+      insights: {
+        analysis: readInsightStatus(review, projection, "analysis"),
+        walkthrough: readInsightStatus(review, projection, "walkthrough"),
+        brief: readInsightStatus(review, projection, "brief"),
+      },
+    });
+  }
+
+  private async load(request: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<
+    Result<
+      {
+        readonly review: Review<LocalReviewSource>;
+        readonly projection: ReviewWorkbenchProjection;
+        readonly session: ReviewSessionDescription;
+      },
+      InsightReadingFailure
+    >
+  > {
     // The kind is read first, so a pull request Review is never projected for the agent.
-    const review = await this.reviews.load(request.profileId, request.reviewId);
-    if (review._tag === "err")
-      return err({
-        reason: review.error.reason === "not_found" ? "not_found" : "storage",
-      });
-    if (!isLocalReview(review.value)) return err({ reason: "not_applicable" });
+    const kind = await this.loadLocal(request);
+    if (kind._tag === "err") return kind;
     const projected = await this.workbench.load({
       profileId: request.profileId,
       reviewId: request.reviewId,
@@ -135,38 +197,52 @@ export class ReviewInsightReader {
       projected.value,
     );
     if (session._tag === "err") return session;
-    const insight = projected.value.insights[request.type];
-    const result = readRetained(projected.value, request.type);
-    const agentRequest = findAgentRunRequest(
-      review.value.agentRunRequests,
-      projected.value.session.id,
-      request.type,
-    );
+    // Read again, since the projection may have waited behind a Refresh that moved the Review after the first read.
+    const review = await this.loadLocal(request);
+    if (review._tag === "err") return review;
     return ok({
-      ...session.value,
-      type: request.type,
-      status: answersRequest(agentRequest, insight, projected.value.session.id)
-        ? agentRequest.status
-        : insight.status === "not_generated"
-          ? "none"
-          : insight.status === "current" || insight.status === "outdated"
-            ? "completed"
-            : insight.status,
-      ...definedProps({
-        requestId: agentRequest?.requestId,
-        failure:
-          insight.replacementFailure === undefined
-            ? undefined
-            : {
-                ...definedProps({
-                  category: insight.replacementFailure.category,
-                }),
-                retryable: insight.replacementFailure.retryable,
-              },
-        result,
-      }),
+      review: review.value,
+      projection: projected.value,
+      session: session.value,
     });
   }
+
+  private async loadLocal(request: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<Result<Review<LocalReviewSource>, InsightReadingFailure>> {
+    const review = await this.reviews.load(request.profileId, request.reviewId);
+    if (review._tag === "err")
+      return err({
+        reason: review.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    return isLocalReview(review.value)
+      ? ok(review.value)
+      : err({ reason: "not_applicable" });
+  }
+}
+
+function readInsightStatus(
+  review: Review<LocalReviewSource>,
+  projection: ReviewWorkbenchProjection,
+  type: InsightType,
+): InsightStatusReading {
+  const insight = projection.insights[type];
+  const agentRequest = findAgentRunRequest(
+    review.agentRunRequests,
+    projection.session.id,
+    type,
+  );
+  return {
+    status: answersRequest(agentRequest, insight, projection.session.id)
+      ? agentRequest.status
+      : insight.status === "not_generated"
+        ? "none"
+        : insight.status === "current" || insight.status === "outdated"
+          ? "completed"
+          : insight.status,
+    ...definedProps({ requestId: agentRequest?.requestId }),
+  };
 }
 
 /**

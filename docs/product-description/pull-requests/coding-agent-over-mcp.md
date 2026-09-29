@@ -34,7 +34,7 @@ The agent reaches Patchdesk through the tools its client lists. The tools are li
 
 ### Leave unchanged
 
-`list_repositories`, `get_insight`, and `get_feedback` read and change nothing. A successful `list_local_reviews` call writes no Review, session, snapshot, ref, or worktree, does not mark a Review opened, and leaves the order of the Visited pull requests column as it was. A refused call of any tool is recorded in Diagnostics. A `review_local` call for a Review that already exists returns it on the session the maintainer sees and does not read the checkout again, so it neither moves the Review nor marks it opened. A `refresh_review` call on a checkout whose content still matches the Review's session answers `changed: false` and changes nothing. A `show_review` call writes nothing; it only changes the screen, and a call that answers `held` or is refused leaves the screen as it was.
+`list_repositories`, `get_insight`, `get_feedback`, and `get_review_status` read and change nothing; none of them marks a Review opened. A successful `list_local_reviews` call writes no Review, session, snapshot, ref, or worktree, does not mark a Review opened, and leaves the order of the Visited pull requests column as it was. A refused call of any tool is recorded in Diagnostics. A `review_local` call for a Review that already exists returns it on the session the maintainer sees and does not read the checkout again, so it neither moves the Review nor marks it opened. A `refresh_review` call on a checkout whose content still matches the Review's session answers `changed: false` and changes nothing. A `show_review` call writes nothing; it only changes the screen, and a call that answers `held` or is refused leaves the screen as it was.
 
 ### Begin an action
 
@@ -92,6 +92,7 @@ The `agent` marker clears when the last request is settled or declined and no ru
 - `show_review`: put this Review on the maintainer's screen without taking focus from what they are doing.
 - `get_insight`: read one Insight's status and result. The status is `none`, `awaiting_approval`, `declined`, `running`, `completed`, or `failed`. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries `outdated: true`.
 - `get_feedback`: read the maintainer's _Local drafts_, in file and line order, with the same Markdown prompt that **Copy as agent prompt** copies.
+- `get_review_status`: where does this Review stand? Has the maintainer's Refresh taken what I prepared, what state is each Insight in, how many notes are there in each state, and which Findings did the maintainer apply to my checkout?
 
 Every answer that describes a session names its id, head, base, and patch hash, so the agent can tell which code a Finding or note is about.
 
@@ -120,6 +121,18 @@ The maintainer's [Refresh](opening-a-local-review.md#refresh) reads the checkout
 A page holds at most 25 drafts, and fewer when they are long, so a page stays within what a client accepts in one answer. The answer carries a cursor for the next page. When the drafts change between pages, the next page is refused `stale_cursor` and the agent starts again without a cursor.
 
 The agent does not poll for feedback. The maintainer tells the agent when the notes are ready.
+
+## Review status
+
+`get_review_status` tells the agent where a local Review stands in one call, so it can choose its next step: wait for the maintainer's Refresh, read new notes, read a finished Insight, or re-read files the maintainer changed with Apply. The answer holds:
+
+- The Review's current session: its id, head, base, and patch hash.
+- `preparedSessionId` while a session the agent's `refresh_review` prepared waits for the maintainer's Refresh. After the Refresh moves the Review to it, the field is absent and the current session is that session.
+- For Analysis, Walkthrough, and Brief, the status and request id `get_insight` reports, without the result.
+- How many Local drafts of each kind, Finding or note, are in each [feedback state](#feedback-states). Every count is present, including zeros.
+- The applied Findings, in file and line order, each with its Finding id, title, file, lines, and when the maintainer applied it. Apply writes the suggestion into the agent's own checkout, so these are the lines that changed under the agent.
+
+The answer carries no Insight result and no note text; `get_insight` and `get_feedback` read those. The call takes no snapshot, is never refused `in_progress`, and does not mark the Review opened. A Review the active profile does not hold is refused `not_found`, or `profile_changed` when another profile holds it, and a pull request Review is refused `not_applicable`. Its description does not ask the agent to poll.
 
 ## Notifications
 
