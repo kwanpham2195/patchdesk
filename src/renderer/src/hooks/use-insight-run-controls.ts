@@ -2,7 +2,10 @@ import { useCallback, useState } from "react";
 import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
-import type { InsightProvider } from "../../../domain/insight-provider";
+import type {
+  AccountInsightProvider,
+  InsightProvider,
+} from "../../../domain/insight-provider";
 import { requestJson, untrustedWriteResponseError } from "../api-client";
 import { appLog } from "../lib/logger";
 import {
@@ -48,7 +51,7 @@ type InsightRunControlsHook = {
   readonly configuration: InsightRunConfiguration;
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
   readonly changeProvider: (provider: InsightProvider) => void;
-  readonly activateCodex: () => void;
+  readonly activateAccount: (provider: AccountInsightProvider) => void;
   readonly analysisRun: InsightRunController;
   readonly walkthroughRun: InsightRunController;
   readonly briefRun: InsightRunController;
@@ -146,9 +149,9 @@ export function useInsightRunControls({
     preferencesRef,
     setConfiguration,
     changeProvider,
-    activateCodex,
-    loadCodexModels,
-    cancelCodexActivation,
+    activateAccount,
+    loadAccountModels,
+    cancelAccountModels,
   } = useInsightConfiguration({
     profileId,
     initialInsight,
@@ -303,7 +306,7 @@ export function useInsightRunControls({
     preferencesRef.current = { ...preferencesRef.current, [type]: preference };
   };
   const closeRunDialog = (): void => {
-    cancelCodexActivation();
+    cancelAccountModels();
     setConfiguration({ runDialogType: null });
   };
   const confirmRun = (): void => {
@@ -342,8 +345,8 @@ export function useInsightRunControls({
       brief: workbench.insights.brief?.status ?? "not_generated",
     },
     agentRunRequests: workbench.agentRunRequests,
-    loadCodexModels,
-    cancelCodexActivation,
+    loadAccountModels,
+    cancelAccountModels,
     rememberRunPreference,
     onWorkbenchPatch,
   });
@@ -351,7 +354,7 @@ export function useInsightRunControls({
     configuration,
     setConfiguration,
     changeProvider,
-    activateCodex,
+    activateAccount,
     analysisRun,
     walkthroughRun,
     briefRun,

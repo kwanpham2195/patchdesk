@@ -5,6 +5,7 @@ import type { LocalPatchView } from "../../../domain/local-patch-view";
 import { parseUnifiedPatch, type ParsedPatchFile } from "../../../domain/patch";
 
 import type {
+  AccountInsightProvider,
   InsightLanguage,
   InsightProvider,
 } from "../../../domain/insight-provider";
@@ -172,7 +173,7 @@ function InsightAvailabilityErrors({
         <InlineError className="py-2">
           {catalogError || !hasAvailableProvider
             ? "No model configured. Add a provider API key, then reload."
-            : "No API-key model configured. Open a run and pick Codex CLI account."}
+            : "No API-key model configured. Open a run and pick Codex CLI account or pi CLI account."}
         </InlineError>
       ) : null}
       {requestFailureMessage === undefined ? null : (
@@ -261,7 +262,7 @@ export function InsightsSlot({
     configuration,
     setConfiguration,
     changeProvider,
-    activateCodex,
+    activateAccount,
     runs,
     openRunDialog,
     closeRunDialog,
@@ -500,7 +501,7 @@ export function InsightsSlot({
         closeRunDialog={closeRunDialog}
         setConfiguration={setConfiguration}
         changeProvider={changeProvider}
-        activateCodex={activateCodex}
+        activateAccount={activateAccount}
         confirmRun={confirmRun}
         runs={runs}
         runInsights={runInsights}
@@ -539,8 +540,8 @@ function RunInsightsControls({
   return (
     <RunInsightsDialog
       controller={controller}
-      codexActivationPending={configuration.codexActivationPending}
-      codexActivationError={configuration.codexActivationError}
+      accountModelsPending={configuration.accountModelsPending}
+      accountModelsFailure={configuration.accountModelsFailure}
       startFailureMessages={{
         brief: startFailureMessage("brief"),
         walkthrough: startFailureMessage("walkthrough"),
@@ -556,7 +557,7 @@ function InsightRunControls({
   closeRunDialog,
   setConfiguration,
   changeProvider,
-  activateCodex,
+  activateAccount,
   confirmRun,
   runs,
   runInsights,
@@ -566,7 +567,7 @@ function InsightRunControls({
   readonly closeRunDialog: () => void;
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
   readonly changeProvider: (provider: InsightProvider) => void;
-  readonly activateCodex: () => void;
+  readonly activateAccount: (provider: AccountInsightProvider) => void;
   readonly confirmRun: () => void;
   readonly runs: Readonly<Record<InsightRunDialogType, InsightRunController>>;
   readonly runInsights: RunInsightsDialogController;
@@ -585,8 +586,8 @@ function InsightRunControls({
     models,
     model,
     provider,
-    codexActivationPending,
-    codexActivationError,
+    accountModelsPending,
+    accountModelsFailure,
     reasoning,
     language,
     runDialogType,
@@ -606,8 +607,8 @@ function InsightRunControls({
       models={models}
       model={model}
       provider={provider}
-      codexActivationPending={codexActivationPending}
-      codexActivationError={codexActivationError}
+      accountModelsPending={accountModelsPending}
+      accountModelsFailure={accountModelsFailure}
       reasoning={reasoning}
       language={language}
       onOpenChange={(open) => {
@@ -619,8 +620,7 @@ function InsightRunControls({
         )
       }
       onProviderChange={changeProvider}
-      onActivateCodex={activateCodex}
-      onRefreshCodexModels={activateCodex}
+      onLoadAccountModels={activateAccount}
       onReasoningChange={(nextReasoning) =>
         setConfiguration({ reasoning: nextReasoning })
       }

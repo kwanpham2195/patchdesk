@@ -1,18 +1,24 @@
 import { useEffect, useReducer, useRef } from "react";
+import * as v from "valibot";
 
-import type {
-  InsightLanguage,
-  InsightProvider,
-  InsightReasoning,
+import {
+  ACCOUNT_INSIGHT_PROVIDERS,
+  type AccountInsightProvider,
+  type InsightLanguage,
+  type InsightProvider,
+  type InsightReasoning,
 } from "../../../domain/insight-provider";
-import { isApiErrorCode, requestJson } from "../api-client";
+import { isApiErrorCode, PatchdeskApiError, requestJson } from "../api-client";
 import {
   INSIGHT_PREFERENCE_TYPES,
   loadInsightRunPreference,
   type InsightPreferenceType,
   type InsightRunPreference,
 } from "../insight-run-preferences";
-import { loadCodexModelCache, saveCodexModelCache } from "../codex-model-cache";
+import {
+  loadAccountModelCache,
+  saveAccountModelCache,
+} from "../account-model-cache";
 import {
   parseInsightProviderCatalog,
   type InsightProviderCatalog,
@@ -21,6 +27,19 @@ import {
 import { insightRunOptionsForProvider } from "../insight-run-options";
 import type { InsightRunDialogType } from "../components/insight-run-dialog";
 
+/** Why an account provider's explicit model load failed; `requiredVersion` is set for an outdated pi. */
+export type AccountModelsFailure = {
+  readonly provider: AccountInsightProvider;
+  readonly requiredVersion?: string;
+};
+/** The route each account provider's explicit Load models action posts to. */
+const ACCOUNT_MODELS_PATHS = {
+  "codex-cli-account": "/v1/insight-providers/codex/models",
+  "pi-cli-account": "/v1/insight-providers/pi-cli/models",
+} as const satisfies Record<AccountInsightProvider, string>;
+const requiredVersionBodySchema = v.looseObject({
+  requiredVersion: v.pipe(v.string(), v.regex(/^\d+\.\d+\.\d+$/u)),
+});
 type InsightModelOption = {
   readonly id: string;
   readonly label: string;
@@ -37,8 +56,9 @@ export type InsightRunConfiguration = {
   readonly runDialogType: InsightRunDialogType | null;
   readonly runDialogAction: "run" | "retry" | "regenerate";
   readonly catalogError: boolean;
-  readonly codexActivationPending: boolean;
-  readonly codexActivationError: boolean;
+  /** The account provider whose explicit model load is in flight; one runs at a time. */
+  readonly accountModelsPending: AccountInsightProvider | null;
+  readonly accountModelsFailure: AccountModelsFailure | null;
 };
 type InsightRunConfigurationAction = {
   readonly type: "updated";
@@ -53,8 +73,8 @@ const initialInsightRunConfiguration: InsightRunConfiguration = {
   runDialogType: null,
   runDialogAction: "run",
   catalogError: false,
-  codexActivationPending: false,
-  codexActivationError: false,
+  accountModelsPending: null,
+  accountModelsFailure: null,
 };
 function insightRunConfigurationReducer(
   state: InsightRunConfiguration,
@@ -63,14 +83,15 @@ function insightRunConfigurationReducer(
   return { ...state, ...action.patch };
 }
 type CatalogModel = InsightProviderCatalogModel;
-/** Replaces every `codex-cli-account` entry in a model list, keeping the rest. */
-function mergeCodexModels(
+/** Replaces every entry of one account provider in a model list, keeping the rest. */
+function mergeAccountModels(
   models: ReadonlyArray<CatalogModel>,
-  codexModels: ReadonlyArray<CatalogModel>,
+  provider: AccountInsightProvider,
+  accountModels: ReadonlyArray<CatalogModel>,
 ): CatalogModel[] {
   return [
-    ...models.filter((candidate) => candidate.provider !== "codex-cli-account"),
-    ...codexModels,
+    ...models.filter((candidate) => candidate.provider !== provider),
+    ...accountModels,
   ];
 }
 type InsightRunPreferences = Partial<
@@ -81,11 +102,12 @@ type InsightConfigurationController = {
   readonly preferencesRef: React.MutableRefObject<InsightRunPreferences>;
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
   readonly changeProvider: (provider: InsightProvider) => void;
-  readonly activateCodex: () => void;
-  readonly loadCodexModels: (
+  readonly activateAccount: (provider: AccountInsightProvider) => void;
+  readonly loadAccountModels: (
+    provider: AccountInsightProvider,
     onLoaded: (nextCatalog: InsightProviderCatalog) => void,
   ) => void;
-  readonly cancelCodexActivation: () => void;
+  readonly cancelAccountModels: () => void;
 };
 export function useInsightConfiguration(input: {
   readonly profileId: string;
@@ -101,13 +123,13 @@ export function useInsightConfiguration(input: {
   const setConfiguration = (patch: Partial<InsightRunConfiguration>): void =>
     updateConfiguration({ type: "updated", patch });
   const preferencesRef = useRef<InsightRunPreferences>({});
-  const codexActivationGenerationRef = useRef(0);
+  const accountModelsGenerationRef = useRef(0);
 
-  const cancelCodexActivation = (): void => {
-    codexActivationGenerationRef.current += 1;
+  const cancelAccountModels = (): void => {
+    accountModelsGenerationRef.current += 1;
     setConfiguration({
-      codexActivationPending: false,
-      codexActivationError: false,
+      accountModelsPending: null,
+      accountModelsFailure: null,
     });
   };
 
@@ -149,14 +171,18 @@ export function useInsightConfiguration(input: {
           piModels.some((candidate) => candidate.id === initialPreference.model)
             ? initialPreference.model
             : (piModels[0]?.id ?? null);
-        const cachedCodexModels = loadCodexModelCache(profileId);
-        const catalogWithCache =
-          cachedCodexModels === undefined
-            ? parsed
-            : {
-                ...parsed,
-                models: mergeCodexModels(parsed.models, cachedCodexModels),
-              };
+        const catalogWithCache = {
+          ...parsed,
+          models: ACCOUNT_INSIGHT_PROVIDERS.reduce(
+            (models, provider) => {
+              const cached = loadAccountModelCache(provider, profileId);
+              return cached === undefined
+                ? models
+                : mergeAccountModels(models, provider, cached);
+            },
+            [...parsed.models],
+          ),
+        };
         setConfiguration({
           catalog: catalogWithCache,
           models: piModels,
@@ -188,24 +214,29 @@ export function useInsightConfiguration(input: {
       ),
     );
   };
-  /** Loads the Codex models into the catalog, then hands the merged catalog to `onLoaded`. */
-  const loadCodexModels = (
+  /** Loads one account provider's models into the catalog, then hands the merged catalog to `onLoaded`. */
+  const loadAccountModels = (
+    provider: AccountInsightProvider,
     onLoaded: (nextCatalog: InsightProviderCatalog) => void,
   ): void => {
-    const generation = codexActivationGenerationRef.current + 1;
-    codexActivationGenerationRef.current = generation;
+    const generation = accountModelsGenerationRef.current + 1;
+    accountModelsGenerationRef.current = generation;
     setConfiguration({
-      codexActivationPending: true,
-      codexActivationError: false,
+      accountModelsPending: provider,
+      accountModelsFailure: null,
     });
-    void requestJson("/v1/insight-providers/codex/models", {
+    void requestJson(ACCOUNT_MODELS_PATHS[provider], {
       method: "POST",
       body: {},
     })
       .then((value) => {
-        if (codexActivationGenerationRef.current !== generation) return;
+        if (accountModelsGenerationRef.current !== generation) return;
         const parsed = parseInsightProviderCatalog(value);
-        if (parsed === undefined) throw new Error("Invalid Codex catalog");
+        if (parsed === undefined)
+          throw new Error("Invalid account provider catalog");
+        const accountModels = parsed.models.filter(
+          (candidate) => candidate.provider === provider,
+        );
         const nextCatalog =
           catalog === undefined
             ? parsed
@@ -213,36 +244,44 @@ export function useInsightConfiguration(input: {
                 ...catalog,
                 providers: [
                   ...catalog.providers.filter(
-                    (candidate) => candidate.id !== "codex-cli-account",
+                    (candidate) => candidate.id !== provider,
                   ),
                   ...parsed.providers,
                 ],
-                models: mergeCodexModels(catalog.models, parsed.models),
+                models: mergeAccountModels(
+                  catalog.models,
+                  provider,
+                  accountModels,
+                ),
               };
-        saveCodexModelCache(
-          profileId,
-          parsed.models.filter(
-            (candidate) => candidate.provider === "codex-cli-account",
-          ),
-        );
+        saveAccountModelCache(provider, profileId, accountModels);
         setConfiguration({ catalog: nextCatalog });
         onLoaded(nextCatalog);
       })
       .catch((cause: unknown) => {
-        if (codexActivationGenerationRef.current !== generation) return;
+        if (accountModelsGenerationRef.current !== generation) return;
         if (isApiErrorCode(cause, "cancelled")) return;
-        setConfiguration({ codexActivationError: true });
+        const body =
+          cause instanceof PatchdeskApiError
+            ? v.safeParse(requiredVersionBodySchema, cause.responseBody)
+            : undefined;
+        setConfiguration({
+          accountModelsFailure:
+            body?.success === true
+              ? { provider, requiredVersion: body.output.requiredVersion }
+              : { provider },
+        });
       })
       .finally(() => {
-        if (codexActivationGenerationRef.current !== generation) return;
-        setConfiguration({ codexActivationPending: false });
+        if (accountModelsGenerationRef.current !== generation) return;
+        setConfiguration({ accountModelsPending: null });
       });
   };
-  const activateCodex = (): void =>
-    loadCodexModels((nextCatalog) =>
+  const activateAccount = (provider: AccountInsightProvider): void =>
+    loadAccountModels(provider, (nextCatalog) =>
       setConfiguration(
         insightRunOptionsForProvider(
-          "codex-cli-account",
+          provider,
           preferencesRef.current[activePreferenceType],
           nextCatalog,
         ),
@@ -253,8 +292,8 @@ export function useInsightConfiguration(input: {
     preferencesRef,
     setConfiguration,
     changeProvider,
-    activateCodex,
-    loadCodexModels,
-    cancelCodexActivation,
+    activateAccount,
+    loadAccountModels,
+    cancelAccountModels,
   };
 }

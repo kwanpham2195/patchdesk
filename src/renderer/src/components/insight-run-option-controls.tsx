@@ -1,10 +1,16 @@
 import {
   INSIGHT_LANGUAGES,
+  INSIGHT_PROVIDERS,
+  type AccountInsightProvider,
   type InsightLanguage,
   type InsightProvider,
   type InsightReasoning,
 } from "../../../domain/insight-provider";
-import { INSIGHT_LANGUAGE_LABELS } from "../insight-contracts";
+import {
+  INSIGHT_LANGUAGE_LABELS,
+  INSIGHT_PROVIDER_LABELS,
+} from "../insight-contracts";
+import type { AccountModelsFailure } from "../hooks/use-insight-configuration";
 
 import type { ModelComboboxOption } from "./model-combobox";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -18,9 +24,32 @@ import {
   SelectValue,
 } from "./ui/select";
 
-/** Shown wherever loading the Codex model list failed. */
-const CODEX_MODELS_UNAVAILABLE =
-  "Codex models unavailable. Check the Codex CLI login.";
+/** How each account provider's Load models control names its CLI and login. */
+const ACCOUNT_MODELS_COPY = {
+  "codex-cli-account": {
+    load: "Load Codex models",
+    loading: "Loading Codex models…",
+    unavailable: "Codex models unavailable. Check the Codex CLI login.",
+  },
+  "pi-cli-account": {
+    load: "Load pi models",
+    loading: "Loading pi models…",
+    unavailable: "pi models unavailable. Check the pi login.",
+  },
+} as const satisfies Record<
+  AccountInsightProvider,
+  {
+    readonly load: string;
+    readonly loading: string;
+    readonly unavailable: string;
+  }
+>;
+
+function accountModelsFailureMessage(failure: AccountModelsFailure): string {
+  return failure.requiredVersion === undefined
+    ? ACCOUNT_MODELS_COPY[failure.provider].unavailable
+    : `pi models unavailable. Patchdesk needs pi ${failure.requiredVersion} or later.`;
+}
 
 export type InsightModelOption = {
   readonly id: string;
@@ -46,12 +75,13 @@ export function InsightProviderSelect({
     <Select
       value={value}
       disabled={disabled}
-      items={[
-        { label: "API key", value: "pi" },
-        { label: "Codex CLI account", value: "codex-cli-account" },
-      ]}
+      items={INSIGHT_PROVIDERS.map((option) => ({
+        label: INSIGHT_PROVIDER_LABELS[option],
+        value: option,
+      }))}
       onValueChange={(next) => {
-        if (next === "pi" || next === "codex-cli-account") onValueChange(next);
+        const provider = INSIGHT_PROVIDERS.find((option) => option === next);
+        if (provider !== undefined) onValueChange(provider);
       }}
     >
       <SelectTrigger id={id} aria-label={ariaLabel}>
@@ -59,44 +89,55 @@ export function InsightProviderSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectItem value="pi">API key</SelectItem>
-          <SelectItem value="codex-cli-account">Codex CLI account</SelectItem>
+          {INSIGHT_PROVIDERS.map((option) => (
+            <SelectItem key={option} value={option}>
+              {INSIGHT_PROVIDER_LABELS[option]}
+            </SelectItem>
+          ))}
         </SelectGroup>
       </SelectContent>
     </Select>
   );
 }
 
-/** Codex models load only on an explicit action: Load Codex models first, then Refresh models. */
-export function CodexModelsControl({
+/** An account provider's models load only on an explicit action: Load models first, then Refresh models. */
+export function AccountModelsControl({
+  provider,
   loaded,
-  loading,
-  failed,
+  pending,
+  failure,
   disabled,
   onLoad,
 }: {
+  readonly provider: AccountInsightProvider;
   readonly loaded: boolean;
-  readonly loading: boolean;
-  readonly failed: boolean;
+  /** The account provider whose load is in flight; another provider's load disables this one. */
+  readonly pending: AccountInsightProvider | null;
+  readonly failure: AccountModelsFailure | null;
   readonly disabled: boolean;
   readonly onLoad: () => void;
 }): React.JSX.Element {
-  const failure = failed ? (
-    <Alert variant="destructive">
-      <AlertDescription>{CODEX_MODELS_UNAVAILABLE}</AlertDescription>
-    </Alert>
-  ) : null;
+  const copy = ACCOUNT_MODELS_COPY[provider];
+  const loading = pending === provider;
+  const failureAlert =
+    failure?.provider === provider ? (
+      <Alert variant="destructive">
+        <AlertDescription>
+          {accountModelsFailureMessage(failure)}
+        </AlertDescription>
+      </Alert>
+    ) : null;
   if (!loaded)
     return (
       <div className="grid gap-2 rounded-lg border border-dashed p-3 text-sm">
         <Button
           variant="outline"
-          disabled={loading || disabled}
+          disabled={pending !== null || disabled}
           onClick={onLoad}
         >
-          {loading ? "Loading Codex models…" : "Load Codex models"}
+          {loading ? copy.loading : copy.load}
         </Button>
-        {failure}
+        {failureAlert}
       </div>
     );
   return (
@@ -105,12 +146,12 @@ export function CodexModelsControl({
         variant="ghost"
         size="sm"
         className="justify-self-start"
-        disabled={loading || disabled}
+        disabled={pending !== null || disabled}
         onClick={onLoad}
       >
         {loading ? "Refreshing models…" : "Refresh models"}
       </Button>
-      {failure}
+      {failureAlert}
     </div>
   );
 }

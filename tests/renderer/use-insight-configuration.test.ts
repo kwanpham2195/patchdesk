@@ -54,13 +54,15 @@ describe("useInsightConfiguration", () => {
       expect(result.current.configuration.catalog).toBeDefined(),
     );
 
-    act(() => result.current.activateCodex());
+    act(() => result.current.activateAccount("codex-cli-account"));
     await waitFor(() =>
-      expect(result.current.configuration.codexActivationPending).toBe(true),
+      expect(result.current.configuration.accountModelsPending).toBe(
+        "codex-cli-account",
+      ),
     );
-    act(() => result.current.cancelCodexActivation());
-    expect(result.current.configuration.codexActivationPending).toBe(false);
-    act(() => result.current.activateCodex());
+    act(() => result.current.cancelAccountModels());
+    expect(result.current.configuration.accountModelsPending).toBeNull();
+    act(() => result.current.activateAccount("codex-cli-account"));
     await waitFor(() =>
       expect(result.current.configuration.model).toBe("current"),
     );
@@ -70,8 +72,8 @@ describe("useInsightConfiguration", () => {
 
     expect(result.current.configuration).toMatchObject({
       model: "current",
-      codexActivationPending: false,
-      codexActivationError: false,
+      accountModelsPending: null,
+      accountModelsFailure: null,
     });
   });
 
@@ -92,16 +94,67 @@ describe("useInsightConfiguration", () => {
       expect(result.current.configuration.catalog).toBeDefined(),
     );
 
-    act(() => result.current.activateCodex());
+    act(() => result.current.activateAccount("codex-cli-account"));
     await waitFor(() =>
-      expect(result.current.configuration.codexActivationPending).toBe(false),
+      expect(result.current.configuration.accountModelsPending).toBeNull(),
     );
-    expect(result.current.configuration.codexActivationError).toBe(false);
+    expect(result.current.configuration.accountModelsFailure).toBeNull();
 
     response = failure({ error: "runtime_unavailable" });
-    act(() => result.current.activateCodex());
+    act(() => result.current.activateAccount("codex-cli-account"));
     await waitFor(() =>
-      expect(result.current.configuration.codexActivationError).toBe(true),
+      expect(result.current.configuration.accountModelsFailure).toEqual({
+        provider: "codex-cli-account",
+      }),
+    );
+  });
+
+  it("loads pi CLI account models from their own route and keeps an outdated pi's required version", async () => {
+    let response: ReturnType<typeof failure> | ReturnType<typeof success> =
+      failure({ error: "runtime_unavailable", requiredVersion: "0.80.4" }, 503);
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success({ providers: [], models: [] }),
+      "/v1/insight-providers/pi-cli/models": () => response,
+    });
+    const { result } = renderHook(() =>
+      useInsightConfiguration({
+        profileId: "profile",
+        initialInsight: "brief",
+        selectedInsight: "brief",
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.configuration.catalog).toBeDefined(),
+    );
+
+    act(() => result.current.activateAccount("pi-cli-account"));
+    await waitFor(() =>
+      expect(result.current.configuration.accountModelsFailure).toEqual({
+        provider: "pi-cli-account",
+        requiredVersion: "0.80.4",
+      }),
+    );
+
+    response = success({
+      providers: [],
+      models: [
+        {
+          provider: "pi-cli-account",
+          id: "anthropic/claude-sonnet-5",
+          label: "anthropic/claude-sonnet-5",
+          reasoning: ["low", "medium", "high"],
+          defaultReasoning: "medium",
+        },
+      ],
+    });
+    act(() => result.current.activateAccount("pi-cli-account"));
+    await waitFor(() =>
+      expect(result.current.configuration).toMatchObject({
+        provider: "pi-cli-account",
+        model: "anthropic/claude-sonnet-5",
+        reasoning: "medium",
+        accountModelsFailure: null,
+      }),
     );
   });
 

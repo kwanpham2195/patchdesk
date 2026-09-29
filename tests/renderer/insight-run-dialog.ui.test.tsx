@@ -17,12 +17,11 @@ const baseProps = {
   type: "walkthrough" as const,
   action: "run" as const,
   provider: "pi" as const,
-  codexActivationPending: false,
-  codexActivationError: false,
+  accountModelsPending: null,
+  accountModelsFailure: null,
   pending: false,
   onProviderChange: vi.fn(),
-  onActivateCodex: vi.fn(),
-  onRefreshCodexModels: vi.fn(),
+  onLoadAccountModels: vi.fn(),
   models,
   model: null,
   reasoning: "medium" as const,
@@ -153,7 +152,7 @@ describe("InsightRunDialog pending state", () => {
   });
 });
 
-describe("InsightRunDialog Codex model loading", () => {
+describe("InsightRunDialog account model loading", () => {
   it("offers Refresh models instead of Load Codex models once models are cached", () => {
     render(
       <InsightRunDialog
@@ -183,5 +182,27 @@ describe("InsightRunDialog Codex model loading", () => {
       screen.getByRole("button", { name: "Load Codex models" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Refresh models" })).toBeNull();
+  });
+
+  it("loads pi CLI account models for the pi provider", async () => {
+    const onLoadAccountModels = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <InsightRunDialog
+        {...baseProps}
+        provider="pi-cli-account"
+        models={[]}
+        onLoadAccountModels={onLoadAccountModels}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load pi models" }));
+
+    expect(onLoadAccountModels).toHaveBeenCalledWith("pi-cli-account");
+    expect(
+      screen
+        .getByRole("button", { name: "Start run" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
   });
 });
