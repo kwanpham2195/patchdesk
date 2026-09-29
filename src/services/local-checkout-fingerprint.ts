@@ -91,9 +91,11 @@ export async function fingerprintLocalCheckout(
 }
 
 /**
- * Each untracked path and its content: `hash-object` without `-w` for a
- * file, the link text for a symlink, which `hash-object` cannot read when it
- * names a directory, and `missing` for a path removed since the listing.
+ * Each untracked path and its content. `hash-object` without `-w` reads only
+ * regular files, so the rest get a marker: a symlink its link text, a
+ * directory, which `ls-files` lists for a nested repository, that
+ * repository's `HEAD` as `add -A` records it, and a path removed since the
+ * listing `missing`.
  */
 async function hashUntracked(
   git: GitReadExecutor,
@@ -101,14 +103,10 @@ async function hashUntracked(
   paths: ReadonlyArray<string>,
 ): Promise<ReadonlyArray<string> | undefined> {
   const kinds = await Promise.all(
-    paths.map(async (path) => {
-      const absolute = join(checkoutPath, path);
-      const stats = await lstat(absolute).catch(() => undefined);
-      if (stats === undefined) return { path, content: "missing" };
-      if (!stats.isSymbolicLink()) return { path, content: undefined };
-      const target = await readlink(absolute).catch(() => undefined);
-      return { path, content: `link:${target ?? "missing"}` };
-    }),
+    paths.map(async (path) => ({
+      path,
+      content: await untrackedMarker(git, join(checkoutPath, path)),
+    })),
   );
   const files = kinds.flatMap((kind) =>
     kind.content === undefined ? [kind.path] : [],
@@ -116,24 +114,78 @@ async function hashUntracked(
   const hashes = new Map<string, string>();
   for (let start = 0; start < files.length; start += HASH_OBJECT_BATCH_SIZE) {
     const batch = files.slice(start, start + HASH_OBJECT_BATCH_SIZE);
-    const hashed = await git.run([
-      "git",
-      "-C",
-      checkoutPath,
-      "hash-object",
-      "--no-filters",
-      "--",
-      ...batch,
-    ]);
-    if (hashed._tag === "err") return undefined;
-    const lines = hashed.value.stdout.split("\n");
+    const hashed = await hashFiles(git, checkoutPath, batch);
+    // One file removed since the listing fails the whole batch, so each is hashed alone to find it.
+    const read =
+      hashed ??
+      (await Promise.all(
+        batch.map(async (path) => {
+          const hash = (await hashFiles(git, checkoutPath, [path]))?.[0];
+          if (hash !== undefined) return hash;
+          const gone = await lstat(join(checkoutPath, path)).then(
+            () => false,
+            () => true,
+          );
+          return gone ? "missing" : undefined;
+        }),
+      ));
     for (const [index, path] of batch.entries()) {
-      const hash = lines[index];
-      if (hash === undefined || hash === "") return undefined;
+      const hash = read[index];
+      if (hash === undefined) return undefined;
       hashes.set(path, hash);
     }
   }
   return kinds.map(
     (kind) => `${kind.path}\0${kind.content ?? hashes.get(kind.path) ?? ""}`,
   );
+}
+
+/** The marker for an untracked path `hash-object` cannot read; undefined for a regular file. */
+async function untrackedMarker(
+  git: GitReadExecutor,
+  absolute: string,
+): Promise<string | undefined> {
+  const stats = await lstat(absolute).catch(() => undefined);
+  if (stats === undefined) return "missing";
+  if (stats.isFile()) return undefined;
+  if (stats.isSymbolicLink())
+    return `link:${(await readlink(absolute).catch(() => undefined)) ?? "missing"}`;
+  if (stats.isDirectory()) {
+    const head = await git.run([
+      "git",
+      "-C",
+      absolute,
+      "rev-parse",
+      "--verify",
+      "-q",
+      "HEAD",
+    ]);
+    return head._tag === "ok"
+      ? `repository:${head.value.stdout.trim()}`
+      : "directory";
+  }
+  // A FIFO or socket: `hash-object` would block on or refuse it.
+  return "special";
+}
+
+/** One `hash-object` line per path, in order; undefined when git refuses any of them. */
+async function hashFiles(
+  git: GitReadExecutor,
+  checkoutPath: string,
+  paths: ReadonlyArray<string>,
+): Promise<ReadonlyArray<string> | undefined> {
+  const hashed = await git.run([
+    "git",
+    "-C",
+    checkoutPath,
+    "hash-object",
+    "--no-filters",
+    "--",
+    ...paths,
+  ]);
+  if (hashed._tag === "err") return undefined;
+  const lines = hashed.value.stdout.split("\n").slice(0, paths.length);
+  return lines.length === paths.length && lines.every((line) => line !== "")
+    ? lines
+    : undefined;
 }

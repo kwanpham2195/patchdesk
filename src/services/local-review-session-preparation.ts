@@ -306,7 +306,10 @@ export class LocalReviewSessionPreparation {
     const sessionId = createReviewSessionId(key);
     const stored = await this.dependencies.sessions.load(profileId, sessionId);
     if (stored._tag === "ok" && !isPullRequestReviewSession(stored.value))
-      return this.withWorktree(resolved, stored.value);
+      return this.withWorktree(
+        resolved,
+        await this.withCheckoutFingerprint(resolved, stored.value),
+      );
     if (stored._tag === "err" && stored.error.reason !== "not_found") {
       if (stored.error.reason !== "invalid_stored_value")
         return err({ _tag: "SessionStorageUnavailable" });
@@ -343,6 +346,31 @@ export class LocalReviewSessionPreparation {
     if (journal._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
     return this.writeSession(resolved, key, journal.value);
+  }
+
+  /**
+   * The stored session with the checkout fingerprint just read. The same
+   * snapshot can come from checkouts the fingerprint tells apart, such as a
+   * new file before and after `git add`, and the update check compares the
+   * checkout with the session's fingerprint, so a session prepared again
+   * records the newer one; otherwise Refresh could never clear Updates
+   * available. It is metadata, not identity, so the session id is unchanged.
+   * A failed save keeps the stored fingerprint.
+   */
+  private async withCheckoutFingerprint(
+    resolved: ResolvedLocalReview,
+    session: LocalReviewSession,
+  ): Promise<LocalReviewSession> {
+    const fingerprint = resolved.checkoutFingerprint;
+    if (
+      fingerprint === undefined ||
+      session.key.source.kind !== "local_branch" ||
+      session.checkoutFingerprint === fingerprint
+    )
+      return session;
+    const next = { ...session, checkoutFingerprint: fingerprint };
+    const saved = await this.dependencies.sessions.save(next);
+    return saved._tag === "ok" ? next : session;
   }
 
   /**

@@ -218,10 +218,17 @@ the only way to a new session.
 > It compares a read-only fingerprint of the checkout, made from `HEAD`, the
 > merge base, a hash of `git diff HEAD --binary`, and each untracked file's
 > `git hash-object` hash without `-w`, with the fingerprint recorded on the
-> current session when it was prepared. The fingerprint is read just before
-> the snapshot, so an edit between the two gives a spurious update rather
-> than a missed one. A session stored before #611 is fingerprinted on its
-> first check, in memory. Every read passes `--no-optional-locks`, and the
+> current session when it was prepared. A symlink contributes its link text,
+> and a nested repository, which `ls-files` lists as a directory, its `HEAD`.
+> The fingerprint is read just before the snapshot, so an edit between the
+> two gives a spurious update rather than a missed one. Checkouts the
+> fingerprint tells apart can give the same snapshot, such as a new file
+> before and after `git add`, so a prepare that reuses a stored session
+> saves the fingerprint it just read on that session; the fingerprint is
+> metadata, not session identity, and Refresh then clears the label. A
+> fingerprint that cannot be read never refuses open, Refresh, or Apply: the
+> session is stored without one. A session without a fingerprint, including
+> one stored before #611, is fingerprinted on its first check, in memory. Every read passes `--no-optional-locks`, and the
 > Review lock is held only to read the Review record. A difference answers
 > `RevisionChanged` and records nothing: no prepared session and no
 > `freshness` save, so the Review does not move (ADR 0032 allows a check
