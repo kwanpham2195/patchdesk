@@ -72,3 +72,5 @@ Nothing narrates what the app is doing to itself, reassures the reader, or repea
 
 - Layers of code and who owns what: `docs/architecture.md`.
 - Adding or composing a shadcn/ui component: the `shadcn` skill listed in `AGENTS.md`.
+
+<!-- Throwaway edit for the #635 live check. -->
