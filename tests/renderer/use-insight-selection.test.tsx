@@ -64,6 +64,7 @@ describe("useInsightSelection", () => {
         value={{
           openFindingInDiff: () => undefined,
           openFileInDiff: () => undefined,
+          openScopeBucketInDiff: () => undefined,
           findingFocusRequest: undefined,
           lastInsight: "brief",
           rememberInsight: (insight) => remembered.push(insight),
@@ -103,6 +104,7 @@ describe("useInsightSelection", () => {
         value={{
           openFindingInDiff: () => undefined,
           openFileInDiff: () => undefined,
+          openScopeBucketInDiff: () => undefined,
           findingFocusRequest: request,
           lastInsight: undefined,
           rememberInsight: () => undefined,

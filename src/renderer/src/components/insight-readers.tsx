@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import { definedProps } from "../../../domain/defined-props";
 import type { ParsedPatchFile } from "../../../domain/patch";
 import { BriefReader } from "./brief-reader";
@@ -44,6 +45,8 @@ type InsightReaderBuilderInput = {
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
   /** Opens one file in the full Review diff; absent outside the workbench. */
   readonly onOpenFileInDiff?: (path: string) => void;
+  /** Opens the full Review diff filtered to one Scope bucket; absent outside the workbench. */
+  readonly onOpenScopeBucketInDiff?: (bucket: ChangeScopeBucket) => void;
 };
 /**
  * Says whether a retained Walkthrough can show inline discussion, and if not,
@@ -113,6 +116,7 @@ export function buildInsightReaders({
   walkthroughProgress,
   onOpenFindingInDiff,
   onOpenFileInDiff,
+  onOpenScopeBucketInDiff,
   walkthroughFocused,
   setWalkthroughFocused,
   onRegenerateBrief,
@@ -285,7 +289,11 @@ export function buildInsightReaders({
           : {})}
         regenerateDisabled={!runEnabled}
         walkthroughStatus={workbench.insights.walkthrough.status}
-        {...definedProps({ onOpenWalkthrough })}
+        {...definedProps({
+          onOpenWalkthrough,
+          // The card shows the current revision's Scope, so an outdated Brief still filters the Diff.
+          onScopeBucketSelect: onOpenScopeBucketInDiff,
+        })}
         {...definedProps({
           // A local Review has no description yet; its Brief seeds one (ADR 0050 "Handoff").
           loadPullRequestDescription:

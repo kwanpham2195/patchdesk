@@ -8,6 +8,12 @@
 > the Diff. The gauge now lives in the workbench header chip, the Brief's side
 > column, and the Pull requests row; the Diff toolbar Scope picker is the only
 > way to apply a Scope filter.
+>
+> **Amended, 2026-09-29 (#612).** The Brief's Scope card also applies a Scope
+> filter, as its Start here files already open the Diff. Each row with files
+> calls the Diff picker's own `applyScopeBucket`, so there is one filter state:
+> the picker shows the bucket and Clear scope removes it. The card marks no
+> row as chosen, and the filter stays unsaved.
 
 "+1,240 / -318" tells a maintainer how big a pull request is, not what kind of
 big. A thousand of those lines being a regenerated lockfile is a different

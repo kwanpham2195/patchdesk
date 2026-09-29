@@ -67,6 +67,7 @@ import {
 } from "./review-workbench-pull-request";
 import { useCommitDiff } from "../hooks/use-commit-diff";
 import { useSinceReviewMode } from "../hooks/use-since-review-mode";
+import { useInsightDiffNavigation } from "../hooks/use-insight-diff-navigation";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
 import type { ViewedFilesControls } from "../hooks/use-viewed-files";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
@@ -243,16 +244,20 @@ export function ReviewWorkbench({
         : undefined,
     [onOtherView, reviewPatch],
   );
-  const { scopeFilteredPaths, scopeFilter, clearScopeBucket } =
-    useReviewScopeFilter({
-      fullPatch: reviewPatch,
-      scope: onOtherView ? viewScope : model.scope,
-      selectedPath,
-      commitSliceActive: selectedCommitSha !== undefined,
-      commitWorkbenchPosition,
-      selectSection,
-      setActivePath,
-    });
+  const {
+    scopeFilteredPaths,
+    scopeFilter,
+    applyScopeBucket,
+    clearScopeBucket,
+  } = useReviewScopeFilter({
+    fullPatch: reviewPatch,
+    scope: onOtherView ? viewScope : model.scope,
+    selectedPath,
+    commitSliceActive: selectedCommitSha !== undefined,
+    commitWorkbenchPosition,
+    selectSection,
+    setActivePath,
+  });
   // A Scope bucket and a commit slice are mutually exclusive readings of the
   // diff: choosing a bucket already drops the commit, so entering a commit
   // drops the bucket rather than leaving a filtered tree beside a full slice.
@@ -380,34 +385,13 @@ export function ReviewWorkbench({
   });
   const sincePatch =
     sinceReview.state._tag === "Ready" ? sinceReview.state.patch : undefined;
-  // A Brief's file stands for the whole represented revision, so every narrower view gives way to the full diff.
-  const leaveSinceReview = sinceReview.control?.onChange;
-  const openFileInDiff = useCallback(
-    (path: string): void => {
-      clearScopeBucket();
-      leaveSinceReview?.(false);
-      selectPatchView("combined");
-      selectSection("files");
-      setSelectedThreadId(undefined);
-      setSelectedRange(undefined);
-      commitWorkbenchPosition({
-        activeTab: "diff",
-        section: "files",
-        selectedPath: path,
-      });
-      setActivePath(path);
-    },
-    [
-      clearScopeBucket,
-      commitWorkbenchPosition,
-      leaveSinceReview,
-      selectPatchView,
-      selectSection,
-      setActivePath,
-      setSelectedRange,
-      setSelectedThreadId,
-    ],
-  );
+  const { openFileInDiff, openScopeBucketInDiff } = useInsightDiffNavigation({
+    position,
+    selectPatchView,
+    leaveSinceReview: sinceReview.control?.onChange,
+    applyScopeBucket,
+    clearScopeBucket,
+  });
   // The Insights slot unmounts while the Diff tab shows, so its reader choice lives here, keyed by session.
   const [rememberedInsight, setRememberedInsight] = useState<
     | { readonly sessionId: string; readonly insight: InsightRunDialogType }
@@ -427,6 +411,7 @@ export function ReviewWorkbench({
     () => ({
       openFindingInDiff,
       openFileInDiff,
+      openScopeBucketInDiff,
       findingFocusRequest,
       lastInsight,
       rememberInsight,
@@ -436,6 +421,7 @@ export function ReviewWorkbench({
       lastInsight,
       openFileInDiff,
       openFindingInDiff,
+      openScopeBucketInDiff,
       rememberInsight,
     ],
   );

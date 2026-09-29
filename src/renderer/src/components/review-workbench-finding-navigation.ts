@@ -1,5 +1,6 @@
 import { createContext } from "react";
 
+import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { MappedFinding } from "./review-workbench-annotations";
 
@@ -15,6 +16,8 @@ export type ReviewWorkbenchFindingNavigation = {
   readonly openFindingInDiff: (finding: MappedFinding) => void;
   /** Switches to the full Review diff with one file selected, leaving any commit, Scope, or since-review view. */
   readonly openFileInDiff: (path: string) => void;
+  /** Switches to the full Review diff filtered to one Scope bucket through the Scope picker's own filter, leaving any commit, since-review, or other patch view. */
+  readonly openScopeBucketInDiff: (bucket: ChangeScopeBucket) => void;
   /** The latest Diff-to-Analysis request, if any. */
   readonly findingFocusRequest: FindingFocusRequest | undefined;
   /** The Insight reader last shown for this session, so returning from the Diff lands where the reviewer left. */
