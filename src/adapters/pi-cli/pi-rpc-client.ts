@@ -173,6 +173,8 @@ export class PiRpcClient {
     const controller = new AbortController();
     const onAbort = (): void => controller.abort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
+    // A cancel while `open` awaited `pi --version` fired before the listener existed.
+    if (options.signal?.aborted === true) controller.abort();
     const timer = setTimeout(
       () => controller.abort("timed_out"),
       input.runTimeoutMs ?? RUN_TIMEOUT_MS,

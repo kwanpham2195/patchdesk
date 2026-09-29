@@ -1,6 +1,3 @@
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
-import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,111 +5,13 @@ import {
   PiRpcClient,
 } from "../../src/adapters/pi-cli/pi-rpc-client";
 import type { RepresentedReviewWorktree } from "../../src/domain/represented-review-worktree";
-
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ReadonlyArray<JsonValue>
-  | { readonly [key: string]: JsonValue };
-type JsonRecord = { readonly [key: string]: JsonValue };
-type Spawned = {
-  readonly args: ReadonlyArray<string>;
-  readonly options: SpawnOptions;
-};
-
-/** One scripted `pi` child: `--version` prints a version, `--mode rpc` answers commands. */
-class FakePiProcess extends EventEmitter {
-  readonly stdin = new PassThrough();
-  readonly stdout = new PassThrough();
-  readonly stderr = new PassThrough();
-  readonly received: Array<JsonRecord> = [];
-
-  constructor(
-    private readonly answer: (
-      command: JsonRecord,
-      write: (record: JsonRecord) => void,
-    ) => void,
-  ) {
-    super();
-    let buffer = "";
-    this.stdin.on("data", (chunk: Buffer) => {
-      buffer += chunk.toString("utf8");
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        // SAFETY: the client under test writes one JSON object per line, built from strings and booleans.
-        const command = JSON.parse(line) as JsonRecord;
-        this.received.push(command);
-        this.answer(command, (record) => this.write(record));
-      }
-    });
-  }
-
-  write(record: JsonRecord): void {
-    this.stdout.write(`${JSON.stringify(record)}\n`);
-  }
-
-  kill(): boolean {
-    this.emit("exit", 0, null);
-    this.emit("close", 0, null);
-    return true;
-  }
-}
-
-/**
- * The ChildProcess surface the pi client reads: the three pipes, kill(), and
- * once()/on() listeners. `once` returns `void` so any EventEmitter satisfies it.
- */
-type ChildProcessSurface = {
-  readonly stdin: ChildProcess["stdin"];
-  readonly stdout: ChildProcess["stdout"];
-  readonly stderr: ChildProcess["stderr"];
-  kill(): boolean;
-  once(event: string, listener: (...args: unknown[]) => void): void;
-};
-
-function asChildProcess(fake: FakePiProcess): ChildProcess {
-  const surface: ChildProcessSurface = fake;
-  // SAFETY: the pi client only reads the three pipes, calls kill(), and listens for "error", "exit", and "close"; FakePiProcess provides exactly that surface.
-  return surface as ChildProcess;
-}
-
-type RpcScript = (
-  command: JsonRecord,
-  write: (record: JsonRecord) => void,
-  child: FakePiProcess,
-) => void;
-
-function fakePi(options: {
-  readonly version?: string;
-  readonly rpc: RpcScript;
-}) {
-  const spawned: Array<Spawned> = [];
-  const children: Array<FakePiProcess> = [];
-  const processFactory = (
-    _file: string,
-    args: ReadonlyArray<string>,
-    spawnOptions: SpawnOptions,
-  ): ChildProcess => {
-    spawned.push({ args, options: spawnOptions });
-    if (args[0] === "--version") {
-      const versionChild = new FakePiProcess(() => undefined);
-      setImmediate(() => {
-        versionChild.stdout.write(`${options.version ?? "0.87.1"}\n`);
-        setImmediate(() => versionChild.emit("close", 0, null));
-      });
-      return asChildProcess(versionChild);
-    }
-    const child: FakePiProcess = new FakePiProcess((command, write) =>
-      options.rpc(command, write, child),
-    );
-    children.push(child);
-    return asChildProcess(child);
-  };
-  return { spawned, children, processFactory };
-}
+import {
+  assistantAnswer,
+  fakePi,
+  respond,
+  runScript,
+  type JsonRecord,
+} from "./pi-rpc-test-support";
 
 const worktree = "/tmp/patchdesk-worktree" as RepresentedReviewWorktree;
 const runInput = {
@@ -121,53 +20,6 @@ const runInput = {
   reasoning: "high",
   prompt: "Return the Brief as JSON.",
 } as const;
-
-function respond(command: JsonRecord, fields: JsonRecord = {}) {
-  return {
-    type: "response",
-    id: command.id ?? null,
-    command: command.type ?? null,
-    success: true,
-    ...fields,
-  } satisfies JsonRecord;
-}
-
-/** A pi session that resolved the requested model and answers the prompt with `answer` events. */
-function runScript(
-  answer: (write: (record: JsonRecord) => void) => void,
-  prompt: (command: JsonRecord) => JsonRecord = (command) => respond(command),
-): RpcScript {
-  return (command, write) => {
-    if (command.type === "get_state")
-      write(
-        respond(command, {
-          data: {
-            model: { provider: "anthropic", id: "claude-sonnet-5" },
-            thinkingLevel: "high",
-          },
-        }),
-      );
-    if (command.type === "prompt") {
-      const response = prompt(command);
-      write(response);
-      if (response.success === true) answer(write);
-    }
-  };
-}
-
-function assistantAnswer(text: string) {
-  return {
-    type: "message_end",
-    message: {
-      role: "assistant",
-      content: [
-        { type: "thinking", thinking: "Reading the patch" },
-        { type: "text", text },
-      ],
-      stopReason: "stop",
-    },
-  } satisfies JsonRecord;
-}
 
 describe("PiRpcClient", () => {
   it("lists only reasoning models the pi login can run, from a child with no tools or extensions", async () => {
@@ -435,6 +287,133 @@ describe("PiRpcClient", () => {
     await expect(client.run(runInput)).resolves.toEqual({
       _tag: "err",
       error: { reason: "runtime_unavailable", phase: "version" },
+    });
+  });
+
+  it("cancels a run whose cancel arrives while pi --version is still running", async () => {
+    let releaseVersion: () => void = () => undefined;
+    const pi = fakePi({
+      versionReleased: new Promise((resolve) => {
+        releaseVersion = resolve;
+      }),
+      rpc: runScript((write) => {
+        write(assistantAnswer('{"title":"Fixture"}'));
+        write({ type: "agent_settled" });
+      }),
+    });
+    const client = new PiRpcClient("/usr/local/bin/pi", {
+      processFactory: pi.processFactory,
+    });
+    const controller = new AbortController();
+
+    const running = client.run(runInput, { signal: controller.signal });
+    controller.abort();
+    releaseVersion();
+
+    await expect(running).resolves.toMatchObject({
+      _tag: "err",
+      error: { reason: "cancelled" },
+    });
+    expect(pi.children[0]?.received ?? []).not.toContainEqual(
+      expect.objectContaining({ type: "prompt" }),
+    );
+  });
+
+  it("refuses a run whose resolved thinking level is not the one requested", async () => {
+    const pi = fakePi({
+      rpc: (command, write) => {
+        if (command.type === "get_state")
+          write(
+            respond(command, {
+              data: {
+                model: { provider: "anthropic", id: "claude-sonnet-5" },
+                thinkingLevel: "medium",
+              },
+            }),
+          );
+      },
+    });
+    const client = new PiRpcClient("/usr/local/bin/pi", {
+      processFactory: pi.processFactory,
+    });
+
+    await expect(client.run(runInput)).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "runtime_unavailable", phase: "session_state" },
+    });
+    expect(pi.children[0]?.received).not.toContainEqual(
+      expect.objectContaining({ type: "prompt" }),
+    );
+  });
+
+  it("aborts pi and reports cancelled when a running turn is cancelled", async () => {
+    let prompted: () => void = () => undefined;
+    const promptAccepted = new Promise<void>((resolve) => {
+      prompted = resolve;
+    });
+    const pi = fakePi({ rpc: runScript(() => prompted()) });
+    const client = new PiRpcClient("/usr/local/bin/pi", {
+      processFactory: pi.processFactory,
+    });
+    const controller = new AbortController();
+
+    const running = client.run(runInput, { signal: controller.signal });
+    await promptAccepted;
+    controller.abort();
+
+    await expect(running).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "cancelled", phase: "turn" },
+    });
+    expect(pi.children[0]?.received).toContainEqual({ type: "abort" });
+  });
+
+  it("aborts pi and reports timed_out when a turn outlives its run bound", async () => {
+    const pi = fakePi({ rpc: runScript(() => undefined) });
+    const client = new PiRpcClient("/usr/local/bin/pi", {
+      processFactory: pi.processFactory,
+    });
+
+    await expect(
+      client.run({ ...runInput, runTimeoutMs: 50 }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "timed_out", phase: "turn" },
+    });
+    expect(pi.children[0]?.received).toContainEqual({ type: "abort" });
+  });
+
+  it("refuses a prompt over its byte bound without starting pi", async () => {
+    const pi = fakePi({ rpc: () => undefined });
+    const client = new PiRpcClient("/usr/local/bin/pi", {
+      processFactory: pi.processFactory,
+    });
+
+    await expect(
+      client.run({ ...runInput, maxPromptBytes: 8 }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "invalid_result", phase: "prompt" },
+    });
+    expect(pi.spawned).toHaveLength(0);
+  });
+
+  it("stops pi and fails the run when one RPC record passes 32 MiB", async () => {
+    const pi = fakePi({
+      rpc: runScript((write) => {
+        write(assistantAnswer("x".repeat(33 * 1024 * 1024)));
+        write({ type: "agent_settled" });
+      }),
+    });
+    const client = new PiRpcClient("/usr/local/bin/pi", {
+      processFactory: pi.processFactory,
+    });
+
+    await expect(
+      client.run({ ...runInput, runTimeoutMs: 2_000 }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "execution_failed", phase: "turn" },
     });
   });
 });
