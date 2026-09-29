@@ -107,6 +107,7 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/local-intent",
   "GET /v1/insight-providers",
   "POST /v1/insight-providers/codex/models",
+  "POST /v1/insight-providers/pi-cli/models",
   "POST /v1/reviews/load",
   "POST /v1/reviews/leave",
   "POST /v1/reviews/detect-updates",

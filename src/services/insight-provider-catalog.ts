@@ -1,6 +1,7 @@
 import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
 import { definedProps } from "../domain/defined-props";
 import type {
+  AccountInsightProvider,
   InsightProvider,
   InsightReasoning,
   InsightSelection,
@@ -15,6 +16,11 @@ import type {
   ModelListPrice,
   PiRuntimeModelCatalog,
 } from "../adapters/pi/pi-runtime-model-catalog";
+import type {
+  PiCliModel,
+  PiRpcClient,
+  PiRpcFailure,
+} from "../adapters/pi-cli/pi-rpc-client";
 
 /** Renderer-safe provider availability. It never contains a path or account detail. */
 type InsightProviderStatus = {
@@ -31,7 +37,7 @@ type InsightProviderModel = {
   readonly label: string;
   readonly reasoning: ReadonlyArray<InsightReasoning>;
   readonly defaultReasoning?: InsightReasoning;
-  /** Absent for Codex CLI account models and Pi models without a fixed list price. */
+  /** Absent for account-provider models and Pi models without a fixed list price. */
   readonly cost?: ModelListPrice;
 };
 
@@ -50,6 +56,8 @@ export type InsightProviderCatalogFailure = {
     | "rate_limited"
     | "timed_out"
     | "invalid_result";
+  /** Set when the installed pi is too old; the dialog names the version to install. */
+  readonly requiredVersion?: string;
 };
 
 /** One provider's status paired with the models that listing produced. */
@@ -74,8 +82,11 @@ type ProviderModelSource = {
 type CodexClientFactory = (
   executablePath: string,
 ) => Pick<CodexAppServerClient, "listModels">;
+type PiCliClientFactory = (
+  executablePath: string,
+) => Pick<PiRpcClient, "listModels">;
 
-/** Coordinates passive status, explicit Codex discovery, and exact run validation. */
+/** Coordinates passive status, explicit account-provider discovery, and exact run validation. */
 export class InsightProviderCatalog {
   /**
    * Insertion order is the order the catalog publishes providers in, and the
@@ -87,14 +98,22 @@ export class InsightProviderCatalog {
 
   constructor(
     pi: PiRuntimeModelCatalog,
-    clientFactory: CodexClientFactory,
+    codexClientFactory: CodexClientFactory,
+    piCliClientFactory: PiCliClientFactory,
     executableResolver: (name: string) => Promise<string | undefined> = (
       name,
     ) => discoverPathOnlyExecutable(name),
   ) {
     this.sources = {
       pi: piModelSource(pi),
-      "codex-cli-account": codexModelSource(clientFactory, executableResolver),
+      "codex-cli-account": codexModelSource(
+        codexClientFactory,
+        executableResolver,
+      ),
+      "pi-cli-account": piCliModelSource(
+        piCliClientFactory,
+        executableResolver,
+      ),
     };
   }
 
@@ -111,11 +130,13 @@ export class InsightProviderCatalog {
     });
   }
 
-  /** Explicitly starts a throwaway Codex app server and loads its live models. */
-  async activateCodex(): Promise<
+  /** Explicitly starts a throwaway account-provider CLI and loads its live models. */
+  async activateAccount(
+    provider: AccountInsightProvider,
+  ): Promise<
     Result<InsightProviderCatalogSnapshot, InsightProviderCatalogFailure>
   > {
-    const activated = await this.sources["codex-cli-account"].activate();
+    const activated = await this.sources[provider].activate();
     if (activated._tag === "err") return activated;
     return ok({
       providers: [activated.value.status],
@@ -218,6 +239,75 @@ function codexModelSource(
       });
     },
   };
+}
+
+/** pi lists only from a started RPC child, so surveying stops at PATH discovery. */
+function piCliModelSource(
+  clientFactory: PiCliClientFactory,
+  executableResolver: (name: string) => Promise<string | undefined>,
+): ProviderModelSource {
+  const status = (available: boolean): InsightProviderStatus => ({
+    id: "pi-cli-account",
+    label: "pi CLI account",
+    available,
+    guidance: available
+      ? "Use the existing local pi login."
+      : "Install pi and expose pi on the app launch PATH, then log in externally.",
+  });
+  return {
+    async survey() {
+      const executablePath = await executableResolver("pi");
+      return { status: status(executablePath !== undefined), models: [] };
+    },
+    async activate() {
+      const executablePath = await executableResolver("pi");
+      if (executablePath === undefined)
+        return err({
+          _tag: "InsightProviderCatalogUnavailable",
+          reason: "runtime_unavailable",
+        });
+      const result = await clientFactory(executablePath).listModels();
+      if (result._tag === "err") return err(piCliCatalogFailure(result.error));
+      return ok({
+        status: status(true),
+        models: result.value.map((model) => piCliModel(model)),
+      });
+    },
+  };
+}
+
+function piCliModel(model: PiCliModel): InsightProviderModel {
+  return {
+    provider: "pi-cli-account",
+    id: model.id,
+    label: model.label,
+    reasoning: model.reasoning,
+    ...definedProps({ defaultReasoning: model.defaultReasoning }),
+  };
+}
+
+function piCliCatalogFailure(
+  failure: PiRpcFailure,
+): InsightProviderCatalogFailure {
+  const unavailable = {
+    _tag: "InsightProviderCatalogUnavailable",
+    ...definedProps({ requiredVersion: failure.requiredVersion }),
+  } as const;
+  switch (failure.reason) {
+    case "authentication_required":
+    case "rate_limited":
+    case "timed_out":
+    case "invalid_result":
+    case "cancelled":
+      return { ...unavailable, reason: failure.reason };
+    case "execution_failed":
+    case "runtime_unavailable":
+    case "review_worktree_unavailable":
+    case "unexpected_failure":
+      return { ...unavailable, reason: "runtime_unavailable" };
+    default:
+      return casesHandled(failure.reason);
+  }
 }
 
 function codexModel(model: CodexModel): InsightProviderModel {

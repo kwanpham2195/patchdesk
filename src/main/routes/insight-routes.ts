@@ -36,7 +36,12 @@ import {
 } from "../../services/insight-run-coordinator";
 import type { InsightCoordinatorSeam } from "../local-api-configuration";
 import type { LocalApiContainer } from "../local-api-container";
-import { insightFailureStatus, response, serviceResponse } from "./http-status";
+import {
+  insightFailureStatus,
+  response,
+  serviceResponse,
+  statusForReason,
+} from "./http-status";
 import { jsonBody } from "./json-body";
 
 /** Insight provider activation and the analysis, walkthrough, and brief run lifecycle. */
@@ -55,8 +60,27 @@ export function registerInsightRoutes(
       return context.json({ error: "provider_unavailable" }, 503);
     return response(
       context,
-      await configuration.insightProviders.activateCodex(),
+      await configuration.insightProviders.activateAccount("codex-cli-account"),
     );
+  });
+  app.post("/v1/insight-providers/pi-cli/models", async (context) => {
+    if (configuration.insightProviders === undefined)
+      return context.json({ error: "provider_unavailable" }, 503);
+    const activated =
+      await configuration.insightProviders.activateAccount("pi-cli-account");
+    // An outdated pi is still `runtime_unavailable`; the body also names the version the dialog asks for.
+    if (
+      activated._tag === "err" &&
+      activated.error.requiredVersion !== undefined
+    )
+      return context.json(
+        {
+          error: activated.error.reason,
+          requiredVersion: activated.error.requiredVersion,
+        },
+        statusForReason(activated.error.reason),
+      );
+    return response(context, activated);
   });
   const { agentRunRequests } = container;
   app.post("/v1/reviews/insights/analysis/run", async (context) =>

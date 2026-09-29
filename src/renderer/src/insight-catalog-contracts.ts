@@ -2,6 +2,8 @@
 
 import * as v from "valibot";
 
+import { INSIGHT_PROVIDERS } from "../../domain/insight-provider";
+
 const modelCatalogEntrySchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
@@ -37,7 +39,7 @@ export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
 }
 
 export const insightProviderModelSchema = v.strictObject({
-  provider: v.picklist(["pi", "codex-cli-account"]),
+  provider: v.picklist(INSIGHT_PROVIDERS),
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: v.pipe(
@@ -62,7 +64,7 @@ export type InsightProviderCatalogModel = v.InferOutput<
 const insightProviderCatalogSchema = v.strictObject({
   providers: v.array(
     v.strictObject({
-      id: v.picklist(["pi", "codex-cli-account"]),
+      id: v.picklist(INSIGHT_PROVIDERS),
       label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
       available: v.boolean(),
       guidance: v.pipe(

@@ -84,7 +84,7 @@ function InsightDocumentMeta({
         generatedAt: string;
         provenance?:
           | Readonly<{
-              provider: "pi" | "codex-cli-account";
+              provider: InsightProvider;
               model: string;
               language: InsightLanguage;
             }>

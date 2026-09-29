@@ -6,13 +6,15 @@ import {
   buildCodexWalkthroughPrompt,
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
   MAX_WALKTHROUGH_PROMPT_BYTES,
-  type CodexAppServerClient,
   type CodexAppServerFailure,
+  type CodexRunInput,
 } from "../adapters/codex/codex-app-server-client";
+import type { PiRpcFailure } from "../adapters/pi-cli/pi-rpc-client";
 import {
   buildCodexBriefPrompt,
   MAX_BRIEF_PROMPT_BYTES,
 } from "../adapters/codex/codex-brief-prompt";
+import type { AccountInsightProvider } from "../domain/insight-provider";
 import type { RepresentedReviewWorktree } from "../domain/represented-review-worktree";
 import type {
   InsightInvocationInput,
@@ -43,13 +45,29 @@ export type WorktreeHeadReader = (
   worktreePath: string,
 ) => Promise<string | undefined>;
 
-/** Main-process Codex Insight invoker with app-owned worktree validation. */
-export class CodexInsightInvoker implements InsightInvoker {
+/** Why an account provider's CLI run failed, in either client's vocabulary. */
+type AccountRunFailure = CodexAppServerFailure | PiRpcFailure;
+
+/**
+ * One strict Insight run on an account provider's CLI. The Codex client sends
+ * `outputSchema` on its turn; pi has no schema channel and relies on the
+ * contract the prompt carries.
+ */
+export type AccountInsightRunner = {
+  run(
+    input: CodexRunInput,
+    options: InsightInvocationOptions,
+  ): Promise<Result<unknown, AccountRunFailure>>;
+};
+
+/** Main-process invoker for an account provider (Codex or pi CLI) with app-owned worktree validation. */
+export class AccountInsightInvoker implements InsightInvoker {
   constructor(
+    private readonly provider: AccountInsightProvider,
     private readonly paths: PatchdeskPaths,
     private readonly clientFactory: (
       executablePath: string,
-    ) => CodexAppServerClient,
+    ) => AccountInsightRunner,
     private readonly executablePath: string,
     private readonly readHead: WorktreeHeadReader,
   ) {}
@@ -58,7 +76,7 @@ export class CodexInsightInvoker implements InsightInvoker {
     input: InsightInvocationInput,
     options: InsightInvocationOptions,
   ) {
-    if (input.provider !== "codex-cli-account")
+    if (input.provider !== this.provider)
       return err({ reason: "execution_failed" as const });
     const expectedPath = this.paths.worktreeDirectory(
       input.profileId,
@@ -176,7 +194,7 @@ export class CodexInsightInvoker implements InsightInvoker {
         },
         options,
       );
-      return strictCodexRunResult(result);
+      return strictRunResult(result);
     }
     const contextPath = resolvedArtifacts[0];
     const reviewInputPath = resolvedArtifacts[1];
@@ -220,14 +238,14 @@ export class CodexInsightInvoker implements InsightInvoker {
       },
       options,
     );
-    return strictCodexRunResult(result);
+    return strictRunResult(result);
   }
 }
 
 /** A Brief or Analysis result answers a strict schema, so its `null` fields mean absent. */
-function strictCodexRunResult(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the Codex client returns the turn's parsed JSON unvalidated; parseCodexStrictResult below parses it.
-  result: Result<unknown, CodexAppServerFailure>,
+function strictRunResult(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the runner returns the turn's parsed JSON unvalidated; parseCodexStrictResult below parses it.
+  result: Result<unknown, AccountRunFailure>,
 ) {
   if (result._tag === "err")
     return err({ reason: result.error.reason, phase: result.error.phase });

@@ -27,7 +27,10 @@ import {
   type RetainedInsightEnvelope,
   type WalkthroughProgress,
 } from "../../domain/insight-record";
-import { INSIGHT_LANGUAGES } from "../../domain/insight-provider";
+import {
+  INSIGHT_LANGUAGES,
+  INSIGHT_PROVIDERS,
+} from "../../domain/insight-provider";
 import { KeyedMutex } from "../../domain/keyed-mutex";
 import { err, ok, type Result } from "../../domain/result";
 import {
@@ -49,7 +52,7 @@ const reasoningSchema = v.picklist([
   "high",
   "xhigh",
 ]);
-const providerSchema = v.picklist(["pi", "codex-cli-account"]);
+const providerSchema = v.picklist(INSIGHT_PROVIDERS);
 const activeRunFields = {
   id: v.pipe(v.string(), v.minLength(1)),
   type: v.picklist(["analysis", "walkthrough", "brief"]),

@@ -161,7 +161,7 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
  * The default answers a reason no producer declares — `MergeWriteController`
  * types its failure as a bare `string`, so this cannot be a total function.
  */
-function statusForReason(reason: string): ResponseFailureStatus {
+export function statusForReason(reason: string): ResponseFailureStatus {
   return responseFailureStatus.get(reason) ?? 400;
 }
 
