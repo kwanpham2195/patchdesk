@@ -28,7 +28,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * both its Dialog and Popover popups and `role="alertdialog"` for
  * AlertDialog, so these two selectors cover all three surfaces the guard
  * names without a component-specific check. */
-function focusInsideOverlay(): boolean {
+export function focusInsideOverlay(): boolean {
   const active = document.activeElement;
   return (
     active instanceof HTMLElement &&
@@ -73,7 +73,7 @@ export type ReviewDiffNavigationStatus =
       readonly message: string;
     }
   | {
-      readonly kind: "comment";
+      readonly kind: "comment" | "finding";
       readonly state: "first" | "last" | "empty";
       readonly total: number;
       readonly message: string;
@@ -85,7 +85,13 @@ export type ReviewDiffNavigationStatus =
       readonly message: string;
     }
   | {
-      readonly kind: "file" | "hunk" | "comment" | "unviewed" | "viewed";
+      readonly kind:
+        | "file"
+        | "hunk"
+        | "comment"
+        | "finding"
+        | "unviewed"
+        | "viewed";
       readonly state: "unavailable";
       readonly message: string;
     }
@@ -106,7 +112,7 @@ export type ReviewDiffNavigationStatus =
       readonly message: string;
     }
   | {
-      readonly kind: "hunk" | "comment";
+      readonly kind: "hunk" | "comment" | "finding";
       readonly state: "target";
       readonly position: number;
       readonly total: number;
@@ -369,6 +375,14 @@ export function adjacentCommentAnchor(
   current: CommentAnchor | undefined,
   direction: ReviewNavDirection,
 ): CommentAnchor | undefined {
+  return adjacentAnchorById(order, current, direction);
+}
+
+function adjacentAnchorById<Anchor extends { readonly id: string }>(
+  order: ReadonlyArray<Anchor>,
+  current: Anchor | undefined,
+  direction: ReviewNavDirection,
+): Anchor | undefined {
   if (order.length === 0) return undefined;
   const currentIndex =
     current === undefined
@@ -505,16 +519,146 @@ export function findCommentThreadCard(
 export function focusCommentThreadCard(
   anchorId: string,
   isStale: () => boolean,
-  attempt = 0,
+): void {
+  focusNavigationCard(() => findCommentThreadCard(anchorId), isStale, 0);
+}
+
+function focusNavigationCard(
+  findCard: () => HTMLElement | undefined,
+  isStale: () => boolean,
+  attempt: number,
 ): void {
   if (isStale()) return;
-  const card = findCommentThreadCard(anchorId);
+  const card = findCard();
   if (card !== undefined) {
     card.focus();
     if (document.activeElement === card) return;
   }
   if (attempt >= MAX_COMMENT_FOCUS_ATTEMPTS) return;
   window.requestAnimationFrame(() =>
-    focusCommentThreadCard(anchorId, isStale, attempt + 1),
+    focusNavigationCard(findCard, isStale, attempt + 1),
+  );
+}
+
+/**
+ * One Analysis Finding card's `(`/`)` jump target. `id` is the Finding id
+ * the card carries in `data-review-inline-finding`.
+ */
+export type FindingAnchor = {
+  readonly id: string;
+  readonly filePath: string;
+  readonly lineNumber: number;
+  readonly side: ReviewHunkSide;
+};
+
+/** The parts of one rendered file item `buildFindingOrder` reads. */
+export type FindingOrderItem = {
+  readonly id: string;
+  readonly annotations?: ReadonlyArray<{
+    readonly lineNumber: number;
+    readonly side: ReviewHunkSide;
+    readonly metadata?:
+      | {
+          readonly id: string;
+          readonly start: number;
+          readonly analysisFinding?: true;
+        }
+      | undefined;
+  }>;
+};
+
+/**
+ * The `(`/`)` order: every Analysis Finding card in `items` (already in
+ * document file order), then by first line within each file. Comment
+ * threads, notes, and pending writes are not Findings.
+ */
+export function buildFindingOrder(
+  items: ReadonlyArray<FindingOrderItem>,
+): FindingAnchor[] {
+  return items.flatMap((item) =>
+    (item.annotations ?? [])
+      .flatMap((entry) =>
+        entry.metadata?.analysisFinding === true
+          ? [
+              {
+                start: entry.metadata.start,
+                anchor: {
+                  id: entry.metadata.id,
+                  filePath: item.id,
+                  lineNumber: entry.lineNumber,
+                  side: entry.side,
+                },
+              },
+            ]
+          : [],
+      )
+      .sort(
+        (a, b) =>
+          a.start - b.start || a.anchor.lineNumber - b.anchor.lineNumber,
+      )
+      .map((entry) => entry.anchor),
+  );
+}
+
+/** The Finding next to `current` in `order`; stops at either end, and a missing `current` sits before the first. */
+export function adjacentFindingAnchor(
+  order: ReadonlyArray<FindingAnchor>,
+  current: FindingAnchor | undefined,
+  direction: ReviewNavDirection,
+): FindingAnchor | undefined {
+  return adjacentAnchorById(order, current, direction);
+}
+
+/** Builds the structured outcome for one Finding-navigation step. */
+export function findingNavigationStatus(
+  order: ReadonlyArray<FindingAnchor>,
+  target: FindingAnchor | undefined,
+  direction: ReviewNavDirection,
+): ReviewDiffNavigationStatus {
+  if (order.length === 0)
+    return {
+      kind: "finding",
+      state: "empty",
+      total: 0,
+      message: "No Findings in this diff.",
+    };
+  if (target === undefined) {
+    const state = direction === "next" ? "last" : "first";
+    const count = order.length === 1 ? "1 Finding" : `${order.length} Findings`;
+    return {
+      kind: "finding",
+      state,
+      total: order.length,
+      message: `Already at the ${state} Finding. ${count} total.`,
+    };
+  }
+  const position = order.findIndex((anchor) => anchor.id === target.id) + 1;
+  return {
+    kind: "finding",
+    state: "target",
+    position,
+    total: order.length,
+    path: target.filePath,
+    line: target.lineNumber,
+    message: `Finding ${position} of ${order.length}: ${target.filePath} line ${target.lineNumber}.`,
+  };
+}
+
+/** Moves focus onto the Finding card for `findingId` once CodeView mounts it; see `focusCommentThreadCard`. */
+export function focusFindingCard(
+  findingId: string,
+  isStale: () => boolean,
+): void {
+  focusNavigationCard(
+    () => {
+      for (const card of document.querySelectorAll<HTMLElement>(
+        "[data-review-inline-finding]",
+      )) {
+        if (card.dataset.reviewInlineFinding === findingId) return card;
+      }
+      return undefined;
+    },
+    isStale,
+    0,
   );
 }

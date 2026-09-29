@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "../../src/renderer/src/components/app-shell";
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
+import { useRegisterReviewCommands } from "../../src/renderer/src/review-commands";
 import { definedProps } from "../../src/domain/defined-props";
 import { parseGitHubHost } from "../../src/domain/ids";
 import type { PullRequestRef } from "../../src/domain/pull-request";
@@ -485,5 +492,63 @@ describe("AppShell pull-request search", () => {
         screen.queryByRole("dialog", { name: "Navigate Patchdesk" }),
       ).toBeNull(),
     );
+  });
+});
+
+describe("AppShell Review commands", () => {
+  const runs: Array<string> = [];
+  const reviewCommands = () => [
+    {
+      id: "tab-diff",
+      label: "Diff",
+      shortcut: "⌘2",
+      run: () => runs.push("diff"),
+    },
+  ];
+  /** Stands in for the open Review workbench, which registers the same way. */
+  function OpenReview(): React.JSX.Element {
+    useRegisterReviewCommands(reviewCommands);
+    return <div>Review content</div>;
+  }
+
+  function shell(children: React.ReactNode): React.JSX.Element {
+    return (
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={async () => undefined}
+        >
+          {children}
+        </AppShell>
+      </BusyProvider>
+    );
+  }
+
+  it("lists the Review group only while a Review is open and runs its command", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(shell(<OpenReview />));
+
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+    const review = screen.getByRole("group", { name: "Review" });
+    await user.click(within(review).getByRole("option", { name: /Diff/ }));
+
+    expect(runs).toEqual(["diff"]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Navigate Patchdesk" }),
+      ).toBeNull(),
+    );
+
+    rerender(shell(<div>Inbox content</div>));
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+
+    expect(
+      screen.getByRole("dialog", { name: "Navigate Patchdesk" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Review" })).toBeNull();
   });
 });

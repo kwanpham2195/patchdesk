@@ -28,16 +28,21 @@ export type KeyboardJump = {
  * `onKeyDown` is read from a latest-committed ref rather than from the
  * effect's dependencies, so an unrelated re-render never removes the listener
  * and never cancels a jump already in flight.
+ *
+ * The returned ref holds the same runner while the listener exists, so a
+ * command outside the keyboard (the ⌘K palette) supersedes and is superseded
+ * by key presses alike.
  */
 export function useKeyboardJump(
   enabled: boolean,
   onKeyDown: (event: KeyboardEvent, jump: KeyboardJump) => void,
-): void {
+): { readonly current: KeyboardJump | undefined } {
   const latestOnKeyDown = useLatestCommitted(onKeyDown);
   const jump = useRef<{ token: number; cancel: (() => void) | undefined }>({
     token: 0,
     cancel: undefined,
   });
+  const activeRunner = useRef<KeyboardJump | undefined>(undefined);
 
   useEffect(() => {
     if (!enabled) return;
@@ -55,12 +60,15 @@ export function useKeyboardJump(
     const handleKeyDown = (event: KeyboardEvent): void => {
       latestOnKeyDown.current(event, runner);
     };
+    activeRunner.current = runner;
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       tornDown = true;
+      activeRunner.current = undefined;
       window.removeEventListener("keydown", handleKeyDown);
       jump.current.cancel?.();
       jump.current.cancel = undefined;
     };
   }, [enabled, latestOnKeyDown]);
+  return activeRunner;
 }

@@ -1,5 +1,9 @@
 import type * as React from "react";
 
+import {
+  FindingStepSlotContext,
+  type FindingStepSlot,
+} from "../review-commands";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 
@@ -10,12 +14,17 @@ import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
  * because a draft, a stale head, a failing check and a review blocker all
  * report the same Blocked status. Only `conflicting` means the pull request
  * no longer merges into its base branch.
+ *
+ * It also hands the diff inside the workbench's Finding step slot, which the
+ * ⌘K Next and Previous Finding commands call.
  */
 export function ReviewDiffPane({
   model,
+  findingStepSlot,
   children,
 }: {
   readonly model: WorkbenchResponse;
+  readonly findingStepSlot: FindingStepSlot;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const conflicting =
@@ -36,7 +45,11 @@ export function ReviewDiffPane({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="min-h-0 flex-1">{children}</div>
+      <div className="min-h-0 flex-1">
+        <FindingStepSlotContext.Provider value={findingStepSlot}>
+          {children}
+        </FindingStepSlotContext.Provider>
+      </div>
     </div>
   );
 }

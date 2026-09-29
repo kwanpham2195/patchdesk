@@ -51,6 +51,10 @@ import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { useVisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
 import { isTextEntryTarget } from "../text-entry-target";
+import {
+  ReviewCommandRegistryContext,
+  useReviewCommandRegistry,
+} from "../review-commands";
 
 type ProfileEntry = {
   readonly id: string;
@@ -109,6 +113,7 @@ export function AppShell({
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
+  const reviewCommands = useReviewCommandRegistry();
   const mainRef = useRef<HTMLElement | null>(null);
   const navigateOpenerRef = useRef<HTMLButtonElement | null>(null);
   const [visitedCollapsed, setVisitedCollapsed] = useState(
@@ -157,12 +162,7 @@ export function AppShell({
     return () => window.cancelAnimationFrame(frame);
   }, [destination]);
 
-  useEffect(() => {
-    document.documentElement.dataset.patchdeskDensity = "compact";
-    return () => {
-      delete document.documentElement.dataset.patchdeskDensity;
-    };
-  }, []);
+  useCompactDensity();
 
   return (
     <div className="compact-surface flex h-screen min-h-screen w-full flex-col bg-shell text-foreground">
@@ -329,7 +329,11 @@ export function AppShell({
           tabIndex={-1}
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-t-lg border border-b-0 bg-background"
         >
-          {children}
+          <ReviewCommandRegistryContext.Provider
+            value={reviewCommands.register}
+          >
+            {children}
+          </ReviewCommandRegistryContext.Provider>
         </main>
       </div>
       <AppCommandDialog
@@ -350,10 +354,20 @@ export function AppShell({
         {...(onInboxPresetChange === undefined ? {} : { onInboxPresetChange })}
         {...(onOpenPullRequest === undefined ? {} : { onOpenPullRequest })}
         {...definedProps({ selectedRepository })}
+        reviewCommands={reviewCommands.source}
         visitedRows={visitedRows.kind === "loaded" ? visitedRows.rows : []}
       />
     </div>
   );
+}
+
+function useCompactDensity(): void {
+  useEffect(() => {
+    document.documentElement.dataset.patchdeskDensity = "compact";
+    return () => {
+      delete document.documentElement.dataset.patchdeskDensity;
+    };
+  }, []);
 }
 
 /** Collapses or expands the Visited pull requests column. */

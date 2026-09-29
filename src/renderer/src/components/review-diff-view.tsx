@@ -68,6 +68,7 @@ import type { FileFindingCount } from "@/review-finding-counts";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigation";
+import { useReviewFindingNavigation } from "@/hooks/use-review-finding-navigation";
 import {
   reviewDiffNavigationResetIdentity,
   useReviewDiffNavigationFeedback,
@@ -106,9 +107,7 @@ const DIFF_CODE_METRICS = {
   fontFamily: "var(--font-mono)",
   "--diffs-font-family": "var(--font-mono)",
 } as CSSProperties;
-// Matches @pierre/diffs' own default (DiffHunksRenderer destructures
-// `lineDiffType = "word-alt"`). Named explicitly so the three render call
-// sites below share one value instead of three hand-copied literals.
+// @pierre/diffs' own default, named once for the three render call sites below.
 const DEFAULT_LINE_DIFF_TYPE: LineDiffTypes = "word-alt";
 
 export type SelectedDiffRange = {
@@ -148,6 +147,8 @@ export type ReviewInlineAnnotation = {
   readonly localComposer?: LocalComposerConfig;
   /** A maintainer note on a local Review, from the Review record (ADR 0051). */
   readonly localNote?: LocalNoteCardProps;
+  /** Marks an Analysis Finding card, the only annotation `(` and `)` visit. */
+  readonly analysisFinding?: true;
 };
 
 type LocalComposerConfig = React.ComponentProps<typeof InlineCommentComposer>;
@@ -367,9 +368,8 @@ function ReviewDiffSurface({
     markdownPreviewActive,
     selectionScrollPending,
   });
-  // A finding may land inside a collapsed unchanged hunk. Keep that evidence
-  // materialized while it is selected; the user's explicit option still
-  // controls whether every other unchanged hunk stays expanded.
+  // Keep a selected finding inside a collapsed unchanged hunk materialized;
+  // the user's option still controls every other unchanged hunk.
   const expandSelectedRange = selectedRange !== undefined;
 
   useEffect(() => {
@@ -399,6 +399,7 @@ function ReviewDiffSurface({
   useReviewFileNavigation({ ...navigationInputs, resolveActiveFilePathAt });
   useReviewHunkNavigation({ ...navigationInputs, resolveActiveFilePathAt });
   useReviewCommentNavigation(navigationInputs);
+  useReviewFindingNavigation(navigationInputs);
   useReviewSelectedModeNavigationHint(navigationInputs);
 
   return (
@@ -901,11 +902,8 @@ function NonVirtualizedReviewDiff({
     lineHoverHighlight: "both" as const,
     enableGutterUtility: localCommentAuthoring?.enabled === true,
   };
-  // `disableWorkerPool` on both renderers below predates the review diff's own
-  // (removed) opt-out and stays: these are the walkthrough, brief and analysis
-  // evidence surfaces, which render outside `DiffWorkbench` and so have no
-  // pool above them anyway. Highlighting on the main thread is what a filtered
-  // hunk of a few dozen lines wants.
+  // `disableWorkerPool` stays: these evidence surfaces render outside
+  // `DiffWorkbench`, with no pool above them, and show small filtered hunks.
   return selectedFile === undefined ? (
     <PatchDiff
       patch={selectedPatch}

@@ -32,6 +32,14 @@ export function useInsightSelection(
   );
   const [selectedInsight, setSelectedInsight] =
     useState<InsightRunDialogType>(initialInsight);
+  // A ⌘K reader command changes the remembered reader while this one shows;
+  // the reader's own choices come back here equal to the selection.
+  const lastInsight = findingNavigation?.lastInsight;
+  const [adoptedLastInsight, setAdoptedLastInsight] = useState(lastInsight);
+  if (lastInsight !== adoptedLastInsight) {
+    setAdoptedLastInsight(lastInsight);
+    if (lastInsight !== undefined) setSelectedInsight(lastInsight);
+  }
   const rememberInsight = findingNavigation?.rememberInsight;
   useEffect(() => {
     rememberInsight?.(selectedInsight);

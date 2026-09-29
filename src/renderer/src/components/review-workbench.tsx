@@ -41,7 +41,6 @@ import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
 } from "./review-workbench-finding-navigation";
-import type { InsightRunDialogType } from "./insight-run-dialog";
 import {
   countFindingsByPath,
   type FileFindingCount,
@@ -64,8 +63,10 @@ import {
   createHeadSideCommentAuthoring,
   directConversationActionProps,
   pullRequestExternalRef,
+  visibleFinishReview,
 } from "./review-workbench-pull-request";
 import { useCommitDiff } from "../hooks/use-commit-diff";
+import { useReviewWorkbenchCommands } from "../hooks/use-review-workbench-commands";
 import { useSinceReviewMode } from "../hooks/use-since-review-mode";
 import { useInsightDiffNavigation } from "../hooks/use-insight-diff-navigation";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
@@ -392,21 +393,14 @@ export function ReviewWorkbench({
     applyScopeBucket,
     clearScopeBucket,
   });
-  // The Insights slot unmounts while the Diff tab shows, so its reader choice lives here, keyed by session.
-  const [rememberedInsight, setRememberedInsight] = useState<
-    | { readonly sessionId: string; readonly insight: InsightRunDialogType }
-    | undefined
-  >(undefined);
-  const sessionId = model.session.id;
-  const rememberInsight = useCallback(
-    (insight: InsightRunDialogType): void =>
-      setRememberedInsight({ sessionId, insight }),
-    [sessionId],
-  );
-  const lastInsight =
-    rememberedInsight?.sessionId === sessionId
-      ? rememberedInsight.insight
-      : undefined;
+  const { lastInsight, rememberInsight, selectTab, findingStepSlot } =
+    useReviewWorkbenchCommands({
+      sessionId: model.session.id,
+      hasConversation: model.session.key.source.kind === "pull_request",
+      section,
+      commitWorkbenchPosition,
+      openFinishReview: visibleFinishReview(model, actions, terminal),
+    });
   const findingNavigation = useMemo(
     () => ({
       openFindingInDiff,
@@ -642,17 +636,9 @@ export function ReviewWorkbench({
       >
         <Tabs
           value={activeTab}
-          onValueChange={(value) => {
-            // SAFETY: every TabsTrigger below is keyed by a WorkbenchActiveTab
-            // literal, so Base UI's reported value can only ever be one of those.
-            const nextTab = value as WorkbenchActiveTab;
-            // Insights always opens on files; the other tabs keep the section.
-            commitWorkbenchPosition(
-              nextTab === "insights"
-                ? { activeTab: nextTab, section: "files" }
-                : { activeTab: nextTab, section },
-            );
-          }}
+          // SAFETY: every TabsTrigger below is keyed by a WorkbenchActiveTab
+          // literal, so Base UI's reported value can only ever be one of those.
+          onValueChange={(value) => selectTab(value as WorkbenchActiveTab)}
         >
           <TabsList variant="ghost">
             {model.session.key.source.kind === "pull_request" ? (
@@ -770,7 +756,7 @@ export function ReviewWorkbench({
                     onResizeEnd={handleNavigatorResizeEnd}
                   />
                 ) : null}
-                <ReviewDiffPane model={model}>
+                <ReviewDiffPane model={model} findingStepSlot={findingStepSlot}>
                   {selectedCommitSha !== undefined &&
                   commitDiffState._tag === "Loading" ? (
                     <p
