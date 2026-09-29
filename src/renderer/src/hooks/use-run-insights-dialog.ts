@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { definedProps } from "../../../domain/defined-props";
 import type {
+  AccountInsightProvider,
   InsightLanguage,
   InsightProvider,
   InsightReasoning,
@@ -53,7 +54,7 @@ export type RunInsightsDialogController = {
     type: InsightRunType,
     language: InsightLanguage,
   ) => void;
-  readonly loadCodexModels: () => void;
+  readonly loadAccountModels: (provider: AccountInsightProvider) => void;
   /** True while any row's start request is unanswered. */
   readonly starting: boolean;
   readonly start: () => void;
@@ -70,8 +71,8 @@ export function useRunInsightsDialog({
   runs,
   statuses,
   agentRunRequests,
-  loadCodexModels,
-  cancelCodexActivation,
+  loadAccountModels,
+  cancelAccountModels,
   rememberRunPreference,
   onWorkbenchPatch,
 }: {
@@ -82,10 +83,11 @@ export function useRunInsightsDialog({
   readonly runs: Readonly<Record<InsightRunType, InsightRunController>>;
   readonly statuses: Readonly<Record<InsightRunType, InsightStatus>>;
   readonly agentRunRequests: WorkbenchResponse["agentRunRequests"];
-  readonly loadCodexModels: (
+  readonly loadAccountModels: (
+    provider: AccountInsightProvider,
     onLoaded: (nextCatalog: InsightProviderCatalog) => void,
   ) => void;
-  readonly cancelCodexActivation: () => void;
+  readonly cancelAccountModels: () => void;
   readonly rememberRunPreference: (
     type: InsightRunType,
     preference: InsightRunPreference,
@@ -121,7 +123,7 @@ export function useRunInsightsDialog({
     });
   };
   const close = (): void => {
-    cancelCodexActivation();
+    cancelAccountModels();
     setOptions(undefined);
   };
   const rows =
@@ -203,16 +205,16 @@ export function useRunInsightsDialog({
     },
     changeReasoning: (type, reasoning) => updateRow(type, { reasoning }),
     changeLanguage: (type, language) => updateRow(type, { language }),
-    loadCodexModels: () =>
-      loadCodexModels((nextCatalog) =>
+    loadAccountModels: (provider) =>
+      loadAccountModels(provider, (nextCatalog) =>
         setOptions((current) => {
           if (current === undefined) return current;
           const reseed = (type: InsightRunType): RunInsightsRowOptions =>
-            current[type].provider === "codex-cli-account"
+            current[type].provider === provider
               ? {
                   ...current[type],
                   ...insightRunOptionsForProvider(
-                    "codex-cli-account",
+                    provider,
                     preferencesRef.current[type],
                     nextCatalog,
                   ),

@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { loadAppearancePreference } from "../../src/renderer/src/appearance-preferences";
 import {
-  loadCodexModelCache,
-  saveCodexModelCache,
-} from "../../src/renderer/src/codex-model-cache";
+  loadAccountModelCache,
+  saveAccountModelCache,
+} from "../../src/renderer/src/account-model-cache";
 import { loadDiffThemePreferences } from "../../src/renderer/src/diff-theme-preferences";
 import {
   loadInboxViewPreferences,
@@ -74,8 +74,8 @@ const preferences = [
     key: "patchdesk.codex-models.v1.profile",
     rejected: JSON.stringify({ models: [] }),
     accepted: JSON.stringify([]),
-    load: () => loadCodexModelCache("profile"),
-    save: () => saveCodexModelCache("profile", []),
+    load: () => loadAccountModelCache("codex-cli-account", "profile"),
+    save: () => saveAccountModelCache("codex-cli-account", "profile", []),
     fallback: undefined,
     acceptedValue: [],
   },

@@ -21,6 +21,7 @@ import {
 const WORKBENCH_PATHS = [
   "/v1/insight-providers",
   "/v1/insight-providers/codex/models",
+  "/v1/insight-providers/pi-cli/models",
   "/v1/reviews/load",
   "/v1/reviews/refresh",
   "/v1/reviews/refresh/status",

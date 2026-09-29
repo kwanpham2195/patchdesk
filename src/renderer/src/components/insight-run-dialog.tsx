@@ -1,11 +1,14 @@
-import type {
-  InsightLanguage,
-  InsightProvider,
-  InsightReasoning,
+import {
+  isAccountInsightProvider,
+  type AccountInsightProvider,
+  type InsightLanguage,
+  type InsightProvider,
+  type InsightReasoning,
 } from "../../../domain/insight-provider";
+import type { AccountModelsFailure } from "../hooks/use-insight-configuration";
 
 import {
-  CodexModelsControl,
+  AccountModelsControl,
   InsightLanguageSelect,
   InsightProviderSelect,
   InsightReasoningSelect,
@@ -44,15 +47,14 @@ export function InsightRunDialog({
   model,
   reasoning,
   language,
-  codexActivationPending,
-  codexActivationError,
+  accountModelsPending,
+  accountModelsFailure,
   pending,
   errorMessage,
   runsOnCombined = false,
   onOpenChange,
   onProviderChange,
-  onActivateCodex,
-  onRefreshCodexModels,
+  onLoadAccountModels,
   onModelChange,
   onReasoningChange,
   onLanguageChange,
@@ -66,16 +68,16 @@ export function InsightRunDialog({
   readonly model: string | null;
   readonly reasoning: InsightReasoning;
   readonly language: InsightLanguage;
-  readonly codexActivationPending: boolean;
-  readonly codexActivationError: boolean;
+  readonly accountModelsPending: AccountInsightProvider | null;
+  readonly accountModelsFailure: AccountModelsFailure | null;
   readonly pending: boolean;
   readonly errorMessage?: string;
   /** A shared local Review: the run reads its Combined patch whichever view the diff shows. */
   readonly runsOnCombined?: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onProviderChange: (provider: InsightProvider) => void;
-  readonly onActivateCodex: () => void;
-  readonly onRefreshCodexModels: () => void;
+  /** Loads, or refreshes, the chosen account provider's models. */
+  readonly onLoadAccountModels: (provider: AccountInsightProvider) => void;
   readonly onModelChange: (model: string | null) => void;
   readonly onReasoningChange: (reasoning: InsightReasoning) => void;
   readonly onLanguageChange: (language: InsightLanguage) => void;
@@ -126,15 +128,14 @@ export function InsightRunDialog({
               onValueChange={onProviderChange}
             />
           </label>
-          {provider === "codex-cli-account" ? (
-            <CodexModelsControl
+          {isAccountInsightProvider(provider) ? (
+            <AccountModelsControl
+              provider={provider}
               loaded={models.length > 0}
-              loading={codexActivationPending}
-              failed={codexActivationError}
+              pending={accountModelsPending}
+              failure={accountModelsFailure}
               disabled={pending}
-              onLoad={
-                models.length > 0 ? onRefreshCodexModels : onActivateCodex
-              }
+              onLoad={() => onLoadAccountModels(provider)}
             />
           ) : null}
           <label
@@ -195,7 +196,7 @@ export function InsightRunDialog({
             disabled={
               pending ||
               model === null ||
-              (provider === "codex-cli-account" && models.length === 0)
+              (isAccountInsightProvider(provider) && models.length === 0)
             }
             onClick={onConfirm}
           >

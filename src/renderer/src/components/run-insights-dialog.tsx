@@ -6,13 +6,18 @@ import {
 import type { InsightRunType } from "../hooks/use-insight-run";
 import { INSIGHT_NOUNS } from "./insight-run-dialog";
 import {
-  CodexModelsControl,
+  AccountModelsControl,
   InsightLanguageSelect,
   InsightProviderSelect,
   InsightReasoningSelect,
   ModelListPrice,
 } from "./insight-run-option-controls";
 import { modelReasoningOptions } from "../insight-run-options";
+import {
+  isAccountInsightProvider,
+  type AccountInsightProvider,
+} from "../../../domain/insight-provider";
+import type { AccountModelsFailure } from "../hooks/use-insight-configuration";
 import { ModelCombobox } from "./model-combobox";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -33,14 +38,14 @@ const FIELD_LABEL_CLASS =
 /** Starts any of Brief, Walkthrough, and Analysis together, each with its own options. */
 export function RunInsightsDialog({
   controller,
-  codexActivationPending,
-  codexActivationError,
+  accountModelsPending,
+  accountModelsFailure,
   startFailureMessages,
   runsOnCombined,
 }: {
   readonly controller: RunInsightsDialogController;
-  readonly codexActivationPending: boolean;
-  readonly codexActivationError: boolean;
+  readonly accountModelsPending: AccountInsightProvider | null;
+  readonly accountModelsFailure: AccountModelsFailure | null;
   /** A refused start's message for each type; it shows on that type's row. */
   readonly startFailureMessages: Readonly<
     Record<InsightRunType, string | undefined>
@@ -81,8 +86,8 @@ export function RunInsightsDialog({
               row={rows[type]}
               disabled={starting}
               controller={controller}
-              codexActivationPending={codexActivationPending}
-              codexActivationError={codexActivationError}
+              accountModelsPending={accountModelsPending}
+              accountModelsFailure={accountModelsFailure}
               {...(rows[type].running
                 ? {}
                 : { startFailureMessage: startFailureMessages[type] })}
@@ -121,19 +126,20 @@ function RunInsightsRowFields({
   row,
   disabled,
   controller,
-  codexActivationPending,
-  codexActivationError,
+  accountModelsPending,
+  accountModelsFailure,
   startFailureMessage,
 }: {
   readonly type: InsightRunType;
   readonly row: RunInsightsRow;
   readonly disabled: boolean;
   readonly controller: RunInsightsDialogController;
-  readonly codexActivationPending: boolean;
-  readonly codexActivationError: boolean;
+  readonly accountModelsPending: AccountInsightProvider | null;
+  readonly accountModelsFailure: AccountModelsFailure | null;
   readonly startFailureMessage?: string | undefined;
 }): React.JSX.Element {
   const noun = INSIGHT_NOUNS[type];
+  const { provider } = row;
   const id = `run-insights-${type}`;
   const fieldsDisabled = disabled || row.running;
   return (
@@ -207,13 +213,14 @@ function RunInsightsRowFields({
           />
         </label>
       </div>
-      {row.provider === "codex-cli-account" && !row.running ? (
-        <CodexModelsControl
+      {isAccountInsightProvider(provider) && !row.running ? (
+        <AccountModelsControl
+          provider={provider}
           loaded={row.models.length > 0}
-          loading={codexActivationPending}
-          failed={codexActivationError}
+          pending={accountModelsPending}
+          failure={accountModelsFailure}
           disabled={disabled}
-          onLoad={controller.loadCodexModels}
+          onLoad={() => controller.loadAccountModels(provider)}
         />
       ) : null}
       {row.running ? null : (

@@ -484,7 +484,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   });
 
   it("selects the saved preference's Codex model after activation, not the first one", async () => {
-    // Regression for a bug where `activateCodex` always picked
+    // Regression for a bug where `activateAccount` always picked
     // `codexModels[0]` and ignored a saved preference, unlike
     // `changeProvider`'s precedence for the Pi provider above.
     localStorage.setItem(
