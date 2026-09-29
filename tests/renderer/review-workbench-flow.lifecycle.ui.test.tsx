@@ -129,8 +129,35 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
-  it("applies confirmed Finding dismissal without an advisory Review load", async () => {
-    const request = bridge(async (input) => {
+  it("applies a confirmed Finding dismissal from the reloaded Review", async () => {
+    const opened = withAnalysis("actionable");
+    const retained = opened.insights.analysis.retained;
+    if (retained === undefined) throw new Error("fixture");
+    const reloaded: WorkbenchResponse = {
+      ...opened,
+      insights: {
+        ...opened.insights,
+        analysis: {
+          ...opened.insights.analysis,
+          retained: {
+            ...retained,
+            value: {
+              ...retained.value,
+              findings: retained.value.findings.map((finding) => ({
+                ...finding,
+                disposition: "dismissed" as const,
+                dismissalReason: "Not applicable",
+              })),
+            },
+          },
+        },
+      },
+      analysisReviewActions: {
+        findings: {},
+        canFinishWithAnalysisSummary: false,
+      },
+    };
+    bridge(async (input) => {
       if (input.path === "/v1/reviews/detect-updates")
         return { updatesAvailable: false };
       if (input.path === "/v1/insight-providers") return providerCatalog;
@@ -139,9 +166,10 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
         "/v1/reviews/insights/analysis/findings/finding-1/dismiss"
       )
         return { findingId: "finding-1", status: "dismissed" };
+      if (input.path === "/v1/reviews/load") return reloaded;
       throw new Error(input.path);
     });
-    const { patch } = mount(withAnalysis("actionable"));
+    const { patch } = mount(opened);
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
@@ -153,25 +181,24 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "Confirm dismissal" }));
 
     await waitFor(() =>
-      expect(patch).toHaveBeenCalledWith({
-        insights: {
-          analysis: expect.objectContaining({
-            retained: expect.objectContaining({
-              value: expect.objectContaining({
-                findings: [
-                  expect.objectContaining({ disposition: "dismissed" }),
-                ],
+      expect(patch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mergeReadiness: reloaded.mergeReadiness,
+          analysisReviewActions: reloaded.analysisReviewActions,
+          insights: {
+            analysis: expect.objectContaining({
+              retained: expect.objectContaining({
+                value: expect.objectContaining({
+                  findings: [
+                    expect.objectContaining({ disposition: "dismissed" }),
+                  ],
+                }),
               }),
             }),
-          }),
-        },
-      }),
-    );
-    expect(
-      request.mock.calls.some(
-        ([input]) => callPath(input) === "/v1/reviews/load",
+          },
+        }),
       ),
-    ).toBe(false);
+    );
   });
 
   it("wires published-review dismissal through the mounted workbench", async () => {

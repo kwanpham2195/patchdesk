@@ -11,7 +11,12 @@ import {
   success,
   type DesktopDouble,
 } from "./fake-desktop-response";
-import { projection, providerCatalog } from "./review-workbench-fixtures";
+import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
+import {
+  projection,
+  providerCatalog,
+  withAnalysis,
+} from "./review-workbench-fixtures";
 
 let desktop: DesktopDouble | undefined;
 
@@ -124,5 +129,67 @@ describe("useInsightRunControls start refusal", () => {
 
     expect(result.current.configuration.runDialogType).toBe("analysis");
     expect(result.current.analysisRun.requestFailure).toBeUndefined();
+  });
+});
+
+describe("useInsightRunControls Finding restore", () => {
+  it("takes merge readiness and Finding actions from the reloaded Review after a Restore", async () => {
+    const opened = withAnalysis("actionable");
+    const retained = opened.insights.analysis.retained;
+    const finding = retained?.value.findings[0];
+    if (retained === undefined || finding === undefined)
+      throw new Error("expected a retained Analysis Finding");
+    const dismissed = { ...finding, disposition: "dismissed" as const };
+    const workbench: WorkbenchResponse = {
+      ...opened,
+      insights: {
+        ...opened.insights,
+        analysis: {
+          ...opened.insights.analysis,
+          retained: {
+            ...retained,
+            value: { ...retained.value, findings: [dismissed] },
+          },
+        },
+      },
+    };
+    const blocked: WorkbenchResponse["mergeReadiness"] = {
+      _tag: "Blocked",
+      blockers: ["analysis_finding"],
+      warnings: [],
+    };
+    const reloaded: WorkbenchResponse = { ...opened, mergeReadiness: blocked };
+    desktop = installDesktopDouble({
+      // SAFETY: the provider catalog fixture is JSON-compatible data.
+      "/v1/insight-providers": () =>
+        success(structuredClone(providerCatalog) as RawJsonValue),
+      [`/v1/reviews/insights/analysis/findings/${finding.id}/restore`]: () =>
+        success({ findingId: finding.id, status: "open" }),
+      // SAFETY: the projection fixture is plain JSON data; the bridge carries it as the raw body the renderer parses.
+      "/v1/reviews/load": () => success(reloaded as RawJsonValue),
+    });
+    const patches: ReviewWorkbenchPatch[] = [];
+    const { result } = renderHook(() =>
+      useInsightRunControls({
+        workbench,
+        profileId: "profile",
+        reviewId: "review-42",
+        initialInsight: "analysis",
+        selectedInsight: "analysis",
+        onWorkbenchReplace: () => undefined,
+        onWorkbenchPatch: (patch) => patches.push(patch),
+      }),
+    );
+
+    await act(() => result.current.restoreFinding(dismissed));
+
+    const patch = patches.at(-1);
+    expect(patch?.mergeReadiness).toEqual(blocked);
+    expect(patch?.analysisReviewActions?.findings[finding.id]).toEqual({
+      state: "actionable",
+    });
+    expect(
+      patch?.insights?.analysis?.retained?.value.findings[0]?.disposition,
+    ).not.toBe("dismissed");
   });
 });

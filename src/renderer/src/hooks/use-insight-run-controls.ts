@@ -141,6 +141,26 @@ export function useInsightRunControls({
   });
   const { catalog, provider, model, reasoning, language, catalogError } =
     configuration;
+  /**
+   * A disposition change also moves the Finding's review status and merge
+   * readiness, which only the server projects, so both commands take the
+   * reloaded Review's Analysis, Finding actions, and merge readiness.
+   */
+  const reloadFindingDispositions = async (): Promise<void> => {
+    const loaded = parseWorkbenchResponse(
+      await requestJson("/v1/reviews/load", {
+        method: "POST",
+        body: { profileId, reviewId },
+      }),
+    );
+    if (loaded === undefined)
+      throw untrustedWriteResponseError("invalid-review-load-response");
+    onWorkbenchPatch({
+      insights: { analysis: loaded.insights.analysis },
+      mergeReadiness: loaded.mergeReadiness,
+      ...definedProps({ analysisReviewActions: loaded.analysisReviewActions }),
+    });
+  };
   const dismissFinding = async (
     finding: AnalysisFinding,
     reason: string,
@@ -160,32 +180,7 @@ export function useInsightRunControls({
     const parsed = v.safeParse(dismissedFindingResponseSchema, value);
     if (!parsed.success || parsed.output.findingId !== finding.id)
       throw untrustedWriteResponseError("invalid-dismissed-finding-response");
-    const analysis = workbench.insights.analysis;
-    const retained = analysis.retained;
-    if (retained === undefined) {
-      appLog.error("finding-action", "Analysis run is unavailable", {
-        findingId: finding.id,
-      });
-      throw new Error("Analysis run is unavailable");
-    }
-    onInsightPatch("analysis", {
-      ...analysis,
-      retained: {
-        ...retained,
-        value: {
-          ...retained.value,
-          findings: retained.value.findings.map((candidate) =>
-            candidate.id === finding.id
-              ? {
-                  ...candidate,
-                  disposition: "dismissed" as const,
-                  dismissalReason: reason,
-                }
-              : candidate,
-          ),
-        },
-      },
-    });
+    await reloadFindingDispositions();
   };
   const restoreFinding = async (finding: AnalysisFinding): Promise<void> => {
     const runId = workbench.insights.analysis.retained?.runId;
@@ -203,20 +198,7 @@ export function useInsightRunControls({
     const parsed = v.safeParse(restoredFindingResponseSchema, value);
     if (!parsed.success || parsed.output.findingId !== finding.id)
       throw untrustedWriteResponseError("invalid-restored-finding-response");
-    // A dismissed Finding has no review status, so Add to review returns only with the server's projection.
-    const loaded = parseWorkbenchResponse(
-      await requestJson("/v1/reviews/load", {
-        method: "POST",
-        body: { profileId, reviewId },
-      }),
-    );
-    if (loaded === undefined)
-      throw untrustedWriteResponseError("invalid-review-load-response");
-    onInsightPatch(
-      "analysis",
-      loaded.insights.analysis,
-      definedProps({ analysisReviewActions: loaded.analysisReviewActions }),
-    );
+    await reloadFindingDispositions();
   };
   const runs = {
     analysis: analysisRun,
