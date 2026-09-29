@@ -269,6 +269,17 @@ function AppContent({
   const { profileSwitchState, switchProfile } = useProfileSwitch(
     applyLatestProfileSwitch,
   );
+  // A workspace switch or Clear local review data waits here behind the leave-confirmation (#635).
+  const [parkedLeave, setParkedLeave] = useState<{
+    readonly settle: (leave: boolean) => void;
+  }>();
+  const confirmLeaveReview = useCallback(
+    (): Promise<boolean> =>
+      navigationState === "clear"
+        ? Promise.resolve(true)
+        : new Promise((settle) => setParkedLeave({ settle })),
+    [navigationState],
+  );
   const [visitedReloadKey, setVisitedReloadKey] = useState(0);
   // The sidebar's "agent" marker follows the open Review's requests and runs, so a change reads the column again.
   const agentMarker =
@@ -399,7 +410,9 @@ function AppContent({
               }
             : {})}
           onProfileSwitch={(id) => {
-            void switchProfile(id, "header");
+            void confirmLeaveReview().then((leave) => {
+              if (leave) void switchProfile(id, "header");
+            });
           }}
         >
           {content}
@@ -429,7 +442,12 @@ function AppContent({
         profiles={profiles}
         onWorkspaceReload={loadWorkspace}
         profileSwitchState={profileSwitchState}
-        onProfileSwitch={(id) => switchProfile(id, "settings")}
+        onProfileSwitch={async (id) =>
+          (await confirmLeaveReview())
+            ? switchProfile(id, "settings")
+            : "obsolete"
+        }
+        confirmLeaveReview={confirmLeaveReview}
         onCleanupSuccess={(action) => {
           if (action === "local") performNavigation({ kind: "dashboard" });
         }}
@@ -448,13 +466,16 @@ function AppContent({
         open={
           pendingDestination !== undefined ||
           parkedLocalOpen !== undefined ||
-          parkedPullRequest !== undefined
+          parkedPullRequest !== undefined ||
+          parkedLeave !== undefined
         }
         onOpenChange={(open) => {
           if (open || navigationState === "write_pending") return;
           setPendingDestination(undefined);
           setParkedLocalOpen(undefined);
           setParkedPullRequest(undefined);
+          parkedLeave?.settle(false);
+          setParkedLeave(undefined);
         }}
       >
         <AlertDialogContent>
@@ -480,7 +501,11 @@ function AppContent({
               <AlertDialogAction
                 variant="destructive"
                 onClick={() => {
-                  if (parkedLocalOpen !== undefined) {
+                  if (parkedLeave !== undefined) {
+                    // Leaving before the switch or cleanup runs, so one that fails cannot leave the draft on screen unguarded.
+                    performNavigation({ kind: "dashboard" });
+                    parkedLeave.settle(true);
+                  } else if (parkedLocalOpen !== undefined) {
                     // Leaving first unmounts the draft this confirmation discards.
                     performNavigation({ kind: "dashboard" });
                     void openLocalRow(parkedLocalOpen, () => undefined);
@@ -494,6 +519,7 @@ function AppContent({
                   setPendingDestination(undefined);
                   setParkedLocalOpen(undefined);
                   setParkedPullRequest(undefined);
+                  setParkedLeave(undefined);
                 }}
               >
                 Discard changes and leave

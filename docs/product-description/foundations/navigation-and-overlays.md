@@ -59,7 +59,7 @@ While Review preparation or route code is loading, Patchdesk shows a loading sta
 
 Workbench position updates save the active tab, navigator section, and selected path under the Review ID. Selected paths are limited to 2,000 characters. Settings section changes write a session-only restore marker while the overlay remains open.
 
-When the renderer reports anything other than a clear navigation state, Patchdesk parks the requested destination behind the leave dialog. A pending GitHub write offers only Wait for completion. An unsaved local Review draft, such as a kept [Finish review summary](../review-workbench/pending-review-and-finish.md#leave-unchanged), offers Stay on this review or Discard changes and leave. Settings never parks a destination: its sections save their own values as they are changed.
+When the renderer reports anything other than a clear navigation state, Patchdesk parks the requested destination behind the leave dialog. A pending GitHub write offers only Wait for completion. An unsaved local Review draft, such as a kept [Finish review summary](../review-workbench/pending-review-and-finish.md#leave-unchanged), offers Stay on this review or Discard changes and leave. Settings parks no section change, since its sections save their own values as they are changed. Two Settings actions leave the Review and wait behind the same dialog: choosing another workspace in Settings → Workspace, and confirming Clear local review data in Settings → Data & recovery. Stay leaves Settings open over the Review with the workspace and local data unchanged; Discard changes and leave returns to Pull requests first and then switches or clears.
 
 ### Settle
 
@@ -123,7 +123,7 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 - A second app launch focuses or recreates the existing Patchdesk window rather than opening a second working instance.
 - Closing the only window on macOS does not necessarily quit the app; activating the app can recreate or focus the workbench window.
 - Only the Review workbench reports navigation state: a pending GitHub write, an unsaved draft while a closed Finish review keeps its Summary, or clear. The draft state ends when the Summary is sent or discarded, or when the Review closes.
-- Switching workspace from the titlebar is not held by the leave dialog. With a kept Finish review Summary, it drops the Summary without asking.
+- Switching workspace from the titlebar or Settings, and Clear local review data, ask before dropping a kept Finish review Summary. A pending GitHub write holds them behind Wait for completion, like any other leave.
 - The Navigate palette closes before it dispatches a destination or Pull requests action.
 - A pull-request palette action is available from both Pull requests and a Review workbench. An unwatched repository returns to Pull requests and shows the existing refusal without sending an opening request.
 - A workbench-to-workbench change never shows the previous Review's content while the next one loads, and a failed load does not leave it on screen.
