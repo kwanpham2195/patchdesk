@@ -99,12 +99,16 @@ An optional model execution that adds findings to a review session.
 _Avoid_: Review run, model review
 
 **Insight provider**:
-A selectable source for Analysis runs and Walkthroughs. Initially, the choices are the API key provider — the `pi` id internally — and the Codex CLI account provider.
+A selectable source for Brief, Walkthrough, and Analysis runs. The choices are the API key provider — the `pi` id internally — the Codex CLI account provider, and the pi CLI account provider.
 _Avoid_: Model, login
 
 **Codex CLI account provider**:
 An Insight provider that uses the maintainer's existing local Codex CLI account without Patchdesk reading or persisting its credentials. It may use verified sandboxed read-only inspection tools only against the immutable represented-review worktree.
 _Avoid_: ChatGPT login, OAuth provider, Codex API key
+
+**pi CLI account provider**:
+An Insight provider that runs the maintainer's installed `pi` coding agent in RPC mode with any login made in `pi`, without Patchdesk reading or persisting its credentials. It uses only pi's read-only built-in tools, with extensions and project trust off, in the immutable represented-review worktree. Internally `pi-cli-account`.
+_Avoid_: pi login provider, API key provider (that is `pi`), Claude subscription
 
 **Analysis result**:
 The latest successful Review body and Findings produced by an analysis run. It remains bound to the pull request revision that was analyzed.

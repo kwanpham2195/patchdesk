@@ -35,6 +35,7 @@ flowchart TB
         GitHub["GitHub<br/>REST and GraphQL over HTTPS"]
         Insight["Pi agent one-shot child<br/>one per Insight run"]
         Codex["Local Codex CLI account<br/>app server"]
+        PiCli["Local pi CLI account<br/>RPC mode"]
         Files["Local files<br/>JSON stores, worktree, logs"]
     end
     UI -- "IPC through preload" --> Bridge
@@ -46,6 +47,7 @@ flowchart TB
     Adapters --> Files
     Services -- "bounded stdin, strict result" --> Insight
     Services --> Codex
+    Services --> PiCli
 ```
 
 Patchdesk is a local-first workbench for pull-request review.
@@ -164,9 +166,9 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-operation-coordinator.ts` serializes every mutation or reconciliation for one Review.
 - `review-lifecycle-gate.ts` serializes durable lifecycle mutations per workspace profile.
 - `review-write-gate.ts` holds the write preconditions: `requireFresh` for review-content writes — comment, publish, merge — and `requireCurrentSession` for pull-request metadata writes. Label, assignee, reviewer, base-branch, and draft-state writes need only a current, non-stale, non-terminal session (ADR 0025). `requireFreshLocal` is the local branch of freshness (ADR 0050): it recomputes the source from the checkout immediately before the write and records `RevisionChanged` when the head/base pair moved.
-- `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results. It delegates the parts it owns: `insight-run-executor.ts` runs one invocation to its terminal state under the Review lock, `insight-recovery.ts` fails the runs a crash left marked active, `insight-result-validation.ts` validates the result a child submitted, and `insight-provider-catalog.ts` owns provider status, explicit Codex model discovery, and the provider, model, and effort revalidation immediately before a run.
+- `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results. It delegates the parts it owns: `insight-run-executor.ts` runs one invocation to its terminal state under the Review lock, `insight-recovery.ts` fails the runs a crash left marked active, `insight-result-validation.ts` validates the result a child submitted, and `insight-provider-catalog.ts` owns provider status, explicit Codex and pi CLI model discovery, and the provider, model, and effort revalidation immediately before a run.
 - `insight-activity-buffer.ts` keeps one running Insight's bounded activity trace in memory — the phase, the last reasoning line, at most 200 command rows, and the approval counts — which the run poll answers from and nothing ever persists (ADR 0043).
-- `pi-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
+- `pi-insight-child-invoker.ts` and `account-insight-invoker.ts` start model children; the account invoker serves both the Codex and pi CLI account providers.
 - `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` per symbol name — over the proposed names and over the removed symbols it derives from the patch — in a represented-review worktree it first confirms with `git rev-parse HEAD`, so no model gains a search capability (ADR 0036).
 - `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows. `merge-service.ts` performs the merge itself behind the merge controller, and `review-write-recovery-service.ts` reconciles a write whose outcome Patchdesk could not confirm, through complete GitHub reads only.
 - `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `base-branch-service.ts`, and `draft-state-service.ts` implement the conversation rail's pull-request metadata writes (ADR 0029). The shared plumbing is `pull-request-metadata-write.ts`: `resolvePullRequestWritePermission` reads the account's repository permission, and `runGuardedMetadataWrite` runs all five through the same admission, durable intent, mutation, and confirmation sequence.
@@ -203,9 +205,10 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 - `storage/patchdesk-paths.ts` builds every app-owned path without doing I/O.
 - `process/executable-discovery.ts` finds executable files on PATH and macOS desktop paths as process I/O.
 - `process/login-shell-environment.ts` runs the maintainer's login shell once at startup and imports two things from it: PATH, and the Pi provider credential names (ADR "Import provider credentials and PATH from the login shell"). It never overwrites a variable this process already has, and a failure or timeout imports nothing. This is the only place the main process's own environment is written.
-- `process/login-shell-import.ts` holds that import as the launch's single awaited barrier. `startLoginShellEnvironmentImport` runs it exactly once, and `whenLoginShellEnvironmentImported` is what every reader — a child spawn, the Pi child invoker, the provider catalog, Codex discovery — waits on instead of starting a second import.
+- `process/login-shell-import.ts` holds that import as the launch's single awaited barrier. `startLoginShellEnvironmentImport` runs it exactly once, and `whenLoginShellEnvironmentImported` is what every reader — a child spawn, the Pi child invoker, the provider catalog, Codex and pi discovery — waits on instead of starting a second import.
 - `pi/` holds the model catalogs — the generated catalog and the runtime catalog the main process consults — and `pi-provider-catalog.ts`, which reports each built-in provider's credential name and whether this launch has it. The catalog waits on the login-shell import above before it answers, because that import is where the credential names come from.
 - `codex/` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials. `codex-app-server-client.ts` is the app-server connection, accepts command requests whose working directory resolves inside the represented-review worktree, and declines network, stdin-write, file-change, permission, and outside-worktree requests. `codex-brief-prompt.ts` composes the Brief turn, and `codex-activity.ts` maps the account's notifications to the bounded activity events the run poll projects (ADR 0043).
+- `pi-cli/` drives the maintainer's local `pi` coding agent in RPC mode (ADR 0054) without reading its login. `pi-rpc-channel.ts` owns the JSONL framing and answers extension dialogs as cancelled; `pi-rpc-client.ts` checks the installed version, lists models, and runs one prompt with pi's read-only built-in tools, no extensions, and no project trust.
 
 **Architecture Invariant:** adapters are the only layer that performs I/O.
 Nothing else reads a file, spawns a process, or talks to GitHub.
@@ -262,7 +265,7 @@ It is analysis guidance, never permission: no shell commands, no GitHub writes, 
 
 The architecture decision records, one file per decision, numbered in the order they were made.
 They document why the system looks the way it does:
-the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, one-shot Insight children driving Pi directly, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys and `codex`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
+the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, the local pi CLI account, one-shot Insight children driving Pi directly, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys and `codex`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
 
 ### `tests/`
 
@@ -377,7 +380,7 @@ Two Vitest projects and one Playwright project run everything.
 `vitest.config.ts` includes every `tests/**/*.test.ts` and `.test.tsx` file, so the boundaries are directories inside one project rather than separately configured suites.
 `tests/domain/` exercises pure parsers and state transitions; it is fast and fully deterministic.
 `tests/services/` runs real services against temporary directories and `FakeGitHubAdapter`, covering preparation, refresh, coordination, and recovery without a network.
-`tests/adapters/` covers the I/O layer — the GitHub transport, request classification, and write shapes, the command runner, the Codex client, and the login-shell import — and `tests/storage/` covers one store per aggregate.
+`tests/adapters/` covers the I/O layer — the GitHub transport, request classification, and write shapes, the command runner, the Codex client, the pi RPC client, and the login-shell import — and `tests/storage/` covers one store per aggregate.
 `tests/main/` covers the privileged desktop boundary, where `desktop-bridge-allowlist.test.ts` and `local-api-auth.test.ts` are the two that pin the capability and allowlist rules.
 `tests/renderer/` uses jsdom and Testing Library, and `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
 `tests/scripts/` covers the packaging, release, and gate scripts, and `tests/workflows/` holds the Walkthrough generation flow from prompt to parsed output.
