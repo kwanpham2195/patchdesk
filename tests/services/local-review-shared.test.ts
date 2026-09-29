@@ -1,4 +1,11 @@
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,6 +21,7 @@ import {
   parseReviewId,
   parseReviewSessionId,
   type IsoTimestamp,
+  type ReviewSessionId,
 } from "../../src/domain/ids";
 import { markReviewTerminal } from "../../src/domain/review";
 import { err } from "../../src/domain/result";
@@ -38,6 +46,19 @@ import {
 } from "./local-review-shared-fixture";
 
 afterEach(cleanupLocalApplyRoots);
+
+/** Moves a session's folder aside as recovery's quarantine does, so its Review names a session that is gone (#652). */
+async function quarantineSession(
+  harness: LocalApplyHarness,
+  sessionId: ReviewSessionId,
+): Promise<void> {
+  const target = harness.paths.quarantinedSessionDirectory(
+    profileId,
+    `${sessionId}.test`,
+  );
+  await mkdir(dirname(target), { recursive: true });
+  await rename(harness.paths.sessionDirectory(profileId, sessionId), target);
+}
 
 /** The reopen of a shared Review the maintainer opened on `branch`. */
 function reopenOn(branch: string): LocalReviewSourceRequest {
@@ -357,6 +378,72 @@ describe("the shared local Review (#555)", () => {
     ).toEqual([keep]);
   });
 
+  it("reopens a Review whose current session is missing on the changed checkout's session, carrying no Viewed marks (#652)", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "keep.txt"), "stable\n");
+    const opened = await harness.open(shared());
+    const reviewId = value(parseReviewId(opened.review.id));
+    const goneSessionId = value(parseReviewSessionId(opened.session.id));
+    const keep = value(parseRepoRelativePath("keep.txt"));
+    value(
+      await harness.viewedFiles.save(profileId, goneSessionId, "combined", [
+        keep,
+      ]),
+    );
+    await quarantineSession(harness, goneSessionId);
+    await writeFile(join(repositoryPath, "new.txt"), "new\n");
+
+    const reopened = await harness.open(shared());
+
+    const newSessionId = value(parseReviewSessionId(reopened.session.id));
+    expect(newSessionId).not.toBe(goneSessionId);
+    expect(reopened.viewedPaths).toEqual([]);
+    expect(
+      value(await harness.reviews.load(profileId, reviewId)).currentSessionId,
+    ).toBe(newSessionId);
+    expect(
+      harness.logs.filter(({ topic }) => topic === "local-review-open"),
+    ).toMatchObject([
+      { level: "warn", meta: { reviewId, fromSessionId: goneSessionId } },
+    ]);
+  });
+
+  it("refuses storage on a reopen or an agent's open while the current session exists but cannot be read (#652)", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "keep.txt"), "stable\n");
+    const opened = await harness.open(shared());
+    const reviewId = value(parseReviewId(opened.review.id));
+    const sessionFile = harness.paths.sessionFile(
+      profileId,
+      value(parseReviewSessionId(opened.session.id)),
+    );
+    await rm(sessionFile);
+    // A directory where the record belongs reads as an I/O failure, not a missing file.
+    await mkdir(sessionFile);
+    await writeFile(join(repositoryPath, "new.txt"), "new\n");
+
+    const reopened = await harness.opening.open({
+      profileId,
+      repository,
+      request: shared(),
+    });
+    const agentOpened = await harness.opening.openForAgent({
+      profileId,
+      repository,
+      request: { kind: "local_branch" },
+    });
+
+    expect(reopened).toEqual(err({ reason: "storage" }));
+    expect(agentOpened).toEqual(err({ reason: "storage" }));
+    expect(
+      value(await harness.reviews.load(profileId, reviewId)).currentSessionId,
+    ).toBe(opened.session.id);
+  });
+
   it("keeps a note on an uncommitted line inline after the agent commits it and the maintainer Refreshes (#491)", async () => {
     const harness = await localApplyHarness();
     const { repositoryPath } = harness;
@@ -545,6 +632,35 @@ describe("an agent's open of the shared Review with no base (#555)", () => {
     expect(opened.workbench.session.key.source).toMatchObject({
       baseRef: "refs/heads/develop",
     });
+  });
+
+  it("moves a Review whose current session is missing to the checkout's content, on its saved base and unstamped (#652)", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "branch", "-q", "develop");
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "untracked.txt"), "first\n");
+    const { review, session } = await harness.open(
+      shared(value(parseLocalBranchName("develop"))),
+    );
+    const reviewId = value(parseReviewId(review.id));
+    const { lastOpenedAt } = value(
+      await harness.reviews.load(profileId, reviewId),
+    );
+    await quarantineSession(harness, value(parseReviewSessionId(session.id)));
+    await writeFile(join(repositoryPath, "untracked.txt"), "second\n");
+
+    const opened = value(await agentOpen(harness));
+
+    expect(opened.baseInferred).toBe(false);
+    expect(opened.workbench.review.id).toBe(review.id);
+    expect(opened.workbench.session.id).not.toBe(session.id);
+    expect(opened.workbench.session.key.source).toMatchObject({
+      baseRef: "refs/heads/develop",
+    });
+    const stored = value(await harness.reviews.load(profileId, reviewId));
+    expect(stored.currentSessionId).toBe(opened.workbench.session.id);
+    expect(stored.lastOpenedAt).toBe(lastOpenedAt);
   });
 
   it("opens a new shared Review against the inferred base and says it was inferred", async () => {

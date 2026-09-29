@@ -332,6 +332,7 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 
 - A detached `HEAD` opens a Review named `Detached HEAD against <base>`. A branch literally named `detached` opens the same Review.
 - Switching branch and opening again, from this picker or the column's local row, opens that branch's own shared Review with its own drafts; switching back reopens the first one. Drafts never cross branches.
+- A shared Review whose current session is gone, such as one Patchdesk moved aside after a failed read, opens from the column's local row or this dialog on the checkout's content with no files viewed, and a warning is logged with topic `local-review-open`; its notes carry as on Refresh. A session that exists but cannot be read refuses the open with the storage error (#652).
 - After the agent commits a line the maintainer noted, Refresh keeps the note inline on that line, because the commit stays in the diff (#491).
 - A branch created at `HEAD`, or ahead of it, is listed as a base but never preselected.
 - A branch with no commits since its base and no uncommitted changes opens a session whose patch is empty.

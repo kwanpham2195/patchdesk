@@ -22,7 +22,9 @@ import { ReviewPatchIndex } from "./review-patch-index";
 /**
  * Copy the Viewed marks whose file patch is byte-identical in the same view of
  * the next session; a changed or missing file loses its mark. A pull request
- * session has one view, Combined; a shared local session has three.
+ * session has one view, Combined; a shared local session has three. A
+ * `fromSessionId` whose record is gone, as after quarantine, is
+ * `session_not_found` and carries nothing.
  */
 export async function carryViewedFiles(
   profileId: WorkspaceProfileId,
@@ -30,9 +32,13 @@ export async function carryViewedFiles(
   next: ReviewSession,
   sessions: Pick<ReviewSessionStore, "load">,
   viewedFiles: Pick<ViewedFilesStore, "load" | "save">,
-): Promise<Result<void, { readonly reason: "storage" }>> {
+): Promise<Result<void, { readonly reason: "storage" | "session_not_found" }>> {
   const loaded = await sessions.load(profileId, fromSessionId);
-  if (loaded._tag === "err") return err({ reason: "storage" });
+  if (loaded._tag === "err")
+    return err({
+      reason:
+        loaded.error.reason === "not_found" ? "session_not_found" : "storage",
+    });
   const previousPatches = patchPathsByView(loaded.value);
   const nextPatches = patchPathsByView(next);
   if (previousPatches === undefined || nextPatches === undefined)

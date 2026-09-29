@@ -51,6 +51,7 @@ import type {
   ResolvedLocalReview,
 } from "./local-review-session-preparation";
 import type { ReviewRetention } from "./review-retention";
+import { loadCurrentSession } from "./review-session-description";
 import { carryViewedFiles } from "./viewed-files-carry";
 import type { RepositoryCheckout } from "./local-checkout";
 import {
@@ -286,8 +287,10 @@ export class LocalReviewOpening {
   /**
    * A coding agent's open (ADR 0052 `review_local`): the agent prepares and
    * the maintainer moves, so a Review that exists for the source is returned
-   * on its current session, unmoved, and only a missing one is created. It
-   * never stamps `lastOpenedAt`, so the agent does not reorder the sidebar.
+   * on its current session, unmoved, and only a missing one is created. One
+   * whose current session is gone moves to the checkout's content, as the
+   * maintainer's reopen does (#652). It never stamps `lastOpenedAt`, so the
+   * agent does not reorder the sidebar.
    * A shared Review named without a base takes the base of the branch's
    * shared Review the maintainer opened last, else the inferred one (#555).
    * Several such Reviews are expected only after a base change in the dialog.
@@ -443,10 +446,19 @@ export class LocalReviewOpening {
             request.profileId,
             reviewId,
           );
-          if (existing._tag === "ok")
-            return isLocalReview(existing.value)
-              ? this.projectCurrent(existing.value)
-              : err({ reason: "storage" as const });
+          if (existing._tag === "ok") {
+            if (!isLocalReview(existing.value))
+              return err({ reason: "storage" as const });
+            const current = await loadCurrentSession(
+              this.lifecycle.sessions,
+              existing.value,
+            );
+            if (current._tag === "ok")
+              return this.projectCurrent(existing.value);
+            if (current.error.reason === "storage")
+              return err({ reason: "storage" as const });
+            // A current session gone, as after quarantine, cannot be returned, so the Review moves to the checkout's content as a reopen does (#652).
+          }
           return this.openLocked(request, reviewId);
         },
       );
@@ -796,7 +808,24 @@ export class LocalReviewOpening {
         this.lifecycle.sessions,
         this.lifecycle.viewedFiles,
       );
-      if (carriedViewed._tag === "err") return carriedViewed;
+      if (carriedViewed._tag === "err") {
+        if (carriedViewed.error.reason === "storage")
+          return err({ reason: "storage" });
+        // A current session gone, as after quarantine, has no marks to carry, so the Review moves on without them (#652).
+        this.lifecycle.logs.write({
+          process: "main",
+          level: "warn",
+          topic: "local-review-open",
+          message:
+            "a local Review's current session is missing; the new session starts with no files viewed",
+          profileId,
+          meta: {
+            reviewId,
+            fromSessionId: stored.currentSessionId,
+            toSessionId: session.value.id,
+          },
+        });
+      }
     }
     await this.lifecycle.applySettlement.settleEarlierSession({
       profileId,
