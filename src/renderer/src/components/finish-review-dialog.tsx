@@ -31,37 +31,89 @@ type FinishReviewActions = {
   readonly onCheckGitHubAgain?: () => Promise<void>;
 };
 
+/** The Finish review summary and decision a closed dialog keeps until Submit review or Confirm discard. */
+export type FinishReviewDraft = {
+  readonly summary: string;
+  readonly event: GitHubReviewEvent;
+};
+
 const DECISION_LABELS = {
   COMMENT: "Comment",
   APPROVE: "Approve",
   REQUEST_CHANGES: "Request changes",
 } as const;
 
+function SummaryReplacementPrompt({
+  disabled,
+  onKeep,
+  onReplace,
+}: {
+  readonly disabled: boolean;
+  readonly onKeep: () => void;
+  readonly onReplace: () => void;
+}): React.JSX.Element {
+  return (
+    <Alert>
+      <AlertDescription>
+        You have an unsent summary. Replace it with the Analysis summary?
+      </AlertDescription>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={onKeep}
+        >
+          Keep my summary
+        </Button>
+        <Button size="sm" disabled={disabled} onClick={onReplace}>
+          Replace summary
+        </Button>
+      </div>
+    </Alert>
+  );
+}
+
 /**
- * GitHub-style Finish review modal. The final summary is modal-local: it is
- * sent only with Submit and is never persisted as a second local summary.
- * Discard is not offered: its GitHub semantics are unproven.
+ * GitHub-style Finish review modal. The summary is sent only with Submit and
+ * is never written to disk; closing hands it back to the caller to keep in
+ * renderer memory. The owner of `actions` closes the dialog once Submit or
+ * Discard settles.
  */
 function FinishReviewDialogContent({
   open,
-  onOpenChange,
+  onClose,
   projection,
   actions,
   error,
-  initialSummary,
+  draft,
+  offeredSummary,
 }: {
   readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
+  /** Escape, a click outside, or Close; receives the summary and decision to keep. */
+  readonly onClose: (draft: FinishReviewDraft) => void;
   readonly projection: Extract<
     PendingReviewProjection,
     { readonly state: "pending" }
   >;
   readonly actions: FinishReviewActions;
   readonly error?: string;
-  readonly initialSummary?: string;
+  /** The summary and decision kept from an earlier close. */
+  readonly draft?: FinishReviewDraft;
+  /** A generated summary, such as Analysis's; it fills an empty dialog and asks before replacing a kept one. */
+  readonly offeredSummary?: string;
 }): React.JSX.Element {
-  const [summary, setSummary] = useState(initialSummary ?? "");
-  const [event, setEvent] = useState<GitHubReviewEvent>("COMMENT");
+  const [summary, setSummary] = useState(
+    draft?.summary ?? offeredSummary ?? "",
+  );
+  const [event, setEvent] = useState<GitHubReviewEvent>(
+    draft?.event ?? "COMMENT",
+  );
+  const [replacementOffered, setReplacementOffered] = useState(
+    draft !== undefined &&
+      offeredSummary !== undefined &&
+      offeredSummary !== draft.summary,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   const [discardArmed, setDiscardArmed] = useState(false);
@@ -78,7 +130,6 @@ function FinishReviewDialogContent({
     setSubmitError(undefined);
     try {
       await actions.onSubmit(event, summary);
-      onOpenChange(false);
     } catch {
       setSubmitError(
         error ??
@@ -100,7 +151,6 @@ function FinishReviewDialogContent({
     setSubmitError(undefined);
     try {
       await actions.onDiscard();
-      onOpenChange(false);
     } catch {
       setSubmitError(
         error ??
@@ -115,7 +165,7 @@ function FinishReviewDialogContent({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!locked) onOpenChange(next);
+        if (!locked && !next) onClose({ summary, event });
       }}
     >
       <DialogContent className="max-h-[min(85vh,48rem)] overflow-y-auto sm:max-w-xl">
@@ -126,6 +176,16 @@ function FinishReviewDialogContent({
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
+          {replacementOffered && offeredSummary !== undefined ? (
+            <SummaryReplacementPrompt
+              disabled={locked}
+              onKeep={() => setReplacementOffered(false)}
+              onReplace={() => {
+                setSummary(offeredSummary);
+                setReplacementOffered(false);
+              }}
+            />
+          ) : null}
           <section aria-label="Pending review comments">
             <h3 className="mb-2 text-sm font-medium">
               Pending comments · {projection.count}
@@ -286,7 +346,7 @@ function FinishReviewDialogContent({
                 variant="outline"
                 size="sm"
                 disabled={locked}
-                onClick={() => onOpenChange(false)}
+                onClick={() => onClose({ summary, event })}
               >
                 Close
               </Button>
@@ -305,14 +365,9 @@ function FinishReviewDialogContent({
   );
 }
 
-/** Remounts ephemeral form state when the dialog opens or its seed changes. */
+/** Remounts the form on each open, so it starts from the kept draft or offered summary. */
 export function FinishReviewDialog(
   props: Parameters<typeof FinishReviewDialogContent>[0],
 ): React.JSX.Element {
-  return (
-    <FinishReviewDialogContent
-      key={`${props.open}:${props.initialSummary ?? ""}`}
-      {...props}
-    />
-  );
+  return <FinishReviewDialogContent key={String(props.open)} {...props} />;
 }

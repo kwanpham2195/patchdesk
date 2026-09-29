@@ -377,7 +377,7 @@ describe("usePendingReviewActions commands", () => {
     });
     expect(panelOf(result).finishDialogError).toBeDefined();
     expect(panelOf(result).goneNotice).toBeUndefined();
-    act(() => panelOf(result).onCloseFinishDialog());
+    expect(panelOf(result).finishDialogOpen).toBe(false);
 
     act(() => panelOf(result).onOpenFinishDialog());
 
@@ -614,20 +614,110 @@ describe("usePendingReviewActions recovery", () => {
   });
 });
 
+function pendingWorkbench(): WorkbenchResponse {
+  // SAFETY: `pending("pending")` returns wider fixture data than the strict
+  // `pendingReview` union; it is not a runtime-decoded value.
+  return projection({ pendingReview: pending("pending") as never });
+}
+
 describe("usePendingReviewActions dialog", () => {
-  it("prefills the finish dialog with an Analysis-built summary", () => {
+  it("offers an Analysis-built summary without replacing a kept one", () => {
     installPendingDouble({});
-    const { result } = renderPendingReview(
-      projection({ pendingReview: pending("pending") as never }),
+    const { result } = renderPendingReview(pendingWorkbench());
+    act(() => panelOf(result).onOpenFinishDialog());
+    act(() =>
+      panelOf(result).onCloseFinishDialog({
+        summary: "My own words",
+        event: "APPROVE",
+      }),
     );
-    expect(panelOf(result).finishDialogOpen).toBe(false);
 
     act(() => {
       result.current.openFinishDialogWithSummary("# Review Scope\n");
     });
 
     expect(panelOf(result).finishDialogOpen).toBe(true);
-    expect(panelOf(result).finishDialogInitialSummary).toBe("# Review Scope\n");
+    expect(panelOf(result).finishDialogOfferedSummary).toBe("# Review Scope\n");
+    expect(panelOf(result).finishDraft).toEqual({
+      summary: "My own words",
+      event: "APPROVE",
+    });
+  });
+
+  it("keeps a closed Finish summary through a Refresh until Submit review is confirmed", async () => {
+    installPendingDouble({
+      command: () => ({ pendingReview: { state: "none" } }),
+    });
+    const workbench = pendingWorkbench();
+    const { result, rerender } = renderPendingReview(workbench);
+    act(() => panelOf(result).onOpenFinishDialog());
+    act(() =>
+      panelOf(result).onCloseFinishDialog({
+        summary: "Long summary",
+        event: "REQUEST_CHANGES",
+      }),
+    );
+    rerender({ workbench, refreshing: true });
+    rerender({ workbench, refreshing: false });
+    expect(panelOf(result).finishDialogOpen).toBe(false);
+    expect(panelOf(result).finishDraft).toEqual({
+      summary: "Long summary",
+      event: "REQUEST_CHANGES",
+    });
+
+    await act(async () => {
+      await panelOf(result).onSubmit("REQUEST_CHANGES", "Long summary");
+    });
+
+    expect(panelOf(result).finishDraft).toBeUndefined();
+  });
+
+  it("keeps the summary and decision of a Submit GitHub did not confirm", async () => {
+    installPendingDouble({
+      commandFailure: () => failure({ error: "github_rejected" }, 422),
+    });
+    const { result } = renderPendingReview(pendingWorkbench());
+    act(() => panelOf(result).onOpenFinishDialog());
+
+    await act(async () => {
+      await panelOf(result).onSubmit("APPROVE", "Not sent");
+    });
+
+    expect(panelOf(result).finishDialogOpen).toBe(false);
+    expect(panelOf(result).finishDraft).toEqual({
+      summary: "Not sent",
+      event: "APPROVE",
+    });
+  });
+
+  it("drops a kept summary on Confirm discard", async () => {
+    installPendingDouble({
+      command: () => ({ pendingReview: { state: "none" } }),
+    });
+    const { result } = renderPendingReview(pendingWorkbench());
+    act(() =>
+      panelOf(result).onCloseFinishDialog({
+        summary: "Unwanted",
+        event: "COMMENT",
+      }),
+    );
+
+    await act(async () => {
+      await panelOf(result).onDiscard();
+    });
+
+    expect(panelOf(result).finishDraft).toBeUndefined();
+  });
+
+  it("keeps nothing when Finish review closes without text", () => {
+    installPendingDouble({});
+    const { result } = renderPendingReview(pendingWorkbench());
+
+    act(() =>
+      panelOf(result).onCloseFinishDialog({ summary: "  ", event: "APPROVE" }),
+    );
+
+    expect(panelOf(result).finishDraft).toBeUndefined();
   });
 
   it("offers no composer or panel when the projection carries no pending review", () => {
