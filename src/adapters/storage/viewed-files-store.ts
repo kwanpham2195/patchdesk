@@ -30,8 +30,8 @@ type PersistedViewedFiles = v.InferOutput<typeof viewedFilesSchema>;
 
 /**
  * The files a reviewer marked Viewed in one Review session's Diff, one record
- * per patch view, keyed by path. It lives in the session directory. A pull request's
- * new head starts empty; a shared local Review carries unchanged file patches on Refresh.
+ * per patch view, keyed by path. It lives in the session directory. Refresh carries a mark
+ * to the next session only when that file's patch is unchanged (`carryViewedFiles`).
  */
 export class ViewedFilesStore {
   constructor(

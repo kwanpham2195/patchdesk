@@ -49,7 +49,7 @@ export class ReviewViewedFilesService {
             reason:
               review.error.reason === "not_found" ? "not_found" : "storage",
           });
-        // A session the Review no longer represents belongs to an old head; its marks are not carried forward.
+        // A session the Review no longer represents belongs to an old head; Refresh already carried its marks.
         if (review.value.currentSessionId !== input.sessionId)
           return err({ reason: "stale_head" });
         if (

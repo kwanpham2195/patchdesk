@@ -31,6 +31,7 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
+  type AbsolutePath,
   type GitSha,
   type IsoTimestamp,
   type ReviewSessionId,
@@ -130,6 +131,8 @@ export type ReviewRefreshFixtureOptions = {
   readonly operationCoordinator?: ReviewOperationCoordinator;
   readonly projectionOutcome?: "success" | "failure";
   readonly avatarSyncFailure?: boolean;
+  readonly viewedFiles?: ReviewRefreshDependencies["viewedFiles"];
+  readonly log?: ReviewRefreshDependencies["log"];
   readonly now?: IsoTimestamp;
 };
 
@@ -252,6 +255,7 @@ export function createReviewRefreshSession(input: {
   readonly snapshot: ReviewRemoteSnapshot;
   readonly createdAt: IsoTimestamp;
   readonly headSha: GitSha;
+  readonly patchPath?: AbsolutePath;
 }): PullRequestReviewSession {
   const baseSha = input.snapshot.pullRequest.baseSha;
   if (baseSha === undefined) throw new Error("Fixture snapshot needs a base");
@@ -264,7 +268,9 @@ export function createReviewRefreshSession(input: {
       isDraft: input.snapshot.pullRequest.isDraft,
       isOpen: input.snapshot.pullRequest.isOpen,
     },
-    patchPath: must(parseAbsolutePath("/tmp/patchdesk-refresh.patch")),
+    patchPath:
+      input.patchPath ??
+      must(parseAbsolutePath("/tmp/patchdesk-refresh.patch")),
     canonicalPatchHash: must(parseContentHash("a".repeat(64))),
     worktree: {
       path: must(parseAbsolutePath("/tmp/patchdesk-refresh-worktree")),
@@ -391,9 +397,14 @@ export function createReviewRefreshFixture(
         return ok(undefined);
       },
     },
+    viewedFiles: options.viewedFiles ?? {
+      load: async () => ok([]),
+      save: async (_profileId, _sessionId, _view, paths) => ok(paths),
+    },
     now: () =>
       options.now ?? must(parseIsoTimestamp("2026-08-01T00:10:00.000Z")),
   };
+  if (options.log !== undefined) dependencies.log = options.log;
   if (options.avatarSyncFailure === true)
     dependencies.avatars = {
       syncCommentAuthors: async () => {

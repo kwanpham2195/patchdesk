@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Kept Viewed marks on a pull request Review's unchanged files when Refresh moves it to a new head. A file keeps its mark only when its patch is identical in the new diff, so a file the new push changed, or whose patch a rebase onto a moved base changed, loses its mark. Commit-slice and Since your review marks stay temporary. If the marks cannot be carried, Refresh still completes and the new head starts with no files viewed. #605
+
 - Added keyboard commands inside a Review. ⌘1, ⌘2, and ⌘3 select Conversation, Diff, and Insights; a local Review has no Conversation, so ⌘1 does nothing there. In the Diff with All files, `(` and `)` move to the previous and next Finding card and stop at either end. ⌘K lists a Review group while a Review is open: the three tabs, the Brief, Walkthrough, and Analysis readers, Next and Previous Finding, and Finish review while the header shows it. No command starts a run, adds a Finding, or submits. #609
 
 - Added Restore to a dismissed Analysis Finding and made Section reviewed in the Walkthrough a toggle, so a wrong dismissal or reviewed mark takes one click to undo. A restored Finding returns to its open row, counts as unhandled again for "X of Y handled" and merge readiness, and offers Add to review or Add to draft again. Restore needs an open Review and a current Analysis; the toggle needs an open Review. Dismiss and Restore also update the merge readiness shown for the pull request at once; before, a dismissal left it stale until the next full load. #607
