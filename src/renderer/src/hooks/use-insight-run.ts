@@ -48,6 +48,8 @@ type InsightRunStartOptions = {
   /** The agent run request this Run approves (ADR 0052). */
   readonly requestId?: string;
   readonly onAccepted?: (runId: string) => void;
+  /** Called when the start fails; the refusal shows on `requestFailure`. */
+  readonly onRefused?: () => void;
 };
 
 export type InsightRunController = {
@@ -250,6 +252,7 @@ export function useInsightRun(input: {
             start: { refusalInputs },
           });
           setStatus("error");
+          options?.onRefused?.();
         })
         .finally(() => {
           if (!mountedRef.current || generationRef.current !== generation)

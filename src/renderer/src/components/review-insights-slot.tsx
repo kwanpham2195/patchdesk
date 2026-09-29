@@ -31,6 +31,7 @@ import { useInsightSelection } from "../hooks/use-insight-selection";
 import { useWalkthroughFocusTransition } from "../hooks/use-walkthrough-focus-transition";
 import type { InsightRunConfiguration } from "../hooks/use-insight-configuration";
 import { useInsightRunControls } from "../hooks/use-insight-run-controls";
+import type { RunInsightsDialogController } from "../hooks/use-run-insights-dialog";
 import { useAnalysisVerification } from "../hooks/use-analysis-verification";
 import { useWalkthroughProgress } from "../hooks/use-walkthrough-progress";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -39,6 +40,8 @@ import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
 import type { LocalApplyControls } from "../flows/use-local-apply";
 import type { LocalDraftControls } from "../flows/use-local-drafts";
 import { AgentRequestsBar } from "./agent-requests-bar";
+import { RunInsightsDialog } from "./run-insights-dialog";
+import { insightRunOptionsForModel } from "../insight-run-options";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
 import {
   INSIGHT_LANGUAGE_LABELS,
@@ -258,12 +261,11 @@ export function InsightsSlot({
     setConfiguration,
     changeProvider,
     activateCodex,
-    analysisRun,
-    walkthroughRun,
-    briefRun,
+    runs,
     openRunDialog,
     closeRunDialog,
     confirmRun,
+    runInsights,
     dismissFinding,
     restoreFinding,
   } = useInsightRunControls({
@@ -293,11 +295,6 @@ export function InsightsSlot({
     analysis: workbench.insights.analysis,
     walkthrough: workbench.insights.walkthrough,
     brief,
-  };
-  const runs = {
-    analysis: analysisRun,
-    walkthrough: walkthroughRun,
-    brief: briefRun,
   };
   const reviewOpen = workbench.review.status === "open";
   const runEnabled = insightRunEnabled(configuration, reviewOpen);
@@ -395,6 +392,8 @@ export function InsightsSlot({
             workbench={workbench}
             selectedInsight={selectedInsight}
             setSelectedInsight={setSelectedInsight}
+            onRunInsights={reviewOpen ? runInsights.open : undefined}
+            runInsightsDisabled={!runEnabled}
             trailing={
               <div className="flex min-w-0 items-center gap-2 pb-1 empty:hidden">
                 <InsightDocumentMeta
@@ -500,6 +499,7 @@ export function InsightsSlot({
         activateCodex={activateCodex}
         confirmRun={confirmRun}
         runs={runs}
+        runInsights={runInsights}
         runsOnCombined={workbench.patchViews !== undefined}
       />
     </section>
@@ -516,6 +516,37 @@ function agentRunBlockedReason(
   return run.busy ? `${INSIGHT_NOUNS[type]} is running` : undefined;
 }
 
+function RunInsightsControls({
+  controller,
+  configuration,
+  runs,
+  runsOnCombined,
+}: {
+  readonly controller: RunInsightsDialogController;
+  readonly configuration: InsightRunConfiguration;
+  readonly runs: Readonly<Record<InsightRunDialogType, InsightRunController>>;
+  readonly runsOnCombined: boolean;
+}): React.JSX.Element {
+  const startFailureMessage = (type: InsightRunDialogType) =>
+    insightRequestFailureMessage(
+      INSIGHT_NOUNS[type],
+      runs[type].requestFailure,
+    );
+  return (
+    <RunInsightsDialog
+      controller={controller}
+      codexActivationPending={configuration.codexActivationPending}
+      codexActivationError={configuration.codexActivationError}
+      startFailureMessages={{
+        brief: startFailureMessage("brief"),
+        walkthrough: startFailureMessage("walkthrough"),
+        analysis: startFailureMessage("analysis"),
+      }}
+      runsOnCombined={runsOnCombined}
+    />
+  );
+}
+
 function InsightRunControls({
   configuration,
   closeRunDialog,
@@ -524,6 +555,7 @@ function InsightRunControls({
   activateCodex,
   confirmRun,
   runs,
+  runInsights,
   runsOnCombined,
 }: {
   readonly configuration: InsightRunConfiguration;
@@ -533,8 +565,18 @@ function InsightRunControls({
   readonly activateCodex: () => void;
   readonly confirmRun: () => void;
   readonly runs: Readonly<Record<InsightRunDialogType, InsightRunController>>;
+  readonly runInsights: RunInsightsDialogController;
   readonly runsOnCombined: boolean;
 }): React.JSX.Element | null {
+  if (runInsights.rows !== undefined)
+    return (
+      <RunInsightsControls
+        controller={runInsights}
+        configuration={configuration}
+        runs={runs}
+        runsOnCombined={runsOnCombined}
+      />
+    );
   const {
     models,
     model,
@@ -567,21 +609,11 @@ function InsightRunControls({
       onOpenChange={(open) => {
         if (!open) closeRunDialog();
       }}
-      onModelChange={(nextModel) => {
-        const selected = models.find((candidate) => candidate.id === nextModel);
-        if (
-          selected !== undefined &&
-          selected.reasoning !== undefined &&
-          !selected.reasoning.includes(reasoning)
-        ) {
-          setConfiguration({
-            model: nextModel,
-            reasoning: selected.reasoning[0] ?? "medium",
-          });
-          return;
-        }
-        setConfiguration({ model: nextModel });
-      }}
+      onModelChange={(nextModel) =>
+        setConfiguration(
+          insightRunOptionsForModel(models, nextModel, reasoning),
+        )
+      }
       onProviderChange={changeProvider}
       onActivateCodex={activateCodex}
       onRefreshCodexModels={activateCodex}

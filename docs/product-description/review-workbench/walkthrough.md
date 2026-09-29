@@ -53,6 +53,8 @@ Focus section hides the Insight tab strip with its meta line, the Walkthrough ti
 
 Regenerate opens the shared Insight run dialog described in [Brief](brief.md#begin-an-action). A Walkthrough run in Vietnamese writes its chapter titles, section titles, and prose in Vietnamese. For every language, the prompt asks the model to keep repository domain names, technical terms, paths, and identifiers as written. It is shown only in the docked layout, only while a retained Walkthrough is current and the Review is open, and is disabled unless an Insight provider is available.
 
+Run Insights… beside the tab strip starts the Walkthrough together with Brief and Analysis, from one dialog with a row per Insight; see [Brief](brief.md#begin-an-action). The Walkthrough row is seeded from the saved Walkthrough preference, is checked by default only when no current Walkthrough stands for this revision, and is disabled while a Walkthrough runs. Generate walkthrough, Regenerate, Try again, and Run for latest revision keep the single-Insight dialog.
+
 ### While the action runs
 
 Section movement updates the active prose and cited hunks together, and scrolls the chosen section into view in the chapter rail. Each cited hunk keeps its original file header, uses natural height, and lets the reader own scrolling. It respects unified or split layout, wrapping, app appearance, and diff theme. Each cited hunk starts from the saved View options of the Diff tab; a change made in the Walkthrough applies only to that hunk and is not saved.

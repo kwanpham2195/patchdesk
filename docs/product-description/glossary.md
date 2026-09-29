@@ -142,6 +142,8 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Insight run dialog.** The dialog that Generate, Regenerate, Try again, and Run for latest revision open before any Insight run starts. It has Provider, Model, and Reasoning controls, a confirmation line naming what will receive the prepared pull-request artifacts, and Start run.
 
+**Run Insights dialog.** The dialog that Run Insights… beside the Insight tab strip opens. It has one row per Insight, each with a checkbox and its own Provider, Model, Reasoning, and Language, and Start runs starts every checked row as its own run.
+
 **Brief.** The latest successful answer to the structure of a change — its flow, ownership, and where to start reading. Its blocks are Flow, Shape, Start here, and Reach, with a Provenance card beside them.
 
 **Flow.** The Brief block of up to three diff-styled views, one per kind: call tree, control flow, and component tree. Each marks steps added, removed, or unchanged, and a changed step can cite the hunk that supports it.
