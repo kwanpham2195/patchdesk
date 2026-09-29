@@ -28,7 +28,7 @@ export type SinceReviewControl = {
 };
 
 /** The Patch view a shared local Review's diff shows, and the way to switch it. */
-export type LocalPatchViewChoice = {
+type LocalPatchViewChoice = {
   readonly selected: LocalPatchView;
   readonly onSelect: (view: LocalPatchView) => void;
 };
