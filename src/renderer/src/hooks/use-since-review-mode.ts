@@ -1,22 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { selectSinceReviewBaseline } from "../../../domain/since-review-baseline";
-import type { SinceReviewControl } from "../components/review-diff-changes-menu";
+import type { NarrowedDiffControl } from "../components/review-diff-changes-menu";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { SinceReviewDiffResponse } from "../review-diff-contracts";
-import { useLatestCommitted } from "./use-latest-committed";
-
-type SinceReviewDiffState =
-  | { readonly _tag: "Idle" }
-  | { readonly _tag: "Loading" }
-  | { readonly _tag: "Ready"; readonly patch: string }
-  | { readonly _tag: "Failed" };
+import {
+  useNarrowedPatchRequest,
+  type NarrowedPatchState,
+} from "./use-narrowed-patch-request";
 
 export type SinceReviewMode = {
   /** Absent when the viewer has no submitted review, or a commit slice owns the diff. */
-  readonly control: SinceReviewControl | undefined;
+  readonly control: NarrowedDiffControl | undefined;
   /** Set only while the mode is on; the patch from the reviewed commit to the head. */
-  readonly state: SinceReviewDiffState;
+  readonly state: NarrowedPatchState;
   readonly baseSha: string | undefined;
 };
 
@@ -50,36 +47,18 @@ export function useSinceReviewMode({
     baseline._tag === "Available" ? baseline.commitSha : undefined;
   const [requested, setRequested] = useState(false);
   const active = requested && baseSha !== undefined && !commitSliceActive;
-  const loader = useLatestCommitted(loadSinceReviewDiff);
-  const token = useRef(0);
-  const [state, setState] = useState<SinceReviewDiffState>({ _tag: "Idle" });
-  useEffect(() => {
-    const requestToken = token.current + 1;
-    token.current = requestToken;
-    if (!active) {
-      setState({ _tag: "Idle" });
-      return;
-    }
-    setState({ _tag: "Loading" });
-    void loader
-      .current()
-      .then((response) => {
-        if (token.current !== requestToken) return;
-        setState(
-          response.baseSha === baseSha && response.headSha === headSha
-            ? { _tag: "Ready", patch: response.patch }
-            : { _tag: "Failed" },
-        );
-      })
-      .catch(() => {
-        if (token.current === requestToken) setState({ _tag: "Failed" });
-      });
-    return () => {
-      if (token.current === requestToken) token.current += 1;
-    };
-  }, [active, baseSha, headSha, loader]);
+  const state = useNarrowedPatchRequest({
+    active,
+    requestKey: `${baseSha ?? ""}:${headSha}`,
+    load: () =>
+      loadSinceReviewDiff().then((response) =>
+        response.baseSha === baseSha && response.headSha === headSha
+          ? response.patch
+          : undefined,
+      ),
+  });
   const onChange = useCallback((next: boolean) => setRequested(next), []);
-  const control: SinceReviewControl | undefined =
+  const control: NarrowedDiffControl | undefined =
     baseline._tag === "NoReview" || commitSliceActive
       ? undefined
       : {
@@ -93,5 +72,5 @@ export function useSinceReviewMode({
                 : undefined,
           onChange,
         };
-  return { control, state: active ? state : { _tag: "Idle" }, baseSha };
+  return { control, state, baseSha };
 }

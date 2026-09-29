@@ -322,6 +322,8 @@ describe("Walkthrough diff authoring", () => {
       loadCommitDiff: async () => ({}) as never,
       // SAFETY: building authoring never loads a diff.
       loadSinceReviewDiff: async () => ({}) as never,
+      // SAFETY: building authoring never loads a diff.
+      loadSinceLastRefreshDiff: async () => ({}) as never,
       reportNavigationState: () => undefined,
       localCommentAuthoring: {
         enabled: true,

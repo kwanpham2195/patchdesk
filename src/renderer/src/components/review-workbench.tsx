@@ -381,15 +381,24 @@ export function ReviewWorkbench({
     commitDiff,
     commitDiffError,
     sinceReview,
+    sinceLastRefresh,
     sincePatch,
+    sinceKey,
+    sinceFailure,
+    leaveSince,
     narrowedDiff,
     sliceAuthoringNote,
     commitCommentAuthoring,
-  } = useNarrowedReviewDiff({ model, actions, selectedCommitSha });
+  } = useNarrowedReviewDiff({
+    model,
+    actions,
+    selectedCommitSha,
+    selectPatchView,
+  });
   const { openFileInDiff, openScopeBucketInDiff } = useInsightDiffNavigation({
     position,
     selectPatchView,
-    leaveSinceReview: sinceReview.control?.onChange,
+    leaveNarrowedDiff: leaveSince,
     applyScopeBucket,
     clearScopeBucket,
   });
@@ -539,7 +548,12 @@ export function ReviewWorkbench({
   // Where no diff toolbar is drawn, a failed, loading, or empty view keeps the menu to switch back.
   const localViewControl =
     patchViewChoice === undefined ? null : (
-      <ReviewDiffChangesMenu changes={{ patchView: patchViewChoice }} />
+      <ReviewDiffChangesMenu
+        changes={{
+          patchView: patchViewChoice,
+          sinceLastRefresh: sinceLastRefresh.control,
+        }}
+      />
     );
   const externalPullRequest = pullRequestExternalRef(model);
   const overviewRevision = buildOverviewRevision(model);
@@ -774,16 +788,16 @@ export function ReviewWorkbench({
                         <DiffWorkbench
                           key={
                             selectedCommitSha ??
-                            (sincePatch !== undefined
-                              ? `since-${sinceReview.baseSha}`
-                              : onOtherView
-                                ? `${model.revision.reviewedHeadSha}-${selectedView}`
-                                : model.revision.reviewedHeadSha)
+                            sinceKey ??
+                            (onOtherView
+                              ? `${model.revision.reviewedHeadSha}-${selectedView}`
+                              : model.revision.reviewedHeadSha)
                           }
                           patch={displayedPatch}
                           changes={definedProps({
                             sinceReview: sinceReview.control,
                             patchView: patchViewChoice,
+                            sinceLastRefresh: sinceLastRefresh.control,
                           })}
                           {...(narrowedDiff
                             ? {}
@@ -910,11 +924,11 @@ export function ReviewWorkbench({
                         This commit diff could not be loaded.
                       </InlineError>
                     ) : null}
-                    {sinceReview.state._tag === "Failed" ? (
+                    {sinceFailure === undefined ? null : (
                       <InlineError className="border-t px-4 py-2">
-                        The diff since your review could not be loaded.
+                        {sinceFailure}
                       </InlineError>
-                    ) : null}
+                    )}
                   </ReviewDiffPane>
                 </div>
               )}

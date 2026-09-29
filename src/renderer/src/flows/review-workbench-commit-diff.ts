@@ -1,8 +1,10 @@
 import { requestJson } from "../api-client";
 import {
   parseCommitDiffResponse,
+  parseSinceLastRefreshDiffResponse,
   parseSinceReviewDiffResponse,
   type CommitDiffResponse,
+  type SinceLastRefreshDiffResponse,
   type SinceReviewDiffResponse,
 } from "../review-diff-contracts";
 
@@ -31,5 +33,20 @@ export async function loadReviewSinceReviewDiff(
   const parsed = parseSinceReviewDiffResponse(value);
   if (parsed === undefined)
     throw new Error("Invalid since-review diff response");
+  return parsed;
+}
+
+export async function loadLocalSinceLastRefreshDiff(
+  profileId: string,
+  reviewId: string,
+  sessionId: string,
+): Promise<SinceLastRefreshDiffResponse> {
+  const value = await requestJson("/v1/reviews/local-since-last-refresh", {
+    method: "POST",
+    body: { profileId, reviewId, sessionId },
+  });
+  const parsed = parseSinceLastRefreshDiffResponse(value);
+  if (parsed === undefined)
+    throw new Error("Invalid since-last-Refresh diff response");
   return parsed;
 }

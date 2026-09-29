@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 import { processFile, type FileDiffMetadata } from "@pierre/diffs";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewDiffToolbar } from "../../src/renderer/src/components/review-diff-toolbar";
-import type { SinceReviewControl } from "../../src/renderer/src/components/review-diff-changes-menu";
+import type { NarrowedDiffControl } from "../../src/renderer/src/components/review-diff-changes-menu";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
 import { openToolbarMenu, VIEWED_COUNT } from "./diff-toolbar-menus";
 
@@ -52,9 +58,9 @@ function renderToolbar(
   );
 }
 
-function sinceReview(
-  overrides: Partial<SinceReviewControl> = {},
-): SinceReviewControl {
+function narrowedControl(
+  overrides: Partial<NarrowedDiffControl> = {},
+): NarrowedDiffControl {
   return {
     active: false,
     disabledReason: undefined,
@@ -108,7 +114,7 @@ describe("ReviewDiffToolbar Markdown preview switch", () => {
         active: true,
         onChange: vi.fn(),
       },
-      changes: { sinceReview: sinceReview() },
+      changes: { sinceReview: narrowedControl() },
     });
 
     expect(
@@ -142,7 +148,7 @@ describe("ReviewDiffToolbar Changes menu", () => {
   });
 
   it("enters the since-review diff in All files mode", async () => {
-    const control = sinceReview();
+    const control = narrowedControl();
     const onPreferencesChange = vi.fn();
     renderToolbar({ changes: { sinceReview: control }, onPreferencesChange });
     const user = userEvent.setup();
@@ -160,7 +166,7 @@ describe("ReviewDiffToolbar Changes menu", () => {
   });
 
   it("leaves the since-review diff from All changes", async () => {
-    const control = sinceReview({ active: true });
+    const control = narrowedControl({ active: true });
     renderToolbar({ changes: { sinceReview: control } });
     const user = userEvent.setup();
 
@@ -183,7 +189,7 @@ describe("ReviewDiffToolbar Changes menu", () => {
   it("disables Since your review and says why when the reviewed commit cannot be diffed", async () => {
     const disabledReason = "No commits since your review";
     renderToolbar({
-      changes: { sinceReview: sinceReview({ disabledReason }) },
+      changes: { sinceReview: narrowedControl({ disabledReason }) },
     });
     await openToolbarMenu(userEvent.setup(), "Changes");
 
@@ -219,6 +225,51 @@ describe("ReviewDiffToolbar Changes menu", () => {
     );
 
     expect(onSelect).toHaveBeenCalledWith("uncommitted");
+  });
+
+  it("enters Since last Refresh from beside the Patch views in All files mode", async () => {
+    const control = narrowedControl();
+    const onPreferencesChange = vi.fn();
+    renderToolbar({
+      changes: {
+        patchView: { selected: "combined", onSelect: vi.fn() },
+        sinceLastRefresh: control,
+      },
+      onPreferencesChange,
+    });
+    const user = userEvent.setup();
+
+    await openToolbarMenu(user, "Changes");
+    await user.click(
+      within(screen.getByRole("group", { name: "Patch view" })).getByRole(
+        "menuitemradio",
+        { name: "Since last Refresh" },
+      ),
+    );
+
+    expect(control.onChange).toHaveBeenCalledWith(true);
+    expect(onPreferencesChange).toHaveBeenCalledWith({ fileMode: "all" });
+  });
+
+  it("leaves Since last Refresh when a Patch view is chosen", async () => {
+    const control = narrowedControl({ active: true });
+    const onSelect = vi.fn();
+    renderToolbar({
+      changes: {
+        patchView: { selected: "combined", onSelect },
+        sinceLastRefresh: control,
+      },
+    });
+    const user = userEvent.setup();
+
+    expect(
+      screen.getByRole("button", { name: "Changes" }).textContent,
+    ).toContain("Since last Refresh");
+    await openToolbarMenu(user, "Changes");
+    await user.click(screen.getByRole("menuitemradio", { name: "Committed" }));
+
+    expect(control.onChange).toHaveBeenCalledWith(false);
+    expect(onSelect).toHaveBeenCalledWith("committed");
   });
 });
 
@@ -267,7 +318,7 @@ describe("ReviewDiffToolbar View options", () => {
   );
 
   it("leaves the since-review diff when a file display mode is chosen", async () => {
-    const control = sinceReview({ active: true });
+    const control = narrowedControl({ active: true });
     renderToolbar({ changes: { sinceReview: control } });
     await openViewOptions();
 

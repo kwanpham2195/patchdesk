@@ -18,8 +18,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 
-/** Switches the diff to the changes since the viewer's last submitted review. */
-export type SinceReviewControl = {
+/** Switches the diff to a narrower comparison, such as the changes since the viewer's last submitted review. */
+export type NarrowedDiffControl = {
   readonly active: boolean;
   /** Set when the option cannot be used; drawn beside the disabled choice. */
   readonly disabledReason: string | undefined;
@@ -35,8 +35,10 @@ type LocalPatchViewChoice = {
 
 /** What the Changes menu can compare the diff against; each field is absent where that comparison does not apply. */
 export type DiffChangesControl = {
-  readonly sinceReview?: SinceReviewControl | undefined;
+  readonly sinceReview?: NarrowedDiffControl | undefined;
   readonly patchView?: LocalPatchViewChoice | undefined;
+  /** Offered beside the Patch views, so it is drawn only with them. */
+  readonly sinceLastRefresh?: NarrowedDiffControl | undefined;
 };
 
 const patchViewTrees = {
@@ -47,6 +49,7 @@ const patchViewTrees = {
 
 const ALL_CHANGES = "all-changes";
 const SINCE_YOUR_REVIEW = "since-your-review";
+const SINCE_LAST_REFRESH = "since-last-refresh";
 
 /** A radio choice whose accessible name is its label alone, with its detail read as a description. */
 function ChangesChoice({
@@ -91,21 +94,26 @@ export function ReviewDiffChangesMenu({
 }: {
   readonly changes: DiffChangesControl;
 }): React.JSX.Element | null {
-  const { sinceReview, patchView } = changes;
+  const { sinceReview, patchView, sinceLastRefresh } = changes;
   if (sinceReview === undefined && patchView === undefined) return null;
   const sinceReviewActive = sinceReview?.active === true;
-  const current =
-    patchView !== undefined
+  const sinceLastRefreshActive =
+    patchView !== undefined && sinceLastRefresh?.active === true;
+  const current = sinceLastRefreshActive
+    ? "Since last Refresh"
+    : patchView !== undefined
       ? localPatchViewLabels[patchView.selected]
       : sinceReviewActive
         ? "Since your review"
         : "All changes";
+  const loading =
+    sinceReview?.loading === true || sinceLastRefresh?.loading === true;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
           <Button variant="outline" size="xs" aria-label="Changes">
-            {sinceReview?.loading === true ? <Spinner /> : null}
+            {loading ? <Spinner /> : null}
             {current}
             <ChevronDown aria-hidden="true" />
           </Button>
@@ -115,16 +123,39 @@ export function ReviewDiffChangesMenu({
         {patchView === undefined ? null : (
           <DropdownMenuGroup>
             <DropdownMenuLabel>Patch view</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={patchView.selected}>
+            <DropdownMenuRadioGroup
+              value={
+                sinceLastRefreshActive ? SINCE_LAST_REFRESH : patchView.selected
+              }
+            >
               {localPatchViews.map((view) => (
                 <ChangesChoice
                   key={view}
                   value={view}
                   label={localPatchViewLabels[view]}
                   detail={patchViewTrees[view]}
-                  onChoose={() => patchView.onSelect(view)}
+                  onChoose={() => {
+                    if (sinceLastRefreshActive)
+                      sinceLastRefresh.onChange(false);
+                    patchView.onSelect(view);
+                  }}
                 />
               ))}
+              {sinceLastRefresh === undefined ? null : (
+                <ChangesChoice
+                  value={SINCE_LAST_REFRESH}
+                  label="Since last Refresh"
+                  detail={
+                    sinceLastRefresh.disabledReason ??
+                    "Previous Local snapshot to Local snapshot"
+                  }
+                  disabled={sinceLastRefresh.disabledReason !== undefined}
+                  onChoose={() => {
+                    if (!sinceLastRefreshActive)
+                      sinceLastRefresh.onChange(true);
+                  }}
+                />
+              )}
             </DropdownMenuRadioGroup>
           </DropdownMenuGroup>
         )}

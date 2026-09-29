@@ -17,6 +17,7 @@ import type {
 } from "../renderer-contracts";
 import type {
   CommitDiffResponse,
+  SinceLastRefreshDiffResponse,
   SinceReviewDiffResponse,
 } from "../review-diff-contracts";
 import type {
@@ -34,6 +35,10 @@ export type ReviewWorkbenchActions = {
   readonly refreshError?: boolean;
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
   readonly loadSinceReviewDiff: () => Promise<SinceReviewDiffResponse>;
+  /** A shared local Review's Since last Refresh patch for the named session. */
+  readonly loadSinceLastRefreshDiff: (
+    sessionId: string,
+  ) => Promise<SinceLastRefreshDiffResponse>;
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   /** Edit and Remove on a local Review's maintainer notes in the diff (ADR 0051). */
   readonly localNotes?: LocalNoteControls;

@@ -9,6 +9,7 @@ import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { ReviewWorkbenchActions } from "../components/review-workbench";
 import type { ReviewerPickerActions } from "../components/reviewer-picker";
 import {
+  loadLocalSinceLastRefreshDiff,
   loadReviewCommitDiff,
   loadReviewSinceReviewDiff,
 } from "./review-workbench-commit-diff";
@@ -116,6 +117,11 @@ export function useWorkbenchActions({
     () => loadReviewSinceReviewDiff(profileId, reviewId),
     [profileId, reviewId],
   );
+  const loadSinceLastRefreshDiff = useCallback(
+    (sessionId: string) =>
+      loadLocalSinceLastRefreshDiff(profileId, reviewId, sessionId),
+    [profileId, reviewId],
+  );
   const localCommentAuthoring: LocalCommentAuthoring | undefined = useMemo(
     () =>
       canWriteDirectConversation
@@ -197,6 +203,7 @@ export function useWorkbenchActions({
       refresh,
       loadCommitDiff,
       loadSinceReviewDiff,
+      loadSinceLastRefreshDiff,
       reportNavigationState,
       ...definedProps({
         refreshing: refreshing ? (true as const) : undefined,
@@ -228,6 +235,7 @@ export function useWorkbenchActions({
       githubWritesLocked,
       labelActions,
       loadCommitDiff,
+      loadSinceLastRefreshDiff,
       loadSinceReviewDiff,
       localCommentAuthoring,
       localNotes,

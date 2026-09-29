@@ -55,6 +55,9 @@ export function CanonicalFixtureWorkbench({
     loadSinceReviewDiff: async () => {
       throw new Error("No since-review fixture is configured");
     },
+    loadSinceLastRefreshDiff: async () => {
+      throw new Error("No since-last-Refresh fixture is configured");
+    },
     localCommentAuthoring: { enabled: true, onSave: async () => undefined },
     reportNavigationState: onNavigationStateChange,
     labels: {
