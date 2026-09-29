@@ -380,6 +380,7 @@ function ReviewDiffSurface({
     fileMode: preferences.fileMode,
     markdownPreviewActive,
     selectionScrollPending,
+    activePathRef,
   });
   // Keep a selected finding inside a collapsed unchanged hunk materialized;
   // the user's option still controls every other unchanged hunk.

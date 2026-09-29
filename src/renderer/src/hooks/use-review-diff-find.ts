@@ -10,7 +10,10 @@ import {
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import { materializeAndScrollTo } from "../review-diff-materialize-and-scroll";
+import {
+  materializeAndScrollTo,
+  settleLineScroll,
+} from "../review-diff-materialize-and-scroll";
 import {
   adjacentFindMatch,
   findDiffMatches,
@@ -59,6 +62,14 @@ type PendingFindJump = {
 
 function matchKey(match: DiffFindMatch): string {
   return `${match.path}\u0000${match.lineType}\u0000${match.lineNumber}`;
+}
+
+/** The focused element itself, inside any shadow roots such as the Browse tree's. */
+function deepActiveElement(): Element | null {
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement != null)
+    active = active.shadowRoot.activeElement;
+  return active;
 }
 
 /**
@@ -139,7 +150,8 @@ export function useReviewDiffFind<T>({
 
   const openFind = useCallback((): void => {
     if (focusInsideOverlay()) return;
-    if (!latest.current.open) opener.current = document.activeElement;
+    // `document.activeElement` names a shadow host, and focusing the host moves focus nowhere.
+    if (!latest.current.open) opener.current = deepActiveElement();
     setOpen(true);
     setFocusRequest((request) => request + 1);
   }, [latest]);
@@ -174,36 +186,50 @@ export function useReviewDiffFind<T>({
     pending.current = undefined;
     // Created only now: expanding or selecting the file resets the feedback generation.
     const operation = latest.current.createNavigationOperation();
+    const target = {
+      type: "line",
+      id: path,
+      lineNumber: jump.match.lineNumber,
+      side: jump.match.side,
+      align: "center",
+    } as const;
     jumpRunner.start((isStale) => {
       const stale = (): boolean => isStale() || operation.isStale();
-      return materializeAndScrollTo({
+      const land = (): void => {
+        if (stale()) return;
+        activePathRef.current = path;
+        latest.current.onActiveFileChange?.(path);
+        requestedIndex.current = undefined;
+        setLanded(jump.match);
+        operation.report(
+          findNavigationStatus(
+            jump.match,
+            jump.index,
+            jump.total,
+            jump.wrapped,
+            jump.direction,
+          ),
+        );
+      };
+      let cancelSettle: (() => void) | undefined;
+      const cancelScroll = materializeAndScrollTo({
         viewer,
         itemId: path,
         isStale: stale,
-        target: {
-          type: "line",
-          id: path,
-          lineNumber: jump.match.lineNumber,
-          side: jump.match.side,
-          align: "center",
-        },
+        target,
         onScrolled: () => {
-          if (stale()) return;
-          activePathRef.current = path;
-          latest.current.onActiveFileChange?.(path);
-          requestedIndex.current = undefined;
-          setLanded(jump.match);
-          operation.report(
-            findNavigationStatus(
-              jump.match,
-              jump.index,
-              jump.total,
-              jump.wrapped,
-              jump.direction,
-            ),
-          );
+          cancelSettle = settleLineScroll({
+            viewer,
+            isStale: stale,
+            target,
+            onSettled: land,
+          });
         },
       });
+      return () => {
+        cancelScroll();
+        cancelSettle?.();
+      };
     });
   }, [activePathRef, items, jumpRequest, latest, runner, viewer]);
 
@@ -266,8 +292,12 @@ export function useReviewDiffFind<T>({
       setOpen(false);
       const previous = opener.current;
       opener.current = null;
-      if (previous instanceof HTMLElement && previous.isConnected)
-        previous.focus();
+      // A virtualized row or composer may have unmounted since; the diff itself stands in.
+      const target =
+        previous instanceof HTMLElement && previous.isConnected
+          ? previous
+          : viewer.current?.getInstance()?.getContainerElement();
+      target?.focus();
     },
   };
 }

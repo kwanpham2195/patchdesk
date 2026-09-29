@@ -1,5 +1,8 @@
 import type { RefObject } from "react";
-import type { CodeViewScrollTarget } from "@pierre/diffs";
+import type {
+  CodeViewLineScrollTarget,
+  CodeViewScrollTarget,
+} from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
 export type MaterializeAndScrollOptions<T> = {
@@ -104,4 +107,72 @@ export function materializeAndScrollTo<T>({
   };
   attemptOrRetry();
   return cleanup;
+}
+
+/** Frames a line scroll is repeated for while its file's rows measure. */
+const LINE_SCROLL_SETTLE_FRAMES = 30;
+
+/**
+ * Repeats a line scroll each frame until the target line's row is drawn and
+ * the scroll position and content height have held still for two frames,
+ * then calls `onSettled`.
+ *
+ * CodeView resolves a line in a file it has not drawn from estimated row
+ * heights, first draws that file as a placeholder, and drops the target once
+ * the viewport reaches the estimate. When the real rows measure differently,
+ * such as wrapped lines, the line moves and nothing follows it, so a jump
+ * into another file can stop short of its line.
+ *
+ * Returns a cleanup that cancels the pending frame.
+ */
+export function settleLineScroll<T>({
+  viewer,
+  isStale,
+  target,
+  onSettled,
+}: {
+  readonly viewer: RefObject<CodeViewHandle<T> | null>;
+  readonly isStale: () => boolean;
+  readonly target: CodeViewLineScrollTarget;
+  readonly onSettled: () => void;
+}): () => void {
+  let pendingFrame: number | undefined;
+  let framesLeft = LINE_SCROLL_SETTLE_FRAMES;
+  let previous: { top: number; height: number } | undefined;
+  let stillFrames = 0;
+  const check = (): void => {
+    pendingFrame = undefined;
+    const codeView = viewer.current?.getInstance();
+    if (isStale() || codeView === undefined) return;
+    const drawn =
+      codeView
+        .getRenderedItems()
+        .find((item) => item.id === target.id)
+        ?.element.shadowRoot?.querySelector(
+          `[data-line="${target.lineNumber}"]`,
+        ) != null;
+    const current = {
+      top: codeView.getScrollTop(),
+      height: codeView.getScrollHeight(),
+    };
+    stillFrames =
+      drawn &&
+      previous !== undefined &&
+      previous.top === current.top &&
+      previous.height === current.height
+        ? stillFrames + 1
+        : 0;
+    if (stillFrames >= 2 || framesLeft === 0) {
+      onSettled();
+      return;
+    }
+    framesLeft -= 1;
+    previous = current;
+    codeView.scrollTo(target);
+    pendingFrame = requestAnimationFrame(check);
+  };
+  pendingFrame = requestAnimationFrame(check);
+  return () => {
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+  };
 }
