@@ -6,9 +6,9 @@ A primitive is a component under `src/renderer/src/components/ui/`; the shared s
 
 ## Surfaces
 
-The window is three layers, each one shade lighter than the one behind it, in both themes.
-The shell (`--shell`) is the window itself and the titlebar.
-The working area sits on a rounded, hairline-bordered panel painted `--background`; this is the `main` element in `app-shell.tsx`.
+The window is three layers, each one shade lighter than the one behind it, in both themes (throwaway #552 edit).
+The shell (`--shell`) is the window itself and the titlebar (throwaway #552 edit).
+The working area sits on a rounded, hairline-bordered panel painted `--background`; this is the `main` element in `app-shell.tsx` (throwaway #552 edit).
 Side columns and cards sit on `--card`: the Review details column on Pull requests and the metadata column on Conversation are both `bg-card`. The Visited pull requests column is the exception: it sits on `--shell`, so it reads as window chrome for navigation.
 A box that has to stand out inside a card column, such as the status block at the top of Review details, steps up once more to `--muted`.
 Do not skip a layer, and do not invent a fourth shade.
@@ -53,9 +53,9 @@ Add a type there; never import a Lucide icon for an Insight inline.
 
 ## Motion
 
-Put `ui-state-transition` on anything whose colour, border, shadow, or position changes on hover or focus.
-It transitions those properties over 150ms, which is the one duration for state changes.
-Do not add an animation library; Base UI's `data-starting-style` and `data-ending-style` cover open and close.
+Put `ui-state-transition` on anything whose colour, border, shadow, or position changes on hover or focus (throwaway #552 edit).
+It transitions those properties over 150ms, which is the one duration for state changes (throwaway #552 edit).
+Do not add an animation library; Base UI's `data-starting-style` and `data-ending-style` cover open and close (throwaway #552 edit).
 The reduced-motion rule at the end of `styles.css` collapses every transition and animation to an instant when the OS asks for less motion, so nothing you add needs its own reduced-motion branch.
 
 ## Copy
