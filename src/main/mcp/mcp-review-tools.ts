@@ -143,7 +143,7 @@ const refusalMessages = {
   stale_cursor:
     "The feedback changed since this cursor was issued. Call get_feedback again without a cursor.",
   stale_session:
-    "sessionId is not the Review's current session. Call get_insight or review_local for the current sessionId, then ask again.",
+    "sessionId is not a session this call accepts. Call get_review_status for the current sessionId and any preparedSessionId, then ask again.",
   request_not_awaiting: "That run request is no longer awaiting approval.",
   storage: "Patchdesk could not read or write its local storage.",
   github_read: "Patchdesk could not read GitHub.",
