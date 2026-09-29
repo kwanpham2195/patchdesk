@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { selectSinceReviewBaseline } from "../../../domain/since-review-baseline";
-import type { SinceReviewControl } from "../components/review-diff-toolbar";
+import type { SinceReviewControl } from "../components/review-diff-changes-menu";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { SinceReviewDiffResponse } from "../review-diff-contracts";
 import { useLatestCommitted } from "./use-latest-committed";

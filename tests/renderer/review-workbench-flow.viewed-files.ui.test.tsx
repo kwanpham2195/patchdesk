@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { chooseViewedAction } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
 
@@ -76,7 +77,7 @@ describe("ReviewWorkbenchFlow Viewed marks", () => {
     });
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Diff" }));
-    await user.click(screen.getByRole("button", { name: "Mark all viewed" }));
+    await chooseViewedAction(user, "Mark all viewed");
     await waitFor(() => expect(workbench.viewedPaths).toHaveLength(2));
     expect(saved).toEqual([
       expect.objectContaining({
@@ -89,6 +90,6 @@ describe("ReviewWorkbenchFlow Viewed marks", () => {
     renderFlow(workbench, vi.fn());
     await user.click(screen.getByRole("tab", { name: "Diff" }));
 
-    expect(viewedCount()).toBe("2 of 2 viewed");
+    expect(viewedCount()).toBe("2/2 viewed");
   });
 });

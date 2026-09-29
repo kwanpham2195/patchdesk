@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { changeScopeFromPatch } from "../../src/domain/change-scope";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { chooseViewedAction } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import {
   briefInsight,
@@ -242,11 +243,11 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     await openScopeMenu(user);
     await user.click(screen.getByRole("menuitemradio", { name: /Core/ }));
 
-    await user.click(screen.getByRole("button", { name: "Mark all viewed" }));
+    await chooseViewedAction(user, "Mark all viewed");
     await waitFor(() => expect(saved).toHaveLength(1));
     expect([...(saved[0] ?? [])].sort()).toEqual(["docs/guide.md", "src/a.ts"]);
 
-    await user.click(screen.getByRole("button", { name: "Show all" }));
+    await chooseViewedAction(user, "Show all");
     await waitFor(() => expect(saved).toHaveLength(2));
     expect(saved[1]).toEqual(["docs/guide.md"]);
 
@@ -258,7 +259,7 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
       within(screen.getByRole("region", { name: "Review diff" })).getByRole(
         "status",
       ).textContent,
-    ).toBe("1 of 2 viewed");
+    ).toBe("1/2 viewed");
   });
 
   it("clears the Scope filter when a commit is selected", async () => {

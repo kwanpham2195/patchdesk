@@ -49,7 +49,7 @@ import type { LocalPatchViewSelection } from "../flows/use-local-patch-view";
 import type { LocalDraftControls } from "../flows/use-local-drafts";
 import { LocalNotesList } from "./local-notes-list";
 import { localPatchViewLabels, sourceListsCommits } from "../review-source";
-import { LocalPatchViewControl } from "./local-patch-view-control";
+import { ReviewDiffChangesMenu } from "./review-diff-changes-menu";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
 import { ReviewWorkbenchHeader } from "./review-workbench-header";
 import { revisionFreshnessLabel } from "../rail-freshness";
@@ -553,12 +553,14 @@ export function ReviewWorkbench({
   const shownFindingCounts = onOtherView
     ? NO_FINDING_COUNTS
     : findingCountsByPath;
+  const patchViewChoice =
+    localPatchView === undefined || selectedCommitSha !== undefined
+      ? undefined
+      : { selected: selectedView, onSelect: selectPatchView };
+  // Where no diff toolbar is drawn, a failed, loading, or empty view keeps the menu to switch back.
   const localViewControl =
-    localPatchView === undefined || selectedCommitSha !== undefined ? null : (
-      <LocalPatchViewControl
-        selected={selectedView}
-        onSelect={selectPatchView}
-      />
+    patchViewChoice === undefined ? null : (
+      <ReviewDiffChangesMenu changes={{ patchView: patchViewChoice }} />
     );
   const externalPullRequest = pullRequestExternalRef(model);
   const overviewRevision = buildOverviewRevision(model);
@@ -803,7 +805,10 @@ export function ReviewWorkbench({
                               : model.revision.reviewedHeadSha)
                         }
                         patch={displayedPatch}
-                        {...definedProps({ sinceReview: sinceReview.control })}
+                        changes={definedProps({
+                          sinceReview: sinceReview.control,
+                          patchView: patchViewChoice,
+                        })}
                         {...(narrowedDiff
                           ? {}
                           : {
@@ -874,39 +879,36 @@ export function ReviewWorkbench({
                         })}
                         hideFileNavigation
                         leadingAction={
-                          <>
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    size="icon-xs"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      setNavigatorVisible((visible) => !visible)
-                                    }
-                                    aria-label={
-                                      navigatorVisible
-                                        ? "Hide review navigator"
-                                        : "Show review navigator"
-                                    }
-                                    aria-expanded={navigatorVisible}
-                                  />
-                                }
-                              >
-                                {navigatorVisible ? (
-                                  <PanelLeftClose />
-                                ) : (
-                                  <PanelLeftOpen />
-                                )}
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {navigatorVisible
-                                  ? "Hide review navigator"
-                                  : "Show review navigator"}
-                              </TooltipContent>
-                            </Tooltip>
-                            {localViewControl}
-                          </>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  size="icon-xs"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setNavigatorVisible((visible) => !visible)
+                                  }
+                                  aria-label={
+                                    navigatorVisible
+                                      ? "Hide review navigator"
+                                      : "Show review navigator"
+                                  }
+                                  aria-expanded={navigatorVisible}
+                                />
+                              }
+                            >
+                              {navigatorVisible ? (
+                                <PanelLeftClose />
+                              ) : (
+                                <PanelLeftOpen />
+                              )}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {navigatorVisible
+                                ? "Hide review navigator"
+                                : "Show review navigator"}
+                            </TooltipContent>
+                          </Tooltip>
                         }
                         {...(commitHeader === undefined
                           ? {}

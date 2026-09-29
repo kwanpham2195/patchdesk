@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { chooseChanges } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { callBody, callPath, projection } from "./review-workbench-fixtures";
 
@@ -152,7 +153,7 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
     );
     await user.click(screen.getByRole("tab", { name: "Diff" }));
     await screen.findByRole("article", { name: "Note on src/a.ts:1" });
-    await user.click(screen.getByRole("button", { name: "Uncommitted" }));
+    await chooseChanges(user, "Uncommitted");
     await waitFor(() =>
       expect(screen.queryByText(/^Loading the .* view/)).toBeNull(),
     );
@@ -187,16 +188,13 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
     expect(screen.queryAllByRole("button", { name: /^Add note on/ })).toEqual(
       [],
     );
-    expect(screen.queryByRole("group", { name: "Patch view" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
     expect(screen.getByRole("note")).toBeTruthy();
 
     await user.click(screen.getByRole("tab", { name: "Browse" }));
-    const views = await screen.findByRole("group", { name: "Patch view" });
     expect(
-      within(views)
-        .getByRole("button", { name: "Uncommitted" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
+      (await screen.findByRole("button", { name: "Changes" })).textContent,
+    ).toContain("Uncommitted");
     await waitFor(() =>
       expect(
         screen
@@ -256,7 +254,7 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
       />,
     );
     await user.click(screen.getByRole("tab", { name: "Diff" }));
-    await user.click(screen.getByRole("button", { name: "Uncommitted" }));
+    await chooseChanges(user, "Uncommitted");
     await waitFor(() =>
       expect(screen.queryByText(/^Loading the .* view/)).toBeNull(),
     );
@@ -269,15 +267,12 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryByRole("treeitem")).toBeNull();
     expect(screen.queryByRole("region", { name: "Review diff" })).toBeNull();
-    expect(screen.queryByRole("group", { name: "Patch view" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
 
     await user.click(screen.getByRole("tab", { name: "Browse" }));
-    const views = await screen.findByRole("group", { name: "Patch view" });
     expect(
-      within(views)
-        .getByRole("button", { name: "Uncommitted" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
+      (await screen.findByRole("button", { name: "Changes" })).textContent,
+    ).toContain("Uncommitted");
     await waitFor(() =>
       expect(
         screen

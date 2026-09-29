@@ -1,5 +1,6 @@
 import { useContext, useState } from "react";
 import {
+  ChevronDown,
   Columns2,
   Hash,
   Palette,
@@ -34,7 +35,8 @@ export type ReviewDiffViewOptions = Pick<
   "diffStyle" | "overflow" | "lineNumbers" | "backgrounds"
 >;
 
-function ReviewDiffOptionRow({
+/** One labelled switch row of the View options popover. */
+export function ReviewDiffOptionRow({
   icon,
   label,
   checked,
@@ -70,15 +72,21 @@ function ReviewDiffOptionRow({
   );
 }
 
-/** One popover on the diff toolbar for every way the diff is drawn; each toggle saves through `onPreferencesChange` so it persists per profile and applies at once. */
+/** One popover on the diff toolbar for every way the diff is drawn; each toggle saves through `onPreferencesChange` so it persists and applies at once. */
 export function ReviewDiffOptionsPopover({
   preferences,
   onPreferencesChange,
+  triggerLabel = "View",
+  children,
 }: {
   readonly preferences: ReviewDiffViewOptions;
   readonly onPreferencesChange: (
     update: Partial<ReviewViewPreferences>,
   ) => void;
+  /** The trigger's visible text; the diff toolbar shows its file display mode here. */
+  readonly triggerLabel?: string | undefined;
+  /** Controls the caller owns, drawn above the drawing options. */
+  readonly children?: React.ReactNode;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   // While the pane is too narrow, the switch shows the saved style rather than the unified fallback on screen.
@@ -89,15 +97,17 @@ export function ReviewDiffOptionsPopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
-          <Button variant="outline" size="sm" aria-label="View options">
+          <Button variant="outline" size="xs" aria-label="View options">
             <SlidersHorizontal aria-hidden="true" />
-            View
+            {triggerLabel}
+            <ChevronDown aria-hidden="true" />
           </Button>
         }
       />
       <PopoverContent
-        className="w-64"
-        align="end"
+        // Scroll inside rather than overflow the window when neither side has room.
+        className="max-h-(--available-height) w-64 overflow-y-auto"
+        align="start"
         hideWhenAnchorHidden
         // Flip above the button when needed so every option stays visible.
         collisionAvoidance={{
@@ -109,6 +119,9 @@ export function ReviewDiffOptionsPopover({
         <PopoverHeader>
           <PopoverTitle>View options</PopoverTitle>
         </PopoverHeader>
+        {children === undefined ? null : (
+          <div className="grid gap-1 border-b pb-2">{children}</div>
+        )}
         <div className="grid gap-1">
           <ReviewDiffOptionRow
             icon={

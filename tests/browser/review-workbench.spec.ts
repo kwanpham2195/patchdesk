@@ -155,8 +155,7 @@ test("Pierre controls persist and navigator collapses", async ({ page }) => {
     await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
 
-    await chooseDiffOptions(page, { split: true });
-    await page.getByRole("button", { name: "Selected", exact: true }).click();
+    await chooseDiffOptions(page, { split: true, fileMode: "Selected" });
     await page.getByRole("button", { name: "Hide review navigator" }).click();
 
     await expect(diff).toHaveAttribute("data-diff-style", "split");
