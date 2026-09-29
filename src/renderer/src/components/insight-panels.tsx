@@ -20,6 +20,7 @@ import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { InsightRunActivity } from "../insight-contracts";
+import type { InsightRunController } from "../hooks/use-insight-run";
 import { RelativeTime } from "./relative-time";
 import { INSIGHT_STATUS_LABELS } from "../insight-status";
 import { INSIGHT_ICONS } from "../insight-icons";
@@ -52,6 +53,7 @@ export function InsightNavRail({
   workbench,
   selectedInsight,
   setSelectedInsight,
+  runs,
   onRunInsights,
   runInsightsDisabled = false,
   trailing,
@@ -60,6 +62,10 @@ export function InsightNavRail({
   readonly selectedInsight: InsightRunDialogType;
   readonly setSelectedInsight: React.Dispatch<
     React.SetStateAction<InsightRunDialogType>
+  >;
+  /** The projection learns of a run only when it ends, so a tab reads Running from its controller's accepted run (#670). */
+  readonly runs: Readonly<
+    Record<InsightRunDialogType, Pick<InsightRunController, "runId">>
   >;
   /** Opens the Run Insights dialog; absent on a merged or closed Review, which can never run one. */
   readonly onRunInsights?: (() => void) | undefined;
@@ -93,7 +99,15 @@ export function InsightNavRail({
           >
             <TabsList variant="line" className="pb-1">
               {documents.map(([type, projection]) => (
-                <InsightTab key={type} type={type} status={projection.status} />
+                <InsightTab
+                  key={type}
+                  type={type}
+                  status={
+                    runs[type].runId === undefined
+                      ? projection.status
+                      : "running"
+                  }
+                />
               ))}
             </TabsList>
           </Tabs>

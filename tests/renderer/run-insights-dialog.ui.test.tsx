@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
@@ -22,6 +23,7 @@ import {
   type DesktopDouble,
 } from "./fake-desktop-response";
 import {
+  briefInsight,
   projection,
   providerCatalog,
   withAnalysis,
@@ -83,15 +85,31 @@ function accepted(type: string) {
   return success({ runId: `run-${type}`, type, status: "queued" });
 }
 
-function renderInsights(workbench: WorkbenchResponse): void {
-  render(
+/** Applies the slot's workbench patches, as the Review workbench does. */
+function PatchedInsights({
+  initial,
+}: {
+  readonly initial: WorkbenchResponse;
+}): React.JSX.Element {
+  const [workbench, setWorkbench] = useState(initial);
+  return (
     <InsightsSlot
       workbench={workbench}
-      onWorkbenchReplace={() => undefined}
-      onWorkbenchPatch={() => undefined}
+      onWorkbenchReplace={setWorkbench}
+      onWorkbenchPatch={({ insights, ...rest }) =>
+        setWorkbench((current) => ({
+          ...current,
+          ...rest,
+          insights: { ...current.insights, ...insights },
+        }))
+      }
       onReprepare={async () => workbench}
-    />,
+    />
   );
+}
+
+function renderInsights(workbench: WorkbenchResponse): void {
+  render(<PatchedInsights initial={workbench} />);
 }
 
 async function openRunInsights(user: ReturnType<typeof userEvent.setup>) {
@@ -210,5 +228,56 @@ describe("Run Insights dialog", () => {
       expect.objectContaining({ type: "analysis" }),
     ]);
     expect(bodies.walkthrough).toEqual([]);
+  });
+
+  it("shows Running on each started Insight's tab until its run ends, then the result's status (#670)", async () => {
+    const workbench = withAnalysis("actionable");
+    let finishBrief: (response: DesktopResponse) => void = () => undefined;
+    const briefPoll = new Promise<DesktopResponse>((resolve) => {
+      finishBrief = resolve;
+    });
+    desktop = installDesktopDouble({
+      // SAFETY: the provider catalog and workbench fixtures are JSON-compatible data.
+      "/v1/insight-providers": () =>
+        success(structuredClone(catalog) as RawJsonValue),
+      "/v1/reviews/insights/brief/run": () => accepted("brief"),
+      "/v1/reviews/insights/walkthrough/run": () => accepted("walkthrough"),
+      "/v1/reviews/insights/runs/run-brief": () => briefPoll,
+      "/v1/reviews/insights/runs/run-walkthrough": () => new Promise(() => {}),
+      "/v1/reviews/load": () =>
+        success(
+          structuredClone({
+            ...workbench,
+            insights: { ...workbench.insights, brief: briefInsight() },
+          }) as RawJsonValue,
+        ),
+    });
+    const user = userEvent.setup();
+    renderInsights(workbench);
+    const rail = within(
+      screen.getByRole("navigation", { name: "Insight navigation" }),
+    );
+    expect(rail.getByRole("tab", { name: "Brief: Not run" })).toBeTruthy();
+
+    const dialog = await openRunInsights(user);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Start runs" }),
+    );
+
+    expect(
+      await rail.findByRole("tab", { name: "Brief: Running" }),
+    ).toBeTruthy();
+    expect(
+      rail.getByRole("tab", { name: "Walkthrough: Running" }),
+    ).toBeTruthy();
+
+    finishBrief(
+      success({ runId: "run-brief", type: "brief", status: "completed" }),
+    );
+
+    expect(await rail.findByRole("tab", { name: "Brief" })).toBeTruthy();
+    expect(
+      rail.getByRole("tab", { name: "Walkthrough: Running" }),
+    ).toBeTruthy();
   });
 });

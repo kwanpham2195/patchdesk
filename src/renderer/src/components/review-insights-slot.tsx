@@ -392,6 +392,7 @@ export function InsightsSlot({
             workbench={workbench}
             selectedInsight={selectedInsight}
             setSelectedInsight={setSelectedInsight}
+            runs={runs}
             onRunInsights={reviewOpen ? runInsights.open : undefined}
             runInsightsDisabled={!runEnabled}
             trailing={
