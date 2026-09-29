@@ -11,7 +11,8 @@ import { pending, projection } from "./review-workbench-fixtures";
 /**
  * The wiring a hook test cannot see: the Finish review dialog hands its
  * summary to `usePendingReviewActions`, and the workbench turns a kept
- * summary into the app's leave guard (#606).
+ * summary (#606) or one typed in the open dialog (#643) into the app's leave
+ * guard.
  */
 
 afterEach(() => {
@@ -81,5 +82,37 @@ describe("ReviewWorkbenchFlow kept Finish review summary", () => {
         }),
       }),
     );
+  });
+
+  it("guards leaving while the open dialog holds a typed summary, and clears when the summary is emptied", async () => {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      throw new Error(input.path);
+    });
+    const navigation = vi.fn();
+    render(
+      <ReviewWorkbenchFlow
+        // SAFETY: `pending("pending")` is wider fixture data than the strict
+        // `pendingReview` union; it is not a runtime-decoded value.
+        workbench={projection({ pendingReview: pending("pending") as never })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={navigation}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Finish review/ }));
+    const summary = screen.getByRole("textbox", {
+      name: "Final review summary",
+    });
+
+    await user.type(summary, "Half written");
+    await waitFor(() =>
+      expect(navigation).toHaveBeenLastCalledWith("dirty_draft"),
+    );
+
+    await user.clear(summary);
+    await waitFor(() => expect(navigation).toHaveBeenLastCalledWith("clear"));
   });
 });

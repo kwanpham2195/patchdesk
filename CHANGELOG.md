@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a half-written note or comment being dropped without asking when Patchdesk leaves the Review. While a diff composer holds text, or Finish review is open with a typed summary, leaving the Review shows the leave dialog, as a kept summary already did, and Stay on this review keeps the text. This covers Back, a Visited pull requests row, a notification click, a pull request chosen in Navigate (⌘K), a workspace switch, Clear local review data, and closing the window. MCP `show_review` answers `held` and leaves the screen as it is. #643
+
 - Fixed a workspace switch dropping a kept Finish review summary without asking. Choosing another workspace in the titlebar or in Settings → Workspace, and confirming Clear local review data in Settings → Data & recovery, now show the leave dialog while a summary is kept: Stay on this review keeps the summary, the workspace, and the local data, and Discard changes and leave returns to Pull requests before switching or clearing. #635
 
 - Added find to the Diff. ⌘F, or Find in the Edit menu, opens a find bar under the diff toolbar that searches the displayed patch's lines in every file the Scope picker shows, ignoring case, and counts matching lines. Enter and Shift+Enter move to the next and previous match, such as "3 of 12", and wrap past either end, saying so. The landed line is tinted; a match in a Viewed file expands it, and in Selected a match in another file selects it. Escape closes the bar. Browse now shows its Search field for every pull request, not only those with 500 files or more. #608

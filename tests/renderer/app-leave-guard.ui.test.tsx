@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "./pierre-highlighter-mock";
 import {
   cleanup,
   render,
@@ -6,12 +7,17 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, {
+  PointerEventsCheckLevel,
+} from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "../../src/renderer/src/app";
+import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { APP_BOOT_OPERATIONS, APP_BOOT_ROUTES } from "./app-boot-routes";
 import {
+  failure,
   installDesktopDouble,
   success,
   type DesktopDouble,
@@ -41,6 +47,19 @@ function openRequests(double: DesktopDouble): number {
   return double.request.mock.calls.filter(
     ([request]) => callPath(request) === "/v1/reviews/open",
   ).length;
+}
+
+async function chooseAnotherPullRequest(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await user.keyboard("{Meta>}k{/Meta}");
+  await user.type(
+    await screen.findByRole("combobox", { name: "Search views and actions" }),
+    "acme/widgets#43",
+  );
+  await user.click(
+    screen.getByRole("option", { name: "Open acme/widgets#43" }),
+  );
 }
 
 describe("App leave guard for an unsaved Review draft (#606)", () => {
@@ -88,20 +107,7 @@ describe("App leave guard for an unsaved Review draft (#606)", () => {
         name: "Keep a summary on review-42",
       }),
     );
-    const chooseAnotherPullRequest = async (): Promise<void> => {
-      await user.keyboard("{Meta>}k{/Meta}");
-      await user.type(
-        await screen.findByRole("combobox", {
-          name: "Search views and actions",
-        }),
-        "acme/widgets#43",
-      );
-      await user.click(
-        screen.getByRole("option", { name: "Open acme/widgets#43" }),
-      );
-    };
-
-    await chooseAnotherPullRequest();
+    await chooseAnotherPullRequest(user);
     await user.click(
       await screen.findByRole("button", { name: "Stay on this review" }),
     );
@@ -110,7 +116,7 @@ describe("App leave guard for an unsaved Review draft (#606)", () => {
     ).toBeTruthy();
     expect(openRequests(double)).toBe(0);
 
-    await chooseAnotherPullRequest();
+    await chooseAnotherPullRequest(user);
     expect(openRequests(double)).toBe(0);
     await user.click(
       await screen.findByRole("button", { name: "Discard changes and leave" }),
@@ -286,5 +292,89 @@ describe("App leave guard for a workspace switch or local data clear (#635)", ()
       expect(requestsTo(double, "/v1/storage/clear-local-data")).toBe(1),
     );
     expect(reviewOnScreen()).toBeNull();
+  });
+});
+
+/** review-42 as a working-tree Review, whose Diff composer adds maintainer notes. */
+function workingTreeReview(): WorkbenchResponse {
+  const base = projection();
+  // SAFETY: fixture data in the wire shape `parseWorkbenchResponse` accepts; the working-tree source replaces the pull request fields.
+  return projection({
+    ...base,
+    session: {
+      ...base.session,
+      key: {
+        ...base.session.key,
+        source: {
+          kind: "local_branch",
+          branch: "main",
+          baseRef: "refs/heads/develop",
+        },
+      },
+    },
+    pullRequest: undefined,
+    localDrafts: [],
+  } as never);
+}
+
+describe("App leave guard for text typed in a Review (#643)", () => {
+  it("holds a pull request chosen in ⌘K behind the leave dialog while a note composer holds text, and Stay keeps the text", async () => {
+    window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
+    const double = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profile]),
+        "/v1/inbox": () =>
+          success({
+            ...inboxWithRow,
+            profile,
+            inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
+          }),
+        "/v1/reviews/load": () => success(asJsonBody(workingTreeReview())),
+        "/v1/reviews/detect-updates": () =>
+          success({ updatesAvailable: false }),
+        "/v1/insight-providers": () => failure({ error: "storage" }, 503),
+        // Context hydration is not under test; an unreadable file keeps the patch as it is.
+        "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
+      },
+      { operations: APP_BOOT_OPERATIONS },
+    );
+    installed = double;
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
+    render(
+      <App
+        reviewWorkbenchLoader={async () => ({ default: ReviewWorkbenchFlow })}
+      />,
+    );
+    await user.click(await screen.findByRole("tab", { name: "Diff" }));
+    const addNote = (
+      await screen.findAllByRole("button", { name: "Add note on src/a.ts" })
+    ).at(-1);
+    if (addNote === undefined) throw new Error("missing Add note action");
+    await user.click(addNote);
+    await user.type(
+      within(screen.getByRole("region", { name: "Note composer" })).getByRole(
+        "textbox",
+        { name: "Note" },
+      ),
+      "Guard the empty case.",
+    );
+    // ⌘K is ignored inside a text field.
+    await user.click(document.body);
+
+    await chooseAnotherPullRequest(user);
+    await user.click(
+      await screen.findByRole("button", { name: "Stay on this review" }),
+    );
+
+    const note = within(
+      screen.getByRole("region", { name: "Note composer" }),
+    ).getByRole("textbox", { name: "Note" });
+    if (!(note instanceof HTMLTextAreaElement))
+      throw new Error("expected the note textarea");
+    expect(note.value).toBe("Guard the empty case.");
+    expect(openRequests(double)).toBe(0);
   });
 });

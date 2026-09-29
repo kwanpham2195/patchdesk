@@ -7,6 +7,7 @@ import type {
 } from "./review-diff-view";
 import { composerErrorMessage } from "./review-diff-authoring-errors";
 import type { DiffAuthoringRefusal } from "../hooks/use-review-conversation-overlays";
+import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import { diffLineRangeLabel } from "../review-diff-line-range";
 import {
   PullRequestDescriptionPreview,
@@ -308,6 +309,7 @@ export function InlineCommentComposer({
   const note = kind === "note";
   type ComposerAction = "comment" | "start" | "add" | "comment-now";
   const [body, setBody] = useState(initialBody);
+  useReportUnsentReviewText(body);
   const [pendingAction, setPendingAction] = useState<ComposerAction>();
   const pendingActionRef = useRef<ComposerAction | undefined>(undefined);
   const [error, setError] = useState<string>();

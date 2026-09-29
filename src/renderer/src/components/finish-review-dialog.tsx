@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
+import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import type { PendingReviewProjection } from "../renderer-contracts";
 import type { GitHubReviewEvent } from "../../../domain/pending-review";
 
@@ -118,6 +119,7 @@ function FinishReviewDialogContent({
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   const [discardArmed, setDiscardArmed] = useState(false);
   const summaryRef = useRef<HTMLTextAreaElement>(null);
+  useReportUnsentReviewText(open ? summary : "");
   const locked = actions.busy || submitting;
 
   useEffect(() => {
