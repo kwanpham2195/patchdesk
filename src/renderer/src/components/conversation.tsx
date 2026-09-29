@@ -14,6 +14,7 @@ import {
 import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
+import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewVerdictState } from "../../../domain/review-verdicts";
 import { RelativeTime } from "./relative-time";
@@ -403,6 +404,7 @@ function ReviewSummaryEntry({
 }): React.JSX.Element {
   const [editingDismissal, setEditingDismissal] = useState(false);
   const [message, setMessage] = useState("");
+  useReportUnsentReviewText(message);
   const [dismissing, setDismissing] = useState(false);
   const dismissingRef = useRef(false);
   const [error, setError] = useState<string>();

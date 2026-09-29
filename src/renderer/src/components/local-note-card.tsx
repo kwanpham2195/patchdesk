@@ -7,6 +7,7 @@ import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
+import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import type { LocalDraftEntry } from "../local-draft-contracts";
 import { diffLineRangeLabel } from "../review-diff-line-range";
 import { LocalDraftStateBadge } from "./local-draft-state-badge";
@@ -35,6 +36,7 @@ export function LocalNoteCard({
   onRemove,
 }: LocalNoteCardProps): React.JSX.Element {
   const [draft, setDraft] = useState<string | undefined>(undefined);
+  useReportUnsentReviewText(draft !== undefined && draft !== text ? draft : "");
   const [busy, setBusy] = useState<"saving" | "removing" | undefined>();
   const [error, setError] = useState<string | undefined>();
   const errorId = `local-note-${useId()}-error`;

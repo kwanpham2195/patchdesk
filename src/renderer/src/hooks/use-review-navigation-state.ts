@@ -19,7 +19,7 @@ export function useReviewNavigationState({
   report,
 }: {
   readonly writePending: boolean;
-  /** A kept Finish review summary, or text typed in a composer or an open Finish review dialog. */
+  /** Text the maintainer typed and has not sent, such as a kept Finish review summary or a half-written note. */
   readonly unsentText: boolean;
   readonly report: ReviewWorkbenchActions["reportNavigationState"];
 }): void {

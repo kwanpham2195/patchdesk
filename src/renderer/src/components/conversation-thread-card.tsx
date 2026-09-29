@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
 import { PatchdeskApiError, contextualMessage } from "../api-client";
+import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import {
   COMMENT_DELETE_MESSAGES,
   COMMENT_EDIT_MESSAGES,
@@ -110,6 +111,9 @@ function ConversationCommentRow({
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState("");
+  useReportUnsentReviewText(
+    editing && editBody !== comment.body ? editBody : "",
+  );
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [deleting, setDeleting] = useState(false);
@@ -266,6 +270,7 @@ export function ConversationThreadCard({
   const pendingRef = useRef(false);
   const [expanded, setExpanded] = useState(false);
   const [replyBody, setReplyBody] = useState("");
+  useReportUnsentReviewText(replyBody);
   const [replying, setReplying] = useState(false);
   const replyingRef = useRef(false);
   const [error, setError] = useState<ThreadStateFailure>();
