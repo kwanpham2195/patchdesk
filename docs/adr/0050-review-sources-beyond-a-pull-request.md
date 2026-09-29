@@ -211,6 +211,25 @@ refused, the Review's `freshness` becomes `RevisionChanged`, and the refusal
 reason is returned for the renderer to show beside the control. Refresh is
 the only way to a new session.
 
+> **Amended 2026-09-29 (#611):** an update check now runs on a shared
+> (`local_branch`) Review, on the renderer's existing detect-updates request:
+> when the window gains focus, and every 90 seconds while it is visible. It
+> does not recompute the source, because the Local snapshot writes objects.
+> It compares a read-only fingerprint of the checkout, made from `HEAD`, the
+> merge base, a hash of `git diff HEAD --binary`, and each untracked file's
+> `git hash-object` hash without `-w`, with the fingerprint recorded on the
+> current session when it was prepared. The fingerprint is read just before
+> the snapshot, so an edit between the two gives a spurious update rather
+> than a missed one. A session stored before #611 is fingerprinted on its
+> first check, in memory. Every read passes `--no-optional-locks`, and the
+> Review lock is held only to read the Review record. A difference answers
+> `RevisionChanged` and records nothing: no prepared session and no
+> `freshness` save, so the Review does not move (ADR 0032 allows a check
+> that moves no state). The renderer shows Updates available, and Refresh
+> remains the only way to a new session. A checkout on another branch, a
+> commit Review, and a failed read, which is logged once, answer
+> `Unchanged`. The Apply gate keeps the exact recomputation above.
+
 ## Local drafts
 
 A pull request Review drafts into the GitHub pending review (ADR 0014). A local

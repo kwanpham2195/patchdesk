@@ -8,6 +8,7 @@ import {
   parseAbsolutePath,
   parseContentHash,
   type AbsolutePath,
+  type ContentHash,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
@@ -79,6 +80,8 @@ export type ResolvedLocalReview = LocalReviewCheckout & {
   readonly revision: ReviewRevision;
   /** The checkout `HEAD` under a shared Review's Local snapshot; absent for the other kinds. */
   readonly checkoutHeadSha?: GitSha;
+  /** The checkout's fingerprint under a shared Review's Local snapshot; absent for the other kinds. */
+  readonly checkoutFingerprint?: ContentHash;
 };
 
 export type LocalReviewPreparationFailure =
@@ -211,7 +214,10 @@ export class LocalReviewSessionPreparation {
         },
       },
       revision: resolved.value.revision,
-      ...definedProps({ checkoutHeadSha: resolved.value.checkoutHeadSha }),
+      ...definedProps({
+        checkoutHeadSha: resolved.value.checkoutHeadSha,
+        checkoutFingerprint: resolved.value.checkoutFingerprint,
+      }),
     });
   }
 
@@ -461,6 +467,7 @@ export class LocalReviewSessionPreparation {
       createdAt: this.dependencies.now(),
       ...definedProps({
         checkoutHeadSha: resolved.checkoutHeadSha,
+        checkoutFingerprint: resolved.checkoutFingerprint,
         viewPatches:
           committed === undefined || uncommitted === undefined
             ? undefined

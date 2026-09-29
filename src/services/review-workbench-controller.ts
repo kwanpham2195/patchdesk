@@ -40,6 +40,8 @@ import type {
   LocalBranchMismatch,
   LocalReviewOpening,
 } from "./local-review-opening";
+import type { LocalCheckoutChangeDetector } from "./local-checkout-change-detector";
+import type { LocalReviewSource } from "../domain/review-source";
 import type { FailureKinds } from "../domain/failure-kind";
 import {
   agentRunRequestsOnSession,
@@ -116,6 +118,10 @@ export class ReviewWorkbenchController {
       readonly coordinator: Pick<ReviewOperationCoordinator, "withReviewLock">;
       readonly commits: ReviewCommitService;
       readonly localCheckout: Pick<LocalReviewOpening, "branchMismatch">;
+      readonly localChanges: Pick<
+        LocalCheckoutChangeDetector,
+        "checkoutChanged"
+      >;
       /** Local diagnostic log stream; best effort, never gates a request. Wire-visible failures stay collapsed to their existing reason — this only makes the underlying cause observable in `patchdesk.jsonl`. */
       readonly logs?: Pick<AppLogService, "write">;
     },
@@ -730,12 +736,21 @@ export class ReviewWorkbenchController {
     readonly reviewId: ReviewId;
     readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
+    // Only the Review record is read under the lock, so a note saved during a slow checkout read is not refused.
     const local = await this.lifecycle.coordinator.withReviewLock(
       input.profileId,
       input.reviewId,
-      () => this.observeLocal(input),
+      async () => {
+        const review = await this.lifecycle.reviews.load(
+          input.profileId,
+          input.reviewId,
+        );
+        return review._tag === "ok" && isLocalReview(review.value)
+          ? review.value
+          : undefined;
+      },
     );
-    if (local !== undefined) return ok(local);
+    if (local !== undefined) return ok(await this.observeLocal(local));
     // Pass-through: the durable own-write journal is unioned in by `observe`
     // itself, under the coordinator lock, because a union read before the lock
     // misses a receipt a write path holding the lock has yet to append (#179).
@@ -743,35 +758,31 @@ export class ReviewWorkbenchController {
   }
 
   /**
-   * A local Review reads no GitHub: it has changed only once an agent's
-   * refresh prepared a session and marked it RevisionChanged (ADR 0052).
-   * Undefined for a pull request Review, which `observe` reads from GitHub,
-   * and for an unreadable one, which `observe` reports.
+   * A local Review reads no GitHub. It has changed once an agent's refresh
+   * prepared a session and marked it RevisionChanged (ADR 0052), or once its
+   * checkout no longer matches the current session (#611). The check records
+   * nothing, so the Review stays where it is until Refresh.
    */
-  private async observeLocal(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-  }): Promise<
-    | (ReviewObservation & {
-        readonly agentRunRequests: ReadonlyArray<AgentRunRequest>;
-      })
-    | undefined
+  private async observeLocal(review: Review<LocalReviewSource>): Promise<
+    ReviewObservation & {
+      readonly agentRunRequests: ReadonlyArray<AgentRunRequest>;
+    }
   > {
-    const review = await this.lifecycle.reviews.load(
-      input.profileId,
-      input.reviewId,
-    );
-    if (review._tag === "err" || !isLocalReview(review.value)) return undefined;
-    const detectedAt = this.now();
     // The session's agent run requests ride along so a request an agent made while the Review is open reaches its bar.
     const agentRunRequests =
       agentRunRequestsOnSession(
-        review.value.agentRunRequests,
-        review.value.currentSessionId,
+        review.agentRunRequests,
+        review.currentSessionId,
       ) ?? [];
-    return review.value.freshness._tag === "RevisionChanged"
-      ? { _tag: "RevisionChanged", detectedAt, agentRunRequests }
-      : { _tag: "Unchanged", detectedAt, agentRunRequests };
+    const changed =
+      review.freshness._tag === "RevisionChanged" ||
+      (review.status._tag !== "Terminal" &&
+        (await this.lifecycle.localChanges.checkoutChanged(review)));
+    return {
+      _tag: changed ? "RevisionChanged" : "Unchanged",
+      detectedAt: this.now(),
+      agentRunRequests,
+    };
   }
 
   async refresh(

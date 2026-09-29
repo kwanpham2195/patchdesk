@@ -55,6 +55,7 @@ import { ReviewPreparationJournal } from "../services/review-preparation-journal
 import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
+import { LocalCheckoutChangeDetector } from "../services/local-checkout-change-detector";
 import { LocalReviewOpening } from "../services/local-review-opening";
 import { LocalApplyService } from "../services/local-apply-service";
 import { LocalApplySettlement } from "../services/local-apply-settlement";
@@ -532,6 +533,13 @@ export async function buildLocalApiContainer(
       observation: reviewObservation,
       commits: reviewCommits,
       localCheckout: localReviewOpening,
+      localChanges: new LocalCheckoutChangeDetector({
+        git: readOnlyGit,
+        paths,
+        profiles,
+        sessions,
+        logs,
+      }),
       logs,
     });
   const localApply = new LocalApplyService({
