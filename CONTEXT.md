@@ -83,7 +83,7 @@ The spec a local Review's change is checked against: Markdown the maintainer ent
 _Avoid_: Task, prompt, requirements, PR description
 
 **Agent run request**:
-A coding agent's request over MCP for one Insight run on a local Review's current session. It spends nothing by itself: it waits on the Review's Agent requests bar until the maintainer presses Run, which opens the ordinary run dialog, or Decline, which is final for that session. Any Run of that Insight on that session approves it, and a move to a new session drops it (ADR 0052).
+A coding agent's request over MCP for one Insight run on a local Review's current session or its Prepared session. It spends nothing by itself: it waits on the Review's Agent requests bar until the maintainer presses Run, which opens the ordinary run dialog, or Decline, which is final for that session. A request on the Prepared session reaches the bar when the maintainer's Refresh moves the Review there. Any Run of that Insight on that session approves it, and a move to any other session drops it (ADR 0052).
 _Avoid_: Agent run, auto-run, queued run
 
 **Prepared session**:

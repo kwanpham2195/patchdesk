@@ -213,6 +213,7 @@ async function opening(
       retention: { pruneSuperseded: async () => ok(undefined) },
       applySettlement: { settleEarlierSession: async () => undefined },
       logs: { write: () => undefined },
+      agentRunRequests: { announceMoved: async () => undefined },
     },
     () => now,
   );

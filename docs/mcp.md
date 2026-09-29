@@ -261,9 +261,9 @@ error code and a sentence the agent can relay to you;
 - **refresh_review**: Read the checkout of a local Review again after you changed it, and prepare those changes for the maintainer. The Review stays on the session the maintainer sees, and Patchdesk shows them Updates available; their Refresh moves the Review to the prepared session and carries their notes. It changes no branch, index, or working-tree file; Patchdesk stores the snapshot as git objects, a refs/patchdesk/local/ ref, and a worktree in its cache. Returns changed: false when the checkout still matches the Review's session, else changed: true with preparedSessionId. One call per Review every 10 seconds; an earlier one is refused rate_limited with retryAfterMs. A working tree over the untracked limit of review_local is refused untracked_too_large, naming the largest untracked paths. A patch over 2 MiB is refused patch_too_large, naming the files with the most changes. A Review whose configured checkout no longer exists is refused checkout_missing, naming the path.
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
 
-- **run_insight**: Ask the maintainer to run one Insight on a local Review's current session. It returns at once with status awaiting_approval and a requestId; nothing runs until the maintainer presses Run in Patchdesk, and the provider and model are theirs to pick. On awaiting_approval, stop: tell the user the request waits for their approval in Patchdesk, and read get_insight when they resume you. A request already awaiting or running for that session and type is returned as it stands, and a declined one returns declined: the maintainer declined it for this session. sessionId must be the Review's current session, else it is refused stale_session.
+- **run_insight**: Ask the maintainer to run one Insight on a local Review's current session, or on the session your refresh_review prepared. It returns at once with a status and a requestId; nothing runs until the maintainer presses Run in Patchdesk, and the provider and model are theirs to pick. On awaiting_approval, stop: tell the user the request waits for their approval in Patchdesk, and read get_insight when they resume you. On awaiting_refresh, the request is for the prepared session: stop, and ask the user to press Refresh in Patchdesk, which moves the Review to your changes and shows the request for their approval. If the checkout changes again before their Refresh, the Refresh lands on newer code and drops the request; call refresh_review and run_insight again. A request already awaiting or running for that session and type is returned as it stands, and a declined one returns declined: the maintainer declined it for this session. sessionId must be the Review's current session or its preparedSessionId, else it is refused stale_session.
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
-  - `sessionId` (string, required, at most 512 characters): The sessionId review_local, list_local_reviews, or get_insight returned.
+  - `sessionId` (string, required, at most 512 characters): The sessionId review_local, list_local_reviews, or get_insight returned, or the preparedSessionId refresh_review or get_review_status returned.
   - `type` (string, required): One of `analysis`, `walkthrough`, `brief`.
 
 - **get_insight** (read-only): Read one Insight of a local Review: its status, and the retained result with the session it describes. awaiting_approval and declined answer a run_insight request on the current session. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries outdated: true.
@@ -328,6 +328,14 @@ the diff never changes under a note you are writing. The header shows
 **Updates available** when the window gains focus, or within 90 seconds while
 it stays in front. Press **Refresh** to move the Review to the new code. Each
 note then reads **Unchanged** or **Changed since your note**.
+
+The agent can ask for an Insight on the new code before you press Refresh, by
+calling `run_insight` with the `preparedSessionId` from `refresh_review`. It
+answers `awaiting_refresh`, and the agent asks you to press Refresh. The request posts no
+notification and stays off the Agent requests bar until your Refresh moves
+the Review to that code; then the notification posts and the bar shows the
+request. If the checkout changed again before your Refresh, the Refresh moves
+to the newer code and drops the request.
 
 ## Troubleshooting
 

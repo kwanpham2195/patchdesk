@@ -93,7 +93,7 @@ export const mcpToolManifest = {
   },
   run_insight: {
     description:
-      "Ask the maintainer to run one Insight on a local Review's current session. It returns at once with status awaiting_approval and a requestId; nothing runs until the maintainer presses Run in Patchdesk, and the provider and model are theirs to pick. On awaiting_approval, stop: tell the user the request waits for their approval in Patchdesk, and read get_insight when they resume you. A request already awaiting or running for that session and type is returned as it stands, and a declined one returns declined: the maintainer declined it for this session. sessionId must be the Review's current session, else it is refused stale_session.",
+      "Ask the maintainer to run one Insight on a local Review's current session, or on the session your refresh_review prepared. It returns at once with a status and a requestId; nothing runs until the maintainer presses Run in Patchdesk, and the provider and model are theirs to pick. On awaiting_approval, stop: tell the user the request waits for their approval in Patchdesk, and read get_insight when they resume you. On awaiting_refresh, the request is for the prepared session: stop, and ask the user to press Refresh in Patchdesk, which moves the Review to your changes and shows the request for their approval. If the checkout changes again before their Refresh, the Refresh lands on newer code and drops the request; call refresh_review and run_insight again. A request already awaiting or running for that session and type is returned as it stands, and a declined one returns declined: the maintainer declined it for this session. sessionId must be the Review's current session or its preparedSessionId, else it is refused stale_session.",
     inputSchema: v.strictObject({
       reviewId,
       sessionId: v.pipe(
@@ -101,7 +101,7 @@ export const mcpToolManifest = {
         v.minLength(1),
         v.maxLength(512),
         v.description(
-          "The sessionId review_local, list_local_reviews, or get_insight returned.",
+          "The sessionId review_local, list_local_reviews, or get_insight returned, or the preparedSessionId refresh_review or get_review_status returned.",
         ),
       ),
       type: v.picklist(["analysis", "walkthrough", "brief"]),

@@ -234,6 +234,8 @@ Amended 2026-09-29 (#662): `dirty_draft` also covers an unsaved Change intent ed
 
 Amended 2026-09-29 (#599): a ninth tool, `get_review_status(reviewId)`, answers where a local Review stands in one read-only call: the current session description; `preparedSessionId` while a session an agent's `refresh_review` prepared waits for the maintainer's Refresh, absent after the move; `insights`, each type's `status` and `requestId` as `get_insight` reports them, without the result; `localDraftCounts`, the Local drafts by kind (`finding`, `note`) and by the `get_feedback` state (`current`, `unchanged`, `changed`, `needs_attention`, `applied`), every count present; and `appliedFindings`, each applied Finding draft's `findingId`, `title`, `path`, `startLine`, `line`, and `appliedAt`, in file and line order. Apply runs `git apply` on the agent's own checkout, so the list names the lines that changed under it. The statuses come from `ReviewInsightReader`, the reader `get_insight` uses, over one workbench projection; the prepared session and the drafts come from the Review record read after that projection, so a Refresh the projection waited behind is reflected in both. It returns no Insight result and no draft text. It waits for the Review lock while it builds the projection, as `get_insight` does; it takes no snapshot, never answers `in_progress`, and does not stamp `lastOpenedAt`. Refusals: `not_found`, `profile_changed`, `not_applicable` (a pull request Review), and `storage`. Its description does not ask the agent to poll ("Feedback hand-off"). `get_insight` now also reads its agent run request from the record read after the projection.
 
+Amended 2026-09-30 (#602): `run_insight(reviewId, sessionId, type)` accepts the Review's `preparedSessionId` as `sessionId` and answers `awaiting_refresh` for it; the amendment under "Decline is final for the session" records how that request reaches the maintainer.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run
@@ -383,6 +385,21 @@ cannot tell which session a dropped request was for. After a move it
 describes the new session, with its own status (usually `none`) and the new
 `sessionId`. A `run_insight` that names the old session is refused
 `stale_session`.
+
+Amended 2026-09-30 (#602): `run_insight` also accepts the Review's
+`preparedSessionId`, so an agent can ask for an Insight on the code its
+`refresh_review` just prepared; any other session is still `stale_session`.
+The request is stored as `awaiting_approval` on the prepared session, and
+`run_insight` answers `awaiting_refresh`, which tells the agent to ask the
+maintainer to press Refresh. It still returns at once and never starts a run.
+The Agent requests bar, `get_insight`, `get_review_status`, and the sidebar
+marker read only the current session's requests, so the request stays out of
+them until the maintainer's Refresh moves the Review to that session; the
+move keeps it, and the `Agent asks for <Insight>` notification posts then,
+from `LocalReviewOpening`'s move through `AgentRunRequestService`, so it never
+names a request the bar cannot show. A Refresh that moves past the prepared
+session to newer content drops the request, as every move drops requests for
+other sessions. Decline stays final for the session a request names.
 
 **App restart mid-run.** Nothing new: `insight-recovery.ts` fails runs a
 crash left active, so `get_insight` reports `failed`, and the agent may

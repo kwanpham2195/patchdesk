@@ -60,6 +60,7 @@ import {
   type CheckoutSharedReviews,
   type SharedReviewStore,
 } from "./local-shared-review-list";
+import type { AgentRunRequestService } from "./agent-run-request-service";
 import type { AppLogService } from "./app-log-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
@@ -243,6 +244,7 @@ export class LocalReviewOpening {
         "settleEarlierSession"
       >;
       readonly logs: Pick<AppLogService, "write">;
+      readonly agentRunRequests: Pick<AgentRunRequestService, "announceMoved">;
     },
     private readonly now: () => IsoTimestamp,
   ) {}
@@ -882,6 +884,10 @@ export class LocalReviewOpening {
     );
     if (saved._tag === "err") return err({ reason: "storage" });
     this.agentRefreshStartedAt.delete(`${profileId}:${reviewId}`);
+    await this.lifecycle.agentRunRequests.announceMoved(
+      stored?.currentSessionId,
+      moved.value,
+    );
     // Awaited under this Review lock, so no other open of the Review moves it meanwhile (#474).
     // Best effort: the retention service records its own failures.
     await this.lifecycle.retention.pruneSuperseded(profileId, reviewId);

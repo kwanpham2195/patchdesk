@@ -16,6 +16,7 @@ import {
   localApplyHarness,
   now,
   profileId,
+  repository,
   value,
   type LocalApplyHarness,
 } from "./local-apply-fixture";
@@ -423,5 +424,98 @@ describe("LocalReviewOpening.prepareForAgent", () => {
     });
     const stored = value(await harness.reviews.load(profileId, reviewId));
     expect(stored.preparedSessionId).toBeUndefined();
+  });
+});
+
+describe("an agent run request on the prepared session", () => {
+  /** An edited checkout prepared by an agent's refresh, and the id of the session it prepared. */
+  async function preparedEdit(harness: LocalApplyHarness) {
+    const noted = await notedReview(harness);
+    await writeFile(noted.probe, probeContent(1));
+    const { preparedSessionId } = value(
+      await harness.opening.prepareForAgent(profileId, noted.reviewId),
+    );
+    if (preparedSessionId === undefined) throw new Error("nothing prepared");
+    return { ...noted, preparedSessionId };
+  }
+
+  it("waits off the bar with no notification, then shows on the bar with one notification once the maintainer's Refresh moves there", async () => {
+    const harness = await localApplyHarness();
+    const { reviewId, preparedSessionId } = await preparedEdit(harness);
+    const ask = {
+      profileId,
+      reviewId,
+      sessionId: preparedSessionId,
+      type: "analysis",
+    } as const;
+
+    const asked = value(await harness.agentRunRequests.request(ask));
+    const repeated = value(await harness.agentRunRequests.request(ask));
+    // The agent's review_local answers the Review unmoved, as the maintainer's window shows it before Refresh.
+    const beforeMove = value(
+      await harness.opening.openForAgent({
+        profileId,
+        repository,
+        request: { kind: "local_branch" },
+      }),
+    ).workbench;
+    const notifiedBeforeMove = [...harness.notifications];
+    const moved = value(await harness.opening.refresh(profileId, reviewId));
+    const askedAfterMove = value(await harness.agentRunRequests.request(ask));
+
+    expect(asked).toMatchObject({
+      sessionId: preparedSessionId,
+      status: "awaiting_refresh",
+      requestId: "agent-request-fixture-1",
+    });
+    expect(repeated).toEqual(asked);
+    expect(beforeMove.session.id).not.toBe(preparedSessionId);
+    expect(beforeMove.agentRunRequests).toEqual([]);
+    expect(notifiedBeforeMove).toEqual([]);
+    expect(moved.session.id).toBe(preparedSessionId);
+    expect(moved.agentRunRequests).toEqual([
+      expect.objectContaining({
+        requestId: "agent-request-fixture-1",
+        type: "analysis",
+        status: "awaiting_approval",
+      }),
+    ]);
+    expect(harness.notifications).toEqual([
+      expect.objectContaining({
+        _tag: "AgentRunRequested",
+        reviewId,
+        insightType: "analysis",
+      }),
+    ]);
+    expect(askedAfterMove).toMatchObject({
+      status: "awaiting_approval",
+      requestId: "agent-request-fixture-1",
+    });
+  });
+
+  it("is dropped with no notification when the maintainer's Refresh moves past the prepared session to newer content", async () => {
+    const harness = await localApplyHarness();
+    const { probe, reviewId, preparedSessionId } = await preparedEdit(harness);
+    const ask = {
+      profileId,
+      reviewId,
+      sessionId: preparedSessionId,
+      type: "brief",
+    } as const;
+    value(await harness.agentRunRequests.request(ask));
+    await writeFile(probe, probeContent(2));
+
+    const moved = value(await harness.opening.refresh(profileId, reviewId));
+    const askedAgain = await harness.agentRunRequests.request(ask);
+
+    expect(moved.session.id).not.toBe(preparedSessionId);
+    expect(moved.agentRunRequests).toEqual([]);
+    expect(harness.notifications).toEqual([]);
+    expect(askedAgain).toEqual({
+      _tag: "err",
+      error: { reason: "stale_session" },
+    });
+    const stored = value(await harness.reviews.load(profileId, reviewId));
+    expect(stored.agentRunRequests).toBeUndefined();
   });
 });
