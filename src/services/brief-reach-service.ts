@@ -446,7 +446,7 @@ async function runGit(
 
 /**
  * The candidate worktree resolved to the same real path as this session's
- * app-owned worktree, mirroring `CodexInsightInvoker`'s guard: nothing outside
+ * app-owned worktree, mirroring `AccountInsightInvoker`'s guard: nothing outside
  * `paths.worktreeDirectory` is ever searched.
  */
 async function verifiedWorktree(

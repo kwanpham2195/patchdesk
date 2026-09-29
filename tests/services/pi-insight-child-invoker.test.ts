@@ -151,7 +151,7 @@ describe("PiInsightChildInvoker", () => {
   });
 
   // The Codex invoker's own test pins the same constant on its side
-  // (`codex-insight-invoker.test.ts`). This is the Pi half: without it the
+  // (`account-insight-invoker.test.ts`). This is the Pi half: without it the
   // shared bound is only observed through one of the two invokers that
   // spend it.
   it("bounds an analysis run by the shared analysis timeout", async () => {

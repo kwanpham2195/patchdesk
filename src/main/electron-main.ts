@@ -67,7 +67,10 @@ import {
   type NotificationSettings,
 } from "../domain/contracts";
 import { parseGitSha } from "../domain/ids";
-import type { InsightProvider } from "../domain/insight-provider";
+import type {
+  AccountInsightProvider,
+  InsightProvider,
+} from "../domain/insight-provider";
 import { loggableMetaValue } from "../domain/log-entry";
 import { err, ok, type Result } from "../domain/result";
 import {
@@ -85,11 +88,15 @@ import { windowBackgroundColor } from "./window-appearance";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
+import { PiRpcClient } from "../adapters/pi-cli/pi-rpc-client";
 import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
 import { importLoginShellEnvironment } from "../adapters/process/login-shell-environment";
 import { startLoginShellEnvironmentImport } from "../adapters/process/login-shell-import";
 import { briefReachComputer } from "../services/brief-reach-service";
-import { CodexInsightInvoker } from "../services/codex-insight-invoker";
+import {
+  AccountInsightInvoker,
+  type AccountInsightRunner,
+} from "../services/account-insight-invoker";
 import { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import {
   InsightRunCoordinator,
@@ -328,6 +335,7 @@ function createInsightProviderCatalog(
   return new InsightProviderCatalog(
     modelCatalog,
     (executablePath) => new CodexAppServerClient(executablePath),
+    (executablePath) => new PiRpcClient(executablePath),
     (name) => discoverPathOnlyExecutable(name),
   );
 }
@@ -370,22 +378,28 @@ function createInsightCoordinator(
     return parsed._tag === "ok" ? parsed.value : undefined;
   };
   /**
-   * Codex is discovered per run rather than once here: the executable can
-   * appear or move between runs, and a PATH lookup is cheaper than a run.
+   * An account provider's CLI is discovered per run rather than once here: the
+   * executable can appear or move between runs, and a PATH lookup is cheaper
+   * than a run.
    */
-  const codexInvoker: InsightInvoker = {
+  const accountInvoker = (
+    provider: AccountInsightProvider,
+    executable: string,
+    clientFactory: (executablePath: string) => AccountInsightRunner,
+  ): InsightInvoker => ({
     async invoke(input, options) {
-      const executablePath = await discoverPathOnlyExecutable("codex");
+      const executablePath = await discoverPathOnlyExecutable(executable);
       if (executablePath === undefined)
         return err({ reason: "runtime_unavailable" as const });
-      return new CodexInsightInvoker(
+      return new AccountInsightInvoker(
+        provider,
         paths,
-        (path) => new CodexAppServerClient(path),
+        clientFactory,
         executablePath,
         readHead,
       ).invoke(input, options);
     },
-  };
+  });
   const providerInvokers = {
     pi:
       runtime === undefined
@@ -396,7 +410,16 @@ function createInsightCoordinator(
             process.execPath,
             runtime.runnerPath,
           ),
-    "codex-cli-account": codexInvoker,
+    "codex-cli-account": accountInvoker(
+      "codex-cli-account",
+      "codex",
+      (path) => new CodexAppServerClient(path),
+    ),
+    "pi-cli-account": accountInvoker(
+      "pi-cli-account",
+      "pi",
+      (path) => new PiRpcClient(path),
+    ),
   } satisfies Readonly<Record<InsightProvider, InsightInvoker>>;
   /**
    * The one place a provider is chosen. Each run carries the provider it was

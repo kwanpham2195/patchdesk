@@ -2,6 +2,7 @@ import * as v from "valibot";
 
 import {
   INSIGHT_LANGUAGES,
+  INSIGHT_PROVIDERS,
   type InsightLanguage,
   type InsightProvider,
   type InsightReasoning,
@@ -26,7 +27,7 @@ const VERSION = 1;
 
 /** The stored preference record, as `localStorage` hands it back. */
 const storedPreferenceSchema = v.object({
-  provider: v.picklist(["pi", "codex-cli-account"]),
+  provider: v.picklist(INSIGHT_PROVIDERS),
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
   // A choice saved before Insights had a language keeps its model and reads as English.

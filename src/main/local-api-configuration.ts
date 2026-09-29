@@ -114,10 +114,10 @@ export type LocalApiConfiguration = {
   readonly paths?: PatchdeskPaths;
   /** Main-process-only source of currently enabled Pi models. */
   readonly modelCatalog?: PiRuntimeModelCatalog;
-  /** Main-process-only provider catalog; Codex activation is explicit and authenticated. */
+  /** Main-process-only provider catalog; account-provider activation is explicit and authenticated. */
   readonly insightProviders?: Pick<
     InsightProviderCatalog,
-    "passive" | "activateCodex"
+    "passive" | "activateAccount"
   >;
   /** Main-process-owned Trash capability. Production wires shell.trashItem. */
   readonly trash?: TrashMover;

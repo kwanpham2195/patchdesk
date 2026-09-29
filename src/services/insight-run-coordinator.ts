@@ -48,6 +48,7 @@ import {
 } from "../domain/insight-record";
 import {
   INSIGHT_LANGUAGES,
+  INSIGHT_PROVIDERS,
   type InsightProvider,
   type InsightLanguage,
   type InsightReasoning,
@@ -158,7 +159,7 @@ export const insightRunRequestSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
   type: picklist(["analysis", "walkthrough", "brief"]),
-  provider: picklist(["pi", "codex-cli-account"]),
+  provider: picklist(INSIGHT_PROVIDERS),
   model: pipe(string(), minLength(1), maxLength(200)),
   reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]),
   language: picklist(INSIGHT_LANGUAGES),

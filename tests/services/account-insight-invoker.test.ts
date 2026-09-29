@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { CodexInsightInvoker } from "../../src/services/codex-insight-invoker";
+import { AccountInsightInvoker } from "../../src/services/account-insight-invoker";
 import {
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
   MAX_WALKTHROUGH_PROMPT_BYTES,
@@ -35,7 +35,7 @@ async function fixture(
   const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-insight-"));
   roots.push(root);
   const paths = PatchdeskPaths.forTest(root);
-  // SAFETY: this fixture only exercises CodexInsightInvoker's path-ownership and provider checks,
+  // SAFETY: this fixture only exercises AccountInsightInvoker's path-ownership and provider checks,
   // never WorkspaceProfileId/ReviewSessionId's own validation, so a plain string in the right shape
   // stands in for the branded type without pulling in the parser.
   const profileId = "acme" as never;
@@ -76,15 +76,14 @@ async function fixture(
     calls.push([input, options]);
     return ok(runValue);
   };
-  const invoker = new CodexInsightInvoker(
+  const invoker = new AccountInsightInvoker(
+    "codex-cli-account",
     paths,
-    // SAFETY: CodexInsightInvoker only ever calls `.run(...)` on the client this factory returns,
-    // so a plain object exposing just `run` safely stands in for the full CodexAppServerClient.
-    () => ({ run }) as never,
+    () => ({ run }),
     "/usr/bin/codex",
     async () => "a".repeat(40),
   );
-  // SAFETY: CodexInsightInvoker.invoke only compares/forwards these fields (realpath checks and
+  // SAFETY: AccountInsightInvoker.invoke only compares/forwards these fields (realpath checks and
   // string equality); it never calls their branded parsers, so plain strings exercise the same
   // code paths as real InsightInvocationInput values.
   const input = {
@@ -106,7 +105,7 @@ async function fixture(
   return { invoker, input, calls, worktree, reviewInput, context, patch };
 }
 
-describe("CodexInsightInvoker", () => {
+describe("AccountInsightInvoker", () => {
   it("uses only the real app-owned represented worktree, expected head, and prepared review input", async () => {
     const value = await fixture();
     await expect(

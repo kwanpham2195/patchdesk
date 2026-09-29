@@ -416,6 +416,9 @@ describe("InsightRunCoordinator current lifecycle", () => {
         listModels: async () =>
           ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
       }),
+      () => {
+        throw new Error("pi must not start for a Codex run");
+      },
       async () => "/usr/local/bin/codex",
     );
     const value = await fixture(
@@ -475,6 +478,9 @@ describe("InsightRunCoordinator current lifecycle", () => {
         listModels: async () =>
           ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
       }),
+      () => {
+        throw new Error("pi must not start for a Codex run");
+      },
       async () => "/usr/local/bin/codex",
     );
     let invocations = 0;

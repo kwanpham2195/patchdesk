@@ -2,6 +2,7 @@ import * as v from "valibot";
 
 import {
   INSIGHT_LANGUAGES,
+  INSIGHT_PROVIDERS,
   type InsightLanguage,
   type InsightProvider,
 } from "../../domain/insight-provider";
@@ -10,6 +11,7 @@ import {
 export const INSIGHT_PROVIDER_LABELS = {
   pi: "API key",
   "codex-cli-account": "Codex CLI account",
+  "pi-cli-account": "pi CLI account",
 } as const satisfies Record<InsightProvider, string>;
 
 /** What each Insight language is called in the run dialog and the Insight header. */
@@ -92,7 +94,7 @@ export const retainedInsightFields = {
   generatedAt: v.pipe(v.string(), v.isoTimestamp()),
   provenance: v.optional(
     v.strictObject({
-      provider: v.picklist(["pi", "codex-cli-account"]),
+      provider: v.picklist(INSIGHT_PROVIDERS),
       model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
       reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
       language: v.picklist(INSIGHT_LANGUAGES),
