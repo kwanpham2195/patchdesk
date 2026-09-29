@@ -29,6 +29,7 @@ async function fixture(
   options: {
     readonly type?: "analysis" | "walkthrough" | "brief";
     readonly language?: "en" | "vi";
+    readonly runValue?: Readonly<Record<string, ReadonlyArray<never> | null>>;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-insight-"));
@@ -67,12 +68,13 @@ async function fixture(
     ),
   ]);
   const calls: Array<[CodexRunInput, { readonly signal?: AbortSignal }]> = [];
+  const runValue = options.runValue ?? { findings: [] };
   const run = async (
     input: CodexRunInput,
     options: { readonly signal?: AbortSignal } = {},
   ) => {
     calls.push([input, options]);
-    return ok({ findings: [] });
+    return ok(runValue);
   };
   const invoker = new CodexInsightInvoker(
     paths,
@@ -287,8 +289,30 @@ describe("CodexInsightInvoker", () => {
     );
     expect(invocation.maxPromptBytes).toBe(MAX_ANALYSIS_CODEX_PROMPT_BYTES);
     expect(invocation.runTimeoutMs).toBe(EXPECTED_ANALYSIS_TIMEOUT_MS);
-    expect(value.calls[0]?.[0].outputSchema).toBeUndefined();
   });
+
+  it.each([
+    ["analysis", "verdict"],
+    ["brief", "startHere"],
+  ] as const)(
+    "sends the %s output schema and returns null fields as absent",
+    async (type, schemaProperty) => {
+      const value = await fixture({
+        type,
+        runValue: { findings: [], coverage: null },
+      });
+      await expect(
+        value.invoker.invoke(value.input, {
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toEqual({ _tag: "ok", value: { findings: [] } });
+      expect(value.calls[0]?.[0].outputSchema).toMatchObject({
+        type: "object",
+        additionalProperties: false,
+        required: expect.arrayContaining([schemaProperty]),
+      });
+    },
+  );
 
   it.each(["analysis", "walkthrough", "brief"] as const)(
     "writes the %s prompt's language rule in the language the run chose",

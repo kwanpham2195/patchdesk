@@ -62,6 +62,8 @@ Patchdesk polls the run by its durable identity. Cancel requests cancellation, b
 
 Provider unavailability, invocation failure, timeout, invalid output, or cancellation settles without replacing the retained Brief. The generated content itself is not used to authorize GitHub writes.
 
+A Codex CLI account run sends the Brief JSON Schema with its turn request, so Codex holds its answer to the Brief's fields and limits while it writes it. Codex requires every field in that schema, so an optional block the model leaves out arrives as `null`, and Patchdesk reads it as absent. Patchdesk still validates the returned result and its citations.
+
 ### Settle
 
 On success, Patchdesk retains the new Brief for this session and renders its structured sections.
@@ -144,4 +146,4 @@ A failed run shows one warning block that names the failure category, such as a 
 - Relative-time and partial-result wording, and command approval, need live checks; see [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
 - Confirm cancelled, failed, and timed-out run states; progress after switching readers; and focus after closing the run dialog.
 
-Baseline drafted from Patchdesk application source commit `dd613996`; verified against `737c515c`, including the Codex activity trace and the model list prices; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified. Codex thread persistence is revised from source (#596) and not live-verified. The Scope card's filter rows are revised from source (#612) and not live-verified.
+Baseline drafted from Patchdesk application source commit `dd613996`; verified against `737c515c`, including the Codex activity trace and the model list prices; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified. Codex thread persistence is revised from source (#596) and not live-verified. The Scope card's filter rows are revised from source (#612) and not live-verified. The Codex output schema is revised from source (#597) and not live-verified.
