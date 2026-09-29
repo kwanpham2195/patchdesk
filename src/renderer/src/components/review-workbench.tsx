@@ -201,8 +201,8 @@ export function ReviewWorkbench({
   const navigatorGridStyle = {
     "--review-navigator-width": `${navigatorWidthRem}rem`,
   } as React.CSSProperties;
-  const [preferences, setPreferences] = useState<ReviewViewPreferences>(() =>
-    loadReviewViewPreferences(model.session.key.profileId),
+  const [preferences, setPreferences] = useState<ReviewViewPreferences>(
+    loadReviewViewPreferences,
   );
   const position = useReviewWorkbenchPosition({
     model,
@@ -360,9 +360,9 @@ export function ReviewWorkbench({
   const updatePreferences = useCallback(
     (update: Partial<ReviewViewPreferences>): void => {
       setPreferences((current) => ({ ...current, ...update }));
-      saveReviewViewPreferences(model.session.key.profileId, update);
+      saveReviewViewPreferences(update);
     },
-    [model.session.key.profileId],
+    [],
   );
   const commitDiffOptions = {
     revisionKey: model.revision.reviewedHeadSha,

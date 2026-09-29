@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NarrativeWalkthroughDiff } from "../../src/renderer/src/components/narrative-walkthrough-diff";
 import type { NarrativeHunk } from "../../src/domain/narrative-walkthrough";
+import {
+  loadReviewViewPreferences,
+  saveReviewViewPreferences,
+} from "../../src/renderer/src/review-view-preferences";
 
+beforeEach(() => window.localStorage.clear());
 afterEach(() => cleanup());
 
 const hunk: NarrativeHunk = {
@@ -93,7 +98,8 @@ describe("narrative walkthrough diff block", () => {
     expect(screen.getByLabelText("Review diff")).toBeTruthy();
   });
 
-  it("honors the unified/split and wrap preferences from the user", async () => {
+  it("starts from the saved View options and keeps its own changes unsaved", async () => {
+    saveReviewViewPreferences({ diffStyle: "split", overflow: "scroll" });
     const user = userEvent.setup();
     const { container } = render(
       <NarrativeWalkthroughDiff
@@ -103,19 +109,28 @@ describe("narrative walkthrough diff block", () => {
         allHunks={[hunk]}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "View options" }));
-    await user.click(await screen.findByRole("switch", { name: "Split view" }));
-    expect(
+    const diffStyle = () =>
       container
         .querySelector('[aria-label="Review diff"]')
-        ?.getAttribute("data-diff-style"),
-    ).toBe("split");
-    await user.click(screen.getByRole("switch", { name: "Wrap lines" }));
+        ?.getAttribute("data-diff-style");
+    expect(diffStyle()).toBe("split");
+
+    await user.click(screen.getByRole("button", { name: "View options" }));
+    const wrap = await screen.findByRole("switch", { name: "Wrap lines" });
+    expect(wrap.getAttribute("aria-checked")).toBe("false");
+    await user.click(screen.getByRole("switch", { name: "Split view" }));
+    await user.click(wrap);
+
+    expect(diffStyle()).toBe("unified");
     expect(
       screen
         .getByRole("switch", { name: "Wrap lines" })
         .getAttribute("aria-checked"),
     ).toBe("true");
+    expect(loadReviewViewPreferences()).toMatchObject({
+      diffStyle: "split",
+      overflow: "scroll",
+    });
   });
 
   it("honors appearance and diff-theme events", () => {

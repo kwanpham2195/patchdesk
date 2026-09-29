@@ -11,12 +11,12 @@ import {
 const DEFAULTS = {
   diffStyle: "unified",
   fileMode: "all",
-  overflow: "scroll",
+  overflow: "wrap",
   lineNumbers: true,
   backgrounds: true,
 };
 
-const KEY = "patchdesk.review-view.v1.profile-1";
+const KEY = "patchdesk.review-view.v1";
 
 type StoredValue =
   | string
@@ -26,21 +26,33 @@ type StoredValue =
   | ReadonlyArray<StoredValue>
   | { readonly [key: string]: StoredValue };
 
-function store(preferences: Record<string, StoredValue>): void {
-  window.localStorage.setItem(KEY, JSON.stringify({ version: 1, preferences }));
+function store(
+  preferences: Record<string, StoredValue>,
+  key: string = KEY,
+): void {
+  window.localStorage.setItem(key, JSON.stringify({ version: 1, preferences }));
 }
 
 describe("review view preferences", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("returns defaults, including line numbers and backgrounds, without a stored value", () => {
-    expect(loadReviewViewPreferences("profile-1")).toEqual(DEFAULTS);
+  it("returns defaults, with wrapped lines, without a stored value", () => {
+    expect(loadReviewViewPreferences()).toEqual(DEFAULTS);
   });
 
-  it("reads a stored record written before the two view fields existed", () => {
-    store({ diffStyle: "split", fileMode: "selected", overflow: "wrap" });
+  it("ignores View options saved under a workspace profile's own key", () => {
+    store(
+      { diffStyle: "split", overflow: "scroll", lineNumbers: false },
+      "patchdesk.review-view.v1.profile-1",
+    );
 
-    expect(loadReviewViewPreferences("profile-1")).toEqual({
+    expect(loadReviewViewPreferences()).toEqual(DEFAULTS);
+  });
+
+  it("falls back each missing field on its own", () => {
+    store({ diffStyle: "split", fileMode: "selected" });
+
+    expect(loadReviewViewPreferences()).toEqual({
       diffStyle: "split",
       fileMode: "selected",
       overflow: "wrap",
@@ -50,18 +62,18 @@ describe("review view preferences", () => {
   });
 
   it("round-trips line numbers off while leaving backgrounds on", () => {
-    saveReviewViewPreferences("profile-1", { lineNumbers: false });
+    saveReviewViewPreferences({ lineNumbers: false });
 
-    expect(loadReviewViewPreferences("profile-1")).toMatchObject({
+    expect(loadReviewViewPreferences()).toMatchObject({
       lineNumbers: false,
       backgrounds: true,
     });
   });
 
   it("round-trips backgrounds off while leaving line numbers on", () => {
-    saveReviewViewPreferences("profile-1", { backgrounds: false });
+    saveReviewViewPreferences({ backgrounds: false });
 
-    expect(loadReviewViewPreferences("profile-1")).toMatchObject({
+    expect(loadReviewViewPreferences()).toMatchObject({
       lineNumbers: true,
       backgrounds: false,
     });
@@ -85,7 +97,7 @@ describe("review view preferences", () => {
     (_field, preferences, invalidField, validField) => {
       store({ diffStyle: "split", ...preferences });
 
-      const loaded = loadReviewViewPreferences("profile-1");
+      const loaded = loadReviewViewPreferences();
       expect(loaded[invalidField]).toBe(true);
       expect(loaded[validField]).toBe(false);
       expect(loaded.diffStyle).toBe("split");

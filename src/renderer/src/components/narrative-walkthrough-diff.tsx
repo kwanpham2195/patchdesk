@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "@/review-view-preferences";
+import { loadReviewViewPreferences } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import {
@@ -94,9 +94,11 @@ export function NarrativeWalkthroughDiff({
     () => parseReviewDiff(filteredPatch),
     [filteredPatch],
   );
+  // Starts from the saved View options; a change made here stays in this block
+  // and is never saved (#553).
   const [localPreferences, setLocalPreferences] =
     useState<ReviewViewPreferences>(
-      () => preferences ?? DEFAULT_REVIEW_VIEW_PREFERENCES,
+      () => preferences ?? loadReviewViewPreferences(),
     );
   const visibleConversation = useMemo(
     () =>

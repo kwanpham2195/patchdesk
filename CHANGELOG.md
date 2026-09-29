@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Saved the Diff tab's View options and All files or Selected choice once for the whole app, so a change applies in every workspace profile. Wrapped lines are now on by default. Choices saved per profile before this change are not carried over, so everyone starts from the defaults once. A Walkthrough hunk starts from the saved View options. #553
+
 - Showed **Updates available** on an open shared local Review when its checkout changes without `refresh_review`, such as an edit in a terminal, a new untracked file, or a commit. The check runs on window focus and every 90 seconds while the window is visible, and it never moves the Review: the diff and a half-written note stay until Refresh. #611
 
 - Stopped Codex CLI account Insight runs from saving their threads under `~/.codex/sessions`. Brief, Walkthrough, and Analysis threads no longer appear in `codex resume` or leave copies of review prompts and diffs on disk. #596

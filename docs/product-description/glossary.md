@@ -100,7 +100,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Browse.** The Diff navigator's first tab, listing the displayed patch's changed files as a tree. A Scope filter narrows it; the Commits tab and the Threads or Notes tab beside it stay complete.
 
-**File display mode.** The diff toolbar choice between All files, which draws every file of the displayed patch in one scrolling pane, and Selected, which draws only the selected file. The default is All files, and the choice is saved per workspace profile with the View options. File, hunk, and unresolved-comment keyboard commands work only in All files.
+**File display mode.** The diff toolbar choice between All files, which draws every file of the displayed patch in one scrolling pane, and Selected, which draws only the selected file. The default is All files, and the choice is saved once for the whole app with the View options. File, hunk, and unresolved-comment keyboard commands work only in All files.
 
 **Scope bucket.** One of the five groups a changed file falls into by its path alone: Core, Tests, Generated, Docs, or Config. Every changed file lands in exactly one bucket.
 

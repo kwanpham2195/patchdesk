@@ -85,13 +85,11 @@ function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
 /** Flips diff view options through the toolbar popover, the way a reviewer does. */
 export async function chooseDiffOptions(
   page: Page,
-  options: { readonly split?: boolean; readonly wrap?: boolean },
+  options: { readonly split?: boolean },
 ): Promise<void> {
   await page.getByRole("button", { name: "View options" }).click();
   if (options.split)
     await page.getByRole("switch", { name: "Split view" }).click();
-  if (options.wrap)
-    await page.getByRole("switch", { name: "Wrap lines" }).click();
   await page.keyboard.press("Escape");
 }
 
