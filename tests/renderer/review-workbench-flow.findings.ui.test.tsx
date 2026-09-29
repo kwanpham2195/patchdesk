@@ -227,6 +227,21 @@ describe("ReviewWorkbenchFlow keyboard commands", () => {
     expect(selectedTab("Conversation")).toBe("true");
     await user.keyboard("{Meta>}2{/Meta}");
     expect(selectedTab("Diff")).toBe("true");
+    // AZERTY types `"` on the unshifted 3 key; the physical key still selects Insights.
+    act(() => {
+      document.body.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: '"',
+          code: "Digit3",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(selectedTab("Insights")).toBe("true");
+    await user.keyboard("{Meta>}2{/Meta}");
+    expect(selectedTab("Diff")).toBe("true");
 
     // No pending review, so the header shows no Finish review and neither does ⌘K.
     expect(commands?.().map((command) => command.label)).toEqual([
