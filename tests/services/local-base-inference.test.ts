@@ -7,7 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CommandRunner } from "../../src/adapters/github/command-runner";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { listLocalBranches } from "../../src/services/local-base-inference";
+import { parseLocalBranchName } from "../../src/domain/ids";
+import {
+  listLocalBranches,
+  namedBaseRef,
+  type LocalBranchListing,
+} from "../../src/services/local-base-inference";
 
 const roots: string[] = [];
 
@@ -70,6 +75,7 @@ describe("listLocalBranches", () => {
       value: {
         head: { kind: "branch", branch: "feature" },
         branches: ["main"],
+        remoteBranches: [],
         defaultBranch: "main",
         inferred: { baseBranch: "main", commitsBack: 2 },
       },
@@ -129,6 +135,7 @@ describe("listLocalBranches", () => {
       value: {
         head: { kind: "branch", branch: "main" },
         branches: expect.arrayContaining(["same-tip", "ahead"]),
+        remoteBranches: [],
         defaultBranch: "main",
       },
     });
@@ -150,4 +157,78 @@ describe("listLocalBranches", () => {
     });
     expect(result._tag === "ok" && result.value.inferred).toBeUndefined();
   });
+
+  it("lists remote-tracking branches without origin/HEAD and infers a local base even when a remote one is nearer (#591)", async () => {
+    const path = await repository();
+    git(path, "checkout", "-q", "-b", "feature");
+    await commit(path, "one");
+    await commit(path, "two");
+    git(path, "update-ref", "refs/remotes/origin/feature", "HEAD~1");
+    git(path, "update-ref", "refs/remotes/origin/main", "main");
+    git(
+      path,
+      "symbolic-ref",
+      "refs/remotes/origin/HEAD",
+      "refs/remotes/origin/main",
+    );
+
+    const result = await listed(path);
+
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        branches: ["main"],
+        remoteBranches: expect.arrayContaining([
+          "origin/feature",
+          "origin/main",
+        ]),
+        inferred: { baseBranch: "main", commitsBack: 2 },
+      },
+    });
+    expect(result._tag === "ok" && result.value.remoteBranches).toHaveLength(2);
+  });
 });
+
+describe("namedBaseRef", () => {
+  /** On `feature`, with a local `main` and the remote-tracking `origin/main` and `origin/develop`. */
+  const listing: LocalBranchListing = {
+    head: { kind: "branch", branch: branch("feature") },
+    branches: [branch("main")],
+    remoteBranches: ["origin/main", "origin/develop"],
+  };
+
+  it.each([
+    ["a local branch", "main", "refs/heads/main"],
+    ["the branch HEAD names", "feature", "refs/heads/feature"],
+    [
+      "a remote-tracking branch",
+      "origin/develop",
+      "refs/remotes/origin/develop",
+    ],
+    [
+      "a full ref, as written",
+      "refs/remotes/origin/main",
+      "refs/remotes/origin/main",
+    ],
+    ["a name the checkout does not have", "gone", undefined],
+  ])("resolves %s", (_case, name, expected) => {
+    expect(namedBaseRef(listing, branch(name))).toBe(expected);
+  });
+
+  it("prefers a local branch over the remote-tracking branch of the same name, as git does", () => {
+    const shadowed: LocalBranchListing = {
+      ...listing,
+      branches: [branch("origin/main")],
+    };
+
+    expect(namedBaseRef(shadowed, branch("origin/main"))).toBe(
+      "refs/heads/origin/main",
+    );
+  });
+});
+
+function branch(name: string) {
+  const parsed = parseLocalBranchName(name);
+  if (parsed._tag === "err") throw new Error(`invalid branch ${name}`);
+  return parsed.value;
+}

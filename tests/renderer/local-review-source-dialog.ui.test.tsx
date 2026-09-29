@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -27,10 +27,11 @@ const linked = {
   head: { kind: "branch", branch: "docs/ux" },
   configured: false,
 };
-/** `feature`, three commits past `main`, with `develop` also listed. */
+/** `feature`, three commits past `main`, with `develop` and the remote-tracking `origin/main` also listed. */
 const featureBranches = {
   head: { kind: "branch", branch: "feature" },
   branches: ["develop", "main"],
+  remoteBranches: ["origin/main"],
   defaultBranch: "main",
   inferred: { baseBranch: "main", commitsBack: 3 },
   reviewedBases: [],
@@ -82,14 +83,14 @@ describe("Open a local review", () => {
 
     await user.click(screen.getByRole("button", { name: "Local review" }));
     const base = await screen.findByRole("combobox", { name: "Base branch" });
-    expect(base.textContent).toContain("main");
+    expect(base).toHaveProperty("value", "main");
     expect(screen.getByText(/3 commits back/)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Open review" }));
 
     expect(opened).toEqual([
       {
         kind: "local_branch",
-        baseBranch: "main",
+        baseRef: "refs/heads/main",
         expectedHead: { kind: "branch", branch: "feature" },
       },
     ]);
@@ -105,8 +106,9 @@ describe("Open a local review", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "Local review" }));
+    await screen.findByRole("combobox", { name: "Base branch" });
     await user.click(
-      await screen.findByRole("combobox", { name: "Base branch" }),
+      screen.getByRole("button", { name: "Open base branch options" }),
     );
     await user.click(await screen.findByRole("option", { name: "develop" }));
     expect(screen.queryByText(/commits back/)).toBeNull();
@@ -115,7 +117,40 @@ describe("Open a local review", () => {
     expect(opened).toEqual([
       {
         kind: "local_branch",
-        baseBranch: "develop",
+        baseRef: "refs/heads/develop",
+        expectedHead: { kind: "branch", branch: "feature" },
+      },
+    ]);
+  });
+
+  it("searches local and remote-tracking branches in one list and opens against the remote one picked (#591)", async () => {
+    install([configured]);
+    const user = userEvent.setup();
+    const opened: Array<LocalReviewSourceInput> = [];
+    renderAction(async (source) => {
+      opened.push(source);
+    });
+
+    await user.click(screen.getByRole("button", { name: "Local review" }));
+    const base = await screen.findByRole("combobox", { name: "Base branch" });
+    await user.clear(base);
+    await user.type(base, "main");
+    const local = await screen.findByRole("group", { name: "Local branches" });
+    const remote = screen.getByRole("group", { name: "Remote branches" });
+    expect(
+      within(local)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["main"]);
+    await user.click(
+      within(remote).getByRole("option", { name: "origin/main" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Open review" }));
+
+    expect(opened).toEqual([
+      {
+        kind: "local_branch",
+        baseRef: "refs/remotes/origin/main",
         expectedHead: { kind: "branch", branch: "feature" },
       },
     ]);
@@ -125,6 +160,7 @@ describe("Open a local review", () => {
     install([configured], () => ({
       head: { kind: "branch", branch: "main" },
       branches: [],
+      remoteBranches: [],
       defaultBranch: "main",
       reviewedBases: [],
     }));
@@ -133,7 +169,7 @@ describe("Open a local review", () => {
 
     await user.click(screen.getByRole("button", { name: "Local review" }));
     // The listing has loaded once the dialog names the lone branch.
-    await screen.findByText(/main is the only local branch/);
+    await screen.findByText(/main is the only branch/);
 
     expect(screen.queryByRole("combobox", { name: "Base branch" })).toBeNull();
     expect(screen.getByRole("button", { name: "Open review" })).toHaveProperty(
@@ -165,6 +201,7 @@ describe("Open a local review", () => {
         ? {
             head: { kind: "branch", branch: "docs/ux" },
             branches: ["feature", "main"],
+            remoteBranches: [],
             inferred: { baseBranch: "main", commitsBack: 1 },
             reviewedBases: [],
           }
@@ -191,12 +228,12 @@ describe("Open a local review", () => {
     expect(opened).toEqual([
       {
         kind: "local_branch",
-        baseBranch: "main",
+        baseRef: "refs/heads/main",
         expectedHead: { kind: "branch", branch: "feature" },
       },
       {
         kind: "local_branch",
-        baseBranch: "main",
+        baseRef: "refs/heads/main",
         expectedHead: { kind: "branch", branch: "docs/ux" },
         checkout: "/work/pd-ux-pass",
       },

@@ -63,7 +63,7 @@ A working copy of a profile repository that a local Review reads: the configured
 _Avoid_: Clone, workspace, local path
 
 **Shared Review**:
-The one local Review of a checkout's current branch against a base branch: every change since the branch left the base, committed or not, in one diff with one Local draft list, so a note stays with its line after the agent commits it. The maintainer can narrow the diff to what is committed or what is not with a Patch view. The base is inferred from the nearest other local branch and the maintainer may change it; another branch or base is another shared Review (#555, ADR 0050).
+The one local Review of a checkout's current branch against a base branch: every change since the branch left the base, committed or not, in one diff with one Local draft list, so a note stays with its line after the agent commits it. The maintainer can narrow the diff to what is committed or what is not with a Patch view. The base is a local or remote-tracking branch, read as stored and never fetched (#591). It is inferred from the nearest other local branch and the maintainer may change it; another branch or base is another shared Review (#555, ADR 0050).
 _Avoid_: Working-tree Review, Branch Review, combined Review
 
 **Patch view**:

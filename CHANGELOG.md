@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added remote-tracking branches such as `origin/main` as shared local Review bases. The Local review dialog's Base branch picker now searches local and remote branches in one list, grouped under **Local branches** and **Remote branches**, and `review_local` accepts `base: "origin/main"`. Patchdesk reads the branch as your last fetch left it and never fetches; a base that `git fetch --prune` removes shows as gone, like a deleted local branch. `review_local` and `list_local_reviews` now name the base as `baseRef`, a full ref. #591
+
 - Made each Brief Scope card row with files a button that opens the Diff filtered to that bucket, such as "Filter the Diff to Tests". The Diff's Scope picker then shows the bucket and Clear scope removes it. Rows work on an outdated Brief too, since the card shows the current revision's Scope. #612
 
 - Added **MCP**: `review_local` now returns the Review's Change intent as `changeIntent`, with its text and whether you or the agent wrote it, or the spec file's path. After `intent_exists`, the agent can read the goal Analysis checks its change against. `list_local_reviews` names each Review's intent kind and source without the text. #601

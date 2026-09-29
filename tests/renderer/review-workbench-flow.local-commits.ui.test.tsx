@@ -146,7 +146,7 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
         initial={sharedReview({
           kind: "local_branch",
           branch: "feature",
-          baseBranch: "main",
+          baseRef: "refs/heads/main",
         })}
       />,
     );
@@ -242,7 +242,7 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
     const initial = sharedReview({
       kind: "local_branch",
       branch: "feature",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
     });
     const user = userEvent.setup();
     render(
@@ -303,7 +303,7 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
         initial={sharedReview({
           kind: "local_branch",
           branch: "feature",
-          baseBranch: "main",
+          baseRef: "refs/heads/main",
         })}
       />,
     );

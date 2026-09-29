@@ -102,7 +102,7 @@ export class LocalCheckoutChangeDetector {
     }
     const baseTip = await this.readSha(
       checkoutPath,
-      `refs/heads/${source.baseBranch}^{commit}`,
+      `${source.baseRef}^{commit}`,
     );
     const mergeBase =
       baseTip === undefined

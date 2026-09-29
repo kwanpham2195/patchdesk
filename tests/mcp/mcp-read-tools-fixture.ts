@@ -55,7 +55,7 @@ export async function openRoute(
       host: "github.com",
       owner: "octo-org",
       repo: "patchdesk",
-      source: { kind: "local_branch", baseBranch: "main", checkout },
+      source: { kind: "local_branch", baseRef: "refs/heads/main", checkout },
     }),
   );
   return v.parse(workbenchSchema, opened.body);
@@ -104,7 +104,7 @@ export async function openInApp(
       repo: "patchdesk",
       source: {
         kind: "local_branch",
-        baseBranch: base,
+        baseRef: `refs/heads/${base}`,
         checkout: fixture.linkedPath,
       },
     }),

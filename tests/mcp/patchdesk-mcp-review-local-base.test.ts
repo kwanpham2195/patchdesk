@@ -38,7 +38,31 @@ describe("review_local base (#555)", () => {
 
     expect(opened).toMatchObject({
       isError: false,
-      content: { baseBranch: "develop", baseInferred: false },
+      content: { baseRef: "refs/heads/develop", baseInferred: false },
+    });
+  });
+
+  it("opens the shared Review against a remote-tracking base the agent names as origin/main (#591)", async () => {
+    app = await startAppWithLinkedWorktree();
+    await linkedBranchWithCommit(app);
+    // The ref as a fetch leaves it; Patchdesk reads it and never fetches.
+    execFileSync("git", ["update-ref", "refs/remotes/origin/main", "HEAD"], {
+      cwd: app.repositoryPath,
+    });
+    const client = await connectLegacyClient(app.socketPath);
+
+    const opened = await call(client, "review_local", {
+      cwd: app.linkedPath,
+      base: "origin/main",
+    });
+
+    expect(opened).toMatchObject({
+      isError: false,
+      content: {
+        baseRef: "refs/remotes/origin/main",
+        baseInferred: false,
+        changedFiles: [expect.objectContaining({ path: "feature.txt" })],
+      },
     });
   });
 
@@ -56,7 +80,7 @@ describe("review_local base (#555)", () => {
 
     expect(opened).toMatchObject({
       isError: false,
-      content: { baseBranch: "develop", baseInferred: false },
+      content: { baseRef: "refs/heads/develop", baseInferred: false },
     });
     expect(opened.content).toMatchObject({
       reviewId: v.parse(v.object({ reviewId: v.string() }), named.content)
@@ -75,7 +99,7 @@ describe("review_local base (#555)", () => {
     expect(opened).toMatchObject({
       isError: false,
       content: {
-        baseBranch: "main",
+        baseRef: "refs/heads/main",
         baseInferred: true,
         changedFiles: [expect.objectContaining({ path: "feature.txt" })],
       },
@@ -152,7 +176,7 @@ describe("review_local base (#555)", () => {
 
     expect(opened).toMatchObject({
       isError: false,
-      content: { baseBranch: "main", baseInferred: true },
+      content: { baseRef: "refs/heads/main", baseInferred: true },
     });
   });
 

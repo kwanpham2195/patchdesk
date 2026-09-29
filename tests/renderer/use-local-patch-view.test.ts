@@ -30,7 +30,7 @@ function sharedReview(sessionId: string): WorkbenchResponse {
         source: {
           kind: "local_branch",
           branch: "feature",
-          baseBranch: "main",
+          baseRef: "refs/heads/main",
         },
       },
     },

@@ -32,7 +32,7 @@ const listedSchema = v.looseObject({
     v.looseObject({
       reviewId: v.string(),
       branch: v.string(),
-      baseBranch: v.string(),
+      baseRef: v.string(),
     }),
   ),
 });
@@ -101,7 +101,7 @@ describe("list_local_reviews (#558)", () => {
             headSha: opened.session.key.headSha,
             patchHash: opened.revision.patchHash,
             branch: "feat/linked",
-            baseBranch: "develop",
+            baseRef: "refs/heads/develop",
           }),
         ],
       },
@@ -137,13 +137,13 @@ describe("list_local_reviews (#558)", () => {
     const listed = await listFrom(app, app.linkedPath);
 
     expect(
-      listed.reviews.map(({ reviewId, baseBranch }) => ({
+      listed.reviews.map(({ reviewId, baseRef }) => ({
         reviewId,
-        baseBranch,
+        baseRef,
       })),
     ).toEqual([
-      { reviewId: againstMain.review.id, baseBranch: "main" },
-      { reviewId: againstDevelop.review.id, baseBranch: "develop" },
+      { reviewId: againstMain.review.id, baseRef: "refs/heads/main" },
+      { reviewId: againstDevelop.review.id, baseRef: "refs/heads/develop" },
     ]);
   });
 
@@ -246,7 +246,7 @@ describe("list_local_reviews (#558)", () => {
     expect(dialog.body).toMatchObject({
       reviewedBases: listed.reviews
         .filter((review) => review.branch === "feat/linked")
-        .map((review) => review.baseBranch),
+        .map((review) => review.baseRef),
     });
     expect(listed.reviews).toHaveLength(2);
   });

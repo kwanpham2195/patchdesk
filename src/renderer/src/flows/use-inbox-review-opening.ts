@@ -22,7 +22,8 @@ import type { RepositoryIdentity } from "../../../domain/repository-identity";
 export type LocalReviewSourceInput =
   | {
       readonly kind: "local_branch";
-      readonly baseBranch: string;
+      /** The base as a full ref: `refs/heads/<name>` or `refs/remotes/<remote>/<name>` (#591). */
+      readonly baseRef: string;
       /** A linked worktree to read instead of the configured checkout (#489). */
       readonly checkout?: string;
       /** The branch the Review was opened on, so a branch switch is refused rather than opening that branch's Review. */

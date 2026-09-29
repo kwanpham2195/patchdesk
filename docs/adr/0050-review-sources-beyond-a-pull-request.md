@@ -63,6 +63,22 @@ kinds. Only the first exists today.
 > there is no inferred base. The dialog preselects the inferred base with its
 > reason, such as "nearest branch: main, 3 commits back", and the maintainer
 > may pick another; ADR 0052 records the order `review_local` uses.
+>
+> **Amended 2026-09-29 (#591): the base is a full ref.** A `local_branch`
+> source stores `baseRef`, either `refs/heads/<name>` or a remote-tracking
+> `refs/remotes/<remote>/<name>`, in place of `baseBranch`, and every read of
+> the base (open, Refresh, the update check, and retention's gone-source
+> check) resolves that ref as stored on disk. Patchdesk never fetches, so
+> `origin/main` means the commit the maintainer's last fetch left. A local
+> branch literally named `origin/main` and the remote-tracking `origin/main`
+> are different refs and key different Reviews. A remote-tracking base that
+> a `git fetch --prune` removes reads as a missing base, the same refusal and
+> retention rule as a deleted local base. The picker searches local and
+> remote-tracking branches in one list under "Local branches" and "Remote
+> branches"; the symbolic `<remote>/HEAD` is left out. Inference still
+> considers local branches only. `local_branch` had not shipped in a release
+> tag, so records stored with `baseBranch` are not migrated: they no longer
+> parse and count as unreadable.
 
 A local source is opened only on a repository the workspace profile lists with
 a `localPath`. Patchdesk reads local refs only; it never fetches for a local

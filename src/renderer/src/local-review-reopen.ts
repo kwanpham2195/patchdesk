@@ -22,7 +22,7 @@ export function localReviewSourceInput(
     case "local_branch":
       return {
         kind: "local_branch",
-        baseBranch: source.baseBranch,
+        baseRef: source.baseRef,
         expectedHead:
           source.branch === "detached"
             ? { kind: "detached" }

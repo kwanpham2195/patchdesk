@@ -10,6 +10,7 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
+  parseLocalBaseRef,
   parseLocalBranchName,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
@@ -43,7 +44,7 @@ it("recovers an interrupted shared Review preparation by deleting all three of i
     source: {
       kind: "local_branch",
       branch: must(parseLocalBranchName("feature")),
-      baseBranch: must(parseLocalBranchName("main")),
+      baseRef: must(parseLocalBaseRef("refs/heads/main")),
     },
     headSha: must(parseGitSha("a".repeat(40))),
     baseSha: must(parseGitSha("b".repeat(40))),

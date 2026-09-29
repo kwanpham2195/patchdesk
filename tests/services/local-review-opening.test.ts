@@ -34,6 +34,7 @@ import {
   parseGitHubRepoName,
   parseGitShaPrefix,
   parseIsoTimestamp,
+  parseLocalBaseRef,
   parseLocalBranchName,
   parseReviewId,
   parseReviewSessionId,
@@ -69,7 +70,7 @@ const repository = {
 /** The shared Review against `main`; on `main` it shows the checkout's changes against `HEAD`. */
 const sharedAgainstMain: LocalReviewSourceRequest = {
   kind: "local_branch",
-  baseBranch: value(parseLocalBranchName("main")),
+  baseRef: value(parseLocalBaseRef("refs/heads/main")),
 };
 
 afterEach(async () => {
@@ -257,7 +258,7 @@ describe("LocalReviewOpening", () => {
     expect(projection.session.key.source).toEqual({
       kind: "local_branch",
       branch: "main",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
     });
     expect(projection.fullPatch).toContain("+++ b/untracked.txt");
     expect(projection.fullPatch).toContain("+two");
@@ -332,7 +333,7 @@ describe("LocalReviewOpening", () => {
           repository,
           request: {
             kind: "local_branch",
-            baseBranch: value(parseLocalBranchName("develop")),
+            baseRef: value(parseLocalBaseRef("refs/heads/develop")),
           },
         }),
       );
@@ -786,7 +787,7 @@ describe("LocalReviewOpening in a linked worktree (#489)", () => {
     expect(linked.session.key.source).toEqual({
       kind: "local_branch",
       branch: "feat",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
       checkout: linkedPath,
     });
     expect(configured.fullPatch).toContain("+++ b/main-change.txt");

@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import {
+  localBranchBaseRef,
   parseAbsolutePath,
   parseIsoTimestamp,
+  parseLocalBaseRef,
   parseLocalBranchName,
   parseRepoRelativePath,
   parseReviewId,
@@ -41,7 +43,7 @@ afterEach(cleanupLocalApplyRoots);
 function reopenOn(branch: string): LocalReviewSourceRequest {
   return {
     kind: "local_branch",
-    baseBranch: main,
+    baseRef: localBranchBaseRef(main),
     expectedHead: {
       kind: "branch",
       branch: value(parseLocalBranchName(branch)),
@@ -65,7 +67,7 @@ describe("the shared local Review (#555)", () => {
     expect(opened.session.key.source).toEqual({
       kind: "local_branch",
       branch: "feature",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
     });
     const patch = opened.fullPatch ?? "";
     expect(patch).toContain("+++ b/feature.txt");
@@ -421,35 +423,45 @@ describe("the shared local Review (#555)", () => {
     expect(git(repositoryPath, "count-objects").trim()).toBe(objectsBefore);
   });
 
-  it("refuses a Refresh once the base branch is deleted, leaving the Review on its session", async () => {
-    const harness = await localApplyHarness();
-    const { repositoryPath } = harness;
-    git(repositoryPath, "branch", "-q", "develop");
-    git(repositoryPath, "checkout", "-q", "-b", "feature");
-    await writeFile(join(repositoryPath, "untracked.txt"), "new\n");
-    const opened = await harness.open(
-      shared(value(parseLocalBranchName("develop"))),
-    );
-    git(repositoryPath, "branch", "-q", "-D", "develop");
+  it.each([
+    ["local base branch", "refs/heads/develop"],
+    [
+      "remote-tracking base a prune removes (#591)",
+      "refs/remotes/origin/develop",
+    ],
+  ])(
+    "refuses a Refresh once the %s is deleted, leaving the Review on its session",
+    async (_case, baseRef) => {
+      const harness = await localApplyHarness();
+      const { repositoryPath } = harness;
+      git(repositoryPath, "update-ref", baseRef, "HEAD");
+      git(repositoryPath, "checkout", "-q", "-b", "feature");
+      await writeFile(join(repositoryPath, "untracked.txt"), "new\n");
+      const opened = await harness.open({
+        kind: "local_branch",
+        baseRef: value(parseLocalBaseRef(baseRef)),
+      });
+      git(repositoryPath, "update-ref", "-d", baseRef);
 
-    const refreshed = await harness.opening.refresh(
-      profileId,
-      value(parseReviewId(opened.review.id)),
-    );
+      const refreshed = await harness.opening.refresh(
+        profileId,
+        value(parseReviewId(opened.review.id)),
+      );
 
-    expect(refreshed).toEqual({
-      _tag: "err",
-      error: { reason: "revision_not_found" },
-    });
-    expect(
-      value(
-        await harness.reviews.load(
-          profileId,
-          value(parseReviewId(opened.review.id)),
-        ),
-      ).currentSessionId,
-    ).toBe(opened.session.id);
-  });
+      expect(refreshed).toEqual({
+        _tag: "err",
+        error: { reason: "revision_not_found" },
+      });
+      expect(
+        value(
+          await harness.reviews.load(
+            profileId,
+            value(parseReviewId(opened.review.id)),
+          ),
+        ).currentSessionId,
+      ).toBe(opened.session.id);
+    },
+  );
 
   it("refuses to reopen a branch's shared Review after a branch switch, creating nothing", async () => {
     const harness = await localApplyHarness();
@@ -499,7 +511,7 @@ describe("the shared local Review (#555)", () => {
     expect(opened.session.key.source).toEqual({
       kind: "local_branch",
       branch: "detached",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
     });
     expect(opened.fullPatch).toContain("+++ b/feature.txt");
     expect(refreshed.session.id).toBe(opened.session.id);
@@ -531,7 +543,7 @@ describe("an agent's open of the shared Review with no base (#555)", () => {
     expect(opened.workbench.review.id).toBe(maintainers.review.id);
     expect(opened.workbench.session.id).toBe(maintainers.session.id);
     expect(opened.workbench.session.key.source).toMatchObject({
-      baseBranch: "develop",
+      baseRef: "refs/heads/develop",
     });
   });
 
@@ -549,7 +561,7 @@ describe("an agent's open of the shared Review with no base (#555)", () => {
     expect(opened.workbench.session.key.source).toEqual({
       kind: "local_branch",
       branch: "feature",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
     });
     expect(
       value(
@@ -583,7 +595,7 @@ describe("an agent's open of the shared Review with no base (#555)", () => {
 
     expect(refused).toEqual({
       _tag: "err",
-      error: { reason: "revision_not_found", savedBaseBranch: "topic" },
+      error: { reason: "revision_not_found", savedBaseRef: "refs/heads/topic" },
     });
     expect(
       value(await harness.reviews.list(profileId)).reviews.map(({ id }) => id),
@@ -648,7 +660,7 @@ describe("the checkout's shared Reviews an agent looks up (#558)", () => {
       headSha: opened.session.key.headSha,
       patchHash: opened.revision.patchHash,
       branch: "feature",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
       lastOpenedAt: now,
     });
   });
@@ -697,22 +709,26 @@ describe("the checkout's shared Reviews an agent looks up (#558)", () => {
 
     expect(listed.head).toEqual({ kind: "branch", branch: "feature" });
     expect(
-      listed.reviews.map(({ reviewId, branch, baseBranch }) => ({
+      listed.reviews.map(({ reviewId, branch, baseRef }) => ({
         reviewId,
         branch,
-        baseBranch,
+        baseRef,
       })),
     ).toEqual([
       {
         reviewId: againstDevelop.review.id,
         branch: "feature",
-        baseBranch: "develop",
+        baseRef: "refs/heads/develop",
       },
-      { reviewId: later.review.id, branch: "later", baseBranch: "main" },
+      {
+        reviewId: later.review.id,
+        branch: "later",
+        baseRef: "refs/heads/main",
+      },
       {
         reviewId: againstMain.review.id,
         branch: "feature",
-        baseBranch: "main",
+        baseRef: "refs/heads/main",
       },
     ]);
   });

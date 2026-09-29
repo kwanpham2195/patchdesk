@@ -9,6 +9,7 @@ import {
   parseLocalBranchName,
   type ContentHash,
   type GitSha,
+  type LocalBaseRef,
   type LocalBranchName,
   type WorkspaceProfileId,
 } from "../domain/ids";
@@ -100,7 +101,7 @@ export class LocalReviewRevisionService {
         return this.resolveLocalBranch(
           profileId,
           repositoryPath,
-          request.baseBranch,
+          request.baseRef,
         );
       case "commit":
         return this.resolveCommit(repositoryPath, request.commit);
@@ -178,21 +179,22 @@ export class LocalReviewRevisionService {
 
   /**
    * The shared Review (#555): the Local snapshot against the merge base of
-   * `HEAD` and the base branch tip, so the diff holds every change the branch
+   * `HEAD` and the base ref's tip, so the diff holds every change the branch
    * carries, committed or not. The base is read before the snapshot, so a
-   * missing base writes no objects.
+   * missing base writes no objects. A remote-tracking base is read as last
+   * fetched; Patchdesk never fetches (#591).
    */
   private async resolveLocalBranch(
     profileId: WorkspaceProfileId,
     repositoryPath: string,
-    baseBranch: LocalBranchName,
+    baseRef: LocalBaseRef,
   ): Promise<Result<ResolvedLocalRevision, LocalReviewRevisionFailure>> {
     const head = await this.readCheckoutHead(repositoryPath);
     if (head._tag === "err") return head;
     const baseTip = await this.readSha(repositoryPath, [
       "rev-parse",
       "--verify",
-      `refs/heads/${baseBranch}^{commit}`,
+      `${baseRef}^{commit}`,
     ]);
     if (baseTip === undefined) return err({ _tag: "LocalRevisionNotFound" });
     const mergeBase = await this.readSha(repositoryPath, [
@@ -219,7 +221,7 @@ export class LocalReviewRevisionService {
       source: {
         kind: "local_branch",
         branch: head.value.branch ?? detachedHeadBranch,
-        baseBranch,
+        baseRef,
       },
       revision: { headSha: snapshot.value, baseSha: mergeBase },
       checkoutHeadSha: head.value.sha,

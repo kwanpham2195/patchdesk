@@ -92,7 +92,11 @@ function sharedReview(
       ...base.session,
       key: {
         ...base.session.key,
-        source: { kind: "local_branch", branch: "feature", baseBranch: "main" },
+        source: {
+          kind: "local_branch",
+          branch: "feature",
+          baseRef: "refs/heads/main",
+        },
       },
     },
     pullRequest: undefined,

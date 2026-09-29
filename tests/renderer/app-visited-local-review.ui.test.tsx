@@ -53,9 +53,10 @@ const localRow = {
 const featWithOneReview = {
   head: { kind: "branch", branch: "feat" },
   branches: ["develop", "main"],
+  remoteBranches: [],
   defaultBranch: "main",
   inferred: { baseBranch: "main", commitsBack: 2 },
-  reviewedBases: ["main"],
+  reviewedBases: ["refs/heads/main"],
 };
 
 /** A Review the open-local route answers with, as a local Review of `feat`. */
@@ -118,7 +119,7 @@ describe("App visited local Review", () => {
     expect(callBody(request)).toMatchObject({
       source: {
         kind: "local_branch",
-        baseBranch: "main",
+        baseRef: "refs/heads/main",
         expectedHead: { kind: "branch", branch: "feat" },
       },
     });
@@ -129,7 +130,10 @@ describe("App visited local Review", () => {
 
   it.each([
     ["no shared Review", []],
-    ["shared Reviews against several bases", ["develop", "main"]],
+    [
+      "shared Reviews against several bases",
+      ["refs/heads/develop", "refs/heads/main"],
+    ],
   ])(
     "opens the Local review dialog on the inferred base when the branch has %s",
     async (_case, reviewedBases) => {
@@ -168,13 +172,13 @@ describe("App visited local Review", () => {
       const base = await within(dialog).findByRole("combobox", {
         name: "Base branch",
       });
-      expect(base.textContent).toContain("main");
+      expect(base).toHaveProperty("value", "main");
       expect(openLocalRequest(installed)).toBeUndefined();
       await user.click(
         within(dialog).getByRole("button", { name: "Open review" }),
       );
       expect(callBody(openLocalRequest(installed))).toMatchObject({
-        source: { kind: "local_branch", baseBranch: "main" },
+        source: { kind: "local_branch", baseRef: "refs/heads/main" },
       });
     },
   );
@@ -238,7 +242,7 @@ describe("App visited local Review", () => {
       name: "Hold a draft on review-local-feat",
     });
     expect(callBody(openLocalRequest(double))).toMatchObject({
-      source: { kind: "local_branch", baseBranch: "main" },
+      source: { kind: "local_branch", baseRef: "refs/heads/main" },
     });
     expect(openErrorAlert()).toBeUndefined();
   });

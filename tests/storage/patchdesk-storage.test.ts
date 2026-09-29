@@ -22,6 +22,7 @@ import {
   parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
+  parseLocalBaseRef,
   parseLocalBranchName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
@@ -303,7 +304,7 @@ describe("ReviewSession storage", () => {
       source: {
         kind: "local_branch" as const,
         branch: must(parseLocalBranchName("feat/login")),
-        baseBranch: must(parseLocalBranchName("main")),
+        baseRef: must(parseLocalBaseRef("refs/heads/main")),
       },
       headSha: must(parseGitSha("a".repeat(40))),
       baseSha: must(parseGitSha("b".repeat(40))),
