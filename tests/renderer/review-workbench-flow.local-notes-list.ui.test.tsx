@@ -17,6 +17,7 @@ import { changeScopeFromPatch } from "../../src/domain/change-scope";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import type { LocalDraftEntry } from "../../src/renderer/src/local-draft-contracts";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { chooseChanges } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
 
@@ -194,7 +195,7 @@ describe("ReviewWorkbenchFlow Notes list placement", () => {
       <SharedReviewScreen initial={sharedReview([noteOnA, draftedFinding])} />,
     );
     await user.click(screen.getByRole("tab", { name: "Diff" }));
-    await user.click(screen.getByRole("button", { name: "Uncommitted" }));
+    await chooseChanges(user, "Uncommitted");
     await waitFor(() =>
       expect(screen.queryByText(/^Loading the .* view/)).toBeNull(),
     );
@@ -215,10 +216,8 @@ describe("ReviewWorkbenchFlow Notes list placement", () => {
       screen.getByRole("tab", { name: /^Notes/ }).getAttribute("aria-selected"),
     ).toBe("true");
     expect(
-      screen
-        .getByRole("button", { name: "Uncommitted" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
+      screen.getByRole("button", { name: "Changes" }).textContent,
+    ).toContain("Uncommitted");
     expect(
       screen.queryByRole("article", { name: "Note on src/a.ts:1" }),
     ).toBeNull();

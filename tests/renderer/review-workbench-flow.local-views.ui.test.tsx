@@ -17,6 +17,7 @@ import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workben
 import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
 import type { LocalDraftEntry } from "../../src/renderer/src/local-draft-contracts";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { chooseChanges, chooseViewedAction } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
 
@@ -141,7 +142,7 @@ async function showView(
   user: ReturnType<typeof userEvent.setup>,
   view: "Combined" | "Committed" | "Uncommitted",
 ): Promise<void> {
-  await user.click(screen.getByRole("button", { name: view }));
+  await chooseChanges(user, view);
   await waitFor(() =>
     expect(screen.queryByText(/^Loading the .* view/)).toBeNull(),
   );
@@ -195,12 +196,10 @@ describe("ReviewWorkbenchFlow patch views", () => {
     await user.click(screen.getByRole("tab", { name: "Diff" }));
     expect(screen.getByText(/Combined view/)).toBeTruthy();
     expect(
-      screen
-        .getByRole("button", { name: "Combined" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
+      screen.getByRole("button", { name: "Changes" }).textContent,
+    ).toContain("Combined");
 
-    await user.click(screen.getByRole("button", { name: "Committed" }));
+    await chooseChanges(user, "Committed");
 
     await waitFor(() =>
       expect(screen.getAllByText(/src\/committed\.ts/).length).toBeGreaterThan(
@@ -210,11 +209,9 @@ describe("ReviewWorkbenchFlow patch views", () => {
     expect(screen.queryByText(/src\/combined\.ts/)).toBeNull();
     expect(screen.getByText(/Committed view/)).toBeTruthy();
     expect(
-      screen
-        .getByRole("button", { name: "Committed" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await user.click(screen.getByRole("button", { name: "Mark all viewed" }));
+      screen.getByRole("button", { name: "Changes" }).textContent,
+    ).toContain("Committed");
+    await chooseViewedAction(user, "Mark all viewed");
     await waitFor(() => expect(saved).toHaveLength(1));
     expect(saved[0]).toMatchObject({
       view: "committed",
@@ -268,11 +265,11 @@ describe("ReviewWorkbenchFlow header across patch views", () => {
     await user.click(screen.getByRole("tab", { name: "Diff" }));
     const status = screen.getByRole("group", { name: "Local review status" });
     expect(within(status).getByText("+2 −1")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Committed" }));
+    await chooseChanges(user, "Committed");
     await waitFor(() => expect(within(status).getByText("+1 −2")).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: "Uncommitted" }));
+    await chooseChanges(user, "Uncommitted");
     await waitFor(() => expect(within(status).getByText("+3 −1")).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: "Combined" }));
+    await chooseChanges(user, "Combined");
     expect(within(status).getByText("+2 −1")).toBeTruthy();
   });
 });
@@ -310,7 +307,7 @@ describe("ReviewWorkbenchFlow selection across patch views", () => {
         onNavigationStateChange={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "Committed" }));
+    await chooseChanges(user, "Committed");
     await waitFor(() =>
       expect(
         screen
@@ -323,7 +320,7 @@ describe("ReviewWorkbenchFlow selection across patch views", () => {
         .querySelector("[data-active-path]")
         ?.getAttribute("data-active-path"),
     ).toBe("src/committed.ts");
-    await user.click(screen.getByRole("button", { name: "Combined" }));
+    await chooseChanges(user, "Combined");
     await waitFor(() =>
       expect(
         screen
@@ -358,13 +355,13 @@ describe("ReviewWorkbenchFlow empty patch view", () => {
     });
     const user = setupCodeViewUser();
     render(<SharedReviewScreen initial={sharedReview()} />);
-    await user.click(screen.getByRole("button", { name: "Committed" }));
+    await chooseChanges(user, "Committed");
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "Review diff" })).toBeNull(),
     );
     expect(screen.queryByRole("treeitem")).toBeNull();
     expect(screen.getByRole("status")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Combined" }));
+    await chooseChanges(user, "Combined");
     await waitFor(() =>
       expect(
         screen

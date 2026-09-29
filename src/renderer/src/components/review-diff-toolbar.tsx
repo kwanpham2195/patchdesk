@@ -1,11 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import {
-  ChevronDown,
-  ChevronsUpDown,
-  FileCode2,
-  Files,
-  History,
-} from "lucide-react";
+import { ChevronDown, ChevronsUpDown, FileCode2, Files } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import type {
@@ -18,6 +12,7 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuShortcut,
@@ -31,12 +26,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { ReviewDiffOptionsPopover } from "./review-diff-options-popover";
+import {
+  ReviewDiffChangesMenu,
+  type DiffChangesControl,
+} from "./review-diff-changes-menu";
+import {
+  ReviewDiffOptionRow,
+  ReviewDiffOptionsPopover,
+} from "./review-diff-options-popover";
 import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
 
 // `secondary` alone is the same fill as an idle button, so a pressed segment
 // takes the selection accent the file tree and commit list use.
-export const PRESSED_SEGMENT_CLASS =
+const PRESSED_SEGMENT_CLASS =
   "aria-pressed:bg-accent aria-pressed:text-accent-foreground";
 
 /** The Scope buckets the diff can be narrowed to, and the state of that choice. */
@@ -146,15 +148,6 @@ function NavigationKeysTooltip(): React.JSX.Element {
   );
 }
 
-/** Switches the diff to the changes since the viewer's last submitted review. */
-export type SinceReviewControl = {
-  readonly active: boolean;
-  /** Set when the option cannot be used; drawn beside the disabled button. */
-  readonly disabledReason: string | undefined;
-  readonly loading: boolean;
-  readonly onChange: (active: boolean) => void;
-};
-
 /** Drives the Diff/Preview switch for the file currently on screen. */
 export type MarkdownPreviewControl = {
   readonly path: string;
@@ -191,7 +184,86 @@ function MarkdownPreviewModeSwitch({
   );
 }
 
-/** Renders shared file selection, display, context, and viewed controls above a review diff. */
+/** All files and Selected, inside View options; neither is pressed while Since your review owns the diff. */
+function FileModeSwitch({
+  pressed,
+  selectedPath,
+  onSelect,
+}: {
+  readonly pressed: "all" | "selected" | undefined;
+  readonly selectedPath: string | undefined;
+  readonly onSelect: (fileMode: "all" | "selected") => void;
+}): React.JSX.Element {
+  return (
+    <ButtonGroup aria-label="File display mode" className="px-1">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant={pressed === "all" ? "secondary" : "ghost"}
+              size="xs"
+              className={PRESSED_SEGMENT_CLASS}
+              aria-pressed={pressed === "all"}
+              onClick={() => onSelect("all")}
+            />
+          }
+        >
+          <Files /> All files
+        </TooltipTrigger>
+        <NavigationKeysTooltip />
+      </Tooltip>
+      <Button
+        variant={pressed === "selected" ? "secondary" : "ghost"}
+        size="xs"
+        className={PRESSED_SEGMENT_CLASS}
+        aria-pressed={pressed === "selected"}
+        disabled={selectedPath === undefined}
+        onClick={() => onSelect("selected")}
+      >
+        <FileCode2 /> Selected
+      </Button>
+    </ButtonGroup>
+  );
+}
+
+/** The viewed count, whose menu marks every shown file viewed or clears those marks. */
+function ReviewDiffViewedMenu({
+  viewedCount,
+  fileCount,
+  onSetAllCollapsed,
+}: {
+  readonly viewedCount: number;
+  readonly fileCount: number;
+  readonly onSetAllCollapsed: (collapsed: boolean) => void;
+}): React.JSX.Element {
+  const allViewed = viewedCount === fileCount && fileCount > 0;
+  return (
+    <DropdownMenu>
+      {/* Chromium leaves a button unnamed when its text sits in a status region, so the count is named twice. */}
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label={`${viewedCount}/${fileCount} viewed`}
+          />
+        }
+      >
+        <span role="status" className="tabular-nums">
+          {viewedCount}/{fileCount} viewed
+        </span>
+        <ChevronDown aria-hidden="true" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem onClick={() => onSetAllCollapsed(!allViewed)}>
+          {allViewed ? "Show all" : "Mark all viewed"}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Renders the diff toolbar: the Changes, Scope, and View menus, the Markdown Diff/Preview switch, and the viewed count's menu. */
 export function ReviewDiffToolbar({
   virtualized,
   preferences,
@@ -207,7 +279,7 @@ export function ReviewDiffToolbar({
   scopeFilter,
   markdownPreview,
   leadingAction,
-  sinceReview,
+  changes,
 }: {
   readonly virtualized: boolean;
   readonly preferences: Pick<
@@ -231,21 +303,36 @@ export function ReviewDiffToolbar({
   readonly markdownPreview?: MarkdownPreviewControl | undefined;
   /** Drawn before every other control, such as the review navigator toggle. */
   readonly leadingAction?: React.ReactNode;
-  /** Absent when the viewer has no submitted review on this pull request. */
-  readonly sinceReview?: SinceReviewControl | undefined;
+  /** What the Changes menu offers; absent where the diff has no other comparison. */
+  readonly changes?: DiffChangesControl | undefined;
 }): React.JSX.Element {
   // A showing preview replaces the CodeView, so every control that describes
-  // one is suppressed; the Scope picker stays because it also filters Browse.
+  // one is suppressed; the Scope picker stays because it also filters Browse,
+  // and the Patch view stays because it chooses the file being previewed.
   const previewing = markdownPreview?.active === true;
   // Viewed and collapsed are one state; counting against `files` ignores paths a Scope filter hid.
   const viewedCount = files.filter((file) =>
     collapsedPaths.has(file.name),
   ).length;
-  const allViewed = viewedCount === files.length && files.length > 0;
+  const sinceReview = changes?.sinceReview;
   const sinceReviewActive = sinceReview?.active === true;
   const selectFileMode = (fileMode: "all" | "selected"): void => {
     if (sinceReviewActive) sinceReview?.onChange(false);
     onPreferencesChange({ fileMode });
+  };
+  const fileModeControls = virtualized && !previewing;
+  const shownChanges: DiffChangesControl = {
+    patchView: changes?.patchView,
+    sinceReview:
+      sinceReview === undefined || !fileModeControls
+        ? undefined
+        : {
+            ...sinceReview,
+            onChange: (active) => {
+              if (active) onPreferencesChange({ fileMode: "all" });
+              sinceReview.onChange(active);
+            },
+          },
   };
   return (
     <div
@@ -254,129 +341,57 @@ export function ReviewDiffToolbar({
     >
       <div className="flex flex-wrap items-center gap-1">
         {leadingAction}
-        {previewing ? null : (
-          <ButtonGroup
-            className={`items-center ${virtualized ? "flex" : "hidden"}`}
-          >
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant={
-                      preferences.fileMode === "all" && !sinceReviewActive
-                        ? "secondary"
-                        : "ghost"
-                    }
-                    size="xs"
-                    className={PRESSED_SEGMENT_CLASS}
-                    aria-pressed={
-                      preferences.fileMode === "all" && !sinceReviewActive
-                    }
-                    onClick={() => selectFileMode("all")}
-                  />
-                }
-              >
-                <Files /> All files
-              </TooltipTrigger>
-              <NavigationKeysTooltip />
-            </Tooltip>
-            <Button
-              variant={
-                preferences.fileMode === "selected" && !sinceReviewActive
-                  ? "secondary"
-                  : "ghost"
-              }
-              size="xs"
-              className={PRESSED_SEGMENT_CLASS}
-              aria-pressed={
-                preferences.fileMode === "selected" && !sinceReviewActive
-              }
-              disabled={selectedPath === undefined}
-              onClick={() => selectFileMode("selected")}
-            >
-              <FileCode2 /> Selected
-            </Button>
-            {sinceReview === undefined ? null : (
-              <Button
-                variant={sinceReviewActive ? "secondary" : "ghost"}
-                size="xs"
-                className={PRESSED_SEGMENT_CLASS}
-                aria-pressed={sinceReviewActive}
-                disabled={sinceReview.disabledReason !== undefined}
-                onClick={() => {
-                  if (!sinceReviewActive) {
-                    onPreferencesChange({ fileMode: "all" });
-                    sinceReview.onChange(true);
-                  }
-                }}
-              >
-                {sinceReview.loading ? <Spinner /> : <History />} Since your
-                review
-              </Button>
-            )}
-          </ButtonGroup>
-        )}
-        {previewing || sinceReview?.disabledReason === undefined ? null : (
-          <span
-            className={cn(
-              "px-1 text-xs text-muted-foreground",
-              virtualized ? undefined : "hidden",
-            )}
-          >
-            {sinceReview.disabledReason}
-          </span>
-        )}
-        {markdownPreview === undefined ? null : (
-          <MarkdownPreviewModeSwitch preview={markdownPreview} />
-        )}
+        <ReviewDiffChangesMenu changes={shownChanges} />
         {scopeFilter === undefined ? null : (
           <ReviewDiffScopePicker scopeFilter={scopeFilter} />
         )}
-      </div>
-      <div className="flex flex-wrap items-center justify-end gap-1">
         {previewing ? null : (
           <ReviewDiffOptionsPopover
             preferences={preferences}
             onPreferencesChange={onPreferencesChange}
-          />
-        )}
-        {previewing ? null : (
-          <Button
-            variant={expandUnchanged ? "secondary" : "ghost"}
-            size="xs"
-            aria-pressed={expandUnchanged}
-            aria-label={contextControl.description}
-            title={contextControl.description}
-            disabled={contextControl.disabled}
-            onClick={() => onExpandUnchangedChange(!expandUnchanged)}
+            triggerLabel={
+              !virtualized
+                ? undefined
+                : preferences.fileMode === "all"
+                  ? "All files"
+                  : "Selected"
+            }
           >
-            {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
-            {contextControl.label}
-          </Button>
+            {virtualized ? (
+              <FileModeSwitch
+                pressed={sinceReviewActive ? undefined : preferences.fileMode}
+                selectedPath={selectedPath}
+                onSelect={selectFileMode}
+              />
+            ) : null}
+            <ReviewDiffOptionRow
+              icon={
+                contextStatus === "loading" ? (
+                  <Spinner />
+                ) : (
+                  <ChevronsUpDown aria-hidden="true" />
+                )
+              }
+              label={contextControl.label}
+              checked={expandUnchanged}
+              disabledReason={
+                contextControl.disabled ? contextControl.description : undefined
+              }
+              onCheckedChange={(checked) => onExpandUnchangedChange(checked)}
+            />
+          </ReviewDiffOptionsPopover>
         )}
-        {previewing ? null : (
-          <span
-            role="status"
-            className={cn(
-              "px-1 text-xs text-muted-foreground tabular-nums",
-              virtualized ? undefined : "hidden",
-            )}
-          >
-            {viewedCount} of {files.length} viewed
-          </span>
-        )}
-        {previewing ? null : (
-          <Button
-            className={virtualized ? undefined : "hidden"}
-            variant="ghost"
-            size="xs"
-            aria-pressed={allViewed}
-            onClick={() => onSetAllCollapsed(!allViewed)}
-          >
-            {allViewed ? "Show all" : "Mark all viewed"}
-          </Button>
+        {markdownPreview === undefined ? null : (
+          <MarkdownPreviewModeSwitch preview={markdownPreview} />
         )}
       </div>
+      {fileModeControls ? (
+        <ReviewDiffViewedMenu
+          viewedCount={viewedCount}
+          fileCount={files.length}
+          onSetAllCollapsed={onSetAllCollapsed}
+        />
+      ) : null}
     </div>
   );
 }

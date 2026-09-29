@@ -202,8 +202,11 @@ test("viewed toggles replace the collapse icon without changing file selection",
     await viewed.click();
     const shown = page.getByRole("checkbox", { name: "Show file src/a.ts" });
     await expect(shown).toHaveAttribute("aria-checked", "true");
-    await page.getByRole("button", { name: "Mark all viewed" }).click();
-    await page.getByRole("button", { name: "Show all" }).click();
+    const viewedCount = page.getByRole("button", { name: /^\d+\/\d+ viewed$/ });
+    await viewedCount.click();
+    await page.getByRole("menuitem", { name: "Mark all viewed" }).click();
+    await viewedCount.click();
+    await page.getByRole("menuitem", { name: "Show all" }).click();
     await expect(
       page.getByRole("checkbox", { name: "Mark file src/a.ts as viewed" }),
     ).toBeVisible();

@@ -154,13 +154,13 @@ describe("diff workbench", () => {
         pointerEventsCheck: PointerEventsCheckLevel.Never,
       });
       render(<DiffWorkbench patch={patch} />);
-      expect(screen.getByRole("status").textContent).toBe("0 of 2 viewed");
+      expect(screen.getByRole("status").textContent).toBe("0/2 viewed");
 
       await user.click(
         screen.getByRole("checkbox", { name: "Mark file src/a.ts as viewed" }),
       );
 
-      expect(screen.getByRole("status").textContent).toBe("1 of 2 viewed");
+      expect(screen.getByRole("status").textContent).toBe("1/2 viewed");
     } finally {
       restoreStyleSheet();
     }

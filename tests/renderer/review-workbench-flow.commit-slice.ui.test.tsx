@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { chooseFileMode } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import {
   callBody,
@@ -194,7 +195,7 @@ describe("ReviewWorkbenchFlow leaving a commit slice", () => {
       ?.shadowRoot?.querySelector('[data-item-path="src/a.ts"]');
     if (!(row instanceof HTMLElement)) throw new Error("Expected src/a.ts row");
     await user.click(row);
-    await user.click(screen.getByRole("button", { name: "Selected" }));
+    await chooseFileMode(user, "Selected");
     expect(namedFile()).toEqual({ tree: "src/a.ts", pane: "src/a.ts" });
 
     // The Commits section opens on its first commit, which touches only the guide.

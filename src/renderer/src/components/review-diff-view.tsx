@@ -35,8 +35,8 @@ import {
   ReviewDiffToolbar,
   type MarkdownPreviewControl,
   type ScopeFilterControl,
-  type SinceReviewControl,
 } from "./review-diff-toolbar";
+import type { DiffChangesControl } from "./review-diff-changes-menu";
 import { useReviewDiffRegionName } from "../hooks/use-review-diff-region-name";
 import type { PendingReviewDrafts } from "../hooks/use-pending-review-drafts";
 import {
@@ -249,7 +249,7 @@ type ReviewDiffViewProps = {
   readonly scopeFilter?: ScopeFilterControl | undefined;
   /** Drawn first in the toolbar, such as the review navigator toggle. */
   readonly toolbarLeadingAction?: React.ReactNode;
-  readonly sinceReview?: SinceReviewControl | undefined;
+  readonly changes?: DiffChangesControl | undefined;
   /** False on read-only evidence previews whose preferences are fixed, where every toolbar control would be inert. */
   readonly showToolbar?: boolean;
 };
@@ -281,7 +281,7 @@ function ReviewDiffSurface({
   bodyContext = EMPTY_BODY_CONTEXT,
   scopeFilter,
   toolbarLeadingAction,
-  sinceReview,
+  changes,
   showToolbar = true,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
@@ -445,7 +445,7 @@ function ReviewDiffSurface({
       beginAuthoring={beginAuthoring}
       scopeFilter={scopeFilter}
       toolbarLeadingAction={toolbarLeadingAction}
-      sinceReview={sinceReview}
+      changes={changes}
       showToolbar={showToolbar}
     />
   );
@@ -506,7 +506,7 @@ type ReviewDiffRenderSiteProps = {
   readonly beginAuthoring: (selection: CodeViewLineSelection | null) => void;
   readonly scopeFilter: ScopeFilterControl | undefined;
   readonly toolbarLeadingAction: React.ReactNode;
-  readonly sinceReview: SinceReviewControl | undefined;
+  readonly changes: DiffChangesControl | undefined;
   readonly showToolbar: boolean;
 };
 
@@ -552,7 +552,7 @@ function ReviewDiffRenderSite({
   beginAuthoring,
   scopeFilter,
   toolbarLeadingAction,
-  sinceReview,
+  changes,
   showToolbar,
 }: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
@@ -681,7 +681,7 @@ function ReviewDiffRenderSite({
           scopeFilter={scopeFilter}
           markdownPreview={markdownPreview}
           leadingAction={toolbarLeadingAction}
-          sinceReview={sinceReview}
+          changes={changes}
         />
       ) : null}
       {!browserSupportsPierre &&

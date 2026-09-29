@@ -16,10 +16,8 @@ import {
   type ReviewInlineAnnotation,
   type SelectedDiffRange,
 } from "./review-diff-view";
-import type {
-  ScopeFilterControl,
-  SinceReviewControl,
-} from "./review-diff-toolbar";
+import type { ScopeFilterControl } from "./review-diff-toolbar";
+import type { DiffChangesControl } from "./review-diff-changes-menu";
 import type { PullRequestBodyContext } from "./pull-request-description";
 import { parseReviewDiff } from "@/review-diff-data";
 import type { FileFindingCount } from "@/review-finding-counts";
@@ -72,7 +70,7 @@ export function DiffWorkbench({
   visiblePaths,
   scopeFilter,
   viewedFiles,
-  sinceReview,
+  changes,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -107,7 +105,7 @@ export function DiffWorkbench({
   readonly scopeFilter?: ScopeFilterControl;
   /** Saved Viewed marks; without it Viewed lasts only while this Diff is open. */
   readonly viewedFiles?: ViewedFilesControls;
-  readonly sinceReview?: SinceReviewControl;
+  readonly changes?: DiffChangesControl;
 }): React.JSX.Element {
   // Narrowing the patch itself, not just its parsed metadata: the pane falls
   // back to rendering the patch text where Pierre's CodeView is unavailable.
@@ -257,7 +255,7 @@ export function DiffWorkbench({
           <ReviewDiffView
             patch={visiblePatch}
             scopeFilter={scopeFilter}
-            sinceReview={sinceReview}
+            changes={changes}
             parsedFiles={parsedDiff.files}
             fileStatsByPath={parsedDiff.statsByPath}
             {...(selectedPath === undefined ? {} : { selectedPath })}

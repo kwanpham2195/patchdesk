@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Grouped the diff toolbar's controls into menus so it fits on one line in a narrow pane. **Changes** chooses All changes or Since your review on a pull request, and Combined, Committed, or Uncommitted on a local Review. **View options** now also holds All files and Selected and the Context switch, and a disabled Context shows its reason under it. The viewed count, now "3/15 viewed", opens a menu with Mark all viewed or Show all. Each menu button names its current choice, and keyboard shortcuts are unchanged. #613
+
 - Kept the Finish review summary and decision when the dialog closes with Escape, a click outside, or Close, so one stray keypress no longer loses a long summary. Finish review reopens with both, and they stay through a Refresh or a Submit that GitHub does not confirm until Submit review or Confirm discard. While a summary is kept, leaving the Review asks first with Stay on this review or Discard changes and leave, including a pull request chosen in Navigate (⌘K). Navigate, ⌘K, Settings, and Diagnostics now stay available during an unsaved draft; only a pending GitHub write disables them. Finish review from Analysis asks before replacing a kept summary. The summary stays in the window only: it is never saved to disk or to GitHub, so a reload or quit drops it. #606
 
 - Kept Viewed marks on a pull request Review's unchanged files when Refresh moves it to a new head. A file keeps its mark only when its patch is identical in the new diff, so a file the new push changed, or whose patch a rebase onto a moved base changed, loses its mark. Commit-slice and Since your review marks stay temporary. If the marks cannot be carried, Refresh still completes and the new head starts with no files viewed. #605

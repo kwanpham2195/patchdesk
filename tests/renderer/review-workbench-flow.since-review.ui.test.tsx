@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { chooseChanges } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import {
   callBody,
@@ -77,9 +78,8 @@ describe("ReviewWorkbenchFlow Since your review", () => {
     );
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Diff" }));
-    await user.click(
-      await screen.findByRole("button", { name: "Since your review" }),
-    );
+    await screen.findByRole("button", { name: "Changes" });
+    await chooseChanges(user, "Since your review");
     await screen.findAllByText(/reviewed/);
 
     const commentTargets = screen
