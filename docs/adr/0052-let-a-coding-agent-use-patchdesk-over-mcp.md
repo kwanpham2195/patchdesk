@@ -230,6 +230,8 @@ Amended 2026-09-29 (#652): an open of a shared Review whose current session reco
 
 Amended 2026-09-29 (#643): `dirty_draft` now also covers text the maintainer has not sent: a diff composer holding a half-written note or comment, a Saved draft or failed draft card, an unsaved thread reply, comment edit, note edit, or Dismiss review message, and a summary typed in the open Finish review or Summary review dialog. `show_review` answers `held` for them as for a kept Finish review summary, so an agent's call no longer drops typed text.
 
+Amended 2026-09-29 (#662): `dirty_draft` also covers an unsaved Change intent edit: the Change intent dialog open with a field that differs from the saved intent, or such an edit kept after the dialog closed with Escape, a click outside, or Close. `show_review` answers `held` for it, and its description names it.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run

@@ -2,11 +2,16 @@ import { useState } from "react";
 import { Target } from "lucide-react";
 
 import { changeIntentSummary } from "../change-intent-copy";
-import type {
-  ChangeIntentControls,
-  ChangeIntentInput,
+import {
+  changeIntentDraftFromSaved,
+  changeIntentUnsentText,
+  type ChangeIntentControls,
+  type ChangeIntentDraft,
+  type ChangeIntentInput,
 } from "../flows/use-change-intent";
+import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -36,6 +41,12 @@ export function ChangeIntentControl({
   const [open, setOpen] = useState(false);
   const summary = changeIntentSummary(controls.current);
   const intent = controls.current?.intent;
+  const keptUnsent =
+    editable && controls.draft !== undefined
+      ? changeIntentUnsentText(controls.draft, controls.current)
+      : "";
+  // While the dialog is open it reports its own fields.
+  useReportUnsentReviewText(open ? "" : keptUnsent);
   return (
     <div
       className="flex min-w-0 items-center gap-2 text-xs"
@@ -47,6 +58,11 @@ export function ChangeIntentControl({
       <span className="min-w-0 truncate text-muted-foreground" title={summary}>
         {summary}
       </span>
+      {keptUnsent === "" ? null : (
+        <Badge variant="warning" className="shrink-0">
+          Unsaved edit
+        </Badge>
+      )}
       {editable ? (
         <Button
           variant="outline"
@@ -64,7 +80,11 @@ export function ChangeIntentControl({
   );
 }
 
-/** Mounted only while open, so cancelling drops the draft. */
+/**
+ * Mounted only while open, so a refused save's error clears on reopening.
+ * Escape, a click outside, or Close keeps an unsent edit for the next opening;
+ * Cancel drops it (#662).
+ */
 function ChangeIntentDialog({
   controls,
   onOpenChange,
@@ -72,17 +92,15 @@ function ChangeIntentDialog({
   readonly controls: ChangeIntentControls;
   readonly onOpenChange: (open: boolean) => void;
 }): React.JSX.Element {
-  const current = controls.current?.intent;
-  const [kind, setKind] = useState<ChangeIntentInput["kind"]>(
-    current?.kind ?? "text",
+  const [initial] = useState(
+    () => controls.draft ?? changeIntentDraftFromSaved(controls.current),
   );
-  const [markdown, setMarkdown] = useState(
-    current?.kind === "text" ? current.markdown : "",
-  );
-  const [path, setPath] = useState(
-    current?.kind === "file" ? current.path : "",
-  );
+  const [kind, setKind] = useState(initial.kind);
+  const [markdown, setMarkdown] = useState(initial.markdown);
+  const [path, setPath] = useState(initial.path);
   const [error, setError] = useState<string>();
+  const fields: ChangeIntentDraft = { kind, markdown, path };
+  useReportUnsentReviewText(changeIntentUnsentText(fields, controls.current));
   const input: ChangeIntentInput | undefined =
     kind === "text"
       ? markdown.trim() === ""
@@ -110,7 +128,9 @@ function ChangeIntentDialog({
     <Dialog
       open
       onOpenChange={(nextOpen) => {
-        if (!controls.saving) onOpenChange(nextOpen);
+        if (controls.saving) return;
+        if (!nextOpen) controls.keepDraft(fields);
+        onOpenChange(nextOpen);
       }}
     >
       <DialogContent showCloseButton={!controls.saving}>
@@ -188,7 +208,10 @@ function ChangeIntentDialog({
               type="button"
               variant="outline"
               disabled={controls.saving}
-              onClick={() => onOpenChange(false)}
+              onClick={() => {
+                controls.dropDraft();
+                onOpenChange(false);
+              }}
             >
               Cancel
             </Button>

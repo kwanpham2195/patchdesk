@@ -126,4 +126,77 @@ describe("Change intent on a local Review", () => {
       within(dialog).getByLabelText<HTMLInputElement>("Spec file").value,
     ).toBe(" docs/spec.md ");
   });
+
+  it.each([
+    [
+      "a click outside",
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        const backdrop = document.querySelector('[data-slot="dialog-overlay"]');
+        if (backdrop === null) throw new Error("missing dialog backdrop");
+        await user.click(backdrop);
+      },
+    ],
+    [
+      "Escape",
+      async (user: ReturnType<typeof userEvent.setup>) =>
+        user.keyboard("{Escape}"),
+    ],
+  ])(
+    "keeps an edit closed by %s, marks it Unsaved edit, and restores its tab, text, and path on reopening",
+    async (_close, close) => {
+      installRoutes(() => success({ changeIntent: stored }));
+      render(<LocalReviewScreen />);
+      const user = userEvent.setup({
+        pointerEventsCheck: PointerEventsCheckLevel.Never,
+      });
+
+      await user.click(screen.getByRole("button", { name: "Change intent" }));
+      let dialog = await screen.findByRole("dialog");
+      await user.type(
+        within(dialog).getByLabelText("Intent"),
+        "Reject a negative total.",
+      );
+      await user.click(within(dialog).getByRole("tab", { name: "Spec file" }));
+      await user.type(
+        within(dialog).getByLabelText("Spec file"),
+        "docs/spec.md",
+      );
+      await close(user);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+      expect(screen.getByText("Unsaved edit")).toBeTruthy();
+      await user.click(screen.getByRole("button", { name: "Change intent" }));
+      dialog = await screen.findByRole("dialog");
+      expect(
+        within(dialog).getByLabelText<HTMLInputElement>("Spec file").value,
+      ).toBe("docs/spec.md");
+      await user.click(within(dialog).getByRole("tab", { name: "Text" }));
+      expect(
+        within(dialog).getByLabelText<HTMLTextAreaElement>("Intent").value,
+      ).toBe("Reject a negative total.");
+    },
+  );
+
+  it("drops an edit on Cancel and reopens on the saved intent with no Unsaved edit mark", async () => {
+    installRoutes(() => success({ changeIntent: stored }));
+    render(<LocalReviewScreen />);
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
+    const saved = await saveSpecFile();
+    await waitFor(() => expect(saved.isConnected).toBe(false));
+
+    await user.click(screen.getByRole("button", { name: "Change intent" }));
+    let dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Spec file"), "x");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    expect(screen.queryByText("Unsaved edit")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Change intent" }));
+    dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByLabelText<HTMLInputElement>("Spec file").value,
+    ).toBe("docs/spec.md");
+  });
 });
