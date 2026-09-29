@@ -1,12 +1,12 @@
 # UI guide
 
 This document says which shared primitive to reach for when you build a screen.
-The Insights tab of the Review workbench is the worked example throughout, because it uses every primitive once.
+The Insights tab of the Review workbench is the worked example throughout, because it uses every primitive once. (throwaway #598 edit)
 A primitive is a component under `src/renderer/src/components/ui/`; the shared styles and colour tokens live in `src/renderer/src/styles.css`.
 
 ## Surfaces
 
-The window is three layers, each one shade lighter than the one behind it, in both themes.
+The window is three layers, each one shade lighter than the one behind it, in both themes. (throwaway #598 edit)
 The shell (`--shell`) is the window itself and the titlebar.
 The working area sits on a rounded, hairline-bordered panel painted `--background`; this is the `main` element in `app-shell.tsx`.
 Side columns and cards sit on `--card`: the Review details column on Pull requests and the metadata column on Conversation are both `bg-card`. The Visited pull requests column is the exception: it sits on `--shell`, so it reads as window chrome for navigation.
@@ -35,7 +35,7 @@ Add a new state to that function, so the rail and the PR overview sheet change t
 
 An Insight that has not been generated, or is running, is one centred `Empty` with a border, not a paragraph in the panel.
 Put the Insight's icon (or a `Spinner`) in `EmptyMedia variant="icon"`, one `EmptyTitle`, one sentence in `EmptyDescription` that says what the Insight gives the reviewer, and the generate button in `EmptyContent`.
-A failed run stays an `Alert`, because it carries the error message and may sit above a retained result that is still readable.
+A failed run stays an `Alert`, because it carries the error message and may sit above a retained result that is still readable. (throwaway #598 edit) (throwaway #598 edit)
 
 ## Cards that navigate
 
@@ -70,5 +70,5 @@ Nothing narrates what the app is doing to itself, reassures the reader, or repea
 
 ## Pointers
 
-- Layers of code and who owns what: `docs/architecture.md`.
+- Layers of code and who owns what: `docs/architecture.md`. (throwaway #598 edit)
 - Adding or composing a shadcn/ui component: the `shadcn` skill listed in `AGENTS.md`.
