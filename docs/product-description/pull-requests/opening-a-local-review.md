@@ -212,7 +212,11 @@ A note is shown inline only on the session its anchor belongs to, and on a share
 
 ## Refresh
 
-**Refresh** at the end of a local Review's header line reads the Review's source from the checkout again, the same way opening does, under the Review lock. There is no timer and no file watcher: the workbench changes only when the maintainer presses Refresh, opens the Review again, or applies suggestions (ADR 0032, ADR 0050). The button reads `Refreshing…` while the read runs.
+**Refresh** at the end of a local Review's header line reads the Review's source from the checkout again, the same way opening does, under the Review lock. The workbench changes only when the maintainer presses Refresh, opens the Review again, or applies suggestions (ADR 0032, ADR 0050). The button reads `Refreshing…` while the read runs.
+
+An open shared Review checks its checkout when the window gains focus and every 90 seconds while the window is visible. When the checkout no longer matches the session shown, for example after an edit in a terminal, a new untracked file, or a commit, the header shows **Updates available**. The check does not move the Review: the diff, the Notes list, and a half-written note stay as they are until Refresh. When the checkout returns to the shown content, the label goes away. A checkout now on another branch shows no label, because Refresh refuses it. A commit Review is not checked, because its commit cannot change. A failed read shows no label.
+
+> Technical note: the check compares a fingerprint of the checkout, made from `HEAD`, the merge base, a hash of `git diff HEAD --binary`, and each untracked file's `git hash-object` hash, with the one recorded when the session was prepared. It writes nothing to the repository, passes `--no-optional-locks` so it never takes `index.lock`, and holds the Review lock only to read the Review record. A session prepared before this check existed is fingerprinted on its first check. A failed read is logged once to `patchdesk.jsonl` under `local-review-updates` (#611, ADR 0050 "Freshness").
 
 When the content is unchanged, Refresh lands on the same session and nothing changes. When it changed, Refresh prepares a new session, the header shows the new `Local snapshot <first eight characters>`, the Analysis, Brief, and Walkthrough read Outdated, and Apply is no longer offered until a new Analysis runs.
 
@@ -344,4 +348,4 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - Apply recovery is covered by tests, not a timed interruption in the app. Confirm empty patches, conflict refusal, commit source, failure messages, range notes, and reopening with Change intent live. CDP dragging selected only the last line; service tests cover ranges.
 - The Analysis prompt still calls a local Review a pull request, though it uses Change intent for its goal check.
 
-Drafted from Patchdesk application source commits `502acfd8`, `7d9a660a`, `d893476a`, `8cb71ffa`, and `de713f03`. Note recovery was checked against `fce8d4d7`, Viewed save queues against `d2df8aca`, and Viewed carry against `501871ef`.
+Drafted from Patchdesk application source commits `502acfd8`, `7d9a660a`, `d893476a`, `8cb71ffa`, and `de713f03`. Note recovery was checked against `fce8d4d7`, Viewed save queues against `d2df8aca`, and Viewed carry against `501871ef`. The checkout update check (#611) was drafted from `cc6bbc56` with its implementation.

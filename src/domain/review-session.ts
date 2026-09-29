@@ -67,6 +67,12 @@ export type LocalReviewSession = ReviewSessionFields & {
    */
   readonly checkoutHeadSha?: GitSha;
   /**
+   * The checkout's read-only fingerprint when the Local snapshot was taken
+   * (#611), which the update check compares with the checkout. Only a
+   * `local_branch` session has one; one stored before #611 has none.
+   */
+  readonly checkoutFingerprint?: ContentHash;
+  /**
    * The session's three patches, written at prepare so a view switch reads a
    * stored file and runs no git. Present on every `local_branch` session,
    * absent on the other kinds; Combined is `patchPath` itself.
@@ -177,6 +183,7 @@ export function createLocalReviewSession(input: {
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
   readonly checkoutHeadSha?: GitSha;
+  readonly checkoutFingerprint?: ContentHash;
   readonly viewPatches?: LocalSessionViewPatches;
   readonly commits?: LocalSessionCommits;
 }): LocalReviewSession {
@@ -191,6 +198,7 @@ export function createLocalReviewSession(input: {
     updatedAt: input.createdAt,
     ...definedProps({
       checkoutHeadSha: input.checkoutHeadSha,
+      checkoutFingerprint: input.checkoutFingerprint,
       viewPatches: input.viewPatches,
       commits: input.commits,
     }),

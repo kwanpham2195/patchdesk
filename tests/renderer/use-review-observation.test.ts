@@ -352,6 +352,35 @@ describe("useReviewObservation scheduling", () => {
     expect(observed.detectCount()).toBe(2);
   });
 
+  it("skips the interval detection while the window is hidden and detects when it shows again", async () => {
+    vi.useFakeTimers();
+    let visibility: DocumentVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    try {
+      const observed = installObservationDouble({
+        detect: () => ({ _tag: "Unchanged" }),
+      });
+      renderObservation(localWorkbench("fresh"));
+      await flush();
+      expect(observed.detectCount()).toBe(1);
+
+      visibility = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flush(DETECT_INTERVAL_MS * 2);
+      expect(observed.detectCount()).toBe(1);
+
+      visibility = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flush(FOCUS_DEBOUNCE_MS);
+      expect(observed.detectCount()).toBe(2);
+    } finally {
+      Reflect.deleteProperty(document, "visibilityState");
+    }
+  });
+
   it("clears the scheduled detection and ignores a late result after unmount", async () => {
     vi.useFakeTimers();
     const late = deferred<unknown>();

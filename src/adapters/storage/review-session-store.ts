@@ -126,6 +126,7 @@ const localSessionSchema = v.strictObject({
     baseSha: v.string(),
   }),
   checkoutHeadSha: v.optional(v.string()),
+  checkoutFingerprint: v.optional(v.string()),
   viewPatches: v.optional(
     v.strictObject({
       combined: viewPatchSchema,
@@ -405,9 +406,10 @@ function parseLocalSession(
   if (fields._tag === "err") return fields;
   // A shared Review's session always records the checkout HEAD its snapshot
   // was taken on, its three patches (#556 D7), and its commits (#557 D1); no
-  // other kind has any of them.
+  // other kind has any of them. Its checkout fingerprint is absent on one stored before #611.
   if (source.value.kind !== "local_branch")
     return raw.checkoutHeadSha === undefined &&
+      raw.checkoutFingerprint === undefined &&
       raw.viewPatches === undefined &&
       raw.commits === undefined
       ? fields
@@ -419,12 +421,17 @@ function parseLocalSession(
   )
     return invalidRead();
   const checkoutHeadSha = parseGitSha(raw.checkoutHeadSha);
+  const checkoutFingerprint =
+    raw.checkoutFingerprint === undefined
+      ? undefined
+      : parseContentHash(raw.checkoutFingerprint);
   const combined = parseViewPatch(raw.viewPatches.combined);
   const committed = parseViewPatch(raw.viewPatches.committed);
   const uncommitted = parseViewPatch(raw.viewPatches.uncommitted);
   const newest = parseLocalCommits(raw.commits.newest);
   if (
     checkoutHeadSha._tag === "err" ||
+    checkoutFingerprint?._tag === "err" ||
     combined === undefined ||
     committed === undefined ||
     uncommitted === undefined ||
@@ -439,6 +446,7 @@ function parseLocalSession(
     checkoutHeadSha: checkoutHeadSha.value,
     viewPatches: { combined, committed, uncommitted },
     commits: { newest, total: raw.commits.total },
+    ...definedProps({ checkoutFingerprint: checkoutFingerprint?.value }),
   });
 }
 

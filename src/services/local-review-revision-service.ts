@@ -7,6 +7,7 @@ import {
   detachedHeadBranch,
   parseGitSha,
   parseLocalBranchName,
+  type ContentHash,
   type GitSha,
   type LocalBranchName,
   type WorkspaceProfileId,
@@ -25,6 +26,7 @@ import {
   type UntrackedLimits,
   type UntrackedTooLarge,
 } from "./local-untracked-size";
+import { fingerprintLocalCheckout } from "./local-checkout-fingerprint";
 import { readFirstParentOrEmptyTree } from "./local-commit-listing";
 import { exists } from "./review-preparation-journal";
 import type { GitReadExecutor } from "./review-worktree-service";
@@ -54,6 +56,8 @@ export type ResolvedLocalRevision = {
   readonly revision: ReviewRevision;
   /** The checkout `HEAD` a shared Review's Local snapshot was taken on; absent for the other kinds. */
   readonly checkoutHeadSha?: GitSha;
+  /** `fingerprintLocalCheckout` read just before a shared Review's Local snapshot; absent for the other kinds. */
+  readonly checkoutFingerprint?: ContentHash;
 };
 
 /**
@@ -197,12 +201,19 @@ export class LocalReviewRevisionService {
       head.value.sha,
     ]);
     if (mergeBase === undefined) return err({ _tag: "LocalRevisionNotFound" });
+    const fingerprint = await fingerprintLocalCheckout(
+      this.git,
+      repositoryPath,
+      { headSha: head.value.sha, mergeBase },
+    );
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the ordering is the point: the fingerprint is read before the snapshot, so an edit between the two leaves an older fingerprint, a spurious update Refresh settles rather than a missed one
     const snapshot = await this.writeLocalSnapshot(
       profileId,
       repositoryPath,
       head.value.sha,
     );
     if (snapshot._tag === "err") return snapshot;
+    if (fingerprint === undefined) return err({ _tag: "LocalGitFailed" });
     return ok({
       source: {
         kind: "local_branch",
@@ -211,6 +222,7 @@ export class LocalReviewRevisionService {
       },
       revision: { headSha: snapshot.value, baseSha: mergeBase },
       checkoutHeadSha: head.value.sha,
+      checkoutFingerprint: fingerprint,
     });
   }
 
