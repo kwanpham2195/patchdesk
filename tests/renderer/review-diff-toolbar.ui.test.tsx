@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { processFile, type FileDiffMetadata } from "@pierre/diffs";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -223,6 +223,27 @@ describe("ReviewDiffToolbar Changes menu", () => {
 });
 
 describe("ReviewDiffToolbar View options", () => {
+  it.each(["click", "keyboard"] as const)(
+    "opens by %s without the navigation keys tooltip, and one Escape closes it",
+    async (opener) => {
+      renderToolbar();
+      const user = userEvent.setup();
+
+      if (opener === "click")
+        await user.click(screen.getByRole("button", { name: "View options" }));
+      else await openToolbarMenu(user, "View options");
+      await screen.findByRole("dialog", { name: "View options" });
+
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      await user.keyboard("{Escape}");
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "View options" }),
+        ).toBeNull(),
+      );
+    },
+  );
+
   it.each([
     { name: "All files", from: "selected", to: "all" },
     { name: "Selected", from: "all", to: "selected" },

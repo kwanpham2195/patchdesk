@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import {
   ChevronDown,
   Columns2,
@@ -89,6 +89,7 @@ export function ReviewDiffOptionsPopover({
   readonly children?: React.ReactNode;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
   // While the pane is too narrow, the switch shows the saved style rather than the unified fallback on screen.
   const savedStyleWhileNarrow = useContext(SplitViewFallbackContext);
   const split = (savedStyleWhileNarrow ?? preferences.diffStyle) === "split";
@@ -108,6 +109,9 @@ export function ReviewDiffOptionsPopover({
         // Scroll inside rather than overflow the window when neither side has room.
         className="max-h-(--available-height) w-64 overflow-y-auto"
         align="start"
+        ref={popupRef}
+        // Focus the popup itself: the first button is All files, whose focus would open its keys tooltip over the heading and take the first Escape.
+        initialFocus={popupRef}
         hideWhenAnchorHidden
         // Flip above the button when needed so every option stays visible.
         collisionAvoidance={{
