@@ -218,6 +218,8 @@ Amended 2026-09-27 (#558): a seventh tool, `list_local_reviews(cwd)` → the ope
 
 Amended 2026-09-28 (#572, #571): an unreadable saved Review record now refuses `storage` for `list_local_reviews`, `review_local`, and the Local review dialog. Skipping it could hide the Review the maintainer meant.
 
+Amended 2026-09-29 (#601): `review_local` returns `changeIntent` when the Review holds a Change intent after the call: `{ kind: "text", source, markdown }`, where `source` is `maintainer` for a stored intent without a source and `agent` for one an agent recorded, or `{ kind: "file", path }` for a spec file the agent reads from its checkout. After `intent_exists`, it is the intent the Review kept. Each `list_local_reviews` entry carries `changeIntent` as `{ kind: "text", source }` or `{ kind: "file", path }`, without the Markdown: each text can be 64 KiB, so a checkout with several Reviews could pass the client's answer limit. Both read the Review record's intent, as the workbench projection does. The intent stays read-only for the agent, and no tool returns another Review's intent text.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run

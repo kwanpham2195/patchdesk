@@ -26,6 +26,7 @@ import {
   openRoute,
   pageSchema,
   reviewWithNotes,
+  setIntentInApp,
 } from "./mcp-read-tools-fixture";
 import { profileId, value } from "../services/local-apply-fixture";
 import { closeMcpTestClients, connectLegacyClient } from "./mcp-test-clients";
@@ -135,6 +136,7 @@ describe("review_local on the agent's side (the agent prepares, the maintainer m
       baseBranch: "main",
       baseInferred: false,
     });
+    expect(called.content).not.toHaveProperty("changeIntent");
     expect(after.currentSessionId).toBe(before.currentSessionId);
     expect(before.lastOpenedAt).toBeDefined();
     expect(after.lastOpenedAt).toBe(before.lastOpenedAt);
@@ -161,6 +163,47 @@ describe("review_local on the agent's side (the agent prepares, the maintainer m
 
     expect(stored.lastOpenedAt).toBeUndefined();
   });
+
+  it.each([
+    {
+      name: "text the maintainer entered",
+      set: { kind: "text", markdown: "Reject a negative total." },
+      returned: {
+        kind: "text",
+        source: "maintainer",
+        markdown: "Reject a negative total.",
+      },
+    },
+    {
+      name: "a spec file",
+      set: { kind: "file", path: "docs/spec.md" },
+      returned: { kind: "file", path: "docs/spec.md" },
+    },
+  ] as const)(
+    "returns the Change intent the maintainer set as $name beside intent_exists (#601)",
+    async ({ set, returned }) => {
+      app = await startAppWithLinkedWorktree();
+      await writeFile(join(app.repositoryPath, "tracked.txt"), "two\n");
+      const shown = await openRoute(app, app.repositoryPath);
+      await setIntentInApp(app, shown.review.id, set);
+      const client = await connectLegacyClient(app.socketPath);
+
+      const called = await call(client, "review_local", {
+        cwd: app.repositoryPath,
+        intent: "Ship another goal.",
+      });
+
+      expect(called).toMatchObject({
+        isError: false,
+        content: {
+          reviewId: shown.review.id,
+          intentRecorded: false,
+          intentRefused: "intent_exists",
+        },
+      });
+      expect(called.content).toHaveProperty("changeIntent", returned);
+    },
+  );
 });
 
 describe("MCP read tool refusals", () => {

@@ -14,6 +14,7 @@ import {
   call,
   linkedBranchWithCommit,
   openInApp,
+  setIntentInApp,
 } from "./mcp-read-tools-fixture";
 import { closeMcpTestClients, connectLegacyClient } from "./mcp-test-clients";
 
@@ -185,6 +186,44 @@ describe("list_local_reviews (#558)", () => {
     expect(
       gitOutput(app.repositoryPath, "worktree", "list", "--porcelain"),
     ).toBe(before.worktrees);
+  });
+
+  it("names each Review's Change intent by kind and source without its Markdown (#601)", async () => {
+    app = await startAppWithLinkedWorktree();
+    await linkedBranchWithCommit(app);
+    const againstDevelop = await openInApp(app, "develop");
+    await setIntentInApp(app, againstDevelop.review.id, {
+      kind: "text",
+      markdown: "Maintainer goal text.",
+    });
+    await openInApp(app, "main");
+    const client = await connectLegacyClient(app.socketPath);
+    await call(client, "review_local", {
+      cwd: app.linkedPath,
+      base: "main",
+      intent: "Agent goal text.",
+    });
+
+    const listed = await call(client, "list_local_reviews", {
+      cwd: app.linkedPath,
+    });
+
+    expect(listed).toMatchObject({
+      isError: false,
+      content: {
+        reviews: [
+          {
+            baseBranch: "main",
+            changeIntent: { kind: "text", source: "agent" },
+          },
+          {
+            baseBranch: "develop",
+            changeIntent: { kind: "text", source: "maintainer" },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(listed.content)).not.toMatch(/goal text/);
   });
 
   it("lists the same bases for the checked-out branch as the open dialog's reviewedBases", async () => {

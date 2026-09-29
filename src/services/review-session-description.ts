@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import {
+  agentChangeIntent,
+  type AgentChangeIntent,
+} from "../domain/change-intent";
 import { definedProps } from "../domain/defined-props";
 import {
   parseContentHash,
@@ -35,11 +39,13 @@ export type ReviewSessionDescription = {
   readonly patchHash?: ContentHash;
 };
 
-/** What `review_local` answers: the session, its title, its changed files, and which Insights are retained. */
+/** What `review_local` answers: the session, its title, its changed files, which Insights are retained, and the Review's Change intent. */
 export type LocalReviewOpened = ReviewSessionDescription & {
   readonly title: string;
   readonly changedFiles: ReadonlyArray<PatchChangedFile>;
   readonly retainedInsights: ReadonlyArray<InsightType>;
+  /** Absent when the Review has no Change intent. */
+  readonly changeIntent?: AgentChangeIntent;
 };
 
 function describeReviewSession(
@@ -142,5 +148,12 @@ export async function describeOpenedLocalReview(
     retainedInsights: insightTypes.filter(
       (type) => projection.insights[type].retained !== undefined,
     ),
+    ...definedProps({
+      changeIntent:
+        projection.changeIntent === undefined ||
+        projection.changeIntent === null
+          ? undefined
+          : agentChangeIntent(projection.changeIntent.intent),
+    }),
   });
 }

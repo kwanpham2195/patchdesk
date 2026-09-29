@@ -23,6 +23,42 @@ export type ChangeIntent =
     }
   | { readonly kind: "file"; readonly path: RepoRelativePath };
 
+/** Who wrote a text Change intent, as the MCP tools name it; a stored intent without `source` is the maintainer's. */
+type ChangeIntentAuthor = "maintainer" | "agent";
+
+/**
+ * A Change intent as `review_local` returns it (ADR 0052 "Tools, v1"). A spec
+ * file is named by path; the agent reads it from its own checkout.
+ */
+export type AgentChangeIntent =
+  | {
+      readonly kind: "text";
+      readonly source: ChangeIntentAuthor;
+      readonly markdown: string;
+    }
+  | { readonly kind: "file"; readonly path: RepoRelativePath };
+
+/** A Change intent as a `list_local_reviews` entry names it: text without its Markdown, which can be 64 KiB per Review. */
+export type ListedChangeIntent =
+  | { readonly kind: "text"; readonly source: ChangeIntentAuthor }
+  | { readonly kind: "file"; readonly path: RepoRelativePath };
+
+export function agentChangeIntent(intent: ChangeIntent): AgentChangeIntent {
+  return intent.kind === "text"
+    ? {
+        kind: "text",
+        source: intent.source ?? "maintainer",
+        markdown: intent.markdown,
+      }
+    : { kind: "file", path: intent.path };
+}
+
+export function listedChangeIntent(intent: ChangeIntent): ListedChangeIntent {
+  return intent.kind === "text"
+    ? { kind: "text", source: intent.source ?? "maintainer" }
+    : { kind: "file", path: intent.path };
+}
+
 /** The bound on entered text and on a spec file's bytes, in UTF-8 bytes. */
 export const MAX_CHANGE_INTENT_BYTES = 65_536;
 

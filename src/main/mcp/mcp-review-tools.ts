@@ -310,7 +310,10 @@ export async function reviewLocal(
         });
   const described = await describeOpenedLocalReview(
     services.sessions,
-    workbench,
+    // The workbench was projected before the intent was recorded, so the recorded state names the intent the Review now holds.
+    recorded?._tag === "ok"
+      ? { ...workbench, changeIntent: recorded.value.changeIntent }
+      : workbench,
   );
   if (described._tag === "err") return err(refusal("storage"));
   if (recorded === undefined) return ok({ ...described.value, ...base });
