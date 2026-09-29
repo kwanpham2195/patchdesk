@@ -46,6 +46,8 @@ Mouse clicks, keyboard commands, and supported native menu items call the same d
 
 In the Diff with All files chosen, single keys move and mark files: `,` and `.` for the previous and next file, `[` and `]` for the previous and next change, `{` and `}` for the previous and next comment, `(` and `)` for the previous and next Finding card, `p` and `n` for the previous and next file not yet marked Viewed, and `v` to toggle Viewed on the current file, the one highlighted in Browse. They do nothing while a text field has focus or while ⌘, Ctrl, or Option is held.
 
+On the Diff tab, ⌘F opens the diff's find bar, and Find in the native Edit menu does the same. It works while a text field has focus, but not while a dialog or popover holds it. In the find bar, Enter and Shift+Enter move to the next and previous match and Escape closes it; [Files, diff, commits, and navigation](../review-workbench/files-diff-and-navigation.md#begin-an-action) owns what a match does. Elsewhere ⌘F does nothing.
+
 In the Review workbench, ⌘1 selects Conversation, ⌘2 Diff, and ⌘3 Insights, as clicking the tab does. A local Review has no Conversation tab, so ⌘1 does nothing there. The tab keys do nothing while a text field or a dialog has focus, or while Shift or Option is also held.
 
 While a Review is open, ⌘K lists a Review group first: Conversation, Diff, Insights, Brief, Walkthrough, Analysis, Next Finding, Previous Finding, and Finish review. Each row calls the handler of the control it names and shows its key where it has one. Brief, Walkthrough, and Analysis open the Insights tab on that reader. Next Finding and Previous Finding step through Finding cards as `)` and `(` do; outside the Diff in All files they are disabled and read "Works in the Diff with All files." Finish review is listed only while the header shows its button, and it only opens the Finish review dialog. No row starts an Insight run, adds a Finding, or submits a review. The Insight readers and Finish review have no key of their own.
@@ -145,6 +147,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - Confirm focus placement after destination changes, Settings close, profile switch, guard Cancel, and native window close.
 - Confirm the exact keyboard and native-menu behavior for Settings, Navigate, Pull requests row activation, and Review file navigation.
 - The workbench tab keys and the ⌘K Review group (#609) are revised from source and await a live check.
+- ⌘F and Edit → Find (#608) are revised from source and await a live check in the desktop app.
 - Confirm the titlebar busy label when overlapping tracked actions settle in reverse order.
 - Confirm the native close prompt for an unsaved Review draft and for a pending GitHub write on a real macOS window.
 - Live verification of desktop notifications is pending: a macOS banner cannot be observed over CDP, so the log lines are the evidence.

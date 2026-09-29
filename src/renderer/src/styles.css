@@ -70,6 +70,8 @@
   --diff-removed-bg: #ffebe9;
   --diff-added-emphasis: rgb(46 160 67 / 0.28);
   --diff-removed-emphasis: rgb(255 129 130 / 0.28);
+  /* The ⌘F mark tints a line over its added or removed colour. */
+  --diff-find-match: #bf8700;
 }
 
 .dark {
@@ -110,6 +112,7 @@
   --diff-removed-bg: #3d1d1d;
   --diff-added-emphasis: rgb(46 160 67 / 0.22);
   --diff-removed-emphasis: rgb(248 81 73 / 0.22);
+  --diff-find-match: #e3b341;
 }
 
 /* The `generated` bucket reads as machine-written rather than as a sixth

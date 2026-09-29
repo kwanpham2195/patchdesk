@@ -134,7 +134,7 @@ function PierreFileTreeModel({
         : [{ path: file.path, status: file.gitStatus }],
     ),
     initialExpansion: "open",
-    search: files.length >= 500,
+    search: true,
     // Carried as an option, not as our own shadow-root <style>, because the
     // library injects it before first paint and layers it above its own rules.
     unsafeCSS: [

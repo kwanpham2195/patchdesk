@@ -119,6 +119,15 @@ export type ReviewDiffNavigationStatus =
       readonly path: string;
       readonly line: number;
       readonly message: string;
+    }
+  | {
+      readonly kind: "find";
+      readonly state: "target" | "wrapped";
+      readonly position: number;
+      readonly total: number;
+      readonly path: string;
+      readonly line: number;
+      readonly message: string;
     };
 
 /** Builds the structured outcome for one file-navigation keypress. */
