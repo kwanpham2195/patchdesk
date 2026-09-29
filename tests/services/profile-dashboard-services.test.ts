@@ -592,7 +592,7 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
 }
 
 describe("workspace roots retired in #641", () => {
-  it("loads a v0.0.12 profile that lists workspaceRoots and stops writing the field", async () => {
+  it("loads a v0.0.12 profile that lists workspaceRoots and writes the list back empty", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-v0012-profile-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
@@ -633,7 +633,7 @@ describe("workspace roots retired in #641", () => {
         label: "ACME renamed",
         repos: [{ repo: "patchdesk", localPath: "/workspace/patchdesk" }],
       });
-      expect(rewritten).not.toHaveProperty("workspaceRoots");
+      expect(rewritten).toMatchObject({ workspaceRoots: [] });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

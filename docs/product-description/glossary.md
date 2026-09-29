@@ -28,7 +28,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **GitHub account.** The authenticated `gh` identity Patchdesk resolves for a workspace profile. Patchdesk obtains a token when needed and does not store it.
 
-**Workspace root.** Retired in #641. A folder Patchdesk v0.0.12 and earlier scanned for checkouts. A profile that still lists roots loads normally; Patchdesk ignores them and leaves them out of its next save.
+**Workspace root.** Retired in #641. A folder Patchdesk v0.0.12 and earlier scanned for checkouts. A profile that still lists roots loads normally; Patchdesk ignores them and saves the list back empty.
 
 **Rule path.** An absolute path to an instruction file that Patchdesk includes when it prepares represented Review context. A profile can have no rule paths.
 
