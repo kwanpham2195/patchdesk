@@ -7,6 +7,7 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import type { DesktopNotifier } from "../../src/services/desktop-notifier";
+import type { ReviewWindow } from "../../src/main/desktop-review-window";
 import {
   startLocalApiServer,
   type LocalApiServer,
@@ -80,6 +81,7 @@ export async function startAppWithLinkedWorktree(
   options: {
     readonly profiles?: "none" | "one" | "two";
     readonly desktopNotifier?: DesktopNotifier;
+    readonly reviewWindow?: ReviewWindow;
   } = {},
 ): Promise<McpAppFixture> {
   const root = await shortTemporaryDirectory();
@@ -125,6 +127,9 @@ export async function startAppWithLinkedWorktree(
     mcpSocketPath: async () => socketPath,
     ...(options.desktopNotifier !== undefined && {
       desktopNotifier: options.desktopNotifier,
+    }),
+    ...(options.reviewWindow !== undefined && {
+      reviewWindow: options.reviewWindow,
     }),
   });
   if (started._tag !== "started") throw new Error("local API did not start");

@@ -37,7 +37,7 @@ export const DESKTOP_WINDOW_FULL_SCREEN_CHANNEL =
  */
 export const DESKTOP_WINDOW_APPEARANCE_CHANNEL = "patchdesk:window-appearance";
 
-/** Main-to-renderer: the maintainer clicked a desktop notification. */
+/** Main-to-renderer: the maintainer clicked a desktop notification, or an agent called `show_review`. */
 export const DESKTOP_NOTIFICATION_CLICK_CHANNEL =
   "patchdesk:notification-click";
 
@@ -131,7 +131,7 @@ export type PatchdeskDesktopApi = {
   request(input: DesktopRequest): Promise<DesktopResponse>;
   openExternalHttps(url: string): Promise<boolean>;
   onMenuAction(listener: (action: DesktopMenuAction) => void): () => void;
-  /** Fires after the main process focused the window for a clicked notification. */
+  /** Fires after the main process focused the window for a clicked notification, and without focusing it for `show_review`. */
   onNotificationClick(
     listener: (click: DesktopNotificationClick) => void,
   ): () => void;

@@ -6,7 +6,7 @@ A terminal coding agent, such as Claude Code or Codex, can use Patchdesk as its 
 
 ## The simple case
 
-The maintainer starts Claude Code in a checkout the workspace profile lists and asks it to implement a task and get it reviewed in Patchdesk. The agent edits files, then calls `review_local` with its working directory and the task text. Patchdesk opens the _shared Review_ of that checkout's branch against its base branch, records the text as the Review's _Change intent_ with the header label `Intent from the agent`, and answers with the Review's id, its session, and the changed files. The Patchdesk window stays where the maintainer left it.
+The maintainer starts Claude Code in a checkout the workspace profile lists and asks it to implement a task and get it reviewed in Patchdesk. The agent edits files, then calls `review_local` with its working directory and the task text. Patchdesk opens the _shared Review_ of that checkout's branch against its base branch, records the text as the Review's _Change intent_ with the header label `Intent from the agent`, and answers with the Review's id, its session, and the changed files. The Patchdesk window stays where the maintainer left it until the agent calls `show_review` with that id, which switches the window to the Review without bringing it to the front.
 
 The agent calls `run_insight` for an Analysis. Nothing runs yet. A notification reads `Agent asks for Analysis`, and the repository's row in the Visited pull requests column shows an `agent` marker. The maintainer opens the Review; the Insights tab shows an **Agent requests** bar with **Run** and **Decline**. Run opens the ordinary run dialog, and confirming it starts the Analysis. The agent reads the Findings with `get_insight` when the maintainer tells it the run finished.
 
@@ -34,7 +34,7 @@ The agent reaches Patchdesk through the tools its client lists. The tools are li
 
 ### Leave unchanged
 
-`list_repositories`, `get_insight`, and `get_feedback` read and change nothing. A successful `list_local_reviews` call writes no Review, session, snapshot, ref, or worktree, does not mark a Review opened, and leaves the order of the Visited pull requests column as it was. A refused call of any tool is recorded in Diagnostics. A `review_local` call for a Review that already exists returns it on the session the maintainer sees and does not read the checkout again, so it neither moves the Review nor marks it opened. A `refresh_review` call on a checkout whose content still matches the Review's session answers `changed: false` and changes nothing.
+`list_repositories`, `get_insight`, and `get_feedback` read and change nothing. A successful `list_local_reviews` call writes no Review, session, snapshot, ref, or worktree, does not mark a Review opened, and leaves the order of the Visited pull requests column as it was. A refused call of any tool is recorded in Diagnostics. A `review_local` call for a Review that already exists returns it on the session the maintainer sees and does not read the checkout again, so it neither moves the Review nor marks it opened. A `refresh_review` call on a checkout whose content still matches the Review's session answers `changed: false` and changes nothing. A `show_review` call writes nothing; it only changes the screen, and a call that answers `held` or is refused leaves the screen as it was.
 
 ### Begin an action
 
@@ -55,6 +55,8 @@ The optional `intent` is the task the agent was given, as Markdown. Patchdesk re
 `refresh_review` reads the checkout of a local Review again after the agent changed it, and prepares a session for the new content. It does not move the Review.
 
 `run_insight` asks for one Analysis, Walkthrough, or Brief on the Review's current session. It records an _Agent run request_ and returns at once with `awaiting_approval` and a request id. The tool has no provider, model, or effort field; those are the maintainer's to pick.
+
+`show_review` switches the Patchdesk window to a saved Review of the active profile, local or pull request, by its id. The window opens the Review as a clicked notification does, and the open marks it opened as any open does, but the window is never raised or focused: the screen changes behind the app the maintainer is using, and the next ⌘-Tab lands on the Review. With no window open, Patchdesk opens one without activating it. A Review whose repository is no longer watched still shows. While a closed Finish review keeps its Summary, or a GitHub write is in progress, the call answers `held` and moves nothing: no leave dialog appears, and the maintainer opens the Review when ready. Otherwise it answers `shown`, also when the Review is already on screen. A Review the active profile does not hold is refused `not_found`, or `profile_changed` when another profile holds it; the tool never switches profile. A shared Review whose checkout is now on another branch is refused `branch_mismatch`, naming that branch, as the maintainer's own open is.
 
 > Technical note: `review_local` and `refresh_review` take a Local snapshot, which writes git objects, a `refs/patchdesk/local/` ref, and a worktree in Patchdesk's cache. They change no branch, index, or working-tree file (ADR 0050, ADR 0052 amendment of 2026-09-26).
 
@@ -87,6 +89,7 @@ The `agent` marker clears when the last request is settled or declined and no ru
 - `review_local`: open this checkout's Review so the maintainer can read my change, and record my task as the Change intent if the Review has none.
 - `refresh_review`: I changed the code; prepare it for the maintainer. The maintainer sees Updates available.
 - `run_insight`: ask the maintainer to run an Analysis, Walkthrough, or Brief on the current session.
+- `show_review`: put this Review on the maintainer's screen without taking focus from what they are doing.
 - `get_insight`: read one Insight's status and result. The status is `none`, `awaiting_approval`, `declined`, `running`, `completed`, or `failed`. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries `outdated: true`.
 - `get_feedback`: read the maintainer's _Local drafts_, in file and line order, with the same Markdown prompt that **Copy as agent prompt** copies.
 
@@ -133,9 +136,9 @@ A notification about the Review the focused window shows is not posted; the Agen
 - Press Apply, Dismiss a Finding, or add, edit, or remove the maintainer's notes.
 - Replace a Change intent the Review already holds.
 - Commit, push, change a branch, or write the maintainer's index or working-tree files.
-- Read or write GitHub, or open a pull request Review.
+- Read or write GitHub, or create or refresh a pull request Review.
 - Change provider settings or switch the workspace profile.
-- Start Patchdesk, or send the agent a message on its own.
+- Start Patchdesk, raise or focus its window, or send the agent a message on its own.
 
 ## Errors an agent reports
 
@@ -145,22 +148,24 @@ A refused call returns an error code and a sentence the agent can relay. The one
 - `app_not_responding`: Patchdesk accepted the connection but did not answer within 30 seconds, or answered with something unreadable.
 - `no_profile`: no workspace profile is saved. The maintainer finishes setup in Patchdesk first.
 - `profile_changed`: the Review belongs to another workspace profile than the active one; the sentence names the active profile. The maintainer switches profile in Patchdesk.
+- `branch_mismatch`: `refresh_review` or `show_review` named a shared Review whose checkout is now on another branch; the sentence names that branch.
 - `rate_limited`: `refresh_review` was called on this Review less than 10 seconds ago; the answer says how long to wait.
 - `stale_session`: `run_insight` named a session the Review has moved past. The agent reads the current session from `get_insight` or `review_local` and asks again.
 - `stale_cursor`: the drafts changed since the `get_feedback` cursor was issued. The agent reads again from the first page.
 
-Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `base_required` for a branch with no open shared Review and no other local branch behind `HEAD`, `revision_not_found` for a base branch or commit Git cannot find, or a base that shares no history with `HEAD` (when a saved Review's base was deleted, the answer names it and asks for explicit `base`), `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB (Combined, Committed, or Uncommitted), naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `storage` when Patchdesk cannot read every saved Review during `review_local` or `list_local_reviews`, or cannot read a listed Review's current session, `intent_exists`, `not_applicable` for a pull request Review or, from `refresh_review`, a stored working-tree or branch Review, and `too_large` for an answer over 4 MiB.
+Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `base_required` for a branch with no open shared Review and no other local branch behind `HEAD`, `revision_not_found` for a base branch or commit Git cannot find, or a base that shares no history with `HEAD` (when a saved Review's base was deleted, the answer names it and asks for explicit `base`), `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB (Combined, Committed, or Uncommitted), naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `storage` when Patchdesk cannot read every saved Review during `review_local` or `list_local_reviews`, or cannot read a listed Review's current session, `intent_exists`, `not_applicable` for a pull request Review or, from `refresh_review`, a stored working-tree or branch Review, `window_unavailable` when `show_review` could not open a Patchdesk window, and `too_large` for an answer over 4 MiB.
 
 ## Known limits
 
 - The client name on the Agent requests bar is what the agent's client reports about itself.
+- `show_review` holds only for a kept Finish review summary or a pending GitHub write. A half-written note, or a Summary typed in the open Finish review dialog, is dropped when the call switches the Review, as it is by a notification click.
 
 ## Variants
 
 The fixed rows, each with the case before and while an agent action runs.
 
 - **Workspace profile and GitHub account.** Before: every call resolves the active profile when it arrives; with none saved it is refused `no_profile`, and a Review of another profile is refused `profile_changed`. The GitHub account is not used. While: a request recorded before a profile switch stays on its Review and shows when the maintainer switches back.
-- **Pull request and Review state.** Before: only local Reviews are reachable; a pull request Review is refused `not_applicable`. While: a Review the maintainer moved to a new session drops the older session's waiting requests.
+- **Pull request and Review state.** Before: only local Reviews are reachable; a pull request Review is refused `not_applicable`, except by `show_review`, which shows it. While: a Review the maintainer moved to a new session drops the older session's waiting requests.
 - **GitHub permissions and merge readiness.** Before: no effect. While: no effect; nothing reads or writes GitHub.
 - **Network, local tool, and Insight provider availability.** Before: `git` must work; the agent's client must be able to start the `patchdesk` command. While: an approved run needs its provider as any run does, and a failed run reads `failed` in `get_insight`.
 - **Input path: mouse, keyboard, or desktop menu.** Before: the agent's calls need no input in Patchdesk. While: Run and Decline take mouse and keyboard; there is no menu or palette entry for a request.

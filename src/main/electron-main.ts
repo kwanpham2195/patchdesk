@@ -38,6 +38,7 @@ import {
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
 import { sendNotificationClick } from "./desktop-notification-channel";
+import { createReviewWindow } from "./desktop-review-window";
 import { sendWatchedPullRequestChange } from "./desktop-watched-pull-request-channel";
 import {
   createDesktopNotifier,
@@ -105,6 +106,8 @@ let rendererNavigationState: DesktopNavigationState = "clear";
 let rendererDestination: NotificationDestination = { kind: "dashboard" };
 let allowWindowClose = false;
 let closePromptOpen = false;
+/** Settles when a window's renderer first reports its destination, by which time its notification-click listener is subscribed. */
+const rendererListening = new WeakMap<BrowserWindow, Promise<void>>();
 /**
  * The appearance the window is painted for. Seeded from `config.json` before
  * the window exists, then kept current by the renderer, which is the only
@@ -203,6 +206,37 @@ const desktopNotifier = createDesktopNotifier({
   },
   logs,
 });
+/** MCP `show_review`: switches the window's screen without raising it, opening one inactive when none is open. */
+const reviewWindow = createReviewWindow({
+  navigationState: () => rendererNavigationState,
+  async listeningRenderer() {
+    const server = runningLocalApi;
+    if (server === undefined) return undefined;
+    try {
+      const window = await ensureWorkbenchWindow(server, "inactive");
+      const listening = rendererListening.get(window);
+      if (listening === undefined) return undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const listened = await Promise.race([
+        listening.then(() => true),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), 20_000);
+        }),
+      ]);
+      clearTimeout(timer);
+      return listened && !window.isDestroyed() ? window.webContents : undefined;
+    } catch (cause: unknown) {
+      logs.write({
+        process: "main",
+        level: "error",
+        topic: "mcp",
+        message: "show_review could not open the window",
+        meta: { error: loggableMetaValue(cause) },
+      });
+      return undefined;
+    }
+  },
+});
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
     async start() {
@@ -232,6 +266,7 @@ const desktopLifecycle = createDesktopLifecycle({
         insightProviders,
         githubFetch,
         mcpSocketPath: () => desktopMcpSocketPath(PatchdeskPaths.default()),
+        reviewWindow,
         lifecycleGate,
         retentionSweep: true,
         watchedPullRequestPolling: true,
@@ -533,16 +568,18 @@ function registerDesktopEvents(): void {
   }
 }
 
+/** `inactive` never raises or focuses the window, and shows a new one with `showInactive` (MCP `show_review`). */
 async function ensureWorkbenchWindow(
   server: StartedLocalApi,
+  activation: "focus" | "inactive" = "focus",
 ): Promise<BrowserWindow> {
   if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
-    focusWindow(mainWindow);
+    if (activation === "focus") focusWindow(mainWindow);
     return mainWindow;
   }
   if (openingWindow !== undefined) return await openingWindow;
 
-  openingWindow = createWorkbenchWindow(server);
+  openingWindow = createWorkbenchWindow(server, activation);
   try {
     mainWindow = await openingWindow;
     return mainWindow;
@@ -553,6 +590,7 @@ async function ensureWorkbenchWindow(
 
 async function createWorkbenchWindow(
   server: StartedLocalApi,
+  activation: "focus" | "inactive",
 ): Promise<BrowserWindow> {
   const [restoredBounds, appearance] = await Promise.all([
     loadWindowBounds(
@@ -611,6 +649,13 @@ async function createWorkbenchWindow(
   window.on("resize", persistCurrentBounds);
   window.on("move", persistCurrentBounds);
   const allowedHosts = await loadAllowedExternalHosts();
+  let markRendererListening = (): void => undefined;
+  rendererListening.set(
+    window,
+    new Promise<void>((resolve) => {
+      markRendererListening = resolve;
+    }),
+  );
   installDesktopRequestBridge(
     ipcMain,
     window.webContents.id,
@@ -622,6 +667,7 @@ async function createWorkbenchWindow(
       },
       setNavigationDestination(destination) {
         rendererDestination = destination;
+        markRendererListening();
       },
       // The renderer only reaches this after the user clicked a link, so it
       // allows any HTTPS host. `installWebContentsSecurity` below keeps the
@@ -683,7 +729,8 @@ async function createWorkbenchWindow(
   );
   window.once("ready-to-show", () => {
     if (!window.isDestroyed()) {
-      window.show();
+      if (activation === "focus") window.show();
+      else window.showInactive();
       boundsTrackingEnabled = true;
     }
   });
