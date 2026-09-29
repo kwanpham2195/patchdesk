@@ -1,7 +1,7 @@
 # Upgrading Pi
 
 Bumping the bundled Pi model client is how new models and providers reach the
-run dialog.
+run dialog (throwaway edit for #606).
 
 Patchdesk never imports Pi at the root. `runtime/insight` pins
 `@earendil-works/pi-ai` and `@earendil-works/pi-agent-core` to one exact
