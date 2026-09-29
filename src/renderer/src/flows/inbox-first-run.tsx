@@ -5,9 +5,6 @@ import { useWorkspaceProfileEditor } from "./settings-workspace-profile-editor";
 import { useReviewingAsProbe } from "./settings-workspace-reviewing-as";
 import { ReviewingAsCard, RepositoriesCard } from "./settings-workspace-cards";
 
-/** The switcher is not offered here, so the editor never needs the list. */
-const NO_PROFILES: ReadonlyArray<Profile> = [];
-
 /**
  * Finishes workspace setup on the Pull requests screen: confirm the account,
  * then add the repositories to watch. Every step is the same component
@@ -19,17 +16,20 @@ const NO_PROFILES: ReadonlyArray<Profile> = [];
  */
 export function WorkspaceFirstRun({
   dashboard,
+  profiles,
   onWorkspaceReload,
   onContinue,
 }: {
   readonly dashboard: Dashboard | undefined;
+  /** The listed profiles; on a fresh install, main's unsaved `default` the account saves onto. */
+  readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
   /** Absent before a workspace has loaded, when nothing can be watched yet. */
   readonly onContinue: (() => void) | undefined;
 }): React.JSX.Element {
   const editor = useWorkspaceProfileEditor({
     dashboard,
-    profiles: NO_PROFILES,
+    profiles,
     onWorkspaceReload,
     onProfileSwitch: undefined,
   });
@@ -37,6 +37,7 @@ export function WorkspaceFirstRun({
   // what `gh` reports, and the Git line below reads `git` off the same result.
   const probe = useReviewingAsProbe(
     editor.scalars.ghAccount,
+    editor.profileLoaded,
     editor.selectAccount,
   );
   const gitMissing =

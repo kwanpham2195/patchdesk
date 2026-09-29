@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { requestJson } from "../api-client";
 import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
 import type { Dashboard, Profile } from "../renderer-models";
-import { createWorkspaceProfile } from "./settings-workspace-create-profile";
 import {
   listError,
   persistedForFields,
@@ -44,6 +43,8 @@ export type FieldStatus =
 /** The whole Workspace editor as its cards consume it: values, per-field status, and one command per control. */
 export type WorkspaceProfileEditorHook = {
   readonly persisted: ProfileValues;
+  /** True once the editor holds a profile it can save onto: the loaded workspace, or main's unsaved `default`. */
+  readonly profileLoaded: boolean;
   readonly scalars: ProfileScalars;
   readonly rows: ProfileRows;
   readonly status: ProfileFieldStatuses;
@@ -69,7 +70,8 @@ const SAVED_STATUS_MS = 2_000;
  * its own through `patch`, which merges the change into the last body sent
  * and PUTs the whole profile. Local state exists only so a user can type
  * before committing — the truth is `persisted`, the last profile the server
- * confirmed.
+ * confirmed. The editor never creates or selects a workspace: until a
+ * profile is known it holds an empty id and sends nothing.
  */
 export function useWorkspaceProfileEditor({
   dashboard,
@@ -84,8 +86,9 @@ export function useWorkspaceProfileEditor({
     | ((profileId: string) => Promise<ProfileSwitchResult>)
     | undefined;
 }): WorkspaceProfileEditorHook {
+  const baseProfile = dashboard?.profile ?? unsavedDefaultProfile(profiles);
   const [persisted, setPersisted] = useState(() =>
-    profileValuesFor(dashboard?.profile),
+    profileValuesFor(baseProfile),
   );
   const [scalars, setScalars] = useState(() => scalarsFor(persisted));
   const [rows, setRows] = useState<ProfileRows>(() => rowsFor(persisted));
@@ -146,59 +149,39 @@ export function useWorkspaceProfileEditor({
     setStatus(IDLE_STATUS);
   }, []);
 
-  // Resyncs from the server's profile — a switch, another surface's write, or
-  // the reload after this editor's own save. Skipped while a patch is in
-  // flight, since that patch applies its own, newer result when it lands.
+  // Resyncs from the server's profile — its first load, a switch, another
+  // surface's write, or the reload after this editor's own save. Skipped while
+  // a patch is in flight, since that patch applies its own, newer result when
+  // it lands.
   useEffect(() => {
-    if (dashboard === undefined) return;
+    if (baseProfile === undefined) return;
     if (pending.current > 0) return;
-    const next = profileValuesFor(dashboard.profile);
+    const next = profileValuesFor(baseProfile);
     if (sameProfileValues(next, persistedRef.current)) return;
     adopt(next);
-  }, [dashboard, adopt]);
+  }, [baseProfile, adopt]);
 
   const patch = useCallback(
     async (fields: ProfilePatch, field: ProfileEditorField): Promise<void> => {
-      const merged: ProfileValues = { ...requested.current, ...fields };
-      // An empty id is the ephemeral profile `listProfiles` hands back when
-      // nothing has ever been saved (`DashboardController.listProfiles`). It
-      // has no label either, and the domain parser refuses both, so the first
-      // save creates the workspace instead of updating one.
-      const creating = merged.id === "";
-      const requestBody: ProfileValues = creating
-        ? { ...merged, label: merged.label === "" ? "Default" : merged.label }
-        : merged;
+      // An empty id means no profile has loaded yet, so there is nothing to
+      // save onto. Sending anyway is what once created stray workspaces.
+      if (requested.current.id === "") return;
+      const requestBody: ProfileValues = { ...requested.current, ...fields };
       requested.current = requestBody;
       const sent = ++generation.current;
       pending.current += 1;
       putStatus(field, SAVING);
       try {
-        // The created workspace's id is derived server-side, so it is adopted
-        // here rather than waiting for the reload: the next save must be an
-        // update, not a second creation.
-        const createdId = creating
-          ? await createWorkspaceProfile(requestBody)
-          : await updateProfile(requestBody);
-        const body: ProfileValues =
-          createdId === undefined
-            ? requestBody
-            : { ...requestBody, id: createdId };
+        await updateProfile(requestBody);
         // Only the latest request may claim the merge base, the persisted
         // value, or the status; an older response landing late would
         // otherwise undo a newer edit.
         if (generation.current === sent) {
-          requested.current = body;
-          persistedRef.current = body;
-          setPersisted(body);
+          persistedRef.current = requestBody;
+          setPersisted(requestBody);
           setScalars((current) => ({ ...current, ...scalarPatch(fields) }));
-          setRows((current) => reconcileRows(current, body, fields));
+          setRows((current) => reconcileRows(current, requestBody, fields));
           putStatus(field, SAVED);
-        } else if (createdId !== undefined) {
-          // A stale creation still owns the id it derived, and only it knows
-          // that id: without carrying it forward the next save would create a
-          // second workspace instead of updating this one.
-          requested.current = { ...requested.current, id: createdId };
-          persistedRef.current = { ...persistedRef.current, id: createdId };
         }
         await onWorkspaceReload();
       } catch (cause: unknown) {
@@ -300,6 +283,7 @@ export function useWorkspaceProfileEditor({
 
   return {
     persisted,
+    profileLoaded: persisted.id !== "",
     scalars,
     rows,
     status,
@@ -324,13 +308,25 @@ export function useWorkspaceProfileEditor({
   };
 }
 
-/** Saves an existing workspace, which already owns its id. */
-async function updateProfile(values: ProfileValues): Promise<undefined> {
+/**
+ * The profile main holds in memory on a fresh install (`default`, with no
+ * account; see `DashboardController.listProfiles`), when it is the only one
+ * listed. A saved profile always has an account, so this never picks one.
+ */
+function unsavedDefaultProfile(
+  profiles: ReadonlyArray<Profile>,
+): Profile | undefined {
+  const [only, ...rest] = profiles;
+  if (only === undefined || rest.length > 0) return undefined;
+  return only.ghAccount === "" ? only : undefined;
+}
+
+/** Saves the workspace the editor holds, which already owns its id. */
+async function updateProfile(values: ProfileValues): Promise<void> {
   await requestJson("/v1/profiles", {
     method: "PUT",
     body: profileRequestBody(values),
   });
-  return undefined;
 }
 
 const IDLE: FieldStatus = { state: "idle" };

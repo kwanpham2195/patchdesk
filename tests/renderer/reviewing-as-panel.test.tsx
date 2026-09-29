@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { EnvironmentCheckResponse } from "../../src/renderer/src/renderer-contracts";
-import type { Profile } from "../../src/renderer/src/renderer-models";
+import type {
+  Dashboard,
+  Profile,
+} from "../../src/renderer/src/renderer-models";
 import {
   installDesktopDouble,
   success,
@@ -285,6 +288,68 @@ describe("Reviewing as panel", () => {
     expect(screen.getByLabelText("GitHub host")).toBeTruthy();
   });
 
+  it("waits for the workspace to load before adopting, so a reload never creates or switches one (#649)", async () => {
+    installDesktopApi(() => ({
+      git: "ready",
+      gh: "ready",
+      githubAuth: "ready",
+      githubAccounts: [
+        { host: "github.com", login: "patchdesk", active: true },
+      ],
+    }));
+    // A reload with Settings open: `gh` answers while the workspace is still
+    // loading, so nothing says which profile the account belongs to yet.
+    const { rerender } = render(settingsFlow({ profiles: [] }));
+    expect(await screen.findByText("patchdesk")).toBeTruthy();
+
+    const personal = makeProfile({ ghAccount: "patchdesk" });
+    rerender(
+      settingsFlow({
+        dashboard: { profile: personal, dashboard: { repos: [] } },
+        profiles: [personal],
+      }),
+    );
+    await screen.findByRole("button", { name: "Use a different account" });
+
+    expect(profileWrites()).toEqual([]);
+  });
+
+  it("saves the adopted account onto the unsaved default workspace on a fresh install", async () => {
+    installDesktopApi(() => ({
+      git: "ready",
+      gh: "ready",
+      githubAuth: "ready",
+      githubAccounts: [
+        { host: "github.com", login: "patchdesk", active: true },
+      ],
+    }));
+    // Main holds this profile in memory until an account is saved; no
+    // workspace has loaded, so the listing carries the only copy.
+    const unsavedDefault: Profile = {
+      id: "default",
+      label: "Default",
+      githubHost: "github.com",
+      ghAccount: "",
+      rulePaths: [],
+    };
+    render(settingsFlow({ profiles: [unsavedDefault] }));
+
+    await waitFor(() => expect(profileWrites()).toHaveLength(1));
+    expect(profileWrites()).toEqual([
+      [
+        "/v1/profiles",
+        "PUT",
+        {
+          id: "default",
+          label: "Default",
+          githubHost: "github.com",
+          ghAccount: "patchdesk",
+          rulePaths: [],
+        },
+      ],
+    ]);
+  });
+
   it("re-checks and reflects a newly authenticated account without restarting the app", async () => {
     let call = 0;
     installDesktopApi(() => {
@@ -329,16 +394,44 @@ function renderSettings(
   activeProfile: ReturnType<typeof makeProfile> = profile,
 ): void {
   render(
+    settingsFlow({
+      dashboard: { profile: activeProfile, dashboard: { repos: [] } },
+      profiles: [activeProfile],
+    }),
+  );
+}
+
+/** Settings → Workspace over the given workspace; `dashboard` is absent until one has loaded. */
+function settingsFlow({
+  dashboard,
+  profiles,
+}: {
+  readonly dashboard?: Dashboard;
+  readonly profiles: ReadonlyArray<Profile>;
+}): React.JSX.Element {
+  return (
     <SettingsFlow
-      dashboard={{ profile: activeProfile, dashboard: { repos: [] } }}
+      {...(dashboard === undefined ? {} : { dashboard })}
       appearance="system"
       onAppearanceChange={() => undefined}
       diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
       onDiffThemeChange={() => undefined}
-      profiles={[activeProfile]}
+      profiles={profiles}
       onWorkspaceReload={async () => undefined}
       section="workspace"
-    />,
+    />
+  );
+}
+
+/** Every non-GET `/v1/profiles…` request sent: a create, a select, or a save. */
+function profileWrites() {
+  return (desktop?.request.mock.calls ?? []).flatMap(([input]) =>
+    "path" in input &&
+    input.path.startsWith("/v1/profiles") &&
+    input.method !== undefined &&
+    input.method !== "GET"
+      ? [[input.path, input.method, input.body]]
+      : [],
   );
 }
 
@@ -355,5 +448,6 @@ function installDesktopApi(
     // account choice, so the tests that start with an empty account send a
     // `PUT /v1/profiles` before anything else happens.
     "/v1/profiles": () => success({}),
+    "/v1/profiles/select": () => success({}),
   });
 }

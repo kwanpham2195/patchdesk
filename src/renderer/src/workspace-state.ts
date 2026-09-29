@@ -17,7 +17,12 @@ type WorkspaceState = {
 
 export type WorkspaceAction =
   | { readonly _tag: "loading" }
-  | { readonly _tag: "failed"; readonly screen: DashboardScreenState }
+  | {
+      readonly _tag: "failed";
+      readonly screen: DashboardScreenState;
+      /** The profiles listed before the failure; absent keeps the last list. */
+      readonly profiles?: ReadonlyArray<Profile>;
+    }
   | {
       readonly _tag: "loaded";
       readonly profiles: ReadonlyArray<Profile>;
@@ -44,7 +49,11 @@ export function workspaceReducer(
     case "loading":
       return { ...state, screen: "loading" };
     case "failed":
-      return { ...state, screen: action.screen };
+      return {
+        ...state,
+        profiles: action.profiles ?? state.profiles,
+        screen: action.screen,
+      };
     case "loaded":
       return {
         ...state,

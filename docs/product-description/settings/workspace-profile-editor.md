@@ -113,14 +113,13 @@ Changing a variant during a save does not rewrite the request already in flight.
 
 - Removing the last row of a list saves an empty list. A blank row saves nothing at all and is not persisted.
 - A text field is trimmed when it commits; the text stays as typed while editing.
-- One authenticated GitHub account is adopted into a workspace with no account. With several accounts, only the account `gh` marks active is adopted, and only once.
+- One authenticated GitHub account is adopted into a workspace with no account. With several accounts, only the account `gh` marks active is adopted, and only once. The adoption waits for the workspace to load, so reloading with Settings → Workspace open never creates or switches a workspace; it saves onto the loaded one.
 - A configured account that matches no account `gh` reports stays saved and raises the `Configured account not authenticated` warning instead of being replaced.
 - Manual GitHub account and host fields stay visible whenever the probe is checking or failed, and whenever either field's own value was rejected.
 - A 39-character GitHub login is valid. A longer login, or one with invalid characters, is rejected and reported beside the field.
 - New workspace derives its ID from the name, so two workspaces named the same get `-2`, `-3`, and so on. A blank Name is rejected with `Name cannot be blank.` before any request.
 - A failed workspace switch keeps the previous workspace active and leaves every value as saved.
 - Two rapid workspace selections can settle out of order. Only the latest requested target is applied.
-- A save that creates the workspace keeps the identifier it derived even when a newer save answers first, so the next save updates that workspace instead of creating a second one.
 
 ## Open questions and verification
 

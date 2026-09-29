@@ -237,8 +237,15 @@ export function useWorkspaceInbox({
     if (generation !== workspaceGeneration.current) return;
     const loadedInbox = parseInboxResponse(inboxPayload);
     if (loadedInbox === undefined) {
+      // A fresh install lands here, since the parser refuses the unsaved
+      // `default` profile's empty account. The list carries that profile, so
+      // setup saves the account onto it instead of creating another.
       if (initialState === undefined)
-        dispatchWorkspace({ _tag: "failed", screen: "empty" });
+        dispatchWorkspace({
+          _tag: "failed",
+          screen: "empty",
+          profiles: nextProfiles,
+        });
       return;
     }
     const currentDashboard = dashboardFromInbox(loadedInbox);

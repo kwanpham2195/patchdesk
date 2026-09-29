@@ -76,6 +76,7 @@ export function WorkspaceProfileSection({
 
   const probe = useReviewingAsProbe(
     editor.scalars.ghAccount,
+    editor.profileLoaded,
     editor.selectAccount,
   );
 
