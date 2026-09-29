@@ -76,6 +76,8 @@ For runtime work, make sure the dev log tails are live in herdr:
 
 Test observable behaviour at the lowest layer that can prove the contract.
 
+- Do not follow test-driven development. Implement the behavior before writing or updating tests. For a bug fix, make the fix work first, then add a regression test for the contract; the test must fail on `main` for the intended reason.
+
 - Coverage floors for new or materially changed code (lines / branches):
   - `src/domain/`: 80% / 65%; `src/services/`: 70% / 55%; `src/adapters/`: 70% / 55%.
   - `src/main/`: 60% / 45%; `src/renderer/src/`: 60% / 40%; `runtime/insight/`: 70% / 55%. Browser tests have no percentage floor.
