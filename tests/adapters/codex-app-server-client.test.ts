@@ -598,12 +598,16 @@ describe("CodexAppServerClient approval requests", () => {
     return child;
   }
 
-  it("starts the thread with the untrusted approval policy", async () => {
+  it("starts an ephemeral thread with the untrusted approval policy", async () => {
     const child = await runWithRequests([]);
     expect(
       child.received.find((message) => message.method === "thread/start")
         ?.params,
-    ).toMatchObject({ sandbox: "read-only", approvalPolicy: "untrusted" });
+    ).toMatchObject({
+      sandbox: "read-only",
+      approvalPolicy: "untrusted",
+      ephemeral: true,
+    });
   });
 
   it("declines stdin writes, file changes, and network approvals", async () => {
