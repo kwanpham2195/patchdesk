@@ -17,6 +17,7 @@ import type {
 } from "../adapters/storage/review-remote-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import {
   isPullRequestReview,
   markReviewTerminal,
@@ -58,6 +59,7 @@ import type { ReviewOperationCoordinator } from "./review-operation-coordinator"
 import type { AppLogService } from "./app-log-service";
 import type { AvatarSyncService } from "./avatar-sync-service";
 import type { ReviewRetention } from "./review-retention";
+import { carryViewedFiles } from "./viewed-files-carry";
 
 export type ReviewRefreshFailure = {
   readonly reason:
@@ -102,6 +104,7 @@ export type ReviewRefreshDependencies = {
   readonly recentWrites: Pick<RecentWriteJournalStore, "clear">;
   readonly operationCoordinator: ReviewOperationCoordinator;
   readonly retention: Pick<ReviewRetention, "pruneSuperseded">;
+  readonly viewedFiles: Pick<ViewedFilesStore, "load" | "save">;
   /** Local diagnostic log stream; best effort, never gates a refresh. Wire-visible failures stay collapsed to "storage" — this only makes the underlying cause observable in `patchdesk.jsonl`. */
   readonly log?: Pick<AppLogService, "write">;
   /**
@@ -131,8 +134,8 @@ export type PreparedReviewRefresh = {
   readonly expectedUpdatedAt: IsoTimestamp;
   readonly nextReview: Review;
   readonly sessionId: ReviewSessionId;
-  /** True when `sessionId` is a new session the Review moves to, leaving its current one superseded. */
-  readonly movesSession: boolean;
+  /** The Review's current session when it moves to a new `sessionId`; absent when it stays. */
+  readonly supersededSessionId?: ReviewSessionId;
   readonly snapshotHash: ContentHash;
   readonly snapshot: ReviewRemoteSnapshot;
   readonly selectedSession: PullRequestReviewSession;
@@ -433,7 +436,12 @@ export class ReviewRefreshService {
       expectedUpdatedAt: review.updatedAt,
       nextReview: authoritative,
       sessionId,
-      movesSession: sessionId !== review.currentSessionId,
+      ...definedProps({
+        supersededSessionId:
+          sessionId === review.currentSessionId
+            ? undefined
+            : review.currentSessionId,
+      }),
       snapshotHash: savedCandidate.value.snapshotHash,
       snapshot: candidate,
       selectedSession,
@@ -499,6 +507,32 @@ export class ReviewRefreshService {
   async savePreparedReviewUnlocked(
     prepared: PreparedReviewRefresh,
   ): Promise<Result<void, PreparedReviewCommitFailure>> {
+    const profileId = prepared.nextReview.identity.profileId;
+    const reviewId = prepared.nextReview.id;
+    // Before the move, so the new session already holds its marks when the Review names it.
+    if (prepared.supersededSessionId !== undefined) {
+      const carried = await carryViewedFiles(
+        profileId,
+        prepared.supersededSessionId,
+        prepared.selectedSession,
+        this.dependencies.sessions,
+        this.dependencies.viewedFiles,
+      );
+      if (carried._tag === "err")
+        this.dependencies.log?.write({
+          process: "main",
+          level: "warn",
+          topic: "review-refresh",
+          message:
+            "viewed marks carry failed; the new session starts with no files viewed",
+          profileId,
+          meta: {
+            reviewId,
+            fromSessionId: prepared.supersededSessionId,
+            toSessionId: prepared.sessionId,
+          },
+        });
+    }
     const savedReview = await this.dependencies.reviews.save(
       prepared.nextReview,
       prepared.expectedUpdatedAt,
@@ -508,14 +542,12 @@ export class ReviewRefreshService {
         reason:
           savedReview.error._tag === "ReviewConflict" ? "conflict" : "storage",
       });
-    const profileId = prepared.nextReview.identity.profileId;
-    const reviewId = prepared.nextReview.id;
     // Best effort: an explicit refresh always fully re-baselines
     // representedRemote, so the own-write journal has nothing left to
     // protect. A clear failure must not fail the refresh itself.
     await this.dependencies.recentWrites.clear(profileId, reviewId);
     // Under the caller's Review lock (#478); best effort, as retention records its own failures.
-    if (prepared.movesSession)
+    if (prepared.supersededSessionId !== undefined)
       await this.dependencies.retention.pruneSuperseded(profileId, reviewId);
     return ok(undefined);
   }

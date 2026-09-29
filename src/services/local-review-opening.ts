@@ -51,7 +51,7 @@ import type {
   ResolvedLocalReview,
 } from "./local-review-session-preparation";
 import type { ReviewRetention } from "./review-retention";
-import { carryViewedFiles } from "./local-viewed-files-carry";
+import { carryViewedFiles } from "./viewed-files-carry";
 import type { RepositoryCheckout } from "./local-checkout";
 import {
   describeSharedReviews,

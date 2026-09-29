@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import type {
+  AbsolutePath,
   RepoRelativePath,
   ReviewSessionId,
   WorkspaceProfileId,
@@ -14,32 +15,36 @@ import {
 import { err, ok, type Result } from "../domain/result";
 import {
   isPullRequestReviewSession,
-  type LocalReviewSession,
+  type ReviewSession,
 } from "../domain/review-session";
 import { ReviewPatchIndex } from "./review-patch-index";
 
-/** Copy only exact file patches from one shared Review session to the same view of the next. */
+/**
+ * Copy the Viewed marks whose file patch is byte-identical in the same view of
+ * the next session; a changed or missing file loses its mark. A pull request
+ * session has one view, Combined; a shared local session has three.
+ */
 export async function carryViewedFiles(
   profileId: WorkspaceProfileId,
   fromSessionId: ReviewSessionId,
-  next: LocalReviewSession,
+  next: ReviewSession,
   sessions: Pick<ReviewSessionStore, "load">,
   viewedFiles: Pick<ViewedFilesStore, "load" | "save">,
 ): Promise<Result<void, { readonly reason: "storage" }>> {
   const loaded = await sessions.load(profileId, fromSessionId);
-  if (
-    loaded._tag === "err" ||
-    isPullRequestReviewSession(loaded.value) ||
-    loaded.value.viewPatches === undefined ||
-    next.viewPatches === undefined
-  )
+  if (loaded._tag === "err") return err({ reason: "storage" });
+  const previousPatches = patchPathsByView(loaded.value);
+  const nextPatches = patchPathsByView(next);
+  if (previousPatches === undefined || nextPatches === undefined)
     return err({ reason: "storage" });
 
   const carried: Array<{
     view: LocalPatchView;
     paths: ReadonlyArray<RepoRelativePath>;
   }> = [];
-  for (const view of localPatchViews) {
+  for (const [view, nextPatchPath] of nextPatches) {
+    const previousPatchPath = previousPatches.get(view);
+    if (previousPatchPath === undefined) return err({ reason: "storage" });
     const marked = await viewedFiles.load(profileId, fromSessionId, view);
     if (marked._tag === "err") return err({ reason: "storage" });
     if (marked.value.length === 0) {
@@ -47,10 +52,8 @@ export async function carryViewedFiles(
       continue;
     }
     const [before, after] = await Promise.all([
-      readFile(loaded.value.viewPatches[view].patchPath, "utf8").catch(
-        () => undefined,
-      ),
-      readFile(next.viewPatches[view].patchPath, "utf8").catch(() => undefined),
+      readFile(previousPatchPath, "utf8").catch(() => undefined),
+      readFile(nextPatchPath, "utf8").catch(() => undefined),
     ]);
     if (before === undefined || after === undefined)
       return err({ reason: "storage" });
@@ -71,4 +74,18 @@ export async function carryViewedFiles(
     if (saved._tag === "err") return err({ reason: "storage" });
   }
   return ok(undefined);
+}
+
+/** Each view's stored patch; undefined for a local session prepared without views. */
+function patchPathsByView(
+  session: ReviewSession,
+): ReadonlyMap<LocalPatchView, AbsolutePath> | undefined {
+  if (isPullRequestReviewSession(session))
+    return new Map([["combined", session.patchPath]]);
+  const { viewPatches } = session;
+  return viewPatches === undefined
+    ? undefined
+    : new Map(
+        localPatchViews.map((view) => [view, viewPatches[view].patchPath]),
+      );
 }
