@@ -222,6 +222,7 @@ export class LocalReviewOpening {
       | "listBranches"
       | "findCheckout"
       | "readCommitFiles"
+      | "recordRound"
     >,
     private readonly projection: Pick<
       ReviewWorkbenchProjectionService,
@@ -826,6 +827,21 @@ export class LocalReviewOpening {
           },
         });
       }
+      const round = await this.preparation.recordRound(
+        resolved,
+        session.value.id,
+        stored.currentSessionId,
+      );
+      // Best effort: the Review still moves, with Since last Refresh unavailable.
+      if (round._tag === "err")
+        this.lifecycle.logs.write({
+          process: "main",
+          level: "warn",
+          topic: "local-review-open",
+          message: "the changes since the last Refresh could not be recorded",
+          profileId,
+          meta: { reviewId, reason: round.error._tag },
+        });
     }
     await this.lifecycle.applySettlement.settleEarlierSession({
       profileId,

@@ -249,6 +249,8 @@ export async function localApplyHarness(
       findCheckout: (id, directory) => preparation.findCheckout(id, directory),
       readCommitFiles: (session, commitSha, paths) =>
         preparation.readCommitFiles(session, commitSha, paths),
+      recordRound: (resolved, sessionId, fromSessionId) =>
+        preparation.recordRound(resolved, sessionId, fromSessionId),
     },
     new ReviewWorkbenchProjectionService(
       profiles,
