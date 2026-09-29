@@ -580,21 +580,20 @@ describe("local note draft recovery", () => {
     });
     const next = mountNoteDiff(workbench, async () => undefined);
     expect(next.result.current.draftRecovery).toBeDefined();
-    const selection = {
-      id: PATH,
-      range: { start: 2, end: 2, side: "additions" as const },
-    };
-    act(() => next.result.current.beginAuthoring(selection));
+    const range = { start: 2, end: 2, side: "additions" as const };
+    act(() => next.result.current.beginRangeAuthoring(PATH, range));
     expect(
       next.result.current.localComposerAnnotation?.localComposer?.initialBody,
     ).toBe("Exact unsaved note text");
     next.rerender();
     expect(next.result.current.draftRecovery).toBeUndefined();
-    act(() => next.result.current.beginAuthoring(selection));
+    act(() => next.result.current.beginRangeAuthoring(PATH, range));
     next.unmount();
     const afterAnotherSwitch = mountNoteDiff(workbench, async () => undefined);
     expect(afterAnotherSwitch.result.current.draftRecovery).toBeDefined();
-    act(() => afterAnotherSwitch.result.current.beginAuthoring(selection));
+    act(() =>
+      afterAnotherSwitch.result.current.beginRangeAuthoring(PATH, range),
+    );
     expect(
       afterAnotherSwitch.result.current.localComposerAnnotation?.localComposer
         ?.initialBody,

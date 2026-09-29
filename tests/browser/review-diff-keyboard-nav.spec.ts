@@ -139,7 +139,7 @@ test("typing `.` in the comment composer inserts the character instead of naviga
     // Pierre's CodeView finishes wiring its own hover tracking a moment
     // after mount; hovering a line before that is ready leaves the gutter
     // button's box at zero size with nothing to recompute it.
-    // Open the real inline composer via the gutter's "Add comment" control,
+    // Open the real inline composer via the gutter `+`,
     // the same one a maintainer uses: hover a rendered diff line (Pierre's
     // CodeView positions the gutter button from its own hover tracking, so
     // it reports a zero-size box until a line under it has been hovered for
@@ -447,9 +447,8 @@ async function headerOverlapsViewport(
 
 async function hoverReadyGutterControl(page: Page): Promise<Locator> {
   const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
-  const addComment = page
-    .locator('button[aria-label^="Add comment on"]')
-    .first();
+  // Pierre's own gutter button, drawn in the file's shadow root on the hovered line.
+  const addComment = page.locator("[data-utility-button]").first();
   // Playwright visibility requires a non-empty bounding box.
   await expect
     .poll(async () => {

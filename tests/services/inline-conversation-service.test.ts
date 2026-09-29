@@ -507,6 +507,49 @@ describe("InlineConversationService", () => {
     });
   });
 
+  // #385 once anchored an old-side comment to the new side; a range names its side twice (#552).
+  it.each([
+    { side: "new", githubSide: "RIGHT" },
+    { side: "old", githubSide: "LEFT" },
+  ] as const)(
+    "sends a $side-side range as start_line and line on $githubSide",
+    async ({ side, githubSide }) => {
+      const createInlineComment = vi.fn(async () =>
+        ok({ commentId: "PRRC_range" }),
+      );
+      const service = new InlineConversationService(
+        makeGate(),
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({ createInlineComment }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+        makeOperations(),
+      );
+      await service.execute({
+        profileId,
+        reviewId,
+        command: command({
+          _tag: "CreateComment",
+          anchor: { path: "src/a.ts", startLine: 12, line: 18, side },
+          body: "Range comment",
+        }),
+      });
+      expect(createInlineComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          coordinates: {
+            path: "src/a.ts",
+            start_line: 12,
+            start_side: githubSide,
+            line: 18,
+            side: githubSide,
+          },
+        }),
+      );
+    },
+  );
+
   it("surfaces a forbidden inline comment write as 'forbidden', not the generic 'github_write_failed'", async () => {
     const gate = makeGate();
     const createInlineComment = vi.fn(async () => ({

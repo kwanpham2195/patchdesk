@@ -6,6 +6,8 @@ import type {
   ReviewInlineAnnotation,
 } from "./review-diff-view";
 import { composerErrorMessage } from "./review-diff-authoring-errors";
+import type { DiffAuthoringRefusal } from "../hooks/use-review-conversation-overlays";
+import { diffLineRangeLabel } from "../review-diff-line-range";
 import {
   PullRequestDescriptionPreview,
   type PullRequestBodyContext,
@@ -257,6 +259,27 @@ function MockCommentAvatar({
   );
 }
 
+/** Says why a gutter drag opened no composer, so a refused range is not silent. */
+export function DiffAuthoringRefusalNotice({
+  refusal,
+}: {
+  readonly refusal: DiffAuthoringRefusal | undefined;
+}): React.JSX.Element | null {
+  if (refusal === undefined) return null;
+  return (
+    <section
+      role="status"
+      aria-label="Lines not selected"
+      className="mx-2 my-2 flex items-center gap-3 rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
+    >
+      <p className="min-w-0 flex-1">{refusal.message}</p>
+      <Button size="sm" variant="outline" onClick={refusal.onDismiss}>
+        Dismiss
+      </Button>
+    </section>
+  );
+}
+
 export function InlineCommentComposer({
   path,
   startLine,
@@ -357,8 +380,7 @@ export function InlineCommentComposer({
       aria-label={note ? "Note composer" : "Inline comment composer"}
     >
       <p className="text-xs text-muted-foreground">
-        {path}:{startLine}
-        {line === startLine ? "" : `–${line}`} ·{" "}
+        {path} · {diffLineRangeLabel(startLine, line)} ·{" "}
         {note
           ? "a note for the coding agent"
           : pendingState === "pending"

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added notes and pull request comments on a range of diff lines. Dragging the gutter `+` across lines opens one composer for the range, and GitHub shows the comment on every line of it; clicking the `+` still covers one line. The composer and a saved note name their lines, such as "Lines 12–18". A range must stay on one side of the diff and inside one hunk, as GitHub requires; a drag that breaks the rule opens no composer and a notice says why. Clicking a line number no longer opens a composer, and the gutter `+` is now Pierre's own button, without the per-line "Add note on file line 12" label. #552
+
 - Added **MCP**: `show_review` switches the Patchdesk window to a saved Review by its id, local or pull request, even when its repository is no longer watched. It never raises or focuses the window, so the Review is on screen the next time you switch to Patchdesk; with no window open, it opens one in the background. While a Finish review summary is kept or a GitHub write is in progress, it answers `held` and leaves the screen as it is. It refuses a Review of another profile with `profile_changed` and a shared Review whose checkout moved to another branch with `branch_mismatch`. #592
 
 - Constrained Codex CLI account Brief and Analysis runs with an output schema, as Walkthrough runs already were, so Codex shapes the answer to the fields and limits Patchdesk checks instead of returning a result that fails validation after a paid run. An optional field Codex returns as `null` is read as absent. #597

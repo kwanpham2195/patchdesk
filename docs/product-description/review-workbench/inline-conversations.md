@@ -6,7 +6,7 @@ Inline conversations attach GitHub review comments and Patchdesk pending-review 
 
 ## The simple case
 
-The maintainer selects a changed line and writes a comment. With no pending review, the composer offers Start a review, Comment now, and Cancel. Comment now publishes directly to GitHub and shows a pending card until the typed receipt confirms it. Start a review creates GitHub's pending review, adds the comment, closes the composer, and shows the authoritative pending-review card. With a pending review, the composer offers Add review comment instead. Published thread cards can then expose Reply, Resolve, Edit, and Delete when the returned GitHub identifiers and ownership allow them.
+The maintainer clicks the `+` that appears in the gutter beside a hovered changed line and writes a comment; dragging the `+` across lines comments on the dragged range, which GitHub shows as one multi-line comment. With no pending review, the composer offers Start a review, Comment now, and Cancel. Comment now publishes directly to GitHub and shows a pending card until the typed receipt confirms it. Start a review creates GitHub's pending review, adds the comment, closes the composer, and shows the authoritative pending-review card. With a pending review, the composer offers Add review comment instead. Published thread cards can then expose Reply, Resolve, Edit, and Delete when the returned GitHub identifiers and ownership allow them.
 
 Comment bodies in every inline card render as Markdown, including images and links, by the rules [Conversation](conversation-and-metadata.md#arrive) describes.
 
@@ -29,7 +29,7 @@ stateDiagram-v2
 
 Existing comments render as annotations on their mapped file, side, and line. Thread cards distinguish open, resolved, outdated, unknown, pending-review, locally publishing, published comment-only, and failed local creation states. Each card renders its comment bodies as Markdown with images and links. The Threads tab lists conversation threads for the represented revision, each with a state badge that pairs an icon with Open, Resolved, Outdated, or Pending, and can move focus to the matching card. It orders the threads that need the maintainer's reply first and counts them on its tab label; [Conversation and pull request metadata](conversation-and-metadata.md#arrive) owns what Needs your reply means and when it clears.
 
-The composer appears only on eligible changed lines when direct conversation authoring is enabled. A stale, closed, merged, patchless, or recovery-locked Review remains readable but does not expose the authoring action. In a selected commit's diff the action appears only when that commit is the pull request head; [Files, diff, commits, and navigation](files-diff-and-navigation.md) describes the rule.
+The composer appears only on eligible changed lines when direct conversation authoring is enabled, and only from the gutter `+`; clicking or dragging across line numbers only highlights them. A range must stay on one side of the diff and inside one hunk, as GitHub requires. A drag that mixes old and new lines or leaves its hunk opens no composer; a notice above the diff names the lines and the rule, with Dismiss. A stale, closed, merged, patchless, or recovery-locked Review remains readable but does not expose the authoring action. In a selected commit's diff the action appears only when that commit is the pull request head; [Files, diff, commits, and navigation](files-diff-and-navigation.md) describes the rule.
 
 ### Leave unchanged
 
@@ -37,7 +37,7 @@ Selecting a line records nothing. Cancel or Escape closes an empty composer at o
 
 ### Begin an action
 
-The composer names the location, such as `path:12–14`, and what submitting does: "publishes to GitHub", "joins your pending review on GitHub", or "GitHub write is paused". It fingerprints the represented session, head SHA, patch hash, path, side, and line. The hint beneath it reads "Press ⌘/Ctrl+Enter to comment. Escape cancels." Either ⌘+Enter or Ctrl+Enter submits through the same guarded path as the buttons.
+The composer names the location, such as `path · Line 12` or `path · Lines 12–14`, and what submitting does: "publishes to GitHub", "joins your pending review on GitHub", or "GitHub write is paused". It fingerprints the represented session, head SHA, patch hash, path, side, and line. The hint beneath it reads "Press ⌘/Ctrl+Enter to comment. Escape cancels." Either ⌘+Enter or Ctrl+Enter submits through the same guarded path as the buttons.
 
 When no pending review exists, the maintainer can Comment now or Start a review. When a pending review already exists, Add review comment appends the comment to it. When pending-review actions are not available for the Review, the composer offers only Comment, which publishes directly. The selected action is fixed for that submission; switching buttons does not create two writes.
 

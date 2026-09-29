@@ -10,10 +10,10 @@ import {
 } from "react";
 import {
   type CodeViewItem,
-  type CodeViewLineSelection,
   type DiffLineAnnotation,
   type FileDiffMetadata,
   type LineDiffTypes,
+  type SelectedLineRange,
 } from "@pierre/diffs";
 import {
   CodeView,
@@ -47,10 +47,12 @@ import type {
   ConversationThreadCardData,
   ReviewConversationActions,
 } from "./conversation-thread-card";
-import { InlineCommentComposer } from "./review-diff-authoring";
+import {
+  DiffAuthoringRefusalNotice,
+  InlineCommentComposer,
+} from "./review-diff-authoring";
 import { DraftRecoveryPrompt, type DraftRecovery } from "./draft-recovery";
 import type { LocalNoteCardProps } from "./local-note-card";
-import { renderReviewDiffGutterUtility } from "./review-diff-gutter-utility";
 import {
   EMPTY_BODY_CONTEXT,
   type PullRequestBodyContext,
@@ -84,7 +86,10 @@ import {
   useReviewDiffModel,
   type ReviewDiffModel,
 } from "@/hooks/use-review-diff-model";
-import { useReviewConversationOverlays } from "@/hooks/use-review-conversation-overlays";
+import {
+  useReviewConversationOverlays,
+  type DiffAuthoringRefusal,
+} from "@/hooks/use-review-conversation-overlays";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { MarkdownFilePreview } from "./markdown-file-preview";
@@ -294,7 +299,8 @@ function ReviewDiffSurface({
     localComposerAnnotation,
     draftRecovery,
     beginAccessibleAuthoring,
-    beginAuthoring,
+    beginRangeAuthoring,
+    authoringRefusal,
     decorateConversationThread,
   } = useReviewConversationOverlays({
     patch,
@@ -433,6 +439,7 @@ function ReviewDiffSurface({
       localCommentAuthoring={localCommentAuthoring}
       localComposerAnnotation={localComposerAnnotation}
       draftRecovery={draftRecovery}
+      authoringRefusal={authoringRefusal}
       contextStatus={contextStatus}
       beginAccessibleAuthoring={beginAccessibleAuthoring}
       selectedFile={selectedFile}
@@ -442,7 +449,7 @@ function ReviewDiffSurface({
       items={items}
       setViewerContainer={setViewerContainer}
       handleCodeViewScroll={handleCodeViewScroll}
-      beginAuthoring={beginAuthoring}
+      beginRangeAuthoring={beginRangeAuthoring}
       scopeFilter={scopeFilter}
       toolbarLeadingAction={toolbarLeadingAction}
       changes={changes}
@@ -488,6 +495,7 @@ type ReviewDiffRenderSiteProps = {
   readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
   readonly draftRecovery: DraftRecovery | undefined;
+  readonly authoringRefusal: DiffAuthoringRefusal | undefined;
   readonly contextStatus: ReviewContextStatus;
   readonly beginAccessibleAuthoring: (
     path: string,
@@ -503,7 +511,10 @@ type ReviewDiffRenderSiteProps = {
   readonly items: ReviewDiffModel["items"];
   readonly setViewerContainer: ReviewDiffModel["setViewerContainer"];
   readonly handleCodeViewScroll: ReviewDiffModel["handleCodeViewScroll"];
-  readonly beginAuthoring: (selection: CodeViewLineSelection | null) => void;
+  readonly beginRangeAuthoring: (
+    path: string,
+    range: SelectedLineRange,
+  ) => void;
   readonly scopeFilter: ScopeFilterControl | undefined;
   readonly toolbarLeadingAction: React.ReactNode;
   readonly changes: DiffChangesControl | undefined;
@@ -540,6 +551,7 @@ function ReviewDiffRenderSite({
   localCommentAuthoring,
   localComposerAnnotation,
   draftRecovery,
+  authoringRefusal,
   contextStatus,
   beginAccessibleAuthoring,
   selectedFile,
@@ -549,7 +561,7 @@ function ReviewDiffRenderSite({
   items,
   setViewerContainer,
   handleCodeViewScroll,
-  beginAuthoring,
+  beginRangeAuthoring,
   scopeFilter,
   toolbarLeadingAction,
   changes,
@@ -569,11 +581,15 @@ function ReviewDiffRenderSite({
       lineDiffType: DEFAULT_LINE_DIFF_TYPE,
       diffIndicators: "bars" as const,
       lineHoverHighlight: "both" as const,
-      enableLineSelection: localCommentAuthoring?.enabled === true,
-      enableGutterUtility: localCommentAuthoring?.enabled === true,
+      ...gutterAuthoringOptions(
+        localCommentAuthoring?.enabled === true,
+        (range, context: { readonly item: { readonly id: string } }) =>
+          beginRangeAuthoring(context.item.id, range),
+      ),
     }),
     [
       appearance,
+      beginRangeAuthoring,
       expandSelectedRange,
       expandUnchanged,
       localCommentAuthoring?.enabled,
@@ -644,25 +660,6 @@ function ReviewDiffRenderSite({
       ),
     [bodyContext, decorateConversationThread, onOpenFindingInAnalysis],
   );
-  const renderGutterUtility = useCallback(
-    (
-      getHoveredLine: () =>
-        | {
-            readonly lineNumber: number;
-            readonly side: "additions" | "deletions";
-          }
-        | undefined,
-      item: { readonly id: string; readonly type: "diff" | "file" },
-    ) =>
-      renderReviewDiffGutterUtility(
-        getHoveredLine,
-        item,
-        localCommentAuthoring,
-        beginAuthoring,
-      ),
-    [beginAuthoring, localCommentAuthoring],
-  );
-
   return (
     <>
       {showToolbar ? (
@@ -690,6 +687,7 @@ function ReviewDiffRenderSite({
       ) : null}
       <ReviewDiffNavigationFeedback status={navigationStatus} />
       <DraftRecoveryPrompt recovery={draftRecovery} />
+      <DiffAuthoringRefusalNotice refusal={authoringRefusal} />
       {markdownPreview?.active === true && previewMarkdown !== undefined ? (
         <MarkdownFilePreview
           markdown={previewMarkdown}
@@ -729,7 +727,7 @@ function ReviewDiffRenderSite({
           decorateConversationThread={decorateConversationThread}
           bodyContext={bodyContext}
           onOpenFindingInAnalysis={onOpenFindingInAnalysis}
-          beginAuthoring={beginAuthoring}
+          beginRangeAuthoring={beginRangeAuthoring}
         />
       ) : (
         <div className="relative min-h-0 flex-1">
@@ -745,8 +743,6 @@ function ReviewDiffRenderSite({
             renderCustomHeader={renderCodeViewHeader}
             renderAnnotation={renderAnnotation}
             onScroll={handleCodeViewScroll}
-            onSelectedLinesChange={beginAuthoring}
-            renderGutterUtility={renderGutterUtility}
           />
         </div>
       )}
@@ -776,7 +772,7 @@ type NonVirtualizedReviewDiffProps = Pick<
   | "decorateConversationThread"
   | "bodyContext"
   | "onOpenFindingInAnalysis"
-  | "beginAuthoring"
+  | "beginRangeAuthoring"
 >;
 
 function NonVirtualizedReviewDiff({
@@ -800,7 +796,7 @@ function NonVirtualizedReviewDiff({
   decorateConversationThread,
   bodyContext,
   onOpenFindingInAnalysis,
-  beginAuthoring,
+  beginRangeAuthoring,
 }: NonVirtualizedReviewDiffProps): React.JSX.Element {
   const renderAnnotation = useCallback(
     (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
@@ -833,24 +829,6 @@ function NonVirtualizedReviewDiff({
       );
     },
     [fileStatsByPath, findingCountsByPath],
-  );
-  const renderGutterUtility = useCallback(
-    (
-      getHoveredLine: () =>
-        | {
-            readonly lineNumber: number;
-            readonly side: "additions" | "deletions";
-          }
-        | undefined,
-      item: { readonly id: string; readonly type: "diff" | "file" },
-    ) =>
-      renderReviewDiffGutterUtility(
-        getHoveredLine,
-        item,
-        localCommentAuthoring,
-        beginAuthoring,
-      ),
-    [beginAuthoring, localCommentAuthoring],
   );
   if (syntaxHighlightingStatus === "loading") {
     return (
@@ -900,8 +878,8 @@ function NonVirtualizedReviewDiff({
     lineDiffType: DEFAULT_LINE_DIFF_TYPE,
     diffIndicators: "bars" as const,
     lineHoverHighlight: "both" as const,
-    enableGutterUtility: localCommentAuthoring?.enabled === true,
   };
+  const authoringEnabled = localCommentAuthoring?.enabled === true;
   // `disableWorkerPool` stays: these evidence surfaces render outside
   // `DiffWorkbench`, with no pool above them, and show small filtered hunks.
   return selectedFile === undefined ? (
@@ -910,17 +888,16 @@ function NonVirtualizedReviewDiff({
       disableWorkerPool
       className="visual-diff min-h-0 overflow-x-auto font-mono"
       style={DIFF_CODE_METRICS}
-      options={options}
+      options={{
+        ...options,
+        ...gutterAuthoringOptions(authoringEnabled, (range) =>
+          beginRangeAuthoring(selectedPath ?? "diff", range),
+        ),
+      }}
       lineAnnotations={selectedAnnotations}
       selectedLines={selectedLines?.range ?? null}
       renderAnnotation={renderAnnotation}
       renderCustomHeader={renderPatchHeader}
-      renderGutterUtility={(getHoveredLine) =>
-        renderGutterUtility(getHoveredLine, {
-          id: selectedPath ?? "diff",
-          type: "diff",
-        })
-      }
     />
   ) : (
     <FileDiff
@@ -928,19 +905,36 @@ function NonVirtualizedReviewDiff({
       disableWorkerPool
       className="visual-diff min-h-0 overflow-x-auto font-mono"
       style={DIFF_CODE_METRICS}
-      options={options}
+      options={{
+        ...options,
+        ...gutterAuthoringOptions(authoringEnabled, (range) =>
+          beginRangeAuthoring(selectedFile.name, range),
+        ),
+      }}
       lineAnnotations={selectedAnnotations}
       selectedLines={selectedLines?.range ?? null}
       renderAnnotation={renderAnnotation}
       renderCustomHeader={renderPatchHeader}
-      renderGutterUtility={(getHoveredLine) =>
-        renderGutterUtility(getHoveredLine, {
-          id: selectedFile.name,
-          type: "diff",
-        })
-      }
     />
   );
+}
+
+/**
+ * Pierre's own gutter `+` opens the composer: a click selects one line and a
+ * drag selects a range, which a custom `renderGutterUtility` cannot do (#552).
+ * Line selection only highlights the dragged lines; it never opens a composer.
+ */
+function gutterAuthoringOptions<TArgs extends ReadonlyArray<unknown>>(
+  enabled: boolean,
+  onGutterUtilityClick: (range: SelectedLineRange, ...rest: TArgs) => void,
+) {
+  return enabled
+    ? {
+        enableGutterUtility: true,
+        enableLineSelection: true,
+        onGutterUtilityClick,
+      }
+    : {};
 }
 
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
