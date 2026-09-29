@@ -17,6 +17,7 @@ import type { LocalDraftControls } from "../flows/use-local-drafts";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
 import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
+import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 type InsightReaderBuilderInput = {
   readonly workbench: WorkbenchResponse;
@@ -28,6 +29,8 @@ type InsightReaderBuilderInput = {
   readonly addAllFindings?: AddAllFindingsControls;
   readonly localApply?: LocalApplyControls;
   readonly localDrafts?: LocalDraftControls;
+  /** The workbench's note and comment authoring; absent outside the workbench. */
+  readonly walkthroughDiffAuthoring?: WalkthroughDiffAuthoring;
   readonly dismissFinding: (
     finding: AnalysisFinding,
     reason: string,
@@ -114,6 +117,7 @@ export function buildInsightReaders({
   addAllFindings,
   localApply,
   localDrafts,
+  walkthroughDiffAuthoring,
   dismissFinding,
   restoreFinding,
   analysisVerification,
@@ -224,13 +228,23 @@ export function buildInsightReaders({
       />
     ) : null;
   const walkthroughRetained = workbench.insights.walkthrough.retained;
-  const walkthroughDiscussion =
-    walkthroughRetained === undefined || !pullRequestReview
+  const walkthroughRevision =
+    walkthroughRetained === undefined
       ? undefined
       : walkthroughDiscussionState(
           workbench,
           walkthroughRetained.value.snapshot,
         );
+  const walkthroughDiscussion = pullRequestReview
+    ? walkthroughRevision
+    : undefined;
+  // A Walkthrough of an older revision numbers the lines of another diff, so it takes no notes or comments (#598).
+  const walkthroughAuthoring =
+    walkthroughRevision === undefined ||
+    walkthroughRevision === "stale" ||
+    workbench.fullPatch === undefined
+      ? undefined
+      : walkthroughDiffAuthoring;
   const walkthroughAnnotations =
     walkthroughDiscussion === "available" && workbench.fullPatch !== undefined
       ? projectReadOnlyConversationAnnotations(
@@ -257,6 +271,7 @@ export function buildInsightReaders({
         {...(walkthroughAnnotations === undefined
           ? {}
           : { annotations: walkthroughAnnotations })}
+        {...definedProps({ diffAuthoring: walkthroughAuthoring })}
         {...(walkthroughDiscussion === undefined ||
         walkthroughDiscussion === "available"
           ? {}

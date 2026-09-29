@@ -2,7 +2,7 @@
 
 ## Summary
 
-Inline conversations attach GitHub review comments and Patchdesk pending-review comments to exact diff locations. The maintainer reaches them in Diff, in the Threads tab of the navigator, and in Analysis evidence. Direct publication is available only for an open, Fresh Review with a represented patch hash and no recovery lock. A pending review can instead collect comments for one later Finish review submission.
+Inline conversations attach GitHub review comments and Patchdesk pending-review comments to exact diff locations. The maintainer reaches them in Diff, in the Threads tab of the navigator, in Analysis evidence, and in the cited hunks of a current [Walkthrough](walkthrough.md#arrive), which offer the same composer, Reply, and Resolve. Direct publication is available only for an open, Fresh Review with a represented patch hash and no recovery lock. A pending review can instead collect comments for one later Finish review submission.
 
 ## The simple case
 

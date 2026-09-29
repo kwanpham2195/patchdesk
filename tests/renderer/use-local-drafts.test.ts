@@ -188,6 +188,34 @@ describe("useLocalDrafts", () => {
     expect(refusal).toBeInstanceOf(Error);
   });
 
+  it("adds a note in the view its caller names over the shown view, as a Walkthrough's Combined note", async () => {
+    const double = installDesktopDouble({
+      [NOTE_ADD]: () => success({ localDrafts: [] }),
+    });
+    restore = double.restore;
+    const { result } = renderHook(() =>
+      useLocalDrafts({
+        workbench: localReview([]),
+        view: "uncommitted",
+        onWorkbenchPatch: vi.fn(),
+      }),
+    );
+
+    await act(async () =>
+      result.current?.notes?.add(
+        { path: "src/a.ts", side: "new", startLine: 1, line: 2 },
+        "Guard the empty case.",
+        "combined",
+      ),
+    );
+
+    expect(callBody(double.request.mock.calls[0]?.[0])).toMatchObject({
+      view: "combined",
+      startLine: 1,
+      line: 2,
+    });
+  });
+
   it("rejects a note holding a credential with the credential reason and keeps the list", async () => {
     restore = installDesktopDouble({
       [NOTE_ADD]: () => failure({ error: "draft_sensitive" }, 400),

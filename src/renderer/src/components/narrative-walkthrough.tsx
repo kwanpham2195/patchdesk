@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
 import type { ReadOnlyConversationAnnotation } from "../inline-conversation-mapping";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
+import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 type NarrativeHunk = {
   readonly id: string;
@@ -92,6 +93,7 @@ export function NarrativeWalkthrough({
   rawPatch,
   sourceSession,
   annotations,
+  diffAuthoring,
   discussionUnavailable,
   focused = false,
   onFocusedChange,
@@ -103,6 +105,8 @@ export function NarrativeWalkthrough({
   readonly rawPatch?: string;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
+  /** Notes, comments, and thread replies on the cited hunks; absent on a Walkthrough of an older revision. */
+  readonly diffAuthoring?: WalkthroughDiffAuthoring;
   readonly discussionUnavailable?: "stale" | "loading";
   readonly focused?: boolean;
   readonly onFocusedChange?: (focused: boolean) => void;
@@ -506,6 +510,7 @@ export function NarrativeWalkthrough({
                   hunks={[hunk]}
                   allHunks={allHunks}
                   {...(annotations === undefined ? {} : { annotations })}
+                  {...(diffAuthoring === undefined ? {} : { diffAuthoring })}
                   {...(preferences === undefined ? {} : { preferences })}
                 />
               ))
