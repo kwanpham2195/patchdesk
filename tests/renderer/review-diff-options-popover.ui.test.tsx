@@ -68,7 +68,7 @@ describe("diff view options", () => {
       ["Split view", "Wrap lines", "Line numbers", "Backgrounds"].map((name) =>
         screen.getByRole("switch", { name }).getAttribute("aria-checked"),
       ),
-    ).toEqual(["false", "false", "true", "true"]);
+    ).toEqual(["false", "true", "true", "true"]);
     expect(screen.queryByRole("button", { name: "Unified" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Wrap" })).toBeNull();
   });
@@ -89,7 +89,7 @@ describe("diff view options", () => {
 
     expect(onPreferencesChange.mock.calls.map(([update]) => update)).toEqual([
       { diffStyle: "split" },
-      { overflow: "wrap" },
+      { overflow: "scroll" },
       { lineNumbers: false },
       { backgrounds: false },
     ]);
@@ -100,7 +100,7 @@ describe("diff view options", () => {
       preferences: {
         ...DEFAULT_REVIEW_VIEW_PREFERENCES,
         diffStyle: "split",
-        overflow: "wrap",
+        overflow: "scroll",
         lineNumbers: false,
         backgrounds: false,
       },
@@ -111,7 +111,7 @@ describe("diff view options", () => {
       ["Split view", "Wrap lines", "Line numbers", "Backgrounds"].map((name) =>
         screen.getByRole("switch", { name }).getAttribute("aria-checked"),
       ),
-    ).toEqual(["true", "true", "false", "false"]);
+    ).toEqual(["true", "false", "false", "false"]);
   });
 
   it("draws line numbers and backgrounds while both preferences are on", async () => {

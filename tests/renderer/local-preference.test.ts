@@ -167,18 +167,18 @@ const preferences = [
   },
   {
     name: "review view",
-    key: "patchdesk.review-view.v1.profile",
+    key: "patchdesk.review-view.v1",
     rejected: JSON.stringify({ version: 99, preferences: {} }),
     accepted: JSON.stringify({
       version: 1,
       preferences: { diffStyle: "split", fileMode: "all", overflow: "scroll" },
     }),
-    load: () => loadReviewViewPreferences("profile"),
-    save: () => saveReviewViewPreferences("profile", { diffStyle: "split" }),
+    load: () => loadReviewViewPreferences(),
+    save: () => saveReviewViewPreferences({ diffStyle: "split" }),
     fallback: {
       diffStyle: "unified",
       fileMode: "all",
-      overflow: "scroll",
+      overflow: "wrap",
       lineNumbers: true,
       backgrounds: true,
     },
@@ -262,7 +262,7 @@ describe("every renderer preference", () => {
       "not-json",
     );
     window.localStorage.setItem(
-      "patchdesk.review-view.v1.profile",
+      "patchdesk.review-view.v1",
       JSON.stringify({
         version: 1,
         preferences: {
@@ -273,7 +273,7 @@ describe("every renderer preference", () => {
       }),
     );
     expect(loadNavigatorWidthPreferences()).toEqual({ width: 18 });
-    expect(loadReviewViewPreferences("profile").diffStyle).toBe("split");
+    expect(loadReviewViewPreferences().diffStyle).toBe("split");
   });
 
   it("gives every Insight type its own run preference key", () => {

@@ -86,14 +86,16 @@ test("split view falls back to unified while the diff pane is narrow and returns
 
     // Pierre draws each diff inside a shadow root; the left edges of its code
     // columns show whether the reader sees one column or two side by side.
+    // Wrapped lines make `[data-code]` itself `display: contents`, so measure
+    // the content column inside it.
     const codeColumnLefts = () =>
       page.evaluate(() => {
         const pre = document
           .querySelector("diffs-container")
           ?.shadowRoot?.querySelector("pre");
-        return Array.from(pre?.querySelectorAll("[data-code]") ?? []).map(
-          (column) => Math.round(column.getBoundingClientRect().left),
-        );
+        return Array.from(
+          pre?.querySelectorAll("[data-code] > [data-content]") ?? [],
+        ).map((column) => Math.round(column.getBoundingClientRect().left));
       });
     const expectColumns = (count: number) =>
       expect

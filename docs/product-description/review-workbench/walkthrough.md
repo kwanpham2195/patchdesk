@@ -54,7 +54,7 @@ Regenerate opens the shared Insight run dialog described in [Brief](brief.md#beg
 
 ### While the action runs
 
-Section movement updates the active prose and cited hunks together, and scrolls the chosen section into view in the chapter rail. Each cited hunk keeps its original file header, uses natural height, and lets the reader own scrolling. It respects unified or split layout, wrapping, app appearance, and diff theme.
+Section movement updates the active prose and cited hunks together, and scrolls the chosen section into view in the chapter rail. Each cited hunk keeps its original file header, uses natural height, and lets the reader own scrolling. It respects unified or split layout, wrapping, app appearance, and diff theme. Each cited hunk starts from the saved View options of the Diff tab; a change made in the Walkthrough applies only to that hunk and is not saved.
 
 Reviewed markers and the current section are shown at once and saved locally in the background. Controls stay usable while the save runs. Generation follows the Insight run lifecycle described in [Brief](brief.md#while-the-action-runs) and keeps any retained Walkthrough until a replacement succeeds. It asks the model for a short path through the main behaviors, citing representative hunks rather than every behavior-changing hunk. Codex receives the Walkthrough JSON Schema with its turn request; Patchdesk still validates the returned result and its citations. A failed result that exceeds an output field's length or item limit records only the field and counts in local diagnostics, without storing the generated prose there.
 
