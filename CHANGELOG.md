@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Constrained Codex CLI account Brief and Analysis runs with an output schema, as Walkthrough runs already were, so Codex shapes the answer to the fields and limits Patchdesk checks instead of returning a result that fails validation after a paid run. An optional field Codex returns as `null` is read as absent. #597
+
 - Added Restore to a dismissed Analysis Finding and made Section reviewed in the Walkthrough a toggle, so a wrong dismissal or reviewed mark takes one click to undo. A restored Finding returns to its open row, counts as unhandled again for "X of Y handled" and merge readiness, and offers Add to review or Add to draft again. Restore needs an open Review and a current Analysis; the toggle needs an open Review. Dismiss and Restore also update the merge readiness shown for the pull request at once; before, a dismissal left it stale until the next full load. #607
 
 - Added remote-tracking branches such as `origin/main` as shared local Review bases. The Local review dialog's Base branch picker now searches local and remote branches in one list, grouped under **Local branches** and **Remote branches**, and `review_local` accepts `base: "origin/main"`. Patchdesk reads the branch as your last fetch left it and never fetches; a base that `git fetch --prune` removes shows as gone, like a deleted local branch. `review_local` and `list_local_reviews` now name the base as `baseRef`, a full ref. A saved Review record that no longer parses, such as a shared Review stored before this change, is now skipped with a logged warning instead of making the Local review dialog, `list_local_reviews`, and `review_local` refuse with `storage`. #591
