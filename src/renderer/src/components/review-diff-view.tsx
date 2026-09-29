@@ -194,7 +194,8 @@ export type LocalCommentAuthoring = {
   readonly enabled: boolean;
   /** A local Review's composer saves a maintainer note to the Review record, never to GitHub (ADR 0051). */
   readonly kind?: "note";
-  readonly canAuthor?: (input: LocalCommentLocation) => boolean;
+  /** Why these lines cannot take a note or comment, shown instead of a composer; undefined allows them. */
+  readonly refuseLocation?: (input: LocalCommentLocation) => string | undefined;
   /** Reports the exact current diff range before a composer is opened. */
   readonly onSelectionChange?: (input: LocalCommentLocation) => void;
   readonly onSave: (input: LocalCommentAuthoringSaveInput) => Promise<{

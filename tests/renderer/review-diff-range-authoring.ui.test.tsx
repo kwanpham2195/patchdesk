@@ -171,6 +171,30 @@ describe("gutter range authoring", () => {
     );
   });
 
+  it("shows the reason the authoring refuses a range instead of a composer", async () => {
+    const onSave = vi.fn(async () => undefined);
+    renderDiff(
+      {
+        enabled: true,
+        onSave,
+        refuseLocation: () => "Not in the pull request's diff.",
+      },
+      true,
+    );
+
+    await dragDiffGutter({ line: 12 }, { line: 14 });
+
+    const refusal = await screen.findByRole("status", {
+      name: "Lines not selected",
+    });
+    expect(
+      within(refusal).getByText("Not in the pull request's diff."),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Inline comment composer" }),
+    ).toBeNull();
+  });
+
   it.each([
     {
       name: "across sides",
