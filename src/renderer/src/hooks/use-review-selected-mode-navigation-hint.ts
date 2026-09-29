@@ -18,6 +18,9 @@ function navigationKeyKind(
     case "{":
     case "}":
       return "comment";
+    case "(":
+    case ")":
+      return "finding";
     case "n":
     case "p":
       return "unviewed";
@@ -29,7 +32,7 @@ function navigationKeyKind(
 }
 
 /**
- * Answers a file, hunk, or comment navigation key pressed in Selected mode
+ * Answers a file, hunk, comment, or Finding navigation key pressed in Selected mode
  * with a hint to switch to All files.
  */
 export function useReviewSelectedModeNavigationHint({

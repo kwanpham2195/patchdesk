@@ -147,3 +147,25 @@ export function createHeadSideCommentAuthoring(
     },
   };
 }
+
+/**
+ * The Finish review handler while the header shows an enabled Finish review
+ * button, the same conditions `ReviewWorkbenchHeader` and
+ * `PendingReviewHeaderAction` render it under; ⌘K lists the command only then.
+ */
+export function visibleFinishReview(
+  model: WorkbenchResponse,
+  actions: ReviewWorkbenchActions,
+  terminal: boolean,
+): (() => void) | undefined {
+  const pendingReview = actions.pendingReview;
+  if (
+    pendingReview === undefined ||
+    terminal ||
+    workbenchPullRequestNumber(model.session.key.source) === undefined ||
+    pendingReview.projection?.state !== "pending" ||
+    pendingReview.busy
+  )
+    return undefined;
+  return pendingReview.onOpenFinishDialog;
+}

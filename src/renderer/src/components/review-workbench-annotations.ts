@@ -164,7 +164,7 @@ export function buildAnnotations(
   conversationThreadEntries: ReadonlyArray<ReviewInlineAnnotation>,
 ): ReadonlyArray<ReviewInlineAnnotation> {
   return [
-    ...findings.flatMap((finding) =>
+    ...findings.flatMap((finding): ReadonlyArray<ReviewInlineAnnotation> =>
       finding.file === undefined ||
       finding.lineStart === undefined ||
       finding.diffSide === undefined
@@ -179,6 +179,7 @@ export function buildAnnotations(
               severity: finding.severity,
               title: finding.title,
               explanation: finding.explanation,
+              analysisFinding: true,
             },
           ],
     ),

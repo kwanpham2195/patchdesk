@@ -44,7 +44,11 @@ Selecting the current destination again does nothing. Keyboard focus moving amon
 
 Mouse clicks, keyboard commands, and supported native menu items call the same destination and action owners as visible buttons. A Visited pull requests row opens its Review on a click, Enter, or Space and requests that destination through the same guard as Back and Navigate. Pull requests rows support keyboard selection and Enter activation; Review navigation supports keyboard movement through its file and section controls.
 
-In the Diff with All files chosen, single keys move and mark files: `,` and `.` for the previous and next file, `[` and `]` for the previous and next change, `{` and `}` for the previous and next comment, `p` and `n` for the previous and next file not yet marked Viewed, and `v` to toggle Viewed on the current file, the one highlighted in Browse. They do nothing while a text field has focus or while ⌘, Ctrl, or Option is held.
+In the Diff with All files chosen, single keys move and mark files: `,` and `.` for the previous and next file, `[` and `]` for the previous and next change, `{` and `}` for the previous and next comment, `(` and `)` for the previous and next Finding card, `p` and `n` for the previous and next file not yet marked Viewed, and `v` to toggle Viewed on the current file, the one highlighted in Browse. They do nothing while a text field has focus or while ⌘, Ctrl, or Option is held.
+
+In the Review workbench, ⌘1 selects Conversation, ⌘2 Diff, and ⌘3 Insights, as clicking the tab does. A local Review has no Conversation tab, so ⌘1 does nothing there. The tab keys do nothing while a text field or a dialog has focus, or while Shift or Option is also held.
+
+While a Review is open, ⌘K lists a Review group first: Conversation, Diff, Insights, Brief, Walkthrough, Analysis, Next Finding, Previous Finding, and Finish review. Each row calls the handler of the control it names and shows its key where it has one. Brief, Walkthrough, and Analysis open the Insights tab on that reader. Next Finding and Previous Finding step through Finding cards as `)` and `(` do; outside the Diff in All files they are disabled and read "Works in the Diff with All files." Finish review is listed only while the header shows its button, and it only opens the Finish review dialog. No row starts an Insight run, adds a Finding, or submits a review. The Insight readers and Finish review have no key of their own.
 
 Opening Settings writes a session-only section marker for reload restoration. Changing workbench position saves the position for the current Review. These view preferences do not change represented revision, freshness, or write authority.
 
@@ -125,6 +129,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - A native window close uses desktop warning behavior because renderer state may not remain visible during shutdown.
 - Keyboard row selection and Enter activation share the same action owner as mouse selection.
 - ⌘K does nothing while focus is in a text field or an editable region, including the Browse search field, so typing there is never taken over.
+- ⌘1 to ⌘3 do nothing outside the Review workbench, and the ⌘K Review group is absent there.
 - Every titlebar icon button shows a hover tooltip: the collapse toggle, Back, Settings, and Navigate.
 - Activating Skip to content adds `#main-content` to the renderer address, and it stays there through later navigation.
 - A clicked Insight notification for the Review already on screen reopens that Review on the Insight, unless an unsaved draft or pending write holds it; then the window is only focused.
@@ -139,6 +144,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - The `#main-content` address fragment has no visible effect in the desktop window; confirm nothing reads it.
 - Confirm focus placement after destination changes, Settings close, profile switch, guard Cancel, and native window close.
 - Confirm the exact keyboard and native-menu behavior for Settings, Navigate, Pull requests row activation, and Review file navigation.
+- The workbench tab keys and the ⌘K Review group (#609) are revised from source and await a live check.
 - Confirm the titlebar busy label when overlapping tracked actions settle in reverse order.
 - Confirm the native close prompt for an unsaved Review draft and for a pending GitHub write on a real macOS window.
 - Live verification of desktop notifications is pending: a macOS banner cannot be observed over CDP, so the log lines are the evidence.

@@ -6,6 +6,7 @@ import {
   EyeOff,
   GitPullRequest,
   Settings,
+  SquareCode,
 } from "lucide-react";
 
 import {
@@ -42,6 +43,7 @@ import {
   useWatchedPullRequests,
   type WatchToggleFailure,
 } from "@/hooks/use-watched-pull-requests";
+import type { ReviewCommandSource } from "../review-commands";
 import { WatchToggleFailureMessage } from "./watch-pull-request-button";
 
 const icons = {
@@ -66,6 +68,7 @@ export function AppCommandDialog({
   onOpenPullRequest,
   selectedRepository,
   visitedRows,
+  reviewCommands,
 }: {
   readonly open: boolean;
   readonly query: string;
@@ -87,6 +90,8 @@ export function AppCommandDialog({
   readonly selectedRepository?: RepositoryIdentity;
   /** The Visited pull requests rows a title search matches; the palette requests nothing itself. */
   readonly visitedRows: ReadonlyArray<SidebarReviewRow>;
+  /** The open Review's commands; the Review group shows only while one is registered. */
+  readonly reviewCommands: ReviewCommandSource | undefined;
 }): React.JSX.Element {
   const parsedPullRequest = parsePullRequestInput(
     query.trim(),
@@ -151,6 +156,39 @@ export function AppCommandDialog({
         />
         <CommandList>
           <CommandEmpty>No matching destination.</CommandEmpty>
+          {open && reviewCommands !== undefined ? (
+            <>
+              <CommandGroup heading="Review">
+                {reviewCommands().map((command) => (
+                  <CommandItem
+                    key={command.id}
+                    value={`Review ${command.label}`}
+                    disabled={command.unavailableReason !== undefined}
+                    onSelect={() => {
+                      close();
+                      command.run();
+                    }}
+                  >
+                    <SquareCode />
+                    {command.unavailableReason === undefined ? (
+                      command.label
+                    ) : (
+                      <span className="flex min-w-0 flex-col">
+                        <span>{command.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {command.unavailableReason}
+                        </span>
+                      </span>
+                    )}
+                    {command.shortcut === undefined ? null : (
+                      <CommandShortcut>{command.shortcut}</CommandShortcut>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <CommandSeparator />
+            </>
+          ) : null}
           <CommandGroup heading="Navigate">
             {primaryDestinations.map((item) => {
               const Icon = icons[item.kind];

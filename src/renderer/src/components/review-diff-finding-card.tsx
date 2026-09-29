@@ -85,6 +85,8 @@ export function renderReviewDiffAnnotation(
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden whitespace-normal rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
       data-review-inline-finding={finding.id}
       aria-label={`${finding.severity} finding: ${finding.title}`}
+      // Focusable without a Tab stop, so `(` and `)` can land on the card.
+      tabIndex={-1}
     >
       <div className="flex min-w-0 items-baseline gap-2">
         <Badge

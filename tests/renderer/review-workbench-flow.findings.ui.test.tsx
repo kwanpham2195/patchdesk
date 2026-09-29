@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "./pierre-highlighter-mock";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -11,9 +12,17 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import {
+  ReviewCommandRegistryContext,
+  type ReviewCommandSource,
+} from "../../src/renderer/src/review-commands";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { providerCatalog, withAnalysis } from "./review-workbench-fixtures";
+import {
+  callPath,
+  providerCatalog,
+  withAnalysis,
+} from "./review-workbench-fixtures";
 
 /**
  * The finding-to-diff-to-finding loop `ReviewWorkbenchFlow` wires between the
@@ -182,5 +191,119 @@ describe("ReviewWorkbenchFlow finding actions", () => {
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await screen.findByText("Missing boundary check");
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
+  });
+});
+
+describe("ReviewWorkbenchFlow keyboard commands", () => {
+  it("switches tabs with ⌘1 to ⌘3 and opens an Insight reader from its Review command", async () => {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      throw new Error(input.path);
+    });
+    let commands: ReviewCommandSource | undefined;
+    render(
+      <ReviewCommandRegistryContext.Provider
+        value={(source) => {
+          commands = source;
+        }}
+      >
+        <ReviewWorkbenchFlow
+          workbench={withAnalysis("actionable")}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+        />
+      </ReviewCommandRegistryContext.Provider>,
+    );
+    const user = userEvent.setup();
+    const selectedTab = (name: string) =>
+      screen.getByRole("tab", { name }).getAttribute("aria-selected");
+
+    await user.keyboard("{Meta>}3{/Meta}");
+    expect(selectedTab("Insights")).toBe("true");
+    await user.keyboard("{Meta>}1{/Meta}");
+    expect(selectedTab("Conversation")).toBe("true");
+    await user.keyboard("{Meta>}2{/Meta}");
+    expect(selectedTab("Diff")).toBe("true");
+
+    // No pending review, so the header shows no Finish review and neither does ⌘K.
+    expect(commands?.().map((command) => command.label)).toEqual([
+      "Conversation",
+      "Diff",
+      "Insights",
+      "Brief",
+      "Walkthrough",
+      "Analysis",
+      "Next Finding",
+      "Previous Finding",
+    ]);
+    act(() =>
+      commands?.()
+        .find((command) => command.label === "Walkthrough")
+        ?.run(),
+    );
+
+    expect(selectedTab("Insights")).toBe("true");
+    expect(
+      (await screen.findByRole("tab", { name: /^Walkthrough/ })).getAttribute(
+        "aria-selected",
+      ),
+    ).toBe("true");
+    act(() =>
+      commands?.()
+        .find((command) => command.label === "Analysis")
+        ?.run(),
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("tab", { name: /^Analysis/ })
+          .getAttribute("aria-selected"),
+      ).toBe("true"),
+    );
+  });
+
+  it("lists Finish review while the header shows it, and the command only opens its dialog", async () => {
+    const request = bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      throw new Error(input.path);
+    });
+    let commands: ReviewCommandSource | undefined;
+    render(
+      <ReviewCommandRegistryContext.Provider
+        value={(source) => {
+          commands = source;
+        }}
+      >
+        <ReviewWorkbenchFlow
+          workbench={withAnalysis("pending_review")}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+        />
+      </ReviewCommandRegistryContext.Provider>,
+    );
+    expect(
+      screen.getByRole("button", { name: /^Finish review ·/ }),
+    ).toBeTruthy();
+    act(() =>
+      commands?.()
+        .find((command) => command.label === "Finish review")
+        ?.run(),
+    );
+
+    expect(
+      await screen.findByRole("textbox", { name: "Final review summary" }),
+    ).toBeTruthy();
+    // Opening the dialog sends no pending-review command; submitting is the dialog's own step.
+    expect(
+      request.mock.calls
+        .map(([call]) => callPath(call))
+        .filter((path) => path?.startsWith("/v1/reviews/pending-review")),
+    ).toEqual([]);
   });
 });
