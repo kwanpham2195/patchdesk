@@ -47,7 +47,7 @@ export function AnalysisFixture(): React.ReactNode {
           stop: () => undefined,
         },
         dismissFinding: async () => undefined,
-        restoreFinding: async () => undefined,
+        restoreFinding: async () => "restored" as const,
         analysisVerification: {
           checkedSteps,
           saveFailed: false,

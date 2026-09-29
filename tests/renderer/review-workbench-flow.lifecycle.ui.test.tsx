@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { FINDING_ACTION_MESSAGES } from "../../src/renderer/src/review-copy";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import {
   callPath,
@@ -129,7 +130,55 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
-  it("applies a confirmed Finding dismissal from the reloaded Review", async () => {
+  /** Dismisses finding-1 in the mounted workbench, answering the advisory Review reload with `load`. */
+  async function dismissWithReload(load: () => Promise<WorkbenchResponse>) {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      if (
+        input.path ===
+        "/v1/reviews/insights/analysis/findings/finding-1/dismiss"
+      )
+        return { findingId: "finding-1", status: "dismissed" };
+      if (input.path === "/v1/reviews/load") return load();
+      throw new Error(input.path);
+    });
+    const { patch } = mount(withAnalysis("actionable"));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("button", { name: "Dismiss" }));
+    await user.type(
+      screen.getByLabelText("Dismiss reason for Missing boundary check"),
+      "Not applicable",
+    );
+    await user.click(screen.getByRole("button", { name: "Confirm dismissal" }));
+    return patch;
+  }
+
+  const dismissedAnalysisPatch = expect.objectContaining({
+    retained: expect.objectContaining({
+      value: expect.objectContaining({
+        findings: [expect.objectContaining({ disposition: "dismissed" })],
+      }),
+    }),
+  });
+
+  it("keeps a confirmed Finding dismissal when the Review reload fails", async () => {
+    const patch = await dismissWithReload(async () => {
+      throw new Error("reload failed");
+    });
+
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith({
+        insights: { analysis: dismissedAnalysisPatch },
+      }),
+    );
+    expect(screen.queryByText(FINDING_ACTION_MESSAGES.fallback)).toBeNull();
+  });
+
+  it("takes merge readiness from the reloaded Review after a confirmed dismissal", async () => {
     const opened = withAnalysis("actionable");
     const retained = opened.insights.analysis.retained;
     if (retained === undefined) throw new Error("fixture");
@@ -156,48 +205,17 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
         findings: {},
         canFinishWithAnalysisSummary: false,
       },
+      mergeReadiness: { _tag: "Blocked", blockers: ["draft"], warnings: [] },
     };
-    bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates")
-        return { updatesAvailable: false };
-      if (input.path === "/v1/insight-providers") return providerCatalog;
-      if (
-        input.path ===
-        "/v1/reviews/insights/analysis/findings/finding-1/dismiss"
-      )
-        return { findingId: "finding-1", status: "dismissed" };
-      if (input.path === "/v1/reviews/load") return reloaded;
-      throw new Error(input.path);
-    });
-    const { patch } = mount(opened);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Insights" }));
-    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
-    await user.click(await screen.findByRole("button", { name: "Dismiss" }));
-    await user.type(
-      screen.getByLabelText("Dismiss reason for Missing boundary check"),
-      "Not applicable",
-    );
-    await user.click(screen.getByRole("button", { name: "Confirm dismissal" }));
+
+    const patch = await dismissWithReload(async () => reloaded);
 
     await waitFor(() =>
-      expect(patch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          mergeReadiness: reloaded.mergeReadiness,
-          analysisReviewActions: reloaded.analysisReviewActions,
-          insights: {
-            analysis: expect.objectContaining({
-              retained: expect.objectContaining({
-                value: expect.objectContaining({
-                  findings: [
-                    expect.objectContaining({ disposition: "dismissed" }),
-                  ],
-                }),
-              }),
-            }),
-          },
-        }),
-      ),
+      expect(patch).toHaveBeenCalledWith({
+        insights: { analysis: dismissedAnalysisPatch },
+        mergeReadiness: reloaded.mergeReadiness,
+        analysisReviewActions: reloaded.analysisReviewActions,
+      }),
     );
   });
 

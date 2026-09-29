@@ -5,7 +5,7 @@ import { definedProps } from "../../../domain/defined-props";
 import type { ParsedPatchFile } from "../../../domain/patch";
 import { BriefReader } from "./brief-reader";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
-import { AnalysisReader } from "./analysis-reader";
+import { AnalysisReader, type FindingRestoreOutcome } from "./analysis-reader";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
 import { requestJson } from "../api-client";
@@ -32,7 +32,9 @@ type InsightReaderBuilderInput = {
     finding: AnalysisFinding,
     reason: string,
   ) => Promise<void>;
-  readonly restoreFinding: (finding: AnalysisFinding) => Promise<void>;
+  readonly restoreFinding: (
+    finding: AnalysisFinding,
+  ) => Promise<FindingRestoreOutcome>;
   readonly analysisVerification: AnalysisVerificationControls;
   readonly walkthroughProgress: WalkthroughProgressControls;
   readonly walkthroughFocused: boolean;
