@@ -22,6 +22,13 @@ export function isAccountInsightProvider(
   return provider !== "pi";
 }
 
+/** Whether a provider's runs stream the activity trace (ADR 0043); only Codex does, so every other run shows its start time. */
+export function insightProviderReportsActivity(
+  provider: InsightProvider,
+): boolean {
+  return provider === "codex-cli-account";
+}
+
 /** Reasoning efforts accepted by the Insight lifecycle. */
 export type InsightReasoning = "minimal" | "low" | "medium" | "high" | "xhigh";
 
