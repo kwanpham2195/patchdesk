@@ -16,7 +16,10 @@ import {
   PatchdeskApiError,
   contextualMessage,
 } from "../../src/renderer/src/api-client";
-import { FINDING_ACTION_MESSAGES } from "../../src/renderer/src/review-copy";
+import {
+  FINDING_ACTION_MESSAGES,
+  FINDING_RESTORED_REFRESH_NOTICE,
+} from "../../src/renderer/src/review-copy";
 import type {
   AddAllFindingsControls,
   AddAllFindingsOutcome,
@@ -475,6 +478,32 @@ describe("AnalysisReader", () => {
     expect(
       screen.getByRole("button", { name: "Restore" }).hasAttribute("disabled"),
     ).toBe(false);
+  });
+
+  it("asks for a refresh, not a retry, when a saved Restore could not reload the Review", async () => {
+    const user = userEvent.setup();
+    const dismissed = {
+      ...findingFixture,
+      disposition: "dismissed" as const,
+      dismissalReason: "Covered by the API contract",
+    };
+    const reader = (finding: typeof findingFixture) => (
+      <AnalysisReader
+        result={{ ...result, findings: [finding] }}
+        findingStatuses={{}}
+        onDismissFinding={vi.fn(async () => undefined)}
+        onRestoreFinding={vi.fn(async () => "refresh_needed" as const)}
+      />
+    );
+    const { rerender } = render(reader(dismissed));
+
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+    rerender(reader({ ...findingFixture, disposition: "open" }));
+
+    expect(
+      await screen.findByText(FINDING_RESTORED_REFRESH_NOTICE),
+    ).toBeTruthy();
+    expect(screen.queryByText(FINDING_ACTION_MESSAGES.fallback)).toBeNull();
   });
 
   it("admits Add synchronously once and leaves another Finding usable", async () => {

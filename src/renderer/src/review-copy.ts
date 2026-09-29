@@ -251,6 +251,10 @@ export const RE_REQUEST_REVIEW_MESSAGES: ContextualMessages = {
 
 const UNCONFIRMED_FINDING_ACTION = unconfirmedWriteCopy("Finding action");
 
+/** A restored Finding whose Review reload failed; the restore itself is saved. */
+export const FINDING_RESTORED_REFRESH_NOTICE =
+  "Restored. Refresh the Review to add it to the review.";
+
 /** Adding a Finding to the review, or dismissing it, from the Analysis reader. */
 export const FINDING_ACTION_MESSAGES: ContextualMessages = {
   fallback: "The Finding action could not be saved. Try again.",

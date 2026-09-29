@@ -84,6 +84,7 @@ export function AnalysisFindingRow({
   actionState,
   actionsDisabled,
   actionError,
+  notice,
   evidencePatch,
   onAddFinding,
   onDismissFinding,
@@ -98,6 +99,8 @@ export function AnalysisFindingRow({
   /** A batch Add owns every Finding's actions while it runs. */
   readonly actionsDisabled: boolean;
   readonly actionError?: string | undefined;
+  /** A non-error line under the Finding, such as a restore that waits on a refresh. */
+  readonly notice?: string | undefined;
   readonly evidencePatch?: string | undefined;
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
@@ -310,6 +313,9 @@ export function AnalysisFindingRow({
           Locked: GitHub comment unconfirmed.
         </p>
       ) : null}
+      {notice === undefined ? null : (
+        <p className="mt-2 text-sm text-muted-foreground">{notice}</p>
+      )}
       {actionError === undefined ? null : (
         <InlineError className="mt-2">{actionError}</InlineError>
       )}

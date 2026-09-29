@@ -5,6 +5,7 @@ import { definedProps } from "../../../domain/defined-props";
 import { contextualMessage } from "../api-client";
 import { FINDING_ACTION_MESSAGES } from "../review-copy";
 import { useFindingErrors } from "../hooks/use-finding-errors";
+import { useRestoreRefreshNotices } from "../hooks/use-restore-refresh-notices";
 import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
 import {
   renderAnalysisFixPrompt,
@@ -66,6 +67,9 @@ type SupportingDetailGroup = {
   readonly details: ReadonlyArray<SupportingDetail>;
 };
 
+/** `refresh_needed`: the restore is saved, but the Review reload that brings back the Finding's actions failed. */
+export type FindingRestoreOutcome = "restored" | "refresh_needed";
+
 export type AnalysisReaderProps = {
   readonly result: AnalysisResult;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
@@ -74,7 +78,9 @@ export type AnalysisReaderProps = {
     reason: string,
   ) => Promise<void>;
   /** Offered wherever Dismiss is; returns a dismissed Finding to its open row. */
-  readonly onRestoreFinding?: (finding: AnalysisFinding) => Promise<void>;
+  readonly onRestoreFinding?: (
+    finding: AnalysisFinding,
+  ) => Promise<FindingRestoreOutcome>;
   readonly findingStatuses?: Readonly<Record<string, FindingStatus>>;
   /** Findings whose published thread waits on the viewer's reply. */
   readonly needsReplyFindingIds?: ReadonlySet<string>;
@@ -120,6 +126,7 @@ export function AnalysisReader({
   const [findingActions, setFindingActions] = useState<
     ReadonlyMap<string, FindingActionState>
   >(new Map());
+  const restoreNotices = useRestoreRefreshNotices();
   const {
     errors: findingErrors,
     clear: clearFindingError,
@@ -166,6 +173,7 @@ export function AnalysisReader({
       return next;
     });
     clearFindingError(findingId);
+    restoreNotices.clear(findingId);
     try {
       await action();
       return true;
@@ -197,9 +205,10 @@ export function AnalysisReader({
           ? {}
           : {
               onRestoreFinding: (value: AnalysisFinding) => {
-                void runFindingAction(value.id, "restoring", () =>
-                  onRestoreFinding(value),
-                );
+                void runFindingAction(value.id, "restoring", async () => {
+                  if ((await onRestoreFinding(value)) === "refresh_needed")
+                    restoreNotices.mark(value.id);
+                });
               },
             })}
       />
@@ -208,6 +217,12 @@ export function AnalysisReader({
         key={finding.id}
         finding={finding}
         status={findingStatuses?.[finding.id]}
+        // A local Review's draft toggle needs no projected status.
+        notice={restoreNotices.noticeFor(
+          finding.id,
+          localDrafts !== undefined ||
+            findingStatuses?.[finding.id] !== undefined,
+        )}
         needsReply={needsReplyFindingIds?.has(finding.id) ?? false}
         actionState={
           batchProgress?.currentFindingId === finding.id
