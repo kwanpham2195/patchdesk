@@ -2,6 +2,7 @@ import type { SelectedLineRange } from "@pierre/diffs";
 
 import { fingerprintPatchAnchor } from "../../domain/diff-anchor";
 import { parseRepoRelativePath } from "../../domain/ids";
+import { parseUnifiedPatch } from "../../domain/patch";
 import type { LocalCommentLocation } from "./components/review-diff-view";
 
 /** Why a gutter range cannot hold one note or comment: GitHub anchors a range on one side of one hunk. */
@@ -40,7 +41,13 @@ export function diffLineRangeLocation(
     side: range.side === "additions" ? "new" : "old",
   };
   if (startLine === line) return { _tag: "ok", location };
-  const parsedPath = parseRepoRelativePath(path);
+  // The diff names a renamed file by its new path, while its old-side lines sit under the old one.
+  const sidePath =
+    location.side === "old"
+      ? (parseUnifiedPatch(patch).find((file) => file.newPath === path)
+          ?.oldPath ?? path)
+      : path;
+  const parsedPath = parseRepoRelativePath(sidePath);
   const inOneHunk =
     parsedPath._tag === "ok" &&
     fingerprintPatchAnchor(patch, { ...location, path: parsedPath.value }) !==
