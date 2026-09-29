@@ -138,12 +138,8 @@ A failed run shows one warning block that names the failure category, such as a 
 
 ## Open questions and verification
 
-- The 2026-09-14 live pass confirmed landing on Brief, the empty state, the disabled Generate brief on merged Reviews and the enabled one on an open Review, and the run dialog's Provider (API key, Codex CLI account), Model, and Reasoning controls, and Cancel. No retained Brief existed in the live workspace, so the reader layout, Provenance card, and both Regenerate buttons were checked from source only.
-- Fixed: a merged or closed Review draws neither Generate brief nor Regenerate and no longer shows a reason line, since no disabled control remains to explain. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
-- Fixed: Try again, Run for latest revision, and Start here's Generate walkthrough are no longer drawn on a merged or closed Review. See [B-19](../bug-triage.md#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review).
-- The raw machine timestamp in the running state, one of the slips in [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips), is fixed: the panel draws a relative time and no longer says partial results are not shown. The new wording is not yet live-verified.
-- Confirm the visible distinction between Cancel requested, cancelled, failed, and timed out runs.
-- Confirm whether switching to another Insight reader while Brief runs keeps its progress discoverable.
-- Confirm focus after closing the run dialog.
+- Live checks confirmed Brief's empty state, Generate availability on open versus merged Reviews, and the run dialog. Reader layout and Provenance were checked from source only.
+- Relative-time and partial-result wording, and command approval, need live checks; see [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
+- Confirm cancelled, failed, and timed-out run states; progress after switching readers; and focus after closing the run dialog.
 
 Baseline drafted from Patchdesk application source commit `dd613996`; verified against `737c515c`, including the Codex activity trace and the model list prices; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified.

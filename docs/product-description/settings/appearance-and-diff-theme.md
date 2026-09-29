@@ -89,25 +89,19 @@ If loading global settings fails, Patchdesk uses the current defaults, shows a p
 
 **Preferences, keyboard commands, and desktop integration.** Settings is a global overlay; closing it normally returns focus to its opener. Keyboard selectors use the same values as mouse selection.
 
-**Supported input and accessibility limits.** Keyboard and mouse controls are supported. Touch, pen, and screen-reader behavior are outside the supported product surface.
+**Supported input and accessibility limits.** Keyboard and mouse controls are supported.
 
 ## Edge cases
 
-- System appearance follows macOS changes while Settings remains open.
 - Light and dark Diff themes are independent; a malformed side falls back to that side's default without discarding a valid other side.
 - Older Diff theme family values migrate to a light/dark pair.
 - File-backed settings take precedence over stale renderer local values.
-- A missing settings file is normal first-run state; an actual read failure uses defaults and shows Retry.
-- A save failure does not roll back the visible Appearance or Diff theme.
-- A mounted diff receives a theme event without requiring a Review remount.
-- The native window background changes with Appearance even when the save of that choice fails.
-- Launch uses the appearance stored in global settings; a missing or unreadable file launches with System.
 - Settings does not show the provider, model, or reasoning controls; those belong to the Insight run dialogs.
 
 ## Open questions and verification
 
-- A read-only live pass on 2026-09-14 confirmed the General section's Appearance selector with System, Light, and Dark, and the Diff theme selectors showing Pierre Light and Pierre Dark. It changed no value.
-- Not observed live: the first frame at launch, the frame after a renderer reload, and the window background during a resize, because the pass could not relaunch, reload, or resize.
+- The Appearance selector offers System, Light, and Dark. The Diff theme selectors show Pierre Light and Pierre Dark. Changing either value still needs a live check.
+- Check the first frame at launch, after renderer reload, and during window resize.
 - Confirm the visible repaint timing when a mounted diff changes from Light to Dark or changes only one Diff theme.
 - Confirm the focus target after selecting a theme and after a preference-save error.
 - Confirm how the app presents a system appearance change while a fixed Light or Dark choice is active.

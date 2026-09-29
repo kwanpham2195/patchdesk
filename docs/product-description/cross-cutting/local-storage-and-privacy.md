@@ -58,25 +58,25 @@ Clear cache removes rebuildable children while durable Review history remains. C
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | Config, Local data, Cache, and Diagnostics are namespaced by profile where applicable; credentials are not stored. | Profile locks prevent cleanup or recovery from crossing profile boundaries. |
-| Pull request and Review state | Durable session and represented revision identify Review evidence; worktrees and inbox results are rebuildable Cache. | Preparation journals and Review locks prevent partial or cross-revision state from becoming current. |
-| GitHub permissions and merge readiness | Local reads do not grant GitHub permission or merge authority. | Write intent persists before a GitHub call; an uncertain result remains locked for reconciliation. |
-| Network, local tool, and Insight provider availability | Config and retained Local data can be read offline; rebuilding Cache may need GitHub, Git, or a provider. | Tool or provider failures do not expose credentials and do not silently convert incomplete state into success. |
-| Input path: mouse, keyboard, or desktop menu | Settings, Review, and cleanup controls share the same local storage boundaries. | Input path cannot bypass validation, atomic replacement, redaction, or active-work protection. |
+| Variant                                                | Before the action runs                                                                                                | While the action runs                                                                                          |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | Config, Local data, Cache, and Diagnostics are namespaced by profile where applicable; credentials are not stored.    | Profile locks prevent cleanup or recovery from crossing profile boundaries.                                    |
+| Pull request and Review state                          | Durable session and represented revision identify Review evidence; worktrees and inbox results are rebuildable Cache. | Preparation journals and Review locks prevent partial or cross-revision state from becoming current.           |
+| GitHub permissions and merge readiness                 | Local reads do not grant GitHub permission or merge authority.                                                        | Write intent persists before a GitHub call; an uncertain result remains locked for reconciliation.             |
+| Network, local tool, and Insight provider availability | Config and retained Local data can be read offline; rebuilding Cache may need GitHub, Git, or a provider.             | Tool or provider failures do not expose credentials and do not silently convert incomplete state into success. |
+| Input path: mouse, keyboard, or desktop menu           | Settings, Review, and cleanup controls share the same local storage boundaries.                                       | Input path cannot bypass validation, atomic replacement, redaction, or active-work protection.                 |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Cancelling a cleanup confirmation or clean editor changes nothing. | A journaled write or preparation must settle or recover; Escape cannot discard durable intent. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Stable local state remains available. | Locks and profile/session identities prevent a late result from replacing another scope. |
-| Start another action or request a refresh | Independent reads can proceed without rewriting state. | Conflicting durable mutations serialize or refuse; they do not interleave file replacement. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | Local Config and retained data remain readable where valid. | Recovery distinguishes confirmed failure from uncertain external outcome and keeps sensitive detail redacted. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Stable Config, Local data, Cache, Logs, and Diagnostics persist according to their class. | Startup recovery reads journals and intents before adopting or removing interrupted state. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Stored evidence remains bound to its saved identity and revision. | A changed target cannot rewrite an existing immutable session or receipt. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus loss does not change local state. | Focus loss does not cancel file replacement, journal recovery, or cleanup. |
+| Event                                                                                                 | Before the action runs                                                                    | While the action runs                                                                                         |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Cancelling a cleanup confirmation or clean editor changes nothing.                        | A journaled write or preparation must settle or recover; Escape cannot discard durable intent.                |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Stable local state remains available.                                                     | Locks and profile/session identities prevent a late result from replacing another scope.                      |
+| Start another action or request a refresh                                                             | Independent reads can proceed without rewriting state.                                    | Conflicting durable mutations serialize or refuse; they do not interleave file replacement.                   |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Local Config and retained data remain readable where valid.                               | Recovery distinguishes confirmed failure from uncertain external outcome and keeps sensitive detail redacted. |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Stable Config, Local data, Cache, Logs, and Diagnostics persist according to their class. | Startup recovery reads journals and intents before adopting or removing interrupted state.                    |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Stored evidence remains bound to its saved identity and revision.                         | A changed target cannot rewrite an existing immutable session or receipt.                                     |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus loss does not change local state.                                                   | Focus loss does not cancel file replacement, journal recovery, or cleanup.                                    |
 
 ## Interactions with other systems
 
@@ -114,7 +114,7 @@ Clear cache removes rebuildable children while durable Review history remains. C
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed that opening a pull request moves it to the top of the Visited pull requests column with a fresh open time (#94, #109, #120, #95, #96). Settings → Data & recovery describes the manual actions only; retention removing records with sessions is source behavior and has no visible copy to check.
+- Opening a pull request moved it to the top of the Visited column. Retention and skipped-record diagnostics were not checked live.
 - The skipped-record Diagnostic needs a corrupted Review file and was not live-checked.
 - Confirm that the collapsed column preference is shared across workspaces in the running app; the live pass did not switch workspace.
 - Confirm the visible error and retry path for unreadable Config, Local data, Cache, Logs, and Diagnostics.
@@ -122,4 +122,4 @@ Clear cache removes rebuildable children while durable Review history remains. C
 - Confirm which local paths and error details remain visible in the app Logs panel and which are redacted in Review activity.
 - Confirm startup presentation after interrupted atomic writes and preparation-journal recovery.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`; local session retention from `ed32b718` (#474); pull request session retention from `6fd0fbf6` (#478).
+Baseline drafted from Patchdesk application source commit `3100615`.

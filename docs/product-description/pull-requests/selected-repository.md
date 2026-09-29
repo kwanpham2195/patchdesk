@@ -53,27 +53,27 @@ If the watchlist is empty, the picker disappears and the Pull requests screen us
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | The active profile owns the watchlist and its per-profile Selected repository preference. | A profile switch invalidates the old repository scope and resolves the new profile's choice after reload. |
-| Pull request and Review state | The picker selects repository scope, not a Pull request or Review. | Existing row or Review state is not reused under the new repository. |
-| GitHub permissions and merge readiness | Selection does not require merge permission. | Permission failures belong to the repository read; they do not make an unwatched repository selectable. |
-| Network, local tool, and Insight provider availability | The picker and saved preference are local. Loading rows still needs GitHub access. | A failed read preserves the local selection and reports the repository read outcome; Insights do not run. |
-| Input path: mouse, keyboard, or desktop menu | Mouse and keyboard can open the same repository picker; Pull requests navigation can also be reached from the desktop menu. | The selected identity and reset behavior are the same for every input path. |
+| Variant                                                | Before the action runs                                                                                                      | While the action runs                                                                                     |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | The active profile owns the watchlist and its per-profile Selected repository preference.                                   | A profile switch invalidates the old repository scope and resolves the new profile's choice after reload. |
+| Pull request and Review state                          | The picker selects repository scope, not a Pull request or Review.                                                          | Existing row or Review state is not reused under the new repository.                                      |
+| GitHub permissions and merge readiness                 | Selection does not require merge permission.                                                                                | Permission failures belong to the repository read; they do not make an unwatched repository selectable.   |
+| Network, local tool, and Insight provider availability | The picker and saved preference are local. Loading rows still needs GitHub access.                                          | A failed read preserves the local selection and reports the repository read outcome; Insights do not run. |
+| Input path: mouse, keyboard, or desktop menu           | Mouse and keyboard can open the same repository picker; Pull requests navigation can also be reached from the desktop menu. | The selected identity and reset behavior are the same for every input path.                               |
 
 Changing repository scope does not carry over labels or a page token, but it does carry the state filter, page size, and Awaiting review from you preference.
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Closing the picker without a choice leaves the current selection unchanged. | There is no repository-read Stop control; the loading read settles or is superseded. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Clean navigation proceeds. A profile switch uses the normal profile-switch guard. | Navigation does not turn old rows into new scope; a successful profile switch resets the screen. |
-| Start another action or request a refresh | Opening a row or refreshing acts on the current repository. | A newer repository choice owns the request; an older response cannot replace it. Refresh uses the latest request. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | A saved selection can still be displayed without a successful current read. | The read reports authentication, forbidden, rate-limit, or temporary failure for the selected repository. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | The per-profile selection is local view state and can be restored after relaunch. | In-flight rows and filter state are not durable operation work; the next load resolves from saved preferences and the current watchlist. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A repository choice does not pin a Pull request revision. | Remote changes affect row freshness and actions, not which watched repository is selected. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus leaving the picker without a selection has no effect. | Focus loss does not change the selected identity or cancel its read. |
+| Event                                                                                                 | Before the action runs                                                            | While the action runs                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Closing the picker without a choice leaves the current selection unchanged.       | There is no repository-read Stop control; the loading read settles or is superseded.                                                     |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Clean navigation proceeds. A profile switch uses the normal profile-switch guard. | Navigation does not turn old rows into new scope; a successful profile switch resets the screen.                                         |
+| Start another action or request a refresh                                                             | Opening a row or refreshing acts on the current repository.                       | A newer repository choice owns the request; an older response cannot replace it. Refresh uses the latest request.                        |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | A saved selection can still be displayed without a successful current read.       | The read reports authentication, forbidden, rate-limit, or temporary failure for the selected repository.                                |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | The per-profile selection is local view state and can be restored after relaunch. | In-flight rows and filter state are not durable operation work; the next load resolves from saved preferences and the current watchlist. |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A repository choice does not pin a Pull request revision.                         | Remote changes affect row freshness and actions, not which watched repository is selected.                                               |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus leaving the picker without a selection has no effect.                       | Focus loss does not change the selected identity or cancel its read.                                                                     |
 
 After a failed or superseded read, the active scope remains the last requested watched repository. A removed repository is repaired by watchlist reconciliation rather than sent to the server as an invalid target.
 
@@ -110,9 +110,7 @@ After a failed or superseded read, the active scope remains the last requested w
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed that a profile with one watched repository shows the picker. Trigger truncation, the empty-watchlist setup card, and opening a Visited row from a different repository were not checkable with that profile.
-- Confirm picker focus and the visible loading transition when changing between two watched repositories.
-- Confirm the exact restore when a selected repository is removed in Settings while Pull requests is visible.
-- Confirm whether a failed new-repository read should retain the requested picker value or visibly revert to the previous confirmed value.
+- A live pass showed the picker with one watched repository; it could not test truncation, empty-watchlist setup, or opening a Visited row from another repository.
+- Confirm picker focus, loading between repositories, selection after removal in Settings, and the visible choice after a failed read.
 
 Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.

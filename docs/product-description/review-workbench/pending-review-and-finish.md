@@ -119,11 +119,7 @@ When an Analysis Finding action fails, its error remains with that Finding. Retr
 
 ## Open questions and verification
 
-- Not checked live on 2026-09-14: every step past arming the inline composer. No Review in the workspace had a pending review, and creating one is a GitHub write.
-- Confirm focus, scroll, wrapping, and error presentation in Finish review at narrow window sizes.
-- Confirm that the armed Discard state reads as destructive at a glance: Confirm discard uses the destructive button style, while the unarmed Discard review is a ghost button.
-- Confirm the user-visible Start a review behavior from the header when there are no inline comments.
-- Confirm app close and quit behavior while a pending-review command is in flight.
-- Confirm how GitHub permission restrictions for Approve and Request changes are explained before or after submission.
+- No live pass went beyond arming the inline composer; creating a pending review writes to GitHub.
+- Confirm focus, scroll, wrapping, and errors in a narrow Finish review; destructive Discard styling; header Start a review with no comments; close during a write; and permission errors for Approve and Request changes.
 
 Baseline drafted from Patchdesk application source commit `3100615`; verified against `c9bf65db`, with live checks from the 2026-09-14 pass and affected-screen render checks on 2026-09-21.

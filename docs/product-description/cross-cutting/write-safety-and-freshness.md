@@ -54,25 +54,25 @@ The [pending-review and Finish review flow](../review-workbench/pending-review-a
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | The active profile and configured GitHub identity scope the Review and permission check. | A profile switch cannot adopt a pending write or receipt from another profile. |
-| Pull request and Review state | Freshness, represented revision, open or terminal state, and pending-review state decide eligibility. | A changed head, base, patch, or remote state prevents stale adoption. |
-| GitHub permissions and merge readiness | Read permission and write permission are separate. Merge readiness is a narrower precondition for merge. | GitHub rejects or changes readiness; Patchdesk settles from the authoritative response, not an optimistic control state. |
-| Network, local tool, and Insight provider availability | Reads may show stored evidence without a provider; writes need GitHub and the action's local prerequisites. | Network uncertainty becomes recovery, while local or provider failures remain the owning feature's typed failure. |
-| Input path: mouse, keyboard, or desktop menu | Visible buttons, keyboard commands, and supported menus reach the same write owner. | Input path cannot bypass the write gate, lock, or outcome classification. |
+| Variant                                                | Before the action runs                                                                                      | While the action runs                                                                                                    |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Workspace profile and GitHub account                   | The active profile and configured GitHub identity scope the Review and permission check.                    | A profile switch cannot adopt a pending write or receipt from another profile.                                           |
+| Pull request and Review state                          | Freshness, represented revision, open or terminal state, and pending-review state decide eligibility.       | A changed head, base, patch, or remote state prevents stale adoption.                                                    |
+| GitHub permissions and merge readiness                 | Read permission and write permission are separate. Merge readiness is a narrower precondition for merge.    | GitHub rejects or changes readiness; Patchdesk settles from the authoritative response, not an optimistic control state. |
+| Network, local tool, and Insight provider availability | Reads may show stored evidence without a provider; writes need GitHub and the action's local prerequisites. | Network uncertainty becomes recovery, while local or provider failures remain the owning feature's typed failure.        |
+| Input path: mouse, keyboard, or desktop menu           | Visible buttons, keyboard commands, and supported menus reach the same write owner.                         | Input path cannot bypass the write gate, lock, or outcome classification.                                                |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Canceling an unsubmitted dialog leaves GitHub unchanged. | A GitHub write has no generic Stop; its pending or recovery state must settle. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Readable stale evidence can be left. | Write-pending blocks navigation; feature-local reads and Insights follow their own narrower rules. |
-| Start another action or request a refresh | A new refresh can establish newer proof before another write. | Conflicting writers wait or refuse under the Review coordinator; an old response cannot settle a newer request. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | A prerequisite failure refuses the write before GitHub is called. | Confirmed failure and outcome unknown are separate; unknown keeps the write locked for reconciliation. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | No write exists before admission. | A pending GitHub write blocks close where the navigation owner can enforce it; durable intent survives renderer loss. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A new observation can remove write eligibility. | Changed revision, terminal state, or pending node prevents adoption of a mixed result. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus loss does not submit a draft. | Focus loss does not cancel or confirm a GitHub write. |
+| Event                                                                                                 | Before the action runs                                            | While the action runs                                                                                                 |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Canceling an unsubmitted dialog leaves GitHub unchanged.          | A GitHub write has no generic Stop; its pending or recovery state must settle.                                        |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Readable stale evidence can be left.                              | Write-pending blocks navigation; feature-local reads and Insights follow their own narrower rules.                    |
+| Start another action or request a refresh                                                             | A new refresh can establish newer proof before another write.     | Conflicting writers wait or refuse under the Review coordinator; an old response cannot settle a newer request.       |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | A prerequisite failure refuses the write before GitHub is called. | Confirmed failure and outcome unknown are separate; unknown keeps the write locked for reconciliation.                |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | No write exists before admission.                                 | A pending GitHub write blocks close where the navigation owner can enforce it; durable intent survives renderer loss. |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A new observation can remove write eligibility.                   | Changed revision, terminal state, or pending node prevents adoption of a mixed result.                                |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus loss does not submit a draft.                               | Focus loss does not cancel or confirm a GitHub write.                                                                 |
 
 ## Interactions with other systems
 
@@ -107,7 +107,7 @@ The [pending-review and Finish review flow](../review-workbench/pending-review-a
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live desktop verification is pending.
 - Confirm the exact disabled or hidden control for each stale, terminal, forbidden, and outcome-unknown state.
 - Confirm the visible navigation and window-close guard while each supported GitHub write is pending.
 - Confirm the reconciliation copy after an uncertain comment, pending-review, metadata, or merge outcome.

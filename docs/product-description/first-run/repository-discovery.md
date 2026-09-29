@@ -64,10 +64,8 @@ If the write fails, the previously saved roots are kept and the reason appears b
 | Workspace profile and GitHub account                   | Discovery uses the active profile's saved roots and repository watchlist. The GitHub account identifies later Pull requests reads, not local scanning. | A profile save or switch can replace the roots and candidate set; a pending scan still belongs to the saved profile snapshot that started it.    |
 | Pull request and Review state                          | Candidates have no Pull request or Review state yet. A watched row supplies repository scope for later listing.                                        | Adding a repository creates no Review session; removing one does not delete durable Review history.                                              |
 | GitHub permissions and merge readiness                 | Discovery reads local Git metadata and does not require merge permission.                                                                              | Permission and merge readiness have no effect on the local scan or checkbox mutation; later GitHub reads can still fail.                         |
-| Network, local tool, and Insight provider availability | The scan needs the local `find` and `git` commands through Patchdesk. Insight providers are unrelated.                                                 | A command timeout or route failure produces a scan error; an Insight run never starts, and a successful local scan does not prove GitHub access. |
+| Network, local tool, and Insight provider availability | The scan needs the local `find` and `git` commands through Patchdesk.                                                                                  | A command timeout or route failure produces a scan error; an Insight run never starts, and a successful local scan does not prove GitHub access. |
 | Input path: mouse, keyboard, or desktop menu           | Roots can be typed, chosen with the folder picker, or reached through Settings navigation.                                                             | Checkbox and commit actions have the same result regardless of mouse or keyboard input.                                                          |
-
-Changing a root replaces its saved value as soon as the row commits, and the previous scan result is replaced by the new root's. The scan never follows text that has not committed.
 
 ## Cancel and interrupt
 
@@ -79,9 +77,7 @@ Changing a root replaces its saved value as soon as the row commits, and the pre
 | GitHub, the network, a local tool, or an Insight provider fails or times out                          | No remote GitHub call is needed to discover a local origin. A missing or unusable local command can make the scan return no usable candidates. | A route/parser failure shows the `Repository scan failed` alert. A row mutation failure stays inline and does not roll back other rows.                    |
 | Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Closing keeps the saved roots and watchlist and asks nothing.                                                                                  | Scan status and optimistic row state are disposable. A saved mutation may finish before close only if the normal navigation/close guard permits it.        |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | Local discovery does not inspect a pull request or represented revision. Existing Review records are not targets of the scan.                  | A watchlist change can affect the next Pull requests request, but never rewrites a Review's represented revision or pending review.                        |
-| macOS focus, a file or folder picker, or another input path takes control                             | The folder picker returns one selected absolute path or no change. Focus returns to the root row after a normal return.                        | Focus loss does not cancel scanning or a watchlist mutation. The picker cannot select a repository directly; it only changes the root draft.               |
-
-After a failed scan, the saved root and prior watchlist remain. After a failed row mutation, only that row shows the error and can be tried again. A root whose save was rejected keeps the previously saved list and reports the reason beneath the rows.
+| macOS focus, a file or folder picker, or another input path takes control                             | The folder picker returns one selected absolute path or no change. Focus returns to the root row after a normal return.                        | Focus loss does not cancel either action. The picker cannot select a repository directly; it only changes the root draft.                                  |
 
 ## Interactions with other systems
 
@@ -93,7 +89,7 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 
 **GitHub permissions and write authority.** Parsing a remote origin does not prove GitHub permission. Checking a row writes local watchlist configuration, not GitHub. Pull requests and Reviews perform their own access and freshness checks later.
 
-**Network, local tools, and Insight providers.** The main process scans with bounded local `find` and `git config` commands. The renderer receives only validated host, owner, repository, and absolute local path values. Insight providers do not participate.
+**Network, local tools, and Insight providers.** The main process scans with bounded local `find` and `git config` commands. The renderer receives only validated host, owner, repository, and absolute local path values.
 
 **Concurrent operations and locking.** Root scans are bounded concurrently. Repository mutations use per-repository pending guards, while profile/config writes use their own serialization. A slow row does not block a different row. Each watchlist write names its workspace, so a checkbox used while a workspace switch loads changes the workspace still on screen.
 
@@ -101,26 +97,22 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 
 **Preferences, keyboard commands, and desktop integration.** The section is reachable through the shared Settings overlay and supports the native folder picker. The saved profile drives subsequent Pull requests requests after workspace reload.
 
-**Supported input and accessibility limits.** Mouse and keyboard controls are in scope, including checkbox activation and folder selection. Touch, pen, and screen-reader behavior are outside the supported product surface.
+**Supported input and accessibility limits.** Mouse and keyboard controls are in scope, including checkbox activation and folder selection.
 
 ## Edge cases
 
-- A new root is scanned as soon as the row commits; there is no state in which a root waits for a separate save.
-- A saved root with no matching candidates reports zero found rather than showing an empty unlabeled checklist.
 - Discovery skips watched repositories from its suggestion response, then merges watched entries back into the UI so they remain visible and checked.
-- A watched repository with no recorded local path appears outside the current roots.
 - A watched repository whose local path is outside every saved root appears in the outside-roots group and can still be removed.
 - Only origins matching the supported `https://host/owner/repo` or `git@host:owner/repo` forms, with an optional `.git` suffix, become candidates.
 - Invalid hosts, owners, repository names, or local paths are skipped from the candidate list rather than displayed as partial rows.
 - Duplicate origins and duplicate repository identities are collapsed; a repository already watched is not suggested twice.
 - The finder searches for `.git` directories only to depth four under each root. Repositories deeper than that are not found by this scan.
 - Multiple roots are grouped in saved order using directory-boundary containment. A duplicate or nested match belongs to the first matching root.
-- Each saved root reports a ready or failed scan outcome. A failed root retains watched rows but does not show unverified discovery candidates.
 - A watched row's local path is the discovered checkout path when it is added; changing the root later does not rewrite that path automatically.
 
 ## Open questions and verification
 
-- A read-only live pass on 2026-09-14 saw a saved folder report `2 repositories found · 1 watched` with matching checkbox states in Settings → Workspace. The zero-found, scan-failed, and multi-root cases were not reachable without adding a folder.
+- A saved folder can show `2 repositories found · 1 watched` with matching checkboxes. Zero-found, scan-failed, and multi-root cases still need live checks.
 - Confirm the exact folder-picker focus return and where focus lands after a root is saved.
 - Confirm the live desktop presentation and recovery timing when one of several roots fails.
 - Confirm the intended behavior when a watched repository's checkout is moved or its remote origin changes after it was saved.

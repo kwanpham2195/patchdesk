@@ -74,25 +74,25 @@ After an explicit Discard, the draft guard clears and the requested destination 
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | The active profile names the loaded destination and scopes its workbench position. | Switching workspace clears the old workbench and returns to Pull requests; late focus or load results cannot target the old profile. |
-| Pull request and Review state | Pull requests and one keyed Review workbench are the destinations; Review position is per Review. | Revision or terminal changes alter workbench controls, not the destination key; a pending write still blocks leaving. |
-| GitHub permissions and merge readiness | Navigation and Settings do not need GitHub write permission. | A pending GitHub write blocks navigation and close regardless of merge readiness. |
-| Network, local tool, and Insight provider availability | Stored destinations and view positions can restore offline; content loading may fail separately. | A load failure shows its owner’s Retry while focus remains within the current surface. |
-| Input path: mouse, keyboard, or desktop menu | Visible buttons, keyboard commands, titlebar actions, and native menus share owners and guards. | No input path bypasses the write-pending, draft, focus-return, or window-close rules. |
+| Variant                                                | Before the action runs                                                                            | While the action runs                                                                                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Workspace profile and GitHub account                   | The active profile names the loaded destination and scopes its workbench position.                | Switching workspace clears the old workbench and returns to Pull requests; late focus or load results cannot target the old profile. |
+| Pull request and Review state                          | Pull requests and one keyed Review workbench are the destinations; Review position is per Review. | Revision or terminal changes alter workbench controls, not the destination key; a pending write still blocks leaving.                |
+| GitHub permissions and merge readiness                 | Navigation and Settings do not need GitHub write permission.                                      | A pending GitHub write blocks navigation and close regardless of merge readiness.                                                    |
+| Network, local tool, and Insight provider availability | Stored destinations and view positions can restore offline; content loading may fail separately.  | A load failure shows its owner’s Retry while focus remains within the current surface.                                               |
+| Input path: mouse, keyboard, or desktop menu           | Visible buttons, keyboard commands, titlebar actions, and native menus share owners and guards.   | No input path bypasses the write-pending, draft, focus-return, or window-close rules.                                                |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Escape closes a clean dialog or leaves a clean menu without changing destination. | Escape cannot bypass a write-pending or draft guard; feature Stop controls affect only their own task. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Clean navigation proceeds and focuses the new destination. | An unsaved Review draft parks navigation behind an explicit choice; write-pending blocks it until settlement. |
-| Start another action or request a refresh | A command can request a new destination or action through its owner. | Overlapping tracked actions share busy feedback, while feature owners keep their own controls and focus. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | A failed load stays on its owning screen with Retry where available. | Failure changes the feature state, not the destination guard; unknown writes still require reconciliation. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Settings always closes and restores opener focus; a clean close exits. | An unsaved Review draft requires Discard or Stay; a pending GitHub write requires Wait and prevents close. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A target change may remove an action but does not move focus by itself. | The owning Review state can disable writes or require refresh while navigation remains guarded. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus movement alone does not activate a command. | Focus loss does not prove cancellation; native picker return or window-close handling settles through its owner. |
+| Event                                                                                                 | Before the action runs                                                            | While the action runs                                                                                            |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Escape closes a clean dialog or leaves a clean menu without changing destination. | Escape cannot bypass a write-pending or draft guard; feature Stop controls affect only their own task.           |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Clean navigation proceeds and focuses the new destination.                        | An unsaved Review draft parks navigation behind an explicit choice; write-pending blocks it until settlement.    |
+| Start another action or request a refresh                                                             | A command can request a new destination or action through its owner.              | Overlapping tracked actions share busy feedback, while feature owners keep their own controls and focus.         |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | A failed load stays on its owning screen with Retry where available.              | Failure changes the feature state, not the destination guard; unknown writes still require reconciliation.       |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Settings always closes and restores opener focus; a clean close exits.            | An unsaved Review draft requires Discard or Stay; a pending GitHub write requires Wait and prevents close.       |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A target change may remove an action but does not move focus by itself.           | The owning Review state can disable writes or require refresh while navigation remains guarded.                  |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus movement alone does not activate a command.                                 | Focus loss does not prove cancellation; native picker return or window-close handling settles through its owner. |
 
 ## Interactions with other systems
 
@@ -132,7 +132,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed Skip to content moving focus into the main content, the toggle's alternating accessible name, the collapsed column surviving a renderer reload, and focus returning to the Settings button when Settings closes. Two things it saw have since changed: the column was then one Tab stop per row, 14 in that workspace, and the toggle had no tooltip. Both are fixed; neither the single Tab stop nor the tooltip has been observed live.
+- Skip to content moved focus into the main region; Settings returned focus to its opener. The column’s single Tab stop and toggle tooltip still need a live check.
 - Heading focus after a destination change was not confirmed live: the check ran in a hidden CDP window where animation frames do not run. [Navigation and overlays](../foundations/navigation-and-overlays.md#open-questions-and-verification) records the result and the latent defect [B-14](../bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change).
 - Confirmed live and by an independent review: the Visited pull requests row for the Review on screen is announced as the current page and does nothing on Enter. That is intended and test-covered. The Tab cost recorded as [UX-01](../ux-friction.md#ux-01-tab-walks-every-visited-row-before-the-screen) is fixed; that row is now the column's single Tab stop.
 - Confirm in the running app that the collapsed column preference carries across a workspace switch; the live pass did not switch workspace.
@@ -144,4 +144,4 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - Live verification of desktop notifications is pending: a macOS banner cannot be observed over CDP, so the log lines are the evidence.
 - In the current source only the Review workbench reports navigation state, and only as write-pending or clear. Confirm which surface, if any, still reports an unsaved draft to this guard.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, including the removal of the workspace draft guard.
+Baseline drafted from Patchdesk application source commit `3100615`.

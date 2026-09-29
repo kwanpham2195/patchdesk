@@ -56,25 +56,25 @@ An outcome-unknown write settles only after explicit reconciliation proves the r
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | Profile and GitHub identity determine which local and remote errors are relevant. | A late error from another profile cannot replace the active profile's state. |
-| Pull request and Review state | Revision, terminal, pending-review, and Insight state determine whether retry is safe. | A remote change can become Revision changed, Terminal, or recovery instead of a generic failure. |
-| GitHub permissions and merge readiness | Read and write permission failures are separate from merge readiness. | Confirmed rejection keeps its feature action bounded; unknown write outcome pauses related writes. |
-| Network, local tool, and Insight provider availability | Missing dependencies can prevent start and show corrective guidance. | Timeout, process exit, malformed output, and status-read failure use distinct recovery paths. |
-| Input path: mouse, keyboard, or desktop menu | Visible Retry, Reload, and Check GitHub again controls share their owning action. | Keyboard and menu commands cannot bypass pending, lock, or reconciliation state. |
+| Variant                                                | Before the action runs                                                                 | While the action runs                                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | Profile and GitHub identity determine which local and remote errors are relevant.      | A late error from another profile cannot replace the active profile's state.                       |
+| Pull request and Review state                          | Revision, terminal, pending-review, and Insight state determine whether retry is safe. | A remote change can become Revision changed, Terminal, or recovery instead of a generic failure.   |
+| GitHub permissions and merge readiness                 | Read and write permission failures are separate from merge readiness.                  | Confirmed rejection keeps its feature action bounded; unknown write outcome pauses related writes. |
+| Network, local tool, and Insight provider availability | Missing dependencies can prevent start and show corrective guidance.                   | Timeout, process exit, malformed output, and status-read failure use distinct recovery paths.      |
+| Input path: mouse, keyboard, or desktop menu           | Visible Retry, Reload, and Check GitHub again controls share their owning action.      | Keyboard and menu commands cannot bypass pending, lock, or reconciliation state.                   |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Closing a clean error or unconfirmed dialog records no new action. | Stop requests cancellation only where supported; it does not turn an unknown write into failure. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | A retryable error can be left without retrying. | Write-pending or dirty state blocks navigation; feature-local reads may settle after navigation but cannot update a new scope. |
-| Start another action or request a refresh | A new explicit retry or refresh owns a new request. | Newer request identity prevents an older error or result from overwriting current state. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | A prerequisite error prevents the action from starting. | The owner distinguishes confirmed failure, unavailable read, cancellation, and unknown outcome. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Readable prior state and durable recovery records remain. | Journals and intent records recover durable work; renderer-only error banners may disappear after reload. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A changed target can remove retry eligibility before a new attempt. | The owner refuses stale adoption and asks for refresh, reconciliation, or a new Review. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus loss without activating Retry has no effect. | Focus loss does not classify an in-flight operation as failed or cancelled. |
+| Event                                                                                                 | Before the action runs                                              | While the action runs                                                                                                          |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Cancel, Stop, or Escape                                                                               | Closing a clean error or unconfirmed dialog records no new action.  | Stop requests cancellation only where supported; it does not turn an unknown write into failure.                               |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | A retryable error can be left without retrying.                     | Write-pending or dirty state blocks navigation; feature-local reads may settle after navigation but cannot update a new scope. |
+| Start another action or request a refresh                                                             | A new explicit retry or refresh owns a new request.                 | Newer request identity prevents an older error or result from overwriting current state.                                       |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | A prerequisite error prevents the action from starting.             | The owner distinguishes confirmed failure, unavailable read, cancellation, and unknown outcome.                                |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Readable prior state and durable recovery records remain.           | Journals and intent records recover durable work; renderer-only error banners may disappear after reload.                      |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A changed target can remove retry eligibility before a new attempt. | The owner refuses stale adoption and asks for refresh, reconciliation, or a new Review.                                        |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus loss without activating Retry has no effect.                  | Focus loss does not classify an in-flight operation as failed or cancelled.                                                    |
 
 ## Interactions with other systems
 
@@ -111,11 +111,11 @@ An outcome-unknown write settles only after explicit reconciliation proves the r
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed one prerequisite refusal: an Author of `bad name` showed `No spaces or quotes` under the field, kept the value, and changed nothing in the listing. The absence of a request was inferred from the screen; no network panel was open.
+- An invalid Author showed `No spaces or quotes` and kept the listing unchanged; the network request was not inspected.
 - The quiet launch restore and `Too long alongside the other filters` were not live-checked.
 - Confirm the exact error copy and next action for each repository, Review, Settings, Insight, and write failure surface.
 - Confirm which error banners survive a renderer reload and which are intentionally renderer-only.
 - Confirm focus placement after Retry, Reload, Check GitHub again, and recovery-required states.
 - Confirm the visible distinction between an unavailable read and an empty successful result in every screen that has both.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.
+Baseline drafted from Patchdesk application source commit `3100615`.

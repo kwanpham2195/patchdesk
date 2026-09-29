@@ -158,15 +158,9 @@ A Finding that no longer maps to the represented diff, or an Add while the pendi
 
 ## Open questions and verification
 
-- The 2026-09-14 live pass confirmed the empty state and the disabled Generate analysis on a merged Review. No retained Analysis existed in the live workspace, so the verdict card, severity grouping, Verification checklist, and Finding actions were checked from source only.
-- [UX-10](../ux-friction.md#ux-10-verification-ticks-are-lost-without-warning) is resolved by saving the ticks ([#352](https://github.com/kwanpham2195/patchdesk/issues/352)); the earlier "Ticks are not saved" wording is gone. On 2026-09-24 a tick on disposable pull request #345 survived a switch to Brief and a renderer reload, seen over CDP.
-- Fixed: a merged or closed Review draws neither Generate analysis nor Regenerate and no longer shows a reason line, since no disabled control remains to explain. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
-- Confirm evidence expansion, highlighted range, row focus after Open in Analysis, and error placement.
-- Confirm whether a non-empty dismissal reason is guarded when switching Insights readers or leaving the Review.
-- Confirm progress and Cancel presentation for provider timeout versus explicit cancellation.
-- A 2026-09-23 Analysis on disposable pull request #345 kept its verdict summary separate from What changed. Both Findings put the symptom and cause in their explanations and had no separate scenario or impact text. This pass does not establish that every model run will follow the wording guidance.
-- Confirm the outdated Analysis wording against a retained Analysis on a moved revision.
-- Confirmed on a disposable pull request (2026-09-23, #341): a single-line suggestion kept its range and GitHub offered Apply suggestion and Add suggestion to batch after the review was submitted. The multi-line range is still proved only by adapter tests ([ANALYSIS-03-B to ANALYSIS-03-D](../verification/insights-and-cross-cutting.md#review-workbenchanalysismd)).
-- An empty replacement would read as a deletion suggestion. Patchdesk refuses one until GitHub's behavior for it is proved on a disposable pull request.
+- A live pass confirmed the empty state and disabled Generate analysis on a merged Review. Reader layout, Finding actions, and outdated results still need live checks.
+- Confirm evidence expansion, highlighted range, Open in Analysis focus, dismissal navigation, provider cancellation and timeout, and error placement.
+- A disposable pull request confirmed separate verdict and change summaries. Another confirmed GitHub's single-line suggestion action after submission; multi-line ranges are covered only by [adapter tests](../verification/insights-and-cross-cutting.md#review-workbenchanalysismd). Model wording may vary.
+- Empty replacements remain refused until GitHub deletion-suggestion behavior is verified.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`. The Finding suggestion behavior is revised against `c47a211f`: its Suggested change panel and Add suggestion to review label were seen in the running app on a fixture Analysis, and on 2026-09-23 a single-line suggestion was published from a real Analysis on disposable pull request #341, submitted, and rendered by GitHub with Apply suggestion. The verification rules and the multi-line range are read from source and tests and are not live-verified. The Analysis prose limits are revised against `0add29ea`; a new Analysis on disposable pull request #345 was retained and viewed over CDP on 2026-09-23. Terminology guidance is revised from the current source change and is not live-verified.

@@ -65,27 +65,27 @@ A successful watchlist change reloads the workspace so the saved profile, root g
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | The profile selects the host, expected login, roots, owners, rules, and watchlist. | The requested profile does not become active until selection and reload succeed. |
-| Pull request and Review state | Profiles scope Reviews and sessions. A workbench from one profile is not reused under another. | Applying a profile switch clears the loaded workbench and returns to Pull requests. |
-| GitHub permissions and merge readiness | Profile creation needs a valid login format, not current repository permission. Discovery reads local remotes. | Later GitHub reads expose authentication or permission failures under the selected profile. |
-| Network, local tool, and Insight provider availability | First-run and Reviewing as use `gh`; root discovery uses local `git` metadata. Insight providers are unrelated. | Tool or storage failure keeps the previous confirmed profile or watchlist state and shows a retryable error. |
-| Input path: mouse, keyboard, or desktop menu | The titlebar and Settings selectors share the same profile-switch owner. | The latest entry point owns pending and failure feedback; input path does not change the selected target. |
+| Variant                                                | Before the action runs                                                                                         | While the action runs                                                                                        |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Workspace profile and GitHub account                   | The profile selects the host, expected login, roots, owners, rules, and watchlist.                             | The requested profile does not become active until selection and reload succeed.                             |
+| Pull request and Review state                          | Profiles scope Reviews and sessions. A workbench from one profile is not reused under another.                 | Applying a profile switch clears the loaded workbench and returns to Pull requests.                          |
+| GitHub permissions and merge readiness                 | Profile creation needs a valid login format, not current repository permission. Discovery reads local remotes. | Later GitHub reads expose authentication or permission failures under the selected profile.                  |
+| Network, local tool, and Insight provider availability | First-run and Reviewing as use `gh`; root discovery uses local `git` metadata.                                 | Tool or storage failure keeps the previous confirmed profile or watchlist state and shows a retryable error. |
+| Input path: mouse, keyboard, or desktop menu           | The titlebar and Settings selectors share the same profile-switch owner.                                       | The latest entry point owns pending and failure feedback; input path does not change the selected target.    |
 
 Profile identity is stable local configuration, not a credential snapshot. Patchdesk resolves the token from `gh` when a GitHub operation needs it and checks that the resolved account matches the profile.
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | There is nothing to cancel in profile editing: each control has already saved. Discovery has no side effect to cancel. | Profile and watchlist requests have no Stop control. A failure preserves prior confirmed state. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Navigation always proceeds; no profile draft guards switching or Settings close. | A second profile target can supersede an earlier response. Applying the winner returns to Pull requests. |
-| Start another action or request a refresh | Discovery, account re-check, and listing refresh are independent reads. | Config mutations serialize. Per-repository watchlist state prevents one row's result from settling another row, and each watchlist write names its workspace, so a switch in flight cannot redirect it. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | Missing or unauthenticated `gh` leaves first-run identity neutral and gives corrective copy. | Selection and save storage failures keep the previous active state. Discovery failure shows a scan error without changing the watchlist. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Settings closes without a question, because every control has saved itself. | Saved profile and active selection survive restart. Text typed but never committed is dropped. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Review changes do not alter profile configuration. Another app instance is normally prevented. | Watchlist or profile storage changed outside Patchdesk is not merged with the in-memory draft. The next reload becomes authoritative. |
-| macOS focus, a file or folder picker, or another input path takes control | The folder picker returns one path or no change. | Focus loss does not cancel save, selection, discovery, or watchlist mutation. |
+| Event                                                                                                 | Before the action runs                                                                                                 | While the action runs                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | There is nothing to cancel in profile editing: each control has already saved. Discovery has no side effect to cancel. | Profile and watchlist requests have no Stop control. A failure preserves prior confirmed state.                                                                                                         |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Navigation always proceeds; no profile draft guards switching or Settings close.                                       | A second profile target can supersede an earlier response. Applying the winner returns to Pull requests.                                                                                                |
+| Start another action or request a refresh                                                             | Discovery, account re-check, and listing refresh are independent reads.                                                | Config mutations serialize. Per-repository watchlist state prevents one row's result from settling another row, and each watchlist write names its workspace, so a switch in flight cannot redirect it. |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Missing or unauthenticated `gh` leaves first-run identity neutral and gives corrective copy.                           | Selection and save storage failures keep the previous active state. Discovery failure shows a scan error without changing the watchlist.                                                                |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Settings closes without a question, because every control has saved itself.                                            | Saved profile and active selection survive restart. Text typed but never committed is dropped.                                                                                                          |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Review changes do not alter profile configuration. Another app instance is normally prevented.                         | Watchlist or profile storage changed outside Patchdesk is not merged with the in-memory draft. The next reload becomes authoritative.                                                                   |
+| macOS focus, a file or folder picker, or another input path takes control                             | The folder picker returns one path or no change.                                                                       | Focus loss does not cancel save, selection, discovery, or watchlist mutation.                                                                                                                           |
 
 After a switch failure, the prior profile remains active. After a rejected field save, that field keeps the value the server last confirmed and reports the reason. After a watchlist failure, the affected repository remains in its confirmed watched or unwatched state.
 
@@ -113,19 +113,16 @@ After a switch failure, the prior profile remains active. After a rejected field
 
 - No authenticated account means the detected Default profile remains ephemeral and is not auto-selected on disk; the first account chosen on Pull requests writes it.
 - First-run detection is memoized for the process, but the explicit Re-check action forces a new account probe.
-- An empty watchlist produces a successful empty Pull requests state and makes no repository GitHub call.
 - A watched repository can have no local path or can sit outside all saved workspace roots.
-- Discovery can find repositories without watching them; no suggestion enters the watchlist automatically.
 - Duplicate repository identity is rejected even if local paths differ.
 - Two workspaces created with the same name get distinct identifiers: the derived slug, then `-2`, `-3`, and so on.
 - Updating a watched repository's local path does not change its GitHub identity.
-- Profile field updates preserve the watchlist; watchlist updates preserve other profile fields.
 - A repository checkbox used before a workspace has loaded reports `Workspace still loading.` and sends nothing.
 - The first save on a fresh install, before any workspace is stored, creates the workspace with the label Default when no name was given.
 
 ## Open questions and verification
 
-- A read-only live pass on 2026-09-14 could not check this document: the workspace-switch timing, New workspace, and first-run detection all need a workspace change or an empty workspace.
+- Workspace-switch timing, New workspace, and first-run detection still need a live check with a workspace change or empty workspace.
 - Confirm the exact first-run transition when `gh auth login` completes while Patchdesk remains open and the maintainer presses Re-check.
 - Confirm profile-switch focus and titlebar feedback from both the header selector and Settings selector.
 - Confirm root grouping and watched-outside-roots presentation against real repositories, including a repository with no saved local path.

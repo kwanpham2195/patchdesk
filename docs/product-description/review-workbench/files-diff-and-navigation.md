@@ -154,15 +154,9 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 
 ## Open questions and verification
 
-- Confirmed live on 2026-09-14: the navigator's first tab reads Browse; Commits and Threads show counts, including 0; the Merge conflicts notice reads as quoted above, names both branches, and sits above an ordinary diff; the All files and Selected buttons appear on a one-file pull request; "Already at the last hunk." appears at the hunk boundary with All files chosen; restoring a reloaded renderer returned to the same Review and tab.
-- Confirmed live and by an independent review: with Selected chosen, `]` did nothing and showed no message; with All files chosen it showed "Already at the last hunk." The gating is intended and test-covered. The live pass saw Selected on a freshly opened Review only because that machine's Personal profile had stored Selected; the default is All files. The silence recorded as [UX-02](../ux-friction.md#ux-02-keyboard-navigation-does-nothing-in-selected-with-no-hint) is fixed: Selected now answers with "Keyboard navigation works in All files." That hint is not yet live-verified.
-- Suspected defect, confirmed live and by an independent review: in the live workspace, Context read Context unavailable with the `github_read` reason on every Review checked and no Markdown file offered Preview, because the Personal profile's represented-review worktrees were missing from disk. Nothing rebuilds a missing worktree, and the reason names a GitHub read rather than the missing local checkout. See [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
-- Not checked live: Finding badges, Finding cards, Open in Analysis, and the arrival from Analysis, because no Review in the workspace had a current Analysis.
-- Suspected defect: Finding badges count every mapped Finding of the current Analysis, including a dismissed one, so a file keeps its count after its Finding is dismissed; its Finding card may stay as well. Confirm against a Review with a dismissed mapped Finding. See [B-21](../bug-triage.md#b-21-dismissed-findings-still-add-to-finding-badges).
-- Not checked live: the absence of the Merge conflicts notice when a merge is blocked for another reason. The workspace had no such pull request; the claim rests on source.
-- Confirm virtualized scroll settlement, focus, sticky headers, and the timing of the plain-text fallback.
-- Confirm the exact desktop presentation and focus for an unresolved-thread target that materializes through the virtualized portal.
-- Confirm which navigator and scroll values survive app quit, not only renderer reload.
-- Confirm the visible transition from full diff to commit diff when the selected commit touches no files currently in view.
+- Live checks confirmed Browse, Commits, Threads, Merge conflicts, All files and Selected, the last-hunk boundary, and restoration after renderer reload. Selected mode correctly disables hunk keys; its new hint still needs a live check. See [UX-02](../ux-friction.md#ux-02-keyboard-navigation-does-nothing-in-selected-with-no-hint).
+- Missing represented worktrees leave Context and Preview unavailable with a misleading `github_read` reason; see [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
+- Finding badges may still count dismissed Findings; confirm with a dismissed mapped Finding. See [B-21](../bug-triage.md#b-21-dismissed-findings-still-add-to-finding-badges).
+- Confirm Finding navigation, merge-conflict notice absence for other blocks, virtualized scroll and focus, unresolved-thread targets, state after quit, and empty commit slices live.
 
 Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.
