@@ -38,6 +38,7 @@ export type SettingsModalProps = {
   readonly profileSwitchState?: ProfileSwitchState;
   readonly onProfileSwitch?: (
     profileId: string,
+    returnFocus: HTMLElement | null,
   ) => Promise<ProfileSwitchResult>;
   readonly opener?: HTMLElement | null | undefined;
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;

@@ -45,7 +45,10 @@ type WorkspaceProfileSectionProps = {
   readonly onWorkspaceReload: () => Promise<void>;
   readonly profileSwitchState: ProfileSwitchState | undefined;
   readonly onProfileSwitch:
-    | ((profileId: string) => Promise<ProfileSwitchResult>)
+    | ((
+        profileId: string,
+        returnFocus: HTMLElement | null,
+      ) => Promise<ProfileSwitchResult>)
     | undefined;
 };
 
@@ -72,6 +75,8 @@ export function WorkspaceProfileSection({
     onWorkspaceReload,
     onProfileSwitch,
   });
+
+  const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // The dialog is mounted only while open: that discards a cancelled draft,
   // and keeps its `GET /v1/environment` probe off until the user asks for it.
@@ -131,10 +136,15 @@ export function WorkspaceProfileSection({
                 value: profile.id,
               }))}
               onValueChange={(value) => {
-                if (value !== null) editor.selectProfile(value);
+                if (value !== null)
+                  editor.selectProfile(value, profileTriggerRef.current);
               }}
             >
-              <SelectTrigger id="active-profile" aria-label="Active workspace">
+              <SelectTrigger
+                ref={profileTriggerRef}
+                id="active-profile"
+                aria-label="Active workspace"
+              >
                 <SelectValue placeholder="Select a workspace">
                   {editor.persisted.label}
                 </SelectValue>

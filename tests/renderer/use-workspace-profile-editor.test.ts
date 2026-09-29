@@ -189,7 +189,7 @@ describe("useWorkspaceProfileEditor", () => {
     await waitFor(() =>
       expect(result.current.status.label.state).toBe("saving"),
     );
-    act(() => result.current.selectProfile("other"));
+    act(() => result.current.selectProfile("other", null));
     await waitFor(() => expect(result.current.persisted.id).toBe("other"));
 
     // The save for the profile just left answers now: its body belongs to

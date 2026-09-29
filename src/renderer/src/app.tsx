@@ -273,12 +273,13 @@ function AppContent({
   // A workspace switch or Clear local review data waits here behind the leave-confirmation (#635).
   const [parkedLeave, setParkedLeave] = useState<{
     readonly settle: (leave: boolean) => void;
+    readonly returnFocus: HTMLElement | null;
   }>();
   const confirmLeaveReview = useCallback(
-    (): Promise<boolean> =>
+    (returnFocus: HTMLElement | null = null): Promise<boolean> =>
       navigationState === "clear"
         ? Promise.resolve(true)
-        : new Promise((settle) => setParkedLeave({ settle })),
+        : new Promise((settle) => setParkedLeave({ settle, returnFocus })),
     [navigationState],
   );
   const [visitedReloadKey, setVisitedReloadKey] = useState(0);
@@ -381,6 +382,11 @@ function AppContent({
     refreshDashboard,
   });
 
+  // Stay hands focus to the workspace switcher that asked, since its chosen option is gone by then (#657).
+  const [stayReturnFocus, setStayReturnFocus] = useState<HTMLElement | null>(
+    null,
+  );
+
   const shell = (
     content: React.ReactNode,
     next: AppDestination = destination,
@@ -410,8 +416,8 @@ function AppContent({
                 onOpenPullRequest: openPullRequestFromPalette,
               }
             : {})}
-          onProfileSwitch={(id) => {
-            void confirmLeaveReview().then((leave) => {
+          onProfileSwitch={(id, returnFocus) => {
+            void confirmLeaveReview(returnFocus).then((leave) => {
               if (leave) void switchProfile(id, "header");
             });
           }}
@@ -444,8 +450,8 @@ function AppContent({
         unsavedProfile={unsavedProfile}
         onWorkspaceReload={loadWorkspace}
         profileSwitchState={profileSwitchState}
-        onProfileSwitch={async (id) =>
-          (await confirmLeaveReview())
+        onProfileSwitch={async (id, returnFocus) =>
+          (await confirmLeaveReview(returnFocus))
             ? switchProfile(id, "settings")
             : "obsolete"
         }
@@ -473,6 +479,7 @@ function AppContent({
         }
         onOpenChange={(open) => {
           if (open || navigationState === "write_pending") return;
+          setStayReturnFocus(parkedLeave?.returnFocus ?? null);
           setPendingDestination(undefined);
           setParkedLocalOpen(undefined);
           setParkedPullRequest(undefined);
@@ -480,7 +487,9 @@ function AppContent({
           setParkedLeave(undefined);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          finalFocus={stayReturnFocus === null ? true : () => stayReturnFocus}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {navigationState === "write_pending"
@@ -503,6 +512,7 @@ function AppContent({
               <AlertDialogAction
                 variant="destructive"
                 onClick={() => {
+                  setStayReturnFocus(null);
                   if (parkedLeave !== undefined) {
                     // Leaving before the switch or cleanup runs, so one that fails cannot leave the draft on screen unguarded.
                     performNavigation({ kind: "dashboard" });
