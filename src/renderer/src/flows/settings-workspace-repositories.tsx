@@ -1,5 +1,5 @@
 import { FolderOpen, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { parseGitHubOwner, parseGitHubRepoName } from "../../../domain/ids";
 import { sameRepositoryIdentity } from "../../../domain/repository-identity";
@@ -189,6 +189,9 @@ export function AddWatchedRepositoryForm({
   readonly watchlist: WatchedRepositoriesHook;
 }): React.JSX.Element {
   const [value, setValue] = useState("");
+  // First-run setup and Settings → Workspace can both mount this form, so a fixed
+  // id would label only the first input in the document.
+  const inputId = useId();
   const submit = async (): Promise<void> => {
     if (await watchlist.add(value)) setValue("");
   };
@@ -200,10 +203,10 @@ export function AddWatchedRepositoryForm({
       }}
     >
       <Field>
-        <FieldLabel htmlFor="watch-repository">Add a repository</FieldLabel>
+        <FieldLabel htmlFor={inputId}>Add a repository</FieldLabel>
         <div className="flex min-w-0 items-center gap-2">
           <Input
-            id="watch-repository"
+            id={inputId}
             value={value}
             placeholder="owner/repo"
             autoComplete="off"
