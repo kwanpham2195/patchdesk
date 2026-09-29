@@ -690,6 +690,36 @@ describe("usePendingReviewActions dialog", () => {
     });
   });
 
+  it("drops the summary of an unknown Submit once Check GitHub again finds no pending review", async () => {
+    installPendingDouble({
+      commandFailure: () => failure({ error: "timeout" }, 504),
+      recover: () => ({ pendingReview: { state: "none" } }),
+      load: () => projection({ pendingReview: pending("none") }),
+    });
+    const { result, rerender, patch } = renderPendingReview(pendingWorkbench());
+    await act(async () => {
+      await panelOf(result).onSubmit("APPROVE", "Maybe sent");
+    });
+    expect(panelOf(result).finishDraft).toEqual({
+      summary: "Maybe sent",
+      event: "APPROVE",
+    });
+    // The flow applies the recovery projection the hook patched in.
+    const locked = patch.mock.calls.at(-1)?.[0].pendingReview;
+    if (locked?.state !== "recovery_required")
+      throw new Error("expected the unknown Submit to require recovery");
+    rerender({
+      workbench: projection({ pendingReview: locked }),
+      refreshing: false,
+    });
+
+    await act(async () => {
+      await panelOf(result).onCheckGitHubAgain();
+    });
+
+    expect(panelOf(result).finishDraft).toBeUndefined();
+  });
+
   it("drops a kept summary on Confirm discard", async () => {
     installPendingDouble({
       command: () => ({ pendingReview: { state: "none" } }),
