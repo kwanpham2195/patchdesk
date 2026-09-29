@@ -345,8 +345,9 @@ describe("MCP read tool refusals", () => {
       reviewId,
       type: "analysis",
     });
+    const status = await call(client, "get_review_status", { reviewId });
 
-    for (const refused of [feedback, insight])
+    for (const refused of [feedback, insight, status])
       expect(refused).toMatchObject({
         isError: true,
         content: {

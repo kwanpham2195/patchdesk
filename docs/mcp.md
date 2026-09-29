@@ -277,6 +277,9 @@ error code and a sentence the agent can relay to you;
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
   - `cursor` (string, optional, at most 64 characters): The nextCursor of the previous page.
 
+- **get_review_status** (read-only): Read where a local Review stands in one call. Returns the Review's current session (sessionId, headSha, baseSha, patchHash); preparedSessionId while a session your refresh_review prepared waits for the maintainer's Refresh, absent once their Refresh has moved the Review to it; for each Insight (analysis, walkthrough, brief) the status and requestId get_insight reports; localDraftCounts, how many of the maintainer's drafts of each kind (finding, note) are in each state get_feedback reports (current, unchanged, changed, needs_attention, applied); and appliedFindings, the Findings whose suggestion the maintainer's Apply wrote to your checkout, each with findingId, title, path, startLine and line (new-side lines of the session it was drafted on), and appliedAt. It returns no Insight result and no draft text; get_insight and get_feedback read those. Read-only: it takes no snapshot and does not mark the Review opened. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it; a pull request Review is refused not_applicable.
+  - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
+
 <!-- END AUTOMATED TOOLS -->
 
 `pnpm docs:mcp-tools` writes this list from `src/mcp/tool-manifest.ts`.

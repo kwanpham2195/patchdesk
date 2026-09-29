@@ -84,6 +84,10 @@ function recordingTools(reply: McpToolReply = emptyListing()) {
       schema: mcpToolManifest.get_feedback.inputSchema,
       call: record("get_feedback"),
     },
+    get_review_status: {
+      schema: mcpToolManifest.get_review_status.inputSchema,
+      call: record("get_review_status"),
+    },
     run_insight: {
       schema: mcpToolManifest.run_insight.inputSchema,
       call: record("run_insight"),

@@ -26,11 +26,12 @@ import {
 import { sameInsightRevision } from "../domain/insight-record";
 import {
   isMaintainerNote,
+  localDraftFeedbackState,
   parseMaintainerNoteText,
   projectLocalDraft,
   type LocalDraft,
   type LocalDraftEntry,
-  type LocalDraftState,
+  type LocalDraftFeedbackState,
   type MaintainerNote,
 } from "../domain/local-draft";
 import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
@@ -149,7 +150,7 @@ type WithoutState<Entry> = Entry extends unknown ? Omit<Entry, "state"> : never;
  * verified suggestion.
  */
 type LocalFeedbackEntry = WithoutState<LocalDraftEntry> & {
-  readonly state: LocalDraftState | "current";
+  readonly state: LocalDraftFeedbackState;
   readonly inline: boolean;
   readonly comment?: string;
   readonly suggestion?: string;
@@ -543,9 +544,11 @@ function projectFeedbackEntry(
   inline: (entry: LocalDraftEntry) => boolean,
 ): LocalFeedbackEntry {
   const projected = projectLocalDraft(draft);
-  // A draft carries no state until the Review first moves to a new session, so it was written on the current one.
-  const state: LocalFeedbackEntry["state"] = projected.state ?? "current";
-  const entry = { ...projected, state, inline: inline(projected) };
+  const entry = {
+    ...projected,
+    state: localDraftFeedbackState(draft),
+    inline: inline(projected),
+  };
   if (isMaintainerNote(draft)) return entry;
   return {
     ...entry,

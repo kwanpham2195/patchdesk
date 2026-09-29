@@ -302,6 +302,16 @@ export function localDraftState(
     : draft.carry?.state;
 }
 
+/** A draft's state as the coding agent reads it (ADR 0052 `get_feedback`): `current` for one written on the Review's current session. */
+export type LocalDraftFeedbackState = LocalDraftState | "current";
+
+/** A draft carries no state until the Review first moves to a new session, so a stateless draft was written on the current one. */
+export function localDraftFeedbackState(
+  draft: LocalDraft,
+): LocalDraftFeedbackState {
+  return localDraftState(draft) ?? "current";
+}
+
 export function projectLocalDraft(draft: LocalDraft): LocalDraftEntry {
   const view: LocalPatchView = draft.view ?? "combined";
   const location = {
