@@ -113,6 +113,9 @@ export function useReviewDiffFind<T>({
   const inputRef = useRef<HTMLInputElement>(null);
   const opener = useRef<Element | null>(null);
   const pending = useRef<PendingFindJump | undefined>(undefined);
+  // The match the last step asked for, until its scroll lands. A second Enter
+  // steps from here; `landed` still names the previous match until then.
+  const requestedIndex = useRef<number | undefined>(undefined);
   const matches = useMemo(
     () => (open ? findDiffMatches(files, query) : []),
     [files, open, query],
@@ -188,6 +191,7 @@ export function useReviewDiffFind<T>({
           if (stale()) return;
           activePathRef.current = path;
           latest.current.onActiveFileChange?.(path);
+          requestedIndex.current = undefined;
           setLanded(jump.match);
           operation.report(
             findNavigationStatus(
@@ -214,6 +218,7 @@ export function useReviewDiffFind<T>({
   if (!enabled || !open) return undefined;
   const cancelJump = (): void => {
     pending.current = undefined;
+    requestedIndex.current = undefined;
     runner.current?.start(() => () => undefined);
   };
   return {
@@ -230,13 +235,15 @@ export function useReviewDiffFind<T>({
       const current = latest.current;
       const target = adjacentFindMatch(
         current.matches.length,
-        current.landedIndex === -1 ? undefined : current.landedIndex,
+        requestedIndex.current ??
+          (current.landedIndex === -1 ? undefined : current.landedIndex),
         direction,
       );
       const match =
         target === undefined ? undefined : current.matches[target.index];
       if (target === undefined || match === undefined) return;
       cancelJump();
+      requestedIndex.current = target.index;
       pending.current = {
         match,
         index: target.index,
