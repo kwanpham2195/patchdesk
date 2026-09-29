@@ -11,7 +11,6 @@ const profile = {
   label: "Fixture",
   githubHost: "github.com",
   ghAccount: "fixture",
-  workspaceRoots: [],
   rulePaths: [],
   repos: [],
 };

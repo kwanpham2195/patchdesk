@@ -103,7 +103,6 @@ export function contextPackFixture(
             label: "Fixture",
             githubHost: must(parseGitHubHost("github.com")),
             ghAccount: "fixture",
-            workspaceRoots: [],
             rulePaths: [],
             repos: [],
           });

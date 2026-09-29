@@ -71,7 +71,6 @@ export function CreateWorkspaceDialog({
         label,
         githubHost: account.host,
         ghAccount: account.login,
-        workspaceRoots: EMPTY_PATHS,
         rulePaths: EMPTY_PATHS,
       });
       await onCreated();
@@ -101,7 +100,7 @@ export function CreateWorkspaceDialog({
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
-            One GitHub account and the folders scanned for it.
+            One GitHub account and the repositories it watches.
           </DialogDescription>
         </DialogHeader>
         {error === undefined ? null : (

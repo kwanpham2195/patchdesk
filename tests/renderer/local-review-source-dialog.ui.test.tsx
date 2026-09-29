@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
@@ -265,5 +266,71 @@ describe("Open a local review", () => {
     await user.click(screen.getByRole("button", { name: "Open review" }));
 
     expect(opened).toEqual([{ kind: "commit", commit: "abcdef12" }]);
+  });
+});
+
+describe("Open a local review without a checkout", () => {
+  /** Stands in for the workspace reload: once a checkout is saved, the repository has one. */
+  function ActionWithoutCheckout({
+    choose,
+  }: {
+    readonly choose: () => Promise<void>;
+  }): React.JSX.Element {
+    const [chosen, setChosen] = useState(false);
+    return (
+      <OpenLocalReviewAction
+        repositoryLabel="octo-org/patchdesk"
+        checkoutsPath={checkoutsPath}
+        branchesPath={branchesPath}
+        {...(chosen
+          ? {}
+          : {
+              onChooseCheckout: async () => {
+                await choose();
+                setChosen(true);
+                return true;
+              },
+            })}
+        onOpen={async () => undefined}
+      />
+    );
+  }
+
+  it("asks for the checkout first and offers the sources once it is saved", async () => {
+    install([configured]);
+    const user = userEvent.setup();
+    const choose = vi.fn(async () => undefined);
+    render(<ActionWithoutCheckout choose={choose} />);
+
+    await user.click(screen.getByRole("button", { name: "Local review" }));
+    expect(screen.queryByRole("combobox", { name: "Base branch" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Choose checkout" }));
+
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByRole("combobox", { name: "Base branch" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps asking and shows why when the chosen folder is refused", async () => {
+    install([configured]);
+    const user = userEvent.setup();
+    render(
+      <ActionWithoutCheckout
+        choose={async () => {
+          throw new Error("That checkout's origin is not octo-org/patchdesk.");
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Local review" }));
+    await user.click(screen.getByRole("button", { name: "Choose checkout" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(await within(dialog).findByRole("alert")).toBeTruthy();
+    expect(
+      within(dialog).getByRole("button", { name: "Choose checkout" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Base branch" })).toBeNull();
   });
 });

@@ -89,7 +89,6 @@ export function WorkspaceProfileSection({
     <div className="flex flex-col gap-6">
       <ReviewingAsCard editor={editor} probe={probe} />
       <RepositoriesCard
-        editor={editor}
         dashboard={dashboard}
         onWorkspaceReload={onWorkspaceReload}
       />

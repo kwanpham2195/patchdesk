@@ -218,8 +218,11 @@ export function registerDashboardRoutes(
     response(context, await dashboard.updateWatchlist(await jsonBody(context))),
   );
 
-  app.get("/v1/watchlist/suggestions", async (context) =>
-    response(context, await dashboard.discoverWorkspaceRepos()),
+  app.put("/v1/watchlist/checkout", async (context) =>
+    response(
+      context,
+      await dashboard.chooseWatchedRepoCheckout(await jsonBody(context)),
+    ),
   );
   // One per local API start, which is one per launch: that is the window its
   // ready answer is held for.

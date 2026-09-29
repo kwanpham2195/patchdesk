@@ -11,6 +11,8 @@ import type { NotificationSettings } from "../../src/domain/contracts";
 import type { RawJsonValue } from "../../src/domain/json";
 import { registerDashboardRoutes } from "../../src/main/routes/dashboard-routes";
 import { DashboardController } from "../../src/services/dashboard-controller";
+import { CommandRunner } from "../../src/adapters/github/command-runner";
+import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 
 const roots: string[] = [];
 afterEach(async () =>
@@ -26,7 +28,7 @@ async function routeFixture() {
   const dashboard = new DashboardController(
     new ProfileStore(paths),
     new FakeGitHubAdapter({}),
-    undefined,
+    createReadOnlyGitExecutor(new CommandRunner()),
     paths,
   );
   const saved: NotificationSettings[] = [];

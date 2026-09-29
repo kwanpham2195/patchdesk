@@ -42,6 +42,7 @@ import {
 import { OpenLocalReviewAction } from "../components/local-review-source-dialog";
 import { localBranchesPath } from "../local-branches";
 import { localCheckoutsPath } from "../local-checkouts";
+import { chooseRepositoryCheckout } from "../watched-repository-checkout";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
@@ -249,10 +250,8 @@ export function InboxFlow({
       </div>
     );
 
-  const localRepository = dashboard.profile.repos?.find(
-    (repo) =>
-      (repo.localPath ?? "") !== "" &&
-      sameRepositoryIdentity(repo, selectedRepository),
+  const localRepository = dashboard.profile.repos?.find((repo) =>
+    sameRepositoryIdentity(repo, selectedRepository),
   );
   const localReviewAction =
     localRepository === undefined ? undefined : (
@@ -265,6 +264,18 @@ export function InboxFlow({
         branchesPath={(checkout) =>
           localBranchesPath(dashboard.profile.id, localRepository, checkout)
         }
+        {...((localRepository.localPath ?? "") === ""
+          ? {
+              onChooseCheckout: async () => {
+                const chosen = await chooseRepositoryCheckout(
+                  dashboard.profile.id,
+                  localRepository,
+                );
+                if (chosen) await onWorkspaceReload();
+                return chosen;
+              },
+            }
+          : {})}
         onOpen={(source) =>
           reviewOpening.openLocalReview(localRepository, source)
         }

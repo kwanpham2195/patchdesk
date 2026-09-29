@@ -170,7 +170,6 @@ export async function localApplyHarness(
         label: "ACME",
         githubHost: "github.com",
         ghAccount: "fixture",
-        workspaceRoots: [],
         rulePaths: [],
         repos: [{ ...repository, localPath: repositoryPath }],
       }),

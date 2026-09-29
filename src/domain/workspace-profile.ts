@@ -33,7 +33,6 @@ export type WorkspaceProfileConfig = {
   readonly label: string;
   readonly githubHost: GitHubHost;
   readonly ghAccount: string;
-  readonly workspaceRoots: ReadonlyArray<AbsolutePath>;
   readonly rulePaths: ReadonlyArray<AbsolutePath>;
   readonly repos: ReadonlyArray<WatchedRepoConfig>;
   readonly analysisMergePolicy?: AnalysisMergePolicy;
@@ -60,11 +59,12 @@ const workspaceProfileConfigSchema = v.strictObject({
   label: v.pipe(v.string(), v.minLength(1)),
   githubHost: v.string(),
   ghAccount: v.pipe(v.string(), v.minLength(1)),
-  workspaceRoots: v.array(v.string()),
   rulePaths: v.array(v.string()),
   repos: v.array(rawWatchedRepoSchema),
   // Retired 2026-09-03; accepted so a profile saved before then still loads, never read.
   ownerFilters: v.optional(v.unknown()),
+  // Retired 2026-09-29 (#641) with checkout discovery; accepted so a v0.0.12 profile still loads, never read.
+  workspaceRoots: v.optional(v.unknown()),
   analysisMergePolicy: v.optional(
     v.picklist(["advisory", "require_acknowledgement", "block"]),
   ),
@@ -82,17 +82,12 @@ export function parseWorkspaceProfileConfig(
   const id = parseWorkspaceProfileId(parsed.output.id);
   const githubHost = parseGitHubHost(parsed.output.githubHost);
   const ghAccount = parseGitHubLogin(parsed.output.ghAccount);
-  const workspaceRoots = parseAll(
-    parsed.output.workspaceRoots,
-    parseAbsolutePath,
-  );
   const rulePaths = parseAll(parsed.output.rulePaths, parseAbsolutePath);
   const repos = parseAll(parsed.output.repos, parseWatchedRepo);
   if (
     id._tag === "err" ||
     githubHost._tag === "err" ||
     ghAccount._tag === "err" ||
-    workspaceRoots._tag === "err" ||
     rulePaths._tag === "err" ||
     repos._tag === "err"
   ) {
@@ -104,7 +99,6 @@ export function parseWorkspaceProfileConfig(
     label: parsed.output.label,
     githubHost: githubHost.value,
     ghAccount: ghAccount.value,
-    workspaceRoots: workspaceRoots.value,
     rulePaths: rulePaths.value,
     repos: repos.value,
     analysisMergePolicy:

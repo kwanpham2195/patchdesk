@@ -231,7 +231,6 @@ async function setup(
       label: "ACME",
       githubHost: "github.com",
       ghAccount: "fixture",
-      workspaceRoots: [],
       rulePaths: [],
       repos:
         options.localPath === undefined

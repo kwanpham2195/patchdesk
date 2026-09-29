@@ -25,7 +25,6 @@ import type {
   GitHubReader,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
-import type { OriginFinder } from "../services/dashboard-service";
 import type { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import type { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import type { ReviewDiagnosticService } from "../services/review-diagnostic-service";
@@ -112,7 +111,6 @@ export type LocalApiConfiguration = {
   readonly storageManagement?: StorageManagementSeam;
   /** Test-only merge seam. Production gets this capability from the main-process adapter. */
   readonly mergeWriter?: GitHubMergeWriter;
-  readonly origins?: OriginFinder;
   readonly paths?: PatchdeskPaths;
   /** Main-process-only source of currently enabled Pi models. */
   readonly modelCatalog?: PiRuntimeModelCatalog;

@@ -59,7 +59,7 @@ What a Review's patch is computed from: a pull request, a checkout's current bra
 _Avoid_: Diff mode, target, local PR
 
 **Checkout**:
-A working copy of a profile repository that a local Review reads: the configured checkout (the profile's `localPath`), or a linked worktree `git worktree list` names from it, never Patchdesk's own cache worktrees. A local Review names its checkout only when it is not the configured one, and each checkout keys its own Review (#489, ADR 0050).
+A working copy of a profile repository that a local Review reads: the configured checkout (the profile's `localPath`, a folder the maintainer chose with Choose checkout; Patchdesk never searches for one, ADR 0053), or a linked worktree `git worktree list` names from it, never Patchdesk's own cache worktrees. A local Review names its checkout only when it is not the configured one, and each checkout keys its own Review (#489, ADR 0050).
 _Avoid_: Clone, workspace, local path
 
 **Shared Review**:

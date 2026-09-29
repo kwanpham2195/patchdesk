@@ -1,3 +1,14 @@
+import { execFileSync } from "node:child_process";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
@@ -15,18 +26,14 @@ import {
   type PatchdeskConfigFile,
 } from "../../src/domain/contracts";
 import {
-  parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
 } from "../../src/domain/ids";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { err, ok, type Result } from "../../src/domain/result";
-import {
-  DashboardService,
-  type OriginFinder,
-} from "../../src/services/dashboard-service";
 import { DashboardController } from "../../src/services/dashboard-controller";
+import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import {
   addWatchedRepo,
   detectDefaultWorkspaceProfile,
@@ -34,16 +41,20 @@ import {
   removeWatchedRepo,
   updateWatchedRepoPath,
 } from "../../src/services/profile-service";
-import { mkdtemp, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
 
 class FakeCommandExecutor implements CommandExecutor {
+  readonly requests: CommandRequest[] = [];
+
   constructor(private readonly execution: CommandExecution) {}
 
-  execute(_input: CommandRequest): Promise<CommandExecution> {
+  execute(input: CommandRequest): Promise<CommandExecution> {
+    this.requests.push(input);
     return Promise.resolve(this.execution);
   }
 }
+
+/** Real git, for the checkout a maintainer chooses. */
+const git = createReadOnlyGitExecutor(new CommandRunner());
 
 /** What `gh auth status --json hosts` answers when `octocat` is the active github.com account. */
 const activeGitHubAccount: CommandExecution = {
@@ -64,11 +75,6 @@ const activeGitHubAccount: CommandExecution = {
   stderr: "",
 };
 
-const expectedHomeWorkspaceRoot = (() => {
-  const parsed = parseAbsolutePath(homedir());
-  return parsed._tag === "ok" ? [parsed.value] : [];
-})();
-
 function mustParse<T, E>(
   result:
     | { readonly _tag: "ok"; readonly value: T }
@@ -84,7 +90,6 @@ const profile = mustParse(
     label: "ACME",
     githubHost: "github.com",
     ghAccount: "octo-dev",
-    workspaceRoots: ["/workspace"],
     rulePaths: [],
     repos: [
       {
@@ -103,7 +108,7 @@ const ids = {
 };
 
 describe("profile settings and dashboard services", () => {
-  it("persists editable workspace roots and rule paths while preserving watched repositories", async () => {
+  it("persists edited rule paths while preserving watched repositories", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-profile-editor-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
@@ -112,7 +117,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
       );
 
@@ -121,14 +126,12 @@ describe("profile settings and dashboard services", () => {
         label: "ACME updated",
         githubHost: "github.com",
         ghAccount: "patchdesk",
-        workspaceRoots: ["/workspace/acme", "/workspace/platform"],
         rulePaths: ["/workspace/acme/AGENTS.md"],
       });
 
       expect(saved).toMatchObject({
         _tag: "ok",
         value: {
-          workspaceRoots: ["/workspace/acme", "/workspace/platform"],
           rulePaths: ["/workspace/acme/AGENTS.md"],
           repos: [{ repo: "patchdesk" }],
         },
@@ -154,7 +157,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
       );
 
@@ -162,7 +165,6 @@ describe("profile settings and dashboard services", () => {
         label: "ACME",
         githubHost: "github.com",
         ghAccount: "patchdesk",
-        workspaceRoots: [],
         rulePaths: [],
       });
 
@@ -185,7 +187,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         new ProfileStore(paths),
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
       );
 
@@ -193,7 +195,6 @@ describe("profile settings and dashboard services", () => {
         label: "···",
         githubHost: "github.com",
         ghAccount: "patchdesk",
-        workspaceRoots: [],
         rulePaths: [],
       });
 
@@ -206,11 +207,11 @@ describe("profile settings and dashboard services", () => {
     }
   });
 
-  it("derives the first-run default profile from the machine's active gh account and home directory", async () => {
-    const commands = new CommandRunner(
-      new FakeCommandExecutor(activeGitHubAccount),
+  it("derives the first-run default profile from the active gh account without reading any folder", async () => {
+    const executor = new FakeCommandExecutor(activeGitHubAccount);
+    const detected = await detectDefaultWorkspaceProfile(
+      new CommandRunner(executor),
     );
-    const detected = await detectDefaultWorkspaceProfile(commands);
     expect(detected).toMatchObject({
       _tag: "ok",
       value: {
@@ -218,10 +219,13 @@ describe("profile settings and dashboard services", () => {
         label: "Default",
         githubHost: "github.com",
         ghAccount: "octocat",
-        workspaceRoots: expectedHomeWorkspaceRoot,
         repos: [],
       },
     });
+    if (detected._tag === "err") return;
+    // Walking the home directory made macOS ask for Music and Photos access (#641).
+    expect(detected.value).not.toHaveProperty("workspaceRoots");
+    expect(executor.requests.map((request) => request.argv[0])).toEqual(["gh"]);
   });
 
   it("falls back to an empty ghAccount, never a fabricated identity, when gh detection fails", async () => {
@@ -252,7 +256,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
         commands,
       );
@@ -287,7 +291,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
         commands,
       );
@@ -332,7 +336,7 @@ describe("profile settings and dashboard services", () => {
     });
   });
 
-  it("maintains an explicit watchlist without adding discovery suggestions", () => {
+  it("maintains an explicit watchlist", () => {
     const extra = {
       host: ids.host,
       owner: ids.owner,
@@ -379,7 +383,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
       );
       // The selected workspace is the other one, as it is for a toggle sent
@@ -389,12 +393,7 @@ describe("profile settings and dashboard services", () => {
       const updated = await controller.updateWatchlist({
         profileId: profile.id,
         add: [
-          {
-            host: "github.com",
-            owner: "octo-org",
-            repo: "new-repo",
-            localPath: "/workspace/new-repo",
-          },
+          { host: "github.com", owner: "octo-org", repo: "new-repo" },
           { host: "github.com", owner: "octo-org", repo: "other-repo" },
         ],
         remove: [{ host: "github.com", owner: "octo-org", repo: "patchdesk" }],
@@ -407,10 +406,7 @@ describe("profile settings and dashboard services", () => {
       expect(await store.load(profile.id)).toMatchObject({
         _tag: "ok",
         value: {
-          repos: [
-            { repo: "new-repo", localPath: "/workspace/new-repo" },
-            { repo: "other-repo" },
-          ],
+          repos: [{ repo: "new-repo" }, { repo: "other-repo" }],
         },
       });
       expect(await store.load(otherProfile.id)).toMatchObject({
@@ -435,7 +431,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
       );
 
@@ -467,7 +463,7 @@ describe("profile settings and dashboard services", () => {
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
-        undefined,
+        git,
         paths,
       );
 
@@ -475,12 +471,7 @@ describe("profile settings and dashboard services", () => {
         profileId: profile.id,
         add: [
           { host: "github.com", owner: "octo-org", repo: "new-repo" },
-          {
-            host: "github.com",
-            owner: "octo-org",
-            repo: "bad-path",
-            localPath: "relative/path",
-          },
+          { host: "github.com", owner: "octo org", repo: "bad-owner" },
         ],
         remove: [{ host: "github.com", owner: "octo-org", repo: "patchdesk" }],
       });
@@ -516,7 +507,7 @@ describe("profile settings and dashboard services", () => {
         // inboxForActiveProfile must return before reaching any member of
         // this fixture other than the one it deliberately throws from.
         { listMaintainerPullRequests } as never,
-        undefined,
+        git,
         paths,
       );
 
@@ -600,181 +591,167 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
   }
 }
 
-describe("dashboard service", () => {
-  it("keeps a failed root beside ready repositories", async () => {
-    const service = new DashboardService(
-      originFinder([
-        { root: "/failed", state: "failed", reason: "scan_failed" },
-        {
-          root: "/ready",
-          state: "ready",
-          origins: [
-            {
-              origin: "https://github.com/octo-org/discovered.git",
-              localPath: "/ready/discovered",
-            },
-          ],
+describe("workspace roots retired in #641", () => {
+  it("loads a v0.0.12 profile that lists workspaceRoots and stops writing the field", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-v0012-profile-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      await store.save(profile);
+      const file = paths.profileFile(profile.id);
+      const stored: unknown = JSON.parse(await readFile(file, "utf8"));
+      await writeFile(
+        file,
+        JSON.stringify({
+          ...(stored as object),
+          workspaceRoots: ["/Users/maintainer"],
+        }),
+      );
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        git,
+        paths,
+      );
+
+      expect(await controller.activeProfile()).toMatchObject({
+        _tag: "ok",
+        value: {
+          id: "acme",
+          repos: [{ repo: "patchdesk", localPath: "/workspace/patchdesk" }],
         },
-      ]),
-    );
-
-    expect(await service.discoverWorkspaceRepos(profile)).toEqual({
-      _tag: "ok",
-      value: [
-        { root: "/failed", state: "failed", reason: "scan_failed" },
-        {
-          root: "/ready",
-          state: "ready",
-          repositories: [
-            {
-              host: "github.com",
-              owner: "octo-org",
-              repo: "discovered",
-              localPath: "/ready/discovered",
-            },
-          ],
-        },
-      ],
-    });
-  });
-
-  it("returns an HTTP-success result when every root scan fails", async () => {
-    const service = new DashboardService(
-      originFinder([
-        { root: "/first", state: "failed", reason: "scan_failed" },
-        { root: "/second", state: "failed", reason: "scan_failed" },
-      ]),
-    );
-
-    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
-      _tag: "ok",
-      value: [
-        { root: "/first", state: "failed", reason: "scan_failed" },
-        { root: "/second", state: "failed", reason: "scan_failed" },
-      ],
-    });
-  });
-
-  it("lists watched repositories alongside unwatched ones", async () => {
-    const service = new DashboardService(
-      originFinder([
-        {
-          root: "/workspace",
-          state: "ready",
-          origins: [
-            {
-              origin: "git@github.com:octo-org/patchdesk.git",
-              localPath: "/workspace/patchdesk",
-            },
-          ],
-        },
-      ]),
-    );
-
-    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
-      _tag: "ok",
-      value: [
-        {
-          root: "/workspace",
-          state: "ready",
-          repositories: [
-            expect.objectContaining({
-              owner: "octo-org",
-              repo: "patchdesk",
-              localPath: "/workspace/patchdesk",
-            }),
-          ],
-        },
-      ],
-    });
-  });
-
-  it("skips invalid remote origins within a ready root", async () => {
-    const service = new DashboardService(
-      originFinder([
-        {
-          root: "/workspace",
-          state: "ready",
-          origins: [
-            {
-              origin: "ssh://example.invalid/not-github",
-              localPath: "/workspace/bad",
-            },
-          ],
-        },
-      ]),
-    );
-
-    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
-      _tag: "ok",
-      value: [{ root: "/workspace", state: "ready", repositories: [] }],
-    });
-  });
-
-  it("keeps the first root's repository when roots contain the same identity", async () => {
-    const service = new DashboardService(
-      originFinder([
-        {
-          root: "/outer",
-          state: "ready",
-          origins: [
-            {
-              origin: "https://github.com/octo-org/discovered.git",
-              localPath: "/outer/discovered",
-            },
-          ],
-        },
-        {
-          root: "/outer/nested",
-          state: "ready",
-          origins: [
-            {
-              origin: "git@github.com:octo-org/discovered.git",
-              localPath: "/outer/nested/discovered",
-            },
-          ],
-        },
-      ]),
-    );
-
-    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
-      _tag: "ok",
-      value: [
-        {
-          root: "/outer",
-          state: "ready",
-          repositories: [
-            {
-              host: "github.com",
-              owner: "octo-org",
-              repo: "discovered",
-              localPath: "/outer/discovered",
-            },
-          ],
-        },
-        { root: "/outer/nested", state: "ready", repositories: [] },
-      ],
-    });
-  });
-
-  it("retains an empty ready root", async () => {
-    const service = new DashboardService(
-      originFinder([{ root: "/empty", state: "ready", origins: [] }]),
-    );
-
-    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
-      _tag: "ok",
-      value: [{ root: "/empty", state: "ready", repositories: [] }],
-    });
+      });
+      await controller.saveProfile({
+        id: "acme",
+        label: "ACME renamed",
+        githubHost: "github.com",
+        ghAccount: "octo-dev",
+        rulePaths: [],
+      });
+      const rewritten: unknown = JSON.parse(await readFile(file, "utf8"));
+      expect(rewritten).toMatchObject({
+        label: "ACME renamed",
+        repos: [{ repo: "patchdesk", localPath: "/workspace/patchdesk" }],
+      });
+      expect(rewritten).not.toHaveProperty("workspaceRoots");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
-function originFinder(
-  results: Awaited<ReturnType<OriginFinder["find"]>>,
-): OriginFinder {
-  return {
-    async find() {
-      return results;
+describe("choosing a watched repository's checkout", () => {
+  it("saves the top-level of the chosen checkout for the workspace the request names", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-choose-checkout-`);
+    try {
+      const checkout = await gitCheckout(
+        root,
+        "https://github.com/octo-org/new-repo.git",
+      );
+      await mkdir(join(checkout, "src"));
+      const paths = PatchdeskPaths.forTest(join(root, "data"));
+      const store = new ProfileStore(paths);
+      await store.save(
+        mustParse(
+          parseWorkspaceProfileConfig({
+            ...profile,
+            repos: [
+              ...profile.repos,
+              { host: "github.com", owner: "octo-org", repo: "new-repo" },
+            ],
+          }),
+        ),
+      );
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        git,
+        paths,
+      );
+
+      const chosen = await controller.chooseWatchedRepoCheckout({
+        profileId: "acme",
+        host: "github.com",
+        owner: "octo-org",
+        repo: "new-repo",
+        localPath: join(checkout, "src"),
+      });
+
+      expect(chosen).toMatchObject({ _tag: "ok" });
+      expect(await store.load(profile.id)).toMatchObject({
+        _tag: "ok",
+        value: {
+          repos: [
+            { repo: "patchdesk", localPath: "/workspace/patchdesk" },
+            { repo: "new-repo", localPath: await realpath(checkout) },
+          ],
+        },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    {
+      name: "a checkout of another repository",
+      origin: "https://github.com/octo-org/other.git",
+      reason: "checkout_origin_mismatch",
     },
-  };
+    {
+      name: "a folder outside any checkout",
+      origin: undefined,
+      reason: "checkout_not_a_repository",
+    },
+  ])(
+    "refuses $name and keeps the saved checkout",
+    async ({ origin, reason }) => {
+      const root = await mkdtemp(`${tmpdir()}/patchdesk-refuse-checkout-`);
+      try {
+        const folder =
+          origin === undefined
+            ? join(root, "plain")
+            : await gitCheckout(root, origin);
+        if (origin === undefined) await mkdir(folder);
+        const paths = PatchdeskPaths.forTest(join(root, "data"));
+        const store = new ProfileStore(paths);
+        await store.save(profile);
+        const controller = new DashboardController(
+          store,
+          new FakeGitHubAdapter({}),
+          git,
+          paths,
+        );
+
+        const chosen = await controller.chooseWatchedRepoCheckout({
+          profileId: "acme",
+          host: "github.com",
+          owner: "octo-org",
+          repo: "patchdesk",
+          localPath: folder,
+        });
+
+        expect(chosen).toEqual({
+          _tag: "err",
+          error: { _tag: "DashboardControllerFailure", reason },
+        });
+        expect(await store.load(profile.id)).toMatchObject({
+          _tag: "ok",
+          value: {
+            repos: [{ repo: "patchdesk", localPath: "/workspace/patchdesk" }],
+          },
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+/** A git checkout under `root` whose `origin` is `origin`. */
+async function gitCheckout(root: string, origin: string): Promise<string> {
+  const checkout = join(root, "checkout");
+  execFileSync("git", ["init", "-q", checkout]);
+  execFileSync("git", ["-C", checkout, "remote", "add", "origin", origin]);
+  return checkout;
 }

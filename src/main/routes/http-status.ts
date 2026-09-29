@@ -121,6 +121,9 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["not_applicable", 409],
   // A text Change intent holding a credential-shaped value, which Patchdesk never stores.
   ["change_intent_sensitive", 400],
+  // A folder chosen as a watched repository's checkout: not in a git checkout, or its origin names another repository (#641).
+  ["checkout_not_a_repository", 400],
+  ["checkout_origin_mismatch", 400],
   ["overlapping", 409],
   ["path_refused", 409],
   ["file_changed", 409],

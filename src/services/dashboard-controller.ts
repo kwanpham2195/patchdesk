@@ -30,10 +30,6 @@ import type {
 } from "../domain/workspace-profile";
 import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
 import {
-  DashboardService,
-  type DiscoveredWorkspaceRootResult,
-} from "./dashboard-service";
-import {
   MaintainerInboxService,
   type InboxRepositoryRef,
   type MaintainerInbox,
@@ -45,14 +41,21 @@ import {
   detectDefaultWorkspaceProfile,
   ProfileSettingsService,
   removeWatchedRepo,
+  updateWatchedRepoPath,
 } from "./profile-service";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
-import type { OriginFinder } from "./dashboard-service";
+import { chosenRepositoryCheckout } from "./local-checkout";
+import type { GitReadExecutor } from "./review-worktree-service";
 
 export type DashboardControllerFailure = {
   readonly _tag: "DashboardControllerFailure";
-  readonly reason: "invalid_input" | "not_found" | "storage";
+  readonly reason:
+    | "invalid_input"
+    | "not_found"
+    | "storage"
+    | "checkout_not_a_repository"
+    | "checkout_origin_mismatch";
 };
 
 // This class is the main-process composition root: every schema below parses
@@ -68,11 +71,8 @@ const repoRefInputSchema = v.object({
   owner: v.unknown(),
   repo: v.unknown(),
 });
-const watchlistRepoInputSchema = v.object({
-  host: v.unknown(),
-  owner: v.unknown(),
-  repo: v.unknown(),
-  localPath: v.optional(v.unknown()),
+const watchedRepoCheckoutInputSchema = v.object({
+  localPath: v.unknown(),
 });
 const watchlistBatchInputSchema = v.object({
   add: v.pipe(v.array(v.unknown()), v.maxLength(1_000)),
@@ -90,13 +90,11 @@ const saveProfileInputSchema = v.object({
   label: v.string(),
   githubHost: v.unknown(),
   ghAccount: v.unknown(),
-  workspaceRoots: v.unknown(),
   rulePaths: v.unknown(),
 });
 /** Main-process composition root for the renderer's profile and dashboard actions. */
 export class DashboardController {
   private readonly settings: ProfileSettingsService;
-  private readonly dashboard: DashboardService;
   private readonly inbox: MaintainerInboxService;
   private readonly inboxRefresh: InboxRefreshCoordinator;
   /**
@@ -115,14 +113,14 @@ export class DashboardController {
   constructor(
     private readonly profiles: ProfileStore,
     github: GitHubReader,
-    origins?: OriginFinder,
+    /** Reads the folder a maintainer chooses as a watched repository's checkout. */
+    private readonly git: GitReadExecutor,
     paths: PatchdeskPaths = PatchdeskPaths.default(),
     private readonly commands: CommandRunner = new CommandRunner(),
     /** Optional: without it inbox rows carry no author avatar and fall back to initials. */
     avatars?: AvatarRailDependencies,
   ) {
     this.settings = new ProfileSettingsService(profiles);
-    this.dashboard = new DashboardService(origins);
     this.inbox = new MaintainerInboxService(
       github,
       new ReviewSessionStore(paths),
@@ -223,7 +221,6 @@ export class DashboardController {
       label: fields.label,
       githubHost: fields.githubHost,
       ghAccount: fields.ghAccount,
-      workspaceRoots: fields.workspaceRoots,
       rulePaths: fields.rulePaths,
       repos: current?.repos ?? [],
     });
@@ -373,7 +370,7 @@ export class DashboardController {
     if (profileId._tag === "err") return profileId;
     const additions: WatchedRepoConfig[] = [];
     for (const raw of parsed.output.add) {
-      const addition = watchedRepoToAdd(raw);
+      const addition = repoRef(raw);
       if (addition._tag === "err") return addition;
       additions.push(addition.value);
     }
@@ -399,23 +396,40 @@ export class DashboardController {
   }
 
   /**
-   * Scans the selected workspace's roots, not a named one: this is a read,
-   * so the worst a mid-switch request can do is list suggestions for the
-   * workspace being switched away from, which the reload already in flight
-   * replaces. The watchlist writes take a named workspace instead.
+   * Saves the checkout the maintainer chose for one watched repository of the
+   * workspace `profileId` names. The folder must sit in a git checkout whose
+   * `origin` is that repository; its top-level is what the profile keeps.
    */
-  async discoverWorkspaceRepos(): Promise<
-    Result<
-      ReadonlyArray<DiscoveredWorkspaceRootResult>,
-      DashboardControllerFailure
-    >
-  > {
-    const profile = await this.activeProfile();
+  async chooseWatchedRepoCheckout(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `PUT /v1/watchlist/checkout`; there is no earlier boundary to run it at.
+    input: unknown,
+  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
+    const parsed = v.safeParse(watchedRepoCheckoutInputSchema, input);
+    if (!parsed.success) return failure("invalid_input");
+    const profileId = watchlistProfileId(input);
+    if (profileId._tag === "err") return profileId;
+    const target = repoRef(input);
+    if (target._tag === "err") return target;
+    const folder = parseAbsolutePath(parsed.output.localPath);
+    if (folder._tag === "err") return failure("invalid_input");
+    const profile = await this.profileById(profileId.value);
     if (profile._tag === "err") return profile;
-    const discovered = await this.dashboard.discoverWorkspaceRepos(
-      profile.value,
+    if (!isWatchedRepository(profile.value, target.value))
+      return failure("not_found");
+    const checkout = await chosenRepositoryCheckout(
+      this.git,
+      target.value,
+      folder.value,
     );
-    return discovered._tag === "ok" ? discovered : failure("storage");
+    if (checkout._tag === "err") return failure(checkout.error.reason);
+    const updated = updateWatchedRepoPath(
+      profile.value,
+      target.value,
+      checkout.value,
+    );
+    if (updated._tag === "err") return failure("not_found");
+    const saved = await this.settings.saveProfile(updated.value);
+    return saved._tag === "ok" ? ok(updated.value) : failure("storage");
   }
 
   /** Resolves the workspace a request names, so the write cannot land in whichever workspace `activeProfile` happens to resolve to. */
@@ -495,21 +509,7 @@ function repoRef(
     ? ok({ host: host.value, owner: owner.value, repo: repo.value })
     : failure("invalid_input");
 }
-/** The workspace both watchlist writes name; required on `POST` and `DELETE /v1/watchlist` alike. */
-function watchedRepoToAdd(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for one `add` entry of `PUT /v1/watchlist`; there is no earlier boundary to run it at.
-  input: unknown,
-): Result<WatchedRepoConfig, DashboardControllerFailure> {
-  const parsed = v.safeParse(watchlistRepoInputSchema, input);
-  if (!parsed.success) return failure("invalid_input");
-  const ref = repoRef(input);
-  if (ref._tag === "err") return ref;
-  if (parsed.output.localPath === undefined) return ok(ref.value);
-  const localPath = parseAbsolutePath(parsed.output.localPath);
-  return localPath._tag === "ok"
-    ? ok({ ...ref.value, localPath: localPath.value })
-    : failure("invalid_input");
-}
+/** The workspace every watchlist write names. */
 function watchlistProfileId(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the `profileId` both watchlist writes carry; there is no earlier boundary to run it at.
   input: unknown,

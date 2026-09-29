@@ -51,7 +51,6 @@ function fixtureProfile() {
       label: "ACME",
       githubHost: "github.com",
       ghAccount: "fixture",
-      workspaceRoots: [],
       rulePaths: [],
       repos: [],
     }),

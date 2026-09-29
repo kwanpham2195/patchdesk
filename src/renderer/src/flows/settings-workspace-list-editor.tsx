@@ -1,4 +1,4 @@
-import { FolderOpen, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import {
   FieldDescription,
@@ -19,9 +19,7 @@ import type {
 import { FieldSaveStatus } from "./settings-workspace-field-status";
 
 /**
- * The row editor behind both list-valued Workspace controls (folders and rule
- * paths). Its own module so the Workspace cards can be shared with the
- * Pull requests first-run flow without either card file carrying it.
+ * The row editor behind the list-valued Workspace control, rule paths.
  */
 export function ProfileListEditor({
   label,
@@ -35,8 +33,6 @@ export function ProfileListEditor({
   onCommit,
   onAdd,
   onRemove,
-  onChoose,
-  renderStatus,
 }: {
   readonly label: string;
   /** What one row is called, capitalised: names each row and its buttons. */
@@ -54,8 +50,6 @@ export function ProfileListEditor({
   readonly onCommit: (field: ProfileListField) => void;
   readonly onAdd: (field: ProfileListField) => void;
   readonly onRemove: (field: ProfileListField, entryId: string) => void;
-  readonly onChoose?: (entryId: string) => void;
-  readonly renderStatus?: (value: string) => React.ReactNode;
 }): React.JSX.Element {
   const singular = itemLabel.toLowerCase();
   return (
@@ -81,17 +75,6 @@ export function ProfileListEditor({
                     if (event.key === "Enter") onCommit(field);
                   }}
                 />
-                {onChoose === undefined ? null : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onChoose(entry.id)}
-                  >
-                    <FolderOpen data-icon="inline-start" />
-                    Choose folder
-                  </Button>
-                )}
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -109,9 +92,6 @@ export function ProfileListEditor({
                   <TooltipContent>{`Remove ${singular}`}</TooltipContent>
                 </Tooltip>
               </div>
-              {renderStatus === undefined || entry.value.trim() === ""
-                ? null
-                : renderStatus(entry.value)}
             </div>
           ))}
         </div>

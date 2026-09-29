@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
-import type { WorkspaceRootDiscovery } from "../../src/renderer/src/workspace-root-discovery-contract";
 import type {
   ProfileSwitchResult,
   ProfileSwitchState,
@@ -24,7 +23,6 @@ const profile: Profile = {
   label: "ACME",
   githubHost: "github.com",
   ghAccount: "patchdesk",
-  workspaceRoots: ["/workspace/acme"],
   rulePaths: ["/workspace/acme/AGENTS.md"],
 };
 
@@ -38,33 +36,13 @@ afterEach(() => {
 });
 
 describe("workspace profile settings", () => {
-  it("saves each workspace list on the edit that changed it", async () => {
+  it("saves the rule path list on the edit that changed it", async () => {
     const desktopApi = installDesktopApi();
     const user = userEvent.setup();
     const reload = vi.fn(async () => undefined);
 
     renderSettings(reload);
 
-    await user.click(screen.getByRole("button", { name: "Add folder" }));
-    const chooseFolders = screen.getAllByRole("button", {
-      name: "Choose folder",
-    });
-    const secondChooseFolder = chooseFolders[1];
-    if (secondChooseFolder === undefined)
-      throw new Error("Expected a second workspace root picker.");
-    await user.click(secondChooseFolder);
-
-    await vi.waitFor(() =>
-      expect(desktopApi.request).toHaveBeenCalledWith({
-        path: "/v1/profiles",
-        method: "PUT",
-        body: expect.objectContaining({
-          workspaceRoots: ["/workspace/acme", "/picked/enterprise"],
-        }),
-      }),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Remove folder 1" }));
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
     await user.type(
       screen.getByLabelText("Rule path 2"),
@@ -81,7 +59,6 @@ describe("workspace profile settings", () => {
           label: "ACME",
           githubHost: "github.com",
           ghAccount: "patchdesk",
-          workspaceRoots: ["/picked/enterprise"],
           rulePaths: [
             "/workspace/acme/AGENTS.md",
             "/workspace/acme/CONTRIBUTING.md",
@@ -323,7 +300,6 @@ describe("workspace profile settings", () => {
       ...profile,
       id: "other",
       label: "Other",
-      workspaceRoots: ["/workspace/other"],
     };
 
     renderSettings(undefined, profile, {
@@ -333,8 +309,6 @@ describe("workspace profile settings", () => {
     await openWorkspaceCard(user);
     await user.clear(screen.getByLabelText("Name"));
     await user.type(screen.getByLabelText("Name"), "Draft label");
-    await user.clear(screen.getByLabelText("Folder 1"));
-    await user.type(screen.getByLabelText("Folder 1"), "/workspace/draft");
 
     await user.click(
       screen.getByRole("combobox", { name: "Active workspace" }),
@@ -344,171 +318,73 @@ describe("workspace profile settings", () => {
     expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe(
       "Draft label",
     );
-    expect(screen.getByLabelText<HTMLInputElement>("Folder 1").value).toBe(
-      "/workspace/draft",
-    );
     expect(
       screen.getByLabelText<HTMLInputElement>("GitHub account").value,
     ).toBe(profile.ghAccount);
   });
 });
 
-describe("watchlist toggling", () => {
-  it("ticking an unwatched repository adds it to the watchlist", async () => {
-    const desktopApi = installDesktopApi({
-      suggestions: readyDiscovery("/workspace/acme", [
+describe("watched repositories", () => {
+  it("lists each watched repository with its checkout, or none chosen", async () => {
+    installDesktopApi();
+
+    renderSettings(undefined, {
+      ...profile,
+      repos: [
         {
           host: "github.com",
           owner: "octo-org",
           repo: "patchdesk",
           localPath: "/workspace/acme/patchdesk",
         },
-      ]),
-    });
-    const user = userEvent.setup();
-
-    renderSettings();
-
-    const checkbox = await repositoryCheckbox("octo-org/patchdesk");
-    expect(checkbox.getAttribute("aria-checked")).toBe("false");
-    await user.click(checkbox);
-
-    await vi.waitFor(() =>
-      expect(desktopApi.request).toHaveBeenCalledWith({
-        path: "/v1/watchlist",
-        method: "PUT",
-        body: {
-          profileId: "acme",
-          add: [
-            {
-              host: "github.com",
-              owner: "octo-org",
-              repo: "patchdesk",
-              localPath: "/workspace/acme/patchdesk",
-            },
-          ],
-          remove: [],
-        },
-      }),
-    );
-  });
-
-  it("unticking a watched repository removes it from the watchlist", async () => {
-    const desktopApi = installDesktopApi({
-      suggestions: readyDiscovery("/workspace/acme", []),
-    });
-    const watchedProfile: Profile = {
-      ...profile,
-      repos: [
-        {
-          host: "github.com",
-          owner: "octo-org",
-          repo: "watched-repo",
-          localPath: "/workspace/acme/watched-repo",
-        },
+        { host: "github.com", owner: "octo-org", repo: "no-checkout" },
       ],
-    };
+    });
+
+    const list = await screen.findByRole("list", {
+      name: "Watched repositories",
+    });
+    expect(
+      within(
+        within(list).getByRole("listitem", { name: "octo-org/patchdesk" }),
+      ).getByText("/workspace/acme/patchdesk"),
+    ).toBeTruthy();
+    expect(
+      within(
+        within(list).getByRole("listitem", { name: "octo-org/no-checkout" }),
+      ).getByText("No checkout chosen"),
+    ).toBeTruthy();
+  });
+
+  it("saves the folder picked with Choose checkout for that repository", async () => {
+    const desktopApi = installDesktopApi();
     const user = userEvent.setup();
+    const reload = vi.fn(async () => undefined);
 
-    renderSettings(undefined, watchedProfile);
-
-    const checkbox = await repositoryCheckbox("octo-org/watched-repo");
-    expect(checkbox.getAttribute("aria-checked")).toBe("true");
-    await user.click(checkbox);
+    renderSettings(reload, {
+      ...profile,
+      repos: [{ host: "github.com", owner: "octo-org", repo: "patchdesk" }],
+    });
+    await user.click(
+      within(
+        await screen.findByRole("listitem", { name: "octo-org/patchdesk" }),
+      ).getByRole("button", { name: "Choose checkout" }),
+    );
 
     await vi.waitFor(() =>
       expect(desktopApi.request).toHaveBeenCalledWith({
-        path: "/v1/watchlist",
+        path: "/v1/watchlist/checkout",
         method: "PUT",
         body: {
           profileId: "acme",
-          add: [],
-          remove: [
-            {
-              host: "github.com",
-              owner: "octo-org",
-              repo: "watched-repo",
-            },
-          ],
-        },
-      }),
-    );
-  });
-
-  it("renders a watched repository with no recorded local path", async () => {
-    installDesktopApi({ suggestions: readyDiscovery("/workspace/acme", []) });
-    const watchedProfile: Profile = {
-      ...profile,
-      repos: [{ host: "github.com", owner: "octo-org", repo: "no-path-repo" }],
-    };
-
-    renderSettings(undefined, watchedProfile);
-
-    const checkbox = await repositoryCheckbox("octo-org/no-path-repo");
-    expect(checkbox.getAttribute("aria-checked")).toBe("true");
-    const row = checkbox.closest("label");
-    if (row === null)
-      throw new Error("Expected the repository row to render inside a label.");
-    // The row still renders with an empty local-path line rather than
-    // omitting it or throwing, confirming the `localPath: ""` normalisation.
-    expect(
-      within(row).getByText("octo-org/no-path-repo").nextSibling?.textContent,
-    ).toBe("");
-  });
-
-  it("renders a failed watchlist mutation as an action-local error", async () => {
-    installDesktopApi({
-      rejectWatchlist: true,
-      suggestions: readyDiscovery("/workspace/acme", [
-        {
           host: "github.com",
           owner: "octo-org",
           repo: "patchdesk",
-          localPath: "/workspace/acme/patchdesk",
+          localPath: "/picked/patchdesk",
         },
-      ]),
-    });
-    const user = userEvent.setup();
-
-    renderSettings();
-    await user.click(await repositoryCheckbox("octo-org/patchdesk"));
-
-    await vi.waitFor(() =>
-      expect(
-        screen
-          .getAllByRole("alert")
-          .some((candidate) => candidate.dataset.slot === "inline-error"),
-      ).toBe(true),
+      }),
     );
-  });
-
-  it("shows a watched repository whose local path matches no saved workspace root", async () => {
-    installDesktopApi({ suggestions: readyDiscovery("/workspace/acme", []) });
-    const watchedProfile: Profile = {
-      ...profile,
-      repos: [
-        {
-          host: "github.com",
-          owner: "octo-org",
-          repo: "outside-repo",
-          localPath: "/elsewhere/outside-repo",
-        },
-      ],
-    };
-
-    renderSettings(undefined, watchedProfile);
-
-    expect(
-      await screen.findByText("Watched outside these folders"),
-    ).toBeTruthy();
-    const outsideGroup = screen.getByLabelText(
-      "Repositories watched outside these folders",
-    );
-    const checkbox = within(outsideGroup).getByRole("checkbox");
-    expect(
-      within(outsideGroup).getByText("octo-org/outside-repo"),
-    ).toBeTruthy();
-    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    await vi.waitFor(() => expect(reload).toHaveBeenCalled());
   });
 });
 
@@ -517,17 +393,6 @@ async function openWorkspaceCard(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<void> {
   await user.click(screen.getByRole("button", { name: "Workspace" }));
-}
-
-/** Finds the repository checklist row for `ownerSlashRepo` (rendered by `RepositoryChecklist`) and returns its checkbox. */
-async function repositoryCheckbox(
-  ownerSlashRepo: string,
-): Promise<HTMLElement> {
-  const text = await screen.findByText(ownerSlashRepo);
-  const row = text.closest("label");
-  if (row === null)
-    throw new Error("Expected the repository row to render inside a label.");
-  return within(row).getByRole("checkbox");
 }
 
 function profileSaveRequests(desktopApi: DesktopDouble) {
@@ -568,25 +433,15 @@ function renderSettings(
 function installDesktopApi(
   options: {
     readonly rejectProfileSave?: boolean;
-    readonly rejectWatchlist?: boolean;
     readonly environment?: RawJsonValue;
-    readonly suggestions?: "reject" | ReadonlyArray<WorkspaceRootDiscovery>;
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble(
     {
       "/v1/environment": () => success(options.environment ?? {}),
       "/v1/profiles/select": () => success({}),
-      "/v1/watchlist": () =>
-        options.rejectWatchlist === true
-          ? failure({ error: "storage" })
-          : success({}),
-      "/v1/watchlist/suggestions": () =>
-        options.suggestions === "reject"
-          ? failure({ error: "storage" })
-          : success(
-              options.suggestions ?? readyDiscovery("/workspace/acme", []),
-            ),
+      "/v1/watchlist": () => success({}),
+      "/v1/watchlist/checkout": () => success({}),
       "/v1/profiles": () => {
         if (options.rejectProfileSave === true)
           return failure({ error: "storage" });
@@ -595,21 +450,9 @@ function installDesktopApi(
     },
     {
       operations: {
-        selectDirectory: () => success({ path: "/picked/enterprise" }),
+        selectDirectory: () => success({ path: "/picked/patchdesk" }),
       },
     },
   );
   return desktop;
-}
-
-function readyDiscovery(
-  root: string,
-  repositories: ReadonlyArray<{
-    readonly host: string;
-    readonly owner: string;
-    readonly repo: string;
-    readonly localPath: string;
-  }>,
-): ReadonlyArray<WorkspaceRootDiscovery> {
-  return [{ root, state: "ready", repositories: [...repositories] }];
 }

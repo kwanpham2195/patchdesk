@@ -190,7 +190,6 @@ describe("local API current Review capability boundary", () => {
               label: "Profile",
               githubHost: "github.com",
               ghAccount: "fixture",
-              workspaceRoots: [],
               rulePaths: [],
               repos: [],
             }),
@@ -525,7 +524,6 @@ describe("GET /v1/inbox request boundaries", () => {
               label: "Profile",
               githubHost: "github.com",
               ghAccount: "fixture",
-              workspaceRoots: [],
               rulePaths: [],
               repos: [
                 {
@@ -858,7 +856,6 @@ describe("GET /v1/inbox/labels", () => {
               label: "Profile",
               githubHost: "github.com",
               ghAccount: "fixture",
-              workspaceRoots: [],
               rulePaths: [],
               repos: [
                 {

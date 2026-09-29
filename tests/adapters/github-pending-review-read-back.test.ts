@@ -46,7 +46,6 @@ const profile = mustParse(
     label: "ACME",
     githubHost: "github.com",
     ghAccount: account,
-    workspaceRoots: [],
     rulePaths: [],
     repos: [],
   }),

@@ -11,12 +11,11 @@ export type ProfileValues = {
   readonly label: string;
   readonly githubHost: string;
   readonly ghAccount: string;
-  readonly workspaceRoots: ReadonlyArray<string>;
   readonly rulePaths: ReadonlyArray<string>;
 };
 
-/** Which of the two list-valued profile fields a row editor is editing. */
-export type ProfileListField = "workspaceRoots" | "rulePaths";
+/** The list-valued profile field a row editor is editing. */
+export type ProfileListField = "rulePaths";
 /** Which of the three single-value profile fields a control is editing. */
 export type ProfileScalarField = "label" | "githubHost" | "ghAccount";
 /** Any field the Workspace editor tracks a save status for. */
@@ -28,9 +27,8 @@ export type ProfileListEntry = {
   readonly value: string;
 };
 
-/** The row-editor state of both list-valued fields. */
+/** The row-editor state of the list-valued fields. */
 export type ProfileRows = {
-  readonly workspaceRoots: ReadonlyArray<ProfileListEntry>;
   readonly rulePaths: ReadonlyArray<ProfileListEntry>;
 };
 
@@ -46,10 +44,7 @@ export type ProfilePatch = {
   -readonly [Field in keyof ProfileValues]?: ProfileValues[Field];
 };
 
-const LIST_FIELDS: ReadonlyArray<ProfileListField> = [
-  "workspaceRoots",
-  "rulePaths",
-];
+const LIST_FIELDS: ReadonlyArray<ProfileListField> = ["rulePaths"];
 
 const EMPTY_VALUES: ReadonlyArray<string> = [];
 
@@ -65,7 +60,6 @@ export function profileValuesFor(profile: Profile | undefined): ProfileValues {
     label: profile?.label ?? "",
     githubHost: profile?.githubHost ?? "github.com",
     ghAccount: profile?.ghAccount ?? "",
-    workspaceRoots: profile?.workspaceRoots ?? EMPTY_VALUES,
     rulePaths: profile?.rulePaths ?? EMPTY_VALUES,
   };
 }
@@ -79,14 +73,9 @@ export function scalarsFor(values: ProfileValues): ProfileScalars {
   };
 }
 
-/** The row-editor state for one profile's two lists. */
+/** The row-editor state for one profile's lists. */
 export function rowsFor(values: ProfileValues): ProfileRows {
-  const roots = values.workspaceRoots.map(profileListEntry);
   return {
-    // A workspace with no folder still needs the row that carries "Choose
-    // folder" — otherwise its only affordance is "Add folder", and the
-    // first-root prompt this blank row exists for could never render.
-    workspaceRoots: roots.length === 0 ? [profileListEntry("")] : roots,
     rulePaths: values.rulePaths.map(profileListEntry),
   };
 }
@@ -109,8 +98,6 @@ export function persistedForFields(
   if ("label" in fields) restored.label = values.label;
   if ("githubHost" in fields) restored.githubHost = values.githubHost;
   if ("ghAccount" in fields) restored.ghAccount = values.ghAccount;
-  if ("workspaceRoots" in fields)
-    restored.workspaceRoots = values.workspaceRoots;
   if ("rulePaths" in fields) restored.rulePaths = values.rulePaths;
   return restored;
 }
@@ -162,7 +149,6 @@ export function profileRequestBody(values: ProfileValues) {
     label: values.label,
     githubHost: values.githubHost,
     ghAccount: values.ghAccount,
-    workspaceRoots: [...values.workspaceRoots],
     rulePaths: [...values.rulePaths],
   };
 }
@@ -184,16 +170,12 @@ export function scalarError(
 }
 
 /** The client-side reason one list cannot be sent, or undefined when it can. */
-export function listError(
-  field: ProfileListField,
-  values: ReadonlyArray<string>,
-): string | undefined {
+export function listError(values: ReadonlyArray<string>): string | undefined {
   const invalid = values.some(
     (value) => parseAbsolutePath(value)._tag !== "ok",
   );
   if (!invalid) return undefined;
-  const label = field === "workspaceRoots" ? "Folders" : "Rule paths";
-  return `${label} must be absolute paths starting with "/".`;
+  return `Rule paths must be absolute paths starting with "/".`;
 }
 
 /** Whether two list values are the same values in the same order. */
@@ -217,7 +199,6 @@ export function sameProfileValues(
     left.label === right.label &&
     left.githubHost === right.githubHost &&
     left.ghAccount === right.ghAccount &&
-    sameValueList(left.workspaceRoots, right.workspaceRoots) &&
     sameValueList(left.rulePaths, right.rulePaths)
   );
 }

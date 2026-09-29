@@ -99,6 +99,42 @@ export function configuredLocalPath(
   )?.localPath;
 }
 
+/** Why a chosen folder cannot become a watched repository's checkout. */
+export type ChosenCheckoutFailure = {
+  readonly reason: "checkout_not_a_repository" | "checkout_origin_mismatch";
+};
+
+/**
+ * The top-level of the git checkout holding `folder`, when its `origin` names
+ * `repository`. This is how a folder the maintainer chose becomes a watched
+ * repository's `localPath`; Patchdesk never searches for checkouts (#641).
+ */
+export async function chosenRepositoryCheckout(
+  git: GitReadExecutor,
+  repository: RepositoryIdentity,
+  folder: AbsolutePath,
+): Promise<Result<AbsolutePath, ChosenCheckoutFailure>> {
+  const root = await resolveCheckoutRoot(git, folder);
+  const path = root === undefined ? undefined : parseAbsolutePath(root);
+  if (path === undefined || path._tag === "err")
+    return err({ reason: "checkout_not_a_repository" });
+  const origin = await git.run([
+    "git",
+    "-C",
+    path.value,
+    "config",
+    "--get",
+    "remote.origin.url",
+  ]);
+  const named =
+    origin._tag === "ok"
+      ? parseGitHubOrigin(origin.value.stdout.trim())
+      : undefined;
+  return sameRepositoryIdentity(repository, named)
+    ? ok(path.value)
+    : err({ reason: "checkout_origin_mismatch" });
+}
+
 /**
  * The live checkouts `git worktree list` names from the configured checkout.
  * Bare and prunable entries, entries whose directory is gone, and Patchdesk's

@@ -44,7 +44,6 @@ const profile = must(
     label: "ACME",
     githubHost: "github.com",
     ghAccount: "fixture",
-    workspaceRoots: [],
     rulePaths: [],
     repos: [],
   }),

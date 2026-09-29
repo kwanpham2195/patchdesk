@@ -73,13 +73,16 @@ setup there — no trip to Settings:
 1. **Reviewing as** — confirm the GitHub account, taken from `gh`. If several
    are logged in, pick one. If none are, run `gh auth login` in a terminal and
    press Re-check.
-2. **Folders and repositories** — press Choose folder and pick the folder that
-   holds your checkouts. Patchdesk scans it and lists the repositories it
-   found with GitHub remotes; tick the ones you want to review.
+2. **Repositories** — type a repository as `owner/repo` and press Add. Add
+   as many as you want to review.
 
-Everything saves as you go, and each control says whether it saved. Ticking
-the first repository is the last step: the pull request list replaces setup on
-its own. Later, the same two cards live in Settings → Workspace.
+Everything saves as you go, and each control says whether it saved. Press
+Continue to see the pull request list. Later, the same two cards live in
+Settings → Workspace.
+
+Patchdesk never searches your disk for checkouts. A local review needs the
+repository's checkout: press Choose checkout on its row in Settings →
+Workspace, or press Local review and Patchdesk asks for it the first time.
 
 ## Reviewing pull requests
 

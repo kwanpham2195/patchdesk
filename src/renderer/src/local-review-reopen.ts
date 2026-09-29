@@ -135,5 +135,5 @@ export function checkoutMissingMessage(
   if (!(cause instanceof PatchdeskApiError)) return undefined;
   const body = v.safeParse(checkoutMissingBodySchema, cause.responseBody);
   if (!body.success) return undefined;
-  return `Patchdesk cannot find this repository's checkout at ${body.output.localPath}. If you moved it, open Settings → Workspace and, under Repositories, add the folder that holds it now if it is not listed, then untick the repository and tick it again.`;
+  return `Patchdesk cannot find this repository's checkout at ${body.output.localPath}. If you moved it, open Settings → Workspace and use Choose checkout on the repository under Repositories.`;
 }

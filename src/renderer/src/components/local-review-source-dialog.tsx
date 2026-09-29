@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FolderGit2 } from "lucide-react";
+import { FolderGit2, FolderOpen } from "lucide-react";
 
 import type { LocalReviewSourceInput } from "../flows/use-inbox-review-opening";
 import { useApiProbe, type ApiProbeState } from "../hooks/use-api-probe";
@@ -41,16 +41,23 @@ type SourceKind = "local_branch" | "commit";
 /**
  * The Pull requests screen's entry to a local Review (ADR 0050): a button for
  * the Selected repository that opens a picker for the shared Review of the
- * checked-out branch against a base branch (#555), or one commit. Shown only
- * for a repository with a local checkout.
+ * checked-out branch against a base branch (#555), or one commit. A
+ * repository with no checkout asks for one first (#641).
  */
 export function OpenLocalReviewAction({
   repositoryLabel,
   checkoutsPath,
   branchesPath,
+  onChooseCheckout,
   onOpen,
 }: {
   readonly repositoryLabel: string;
+  /**
+   * Present while the repository has no checkout: opens the folder picker and
+   * resolves true once the chosen checkout is saved and the workspace
+   * reloaded. Rejects with the sentence to show.
+   */
+  readonly onChooseCheckout?: () => Promise<boolean>;
   /** Where the repository's checkouts are listed; a shared Review can be read from any of them (#489). */
   readonly checkoutsPath: string;
   /** Where a checkout's branches and inferred base are listed; `undefined` names the configured checkout. */
@@ -64,7 +71,14 @@ export function OpenLocalReviewAction({
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <FolderGit2 data-icon="inline-start" /> Local review
       </Button>
-      {open ? (
+      {open && onChooseCheckout !== undefined ? (
+        <ChooseCheckoutDialog
+          repositoryLabel={repositoryLabel}
+          onChooseCheckout={onChooseCheckout}
+          onOpenChange={setOpen}
+        />
+      ) : null}
+      {open && onChooseCheckout === undefined ? (
         <LocalReviewSourceDialog
           repositoryLabel={repositoryLabel}
           checkoutsPath={checkoutsPath}
@@ -74,6 +88,78 @@ export function OpenLocalReviewAction({
         />
       ) : null}
     </>
+  );
+}
+
+/** Asks for the repository's checkout before the first local Review; the source dialog follows once it is saved. */
+function ChooseCheckoutDialog({
+  repositoryLabel,
+  onChooseCheckout,
+  onOpenChange,
+}: {
+  readonly repositoryLabel: string;
+  readonly onChooseCheckout: () => Promise<boolean>;
+  readonly onOpenChange: (open: boolean) => void;
+}): React.JSX.Element {
+  const [error, setError] = useState<string>();
+  const [pending, setPending] = useState(false);
+  const choose = async (): Promise<void> => {
+    setError(undefined);
+    setPending(true);
+    try {
+      await onChooseCheckout();
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Patchdesk could not save the checkout.",
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(nextOpen) => {
+        if (!pending) onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent showCloseButton={!pending}>
+        <DialogHeader>
+          <DialogTitle>Open a local review</DialogTitle>
+          <DialogDescription>{repositoryLabel}</DialogDescription>
+        </DialogHeader>
+        {error === undefined ? null : (
+          <Alert variant="destructive">
+            <AlertTitle>Checkout not saved</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <p className="text-sm text-muted-foreground">
+          Choose the folder that holds this repository&apos;s local checkout.
+          Patchdesk keeps it for later reviews.
+        </p>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={() => void choose()}
+          >
+            <FolderOpen data-icon="inline-start" />
+            {pending ? "Saving…" : "Choose checkout"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

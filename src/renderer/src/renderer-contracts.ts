@@ -152,16 +152,13 @@ const inboxResponseSchema = v.strictObject({
     label: v.pipe(v.string(), v.minLength(1)),
     githubHost: v.pipe(v.string(), v.minLength(1)),
     ghAccount: v.pipe(v.string(), v.minLength(1)),
-    workspaceRoots: v.optional(v.array(v.string())),
     rulePaths: v.optional(v.array(v.string())),
     repos: v.optional(
       v.array(
         v.object({
           ...repositoryIdentityFields,
-          // Absent on a watched repository with no local checkout (see
-          // `parseWatchedRepo`); without it the Settings watchlist grouping
-          // (`groupWatchlistEntries` in `settings-workspace-repositories.tsx`)
-          // could never match a repo to its saved workspace root.
+          // Absent on a watched repository with no chosen checkout (see
+          // `parseWatchedRepo`).
           localPath: v.optional(v.pipe(v.string(), v.minLength(1))),
         }),
       ),

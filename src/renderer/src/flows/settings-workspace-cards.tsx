@@ -1,42 +1,23 @@
 import {
-  flattenDiscoveredRepositories,
-  type WorkspaceRootDiscovery,
-} from "../workspace-root-discovery-contract";
-import { Button } from "../components/ui/button";
-import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import { repositoryKey, type Dashboard, type Repo } from "../renderer-models";
+import type { Dashboard, Repo } from "../renderer-models";
 import {
-  groupWatchlistEntries,
-  mergeWatchlistEntries,
-  RepositoryChecklist,
-  useWatchlistToggle,
-  WatchedOutsideRootsSection,
-  WatchlistToggleStatus,
-  type WatchlistEntry,
+  AddWatchedRepositoryForm,
+  useWatchedRepositories,
+  WatchedRepositoryList,
 } from "./settings-workspace-repositories";
 import type { WorkspaceProfileEditorHook } from "./settings-workspace-profile-editor";
 import {
   ReviewingAsPanel,
   type ReviewingAsProbeHook,
 } from "./settings-workspace-reviewing-as";
-import { ProfileListEditor } from "./settings-workspace-list-editor";
-import {
-  EMPTY_ENTRIES,
-  EMPTY_ROOTS,
-  useWorkspaceRootDiscovery,
-  WorkspaceRootDiscoveryStatus,
-  workspaceRootDiscoveryStatus,
-  type RootDiscoveryStatus,
-} from "./settings-workspace-root-discovery";
 
 const EMPTY_REPOS: ReadonlyArray<Repo> = [];
-const EMPTY_DISCOVERED: ReadonlyArray<WorkspaceRootDiscovery> = [];
 
 /**
  * The account card: which GitHub account this workspace reviews as. The
@@ -81,57 +62,23 @@ export function ReviewingAsCard({
 }
 
 /**
- * The folders-and-repositories card: the workspace-root rows, each root's
- * discovery result, the tickable checklist under it, and anything watched
- * outside every root. Shared by Settings > Workspace and the Pull requests
- * first-run flow, which differ only in the heading.
+ * The watched-repositories card: add a repository by `owner/repo`, choose
+ * each one's checkout, or stop watching it. Shared by Settings > Workspace
+ * and the Pull requests first-run flow, which differ only in the heading.
  */
 export function RepositoriesCard({
-  editor,
   dashboard,
   onWorkspaceReload,
   title = "Repositories",
 }: {
-  readonly editor: WorkspaceProfileEditorHook;
   readonly dashboard: Dashboard | undefined;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly title?: string;
 }): React.JSX.Element {
-  const rootDiscovery = useWorkspaceRootDiscovery(dashboard?.profile);
-  const savedRepos = dashboard?.profile.repos ?? EMPTY_REPOS;
-  const savedRoots = dashboard?.profile.workspaceRoots ?? EMPTY_ROOTS;
-  const discoveries =
-    rootDiscovery.kind === "loaded" ? rootDiscovery.value : EMPTY_DISCOVERED;
-  const discoveredRepos = flattenDiscoveredRepositories(discoveries);
-  // The single merge and the single grouping of discovered + watched
-  // repositories for this render.
-  const watchlistEntries = mergeWatchlistEntries(discoveredRepos, savedRepos);
-  const { byRoot, other } = groupWatchlistEntries(watchlistEntries, savedRoots);
-  const watchedKeys = new Set(savedRepos.map((repo) => repositoryKey(repo)));
-  const isWatched = (entry: WatchlistEntry): boolean =>
-    watchedKeys.has(repositoryKey(entry));
-  const watchlistToggle = useWatchlistToggle(
-    dashboard?.profile.id,
+  const watchlist = useWatchedRepositories(
+    dashboard?.profile,
     onWorkspaceReload,
   );
-  // The one-line folder prompt belongs to a workspace that has never had a
-  // root: any persisted root, or anything typed into the row, answers it.
-  const rootRows = editor.rows.workspaceRoots;
-  const firstRootRow = rootRows[0];
-  const needsFirstRoot =
-    editor.persisted.workspaceRoots.length === 0 &&
-    rootRows.length === 1 &&
-    firstRootRow !== undefined &&
-    firstRootRow.value.trim() === "";
-  const rootDiscoveryStatus = (root: string): RootDiscoveryStatus =>
-    workspaceRootDiscoveryStatus(
-      root,
-      dashboard?.profile,
-      rootDiscovery,
-      byRoot,
-      isWatched,
-    );
-
   return (
     <section
       aria-labelledby="workspace-repositories-title"
@@ -140,98 +87,17 @@ export function RepositoriesCard({
       <Card>
         <CardHeader>
           <CardTitle id="workspace-repositories-title">{title}</CardTitle>
-          <CardDescription>Folders to scan for repositories.</CardDescription>
+          <CardDescription>
+            Pull requests are listed from watched repositories. A local review
+            needs the repository&apos;s checkout.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
-          <WatchlistToggleStatus feedback={watchlistToggle.feedback} />
-          <ProfileListEditor
-            label="Folders"
-            itemLabel="Folder"
-            field="workspaceRoots"
-            {...(needsFirstRoot
-              ? {
-                  description: "Choose a folder that holds your git checkouts.",
-                }
-              : {})}
-            entries={editor.rows.workspaceRoots}
-            placeholder="/absolute/workspace/path"
-            status={editor.status.workspaceRoots}
-            onChange={editor.editListEntry}
-            onCommit={editor.commitList}
-            onAdd={editor.addListEntry}
-            onRemove={editor.removeListEntry}
-            onChoose={(entryId) => {
-              void editor.chooseWorkspaceRoot(entryId);
-            }}
-            renderStatus={(value) => {
-              const status = rootDiscoveryStatus(value);
-              const trimmedRoot = value.trim();
-              const rootEntries = byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES;
-              const visibleEntries =
-                status.kind === "error"
-                  ? rootEntries.filter(isWatched)
-                  : rootEntries;
-              const showsChecklist =
-                status.kind === "found" ||
-                (status.kind === "error" && visibleEntries.length > 0);
-              return (
-                <div className="flex flex-col gap-2">
-                  <WorkspaceRootDiscoveryStatus status={status} />
-                  {showsChecklist && visibleEntries.length > 1 ? (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          watchlistToggle.setWatched(
-                            visibleEntries,
-                            true,
-                            isWatched,
-                          )
-                        }
-                      >
-                        Watch all
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          watchlistToggle.setWatched(
-                            visibleEntries,
-                            false,
-                            isWatched,
-                          )
-                        }
-                      >
-                        Watch none
-                      </Button>
-                    </div>
-                  ) : null}
-                  {showsChecklist ? (
-                    <RepositoryChecklist
-                      entries={visibleEntries}
-                      isWatched={isWatched}
-                      pendingKeys={watchlistToggle.pendingKeys}
-                      errorsByKey={watchlistToggle.errorsByKey}
-                      draftWatchedByKey={watchlistToggle.draftWatchedByKey}
-                      onToggle={watchlistToggle.toggleRepo}
-                      ariaLabel={`Repositories under ${trimmedRoot}`}
-                    />
-                  ) : null}
-                </div>
-              );
-            }}
+          <AddWatchedRepositoryForm watchlist={watchlist} />
+          <WatchedRepositoryList
+            repositories={dashboard?.profile.repos ?? EMPTY_REPOS}
+            watchlist={watchlist}
           />
-          {other.length === 0 ? null : (
-            <WatchedOutsideRootsSection
-              entries={other}
-              isWatched={isWatched}
-              pendingKeys={watchlistToggle.pendingKeys}
-              errorsByKey={watchlistToggle.errorsByKey}
-              draftWatchedByKey={watchlistToggle.draftWatchedByKey}
-              onToggle={watchlistToggle.toggleRepo}
-            />
-          )}
         </CardContent>
       </Card>
     </section>
