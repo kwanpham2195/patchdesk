@@ -23,16 +23,21 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
-/** True when the focused element sits inside an open dialog, alertdialog, or
- * popover. Base UI (this app's primitive layer) renders `role="dialog"` for
- * both its Dialog and Popover popups and `role="alertdialog"` for
- * AlertDialog, so these two selectors cover all three surfaces the guard
- * names without a component-specific check. */
+/** True when the focused element sits inside an open dialog, alertdialog,
+ * popover, menu, or listbox popup. Base UI (this app's primitive layer)
+ * renders `role="dialog"` for its Dialog and Popover popups,
+ * `role="alertdialog"` for AlertDialog, `role="menu"` for Menu, and
+ * `role="listbox"` for Select and Combobox, so these selectors cover every
+ * surface the guard names without a component-specific check. Base UI's
+ * menu typeahead already swallows printable keys, but modifier chords such
+ * as ⌘1–⌘3 and ⌘F still reach the window. */
 export function focusInsideOverlay(): boolean {
   const active = document.activeElement;
   return (
     active instanceof HTMLElement &&
-    active.closest('[role="dialog"], [role="alertdialog"]') !== null
+    active.closest(
+      '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+    ) !== null
   );
 }
 

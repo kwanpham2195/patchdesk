@@ -8,7 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { changeScopeFromPatch } from "../../src/domain/change-scope";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
@@ -260,6 +260,58 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
         "status",
       ).textContent,
     ).toBe("1/2 viewed");
+  });
+
+  it("keeps v and ⌘3 off the Diff while the Scope menu is open", async () => {
+    // jsdom has no constructable stylesheets, and the diff keys only listen once Pierre's CodeView can mount.
+    if (CSSStyleSheet.prototype.replaceSync === undefined) {
+      CSSStyleSheet.prototype.replaceSync = () => undefined;
+      onTestFinished(() => {
+        Reflect.deleteProperty(CSSStyleSheet.prototype, "replaceSync");
+      });
+    }
+    const saved: Array<ReadonlyArray<string>> = [];
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/viewed-files") {
+        // SAFETY: the viewed-files save always posts a `paths` array.
+        const { paths } = input.body as { readonly paths: Array<string> };
+        saved.push(paths);
+        return { paths };
+      }
+      throw new Error(input.path);
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={scopedProjection()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    const viewedCount = () =>
+      within(screen.getByRole("region", { name: "Review diff" })).getByRole(
+        "status",
+      ).textContent;
+
+    await openScopeMenu(user);
+    await user.keyboard("v");
+    // Base UI keeps printable keys inside its menu; modifier chords still reach the window.
+    await user.keyboard("{Meta>}3{/Meta}");
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(viewedCount()).toBe("0/2 viewed");
+    expect(
+      screen.getByRole("tab", { name: "Diff" }).getAttribute("aria-selected"),
+    ).toBe("true");
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await user.keyboard("v");
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(viewedCount()).toBe("1/2 viewed");
   });
 
   it("clears the Scope filter when a commit is selected", async () => {
