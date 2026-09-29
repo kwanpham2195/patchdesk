@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes the high-level architecture of Patchdesk.
-If you want to become familiar with the code base, you are in the right place.
+If you want to become familiar with the code base, you are in the right place (throwaway #605).
 
 For the vocabulary of the domain, read [CONTEXT.md](../CONTEXT.md) first.
 It defines the exact meaning of Review, Review session, Insight, Finding, and every other domain term used here.
