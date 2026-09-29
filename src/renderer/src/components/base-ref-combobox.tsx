@@ -54,7 +54,7 @@ export function BaseRefCombobox({
       <Combobox.Portal>
         <Combobox.Positioner className="z-50 outline-none" sideOffset={4}>
           <Combobox.Popup className="w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md">
-            <Combobox.Empty className="px-3 py-4 text-center text-sm text-muted-foreground">
+            <Combobox.Empty className="px-3 py-4 text-center empty:p-0 text-sm text-muted-foreground">
               No branches match.
             </Combobox.Empty>
             <Combobox.List className="max-h-72 overflow-y-auto overscroll-contain p-1 outline-none">
