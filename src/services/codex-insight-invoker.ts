@@ -7,6 +7,7 @@ import {
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
   MAX_WALKTHROUGH_PROMPT_BYTES,
   type CodexAppServerClient,
+  type CodexAppServerFailure,
 } from "../adapters/codex/codex-app-server-client";
 import {
   buildCodexBriefPrompt,
@@ -18,12 +19,17 @@ import type {
   InsightInvocationOptions,
   InsightInvoker,
 } from "./insight-run-coordinator";
-import { casesHandled, err } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import { prepareBriefPrompt, type BriefPromptFailure } from "./brief-operation";
+import {
+  analysisCodexOutputSchema,
+  briefCodexOutputSchema,
+  parseCodexStrictResult,
+  walkthroughCodexOutputSchema,
+} from "./codex-output-schema";
 import { composeReviewPrompt } from "./review-rubric";
 import {
   prepareWalkthroughPrompt,
-  walkthroughCodexOutputSchema,
   type WalkthroughPromptFailure,
 } from "./walkthrough-operation";
 import {
@@ -164,14 +170,13 @@ export class CodexInsightInvoker implements InsightInvoker {
           model: input.model,
           reasoning: input.reasoning,
           prompt: prompt.value,
+          outputSchema: briefCodexOutputSchema,
           maxPromptBytes: MAX_BRIEF_PROMPT_BYTES,
           runTimeoutMs: BRIEF_RUN_TIMEOUT_MS,
         },
         options,
       );
-      return result._tag === "ok"
-        ? result
-        : err({ reason: result.error.reason, phase: result.error.phase });
+      return strictCodexRunResult(result);
     }
     const contextPath = resolvedArtifacts[0];
     const reviewInputPath = resolvedArtifacts[1];
@@ -209,15 +214,27 @@ export class CodexInsightInvoker implements InsightInvoker {
         model: input.model,
         reasoning: input.reasoning,
         prompt: prompt.value,
+        outputSchema: analysisCodexOutputSchema,
         maxPromptBytes: MAX_ANALYSIS_CODEX_PROMPT_BYTES,
         runTimeoutMs: ANALYSIS_RUN_TIMEOUT_MS,
       },
       options,
     );
-    return result._tag === "ok"
-      ? result
-      : err({ reason: result.error.reason, phase: result.error.phase });
+    return strictCodexRunResult(result);
   }
+}
+
+/** A Brief or Analysis result answers a strict schema, so its `null` fields mean absent. */
+function strictCodexRunResult(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the Codex client returns the turn's parsed JSON unvalidated; parseCodexStrictResult below parses it.
+  result: Result<unknown, CodexAppServerFailure>,
+) {
+  if (result._tag === "err")
+    return err({ reason: result.error.reason, phase: result.error.phase });
+  const value = parseCodexStrictResult(result.value);
+  return value === undefined
+    ? err({ reason: "invalid_result" as const, phase: "turn" as const })
+    : ok(value);
 }
 
 /**

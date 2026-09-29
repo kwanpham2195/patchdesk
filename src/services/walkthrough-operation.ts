@@ -1,5 +1,4 @@
 import * as v from "valibot";
-import { toJsonSchema } from "@valibot/to-json-schema";
 
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
 import {
@@ -94,19 +93,6 @@ export const walkthroughOutputSchema = v.pipe(
       ) <= MAX_TOTAL_SECTIONS,
     "Walkthrough output exceeds the aggregate section limit",
   ),
-);
-
-/** Codex constrains its final JSON with the same field schema; Patchdesk still checks the aggregate section rule after the turn. */
-export const walkthroughCodexOutputSchema = toJsonSchema(
-  walkthroughOutputSchema,
-  {
-    errorMode: "ignore",
-    // Codex requires a type on literal fields; Valibot emits only { const: 2 }.
-    overrideSchema: ({ valibotSchema, jsonSchema }) =>
-      valibotSchema.type === "literal" && jsonSchema.const === 2
-        ? { type: "integer", enum: [2] }
-        : undefined,
-  },
 );
 
 export type WalkthroughInput = v.InferOutput<typeof walkthroughInputSchema>;
