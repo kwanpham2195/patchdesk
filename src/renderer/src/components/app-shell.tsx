@@ -303,7 +303,7 @@ export function AppShell({
             </TooltipTrigger>
             <TooltipContent>
               {navigationBlocked
-                ? "An unsaved draft or a pending GitHub write blocks navigation."
+                ? "A pending GitHub write blocks navigation."
                 : "Open quick navigation"}
             </TooltipContent>
           </Tooltip>

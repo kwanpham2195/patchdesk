@@ -57,7 +57,7 @@ export function useSettingsOverlay({
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key === ",") {
         event.preventDefault();
-        if (navigationState === "clear" && !diagnosticsOpen) {
+        if (navigationState !== "write_pending" && !diagnosticsOpen) {
           setSettingsOpener(
             document.activeElement instanceof HTMLElement
               ? document.activeElement
@@ -72,7 +72,7 @@ export function useSettingsOverlay({
   }, [fixtureMode, navigationState, diagnosticsOpen]);
   const openSettings = useCallback(
     (opener?: HTMLElement, section?: SettingsSection): void => {
-      if (navigationState !== "clear" || diagnosticsOpen) return;
+      if (navigationState === "write_pending" || diagnosticsOpen) return;
       const fallback =
         document.querySelector<HTMLElement>("[data-settings-opener]") ??
         document.querySelector<HTMLElement>("#main-content");

@@ -51,7 +51,7 @@ Opening a Review stores its validated workbench projection and changes the desti
 
 Back, Navigate, a Visited pull requests row, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen. A bare-number action and a Visited title match open through the same path. Matching uses the Selected repository and the Visited rows already loaded for the column, so typing sends no request. The same reference also adds `Watch owner/repository#number`, or `Unwatch` when Patchdesk already watches it, under Pull requests; [Repository listing](../pull-requests/repository-listing.md) owns what watching does.
 
-Opening Settings is refused when navigation state is not clear. ⌘K and the titlebar Settings control are also disabled or ignored. The native close path reads the same navigation state from the renderer.
+Opening Settings or Diagnostics is refused only while a GitHub write is pending; ⌘K, Navigate, and the titlebar Settings control are disabled or ignored then. With an unsaved Review draft they still open, and any destination or pull request chosen from them waits behind the leave dialog. The native close path reads the same navigation state from the renderer.
 
 ### While the action runs
 
@@ -71,13 +71,13 @@ Closing the desktop window or quitting while state is clear proceeds. An unsaved
 
 ## Variants
 
-| Variant                                                | Before the action runs                                                                             | While the action runs                                                                                                                |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Workspace profile and GitHub account                   | The active profile appears in the titlebar and scopes destinations that load data.                 | Applying another workspace clears the loaded workbench, resets the Pull requests request, and returns to Pull requests.              |
-| Pull request and Review state                          | A workbench destination needs a Review ID and a loadable local projection.                         | Revision and remote-state changes update the workbench without changing its destination key unless the Review itself changes.        |
-| GitHub permissions and merge readiness                 | Navigation and Settings do not require GitHub write permission.                                    | Permission changes affect controls in the destination, not navigation itself. A pending write still blocks leaving until settlement. |
-| Network, local tool, and Insight provider availability | Previously stored destinations and view positions are local. Loading their content can still fail. | A route or data-load failure shows local Retry where provided. Settings remains an overlay over the last rendered destination.       |
-| Input path: mouse, keyboard, or desktop menu           | Back, titlebar controls, Navigate, ⌘K, ⌘,, and native menu actions reach the same owners.          | The blocked state disables or ignores Settings and Navigate commands regardless of input path.                                       |
+| Variant                                                | Before the action runs                                                                             | While the action runs                                                                                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | The active profile appears in the titlebar and scopes destinations that load data.                 | Applying another workspace clears the loaded workbench, resets the Pull requests request, and returns to Pull requests.                        |
+| Pull request and Review state                          | A workbench destination needs a Review ID and a loadable local projection.                         | Revision and remote-state changes update the workbench without changing its destination key unless the Review itself changes.                  |
+| GitHub permissions and merge readiness                 | Navigation and Settings do not require GitHub write permission.                                    | Permission changes affect controls in the destination, not navigation itself. A pending write still blocks leaving until settlement.           |
+| Network, local tool, and Insight provider availability | Previously stored destinations and view positions are local. Loading their content can still fail. | A route or data-load failure shows local Retry where provided. Settings remains an overlay over the last rendered destination.                 |
+| Input path: mouse, keyboard, or desktop menu           | Back, titlebar controls, Navigate, ⌘K, ⌘,, and native menu actions reach the same owners.          | A pending write disables or ignores Settings and Navigate commands regardless of input path; an unsaved draft only parks what they would open. |
 
 Changing input path does not bypass navigation state. A native window close uses a native prompt because the renderer can no longer be trusted to remain visible during desktop shutdown.
 
@@ -111,7 +111,7 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 
 **Feedback, errors, and diagnostics.** Loading statuses and route errors appear in main content. Native close warnings explain whether unsaved local text or a GitHub result is at risk.
 
-**Preferences, keyboard commands, and desktop integration.** ⌘K opens Navigate and ⌘, opens Settings when navigation is clear. The first titlebar control collapses or expands the Visited pull requests column. Native menu Settings and Refresh actions raise the window before delivery. Window bounds persist separately from workbench position.
+**Preferences, keyboard commands, and desktop integration.** ⌘K opens Navigate and ⌘, opens Settings unless a GitHub write is pending. The first titlebar control collapses or expands the Visited pull requests column. Native menu Settings and Refresh actions raise the window before delivery. Window bounds persist separately from workbench position.
 
 **Supported input and accessibility limits.** Keyboard and mouse navigation are in scope. Destination changes focus the new `h1`; screen-reader behavior is not a supported product claim.
 

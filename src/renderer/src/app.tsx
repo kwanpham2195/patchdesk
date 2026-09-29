@@ -324,9 +324,11 @@ function AppContent({
     },
     [navigate, navigationState, openLocalRow],
   );
-  const openPullRequestFromPalette = useCallback(
-    (ref: PullRequestRef): void => {
-      navigate({ kind: "dashboard" });
+  // The pull request a palette or notification open waits on behind the leave-confirmation (#606).
+  const [parkedPullRequest, setParkedPullRequest] = useState<PullRequestRef>();
+  const openWatchedPullRequest = useCallback(
+    (ref: PullRequestRef, leave: () => void): void => {
+      leave();
       const watched = (dashboard?.profile.repos ?? []).some((repo) =>
         sameRepositoryIdentity(repo, ref),
       );
@@ -338,7 +340,17 @@ function AppContent({
       }
       openPullRequestByRef(ref);
     },
-    [dashboard?.profile.repos, navigate, openPullRequestByRef, reportOpenError],
+    [dashboard?.profile.repos, openPullRequestByRef, reportOpenError],
+  );
+  const openPullRequestFromPalette = useCallback(
+    (ref: PullRequestRef): void => {
+      if (navigationState !== "clear") {
+        setParkedPullRequest(ref);
+        return;
+      }
+      openWatchedPullRequest(ref, () => navigate({ kind: "dashboard" }));
+    },
+    [navigate, navigationState, openWatchedPullRequest],
   );
   const notificationFocus = useDesktopNotificationClicks({
     enabled: !fixtureMode,
@@ -367,7 +379,8 @@ function AppContent({
       >
         <AppShell
           destination={next}
-          navigationBlocked={navigationState !== "clear"}
+          // An unsaved draft lets Navigate open; the leave dialog holds what it starts.
+          navigationBlocked={navigationState === "write_pending"}
           onNavigate={navigate}
           onOpenLocalReview={openLocalRepositoryFromSidebar}
           onOpenSettings={openSettings}
@@ -432,11 +445,16 @@ function AppContent({
         profileId={dashboard?.profile.id}
       />
       <AlertDialog
-        open={pendingDestination !== undefined || parkedLocalOpen !== undefined}
+        open={
+          pendingDestination !== undefined ||
+          parkedLocalOpen !== undefined ||
+          parkedPullRequest !== undefined
+        }
         onOpenChange={(open) => {
           if (open || navigationState === "write_pending") return;
           setPendingDestination(undefined);
           setParkedLocalOpen(undefined);
+          setParkedPullRequest(undefined);
         }}
       >
         <AlertDialogContent>
@@ -466,11 +484,16 @@ function AppContent({
                     // Leaving first unmounts the draft this confirmation discards.
                     performNavigation({ kind: "dashboard" });
                     void openLocalRow(parkedLocalOpen, () => undefined);
+                  } else if (parkedPullRequest !== undefined) {
+                    openWatchedPullRequest(parkedPullRequest, () =>
+                      performNavigation({ kind: "dashboard" }),
+                    );
                   } else if (pendingDestination !== undefined)
                     performNavigation(pendingDestination);
                   setNavigationState("clear");
                   setPendingDestination(undefined);
                   setParkedLocalOpen(undefined);
+                  setParkedPullRequest(undefined);
                 }}
               >
                 Discard changes and leave
