@@ -18,6 +18,7 @@ import {
   success,
   type DesktopDouble,
 } from "./fake-desktop-response";
+import { hoveredGutterButton } from "./pierre-gutter";
 
 const patch =
   "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1 +1 @@\n-old\n+new\n";
@@ -282,10 +283,9 @@ describe("diff workbench", () => {
         ).toBeNull(),
       );
       expect(container.querySelector(".review-diff-viewport")).toBeTruthy();
-      expect(
-        screen.getAllByRole("button", { name: "Add comment on README.md" })
-          .length,
-      ).toBeGreaterThan(0);
+      await waitFor(() =>
+        expect(hoveredGutterButton({ line: 1 })).not.toBeNull(),
+      );
     });
   });
 

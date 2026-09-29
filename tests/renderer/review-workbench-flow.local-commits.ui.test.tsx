@@ -18,6 +18,7 @@ import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contract
 import { chooseChanges } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { callBody, callPath, projection } from "./review-workbench-fixtures";
+import { hoveredGutterButton } from "./pierre-gutter";
 
 // jsdom has no constructable stylesheets; Pierre's CodeView, which renders inline notes, only needs the call to exist.
 const stubbedReplaceSync = CSSStyleSheet.prototype.replaceSync === undefined;
@@ -185,9 +186,7 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
     expect(
       screen.queryByRole("article", { name: "Note on src/a.ts:1" }),
     ).toBeNull();
-    expect(screen.queryAllByRole("button", { name: /^Add note on/ })).toEqual(
-      [],
-    );
+    await waitFor(() => expect(hoveredGutterButton({ line: 1 })).toBeNull());
     expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
     expect(screen.getByRole("note")).toBeTruthy();
 

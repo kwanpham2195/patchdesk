@@ -25,6 +25,7 @@ import {
   withAnalysis,
   type DeferredResolve,
 } from "./review-workbench-fixtures";
+import { dragDiffGutter } from "./pierre-gutter";
 
 /**
  * What `ReviewWorkbenchFlow` does that its hooks cannot see themselves: which
@@ -707,17 +708,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       const user = setupCodeViewUser();
       mount(projection());
       fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
-      const authorButtons = await screen.findAllByRole("button", {
-        name: "Add comment on src/a.ts",
-      });
-      const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined)
-        throw new Error("missing comment action");
-      commentButton.dataset.lineNumber = "1";
-      commentButton.dataset.lineSide = "additions";
-      await user.click(commentButton);
+      await dragDiffGutter({ line: 1 });
       await user.type(
-        screen.getByRole("textbox", { name: "Inline comment" }),
+        await screen.findByRole("textbox", { name: "Inline comment" }),
         "Confirmed body",
       );
       await user.click(screen.getByRole("button", { name: "Comment" }));
@@ -766,17 +759,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       const user = setupCodeViewUser();
       mount(projection());
       fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
-      const authorButtons = await screen.findAllByRole("button", {
-        name: "Add comment on src/a.ts",
-      });
-      const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined)
-        throw new Error("missing comment action");
-      commentButton.dataset.lineNumber = "1";
-      commentButton.dataset.lineSide = "additions";
-      await user.click(commentButton);
+      await dragDiffGutter({ line: 1 });
       await user.type(
-        screen.getByRole("textbox", { name: "Inline comment" }),
+        await screen.findByRole("textbox", { name: "Inline comment" }),
         "Unresolved body",
       );
       await user.click(screen.getByRole("button", { name: "Comment" }));

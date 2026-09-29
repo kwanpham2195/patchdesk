@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { CodeViewLineSelection } from "@pierre/diffs";
+import type { SelectedLineRange } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
 import { isOutcomeUnknownRetry } from "../api-client";
@@ -14,6 +14,10 @@ import {
 import { composerErrorMessage } from "../components/review-diff-authoring-errors";
 import type { DraftRecovery } from "../components/draft-recovery";
 import { useLatestCommitted } from "./use-latest-committed";
+import {
+  diffLineRangeLabel,
+  diffLineRangeLocation,
+} from "../review-diff-line-range";
 import type {
   PendingReviewDrafts,
   PendingReviewWrite,
@@ -74,10 +78,21 @@ export type ReviewConversationOverlays = {
     line: number,
     side: "additions" | "deletions",
   ) => void;
-  readonly beginAuthoring: (selection: CodeViewLineSelection | null) => void;
+  /** Opens the composer for a gutter click or drag; stable, so Pierre's options never change with it. */
+  readonly beginRangeAuthoring: (
+    path: string,
+    range: SelectedLineRange,
+  ) => void;
+  /** Why the last gutter drag opened no composer, until dismissed or a composer opens. */
+  readonly authoringRefusal: DiffAuthoringRefusal | undefined;
   readonly decorateConversationThread: (
     thread: ConversationThreadCardData,
   ) => ConversationThreadCardData;
+};
+
+export type DiffAuthoringRefusal = {
+  readonly message: string;
+  readonly onDismiss: () => void;
 };
 
 const NO_WRITES: ReadonlyArray<PendingReviewWrite> = [];
@@ -103,7 +118,11 @@ export function useReviewConversationOverlays({
   readonly conversationActions: ReviewConversationActions | undefined;
 }): ReviewConversationOverlays {
   const [authoringSelection, setAuthoringSelection] =
-    useState<CodeViewLineSelection | null>(null);
+    useState<LocalCommentLocation | null>(null);
+  // Kept with the patch it names lines of, so a view switch or Refresh drops it.
+  const [refusal, setRefusal] = useState<
+    { readonly message: string; readonly patch: string } | undefined
+  >();
   const [authoringInitialBody, setAuthoringInitialBody] = useState<
     string | undefined
   >();
@@ -267,30 +286,32 @@ export function useReviewConversationOverlays({
     viewer.current?.clearSelectedLines();
   }, [viewer]);
 
-  const beginAccessibleAuthoring = useCallback(
-    (path: string, line: number, side: "additions" | "deletions"): void => {
+  const openComposer = useCallback(
+    (location: LocalCommentLocation): void => {
       if (localCommentAuthoring?.enabled !== true) return;
-      const location: LocalCommentLocation = {
-        path,
-        startLine: line,
-        line,
-        side: side === "additions" ? "new" : "old",
-      };
       if (localCommentAuthoring.canAuthor?.(location) === false) return;
-      const selection = {
-        id: path,
-        range: { start: line, end: line, side },
-      };
+      setRefusal(undefined);
       if (
         localCommentAuthoring.kind === "note" &&
-        isSameNoteSelection(authoringSelection, selection)
+        isSameLocation(authoringSelection, location)
       )
         return;
       localCommentAuthoring.onSelectionChange?.(location);
       takeRecoverableDraft();
-      setAuthoringSelection(selection);
+      setAuthoringSelection(location);
     },
     [authoringSelection, localCommentAuthoring, takeRecoverableDraft],
+  );
+
+  const beginAccessibleAuthoring = useCallback(
+    (path: string, line: number, side: "additions" | "deletions"): void =>
+      openComposer({
+        path,
+        startLine: line,
+        line,
+        side: side === "additions" ? "new" : "old",
+      }),
+    [openComposer],
   );
 
   const saveAuthoring = useCallback(
@@ -300,17 +321,11 @@ export function useReviewConversationOverlays({
         localCommentAuthoring?.enabled !== true
       )
         return;
-      const side: "new" | "old" =
-        authoringSelection.range.side === "additions" ? "new" : "old";
-      const parsedPath = parseRepoRelativePath(authoringSelection.id);
+      const { side } = authoringSelection;
+      const parsedPath = parseRepoRelativePath(authoringSelection.path);
       const anchor =
         parsedPath._tag === "ok"
-          ? {
-              path: parsedPath.value,
-              startLine: authoringSelection.range.start,
-              line: authoringSelection.range.end,
-              side,
-            }
+          ? { ...authoringSelection, path: parsedPath.value }
           : undefined;
       if (anchor === undefined) return;
       // A note is saved to the Review record, which then renders it; a refusal keeps the composer open with its text.
@@ -351,7 +366,7 @@ export function useReviewConversationOverlays({
       clearAuthoring();
       try {
         const saveInput: LocalCommentAuthoringSaveInput = {
-          path: authoringSelection.id,
+          path: authoringSelection.path,
           startLine: anchor.startLine,
           line: anchor.line,
           side,
@@ -500,20 +515,21 @@ export function useReviewConversationOverlays({
                 pendingReviewComposer.onAddReviewComment(nodeId, a, b),
               ),
           };
+    const { path, startLine, line, side } = authoringSelection;
     return {
-      id: `local-comment:${authoringSelection.id}:${authoringSelection.range.start}:${authoringSelection.range.end}:${authoringSelection.range.side}`,
-      path: authoringSelection.id,
-      start: authoringSelection.range.start,
-      end: authoringSelection.range.end,
-      side: authoringSelection.range.side === "additions" ? "new" : "old",
+      id: `local-comment:${path}:${startLine}:${line}:${side}`,
+      path,
+      start: startLine,
+      end: line,
+      side,
       severity: "info",
       title: "Local comment",
       explanation: "",
       localComposer: {
-        path: authoringSelection.id,
-        startLine: authoringSelection.range.start,
-        line: authoringSelection.range.end,
-        side: authoringSelection.range.side === "additions" ? "new" : "old",
+        path,
+        startLine,
+        line,
+        side,
         ...definedProps({ initialBody: authoringInitialBody }),
         onCancel: clearAuthoring,
         onSave: saveAuthoring,
@@ -560,14 +576,7 @@ export function useReviewConversationOverlays({
         localCommentAuthoring.onSelectionChange?.(location);
         setAuthoringInitialBody(candidate.body);
         setOrphanedDraftBody?.(undefined);
-        setAuthoringSelection({
-          id: candidate.path,
-          range: {
-            start: candidate.start,
-            end: candidate.end,
-            side: candidate.side === "new" ? "additions" : "deletions",
-          },
-        });
+        setAuthoringSelection(location);
         return;
       }
       setOrphanedDraftBody?.(candidate.body);
@@ -828,33 +837,33 @@ export function useReviewConversationOverlays({
     [conversationActions, createdThreadsRef],
   );
 
-  const beginAuthoring = useCallback(
-    (selection: CodeViewLineSelection | null): void => {
-      if (localCommentAuthoring?.enabled !== true || selection === null) return;
-      const range = selection.range;
-      if (
-        (range.side !== "additions" && range.side !== "deletions") ||
-        (range.endSide !== undefined && range.endSide !== range.side)
-      )
+  const beginRangeAuthoringNow = useCallback(
+    (path: string, range: SelectedLineRange): void => {
+      if (localCommentAuthoring?.enabled !== true) return;
+      const result = diffLineRangeLocation(patch, path, range);
+      if (result._tag === "ok") {
+        openComposer(result.location);
         return;
-      const location: LocalCommentLocation = {
-        path: selection.id,
-        startLine: range.start,
-        line: range.end,
-        side: range.side === "additions" ? "new" : "old",
-      };
-      if (localCommentAuthoring.canAuthor?.(location) === false) return;
-      if (
-        localCommentAuthoring.kind === "note" &&
-        isSameNoteSelection(authoringSelection, selection)
-      )
-        return;
-      localCommentAuthoring.onSelectionChange?.(location);
-      takeRecoverableDraft();
-      setAuthoringSelection(selection);
+      }
+      const lines = diffLineRangeLabel(result.startLine, result.line);
+      const target = localCommentAuthoring.kind === "note" ? "note" : "comment";
+      setRefusal({
+        patch,
+        message:
+          result.reason === "crosses_sides"
+            ? `${lines} mix old and new lines. A ${target} covers lines on one side.`
+            : `${lines} reach outside one hunk. A ${target} covers lines inside one hunk.`,
+      });
     },
-    [authoringSelection, localCommentAuthoring, takeRecoverableDraft],
+    [localCommentAuthoring, openComposer, patch],
   );
+  const latestBeginRangeAuthoring = useLatestCommitted(beginRangeAuthoringNow);
+  const beginRangeAuthoring = useCallback(
+    (path: string, range: SelectedLineRange): void =>
+      latestBeginRangeAuthoring.current(path, range),
+    [latestBeginRangeAuthoring],
+  );
+  const dismissRefusal = useCallback((): void => setRefusal(undefined), []);
 
   return {
     displayedAnnotations,
@@ -867,22 +876,26 @@ export function useReviewConversationOverlays({
             onDismiss: releaseRecoverableDraft,
           },
     beginAccessibleAuthoring,
-    beginAuthoring,
+    beginRangeAuthoring,
+    authoringRefusal:
+      refusal?.patch === patch
+        ? { message: refusal.message, onDismiss: dismissRefusal }
+        : undefined,
     decorateConversationThread,
   };
 }
 
-/** Pierre reports the same line selection repeatedly; the open note keeps its text. */
-function isSameNoteSelection(
-  current: CodeViewLineSelection | null,
-  next: CodeViewLineSelection,
+/** Opening the same lines again keeps the open note's text. */
+function isSameLocation(
+  current: LocalCommentLocation | null,
+  next: LocalCommentLocation,
 ): boolean {
   return (
     current !== null &&
-    current.id === next.id &&
-    current.range.start === next.range.start &&
-    current.range.end === next.range.end &&
-    current.range.side === next.range.side
+    current.path === next.path &&
+    current.startLine === next.startLine &&
+    current.line === next.line &&
+    current.side === next.side
   );
 }
 

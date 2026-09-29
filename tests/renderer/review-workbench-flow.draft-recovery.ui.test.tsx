@@ -17,6 +17,7 @@ import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contract
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import { bridge, Refusal, restoreBridge } from "./review-workbench-bridge";
 import { pending, projection, sha } from "./review-workbench-fixtures";
+import { dragDiffGutter } from "./pierre-gutter";
 
 /**
  * A safely refused inline draft outlives the Diff tab, which unmounts on a tab
@@ -92,25 +93,12 @@ function setupCodeViewUser(): ReturnType<typeof userEvent.setup> {
   return userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
 }
 
-async function selectAddedLine(
-  user: ReturnType<typeof userEvent.setup>,
-  line: number,
-): Promise<void> {
-  const add = (
-    await screen.findAllByRole("button", { name: "Add comment on src/a.ts" })
-  ).at(-1);
-  if (add === undefined) throw new Error("missing added-line comment action");
-  add.dataset.lineNumber = String(line);
-  add.dataset.lineSide = "additions";
-  await user.click(add);
-}
-
 async function refuseDraftOnDiff(
   user: ReturnType<typeof userEvent.setup>,
   body: string,
 ): Promise<void> {
   await user.click(screen.getByRole("tab", { name: "Diff" }));
-  await selectAddedLine(user, 1);
+  await dragDiffGutter({ line: 1 });
   const composer = screen.getByRole("region", {
     name: "Inline comment composer",
   });
@@ -181,7 +169,7 @@ describe("a refused inline draft in the mounted workbench", () => {
     view.rerender(flow(refreshedToNewHead()));
     await user.click(screen.getByRole("tab", { name: "Diff" }));
     expect(screen.getByRole("region", { name: "Saved draft" })).toBeTruthy();
-    await selectAddedLine(user, 3);
+    await dragDiffGutter({ line: 3 });
 
     await waitFor(() =>
       expect(

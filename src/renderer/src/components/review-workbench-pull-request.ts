@@ -118,13 +118,18 @@ export function createHeadSideCommentAuthoring(
       lineEnd: location.line,
       diffSide: "new",
     });
-    return mapped.mappingStatus === "mapped" && mapped.path === location.path
-      ? {
-          path: path.value,
-          startLine: location.startLine,
-          line: location.line,
-          side: location.side,
-        }
+    if (mapped.mappingStatus !== "mapped" || mapped.path !== location.path)
+      return undefined;
+    const anchor = {
+      path: path.value,
+      startLine: location.startLine,
+      line: location.line,
+      side: location.side,
+    };
+    // GitHub refuses a range that leaves one hunk of the pull request diff, even when the commit's own hunk holds it.
+    return anchor.startLine === anchor.line ||
+      fingerprintPatchAnchor(fullPatch, anchor) !== undefined
+      ? anchor
       : undefined;
   };
   return {

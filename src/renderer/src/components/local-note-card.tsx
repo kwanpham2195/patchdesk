@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
 import type { LocalDraftEntry } from "../local-draft-contracts";
+import { diffLineRangeLabel } from "../review-diff-line-range";
 import { LocalDraftStateBadge } from "./local-draft-state-badge";
 
 export type LocalNoteCardProps = {
@@ -83,6 +84,7 @@ export function LocalNoteCard({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="outline">Note</Badge>
         <LocalDraftStateBadge state={state} />
+        <span>{diffLineRangeLabel(startLine, line)}</span>
         <span>For the coding agent</span>
         {draft !== undefined || onEdit === undefined ? null : (
           <div className="ml-auto flex gap-1">

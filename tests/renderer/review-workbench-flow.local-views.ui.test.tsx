@@ -20,6 +20,7 @@ import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contract
 import { chooseChanges, chooseViewedAction } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
+import { dragDiffGutter, hoveredGutterButton } from "./pierre-gutter";
 
 afterEach(() => {
   cleanup();
@@ -146,19 +147,7 @@ async function showView(
   await waitFor(() =>
     expect(screen.queryByText(/^Loading the .* view/)).toBeNull(),
   );
-  await screen.findAllByRole("button", { name: "Add note on src/a.ts" });
-}
-
-async function selectAddedLine(
-  user: ReturnType<typeof userEvent.setup>,
-): Promise<void> {
-  const add = (
-    await screen.findAllByRole("button", { name: "Add note on src/a.ts" })
-  ).at(-1);
-  if (add === undefined) throw new Error("missing Add note action");
-  add.dataset.lineNumber = "1";
-  add.dataset.lineSide = "additions";
-  await user.click(add);
+  await waitFor(() => expect(hoveredGutterButton({ line: 1 })).not.toBeNull());
 }
 
 describe("ReviewWorkbenchFlow patch views", () => {
@@ -468,7 +457,7 @@ describe("ReviewWorkbenchFlow notes across patch views", () => {
     const user = setupCodeViewUser();
     render(<SharedReviewScreen initial={sharedReviewOnA([])} />);
     await user.click(screen.getByRole("tab", { name: "Diff" }));
-    await selectAddedLine(user);
+    await dragDiffGutter({ line: 1 });
     await user.type(
       within(screen.getByRole("region", { name: "Note composer" })).getByRole(
         "textbox",
@@ -480,7 +469,7 @@ describe("ReviewWorkbenchFlow notes across patch views", () => {
     await showView(user, "Committed");
     expect(screen.queryByRole("region", { name: "Note composer" })).toBeNull();
     expect(screen.getByRole("region", { name: "Saved draft" })).toBeTruthy();
-    await selectAddedLine(user);
+    await dragDiffGutter({ line: 1 });
 
     const composer = screen.getByRole("region", { name: "Note composer" });
     const textbox = within(composer).getByRole("textbox", { name: "Note" });

@@ -22,6 +22,7 @@ import {
   success,
   type DesktopDouble,
 } from "./fake-desktop-response";
+import { dragDiffGutter } from "./pierre-gutter";
 
 const must = <T,>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
@@ -279,19 +280,9 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = await screen.findAllByRole("button", {
-        name: "Add comment on src/a.ts",
-      });
-      const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined)
-        throw new Error("Expected an inline comment action");
-      // Pierre populates the gutter action's line from its internal hover
-      // state, which jsdom cannot produce; seed it directly.
-      commentButton.dataset.lineNumber = "1";
-      commentButton.dataset.lineSide = "additions";
-      await user.click(commentButton);
+      await dragDiffGutter({ line: 1 });
       await user.type(
-        screen.getByRole("textbox", { name: "Inline comment" }),
+        await screen.findByRole("textbox", { name: "Inline comment" }),
         "Publish this",
       );
       await user.click(screen.getByRole("button", { name: "Comment" }));
@@ -365,17 +356,9 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = await screen.findAllByRole("button", {
-        name: "Add comment on src/a.ts",
-      });
-      const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined)
-        throw new Error("Expected an inline comment action");
-      commentButton.dataset.lineNumber = "1";
-      commentButton.dataset.lineSide = "additions";
-      await user.click(commentButton);
+      await dragDiffGutter({ line: 1 });
       await user.type(
-        screen.getByRole("textbox", { name: "Inline comment" }),
+        await screen.findByRole("textbox", { name: "Inline comment" }),
         "Publish this",
       );
       await user.click(screen.getByRole("button", { name: "Comment" }));
@@ -435,19 +418,9 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = await screen.findAllByRole("button", {
-        name: "Add comment on src/a.ts",
-      });
-      const commentButton = authorButtons.at(-1);
-      if (commentButton === undefined)
-        throw new Error("Expected an inline comment action");
-      // Pierre populates the gutter action's line from its internal hover
-      // state, which jsdom cannot produce; seed it directly.
-      commentButton.dataset.lineNumber = "1";
-      commentButton.dataset.lineSide = "additions";
-      await user.click(commentButton);
+      await dragDiffGutter({ line: 1 });
       await user.type(
-        screen.getByRole("textbox", { name: "Inline comment" }),
+        await screen.findByRole("textbox", { name: "Inline comment" }),
         "Will fail",
       );
       await user.click(screen.getByRole("button", { name: "Comment" }));
@@ -688,17 +661,9 @@ it("keeps Reply and Resolve off a published create card even when all global con
         virtualized={false}
       />,
     );
-    const authorButtons = await screen.findAllByRole("button", {
-      name: "Add comment on src/a.ts",
-    });
-    const commentButton = authorButtons.at(-1);
-    if (commentButton === undefined)
-      throw new Error("Expected an inline comment action");
-    commentButton.dataset.lineNumber = "1";
-    commentButton.dataset.lineSide = "additions";
-    await user.click(commentButton);
+    await dragDiffGutter({ line: 1 });
     await user.type(
-      screen.getByRole("textbox", { name: "Inline comment" }),
+      await screen.findByRole("textbox", { name: "Inline comment" }),
       "Publish this",
     );
     await user.click(screen.getByRole("button", { name: "Comment" }));
@@ -801,15 +766,7 @@ describe("pending-review composer lifecycle", () => {
     user: ReturnType<typeof userEvent.setup>,
     body: string,
   ) => {
-    const authorButtons = await screen.findAllByRole("button", {
-      name: "Add comment on src/a.ts",
-    });
-    const commentButton = authorButtons.at(-1);
-    if (commentButton === undefined)
-      throw new Error("Expected an inline comment action");
-    commentButton.dataset.lineNumber = "1";
-    commentButton.dataset.lineSide = "additions";
-    await user.click(commentButton);
+    await dragDiffGutter({ line: 1 });
     await user.type(
       await screen.findByRole("textbox", { name: "Inline comment" }),
       body,
