@@ -125,7 +125,12 @@ export class LocalChangeIntentService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly markdown: string;
-  }): Promise<Result<{ readonly intentKept: boolean }, AgentIntentFailure>> {
+  }): Promise<
+    Result<
+      ChangeIntentState & { readonly intentKept: boolean },
+      AgentIntentFailure
+    >
+  > {
     let kept = false;
     const written = await this.write<AgentIntentFailure>(
       {
@@ -143,7 +148,9 @@ export class LocalChangeIntentService {
         return kept ? ok(current) : err({ reason: "intent_exists" });
       },
     );
-    return written._tag === "ok" ? ok({ intentKept: kept }) : written;
+    return written._tag === "ok"
+      ? ok({ ...written.value, intentKept: kept })
+      : written;
   }
 
   /** `next` decides the intent from the one the Review holds, under the Review coordinator. */

@@ -1,5 +1,9 @@
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import {
+  listedChangeIntent,
+  type ListedChangeIntent,
+} from "../domain/change-intent";
 import { definedProps } from "../domain/defined-props";
 import type {
   AbsolutePath,
@@ -23,6 +27,8 @@ type ListedSharedReview = ReviewSessionDescription & {
   readonly baseBranch: LocalBranchName;
   /** When the maintainer last opened it; absent when only an agent has. */
   readonly lastOpenedAt?: IsoTimestamp;
+  /** Absent when the Review has no Change intent. */
+  readonly changeIntent?: ListedChangeIntent;
 };
 
 /** The branch a checkout is on and its open shared Reviews on any branch, the one opened last first (ADR 0052 `list_local_reviews`). */
@@ -95,7 +101,13 @@ export async function describeSharedReviews(
       ...session.value.description,
       branch: source.branch,
       baseBranch: source.baseBranch,
-      ...definedProps({ lastOpenedAt: review.lastOpenedAt }),
+      ...definedProps({
+        lastOpenedAt: review.lastOpenedAt,
+        changeIntent:
+          review.changeIntent === undefined
+            ? undefined
+            : listedChangeIntent(review.changeIntent),
+      }),
     });
   }
   return ok(described);

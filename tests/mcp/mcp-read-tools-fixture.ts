@@ -124,6 +124,21 @@ export async function loadRoute(
   return v.parse(workbenchSchema, loaded.body);
 }
 
+/** Sets the Change intent the way the maintainer's editor does. */
+export async function setIntentInApp(
+  fixture: McpAppFixture,
+  reviewId: string,
+  intent:
+    | { readonly kind: "text"; readonly markdown: string }
+    | { readonly kind: "file"; readonly path: string },
+): Promise<void> {
+  const set = await fixture.route(
+    "v1/reviews/local-intent",
+    JSON.stringify({ profileId: "acme", reviewId, intent }),
+  );
+  if (set.status !== 200) throw new Error("Change intent not set");
+}
+
 export async function addNote(
   fixture: McpAppFixture,
   workbench: Workbench,

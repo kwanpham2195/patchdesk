@@ -111,6 +111,11 @@ describe.each(mcpProtocolEras)(
           },
         ],
         retainedInsights: [],
+        changeIntent: {
+          kind: "text",
+          source: "agent",
+          markdown: "Add the app entry point.",
+        },
         intentRecorded: true,
         intentKept: false,
       });
@@ -159,6 +164,11 @@ describe.each(mcpProtocolEras)(
         content: {
           reviewId,
           sessionId,
+          changeIntent: {
+            kind: "text",
+            source: "agent",
+            markdown: "Ship the first goal.",
+          },
           intentRecorded: false,
           intentRefused: "intent_exists",
           intentMessage: expect.any(String),
