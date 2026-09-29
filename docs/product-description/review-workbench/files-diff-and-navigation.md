@@ -159,6 +159,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 - Find searches code lines only: file paths, inline comments, notes, and Finding cards are not searched.
 - Find counts matching lines, not occurrences, so a line that holds the text twice is one match.
 - A find step into a Viewed file clears that file's Viewed mark; marking it Viewed again is a separate action.
+- Choosing the Browse row already highlighted as the active file leaves the diff where it is, so a line that ⌘F, a key, or scrolling brought into view stays on screen.
 
 ## Open questions and verification
 

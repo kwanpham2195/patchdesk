@@ -193,6 +193,7 @@ export function useReviewDiffSelectionScroll<T>({
   fileMode,
   markdownPreviewActive,
   selectionScrollPending,
+  activePathRef,
 }: {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
   readonly items: ReadonlyArray<Pick<CodeViewDiffItem<unknown>, "id">>;
@@ -206,6 +207,8 @@ export function useReviewDiffSelectionScroll<T>({
   /** Raised for the whole flight of a selection scroll, so the scroll-state
    * hook can tell a stale scroll position from a settled one. */
   readonly selectionScrollPending: { current: boolean };
+  /** The file the diff last reported active; see the skip below. */
+  readonly activePathRef: { readonly current: string | undefined };
 }): void {
   const selectionScrollKey = [
     diffStyle,
@@ -222,8 +225,9 @@ export function useReviewDiffSelectionScroll<T>({
   // separate so those unrelated updates do not re-fight the user's scroll.
   const selectionScrollProgress = useRef<{
     key: string;
+    path: string | undefined;
     completed: boolean;
-  }>({ key: "", completed: false });
+  }>({ key: "", path: undefined, completed: false });
 
   useEffect(() => {
     if (selectedPath === undefined) {
@@ -231,9 +235,17 @@ export function useReviewDiffSelectionScroll<T>({
       return;
     }
     if (selectionScrollProgress.current.key !== selectionScrollKey) {
+      // With no file chosen, the workbench selects whichever file the diff
+      // reports active. That file is already where a jump or scroll put it, so
+      // scrolling to its header would undo a ⌘F or `]` landing further down.
+      const followsActiveFile =
+        selectedLines === null &&
+        selectionScrollProgress.current.path !== selectedPath &&
+        selectedPath === activePathRef.current;
       selectionScrollProgress.current = {
         key: selectionScrollKey,
-        completed: false,
+        path: selectedPath,
+        completed: followsActiveFile,
       };
     }
     if (selectionScrollProgress.current.completed) return;
@@ -259,6 +271,7 @@ export function useReviewDiffSelectionScroll<T>({
       },
     });
   }, [
+    activePathRef,
     fileMode,
     items,
     selectedLines,

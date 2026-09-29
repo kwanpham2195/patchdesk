@@ -90,3 +90,85 @@ test("⌘F in Selected selects the file that holds the match", async ({
     await closeServer(server);
   }
 });
+
+// A line in the middle of the next file, and the last line of the last file.
+for (const { text, path, line } of [
+  { text: "new-1-30", path: "src/b.ts", line: "31" },
+  { text: LAST_LINE_TEXT, path: "src/c.ts", line: "48" },
+]) {
+  test(`⌘F into ${path} lands line ${line} on screen on the first Enter`, async ({
+    page,
+  }) => {
+    const server = await serveRenderer();
+    try {
+      await page.setViewportSize({ width: 1_440, height: 900 });
+      await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
+
+      await page.keyboard.press("ControlOrMeta+f");
+      const field = page.getByRole("textbox", { name: "Find in diff" });
+      await field.fill(text);
+      await field.press("Enter");
+      await expect(
+        page.locator("[data-review-diff-navigation-status]"),
+      ).toHaveAttribute("data-navigation-path", path);
+      // Landing reports the file active; with no file chosen that selects it,
+      // and a selection scroll to its header used to run within these frames.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve()),
+              ),
+            ),
+          ),
+      );
+
+      const row = page
+        .locator(`[data-line-type="change-addition"][data-line="${line}"]`)
+        .filter({ hasText: text });
+      const viewport = page.locator(".review-diff-viewport");
+      await expect
+        .poll(async () => {
+          const [rowBox, viewportBox] = await Promise.all([
+            row.boundingBox(),
+            viewport.boundingBox(),
+          ]);
+          return (
+            rowBox !== null &&
+            viewportBox !== null &&
+            rowBox.y >= viewportBox.y &&
+            rowBox.y + rowBox.height <= viewportBox.y + viewportBox.height
+          );
+        })
+        .toBe(true);
+    } finally {
+      await closeServer(server);
+    }
+  });
+}
+
+test("closing find with its button returns focus to the Browse row ⌘F was pressed on", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
+    // The row sits in the tree's shadow root, so the document names only its host as focused.
+    const row = page.getByRole("treeitem", { name: "b.ts" });
+    await row.click();
+    await expect(row).toBeFocused();
+
+    await page.keyboard.press("ControlOrMeta+f");
+    await page.getByRole("textbox", { name: "Find in diff" }).fill("new-1");
+    await page.getByRole("button", { name: "Close find" }).click();
+
+    await expect(
+      page.getByRole("search", { name: "Find in diff" }),
+    ).toHaveCount(0);
+    await expect(row).toBeFocused();
+  } finally {
+    await closeServer(server);
+  }
+});

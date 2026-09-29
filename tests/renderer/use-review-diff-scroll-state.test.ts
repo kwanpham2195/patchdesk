@@ -8,6 +8,7 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
   useReviewDiffScrollState,
   useReviewDiffSelectionScroll,
+  type ReviewDiffScrollState,
 } from "../../src/renderer/src/hooks/use-review-diff-scroll-state";
 
 const items = [{ id: "src/a.ts" }, { id: "src/b.ts" }];
@@ -56,6 +57,9 @@ function flushFrames(): Promise<void> {
 }
 
 const noHydratedFiles: ReadonlyMap<string, FileDiffMetadata> = new Map();
+const noActivePath: ReviewDiffScrollState<undefined>["activePathRef"] = {
+  current: undefined,
+};
 
 describe("useReviewDiffScrollState", () => {
   it("does not report the outgoing file while a selection scroll is in flight", async () => {
@@ -108,6 +112,7 @@ describe("useReviewDiffScrollState", () => {
           fileMode: "all",
           markdownPreviewActive: false,
           selectionScrollPending: state.selectionScrollPending,
+          activePathRef: state.activePathRef,
         });
         // Mirrors review-diff-view, which clears the remembered active path
         // whenever the rendered item list changes.
@@ -188,6 +193,7 @@ describe("useReviewDiffSelectionScroll", () => {
         fileMode: "all",
         markdownPreviewActive: false,
         selectionScrollPending,
+        activePathRef: noActivePath,
       }),
     );
 
@@ -218,6 +224,7 @@ describe("useReviewDiffSelectionScroll", () => {
         fileMode: "all",
         markdownPreviewActive: false,
         selectionScrollPending,
+        activePathRef: noActivePath,
       }),
     );
 
@@ -246,6 +253,7 @@ describe("useReviewDiffSelectionScroll", () => {
         fileMode: "all",
         markdownPreviewActive: false,
         selectionScrollPending,
+        activePathRef: noActivePath,
       }),
     );
 
@@ -281,6 +289,7 @@ describe("useReviewDiffSelectionScroll", () => {
           fileMode: "all",
           markdownPreviewActive,
           selectionScrollPending,
+          activePathRef: noActivePath,
         }),
       { initialProps: { markdownPreviewActive: false } },
     );
@@ -323,6 +332,7 @@ describe("useReviewDiffSelectionScroll", () => {
           fileMode: "all",
           markdownPreviewActive: false,
           selectionScrollPending,
+          activePathRef: noActivePath,
         }),
       { initialProps: { rendered: items } },
     );
@@ -337,5 +347,47 @@ describe("useReviewDiffSelectionScroll", () => {
     await flushFrames();
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo).toHaveBeenLastCalledWith(selectionTarget);
+  });
+
+  it("stays put when the selection moves to the file the diff reported active, and scrolls for any other file", async () => {
+    const scrollTo = vi.fn();
+    const selectionScrollPending = { current: false };
+    const viewer = fakeViewer(scrollTo, () => ["src/a.ts", "src/b.ts"]);
+    // A ⌘F or `]` landing deep in src/b.ts reports it active, and with no
+    // file chosen the workbench then selects it.
+    const activePathRef: ReviewDiffScrollState<undefined>["activePathRef"] = {
+      current: undefined,
+    };
+    const { rerender } = renderHook(
+      ({ selectedPath }: { readonly selectedPath: string }) =>
+        useReviewDiffSelectionScroll({
+          viewer,
+          items,
+          selectedPath,
+          selectedLines: null,
+          diffStyle: "unified",
+          fileMode: "all",
+          markdownPreviewActive: false,
+          selectionScrollPending,
+          activePathRef,
+        }),
+      { initialProps: { selectedPath: "src/a.ts" } },
+    );
+    await flushFrames();
+    scrollTo.mockClear();
+
+    activePathRef.current = "src/b.ts";
+    rerender({ selectedPath: "src/b.ts" });
+    await flushFrames();
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(selectionScrollPending.current).toBe(false);
+
+    rerender({ selectedPath: "src/a.ts" });
+    await flushFrames();
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      type: "item",
+      id: "src/a.ts",
+      align: "start",
+    });
   });
 });
