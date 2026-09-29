@@ -9,7 +9,7 @@ export type DiagnosticsOverlay = {
   readonly closeDiagnostics: () => void;
 };
 
-/** Opens like Settings: refused while navigation is blocked by a draft or a pending GitHub write. */
+/** Opens like Settings: refused only while a GitHub write is pending; an overlay leaves an unsaved draft in place. */
 export function useDiagnosticsOverlay(
   navigationState: NavigationState,
 ): DiagnosticsOverlay {
@@ -17,7 +17,7 @@ export function useDiagnosticsOverlay(
   const [diagnosticsOpener, setDiagnosticsOpener] = useState<HTMLElement>();
   const openDiagnostics = useCallback(
     (opener?: HTMLElement): void => {
-      if (navigationState !== "clear") return;
+      if (navigationState === "write_pending") return;
       // The native menu passes no opener; focus then returns to whatever held it.
       const focused =
         document.activeElement instanceof HTMLElement &&

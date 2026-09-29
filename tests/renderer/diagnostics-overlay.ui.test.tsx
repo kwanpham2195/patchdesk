@@ -112,16 +112,19 @@ describe("Diagnostics overlay in the app", () => {
 });
 
 describe("useDiagnosticsOverlay", () => {
-  it.each(["dirty_draft", "write_pending"] as const)(
-    "stays closed while navigation is %s, as Settings does",
-    (navigationState) => {
+  it.each([
+    ["write_pending", false],
+    ["dirty_draft", true],
+  ] as const)(
+    "opens while navigation is %s: %s, as Settings does",
+    (navigationState, opens) => {
       const { result } = renderHook(() =>
         useDiagnosticsOverlay(navigationState),
       );
 
       act(() => result.current.openDiagnostics());
 
-      expect(result.current.diagnosticsOpen).toBe(false);
+      expect(result.current.diagnosticsOpen).toBe(opens);
     },
   );
 });

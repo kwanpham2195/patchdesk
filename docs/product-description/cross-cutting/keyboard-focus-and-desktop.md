@@ -148,6 +148,6 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - Confirm the titlebar busy label when overlapping tracked actions settle in reverse order.
 - Confirm the native close prompt for an unsaved Review draft and for a pending GitHub write on a real macOS window.
 - Live verification of desktop notifications is pending: a macOS banner cannot be observed over CDP, so the log lines are the evidence.
-- In the current source only the Review workbench reports navigation state, and only as write-pending or clear. Confirm which surface, if any, still reports an unsaved draft to this guard.
+- The Review workbench reports navigation state: write-pending, an unsaved draft while a closed Finish review keeps its Summary, or clear.
 
 Baseline drafted from Patchdesk application source commit `3100615`.

@@ -119,7 +119,7 @@ After an interrupt, Patchdesk stays on the current surface unless navigation was
 - A request can succeed after the maintainer has moved to a different scope. Generation and Review-key checks prevent that response from replacing current state.
 - A status-read failure does not prove that a long-running child or GitHub action failed.
 - Closing or reloading can discard renderer-only drafts even when durable Review state remains safe.
-- No surface in the default app reports an unsaved draft to the navigation guard. The Review workbench reports only a pending GitHub write or a clear state, so the draft branch of the leave dialog is not reachable.
+- The only unsaved draft reported to the navigation guard is a Finish review Summary kept after the dialog closes; see [Pending review and Finish review](../review-workbench/pending-review-and-finish.md#leave-unchanged).
 
 ## Open questions and verification
 
