@@ -109,7 +109,10 @@ export async function startLocalApiServer(
       ? undefined
       : startMcpSocketListener({
           socketPath: configuration.mcpSocketPath,
-          tools: createMcpToolTable(container),
+          tools: createMcpToolTable({
+            ...container,
+            ...definedProps({ reviewWindow: configuration.reviewWindow }),
+          }),
           logs,
           recordRefusal: createMcpRefusalRecorder(container),
         });

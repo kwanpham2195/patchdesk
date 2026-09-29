@@ -43,8 +43,10 @@ import {
   refreshReview,
   reviewLocal,
   runInsight,
+  showReview,
   type McpReviewToolServices,
   type ReviewLocalResult,
+  type ReviewShown,
 } from "./mcp-review-tools";
 
 /** What `list_repositories` returns: the active profile's repositories that have a `localPath`. */
@@ -60,7 +62,8 @@ export type McpToolReply = Result<
   | LocalReviewPrepared
   | InsightReading
   | LocalFeedback
-  | AgentRunRequestReply,
+  | AgentRunRequestReply
+  | ReviewShown,
   McpToolRefusal
 >;
 
@@ -132,6 +135,10 @@ export function createMcpToolTable(services: McpToolServices): McpToolTable {
     run_insight: {
       schema: mcpToolManifest.run_insight.inputSchema,
       call: (input, context) => runInsight(tools, input, context),
+    },
+    show_review: {
+      schema: mcpToolManifest.show_review.inputSchema,
+      call: (input) => showReview(tools, input),
     },
   };
 }

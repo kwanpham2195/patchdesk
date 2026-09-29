@@ -13,9 +13,11 @@ import {
   type ReviewId,
 } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
+import { isLocalReview } from "../../domain/review";
 import { parseLocalReviewSourceRequest } from "../../domain/review-source";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import type { McpToolRefusal } from "../../mcp/socket-protocol";
+import type { ReviewShowOutcome, ReviewWindow } from "../desktop-review-window";
 import type { mcpToolManifest } from "../../mcp/tool-manifest";
 import type {
   AgentRunRequestFailure,
@@ -77,6 +79,7 @@ export type McpReviewToolServices = {
     | "listSharedReviews"
     | "openForAgent"
     | "prepareForAgent"
+    | "branchMismatch"
   >;
   readonly localChangeIntent: Pick<
     LocalChangeIntentService,
@@ -87,6 +90,8 @@ export type McpReviewToolServices = {
   readonly insightReader: Pick<ReviewInsightReader, "read">;
   readonly sessions: Pick<ReviewSessionStore, "load">;
   readonly reviews: Pick<ReviewStore, "load">;
+  /** The desktop window `show_review` switches; absent outside the Electron app. */
+  readonly reviewWindow?: ReviewWindow;
 };
 
 /** Refusals whose message names the checkout's state, built by `localReviewRefusal`. */
@@ -446,4 +451,47 @@ export async function runInsight(
       ? await missingReviewRefusal(services, profiles.value, reviewId.value)
       : refusal(requested.error.reason),
   );
+}
+
+/** What `show_review` answers. */
+export type ReviewShown = { readonly status: ReviewShowOutcome };
+
+/**
+ * `show_review`: refuses what the maintainer's own open of a saved Review
+ * refuses (the `ReviewStore.load` and `LocalReviewOpening.branchMismatch`
+ * checks `ReviewWorkbenchController.load` makes), then hands the Review to
+ * the window, whose renderer opens it through `navigate`.
+ */
+export async function showReview(
+  services: McpReviewToolServices,
+  input: ToolInput<"show_review">,
+): Promise<Result<ReviewShown, McpToolRefusal>> {
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const reviewId = parseReviewId(input.reviewId);
+  if (reviewId._tag === "err") return err(refusal("invalid_input"));
+  const review = await services.reviews.load(
+    profiles.value.active.id,
+    reviewId.value,
+  );
+  if (review._tag === "err")
+    return err(
+      review.error.reason === "not_found"
+        ? await missingReviewRefusal(services, profiles.value, reviewId.value)
+        : refusal("storage"),
+    );
+  if (isLocalReview(review.value)) {
+    const mismatch = await services.localReviewOpening.branchMismatch(
+      review.value,
+    );
+    if (mismatch !== undefined) return err(localReviewRefusal(mismatch));
+  }
+  const status = await services.reviewWindow?.show(reviewId.value);
+  return status === undefined
+    ? err({
+        error: "window_unavailable",
+        message:
+          "Patchdesk could not open its window. Ask the maintainer to open Patchdesk, then try again.",
+      })
+    : ok({ status });
 }

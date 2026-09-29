@@ -15,7 +15,7 @@ type NotificationClickHandler<Event> = (
 ) => void;
 
 /** The main-process half: `BrowserWindow.webContents`, structurally. */
-type NotificationClickSender = {
+export type NotificationClickSender = {
   send(channel: string, click: DesktopNotificationClick): void;
 };
 
@@ -25,7 +25,7 @@ type NotificationClickReceiver<Event> = {
   off(channel: string, handler: NotificationClickHandler<Event>): void;
 };
 
-/** Tells the renderer which Review a clicked notification belongs to. */
+/** Tells the renderer which Review a clicked notification, or an agent's `show_review`, names. */
 export function sendNotificationClick(
   sender: NotificationClickSender,
   click: DesktopNotificationClick,
