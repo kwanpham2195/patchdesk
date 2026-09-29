@@ -34,10 +34,13 @@ export function ScopeGauge({
   scope,
   size,
   className,
+  onBucketSelect,
 }: {
   readonly scope: ChangeScope;
   readonly size: "bar" | "mini" | "card" | "legend";
   readonly className?: string;
+  /** Makes each `card` row with files a button; the card shows no pressed row, since the Diff's Scope picker names the active bucket. */
+  readonly onBucketSelect?: (bucket: ChangeScopeBucket) => void;
 }): React.JSX.Element {
   const label = scopeGaugeLabel(scope);
   if (size === "bar")
@@ -102,6 +105,36 @@ export function ScopeGauge({
       <ul className="flex flex-wrap gap-x-4 gap-y-1">
         {LEGEND_BUCKETS.map((bucket) => {
           const totals = counted.get(bucket);
+          const bucketLabel = SCOPE_BUCKET_LABELS[bucket];
+          const row = (
+            <>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-2 shrink-0 rounded-[2px]",
+                  SCOPE_BUCKET_FILLS[bucket],
+                  totals === undefined ? "opacity-50" : undefined,
+                )}
+              />
+              <span
+                className={
+                  totals === undefined || onBucketSelect === undefined
+                    ? undefined
+                    : "underline decoration-muted-foreground/50 underline-offset-2 group-hover:decoration-foreground"
+                }
+              >
+                {bucketLabel}
+              </span>
+              {totals === undefined ? (
+                <span className="font-mono text-[11px] tabular-nums">—</span>
+              ) : (
+                <ScopeCounts
+                  additions={totals.additions}
+                  deletions={totals.deletions}
+                />
+              )}
+            </>
+          );
           return (
             <li
               key={bucket}
@@ -112,22 +145,18 @@ export function ScopeGauge({
                   : "text-muted-foreground",
               )}
             >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "size-2 shrink-0 rounded-[2px]",
-                  SCOPE_BUCKET_FILLS[bucket],
-                  totals === undefined ? "opacity-50" : undefined,
-                )}
-              />
-              <span>{SCOPE_BUCKET_LABELS[bucket]}</span>
-              {totals === undefined ? (
-                <span className="font-mono text-[11px] tabular-nums">—</span>
+              {totals === undefined || onBucketSelect === undefined ? (
+                row
               ) : (
-                <ScopeCounts
-                  additions={totals.additions}
-                  deletions={totals.deletions}
-                />
+                <button
+                  type="button"
+                  aria-label={`Filter the Diff to ${bucketLabel}`}
+                  title={`Filter the Diff to ${bucketLabel}`}
+                  className="group flex items-center gap-1.5 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => onBucketSelect(bucket)}
+                >
+                  {row}
+                </button>
               )}
             </li>
           );

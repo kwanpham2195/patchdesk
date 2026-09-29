@@ -63,7 +63,7 @@ Context and Preview read file contents from the Review's represented-review work
 
 Open in Analysis on a Finding card switches to the Insights tab and asks Analysis to bring that Finding into view; [Analysis](analysis.md) owns what happens there. Following a Finding's file and line from Analysis does the reverse: the workbench switches to Diff and Browse, selects the Finding's file, and selects its line range on its side of the diff.
 
-The Diff can be filtered to one Scope bucket from the Scope picker on the diff toolbar. The picker reads "Scope" while the whole diff is shown, and lists Clear scope followed by every bucket that has files, each with its colour, its name, and how many files it holds. Choosing a bucket narrows both the file tree and the diff pane to that bucket's files, in the order the patch lists them; the picker then shows the bucket's colour and name. Choosing Clear scope clears the filter and restores the full tree and pane, as does selecting a commit. Commits, Threads, and Notes stay complete throughout.
+The Diff can be filtered to one Scope bucket from the Scope picker on the diff toolbar. The picker reads "Scope" while the whole diff is shown, and lists Clear scope followed by every bucket that has files, each with its colour, its name, and how many files it holds. Choosing a bucket narrows both the file tree and the diff pane to that bucket's files, in the order the patch lists them; the picker then shows the bucket's colour and name. Choosing Clear scope clears the filter and restores the full tree and pane, as does selecting a commit. Commits, Threads, and Notes stay complete throughout. A row of the Brief's Scope card applies the same filter from the Insights tab: it switches to Diff and Browse, leaves Since your review, returns a local Review to the Combined view, and chooses the bucket as the picker would, so the picker shows it; see [Brief](brief.md#settle).
 
 Changing a diff preference updates the view and saves that preference. The navigator and active file update together so the current location can be restored after renderer reload.
 
@@ -159,4 +159,4 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 - Finding badges may still count dismissed Findings; confirm with a dismissed mapped Finding. See [B-21](../bug-triage.md#b-21-dismissed-findings-still-add-to-finding-badges).
 - Confirm Finding navigation, merge-conflict notice absence for other blocks, virtualized scroll and focus, unresolved-thread targets, state after quit, and empty commit slices live.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass. The Brief Scope card entry to the Scope filter is revised from source (#612) and not live-verified.

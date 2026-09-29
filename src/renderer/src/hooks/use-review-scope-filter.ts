@@ -16,6 +16,8 @@ export type ReviewScopeFilterState = {
   readonly scopeFilteredPaths: ReadonlySet<string> | undefined;
   /** Drives the diff toolbar's Scope picker; absent where no bucket can apply. */
   readonly scopeFilter: ScopeFilterControl | undefined;
+  /** The picker's own filter: lands on Browse with the bucket applied. */
+  readonly applyScopeBucket: (bucket: ChangeScopeBucket) => void;
   readonly clearScopeBucket: () => void;
 };
 
@@ -118,6 +120,7 @@ export function useReviewScopeFilter({
   return {
     scopeFilteredPaths,
     scopeFilter,
+    applyScopeBucket,
     clearScopeBucket,
   };
 }

@@ -13,7 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { changeScopeFromPatch } from "../../src/domain/change-scope";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
-import { projection } from "./review-workbench-fixtures";
+import {
+  briefInsight,
+  projection,
+  providerCatalog,
+} from "./review-workbench-fixtures";
 
 /**
  * The Scope filter `ReviewWorkbenchFlow` wires between the diff toolbar and the
@@ -125,6 +129,48 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
       "src/a.ts",
     ]);
   });
+
+  it.each(["current", "outdated"] as const)(
+    "filters the Diff from a row of a %s Brief's Scope card through the toolbar picker",
+    async (status) => {
+      bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates")
+          return { updatesAvailable: false };
+        if (input.path === "/v1/insight-providers") return providerCatalog;
+        throw new Error(input.path);
+      });
+      const workbench = scopedProjection();
+      render(
+        <ReviewWorkbenchFlow
+          workbench={{
+            ...workbench,
+            insights: {
+              ...workbench.insights,
+              brief: briefInsight({ status }),
+            },
+          }}
+          onWorkbenchReplace={vi.fn()}
+          onWorkbenchPatch={vi.fn()}
+          onNavigationStateChange={vi.fn()}
+        />,
+      );
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Insights" }));
+      await user.click(
+        await screen.findByRole("button", {
+          name: "Filter the Diff to Docs",
+        }),
+      );
+
+      expect(
+        screen.getByRole("tab", { name: "Diff" }).getAttribute("aria-selected"),
+      ).toBe("true");
+      expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
+      expect(
+        screen.getByRole("button", { name: "Scope filter" }).textContent,
+      ).toContain("Docs");
+    },
+  );
 
   it("keeps the header, the tree and the pane on one visible file across a section switch", async () => {
     bridge(async (input) =>

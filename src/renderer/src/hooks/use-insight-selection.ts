@@ -66,5 +66,6 @@ export function useInsightSelection(
     setSelectedInsight,
     openFindingInDiff: findingNavigation?.openFindingInDiff,
     openFileInDiff: findingNavigation?.openFileInDiff,
+    openScopeBucketInDiff: findingNavigation?.openScopeBucketInDiff,
   };
 }

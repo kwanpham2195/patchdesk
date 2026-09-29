@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Made each Brief Scope card row with files a button that opens the Diff filtered to that bucket, such as "Filter the Diff to Tests". The Diff's Scope picker then shows the bucket and Clear scope removes it. Rows work on an outdated Brief too, since the card shows the current revision's Scope. #612
+
 - Added **MCP**: `review_local` now returns the Review's Change intent as `changeIntent`, with its text and whether you or the agent wrote it, or the spec file's path. After `intent_exists`, the agent can read the goal Analysis checks its change against. `list_local_reviews` names each Review's intent kind and source without the text. #601
 
 - Saved the Diff tab's View options and All files or Selected choice once for the whole app, so a change applies in every workspace profile. Wrapped lines are now on by default. Choices saved per profile before this change are not carried over, so everyone starts from the defaults once. A Walkthrough hunk starts from the saved View options. #553

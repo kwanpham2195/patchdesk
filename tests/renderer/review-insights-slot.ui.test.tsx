@@ -102,6 +102,7 @@ describe("InsightsSlot finding focus", () => {
         value={{
           openFindingInDiff: () => undefined,
           openFileInDiff: () => undefined,
+          openScopeBucketInDiff: () => undefined,
           findingFocusRequest: request,
           lastInsight: undefined,
           rememberInsight: () => undefined,
@@ -768,6 +769,7 @@ describe("InsightsSlot Brief Start here links", () => {
         value={{
           openFindingInDiff: () => undefined,
           openFileInDiff: (path) => opened.push(path),
+          openScopeBucketInDiff: () => undefined,
           findingFocusRequest: undefined,
           lastInsight: undefined,
           rememberInsight: () => undefined,

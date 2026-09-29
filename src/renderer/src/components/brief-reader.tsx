@@ -27,7 +27,10 @@ import {
   type BriefOwnershipRow,
   type BriefStartHere,
 } from "../brief-contracts";
-import type { ChangeScope } from "../../../domain/change-scope";
+import type {
+  ChangeScope,
+  ChangeScopeBucket,
+} from "../../../domain/change-scope";
 import { definedProps } from "../../../domain/defined-props";
 import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
 import { ReachBlock } from "./brief-reach-block";
@@ -136,6 +139,7 @@ export function BriefReader({
   walkthroughStatus,
   onOpenWalkthrough,
   diffOpenerFor,
+  onScopeBucketSelect,
   loadPullRequestDescription,
 }: {
   readonly retained: RetainedBrief;
@@ -150,6 +154,8 @@ export function BriefReader({
   readonly onOpenWalkthrough?: () => void;
   /** Returns how to open a path in the Diff tab, or undefined when that Diff does not show it; absent when the Diff shows another revision. */
   readonly diffOpenerFor?: (path: string) => (() => void) | undefined;
+  /** Opens the Diff filtered to one Scope bucket; absent outside the workbench. */
+  readonly onScopeBucketSelect?: (bucket: ChangeScopeBucket) => void;
   /** Asks the main process for this Brief as a PR description; offered on a local Review's current Brief. */
   readonly loadPullRequestDescription?: () => Promise<string>;
 }): React.JSX.Element {
@@ -182,7 +188,13 @@ export function BriefReader({
             {...definedProps({ onOpenWalkthrough, diffOpenerFor })}
           />
         )}
-        {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
+        {scope === undefined ? null : (
+          <ScopeGauge
+            scope={scope}
+            size="card"
+            {...definedProps({ onBucketSelect: onScopeBucketSelect })}
+          />
+        )}
         <section
           aria-label="Provenance"
           className="flex flex-col gap-3 rounded-md border p-3"
