@@ -44,6 +44,7 @@ it("names each Insight tab with its status and leaves a current result unmarked"
       }}
       selectedInsight="analysis"
       setSelectedInsight={vi.fn()}
+      runs={{ brief: {}, walkthrough: {}, analysis: {} }}
     />,
   );
 

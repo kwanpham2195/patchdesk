@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed an Insight tab keeping its old status, such as Failed, Not run, or Outdated, while its run was in progress. A tab now shows Running from the moment its run is accepted, from its own run dialog or from Run Insights, and shows the result's status once the run completes, fails, or is cancelled. #670
+
 - Added **Run Insights…** beside the Insight tab strip. It opens one dialog with a row for Brief, Walkthrough, and Analysis, each with its own checkbox, Provider, Model, Reasoning, and Language seeded from that Insight's saved choice, so one Start runs brings all three up to date after a new head. Only Insights without a current result for this revision are checked by default, a running Insight is unchecked and disabled, and a refused start shows on its own row while the others start. Nothing runs on its own after Refresh or a new head, and Generate, Regenerate, and Try again still open the single-Insight dialog. #610
 
 - Fixed a click on the highlighted Browse row doing nothing in All files. After you choose a file and scroll inside it or past it, clicking its row again scrolls the diff back to that file's header, as a click on any other row does. Scrolling the diff still only moves the Browse highlight. #660
