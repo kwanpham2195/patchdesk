@@ -104,13 +104,34 @@ export function pullRequestExternalRef(
   };
 }
 
+/** Why head-side authoring refuses lines: a GitHub comment on a pull request, or a note on a shared local Review's Combined view. */
+const headSideRefusals = {
+  comment: {
+    oldSide:
+      "A commit's old side is not the pull request's base. Comment on its new-side lines.",
+    notInDiff: (lines: string, verb: string) =>
+      `${lines} ${verb} not in the pull request's diff, so GitHub cannot anchor a comment there.`,
+    outsideHunk: (lines: string) =>
+      `${lines} reach outside one hunk of the pull request's diff. A comment covers lines inside one hunk.`,
+  },
+  note: {
+    oldSide:
+      "This diff's old side is the previous Local snapshot. Add a note on its new-side lines.",
+    notInDiff: (lines: string, verb: string) =>
+      `${lines} ${verb} not in the Combined view, so a note cannot start there.`,
+    outsideHunk: (lines: string) =>
+      `${lines} reach outside one hunk of the Combined view. A note covers lines inside one hunk.`,
+  },
+} as const;
+
 export function createHeadSideCommentAuthoring(
   base: LocalCommentAuthoring | undefined,
   fullPatch: string,
 ): LocalCommentAuthoring | undefined {
   if (base?.enabled !== true) return undefined;
   const files = parseUnifiedPatch(fullPatch);
-  // This diff's new side is the pull request head, so a new-side line the full patch shows is the same GitHub coordinate; its old side is not the base.
+  const refusals = headSideRefusals[base.kind ?? "comment"];
+  // This diff's new side is the head (a local Review's Local snapshot), so a new-side line the full patch shows has the same coordinate there; its old side is not the base.
   const fullPatchAnchor = (
     location: LocalCommentLocation,
   ):
@@ -121,8 +142,7 @@ export function createHeadSideCommentAuthoring(
     if (location.side !== "new")
       return {
         _tag: "refused",
-        reason:
-          "A commit's old side is not the pull request's base. Comment on its new-side lines.",
+        reason: refusals.oldSide,
       };
     const path = parseRepoRelativePath(location.path);
     const mapped = mapFindingLocation(files, {
@@ -138,7 +158,7 @@ export function createHeadSideCommentAuthoring(
     )
       return {
         _tag: "refused",
-        reason: `${lines} ${single ? "is" : "are"} not in the pull request's diff, so GitHub cannot anchor a comment there.`,
+        reason: refusals.notInDiff(lines, single ? "is" : "are"),
       };
     const anchor = {
       path: path.value,
@@ -151,7 +171,7 @@ export function createHeadSideCommentAuthoring(
       ? { _tag: "ok", anchor }
       : {
           _tag: "refused",
-          reason: `${lines} reach outside one hunk of the pull request's diff. A comment covers lines inside one hunk.`,
+          reason: refusals.outsideHunk(lines),
         };
   };
   return {

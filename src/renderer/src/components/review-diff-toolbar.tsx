@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import {
   ReviewDiffChangesMenu,
   type DiffChangesControl,
+  type NarrowedDiffControl,
 } from "./review-diff-changes-menu";
 import {
   ReviewDiffOptionRow,
@@ -314,25 +315,31 @@ export function ReviewDiffToolbar({
   const viewedCount = files.filter((file) =>
     collapsedPaths.has(file.name),
   ).length;
-  const sinceReview = changes?.sinceReview;
-  const sinceReviewActive = sinceReview?.active === true;
+  // A narrowed diff shows in All files, and choosing a file mode returns to the full diff.
+  const narrowed = [changes?.sinceReview, changes?.sinceLastRefresh].find(
+    (control) => control?.active === true,
+  );
   const selectFileMode = (fileMode: "all" | "selected"): void => {
-    if (sinceReviewActive) sinceReview?.onChange(false);
+    narrowed?.onChange(false);
     onPreferencesChange({ fileMode });
   };
   const fileModeControls = virtualized && !previewing;
+  const inAllFiles = (
+    control: NarrowedDiffControl | undefined,
+  ): NarrowedDiffControl | undefined =>
+    control === undefined || !fileModeControls
+      ? undefined
+      : {
+          ...control,
+          onChange: (active) => {
+            if (active) onPreferencesChange({ fileMode: "all" });
+            control.onChange(active);
+          },
+        };
   const shownChanges: DiffChangesControl = {
     patchView: changes?.patchView,
-    sinceReview:
-      sinceReview === undefined || !fileModeControls
-        ? undefined
-        : {
-            ...sinceReview,
-            onChange: (active) => {
-              if (active) onPreferencesChange({ fileMode: "all" });
-              sinceReview.onChange(active);
-            },
-          },
+    sinceReview: inAllFiles(changes?.sinceReview),
+    sinceLastRefresh: inAllFiles(changes?.sinceLastRefresh),
   };
   return (
     <div
@@ -359,7 +366,9 @@ export function ReviewDiffToolbar({
           >
             {virtualized ? (
               <FileModeSwitch
-                pressed={sinceReviewActive ? undefined : preferences.fileMode}
+                pressed={
+                  narrowed === undefined ? preferences.fileMode : undefined
+                }
                 selectedPath={selectedPath}
                 onSelect={selectFileMode}
               />

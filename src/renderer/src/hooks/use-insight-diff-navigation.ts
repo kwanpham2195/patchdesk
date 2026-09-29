@@ -8,12 +8,12 @@ import type { ReviewWorkbenchPositionState } from "./use-review-workbench-positi
 /**
  * Owns how an Insight reader opens the Diff. A Brief's file and Scope card
  * stand for the whole represented revision, so both leave Since your review
- * and return to the Combined view before pointing the Diff anywhere.
+ * or Since last Refresh and return to the Combined view before pointing the Diff anywhere.
  */
 export function useInsightDiffNavigation({
   position,
   selectPatchView,
-  leaveSinceReview,
+  leaveNarrowedDiff,
   applyScopeBucket,
   clearScopeBucket,
 }: {
@@ -26,8 +26,8 @@ export function useInsightDiffNavigation({
     | "setActivePath"
   >;
   readonly selectPatchView: (view: LocalPatchView) => void;
-  /** Turns Since your review off; absent when that mode is not offered. */
-  readonly leaveSinceReview: ((active: boolean) => void) | undefined;
+  /** Turns Since your review and Since last Refresh off. */
+  readonly leaveNarrowedDiff: () => void;
   readonly applyScopeBucket: (bucket: ChangeScopeBucket) => void;
   readonly clearScopeBucket: () => void;
 }): Pick<
@@ -44,7 +44,7 @@ export function useInsightDiffNavigation({
   const openFileInDiff = useCallback(
     (path: string): void => {
       clearScopeBucket();
-      leaveSinceReview?.(false);
+      leaveNarrowedDiff();
       selectPatchView("combined");
       selectSection("files");
       setSelectedThreadId(undefined);
@@ -59,7 +59,7 @@ export function useInsightDiffNavigation({
     [
       clearScopeBucket,
       commitWorkbenchPosition,
-      leaveSinceReview,
+      leaveNarrowedDiff,
       selectPatchView,
       selectSection,
       setActivePath,
@@ -70,11 +70,11 @@ export function useInsightDiffNavigation({
   // The picker's own filter, so the Diff picker shows the bucket and Clear scope undoes it (#612).
   const openScopeBucketInDiff = useCallback(
     (bucket: ChangeScopeBucket): void => {
-      leaveSinceReview?.(false);
+      leaveNarrowedDiff();
       selectPatchView("combined");
       applyScopeBucket(bucket);
     },
-    [applyScopeBucket, leaveSinceReview, selectPatchView],
+    [applyScopeBucket, leaveNarrowedDiff, selectPatchView],
   );
   return { openFileInDiff, openScopeBucketInDiff };
 }

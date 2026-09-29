@@ -177,6 +177,8 @@ describe("ReviewWorkbenchHeader pending-review notice", () => {
           loadCommitDiff: async () => ({}) as never,
           // SAFETY: the header never loads a diff.
           loadSinceReviewDiff: async () => ({}) as never,
+          // SAFETY: the header never loads a diff.
+          loadSinceLastRefreshDiff: async () => ({}) as never,
           reportNavigationState: () => undefined,
           pendingReview: {
             projection: model.pendingReview,

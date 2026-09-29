@@ -33,6 +33,21 @@ export type SinceReviewDiffResponse = v.InferOutput<
   typeof sinceReviewDiffResponseSchema
 >;
 
+const sinceLastRefreshDiffResponseSchema = v.strictObject({
+  sessionId: v.pipe(v.string(), v.minLength(1)),
+  patch: v.pipe(v.string(), v.maxLength(maxDiffPatchLength)),
+});
+export type SinceLastRefreshDiffResponse = v.InferOutput<
+  typeof sinceLastRefreshDiffResponseSchema
+>;
+
+export function parseSinceLastRefreshDiffResponse(
+  input: unknown,
+): SinceLastRefreshDiffResponse | undefined {
+  const parsed = v.safeParse(sinceLastRefreshDiffResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
 export function parseSinceReviewDiffResponse(
   input: unknown,
 ): SinceReviewDiffResponse | undefined {

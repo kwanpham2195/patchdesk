@@ -110,6 +110,29 @@ Brief, Walkthrough, and Analysis always run on Combined. On a shared Review the 
 
 > Technical note: the session folder holds `patch.diff` (Combined), `patch-committed.diff`, and `patch-uncommitted.diff`, each with its own sha256, and the Viewed marks in `viewed-files.json`, `viewed-files-committed.json`, and `viewed-files-uncommitted.json`. An Apply request that names another view is refused `view_mismatch` before the freshness check, and nothing is written.
 
+## Since last Refresh
+
+The `Changes` menu of a shared Review also offers **Since last Refresh**, under the three Patch views (#604). It shows only what the last move to a new session changed: the diff from the previous session's Local snapshot to the current one. After the agent's latest round of fixes and a Refresh, it shows exactly the lines that round changed. The choice reads `Previous Local snapshot to Local snapshot` under its name, and the menu button reads `Since last Refresh` while it is on.
+
+It works like [Since your review](../review-workbench/files-diff-and-navigation.md#leave-unchanged) on a pull request:
+
+- It shows in All files, and turns the Patch view to Combined. Browse lists only the files the last Refresh changed, and keyboard movement works as in All files.
+- Viewed marks made there last only while it is open. Combined's saved marks do not change.
+- Notes and Findings show inline where their new-side lines are in this diff. A new note can start only on a new-side line that Combined also shows, inside one hunk of Combined, and it is saved on Combined. The old side is the previous Local snapshot, so its lines take no note.
+
+Choosing a Patch view, or All files or Selected in View options, leaves it. Picking a commit hides the choice. Opening a file or a Scope bucket from an Insight leaves it and shows Combined. It stays on across Refresh, so the next Refresh shows the next round.
+
+It is disabled, with the reason under it in the menu:
+
+- `Available after a Refresh that changes the diff` on a Review's first session. A Review whose last move happened before this option existed reads the same until Refresh moves it again.
+- `The merge base moved in the last Refresh` when the base branch moved under the branch, as after merging the base in or a rebase, because the diff would then hold the base branch's commits.
+
+If the patch cannot be read, the full diff stays and Patchdesk says `The diff since the last Refresh could not be loaded.`
+
+Patchdesk writes the patch when Refresh, a reopen, or an Apply moves the Review to a new session, before it removes the previous session's worktree. No timer or check changes it (ADR 0032, ADR 0050). An agent's `refresh_review` prepares a session without moving the Review, so the patch is written only when the maintainer's Refresh moves to it. A commit Review, and a working-tree or branch Review stored before the shared Review, do not offer the choice.
+
+> Technical note: the patch is `git diff` between the two sessions' Local snapshot commits, stored in the new session's folder as `patch-since-last-refresh.diff` with its sha256. A move back to an earlier session rewrites it from the session the Review left. When the patch cannot be written, for example because it is over the 2 MiB limit, the Review still moves, the choice reads as on a first session, and a warning is logged with topic `local-review-open`.
+
 ## Commits
 
 A shared Review's **Commits** section lists the branch's commits: every commit from the merge base to the checkout `HEAD` the session was captured on, newest first (#557, ADR 0050). The tab's badge counts them. Each row shows the commit's subject, then its author, the first eight characters of its SHA, and its age; the checkout `HEAD` carries a `HEAD` badge. A merge is listed, and so is each commit it brought in. The uncommitted changes are not a commit and are not listed. With no commits since the base, the section reads `No commits since the base.` Patchdesk keeps the newest 250: a longer branch reads `Newest 250 of <N>` above the list, and the badge shows the total.
@@ -221,7 +244,7 @@ An open shared Review checks its checkout when the window gains focus and every 
 
 > Technical note: the check compares a fingerprint of the checkout, made from `HEAD`, the merge base, a hash of `git diff HEAD --binary`, and each untracked file's `git hash-object` hash, with the one recorded when the session was prepared; each Refresh or open that lands on a session records the fingerprint it read there, so Refresh clears the label even when the snapshot is unchanged, as after `git add` of a new file. It writes nothing to the repository, passes `--no-optional-locks` so it never takes `index.lock`, and holds the Review lock only to read the Review record. A session prepared before this check existed is fingerprinted on its first check. A failed read is logged once to `patchdesk.jsonl` under `local-review-updates` (#611, ADR 0050 "Freshness").
 
-When the content is unchanged, Refresh lands on the same session and nothing changes. When it changed, Refresh prepares a new session, the header shows the new `Local snapshot <first eight characters>`, the Analysis, Brief, and Walkthrough read Outdated, and Apply is no longer offered until a new Analysis runs.
+When the content is unchanged, Refresh lands on the same session and nothing changes. When it changed, Refresh prepares a new session, the header shows the new `Local snapshot <first eight characters>`, the Analysis, Brief, and Walkthrough read Outdated, and Apply is no longer offered until a new Analysis runs. [Since last Refresh](#since-last-refresh) then shows what the move changed.
 
 Every move to a new session places each Local draft first, then says what happened to its lines (ADR 0002, ADR 0050, ADR 0051):
 
@@ -354,5 +377,6 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - The Analysis prompt still calls a local Review a pull request, though it uses Change intent for its goal check.
 - Remote-tracking bases (#591) are covered by service, MCP, and dialog tests; the grouped search and a pruned remote base still need a live check.
 - The first-review checkout step (#641) is covered by dialog and service tests; it still needs a live check with a repository that has no checkout.
+- Since last Refresh (#604) is covered by service, hook, toolbar, and flow tests; it still needs a live check that one line changed and refreshed shows as that one line.
 
-Drafted from Patchdesk application source commits `502acfd8`, `7d9a660a`, `d893476a`, `8cb71ffa`, and `de713f03`. Note recovery was checked against `fce8d4d7`, Viewed save queues against `d2df8aca`, and Viewed carry against `501871ef`. The checkout update check (#611) was drafted from `cc6bbc56` with its implementation, and remote-tracking bases (#591) from `1447906d` with theirs.
+Drafted from Patchdesk application source commits `502acfd8`, `7d9a660a`, `d893476a`, `8cb71ffa`, and `de713f03`. Note recovery was checked against `fce8d4d7`, Viewed save queues against `d2df8aca`, and Viewed carry against `501871ef`. The checkout update check (#611) was drafted from `cc6bbc56` with its implementation, and remote-tracking bases (#591) from `1447906d` with theirs. Since last Refresh (#604) was drafted with its implementation.
