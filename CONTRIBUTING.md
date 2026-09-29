@@ -13,7 +13,7 @@ used across the codebase.
 - `pnpm install` installs the pre-commit hook automatically (husky).
 - Development runs on macOS; `pnpm package:mac` builds the release package.
 - The isolated insight runtime (`runtime/insight/`) has an exact lock and is
-  validated during package smoke.
+  validated during package smoke (throwaway #605 push 1).
 
 ## Codebase map
 
