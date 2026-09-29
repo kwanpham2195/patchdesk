@@ -34,7 +34,7 @@ export function useReviewNavigationState({
     latestReport.current(state);
   }, [latestReport, state]);
   // A kept summary dies with the Review. An exit the leave dialog does not
-  // guard, such as a workspace switch, must not leave navigation blocked.
+  // guard must not leave navigation blocked.
   useEffect(
     () => () => {
       if (reported.current !== "dirty_draft") return;

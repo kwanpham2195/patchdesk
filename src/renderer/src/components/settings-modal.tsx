@@ -39,6 +39,8 @@ export type SettingsModalProps = {
   ) => Promise<ProfileSwitchResult>;
   readonly opener?: HTMLElement | null | undefined;
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
+  /** Resolves true once the open Review may be left; Clear local review data waits on it (#635). */
+  readonly confirmLeaveReview?: () => Promise<boolean>;
   readonly preferenceError?: string | undefined;
   readonly onRetryPreferences?: () => void;
   /** Section to open on; defaults to General when the caller does not target one. */

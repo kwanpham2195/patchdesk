@@ -8,7 +8,7 @@ Data & recovery is a Settings section for removing rebuildable Cache or non-runn
 
 The maintainer opens Settings > Data & recovery and sees the two cleanup actions. They choose Clear cache, read the confirmation, and confirm. Patchdesk removes rebuildable files, reloads workspace data, and closes Settings after success, leaving the screen underneath in place.
 
-If they choose Clear local review data, the stronger confirmation says that completed and failed local Reviews are removed while an active Review and Diagnostic records stay. Its success also returns the app to the Pull requests screen. A failed cleanup leaves its confirmation open with the action-specific error so the maintainer can try again or cancel.
+If they choose Clear local review data, the stronger confirmation says that completed and failed local Reviews are removed while an active Review and Diagnostic records stay. Its success also returns the app to the Pull requests screen. When Settings is open over a Review that keeps a Finish review summary, confirming first shows the leave dialog: Stay on this review closes the confirmation and clears nothing, and Discard changes and leave returns to Pull requests and then clears. A failed cleanup leaves its confirmation open with the action-specific error so the maintainer can try again or cancel.
 
 ## The task, event by event
 

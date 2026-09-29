@@ -64,6 +64,7 @@ type SettingsFlowProps = {
   readonly onWorkspaceReload: () => Promise<void>;
   readonly section?: SettingsSection;
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
+  readonly confirmLeaveReview?: () => Promise<boolean>;
   readonly profileSwitchState?: ProfileSwitchState;
   readonly onProfileSwitch?: (
     profileId: string,
@@ -122,6 +123,7 @@ export function SettingsFlow({
   onWorkspaceReload,
   section = "general",
   onCleanupSuccess,
+  confirmLeaveReview,
   profileSwitchState,
   onProfileSwitch,
 }: SettingsFlowProps): React.JSX.Element {
@@ -146,6 +148,7 @@ export function SettingsFlow({
         dashboard={dashboard}
         onWorkspaceReload={onWorkspaceReload}
         onCleanupSuccess={onCleanupSuccess}
+        confirmLeaveReview={confirmLeaveReview}
       />
     );
   }
@@ -165,10 +168,12 @@ function DataSection({
   dashboard,
   onWorkspaceReload,
   onCleanupSuccess,
+  confirmLeaveReview,
 }: {
   readonly dashboard: Dashboard | undefined;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly onCleanupSuccess: ((action: "cache" | "local") => void) | undefined;
+  readonly confirmLeaveReview: (() => Promise<boolean>) | undefined;
 }): React.JSX.Element {
   const [cleanup, setCleanup] = useState<CleanupState>({
     requestId: 0,
@@ -195,6 +200,18 @@ function DataSection({
       setCleanup((current) => ({
         ...current,
         error: "Choose a workspace before clearing its local data.",
+      }));
+      return;
+    }
+    // Success leaves the Review for the Pull requests screen, so a kept draft is asked about before anything is removed.
+    if (
+      action === "local" &&
+      confirmLeaveReview !== undefined &&
+      !(await confirmLeaveReview())
+    ) {
+      setCleanup((current) => ({
+        requestId: current.requestId,
+        pending: false,
       }));
       return;
     }
