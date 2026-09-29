@@ -29,7 +29,7 @@ The active workspace profile is the target. With no active profile, both cleanup
 
 The Storage card lists three rows, each with a one-line description and its size on disk: Cache (`Cache · 246 MB`, rebuildable pull request checkouts), Local review data (`Local review data · 1.6 MB`, completed and failed local Reviews), and Logs (`Logs · 19 MB`, the app log that Diagnostics shows). Cache and Local review data carry their clear button on the right; the Logs row is read-only. Each size is what that clear frees: Local review data counts only sessions no active work protects. Sizes use decimal units, with one decimal below 10. A size that cannot be measured is left off its row. Each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. Review activity moved to the Diagnostics overlay; see [Logs and diagnostics](logs-and-diagnostics.md).
 
-The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: a terminal Review older than 14 days is removed with its record and session, orphaned sessions older than 14 days and quarantine entries older than 30 days are removed, sessions an Open Review moved past are removed, and a local Review whose branch or commit is gone is removed after 14 days without Local drafts, as [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) describes.
+The section has no storage browser or per-session delete list. [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) owns background retention.
 
 ### Leave unchanged
 
@@ -55,25 +55,25 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | Cleanup targets the active workspace profile; GitHub identity is not a cleanup target. | Profile-scoped locking keeps concurrent cleanup from racing on the same local data. |
-| Pull request and Review state | Clear cache keeps Review history; Clear local review data removes eligible completed or failed Review sessions. | While Clear local review data runs, active Review, represented work, Insight runs, pending review, direct summary, and unresolved merge work protect their session data. |
-| GitHub permissions and merge readiness | Cleanup needs no GitHub permission or merge readiness. | GitHub state is not changed; cleanup only changes local rebuildable or eligible Review data. |
-| Network, local tool, and Insight provider availability | Cleanup is local and does not require a provider or GitHub connection. | Local storage or recovery checks can fail; provider availability does not make protected work removable. |
-| Input path: mouse, keyboard, or desktop menu | Mouse and keyboard can choose either button and confirmation action. | The same confirmation and busy-state rules apply; desktop menus do not expose another cleanup path. |
+| Variant                                                | Before the action runs                                                                                          | While the action runs                                                                                                                                                    |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Workspace profile and GitHub account                   | Cleanup targets the active workspace profile; GitHub identity is not a cleanup target.                          | Profile-scoped locking keeps concurrent cleanup from racing on the same local data.                                                                                      |
+| Pull request and Review state                          | Clear cache keeps Review history; Clear local review data removes eligible completed or failed Review sessions. | While Clear local review data runs, active Review, represented work, Insight runs, pending review, direct summary, and unresolved merge work protect their session data. |
+| GitHub permissions and merge readiness                 | Cleanup needs no GitHub permission or merge readiness.                                                          | GitHub state is not changed; cleanup only changes local rebuildable or eligible Review data.                                                                             |
+| Network, local tool, and Insight provider availability | Cleanup is local and does not require a provider or GitHub connection.                                          | Local storage or recovery checks can fail; provider availability does not make protected work removable.                                                                 |
+| Input path: mouse, keyboard, or desktop menu           | Mouse and keyboard can choose either button and confirmation action.                                            | The same confirmation and busy-state rules apply; desktop menus do not expose another cleanup path.                                                                      |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Cancel or Escape closes the confirmation without changing data. | The cleanup dialog disables Cancel while the request is pending; there is no Stop control. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Navigation before confirmation has no effect. | The confirmation remains owned by the active profile until cleanup settles; profile switching is guarded by normal Settings behavior. |
-| Start another action or request a refresh | Choosing another action replaces the unconfirmed choice. | Cleanup uses a request identity; a later request cannot display an earlier result as its own. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | No external connection is required. | Storage or protection failures keep the dialog open with an action-specific retry message. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | No data changes before confirmation. | The local operation settles in the main process; the renderer does not promise to keep its busy dialog after reload. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | The confirmation describes local data, not a remote target. | A newly active session or write is protected by the cleanup check; GitHub changes do not authorize removal. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus loss without confirmation has no effect. | Focus loss does not confirm or cancel cleanup. |
+| Event                                                                                                 | Before the action runs                                          | While the action runs                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Cancel or Escape closes the confirmation without changing data. | The cleanup dialog disables Cancel while the request is pending; there is no Stop control.                                            |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Navigation before confirmation has no effect.                   | The confirmation remains owned by the active profile until cleanup settles; profile switching is guarded by normal Settings behavior. |
+| Start another action or request a refresh                                                             | Choosing another action replaces the unconfirmed choice.        | Cleanup uses a request identity; a later request cannot display an earlier result as its own.                                         |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | No external connection is required.                             | Storage or protection failures keep the dialog open with an action-specific retry message.                                            |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | No data changes before confirmation.                            | The local operation settles in the main process; the renderer does not promise to keep its busy dialog after reload.                  |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | The confirmation describes local data, not a remote target.     | A newly active session or write is protected by the cleanup check; GitHub changes do not authorize removal.                           |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus loss without confirmation has no effect.                  | Focus loss does not confirm or cancel cleanup.                                                                                        |
 
 ## Interactions with other systems
 
@@ -93,28 +93,22 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 
 **Preferences, keyboard commands, and desktop integration.** Cleanup controls live in the Settings overlay and return to the opener after successful close. No desktop shortcut confirms cleanup.
 
-**Supported input and accessibility limits.** Keyboard and mouse confirmations are supported. Touch, pen, and screen-reader behavior are outside the supported product surface.
+**Supported input and accessibility limits.** Keyboard and mouse confirmations are supported.
 
 ## Edge cases
 
-- With no active workspace profile, cleanup buttons are disabled rather than targeting an implicit profile.
-- Clear cache keeps saved Review history and Diagnostic records.
-- Clear local review data keeps active Review work and Diagnostic records.
 - Invalid session entries are quarantined before eligible local Review data is removed.
 - A session with an active preparation journal, active Insight, protected pending review, direct summary, or unresolved merge is not removed.
-- A terminal or orphaned session is eligible for automatic retention removal only when older than 14 days. A terminal session's Review record goes with it, unless the record holds an unreconciled GitHub write operation.
-- A quarantine entry is eligible for automatic removal only when older than 30 days.
-- Retention sweep runs at startup and every 24 hours while the app runs; per-item failures do not stop the sweep.
+- Retention runs at startup and every 24 hours. It removes terminal or orphaned sessions older than 14 days and quarantine entries older than 30 days; an unreconciled write protects its Review record. Individual failures do not stop the sweep.
 - Clear local review data removes session folders without Git, so the `refs/patchdesk/` refs of the removed sessions stay in the maintainer's repository until the next retention sweep deletes them. Git lists their worktrees as prunable until Patchdesk next adds a session worktree.
-- Cleanup success reloads workspace data and closes Settings; Clear local review data also returns to Pull requests. Cleanup failure keeps the confirmation context.
 - Neither cleanup makes the [Visited pull requests column](../foundations/visited-pull-requests.md) read its list again, so rows for removed Reviews stay until the next Review open or workspace switch.
 
 ## Open questions and verification
 
-- A read-only live pass on 2026-09-14 confirmed the Local review data and Review activity card copy (Review activity then lived in this section) and that both cleanup buttons are enabled with an active workspace. It pressed neither, so the confirmations, success, and failure were not observed, and the no-active-workspace state was not reachable.
+- The cleanup buttons are enabled with an active workspace. Confirmations, success, failure, and the no-active-workspace state still need live checks.
 - Confirm focus behavior for both cleanup confirmations and after Settings closes on success.
 - Confirm what the maintainer sees if a protected session becomes active after the confirmation opens.
-- Confirm the Review workbench a maintainer reaches after Clear cache when its represented-review worktree was removed. The 2026-09-14 pass found Reviews with missing worktrees showing Context unavailable and no Preview; see [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
+- Confirm the Review workbench a maintainer reaches after Clear cache when its represented-review worktree was removed. Reviews with missing worktrees can show Context unavailable and no Preview; see [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
 - Suspected defect: after Clear local review data, a Visited pull requests row for a removed Review stays listed and fails when clicked; see [Visited pull requests](../foundations/visited-pull-requests.md#open-questions-and-verification) and [B-16](../bug-triage.md#b-16-the-visited-pull-requests-column-keeps-rows-for-removed-reviews).
 - Confirm whether a failed retention sweep has any visible Settings indication beyond redacted activity.
 

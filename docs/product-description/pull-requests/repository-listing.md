@@ -123,11 +123,7 @@ After a row-open failure, the row remains inspectable and can be activated again
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed the inspector's Insights line and the Scope gauge with bucket counts. The Request buttons it also saw were removed with [#351](https://github.com/kwanpham2195/patchdesk/issues/351).
-- Confirm row selection, inspector focus, and Arrow key wrapping in a real window.
-- Confirm the exact visible behavior when a selected row disappears during refresh.
-- Confirm which cached listing actions remain available in the running workbench.
-- Live pass on 2026-09-24 ([#63](https://github.com/kwanpham2195/patchdesk/issues/63)): the row title click, a double-click on the row, Enter on the focused row, and the inspector's Open button each sent one Review load and entered the workbench; a single click only selected. The inspector hid Watch on a merged row, and the palette refused Watch for a merged and a closed pull request with "Merged pull requests cannot be watched." and "Closed pull requests cannot be watched." ([#269](https://github.com/kwanpham2195/patchdesk/issues/269)). Closed rows cannot be listed, because the state filter offers only Open and Merged.
-- The inspector gained a Merge fact after LIST-02-B failed for its absence ([#348](https://github.com/kwanpham2195/patchdesk/issues/348)). On 2026-09-24 it read **Blocked · Conflicts** for #113, **Blocked · Draft +1** for #125 (draft with conflicts), and **Merged** for merged #426. LIST-02-B passed on rerun against throwaway #428 (MERGEABLE, CLEAN, non-draft, no checks because CI is disabled): the Merge fact read **Ready to merge** before and after the Review was saved.
+- Live checks confirmed the inspector's Insights and Merge facts, Scope gauge, row title and Enter opening, double-click opening, single-click selection, and Open button. Watch was absent on merged rows and refused for merged or closed pull requests; closed rows cannot be listed. A merge-ready throwaway pull request showed Ready to merge before and after saving its Review.
+- Confirm row and inspector focus, Arrow-key wrap, selected-row removal after refresh, and available cached-listing actions.
 
 Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.

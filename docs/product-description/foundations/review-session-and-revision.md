@@ -74,27 +74,25 @@ Authoritative non-open evidence marks the Review merged or closed. Terminal stat
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | Review identity includes profile and repository. Profile credentials must resolve for GitHub reads. | A profile mismatch, missing profile, or wrong account prevents preparation or refresh from adopting state. |
-| Pull request and Review state | Open, Fresh, Revision changed, Remote state unavailable, and terminal states decide available actions. | A head or base change during preparation or refresh aborts adoption. Stable new revision evidence can produce a new session. |
-| GitHub permissions and merge readiness | Read access is required for preparation and refresh. Write permission is separate. | Checks, merge policy, and metadata can change in the remote snapshot without changing the immutable session revision. |
+| Variant                                                | Before the action runs                                                                                                                   | While the action runs                                                                                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | Review identity includes profile and repository. Profile credentials must resolve for GitHub reads.                                      | A profile mismatch, missing profile, or wrong account prevents preparation or refresh from adopting state.                               |
+| Pull request and Review state                          | Open, Fresh, Revision changed, Remote state unavailable, and terminal states decide available actions.                                   | A head or base change during preparation or refresh aborts adoption. Stable new revision evidence can produce a new session.             |
+| GitHub permissions and merge readiness                 | Read access is required for preparation and refresh. Write permission is separate.                                                       | Checks, merge policy, and metadata can change in the remote snapshot without changing the immutable session revision.                    |
 | Network, local tool, and Insight provider availability | GitHub and local Git are needed for full preparation. Missing or unavailable local checkout can produce a metadata-only session warning. | GitHub read or storage failure leaves the prior represented state in place. Insight providers have no role in proving revision identity. |
-| Input path: mouse, keyboard, or desktop menu | Opening a recommended action or requesting refresh reaches the same Review owner. | Duplicate or conflicting Review mutations serialize by Review and profile lifecycle. |
-
-The represented revision is never inferred from screen timing or request start time. It comes from head, base, and canonical patch evidence read for the same candidate.
+| Input path: mouse, keyboard, or desktop menu           | Opening a recommended action or requesting refresh reaches the same Review owner.                                                        | Duplicate or conflicting Review mutations serialize by Review and profile lifecycle.                                                     |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Leaving an already loaded workbench does not delete the Review. Preparation controls do not expose a generic partial-session commit. | Preparation failure or cancellation cleans journaled partial artifacts. Insight Stop affects the run, not the Review session itself. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Durable Reviews remain stored. A profile switch clears only the loaded renderer workbench. | Scope keys prevent a late response from replacing a different Review. Durable preparation can recover from its own journal. |
-| Start another action or request a refresh | One explicit refresh can begin when the Review owner permits it. | Review operations serialize. Refresh and GitHub writes do not mutate the same Review concurrently without the coordinator lock. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | Missing read evidence prevents preparation or marks current proof unavailable. | Failure keeps the prior session and Review evidence. Partial preparation is cleaned or recovered. Insight-provider failure does not change freshness. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | The durable Review and sessions survive. | Journals and stores provide recovery for committed preparation phases. Renderer loss does not itself advance freshness. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | The next observation or refresh can mark Revision changed, unavailable, or terminal. | A second pull-request read detects a change during the operation and rejects adoption. Pending-review reconciliation occurs only under the Review lock. |
-| macOS focus, a file or folder picker, or another input path takes control | No effect on represented revision. | Focus loss does not cancel preparation or refresh and is not revision evidence. |
+| Event                                                                                                 | Before the action runs                                                                                                               | While the action runs                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Leaving an already loaded workbench does not delete the Review. Preparation controls do not expose a generic partial-session commit. | Preparation failure or cancellation cleans journaled partial artifacts. Insight Stop affects the run, not the Review session itself.                    |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Durable Reviews remain stored. A profile switch clears only the loaded renderer workbench.                                           | Scope keys prevent a late response from replacing a different Review. Durable preparation can recover from its own journal.                             |
+| Start another action or request a refresh                                                             | One explicit refresh can begin when the Review owner permits it.                                                                     | Review operations serialize. Refresh and GitHub writes do not mutate the same Review concurrently without the coordinator lock.                         |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Missing read evidence prevents preparation or marks current proof unavailable.                                                       | Failure keeps the prior session and Review evidence. Partial preparation is cleaned or recovered. Insight-provider failure does not change freshness.   |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | The durable Review and sessions survive.                                                                                             | Journals and stores provide recovery for committed preparation phases. Renderer loss does not itself advance freshness.                                 |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | The next observation or refresh can mark Revision changed, unavailable, or terminal.                                                 | A second pull-request read detects a change during the operation and rejects adoption. Pending-review reconciliation occurs only under the Review lock. |
+| macOS focus, a file or folder picker, or another input path takes control                             | No effect.                                                                                                                           | Focus loss does not cancel preparation or refresh and is not revision evidence.                                                                         |
 
 After an interrupted refresh, the previous represented snapshot remains the last known readable state. The feature must label its freshness and cannot authorize a write from an incomplete candidate.
 
@@ -120,14 +118,9 @@ After an interrupted refresh, the previous represented snapshot remains the last
 
 ## Edge cases
 
-- Same head with a different base is a different revision.
 - A canonical patch hash can be absent when proof cannot be produced without making preparation more fragile; later write authority must still fail closed where it needs that proof.
-- A stored valid session resumes without rebuilding its immutable artifacts.
-- A corrupt session is quarantined before a new preparation attempt.
 - Missing local path or unusable checkout can produce metadata-only preparation with a visible local-checkout warning.
-- A pull request that changes during remote reads returns head changed and does not adopt the mixed snapshot.
 - Closed does not automatically mean merged. Authoritative merge outcome distinguishes merged from closed unmerged.
-- Terminal transition is one-way; later terminal observations are harmless.
 - Recovery clears leftover merge evidence on a Review that is already terminal. Check GitHub again then settles instead of being refused on every press, and the retention sweep no longer treats that Review as running.
 - A background observation that loses a race with another save discards its own recovery journal. The Review stays openable, and a Review already stuck this way heals at the next recovery.
 - An observation that starts while a GitHub write holds the Review lock reads the recent-write journal only after it takes the lock. A just-confirmed write therefore stays on screen instead of briefly showing the pre-write state until a later poll.
@@ -135,7 +128,7 @@ After an interrupted refresh, the previous represented snapshot remains the last
 
 ## Open questions and verification
 
-- A read-only live pass on 2026-09-14 could not check this document: the refresh-after-write race and a mid-session revision change need a GitHub write or an upstream push, and Check GitHub again was not present on the Review inspected.
+- The refresh-after-write race and a mid-session revision change still need a live check with a GitHub write or upstream push.
 - Confirm the exact copy and available actions for Fresh, Revision changed, Remote state unavailable reasons, and terminal merged or closed states.
 - Confirm preparation progress and retry behavior for missing local path, unavailable local checkout, GitHub authentication failure, storage failure, and head change.
 - Confirm that older Insights and diffs remain readable after a new session becomes current and are labeled with their represented revision.

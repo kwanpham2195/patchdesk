@@ -8,8 +8,6 @@ Patchdesk separates configuration, durable Review data, disposable cache, and lo
 
 Profiles and global preferences live under `~/.config/patchdesk`. Reviews, including each pull request's title and the time it was last opened, sessions, retained Insights, write intents, diagnostics, prepared artifacts, and logs live under `~/.local/share/patchdesk`. Re-creatable inbox data, avatars, and represented-review worktrees live under `~/.cache/patchdesk`.
 
-Patchdesk writes one complete replacement file, syncs it, and renames it over the previous value. Readers validate the JSON and its domain shape before the value can affect the product.
-
 After an interruption, Patchdesk reads durable journals and operation records. It finishes cleanup, quarantines invalid state, marks orphaned runs failed, or requires GitHub reconciliation. The maintainer sees a safe explicit status rather than a permanently spinning action.
 
 ## The task, event by event
@@ -30,8 +28,6 @@ stateDiagram-v2
 ### Arrive
 
 Startup creates the local API, recovers Insight run state, recovers preparation journals and Review state through their owners, sweeps retained storage, and opens the window only after the local service passes its health check. If the local service cannot start, Patchdesk shows a native error and exits without beginning a Review or GitHub write.
-
-A profile's durable data also holds the pull requests it watches, as one file per profile carrying the snapshot each check compares against, and each Review record carries the head and newest Conversation entry timestamp the maintainer last saw. Both are ordinary local records: they are validated on read and never reach the renderer as trusted state when invalid.
 
 Missing configuration is a normal first-run state. Missing optional Review records can be an empty state. Invalid JSON, invalid domain values, sensitive content, or inconsistent artifacts are failures and never become rendered product state.
 
@@ -71,27 +67,27 @@ An uncertain GitHub write remains locked after restart. Recovery reads GitHub an
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | Config and durable data are namespaced by profile. Credentials are resolved at use time and are not stored. | Profile lifecycle locking prevents cleanup from racing preparation under the same namespace. |
-| Pull request and Review state | Active open Reviews and current sessions are protected. Terminal and orphaned sessions, and sessions an Open Review moved past, can become retention candidates. | A Review lock protects one Review's writes and recovery classification. Revision identity remains part of every stored operation. |
-| GitHub permissions and merge readiness | Storage can remain readable without current GitHub permission. Recovery that needs remote proof requires a current authenticated read. | Permission or network failure keeps uncertain writes locked; it does not convert them to confirmed failure. |
-| Network, local tool, and Insight provider availability | Local configuration and Review data do not need the network to be read. Re-creating cache or reconciling operations can need GitHub, Git, or a provider. | A child or tool failure records a typed operation result where possible. Storage and diagnostic failures remain separate. |
-| Input path: mouse, keyboard, or desktop menu | Data and recovery controls reach the same storage owner. | Input path cannot bypass protection of running sessions or the confirmation for destructive cleanup. |
+| Variant                                                | Before the action runs                                                                                                                                           | While the action runs                                                                                                             |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | Config and durable data are namespaced by profile. Credentials are resolved at use time and are not stored.                                                      | Profile lifecycle locking prevents cleanup from racing preparation under the same namespace.                                      |
+| Pull request and Review state                          | Active open Reviews and current sessions are protected. Terminal and orphaned sessions, and sessions an Open Review moved past, can become retention candidates. | A Review lock protects one Review's writes and recovery classification. Revision identity remains part of every stored operation. |
+| GitHub permissions and merge readiness                 | Storage can remain readable without current GitHub permission. Recovery that needs remote proof requires a current authenticated read.                           | Permission or network failure keeps uncertain writes locked; it does not convert them to confirmed failure.                       |
+| Network, local tool, and Insight provider availability | Local configuration and Review data do not need the network to be read. Re-creating cache or reconciling operations can need GitHub, Git, or a provider.         | A child or tool failure records a typed operation result where possible. Storage and diagnostic failures remain separate.         |
+| Input path: mouse, keyboard, or desktop menu           | Data and recovery controls reach the same storage owner.                                                                                                         | Input path cannot bypass protection of running sessions or the confirmation for destructive cleanup.                              |
 
 The directory class, not the file extension, defines whether data is durable or disposable. A represented-review worktree is cache even though it is a Git checkout; the Review session and patch that identify it are durable data.
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Cancelling a cleanup confirmation records nothing. | A pending destructive cleanup keeps its confirmation open on failure. Insight Stop requests durable cancellation through the run owner. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Durable state remains. Renderer-only drafts follow their feature guard. | Scope locks and identifiers prevent a late storage or recovery result from replacing another profile or Review. |
-| Start another action or request a refresh | Independent reads can proceed. Conflicting mutations acquire Review or profile lifecycle locks. | Locked actions queue or refuse rather than interleave unsafe durable changes. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | Local reads can still succeed. Recovery needing remote proof remains unavailable or locked. | Confirmed failures record retryable state. Uncertain remote writes keep their intent and require a later check. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Stable durable state survives. Clean shutdown flushes logs and stops the local service. | Journals and operation records survive process loss. Startup recovery classifies them before normal use. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Stored evidence remains bound to its recorded revision and identity. | Recovery adopts authoritative GitHub state only when it matches the stored intent; it never merges conflicting drafts. |
-| macOS focus, a file or folder picker, or another input path takes control | No effect on durable state. | Focus loss does not cancel file writes, recovery, or cleanup. Native Trash is used only for explicit quarantined-entry deletion where available. |
+| Event                                                                                                 | Before the action runs                                                                          | While the action runs                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Cancel, Stop, or Escape                                                                               | Cancelling a cleanup confirmation records nothing.                                              | A pending destructive cleanup keeps its confirmation open on failure. Insight Stop requests durable cancellation through the run owner.          |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Durable state remains. Renderer-only drafts follow their feature guard.                         | Scope locks and identifiers prevent a late storage or recovery result from replacing another profile or Review.                                  |
+| Start another action or request a refresh                                                             | Independent reads can proceed. Conflicting mutations acquire Review or profile lifecycle locks. | Locked actions queue or refuse rather than interleave unsafe durable changes.                                                                    |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Local reads can still succeed. Recovery needing remote proof remains unavailable or locked.     | Confirmed failures record retryable state. Uncertain remote writes keep their intent and require a later check.                                  |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Stable durable state survives. Clean shutdown flushes logs and stops the local service.         | Journals and operation records survive process loss. Startup recovery classifies them before normal use.                                         |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | Stored evidence remains bound to its recorded revision and identity.                            | Recovery adopts authoritative GitHub state only when it matches the stored intent; it never merges conflicting drafts.                           |
+| macOS focus, a file or folder picker, or another input path takes control                             | No effect on durable state.                                                                     | Focus loss does not cancel file writes, recovery, or cleanup. Native Trash is used only for explicit quarantined-entry deletion where available. |
 
 After interruption, Patchdesk prefers a retained locked or quarantined record over silent loss or duplicate external action. Recovery status must tell the maintainer whether retry is safe.
 
@@ -117,9 +113,7 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 
 ## Edge cases
 
-- Patchdesk uses XDG-style folders and does not use `~/Library` for its own config, data, cache, or log records.
-- Stored values with secret-, authorization-, cookie-, or password-like keys are rejected even if their other fields are valid.
-- Token-shaped strings are rejected on both read and write, so a credential accidentally written by another version is not loaded.
+- Credential-shaped keys and token-shaped strings are rejected on read and write.
 - Directory and file permissions are private where Patchdesk creates them.
 - Corrupt JSON and structurally invalid values are different storage failures but neither reaches the renderer as trusted state.
 - A crash-left active Insight with no live child becomes retryable failed, not permanently running.
@@ -131,11 +125,10 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - A pull request Review keeps every session while it has a recorded GitHub write operation, or while one of its sessions holds an in-flight or outcome-unknown pending-review or summary write.
 - The background sweep removes a local Review, with its sessions and Insights, when its repository still reads but its branch, base branch, or commit is gone, it has no Local drafts, and it was last opened over 14 days ago. A shared Review on a detached `HEAD` has only its base branch to lose. A working-tree or branch Review stored before the shared Review (#555) counts as gone, so the same 14-day and no-drafts rules remove it.
 - Removing a worktree through Git deletes the managed refs it checked out. Discard, Clear local review data, and the pull request sweep remove session folders directly, so their refs stay until the background sweep deletes every `refs/patchdesk/` ref of the profile that no stored session, worktree, or preparation names.
-- A Review record written by this build cannot be read by an older build, because it carries the title and last-open fields.
 
 ## Open questions and verification
 
-- A read-only live pass on 2026-09-14 saw retention sweep milestones in Review activity reporting `sweep complete: 0 sessions, 0 quarantine entries removed`. Nothing was old enough to remove, so record removal and unreadable-record skipping were not observed.
+- Record removal and unreadable-record skipping still need a live check; the inspected workspace had no eligible old records.
 - Confirm startup presentation after an interrupted preparation, orphaned Insight run, uncertain GitHub write, corrupt session, and corrupt Review.
 - Confirm that cache clearing re-creates represented-review worktrees when an older Review opens again and clearly reports any missing local checkout.
 - Confirm native Trash behavior and recovery options for quarantined entries; the current Settings surface does not expose every lower-level storage-management action.

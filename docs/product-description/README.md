@@ -4,17 +4,7 @@ A written description of the Patchdesk user experience: what the maintainer sees
 
 ## Purpose
 
-Patchdesk is, from the maintainer's point of view, a large state chart. The maintainer moves through it with screens, dialogs, form edits, clicks, keyboard commands, refreshes, GitHub writes, and optional Insight runs. Most of that behavior is defined implicitly across React flows and hooks, domain transitions, services, Electron routes, and tests. There is no single place that says, in plain language, what happens when a maintainer starts an action and what happens if the action is interrupted.
-
-This directory is that place. It describes the default Patchdesk desktop experience on macOS, from first run through pull-request review, with the normal local configuration and no fixture route active.
-
-The documents are for designers, engineers, writers, testers, and anyone deciding whether a behavior is intentional. They are written from the outside in. They describe the experience, not the implementation.
-
-### What this is not
-
-- Not API documentation. The local API boundary is described in [`docs/architecture.md`](../architecture.md) and its routes live under [`src/main/routes/`](../../src/main/routes/).
-- Not organized by package. Renderer, domain, service, and adapter modules are evidence for one user experience; they are not separate documentation areas here.
-- Not a technical design document. Critical mechanisms appear only in block quotes labeled `Technical note:`.
+These pages describe what a maintainer sees and does in the default macOS desktop app. They describe tasks, not implementation or API details. See [architecture](../architecture.md) for the local API.
 
 ## Conventions
 
@@ -65,38 +55,14 @@ Every feature document follows the same eight-section skeleton so documents can 
 
 The interrupt table matters most. Asking the same questions of every feature makes gaps and inconsistencies visible.
 
-### Method
-
-For each document:
-
-1. Read the renderer flow, hook, or component that owns the interaction and the domain values it displays.
-2. Read the service and route that perform the action where the task crosses the local API.
-3. Read matching domain, service, renderer, and browser tests.
-4. Draft the document from that evidence.
-5. Try ambiguous behavior in the running desktop app over CDP port 9233. Code and tests settle what happens; the running app settles what appears, what receives focus, and how intermediate states feel.
-6. Record the source commit.
-
 ### Verification
 
-Drafting reads the code; verification watches the product. The `verification/` directory will hold one checklist per cluster of documents. Each item is one observable claim with setup, steps, expected result, priority, required condition, and result.
-
-A tester runs the checklists in the default macOS desktop app and records `pass`, `fail`, or `blocked`. A failure goes into `bug-triage.md` with the checklist ID. A document moves from `drafted` to `verified` only when every P1 and P2 item has passed or has been filed.
-
-`bug-triage.md` consolidates suspected defects raised by the documents. It names the user-visible behavior, reproduction, source cause, severity, and decision needed. An automated or static pass alone does not confirm live desktop behavior. [`ux-friction.md`](ux-friction.md) records friction that is not a defect, each item with a disposition.
-
-### Order of work
-
-1. **Pilot: Workspace settings.** It is a bounded set of controls with validation, a save per control, a status beside each one, and a failure path.
-2. **Foundations.** Task lifecycle and interruption, navigation, workspace identity, Reviews and sessions, and persistence own the facts every later document links to.
-3. **The Review workbench.** This is the hardest area. Its navigation, diff, conversations, pending review, and merge states hand off to each other.
-4. **Everything else.** First run, the Pull requests screen, Insights, Settings, and cross-cutting behavior follow after the exemplars. The final passes check consistency, hand verification, and bug triage.
-
-Progress is tracked in the [coverage table](#coverage).
+[Verification checklists](verification/README.md) record setup, steps, expected outcomes, and live results. Source and tests do not prove the desktop behavior. File defects in [bug triage](bug-triage.md) and non-defect friction in [UX friction](ux-friction.md). A page is verified only when its P1 and P2 checks pass or are filed.
 
 ### Scope decisions
 
 - **Surface.** The whole default Patchdesk desktop app on supported Apple Silicon macOS is in scope. The maintainer uses one local app window, a keyboard and mouse, workspace profiles, local checkouts, GitHub CLI authentication, and optional configured Insight providers.
-- **Source snapshot.** The baseline drafting pass used committed source `3100615`. Follow-up behavior in the documents updated by the 2026-08-31 product-verification work is verified through `c49045d`, which contains the completed follow-up fixes. The Pull requests filter document has one scoped follow-up verified against application commit `359770f` and the 2026-09-02 live pass. The 2026-09-14 UX pass drafted against `dd613996` and was then refreshed against `737c515c`, the pin every document it revised now carries in its footer. Its live pass ran on `5fe7df3b`, which is `dd613996` plus renderer failure copy for comment and Finding actions only; that copy is not described as behavior here. Behavior that landed between `dd613996` and `737c515c` is read from source and is not live-verified, and each page says which of its claims that covers. Untouched documents retain their prior source snapshots and historical live-pass evidence; this scope does not silently repin or reverify them. The 2026-09-22 Finding-suggestion work pins only `review-workbench/analysis.md`, and only its suggestion behavior, to `5bc8db68`; that page's footer says which of those claims are live-verified.
+- **Source and verification.** Each feature page names its source commit and live-check limits. A live check does not verify later code.
 - **Runtime.** Development verification uses `REMOTE_DEBUGGING_PORT=9233 pnpm dev` and `agent-browser` over CDP 9233. The raw app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
 - **Fixture routes.** Browser and performance fixture routes are test harnesses, not maintainer-facing product surfaces, so they are out of scope.
 - **Installation and release production.** Downloading a release, Gatekeeper recovery, packaging, signing, notarization, and release publication are out of scope. Startup after installation and single-instance behavior remain in scope where they affect the running app.
@@ -115,7 +81,7 @@ goal.md                            standing drafting instructions
 AGENTS.md, CLAUDE.md               entry points for future drafting sessions
 glossary.md                        shared vocabulary
 bug-triage.md                      consolidated suspected defects
-ux-friction.md                     UX friction from the 2026-09-14 live passes, with dispositions
+ux-friction.md                     UX friction and dispositions
 
 verification/
   README.md                        hand-verification protocol
@@ -123,7 +89,7 @@ verification/
   pull-requests.md                 first-run and Pull requests checklists
   review-workbench.md              workbench and GitHub-write checklists
   insights-and-cross-cutting.md    Insight and cross-cutting checklists
-  unblocking-notes.md              notes on blocked rows from the 2026-08-31 pass
+  unblocking-notes.md              conditions for blocked rows
 
 foundations/
   task-lifecycle-and-interruption.md  task phases, variants, interrupts, and operation states
@@ -211,7 +177,7 @@ Status is one of `not started`, `drafted`, or `verified`. A document is `verifie
 
 ## Reference
 
-The source of truth is Patchdesk at the repository root. The baseline pin is application-source commit `3100615`; documents changed by the follow-up reflect behavior through `c49045d`, and documents revised by the 2026-09-14 UX pass are pinned to `737c515c`. Each document's footer names its own pin. Relevant locations are:
+The source of truth is Patchdesk at the repository root. Each feature page names its source commit. Relevant locations are:
 
 - [`src/renderer/src/app.tsx`](../../src/renderer/src/app.tsx): root screen routing, Settings overlay, profile switching, and leave guards.
 - [`src/renderer/src/flows/`](../../src/renderer/src/flows/): Pull requests, Review workbench, Settings, and their interaction hooks.

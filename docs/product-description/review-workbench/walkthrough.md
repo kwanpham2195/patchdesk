@@ -133,14 +133,8 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 
 ## Open questions and verification
 
-- The 2026-09-14 live pass confirmed only the empty state. No retained Walkthrough existed in the live workspace, so the docked and focused layouts, Regenerate, inline conversation threads, and keyboard movement were checked from source only.
-- The reversed `j` and `k` recorded as [UX-11](../ux-friction.md#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention) are fixed; the new direction is not yet live-verified.
-- The reading surface no longer ends with a sentence pointing at a Back to files control the Walkthrough does not have; the copy was removed with [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips). The removal is not yet live-verified.
-- [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed) is fixed: an outdated Walkthrough now says to regenerate it. The other causes still share one sentence, and neither wording is live-verified.
-- Suspected defect: arrow keys, `j`, and `k` do not check modifier keys, so a Command or Control combination with those keys may also move sections. See [B-23](../bug-triage.md#b-23-walkthrough-section-keys-ignore-modifier-keys).
-- Fixed: a merged or closed Review draws no Regenerate and no longer shows a reason line, since no disabled control remains to explain. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
-- Confirm the layout fade, scroll ownership, and focus return after leaving the focused layout in the built app.
-- Confirm persistence of the current section and reviewed markers across app quit, not only rerender.
-- Confirm fallback presentation when syntax highlighting fails inside a Walkthrough block.
+- A live pass confirmed the empty state only. Docked and focused layouts, Regenerate, threads, and keyboard movement still need live checks.
+- Outdated Walkthrough wording changed after [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed), but is not live-verified. Modifier keys may also move sections; see [B-23](../bug-triage.md#b-23-walkthrough-section-keys-ignore-modifier-keys).
+- Confirm layout fade, scroll and focus, section and reviewed state after quit, and highlighting fallback.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified.

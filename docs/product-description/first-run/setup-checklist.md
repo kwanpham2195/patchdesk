@@ -62,8 +62,6 @@ Setup stays on screen after the first repository is watched and ends when the ma
 | Network, local tool, and Insight provider availability | The GitHub CLI supplies the accounts. A missing Git shows its own line. Insight providers are not required and are not queried.      | A scan uses local commands only. A failed environment read leaves the account card explaining the failure, with Re-check. |
 | Input path: mouse, keyboard, or desktop menu           | The cards are the same controls Settings renders, and are keyboard operable.                                                         | Commit on Enter and commit on blur reach the same save. The macOS folder picker temporarily owns focus.                   |
 
-Setup cannot be completed by confirming the environment alone. The watchlist stays empty until a repository is ticked.
-
 ## Cancel and interrupt
 
 | Event                                                                                                 | Before the action runs                                                                                   | While the action runs                                                                                             |
@@ -75,8 +73,6 @@ Setup cannot be completed by confirming the environment alone. The watchlist sta
 | Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Saved account, folders, and watchlist survive. Probe results do not.                                     | A reload drops in-memory status. The next load starts from what was actually saved.                               |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | No pull-request target exists yet. Another workspace becoming active changes what setup is asked for.    | The next inbox load is authoritative for whether setup is still needed.                                           |
 | macOS focus, a file or folder picker, or another input path takes control                             | Cancelling the folder picker changes nothing. Selecting a folder returns its absolute path and saves it. | Focus loss does not cancel a scan or a watchlist write. Blur is itself a commit.                                  |
-
-After an interrupt the maintainer stays on Pull requests with whatever was saved. A ticked repository is durable configuration; a scan result is not.
 
 ## Interactions with other systems
 
@@ -100,18 +96,14 @@ After an interrupt the maintainer stays on Pull requests with whatever was saved
 
 ## Edge cases
 
-- A successful empty inbox response with an empty watchlist is not an error and makes no repository GitHub read.
-- A workspace with no folder shows one blank folder row, so Choose folder is always available.
 - The Git line appears only when the environment read says Git is missing. A missing or unauthenticated GitHub CLI is reported by the account card itself, not by a separate tools list.
-- A folder whose scan finds nothing says so explicitly instead of showing an empty checklist.
-- Setup never opens Settings, and Settings is not needed to finish it.
 - A workspace that already watches a repository does not show setup, even when the latest read returns no pull request; that is a different settled state.
 - A late Review-opening result from a prior workspace is ignored when the current one reaches setup.
 - A workspace that stopped watching its last repository still lists the Reviews it opened in the Visited pull requests column beside setup, and a row there opens that Review.
 
 ## Open questions and verification
 
-- Live desktop verification of the in-place flow is pending; the checklists in `verification/` still describe the previous card. The 2026-09-14 read-only pass could not reach setup, because the test workspace watches a repository.
+- The in-place setup flow still needs a live check with an empty watchlist. The checklists in `verification/` describe the previous card.
 - Confirm how the Visited pull requests column looks beside setup on a fresh install.
 - Confirm where focus lands when Continue replaces setup with the listing.
 - Confirm what a fresh install shows between the account save and the first environment read settling.
