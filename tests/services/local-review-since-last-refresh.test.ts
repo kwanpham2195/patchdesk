@@ -89,6 +89,24 @@ describe("Since last Refresh (#604)", () => {
     ).toMatchObject({ _tag: "Patch", fromSessionId: first.session.id });
   });
 
+  it("offers nothing after a Refresh that only committed the uncommitted work", async () => {
+    const harness = await localApplyHarness();
+    await featureWithChanges(harness);
+    const first = await harness.open();
+    git(harness.repositoryPath, "commit", "-q", "-am", "commit the rest");
+
+    const refreshed = value(
+      await harness.opening.refresh(profileId, first.review.id),
+    );
+
+    expect(refreshed.session.id).not.toBe(first.session.id);
+    expect(refreshed.sinceLastRefresh).toBe("none");
+    expect(await loadRound(harness, refreshed)).toEqual({
+      _tag: "err",
+      error: { reason: "not_found" },
+    });
+  });
+
   it("writes no patch when the merge base moved, since it would hold the base branch's commits", async () => {
     const harness = await localApplyHarness();
     const { repositoryPath } = harness;

@@ -554,7 +554,7 @@ export class LocalReviewSessionPreparation {
   /**
    * Records on the session the Review moves to what the move changed (#604):
    * the patch between the two Local snapshots, or `BaseMoved` when the merge
-   * base moved. It reads the previous snapshot's managed ref, so the caller
+   * base moved; nothing when no file changed. It reads the previous snapshot's managed ref, so the caller
    * records it before retention prunes that session. When the previous
    * session cannot be read or the patch cannot be written, the session keeps
    * no round rather than an earlier move's.
@@ -604,7 +604,9 @@ export class LocalReviewSessionPreparation {
     checkoutPath: string,
     previous: LocalReviewSession,
     current: LocalReviewSession,
-  ): Promise<Result<LocalSessionRound, LocalReviewPreparationFailure>> {
+  ): Promise<
+    Result<LocalSessionRound | undefined, LocalReviewPreparationFailure>
+  > {
     const fromSessionId = previous.id;
     if (previous.key.baseSha !== current.key.baseSha)
       return ok({ _tag: "BaseMoved", fromSessionId });
@@ -613,6 +615,8 @@ export class LocalReviewSessionPreparation {
       headSha: current.key.headSha,
     });
     if (patch._tag === "err") return patch;
+    // A move that only committed uncommitted work changes no file, so it leaves nothing to show.
+    if (patch.value === "") return ok(undefined);
     const path = this.dependencies.paths.roundPatchFile(
       current.key.profileId,
       current.id,
