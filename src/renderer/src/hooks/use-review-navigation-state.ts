@@ -9,21 +9,23 @@ type ReviewNavigationState = Parameters<
 
 /**
  * Reports the Review's leave guard on each change: `write_pending` while a
- * GitHub write is in flight, `dirty_draft` while a Finish review summary is
- * kept, else `clear`. The app starts clear, so a mount reports only a guard.
+ * GitHub write is in flight, `dirty_draft` while the Review holds text that
+ * leaving would drop, else `clear`. The app starts clear, so a mount reports
+ * only a guard.
  */
 export function useReviewNavigationState({
   writePending,
-  draftKept,
+  unsentText,
   report,
 }: {
   readonly writePending: boolean;
-  readonly draftKept: boolean;
+  /** A kept Finish review summary, or text typed in a composer or an open Finish review dialog. */
+  readonly unsentText: boolean;
   readonly report: ReviewWorkbenchActions["reportNavigationState"];
 }): void {
   const state: ReviewNavigationState = writePending
     ? "write_pending"
-    : draftKept
+    : unsentText
       ? "dirty_draft"
       : "clear";
   const reported = useRef<ReviewNavigationState>("clear");
@@ -33,7 +35,7 @@ export function useReviewNavigationState({
     reported.current = state;
     latestReport.current(state);
   }, [latestReport, state]);
-  // A kept summary dies with the Review. An exit the leave dialog does not
+  // Unsent text dies with the Review. An exit the leave dialog does not
   // guard must not leave navigation blocked.
   useEffect(
     () => () => {

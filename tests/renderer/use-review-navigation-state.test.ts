@@ -12,7 +12,7 @@ describe("useReviewNavigationState", () => {
     const { unmount } = renderHook(() =>
       useReviewNavigationState({
         writePending: false,
-        draftKept: true,
+        unsentText: true,
         report,
       }),
     );

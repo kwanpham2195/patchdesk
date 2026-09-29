@@ -77,6 +77,10 @@ import { useLocalNotesNavigation } from "../hooks/use-local-notes-navigation";
 import { usePendingReviewDrafts } from "../hooks/use-pending-review-drafts";
 import { useReviewNavigationState } from "../hooks/use-review-navigation-state";
 import {
+  UnsentReviewTextContext,
+  useUnsentReviewTextFields,
+} from "../hooks/use-unsent-review-text";
+import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
   type ReviewViewPreferences,
@@ -161,11 +165,14 @@ export function ReviewWorkbench({
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title =
     model.pullRequest?.title ?? reviewSourceTitle(model.session.key.source);
+  const unsentTextFields = useUnsentReviewTextFields();
   useReviewNavigationState({
     writePending:
       actions.pendingReview?.busy === true ||
       actions.directSummary?.busy === true,
-    draftKept: actions.pendingReview?.finishDraft !== undefined,
+    unsentText:
+      actions.pendingReview?.finishDraft !== undefined ||
+      unsentTextFields.holdsUnsentText,
     report: actions.reportNavigationState,
   });
 
@@ -797,7 +804,9 @@ export function ReviewWorkbench({
                       {...definedProps({ commitHeader })}
                     />
                   ) : (
-                    <>
+                    <UnsentReviewTextContext.Provider
+                      value={unsentTextFields.report}
+                    >
                       <DiffWorkbench
                         key={
                           selectedCommitSha ??
@@ -926,7 +935,7 @@ export function ReviewWorkbench({
                         preferences={preferences}
                         onPreferencesChange={updatePreferences}
                       />
-                    </>
+                    </UnsentReviewTextContext.Provider>
                   )}
                   {commitDiffError ? (
                     <InlineError className="border-t px-4 py-2">
@@ -956,17 +965,19 @@ export function ReviewWorkbench({
         )}
       </div>
 
-      <ReviewWorkbenchDialogs
-        actions={actions}
-        overview={overview}
-        overviewOpen={overviewOpen}
-        overviewFocusSection={overviewFocusSection}
-        setOverviewOpen={setOverviewOpen}
-        onReviewFindings={reviewFindings}
-        summaryDialogOpen={summaryDialogOpen}
-        setSummaryDialogOpen={setSummaryDialogOpen}
-        externalPullRequest={externalPullRequest}
-      />
+      <UnsentReviewTextContext.Provider value={unsentTextFields.report}>
+        <ReviewWorkbenchDialogs
+          actions={actions}
+          overview={overview}
+          overviewOpen={overviewOpen}
+          overviewFocusSection={overviewFocusSection}
+          setOverviewOpen={setOverviewOpen}
+          onReviewFindings={reviewFindings}
+          summaryDialogOpen={summaryDialogOpen}
+          setSummaryDialogOpen={setSummaryDialogOpen}
+          externalPullRequest={externalPullRequest}
+        />
+      </UnsentReviewTextContext.Provider>
     </section>
   );
 }

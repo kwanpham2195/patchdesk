@@ -56,7 +56,7 @@ The optional `intent` is the task the agent was given, as Markdown. Patchdesk re
 
 `run_insight` asks for one Analysis, Walkthrough, or Brief on the Review's current session. It records an _Agent run request_ and returns at once with `awaiting_approval` and a request id. The tool has no provider, model, or effort field; those are the maintainer's to pick.
 
-`show_review` switches the Patchdesk window to a saved Review of the active profile, local or pull request, by its id. The window opens the Review as a clicked notification does, and the open marks it opened as any open does, but the window is never raised or focused: the screen changes behind the app the maintainer is using, and the next ⌘-Tab lands on the Review. With no window open, Patchdesk opens one without activating it. A Review whose repository is no longer watched still shows. While a closed Finish review keeps its Summary, or a GitHub write is in progress, the call answers `held` and moves nothing: no leave dialog appears, and the maintainer opens the Review when ready. Otherwise it answers `shown`, also when the Review is already on screen. A Review the active profile does not hold is refused `not_found`, or `profile_changed` when another profile holds it; the tool never switches profile. A shared Review whose checkout is now on another branch is refused `branch_mismatch`, naming that branch, as the maintainer's own open is.
+`show_review` switches the Patchdesk window to a saved Review of the active profile, local or pull request, by its id. The window opens the Review as a clicked notification does, and the open marks it opened as any open does, but the window is never raised or focused: the screen changes behind the app the maintainer is using, and the next ⌘-Tab lands on the Review. With no window open, Patchdesk opens one without activating it. A Review whose repository is no longer watched still shows. While the Review holds an unsaved draft (a kept Finish review Summary, a Summary typed in the open Finish review dialog, or a half-written note or comment in a diff composer), or a GitHub write is in progress, the call answers `held` and moves nothing: no leave dialog appears, and the maintainer opens the Review when ready. Otherwise it answers `shown`, also when the Review is already on screen. A Review the active profile does not hold is refused `not_found`, or `profile_changed` when another profile holds it; the tool never switches profile. A shared Review whose checkout is now on another branch is refused `branch_mismatch`, naming that branch, as the maintainer's own open is.
 
 > Technical note: `review_local` and `refresh_review` take a Local snapshot, which writes git objects, a `refs/patchdesk/local/` ref, and a worktree in Patchdesk's cache. They change no branch, index, or working-tree file (ADR 0050, ADR 0052 amendment of 2026-09-26).
 
@@ -158,7 +158,6 @@ Others name their cause: `checkout_not_found` for a directory outside every chec
 ## Known limits
 
 - The client name on the Agent requests bar is what the agent's client reports about itself.
-- `show_review` holds only for a kept Finish review summary or a pending GitHub write. A half-written note, or a Summary typed in the open Finish review dialog, is dropped when the call switches the Review, as it is by a notification click.
 
 ## Variants
 
