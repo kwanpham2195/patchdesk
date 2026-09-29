@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Kept the Finish review summary and decision when the dialog closes with Escape, a click outside, or Close, so one stray keypress no longer loses a long summary. Finish review reopens with both, and they stay through a Refresh or a Submit that GitHub does not confirm until Submit review or Confirm discard. While a summary is kept, leaving the Review asks first with Stay on this review or Discard changes and leave, and Navigate, ⌘K, and Settings wait as they do for any unsaved draft. Finish review from Analysis asks before replacing a kept summary. The summary stays in the window only: it is never saved to disk or to GitHub, so a reload or quit drops it. #606
+
 - Kept Viewed marks on a pull request Review's unchanged files when Refresh moves it to a new head. A file keeps its mark only when its patch is identical in the new diff, so a file the new push changed, or whose patch a rebase onto a moved base changed, loses its mark. Commit-slice and Since your review marks stay temporary. If the marks cannot be carried, Refresh still completes and the new head starts with no files viewed. #605
 
 - Added keyboard commands inside a Review. ⌘1, ⌘2, and ⌘3 select Conversation, Diff, and Insights; a local Review has no Conversation, so ⌘1 does nothing there. In the Diff with All files, `(` and `)` move to the previous and next Finding card and stop at either end. ⌘K lists a Review group while a Review is open: the three tabs, the Brief, Walkthrough, and Analysis readers, Next and Previous Finding, and Finish review while the header shows it. No command starts a run, adds a Finding, or submits. #609

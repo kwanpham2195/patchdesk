@@ -1,3 +1,4 @@
+import { definedProps } from "../../../domain/defined-props";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   openPullRequestExternalUrl,
@@ -57,14 +58,12 @@ export function ReviewWorkbenchDialogs({
       actions.pendingReview.projection?.state !== "pending" ? null : (
         <FinishReviewDialog
           open={actions.pendingReview.finishDialogOpen}
-          onOpenChange={actions.pendingReview.onCloseFinishDialog}
+          onClose={actions.pendingReview.onCloseFinishDialog}
           projection={actions.pendingReview.projection}
-          {...(actions.pendingReview.finishDialogInitialSummary === undefined
-            ? {}
-            : {
-                initialSummary:
-                  actions.pendingReview.finishDialogInitialSummary,
-              })}
+          {...definedProps({
+            draft: actions.pendingReview.finishDraft,
+            offeredSummary: actions.pendingReview.finishDialogOfferedSummary,
+          })}
           actions={{
             busy: actions.pendingReview.busy,
             onSubmit: actions.pendingReview.onSubmit,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
@@ -75,6 +75,7 @@ import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-positi
 import { useReviewFileSelection } from "../hooks/use-review-file-selection";
 import { useLocalNotesNavigation } from "../hooks/use-local-notes-navigation";
 import { usePendingReviewDrafts } from "../hooks/use-pending-review-drafts";
+import { useReviewNavigationState } from "../hooks/use-review-navigation-state";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
@@ -160,18 +161,12 @@ export function ReviewWorkbench({
   const repository = `${model.session.key.owner}/${model.session.key.repo}`;
   const title =
     model.pullRequest?.title ?? reviewSourceTitle(model.session.key.source);
-  // The desktop close guard blocks quitting while a GitHub write is in
-  // flight; report write_pending on busy transitions (and clear afterwards).
-  const writePending =
-    actions.pendingReview?.busy === true ||
-    actions.directSummary?.busy === true;
-  const reportedWritePending = useRef(writePending);
-  const reportNavigationStateRef = useRef(actions.reportNavigationState);
-  useEffect(() => {
-    reportNavigationStateRef.current = actions.reportNavigationState;
-    if (reportedWritePending.current === writePending) return;
-    reportedWritePending.current = writePending;
-    reportNavigationStateRef.current(writePending ? "write_pending" : "clear");
+  useReviewNavigationState({
+    writePending:
+      actions.pendingReview?.busy === true ||
+      actions.directSummary?.busy === true,
+    draftKept: actions.pendingReview?.finishDraft !== undefined,
+    report: actions.reportNavigationState,
   });
 
   const [overviewOpen, setOverviewOpen] = useState(

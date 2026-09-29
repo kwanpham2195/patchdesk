@@ -46,7 +46,7 @@ describe("FinishReviewDialog", () => {
     render(
       <FinishReviewDialog
         open
-        onOpenChange={vi.fn()}
+        onClose={vi.fn()}
         projection={projection}
         actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
@@ -72,11 +72,11 @@ describe("FinishReviewDialog", () => {
   it("requires a separate explicit confirmation before Discard invokes the write", async () => {
     const user = userEvent.setup();
     const onDiscard = vi.fn(async () => undefined);
-    const onOpenChange = vi.fn();
+    const onClose = vi.fn();
     render(
       <FinishReviewDialog
         open
-        onOpenChange={onOpenChange}
+        onClose={onClose}
         projection={projection}
         actions={{ busy: false, onSubmit: vi.fn(), onDiscard }}
       />,
@@ -94,31 +94,105 @@ describe("FinishReviewDialog", () => {
     await user.click(screen.getByRole("button", { name: "Discard review" }));
     await user.click(screen.getByRole("button", { name: "Confirm discard" }));
     await vi.waitFor(() => expect(onDiscard).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    // The discarded summary is not handed back to be kept.
+    expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("focuses the summary input when opened and keeps the summary modal-local", () => {
-    render(
+  it("hands the summary and decision back on Escape and reopens with them", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const actions = { busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() };
+    const view = render(
       <FinishReviewDialog
         open
-        onOpenChange={vi.fn()}
+        onClose={onClose}
         projection={projection}
-        actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
+        actions={actions}
+      />,
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Final review summary" }),
+      { target: { value: "A long summary" } },
+    );
+    await user.click(screen.getByRole("combobox", { name: "Review decision" }));
+    await user.click(await screen.findByRole("option", { name: "Approve" }));
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledWith({
+      summary: "A long summary",
+      event: "APPROVE",
+    });
+
+    view.rerender(
+      <FinishReviewDialog
+        open={false}
+        onClose={onClose}
+        projection={projection}
+        actions={actions}
+      />,
+    );
+    view.rerender(
+      <FinishReviewDialog
+        open
+        onClose={onClose}
+        projection={projection}
+        actions={actions}
+        draft={{ summary: "A long summary", event: "APPROVE" }}
       />,
     );
     const summary = screen.getByRole("textbox", {
       name: "Final review summary",
     });
-    expect(summary).toBeTruthy();
+    if (!(summary instanceof HTMLTextAreaElement))
+      throw new Error("expected the final review summary textarea");
+    expect(summary.value).toBe("A long summary");
+    expect(
+      screen.getByRole("combobox", { name: "Review decision" }).textContent,
+    ).toContain("Approve");
   });
+
+  it.each([
+    { choice: "Replace summary", expected: "# Verdict\nAnalysis" },
+    { choice: "Keep my summary", expected: "My own words" },
+  ])(
+    "asks before an Analysis summary replaces a kept one: $choice",
+    async ({ choice, expected }) => {
+      const user = userEvent.setup();
+      render(
+        <FinishReviewDialog
+          open
+          onClose={vi.fn()}
+          projection={projection}
+          draft={{ summary: "My own words", event: "REQUEST_CHANGES" }}
+          offeredSummary={"# Verdict\nAnalysis"}
+          actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
+        />,
+      );
+      const summary = screen.getByRole("textbox", {
+        name: "Final review summary",
+      });
+      if (!(summary instanceof HTMLTextAreaElement))
+        throw new Error("expected the final review summary textarea");
+      expect(summary.value).toBe("My own words");
+
+      await user.click(screen.getByRole("button", { name: choice }));
+
+      expect(summary.value).toBe(expected);
+      expect(
+        screen.queryByRole("button", { name: "Replace summary" }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("combobox", { name: "Review decision" }).textContent,
+      ).toContain("Request changes");
+    },
+  );
 
   it("seeds a supplied Analysis summary on open while keeping Comment selected", () => {
     render(
       <FinishReviewDialog
         open
-        onOpenChange={vi.fn()}
+        onClose={vi.fn()}
         projection={projection}
-        initialSummary={"# Review Scope\nAnalysis context"}
+        offeredSummary={"# Review Scope\nAnalysis context"}
         actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
     );
@@ -136,11 +210,11 @@ describe("FinishReviewDialog", () => {
   it("sends the selected event and modal summary only on Submit", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn(async () => undefined);
-    const onOpenChange = vi.fn();
+    const onClose = vi.fn();
     render(
       <FinishReviewDialog
         open
-        onOpenChange={onOpenChange}
+        onClose={onClose}
         projection={projection}
         actions={{ busy: false, onSubmit, onDiscard: vi.fn() }}
       />,
@@ -156,14 +230,15 @@ describe("FinishReviewDialog", () => {
     await vi.waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith("APPROVE", "Only on submit"),
     );
-    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    // The submitted summary is not handed back to be kept.
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("disables close, decision, and submit while a submission is in flight", () => {
     render(
       <FinishReviewDialog
         open
-        onOpenChange={vi.fn()}
+        onClose={vi.fn()}
         projection={projection}
         actions={{ busy: true, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
@@ -187,7 +262,7 @@ describe("FinishReviewDialog", () => {
     render(
       <FinishReviewDialog
         open
-        onOpenChange={vi.fn()}
+        onClose={vi.fn()}
         projection={projection}
         actions={{ busy: false, onSubmit, onDiscard: vi.fn() }}
         error="GitHub did not confirm the submission. Check GitHub before retrying."
@@ -214,7 +289,7 @@ describe("FinishReviewDialog", () => {
     render(
       <FinishReviewDialog
         open
-        onOpenChange={vi.fn()}
+        onClose={vi.fn()}
         projection={projection}
         actions={{ busy: false, onSubmit, onDiscard: vi.fn() }}
       />,
@@ -236,7 +311,7 @@ describe("FinishReviewDialog", () => {
     render(
       <FinishReviewDialog
         open
-        onOpenChange={vi.fn()}
+        onClose={vi.fn()}
         projection={projection}
         actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,

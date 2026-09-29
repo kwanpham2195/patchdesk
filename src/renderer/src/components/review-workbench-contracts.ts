@@ -8,6 +8,7 @@ import type {
 } from "./review-diff-view";
 import type { ReviewerPickerActions } from "./reviewer-picker";
 import type { ChangeBaseBranchActions } from "./change-base-branch-dialog";
+import type { FinishReviewDraft } from "./finish-review-dialog";
 import type { LocalNoteControls } from "../flows/use-local-drafts";
 import type { ChangeIntentControls } from "../flows/use-change-intent";
 import type {
@@ -63,9 +64,11 @@ export type ReviewWorkbenchActions = {
     readonly projection: WorkbenchResponse["pendingReview"];
     readonly busy: boolean;
     readonly finishDialogOpen: boolean;
-    readonly finishDialogInitialSummary?: string;
+    /** Kept after Finish review closes; the workbench reports it as `dirty_draft`. */
+    readonly finishDraft?: FinishReviewDraft;
+    readonly finishDialogOfferedSummary?: string;
     readonly onOpenFinishDialog: () => void;
-    readonly onCloseFinishDialog: () => void;
+    readonly onCloseFinishDialog: (draft: FinishReviewDraft) => void;
     readonly onSubmit: (
       event: GitHubReviewEvent,
       summaryBody: string,

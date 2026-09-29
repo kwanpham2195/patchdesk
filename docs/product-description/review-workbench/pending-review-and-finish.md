@@ -28,11 +28,17 @@ stateDiagram-v2
 
 With no pending review, the header offers Start a review and inline composers offer Start a review or Comment now. With a pending review, the header shows Finish review · N, and inline composers offer Add review comment. If pending-review state is unavailable, Patchdesk shows a recovery banner instead of pretending there is none, and inline composers disable their text field and say "Pending review unavailable. Check GitHub or refresh."
 
-Finish review says "The summary is sent with the review." It lists the pending ledger with path, line or range, side, and comment body. The Summary is modal-local and sent only with Submit review. Decision labels are human-readable while the request uses GitHub's `COMMENT`, `APPROVE`, or `REQUEST_CHANGES` values.
+Finish review says "The summary is sent with the review." It lists the pending ledger with path, line or range, side, and comment body. The Summary is sent only with Submit review. Decision labels are human-readable while the request uses GitHub's `COMMENT`, `APPROVE`, or `REQUEST_CHANGES` values.
 
 ### Leave unchanged
 
-Closing Finish review records nothing and preserves the pending review on GitHub. Editing the summary or decision does not persist it outside the current dialog. Cancelling an inline composer before Start or Add leaves pending state unchanged.
+Closing Finish review with Escape, a click outside, or Close sends nothing and preserves the pending review on GitHub. When the Summary has text, the Review keeps the Summary and the chosen decision, and Finish review reopens with both. They stay through a Refresh and a Submit review that GitHub does not confirm, and clear after a confirmed Submit review or Confirm discard. Closing with an empty Summary keeps nothing, and the next opening starts on Comment.
+
+A kept Summary lives only in the running window. It is never written to disk or to the pending review on GitHub, so a renderer reload or quitting Patchdesk drops it. While a Summary is kept, leaving the Review from Back, a Visited pull requests row, or the sidebar shows the leave dialog: Stay on this review keeps the Summary, and Discard changes and leave drops it. Closing the window asks the same question natively. As with any unsaved Review draft, Navigate, ⌘K, and Settings stay unavailable until the Summary is sent, discarded, or left behind; see [Navigation and overlays](../foundations/navigation-and-overlays.md).
+
+Finish review in the Analysis verdict card fills an empty Summary with the Analysis-built summary. When a Summary is already kept, Finish review opens with the kept Summary and asks "You have an unsent summary. Replace it with the Analysis summary?" Replace summary swaps in the Analysis text and keeps the chosen decision; Keep my summary leaves it.
+
+Cancelling an inline composer before Start or Add leaves pending state unchanged.
 
 If the maintainer deletes the pending review on GitHub, Refresh brings the Review back in line. When GitHub answers that this viewer has no pending review with the recorded id on the pull request, the header returns to Start a review and the Analysis Findings added to that review lose Added and can be added again. A Finding whose comment GitHub now shows as published, because the review was submitted outside Patchdesk, stays non-actionable. A GitHub read that fails, is rate-limited, or returns incomplete comment evidence leaves the Findings Added. Patchdesk logs each release with the pending review id. The background check for updates, which runs on window focus and every 90 seconds, releases them the same way and updates the header and Findings without a reload; it moves no focus and opens no dialog. A thread added to the deleted pending review no longer holds back that check after a new pending review is started, even when the new review lacks the thread.
 
@@ -70,15 +76,15 @@ A confirmed rejection of an inline Start or Add leaves a failed card with the co
 
 ## Cancel and interrupt
 
-| Event                                                                                                 | Before the action runs                                                                                               | While the action runs                                                                                                    |
-| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Cancel, Stop, or Escape                                                                               | Close preserves the pending review. Discard needs a second explicit confirmation.                                    | Dialog close, decision, Submit, and Discard are disabled. There is no Stop after GitHub submission begins.               |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | A pending review alone is durable GitHub state and can be left when no local draft is dirty.                         | The Review reports write-pending and blocks navigation until the command settles.                                        |
-| Start another action or request a refresh                                                             | Add and Finish act on the current pending node and represented revision.                                             | Same-tick duplicate command is ignored. Other GitHub writers wait behind the shared coordinator.                         |
-| GitHub, the network, a local tool, or an Insight provider fails or times out                          | A pending-state read failure shows recovery instead of `none`.                                                       | Deterministic failure is retryable; unknown outcome locks mutation and requires Check GitHub again or manual inspection. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Pending review is remote and reprojected on load; modal summary and selected decision are not documented as durable. | Recovery-required state is durable. App close during a known in-flight command needs live verification.                  |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A different pending node, head, or patch invalidates the command preconditions.                                      | Only the returned exact projection settles the command; stale lower projections cannot erase newer cumulative comments.  |
-| macOS focus, a file or folder picker, or another input path takes control                             | Opening Finish review schedules focus to Summary.                                                                    | Focus loss does not cancel submission. Focus return after error, Close, or Check GitHub again needs live verification.   |
+| Event                                                                                                 | Before the action runs                                                                                                                        | While the action runs                                                                                                    |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Cancel, Stop, or Escape                                                                               | Close preserves the pending review and keeps a Summary with text. Discard needs a second explicit confirmation.                               | Dialog close, decision, Submit, and Discard are disabled. There is no Stop after GitHub submission begins.               |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | A pending review alone is durable GitHub state and can be left freely. A kept Finish review Summary shows the leave dialog first.             | The Review reports write-pending and blocks navigation until the command settles.                                        |
+| Start another action or request a refresh                                                             | Add and Finish act on the current pending node and represented revision.                                                                      | Same-tick duplicate command is ignored. Other GitHub writers wait behind the shared coordinator.                         |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | A pending-state read failure shows recovery instead of `none`.                                                                                | Deterministic failure is retryable; unknown outcome locks mutation and requires Check GitHub again or manual inspection. |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Pending review is remote and reprojected on load. A kept Summary and decision do not survive a reload or quit; closing the window asks first. | Recovery-required state is durable. App close during a known in-flight command needs live verification.                  |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A different pending node, head, or patch invalidates the command preconditions.                                                               | Only the returned exact projection settles the command; stale lower projections cannot erase newer cumulative comments.  |
+| macOS focus, a file or folder picker, or another input path takes control                             | Opening Finish review schedules focus to Summary.                                                                                             | Focus loss does not cancel submission. Focus return after error, Close, or Check GitHub again needs live verification.   |
 
 ## Interactions with other systems
 
@@ -88,7 +94,7 @@ A confirmed rejection of an inline Start or Add leaves a failed card with the co
 
 **Local persistence and recovery.** Pending state is projected from durable Review/session data. An uncertain added comment keeps its exact body, location, target review, and the pre-write pending review so reconciliation can distinguish the intended new thread from older or unrelated comments. Recent-write journals prevent delayed reads from losing confirmed created, submitted, or discarded thread effects.
 
-**GitHub permissions and write authority.** Start, Add, Submit, and Confirm discard are the explicit GitHub boundaries. Dialog edits alone are local.
+**GitHub permissions and write authority.** Start, Add, Submit, and Confirm discard are the explicit GitHub boundaries. Dialog edits and a kept Summary stay in the renderer.
 
 **Network, local tools, and Insight providers.** GitHub owns the pending review. Analysis may provide a proposed comment or initial summary but cannot submit it autonomously.
 
@@ -98,14 +104,14 @@ A confirmed rejection of an inline Start or Add leaves a failed card with the co
 
 When an Analysis Finding action fails, its error remains with that Finding. Retrying clears it immediately. Otherwise, a transition to pending review or published, a dismissal, or reconciliation from locked back to actionable clears only that Finding's obsolete error; failures on other Findings remain visible.
 
-**Preferences, keyboard commands, and desktop integration.** Finish review always defaults decision to Comment when remounted. Analysis can seed Summary for that opening only. No native menu command submits.
+**Preferences, keyboard commands, and desktop integration.** Finish review opens on the kept decision, or on Comment when nothing is kept. Analysis fills an empty Summary and asks before replacing a kept one. No native menu command submits.
 
 **Supported input and accessibility limits.** Named dialog, ledger, summary, decision, and controls support mouse and keyboard. Patchdesk does not claim screen-reader, touch, or pen support.
 
 ## Edge cases
 
 - Start a review from the header opens the summary dialog directly when no pending review exists; it does not open an inline composer.
-- An Analysis summary seeds only Summary and keeps Comment selected.
+- An Analysis summary fills only Summary and keeps the selected decision. It asks before replacing a kept Summary.
 - Discard stays in a separate footer group and requires Confirm discard.
 - The Finish review ledger shows each comment body as plain text. Inline pending-review cards in the Diff render the same bodies as Markdown, with images and links, by the rules [Conversation](conversation-and-metadata.md#arrive) describes.
 - Start a review in the header is disabled when the summary dialog is not available for the Review.

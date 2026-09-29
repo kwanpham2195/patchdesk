@@ -20,7 +20,9 @@ import {
   PENDING_REVIEW_RECOVERY_MESSAGES,
   PENDING_REVIEW_REPLACED,
 } from "../review-copy";
+import { definedProps } from "../../../domain/defined-props";
 import type { PendingReviewComposerActions } from "../components/review-diff-view";
+import type { FinishReviewDraft } from "../components/finish-review-dialog";
 import {
   parsePendingReviewProjection,
   parseWorkbenchResponse,
@@ -64,9 +66,11 @@ type PendingReviewPanel = {
   readonly projection: WorkbenchResponse["pendingReview"];
   readonly busy: boolean;
   readonly finishDialogOpen: boolean;
-  readonly finishDialogInitialSummary?: string;
+  /** The summary and decision a closed Finish review keeps until Submit review or Confirm discard. */
+  readonly finishDraft?: FinishReviewDraft;
+  readonly finishDialogOfferedSummary?: string;
   readonly onOpenFinishDialog: () => void;
-  readonly onCloseFinishDialog: () => void;
+  readonly onCloseFinishDialog: (draft: FinishReviewDraft) => void;
   readonly onSubmit: (
     event: GitHubReviewEvent,
     summaryBody: string,
@@ -146,9 +150,24 @@ export function usePendingReviewActions({
   const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
   const latestWorkbenchRef = useLatestCommitted(workbench);
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
-  const [finishDialogInitialSummary, setFinishDialogInitialSummary] = useState<
+  const [finishDialogOfferedSummary, setFinishDialogOfferedSummary] = useState<
     string | undefined
   >(undefined);
+  // Renderer memory only (#606): nothing reaches disk or GitHub before Submit review.
+  const [keptFinishDraft, setKeptFinishDraft] = useState<
+    { readonly reviewId: string; readonly draft: FinishReviewDraft } | undefined
+  >(undefined);
+  const reviewId = workbench.review.id;
+  const finishDraft =
+    keptFinishDraft?.reviewId === reviewId ? keptFinishDraft.draft : undefined;
+  const keepFinishDraft = useCallback(
+    (draft: FinishReviewDraft): void => {
+      setKeptFinishDraft(
+        draft.summary.trim() === "" ? undefined : { reviewId, draft },
+      );
+    },
+    [reviewId],
+  );
   const [finishDialogError, setFinishDialogError] = useState<
     string | undefined
   >(undefined);
@@ -364,17 +383,21 @@ export function usePendingReviewActions({
   }, [applyPendingReviewProjection, reloadWorkbench, workbench]);
 
   const onOpenFinishDialog = useCallback((): void => {
-    setFinishDialogInitialSummary(undefined);
+    setFinishDialogOfferedSummary(undefined);
     setFinishDialogError(undefined);
     setGoneNotice(undefined);
     setFinishDialogOpen(true);
   }, []);
-  const onCloseFinishDialog = useCallback((): void => {
-    setFinishDialogOpen(false);
-    setFinishDialogInitialSummary(undefined);
-  }, []);
+  const onCloseFinishDialog = useCallback(
+    (draft: FinishReviewDraft): void => {
+      setFinishDialogOpen(false);
+      setFinishDialogOfferedSummary(undefined);
+      keepFinishDraft(draft);
+    },
+    [keepFinishDraft],
+  );
   const openFinishDialogWithSummary = useCallback((summary: string): void => {
-    setFinishDialogInitialSummary(summary);
+    setFinishDialogOfferedSummary(summary);
     setFinishDialogError(undefined);
     setGoneNotice(undefined);
     setFinishDialogOpen(true);
@@ -417,8 +440,12 @@ export function usePendingReviewActions({
     ): Promise<void> => {
       try {
         await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
+        setKeptFinishDraft(undefined);
         setFinishDialogOpen(false);
       } catch (cause) {
+        // Whatever GitHub answered, the summary was not confirmed as sent.
+        keepFinishDraft({ summary: summaryBody, event });
+        setFinishDialogOpen(false);
         if (!isApiErrorCode(cause, "pending_review_gone")) {
           setFinishDialogError(
             contextualMessage(cause, FINISH_REVIEW_MESSAGES),
@@ -431,7 +458,6 @@ export function usePendingReviewActions({
           );
           // The main process already released the gone review's Findings;
           // reload so the header and Analysis show what GitHub holds.
-          setFinishDialogOpen(false);
           await reloadWorkbench().catch(() => {
             // The stored projection in the failure body already hid Finish.
           });
@@ -439,19 +465,22 @@ export function usePendingReviewActions({
       }
     },
     onDiscard: async (): Promise<void> => {
+      // Confirm discard drops the summary with the review, even if GitHub refuses the discard.
+      setKeptFinishDraft(undefined);
       try {
         await runPendingReviewCommand({ _tag: "Discard", confirmation: true });
-        setFinishDialogOpen(false);
       } catch (cause) {
         setFinishDialogError(contextualMessage(cause, FINISH_REVIEW_MESSAGES));
+      } finally {
+        setFinishDialogOpen(false);
       }
     },
     onCheckGitHubAgain: checkGitHubAgain,
   };
-  const pendingReviewPanelWithSummary =
-    finishDialogInitialSummary === undefined
-      ? pendingReviewPanelBase
-      : { ...pendingReviewPanelBase, finishDialogInitialSummary };
+  const pendingReviewPanelWithSummary = {
+    ...pendingReviewPanelBase,
+    ...definedProps({ finishDraft, finishDialogOfferedSummary }),
+  };
   const pendingReviewPanelWithRecoveryError =
     finishDialogError === undefined
       ? pendingReviewPanelWithSummary

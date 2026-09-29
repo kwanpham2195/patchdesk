@@ -69,7 +69,7 @@ Add all to review appears under the same conditions as Add to review, when at le
 
 Add to review sends the Finding's original suggested comment together with its Analysis run ID, Finding ID, session ID, head SHA, patch hash, and diff anchor. On a Finding with a verified replacement the same control reads Add suggestion to review and sends less: the Analysis run and Finding identity and the revision the reader expects, with no comment text and no anchor. Dismiss opens a small form titled Dismiss finding; Confirm dismissal stays disabled until the reason is non-blank.
 
-Finish review in the verdict card opens Finish review with an Analysis-built summary. It prefills only the modal-local review summary and leaves Comment selected; it does not silently submit or change pending comments.
+Finish review in the verdict card opens Finish review with an Analysis-built summary. It fills only an empty review summary and leaves the decision as it is; when a summary is already kept, the dialog asks before replacing it. It does not silently submit or change pending comments.
 
 A Finding card's Open in Analysis opens Insights on the Analysis reader, opens Lower severity when the target is a P2 or P3 Finding, and scrolls to and focuses that Finding's row.
 
