@@ -94,14 +94,14 @@ verification/
 foundations/
   task-lifecycle-and-interruption.md  task phases, variants, interrupts, and operation states
   navigation-and-overlays.md         screens, Settings, restoration, focus, and leave guards
-  workspace-profile-and-identity.md  profiles, GitHub identity, repositories, and local roots
+  workspace-profile-and-identity.md  profiles, GitHub identity, and repositories
   review-session-and-revision.md     Pull request, Review, session, worktree, and freshness
   persistence-and-recovery.md        saved local state, cache, journals, locks, and recovery
   visited-pull-requests.md           the column of opened pull requests beside every screen
 
 first-run/
   setup-checklist.md                 workspace setup in place on the Pull requests screen
-  repository-discovery.md            workspace-root scanning and watchlist selection
+  watched-repositories.md            adding watched repositories and choosing their checkouts
 
 pull-requests/
   selected-repository.md              one repository as the listing scope
@@ -151,7 +151,7 @@ Status is one of `not started`, `drafted`, or `verified`. A document is `verifie
 | foundations/persistence-and-recovery.md         | drafted |
 | foundations/visited-pull-requests.md            | drafted |
 | first-run/setup-checklist.md                    | drafted |
-| first-run/repository-discovery.md               | drafted |
+| first-run/watched-repositories.md               | drafted |
 | pull-requests/selected-repository.md            | drafted |
 | pull-requests/filters-pagination-and-refresh.md | drafted |
 | pull-requests/repository-listing.md             | drafted |

@@ -90,7 +90,6 @@ const profile: WorkspaceProfileConfig = {
   label: "ACME",
   githubHost: ids.host,
   ghAccount: "profile-account",
-  workspaceRoots: [],
   rulePaths: [],
   repos: [],
 };

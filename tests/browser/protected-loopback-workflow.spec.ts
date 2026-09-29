@@ -40,22 +40,6 @@ test("renderer uses the protected loopback API for profile and watchlist control
       authenticatedAccount: { host: "github.com", account: "browser-user" },
       listOpenPullRequests: [],
     }),
-    origins: {
-      async find() {
-        return [
-          {
-            root: "/workspace/enterprise",
-            state: "ready" as const,
-            origins: [
-              {
-                origin: "https://github.example.test/acme/discovered.git",
-                localPath: "/workspace/enterprise/discovered",
-              },
-            ],
-          },
-        ];
-      },
-    },
   });
   if (started._tag !== "started") throw new Error("local API did not start");
   api = started.server;
@@ -112,12 +96,13 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(
     page.getByRole("combobox", { name: "Active workspace" }).last(),
   ).toContainText("Enterprise");
-  await page.getByRole("button", { name: "Add folder" }).click();
-  // Every Workspace control saves on its own: the root row commits when it
-  // loses focus, and the name field commits the same way.
-  const folder = page.getByRole("textbox", { name: "Folder 1", exact: true });
-  await folder.fill("/workspace/enterprise");
-  await folder.press("Tab");
+  // Every Workspace control saves on its own: a repository is watched once
+  // Add answers, and the name field commits when it loses focus.
+  const workspaceSection = page.getByTestId("settings-section-workspace");
+  await workspaceSection.getByLabel("Add a repository").fill("acme/watched");
+  await workspaceSection
+    .getByRole("button", { name: "Add", exact: true })
+    .click();
   const workspaceName = page.getByRole("textbox", {
     name: "Name",
     exact: true,
@@ -137,19 +122,13 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("tab", { name: "Workspace" }).click();
-  // Workspace-root discovery is automatic: the root's own save above scans
-  // the profile's workspace roots via `GET /v1/watchlist/suggestions` from a
-  // `useEffect` (see `useWorkspaceRootDiscovery`), with no button to drive
-  // it. Wait directly for that scan's result to appear. Scoped to the
-  // Workspace section: the first-run flow behind the modal watches the same
-  // folder and lists the same repository.
-  const workspaceSection = page.getByTestId("settings-section-workspace");
-  await expect(workspaceSection.getByText("acme/discovered")).toBeVisible();
+  // Scoped to the Workspace section: the first-run flow behind the modal
+  // lists the same repository.
   await expect(
-    workspaceSection.getByRole("checkbox", {
-      name: "acme/discovered /workspace/enterprise/discovered",
-    }),
-  ).not.toBeChecked();
+    workspaceSection
+      .getByRole("listitem", { name: "acme/watched" })
+      .getByText("No checkout chosen"),
+  ).toBeVisible();
 
   await page.getByRole("tab", { name: "Data & recovery" }).click();
   await page.getByRole("button", { name: "Clear cache" }).click();

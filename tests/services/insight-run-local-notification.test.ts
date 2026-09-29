@@ -31,7 +31,6 @@ const profiles = [
     label: "Personal",
     githubHost: host,
     ghAccount: "fixture",
-    workspaceRoots: [],
     rulePaths: [],
     repos: [
       {

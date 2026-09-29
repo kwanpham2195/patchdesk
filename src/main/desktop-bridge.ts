@@ -64,11 +64,11 @@ const allowedRoutes = new Set([
   "GET /v1/inbox",
   "GET /v1/inbox/labels",
   "PUT /v1/watchlist",
+  "PUT /v1/watchlist/checkout",
   "GET /v1/watched-pull-requests",
   "POST /v1/watched-pull-requests",
   "DELETE /v1/watched-pull-requests",
 
-  "GET /v1/watchlist/suggestions",
   "GET /v1/environment",
   "POST /v1/reviews/inline-conversations/command",
   "POST /v1/reviews/write/recover",

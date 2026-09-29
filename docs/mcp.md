@@ -345,13 +345,13 @@ server as failed.
   the active profile.
 - **The repository has no local path.** `list_repositories` leaves it out,
   and `review_local` returns `checkout_not_found`. In Settings → Workspace,
-  choose the folder that holds the checkout and tick the repository in the
-  list Patchdesk finds there.
+  add the repository if it is not watched, then press Choose checkout on its
+  row and pick the folder that holds the checkout.
 - **The repository moved on disk.** `review_local` and `refresh_review`
   return `checkout_missing` and name the path the profile still holds. In
-  Settings → Workspace, under Repositories, add the folder that holds the
-  checkout now if it is not listed, then untick the repository and tick it
-  again. Its Reviews reopen on the same sessions. If the repository has linked
+  Settings → Workspace, under Repositories, press Choose checkout on the
+  repository and pick the checkout's new folder. Its Reviews reopen on the
+  same sessions. If the repository has linked
   worktrees of your own, run `git worktree repair` in the moved checkout.
 - **Too many untracked files.** `review_local` and `refresh_review` return
   `untracked_too_large` when the working tree has more than 5,000 untracked

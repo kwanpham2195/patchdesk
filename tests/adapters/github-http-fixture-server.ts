@@ -57,7 +57,6 @@ const profileResult = parseWorkspaceProfileConfig({
   label: "ACME",
   githubHost: "github.com",
   ghAccount: "octo-dev",
-  workspaceRoots: [],
   rulePaths: [],
   repos: [],
 });

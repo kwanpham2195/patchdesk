@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { requestJson, selectDirectory } from "../api-client";
+import { requestJson } from "../api-client";
 import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
 import type { Dashboard, Profile } from "../renderer-models";
 import { createWorkspaceProfile } from "./settings-workspace-create-profile";
@@ -31,7 +31,6 @@ type ProfileFieldStatuses = {
   readonly label: FieldStatus;
   readonly githubHost: FieldStatus;
   readonly ghAccount: FieldStatus;
-  readonly workspaceRoots: FieldStatus;
   readonly rulePaths: FieldStatus;
 };
 
@@ -59,7 +58,6 @@ export type WorkspaceProfileEditorHook = {
   readonly commitList: (field: ProfileListField) => void;
   readonly addListEntry: (field: ProfileListField) => void;
   readonly removeListEntry: (field: ProfileListField, entryId: string) => void;
-  readonly chooseWorkspaceRoot: (entryId: string) => Promise<void>;
   readonly selectProfile: (id: string) => void;
 };
 
@@ -269,7 +267,7 @@ export function useWorkspaceProfileEditor({
       const value = entry.value.trim();
       return value === "" ? [] : [value];
     });
-    const invalid = listError(field, values);
+    const invalid = listError(values);
     if (invalid !== undefined) {
       putStatus(field, { state: "failed", message: invalid });
       return;
@@ -285,20 +283,6 @@ export function useWorkspaceProfileEditor({
     const next = rows[field].filter((entry) => entry.id !== entryId);
     setRows((current) => ({ ...current, [field]: next }));
     commitRows(field, next);
-  };
-
-  const chooseWorkspaceRoot = async (entryId: string): Promise<void> => {
-    const entry = rows.workspaceRoots.find(
-      (candidate) => candidate.id === entryId,
-    );
-    if (entry === undefined) return;
-    const selected = await selectDirectory(entry.value);
-    if (selected === undefined) return;
-    const next = rows.workspaceRoots.map((candidate) =>
-      candidate.id === entryId ? { ...candidate, value: selected } : candidate,
-    );
-    setRows((current) => ({ ...current, workspaceRoots: next }));
-    commitRows("workspaceRoots", next);
   };
 
   const selectProfile = (id: string): void => {
@@ -336,7 +320,6 @@ export function useWorkspaceProfileEditor({
         [field]: [...current[field], profileListEntry("")],
       })),
     removeListEntry,
-    chooseWorkspaceRoot,
     selectProfile,
   };
 }
@@ -358,6 +341,5 @@ const IDLE_STATUS: ProfileFieldStatuses = {
   label: IDLE,
   githubHost: IDLE,
   ghAccount: IDLE,
-  workspaceRoots: IDLE,
   rulePaths: IDLE,
 };

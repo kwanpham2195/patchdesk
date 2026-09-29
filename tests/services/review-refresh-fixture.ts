@@ -224,7 +224,6 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
     label: "Fixture",
     githubHost: identity.host,
     ghAccount: "fixture",
-    workspaceRoots: [must(parseAbsolutePath("/tmp/patchdesk-refresh"))],
     rulePaths: [],
     repos: [
       {

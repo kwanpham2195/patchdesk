@@ -146,8 +146,7 @@ type MaintainerInboxProps = {
    * Absent on a cached or failed read that cannot know it — render that
    * absence honestly, never as 0. Never the loaded page's row count. */
   readonly matchCount?: number;
-  /** The profile's full watchlist — the picker's only source of options
-   * (never `/v1/watchlist/suggestions`, which answers a different question).
+  /** The profile's full watchlist, the picker's only source of options.
    * The picker does not render when this is empty; the setup checklist owns
    * the screen instead. */
   readonly repos?: ReadonlyArray<RepositoryIdentity>;

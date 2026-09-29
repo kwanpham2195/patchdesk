@@ -187,7 +187,7 @@ function localReviewRefusal(
   if (failure.reason === "checkout_missing")
     return {
       error: "checkout_missing",
-      message: `The repository's checkout at ${failure.localPath} no longer exists. If it moved, ask the maintainer to update its path in Patchdesk: in Settings → Workspace, under Repositories, add the folder that holds it now if it is not listed, then untick the repository and tick it again. Then call again.`,
+      message: `The repository's checkout at ${failure.localPath} no longer exists. If it moved, ask the maintainer to choose its new checkout in Patchdesk: in Settings → Workspace, under Repositories, Choose checkout on the repository. Then call again.`,
     };
   if (failure.reason === "patch_too_large")
     return {

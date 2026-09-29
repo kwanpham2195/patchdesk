@@ -21,7 +21,6 @@ const profile: Profile = {
   label: "ACME",
   githubHost: "github.com",
   ghAccount: "patchdesk",
-  workspaceRoots: ["/workspace/acme"],
   rulePaths: ["/workspace/acme/AGENTS.md"],
 };
 
@@ -53,7 +52,6 @@ describe("useWorkspaceProfileEditor", () => {
           label: "Renamed",
           githubHost: "github.com",
           ghAccount: "patchdesk",
-          workspaceRoots: ["/workspace/acme"],
           rulePaths: ["/workspace/acme/AGENTS.md"],
         },
       }),
@@ -174,7 +172,6 @@ describe("useWorkspaceProfileEditor", () => {
       label: "Other",
       githubHost: "github.com",
       ghAccount: "patchdesk",
-      workspaceRoots: ["/workspace/other"],
       rulePaths: [],
     };
     const { result } = renderHook(() =>
@@ -201,9 +198,7 @@ describe("useWorkspaceProfileEditor", () => {
       await Promise.resolve();
     });
     expect(result.current.persisted.label).toBe("Other");
-    expect(result.current.persisted.workspaceRoots).toEqual([
-      "/workspace/other",
-    ]);
+    expect(result.current.persisted.rulePaths).toEqual([]);
     expect(result.current.scalars.label).toBe("Other");
   });
 
@@ -257,7 +252,7 @@ describe("useWorkspaceProfileEditor", () => {
 
     act(() => result.current.editScalar("label", "  ACME  "));
     act(() => result.current.commitScalar("label"));
-    act(() => result.current.commitList("workspaceRoots"));
+    act(() => result.current.commitList("rulePaths"));
 
     expect(profileSaveBodies(desktopApi)).toHaveLength(0);
     // The commit still normalises what the input shows.
@@ -284,7 +279,6 @@ describe("useWorkspaceProfileEditor", () => {
           label: "Default",
           githubHost: "github.com",
           ghAccount: "patchdesk",
-          workspaceRoots: [],
           rulePaths: [],
         },
       ],
@@ -325,21 +319,19 @@ describe("useWorkspaceProfileEditor", () => {
     expect(result.current.scalars.ghAccount).toBe("patchdesk");
   });
 
-  it("refuses a workspace root that is not an absolute path without sending it", async () => {
+  it("refuses a rule path that is not an absolute path without sending it", async () => {
     const desktopApi = installDesktopApi();
     const { result } = renderEditor();
 
-    const [row] = result.current.rows.workspaceRoots;
-    if (row === undefined) throw new Error("Expected a workspace root row.");
-    act(() =>
-      result.current.editListEntry("workspaceRoots", row.id, "relative"),
-    );
-    act(() => result.current.commitList("workspaceRoots"));
+    const [row] = result.current.rows.rulePaths;
+    if (row === undefined) throw new Error("Expected a rule path row.");
+    act(() => result.current.editListEntry("rulePaths", row.id, "relative"));
+    act(() => result.current.commitList("rulePaths"));
 
-    expect(result.current.status.workspaceRoots.state).toBe("failed");
+    expect(result.current.status.rulePaths.state).toBe("failed");
     expect(profileSaveBodies(desktopApi)).toHaveLength(0);
-    expect(result.current.persisted.workspaceRoots).toEqual([
-      "/workspace/acme",
+    expect(result.current.persisted.rulePaths).toEqual([
+      "/workspace/acme/AGENTS.md",
     ]);
   });
 });
@@ -355,7 +347,6 @@ const unpersistedProfile: Profile = {
   label: "",
   githubHost: "github.com",
   ghAccount: "",
-  workspaceRoots: [],
   rulePaths: [],
 };
 

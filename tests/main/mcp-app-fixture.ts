@@ -98,7 +98,6 @@ export async function startAppWithLinkedWorktree(
     label: "ACME",
     githubHost: "github.com",
     ghAccount: "fixture",
-    workspaceRoots: [],
     rulePaths: [],
     repos: [
       {

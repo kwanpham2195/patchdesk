@@ -511,8 +511,6 @@ function installDesktopApi(
           inbox: { rows: [], repositories: [], snapshot: {} },
         }),
       "/v1/environment": () => success({}),
-      // No test here asserts on this, but the screen requests it on boot.
-      "/v1/watchlist/suggestions": () => success([]),
     },
     {
       operations: {

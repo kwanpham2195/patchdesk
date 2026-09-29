@@ -12,7 +12,6 @@ export type Profile = {
   readonly label: string;
   readonly githubHost: string;
   readonly ghAccount: string;
-  readonly workspaceRoots?: ReadonlyArray<string>;
   readonly rulePaths?: ReadonlyArray<string>;
   readonly repos?: ReadonlyArray<Repo>;
 };

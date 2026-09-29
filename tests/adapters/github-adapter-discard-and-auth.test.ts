@@ -150,7 +150,6 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
       label: "OPN",
       githubHost: "github.opn.example",
       ghAccount: "matthew-opn",
-      workspaceRoots: [],
       rulePaths: [],
       repos: [],
     }),

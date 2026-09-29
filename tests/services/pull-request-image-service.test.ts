@@ -31,7 +31,6 @@ const profile: WorkspaceProfileConfig = must(
     label: "Acme",
     githubHost: "github.com",
     ghAccount: "reviewer",
-    workspaceRoots: ["/tmp/acme"],
     rulePaths: [],
     repos: [],
   }),

@@ -23,7 +23,6 @@ const profile = {
   label: "ACME",
   githubHost: "github.com",
   ghAccount: "patchdesk",
-  workspaceRoots: ["/workspace/acme"],
   rulePaths: ["/workspace/acme/AGENTS.md"],
 };
 
@@ -448,8 +447,6 @@ function installDesktopApi(
     "/v1/environment": () => success({}),
     // `lib/logger.ts` flushes the renderer log queue through the bridge.
     "/v1/logs": () => success({ entries: [] }),
-    "/v1/watchlist/suggestions": () =>
-      success([{ root: "/workspace/acme", state: "ready", repositories: [] }]),
     "/v1/profiles": () => success({}),
     "/v1/settings": (input) =>
       success(

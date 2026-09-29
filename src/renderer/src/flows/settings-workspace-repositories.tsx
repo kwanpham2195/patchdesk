@@ -1,407 +1,306 @@
-import { useEffect, useRef, useState } from "react";
+import { FolderOpen, Plus, X } from "lucide-react";
+import { useState } from "react";
 
+import { parseGitHubOwner, parseGitHubRepoName } from "../../../domain/ids";
+import { sameRepositoryIdentity } from "../../../domain/repository-identity";
 import { requestJson } from "../api-client";
-import type { DiscoveredRepo } from "../workspace-root-discovery-contract";
-import { repositoryKey, type Repo } from "../renderer-models";
-import { Checkbox } from "../components/ui/checkbox";
-import { Label } from "../components/ui/label";
-import { Spinner } from "../components/ui/spinner";
+import { repositoryKey, type Profile, type Repo } from "../renderer-models";
+import { chooseRepositoryCheckout } from "../watched-repository-checkout";
+import { Button } from "../components/ui/button";
+import { Field, FieldLabel } from "../components/ui/field";
 import { InlineError } from "../components/ui/inline-error";
+import { Input } from "../components/ui/input";
+import { Spinner } from "../components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 
-/** A repository shown in a workspace-scope repository checklist, merged from discovery and the saved profile's watchlist. Structurally a `Repo` with `localPath` narrowed to a required (possibly empty) string, so `repositoryKey` from renderer-models works for both. */
-export type WatchlistEntry = {
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-  readonly localPath: string;
-};
-
-/**
- * Merges discovered repos with already-watched repos so watched repos
- * discovery did not find (no checkout under any workspace root) still appear,
- * pre-ticked. Discovered
- * entries win on key collision; a watched repo with no recorded local path
- * renders with `localPath: ""`.
- */
-// oxlint-disable-next-line react/only-export-components -- Merge/group helpers and the toggle hook share this module with the components that consume them.
-export function mergeWatchlistEntries(
-  discovered: ReadonlyArray<DiscoveredRepo>,
-  watchedRepos: ReadonlyArray<Repo>,
-): ReadonlyArray<WatchlistEntry> {
-  const seen = new Map<string, WatchlistEntry>(
-    discovered.map((entry) => [repositoryKey(entry), entry]),
-  );
-  for (const repo of watchedRepos) {
-    const key = repositoryKey(repo);
-    if (!seen.has(key)) {
-      seen.set(key, {
-        host: repo.host,
-        owner: repo.owner,
-        repo: repo.repo,
-        localPath: repo.localPath ?? "",
-      });
-    }
-  }
-  return [...seen.values()];
-}
-
-export type GroupedWatchlistEntries = {
-  readonly byRoot: ReadonlyMap<string, ReadonlyArray<WatchlistEntry>>;
-  readonly other: ReadonlyArray<WatchlistEntry>;
-};
-
-function isLocalPathWithinWorkspaceRoot(
-  localPath: string,
-  root: string,
-): boolean {
-  let normalizedRoot = root;
-  while (normalizedRoot.endsWith("/") && normalizedRoot !== "/")
-    normalizedRoot = normalizedRoot.slice(0, -1);
-  if (localPath === normalizedRoot) return true;
-  const descendantPrefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
-  return localPath.startsWith(descendantPrefix);
-}
-
-/**
- * Groups merged watchlist entries by the saved workspace root that contains
- * them, by directory containment — first-root-wins, so a repo under multiple
- * roots (nested roots) counts once. Anything that matches no root — including
- * watched repos with an empty `localPath` — is returned in `other` rather
- * than silently dropped.
- */
-// oxlint-disable-next-line react/only-export-components -- Merge/group helpers and the toggle hook share this module with the components that consume them.
-export function groupWatchlistEntries(
-  entries: ReadonlyArray<WatchlistEntry>,
-  roots: ReadonlyArray<string>,
-): GroupedWatchlistEntries {
-  const assigned = new Set<string>();
-  const byRoot = new Map<string, WatchlistEntry[]>();
-  for (const root of roots) {
-    if (byRoot.has(root)) continue;
-    const repos: WatchlistEntry[] = [];
-    for (const entry of entries) {
-      const key = repositoryKey(entry);
-      if (assigned.has(key)) continue;
-      if (isLocalPathWithinWorkspaceRoot(entry.localPath, root)) {
-        repos.push(entry);
-        assigned.add(key);
-      }
-    }
-    byRoot.set(root, repos);
-  }
-  const other = entries.filter((entry) => !assigned.has(repositoryKey(entry)));
-  return { byRoot, other };
-}
-
-export type WatchlistToggleHook = {
+export type WatchedRepositoriesHook = {
   readonly pendingKeys: ReadonlySet<string>;
   readonly errorsByKey: ReadonlyMap<string, string>;
-  readonly draftWatchedByKey: ReadonlyMap<string, boolean>;
-  readonly feedback: string | undefined;
-  readonly toggleRepo: (entry: WatchlistEntry, savedWatched: boolean) => void;
-  readonly setWatched: (
-    entries: ReadonlyArray<WatchlistEntry>,
-    watched: boolean,
-    isSavedWatched: (entry: WatchlistEntry) => boolean,
-  ) => void;
+  readonly adding: boolean;
+  readonly addError: string | undefined;
+  /** Resolves true once the repository is watched, so the caller can clear its input. */
+  readonly add: (input: string) => Promise<boolean>;
+  readonly remove: (repository: Repo) => void;
+  readonly chooseCheckout: (repository: Repo) => void;
 };
-
-type QueuedChange = {
-  readonly entry: WatchlistEntry;
-  readonly watched: boolean;
-};
-
-/** How long a tick waits for the next one before the queued changes are sent together. */
-const WATCHLIST_BATCH_DELAY_MS = 400;
 
 /**
- * Owns the watchlist edits a checklist makes. A tick shows at once as a
- * draft, joins a queue, and is sent with every other tick made within
- * `WATCHLIST_BATCH_DELAY_MS` as one `PUT /v1/watchlist`, followed by one
- * workspace reload; a reload per tick made a long list slow to work through.
- * Only one batch is in flight at a time, so a later batch never overtakes an
- * earlier one. A draft stays until the reload shows the saved state, and is
- * dropped (reverting the row) when its batch fails.
- *
- * `profileId` is the workspace each request edits, sent with it rather than
- * left to the server's selected workspace: a switch flips that selection as
- * soon as `POST /v1/profiles/select` resolves, while this card still shows
- * the previous workspace's repositories until the reload lands.
+ * Owns the watchlist edits the Repositories card makes: add by `owner/repo`,
+ * stop watching, and choose a repository's checkout with the folder picker.
+ * Each request names the workspace on screen rather than the server's
+ * selected one: a switch flips that selection as soon as
+ * `POST /v1/profiles/select` resolves, while this card still shows the
+ * previous workspace until the reload lands.
  */
-// oxlint-disable-next-line react/only-export-components -- Merge/group helpers and the toggle hook share this module with the components that consume them.
-export function useWatchlistToggle(
-  profileId: string | undefined,
+// oxlint-disable-next-line react/only-export-components -- the hook shares this module with the list and form that consume it.
+export function useWatchedRepositories(
+  profile: Profile | undefined,
   onWorkspaceReload: () => Promise<void>,
-): WatchlistToggleHook {
-  const draftsRef = useRef(new Map<string, boolean>());
-  const queueRef = useRef(new Map<string, QueuedChange>());
-  const inFlightKeysRef = useRef(new Set<string>());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+): WatchedRepositoriesHook {
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [errorsByKey, setErrorsByKey] = useState<ReadonlyMap<string, string>>(
     () => new Map(),
   );
-  const [draftWatchedByKey, setDraftWatchedByKey] = useState<
-    ReadonlyMap<string, boolean>
-  >(() => new Map());
-  const [feedback, setFeedback] = useState<string>();
-  // The latest render's values, read by a batch that settles after them.
-  const latest = useRef({ profileId, onWorkspaceReload });
-  useEffect(() => {
-    latest.current = { profileId, onWorkspaceReload };
-  }, [profileId, onWorkspaceReload]);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string>();
 
-  const publishDrafts = (): void =>
-    setDraftWatchedByKey(new Map(draftsRef.current));
-
-  const flush = async (): Promise<void> => {
-    timerRef.current = undefined;
-    if (inFlightKeysRef.current.size > 0) return;
-    const changes = [...queueRef.current.values()];
-    if (changes.length === 0) return;
-    queueRef.current = new Map();
-    const workspaceId = latest.current.profileId;
-    const keys = changes.map((change) => repositoryKey(change.entry));
-    if (workspaceId === undefined) {
-      // No loaded workspace means no workspace to name in the request.
-      for (const key of keys) draftsRef.current.delete(key);
-      publishDrafts();
-      setErrorsByKey((current) => {
-        const next = new Map(current);
-        for (const key of keys) next.set(key, "Workspace still loading.");
-        return next;
-      });
-      return;
-    }
-    inFlightKeysRef.current = new Set(keys);
-    setPendingKeys((current) => new Set([...current, ...keys]));
-    const added = changes.filter((change) => change.watched);
-    const removed = changes.filter((change) => !change.watched);
-    try {
-      await requestJson("/v1/watchlist", {
-        method: "PUT",
-        body: {
-          profileId: workspaceId,
-          add: added.map(({ entry }) => watchlistAddition(entry)),
-          remove: removed.map(({ entry }) => ({
-            host: entry.host,
-            owner: entry.owner,
-            repo: entry.repo,
-          })),
-        },
-      });
-      setFeedback(watchlistBatchFeedback(added.length, removed.length));
-      await latest.current.onWorkspaceReload();
-    } catch (cause: unknown) {
-      const message =
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not update the watchlist.";
-      setErrorsByKey((current) => {
-        const next = new Map(current);
-        for (const key of keys) next.set(key, message);
-        return next;
-      });
-    } finally {
-      inFlightKeysRef.current = new Set();
-      for (const change of changes) {
-        const key = repositoryKey(change.entry);
-        // A row ticked again while this batch ran keeps its newer draft.
-        if (
-          !queueRef.current.has(key) &&
-          draftsRef.current.get(key) === change.watched
-        )
-          draftsRef.current.delete(key);
-      }
-      publishDrafts();
-      setPendingKeys((current) => {
-        const next = new Set(current);
-        for (const key of keys) next.delete(key);
-        return next;
-      });
-      if (queueRef.current.size > 0 && timerRef.current === undefined)
-        void flush();
-    }
-  };
-
-  const schedule = (delayMs: number): void => {
-    if (timerRef.current !== undefined) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => void flush(), delayMs);
-  };
-
-  const queue = (entry: WatchlistEntry, watched: boolean, saved: boolean) => {
-    const key = repositoryKey(entry);
-    draftsRef.current.set(key, watched);
-    // Ticking a row back to its saved state before its batch leaves cancels it.
-    if (watched === saved && !inFlightKeysRef.current.has(key))
-      queueRef.current.delete(key);
-    else queueRef.current.set(key, { entry, watched });
+  const setRowError = (key: string, message: string | undefined): void =>
     setErrorsByKey((current) => {
-      if (!current.has(key)) return current;
       const next = new Map(current);
-      next.delete(key);
+      if (message === undefined) next.delete(key);
+      else next.set(key, message);
       return next;
     });
+
+  const runForRow = async (
+    repository: Repo,
+    action: (profileId: string) => Promise<boolean>,
+  ): Promise<void> => {
+    const key = repositoryKey(repository);
+    if (profile === undefined) {
+      setRowError(key, "Workspace still loading.");
+      return;
+    }
+    setRowError(key, undefined);
+    setPendingKeys((current) => new Set(current).add(key));
+    try {
+      if (await action(profile.id)) await onWorkspaceReload();
+    } catch (cause: unknown) {
+      setRowError(
+        key,
+        cause instanceof Error
+          ? cause.message
+          : "Patchdesk could not update the watchlist.",
+      );
+    } finally {
+      setPendingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
   };
 
-  useEffect(
-    () => () => {
-      // Closing Settings inside the batch delay still saves the ticks.
-      if (timerRef.current === undefined) return;
-      clearTimeout(timerRef.current);
-      void flush();
-    },
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- unmount-only: `flush` reads refs, never render state.
-    [],
-  );
+  const add = async (input: string): Promise<boolean> => {
+    if (profile === undefined) {
+      setAddError("Workspace still loading.");
+      return false;
+    }
+    const repository = parseRepositoryInput(input, profile.githubHost);
+    if (repository === undefined) {
+      setAddError("Enter a repository as owner/repo.");
+      return false;
+    }
+    if (
+      (profile.repos ?? []).some((watched) =>
+        sameRepositoryIdentity(watched, repository),
+      )
+    ) {
+      setAddError(`${repository.owner}/${repository.repo} is already watched.`);
+      return false;
+    }
+    setAddError(undefined);
+    setAdding(true);
+    try {
+      await putWatchlist(profile.id, { add: [repository], remove: [] });
+      await onWorkspaceReload();
+      return true;
+    } catch (cause: unknown) {
+      setAddError(
+        cause instanceof Error
+          ? cause.message
+          : "Patchdesk could not update the watchlist.",
+      );
+      return false;
+    } finally {
+      setAdding(false);
+    }
+  };
 
   return {
     pendingKeys,
     errorsByKey,
-    draftWatchedByKey,
-    feedback,
-    toggleRepo: (entry, savedWatched) => {
-      const current =
-        draftsRef.current.get(repositoryKey(entry)) ?? savedWatched;
-      queue(entry, !current, savedWatched);
-      publishDrafts();
-      schedule(WATCHLIST_BATCH_DELAY_MS);
-    },
-    setWatched: (entries, watched, isSavedWatched) => {
-      for (const entry of entries) queue(entry, watched, isSavedWatched(entry));
-      publishDrafts();
-      schedule(0);
-    },
+    adding,
+    addError,
+    add,
+    remove: (repository) =>
+      void runForRow(repository, async (profileId) => {
+        await putWatchlist(profileId, {
+          add: [],
+          remove: [
+            {
+              host: repository.host,
+              owner: repository.owner,
+              repo: repository.repo,
+            },
+          ],
+        });
+        return true;
+      }),
+    chooseCheckout: (repository) =>
+      void runForRow(repository, (profileId) =>
+        chooseRepositoryCheckout(profileId, repository),
+      ),
   };
 }
 
-/** A watched repository with no recorded checkout is sent without a path. */
-function watchlistAddition(entry: WatchlistEntry): Repo {
-  const repository: Repo = {
-    host: entry.host,
-    owner: entry.owner,
-    repo: entry.repo,
-  };
-  if (entry.localPath === "") return repository;
-  return { ...repository, localPath: entry.localPath };
+async function putWatchlist(
+  profileId: string,
+  change: {
+    readonly add: ReadonlyArray<Repo>;
+    readonly remove: ReadonlyArray<Repo>;
+  },
+): Promise<void> {
+  await requestJson("/v1/watchlist", {
+    method: "PUT",
+    body: {
+      profileId,
+      add: change.add.map(({ host, owner, repo }) => ({ host, owner, repo })),
+      remove: change.remove.map(({ host, owner, repo }) => ({
+        host,
+        owner,
+        repo,
+      })),
+    },
+  });
 }
 
-function watchlistBatchFeedback(added: number, removed: number): string {
-  if (removed === 0) return `Watchlist saved: ${added} added.`;
-  if (added === 0) return `Watchlist saved: ${removed} removed.`;
-  return `Watchlist saved: ${added} added, ${removed} removed.`;
+/** `owner/repo` on the workspace's GitHub host, or undefined when either half is not a valid GitHub name. */
+function parseRepositoryInput(value: string, host: string): Repo | undefined {
+  const parts = value.trim().split("/");
+  if (parts.length !== 2) return undefined;
+  const owner = parseGitHubOwner(parts[0]);
+  const repo = parseGitHubRepoName(parts[1]);
+  return owner._tag === "ok" && repo._tag === "ok"
+    ? { host, owner: owner.value, repo: repo.value }
+    : undefined;
 }
 
-/** Renders the toggle hook's success feedback once for the surrounding card. */
-export function WatchlistToggleStatus({
-  feedback,
+/** The `owner/repo` field that adds a repository to the watchlist. */
+export function AddWatchedRepositoryForm({
+  watchlist,
 }: {
-  readonly feedback: string | undefined;
-}): React.JSX.Element | null {
-  if (feedback !== undefined) {
+  readonly watchlist: WatchedRepositoriesHook;
+}): React.JSX.Element {
+  const [value, setValue] = useState("");
+  const submit = async (): Promise<void> => {
+    if (await watchlist.add(value)) setValue("");
+  };
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <Field>
+        <FieldLabel htmlFor="watch-repository">Add a repository</FieldLabel>
+        <div className="flex min-w-0 items-center gap-2">
+          <Input
+            id="watch-repository"
+            value={value}
+            placeholder="owner/repo"
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={watchlist.addError === undefined ? undefined : true}
+            onChange={(event) => setValue(event.target.value)}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={watchlist.adding}
+          >
+            <Plus data-icon="inline-start" />
+            Add
+          </Button>
+        </div>
+        {watchlist.addError === undefined ? null : (
+          <InlineError className="text-xs">{watchlist.addError}</InlineError>
+        )}
+      </Field>
+    </form>
+  );
+}
+
+/** The watched repositories, each with its checkout and the controls to choose it or stop watching. */
+export function WatchedRepositoryList({
+  repositories,
+  watchlist,
+}: {
+  readonly repositories: ReadonlyArray<Repo>;
+  readonly watchlist: WatchedRepositoriesHook;
+}): React.JSX.Element {
+  if (repositories.length === 0)
     return (
-      <p role="status" className="text-xs text-muted-foreground">
-        {feedback}
+      <p className="text-xs text-muted-foreground">
+        No repositories watched yet.
       </p>
     );
-  }
-  return null;
-}
-
-/** A tickable list of repositories, checked against the saved profile's watched repos. Used both for a workspace root's own repos and for the "watched outside current workspace roots" group. */
-export function RepositoryChecklist({
-  entries,
-  isWatched,
-  pendingKeys,
-  errorsByKey,
-  draftWatchedByKey,
-  onToggle,
-  ariaLabel,
-}: {
-  readonly entries: ReadonlyArray<WatchlistEntry>;
-  readonly isWatched: (entry: WatchlistEntry) => boolean;
-  readonly pendingKeys: ReadonlySet<string>;
-  readonly errorsByKey: ReadonlyMap<string, string>;
-  readonly draftWatchedByKey: ReadonlyMap<string, boolean>;
-  readonly onToggle: (entry: WatchlistEntry, currentlyWatched: boolean) => void;
-  readonly ariaLabel: string;
-}): React.JSX.Element | null {
-  if (entries.length === 0) return null;
   return (
-    <div className="flex flex-col gap-1" aria-label={ariaLabel}>
-      {entries.map((entry) => {
-        const key = repositoryKey(entry);
-        const savedWatched = isWatched(entry);
-        const currentlyWatched = draftWatchedByKey.get(key) ?? savedWatched;
-        const busy = pendingKeys.has(key);
-        const error = errorsByKey.get(key);
+    <ul className="flex flex-col gap-1" aria-label="Watched repositories">
+      {repositories.map((repository) => {
+        const key = repositoryKey(repository);
+        const name = `${repository.owner}/${repository.repo}`;
+        const busy = watchlist.pendingKeys.has(key);
+        const error = watchlist.errorsByKey.get(key);
         return (
-          <label
+          <li
             key={key}
-            className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50"
+            aria-label={name}
+            className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50"
           >
-            <Checkbox
-              className="mt-0.5"
-              checked={currentlyWatched}
-              aria-invalid={error === undefined ? undefined : true}
-              onCheckedChange={() => onToggle(entry, savedWatched)}
-            />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
-                {entry.owner}/{entry.repo}
-              </p>
+              <p className="truncate text-sm font-medium">{name}</p>
               <p className="truncate text-xs text-muted-foreground">
-                {entry.localPath}
+                {repository.localPath ?? "No checkout chosen"}
               </p>
               {busy ? (
                 <Spinner
                   className="mt-1 size-3.5"
-                  aria-label={`Updating ${entry.owner}/${entry.repo}`}
+                  aria-label={`Updating ${name}`}
                 />
               ) : null}
               {error === undefined ? null : (
                 <InlineError className="text-xs">{error}</InlineError>
               )}
             </div>
-          </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => watchlist.chooseCheckout(repository)}
+            >
+              <FolderOpen data-icon="inline-start" />
+              Choose checkout
+            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    disabled={busy}
+                    aria-label={`Stop watching ${name}`}
+                    onClick={() => watchlist.remove(repository)}
+                  />
+                }
+              >
+                <X />
+              </TooltipTrigger>
+              <TooltipContent>Stop watching</TooltipContent>
+            </Tooltip>
+          </li>
         );
       })}
-    </div>
-  );
-}
-
-/** The "watched outside these folders" block: repos in `profile.repos` (or discovered) whose local path matches none of the saved workspace roots. Rendered only when non-empty by the caller. */
-export function WatchedOutsideRootsSection({
-  entries,
-  isWatched,
-  pendingKeys,
-  errorsByKey,
-  draftWatchedByKey,
-  onToggle,
-}: {
-  readonly entries: ReadonlyArray<WatchlistEntry>;
-  readonly isWatched: (entry: WatchlistEntry) => boolean;
-  readonly pendingKeys: ReadonlySet<string>;
-  readonly errorsByKey: ReadonlyMap<string, string>;
-  readonly draftWatchedByKey: ReadonlyMap<string, boolean>;
-  readonly onToggle: (entry: WatchlistEntry, currentlyWatched: boolean) => void;
-}): React.JSX.Element {
-  return (
-    <div className="flex flex-col gap-2">
-      <Label className="text-xs font-semibold uppercase text-muted-foreground">
-        Watched outside these folders
-      </Label>
-      <RepositoryChecklist
-        entries={entries}
-        isWatched={isWatched}
-        pendingKeys={pendingKeys}
-        errorsByKey={errorsByKey}
-        draftWatchedByKey={draftWatchedByKey}
-        onToggle={onToggle}
-        ariaLabel="Repositories watched outside these folders"
-      />
-    </div>
+    </ul>
   );
 }

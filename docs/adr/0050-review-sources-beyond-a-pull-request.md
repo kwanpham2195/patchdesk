@@ -87,6 +87,11 @@ A local source is opened only on a repository the workspace profile lists with
 a `localPath`. Patchdesk reads local refs only; it never fetches for a local
 source.
 
+> **Amended 2026-09-29 by ADR 0053 (#641):** the `localPath` is a folder the
+> maintainer chose with the folder picker, validated as a checkout whose
+> `origin` names the repository. It is no longer found by scanning workspace
+> roots. The Local review button asks for it when the repository has none.
+
 ## Identity
 
 > **Amended 2026-09-26 (#489): a local source names its checkout.** A profile

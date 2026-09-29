@@ -24,7 +24,6 @@ function makeProfile(
     label: "ACME",
     githubHost: overrides.githubHost ?? "github.com",
     ghAccount: overrides.ghAccount ?? "",
-    workspaceRoots: ["/workspace/acme"],
     rulePaths: [],
   } satisfies Profile;
 }
@@ -356,10 +355,5 @@ function installDesktopApi(
     // account choice, so the tests that start with an empty account send a
     // `PUT /v1/profiles` before anything else happens.
     "/v1/profiles": () => success({}),
-    // The panel loads suggestions alongside the environment check; every test
-    // here is about the environment, so this supplies the saved root's empty,
-    // successful outcome rather than an unrelated missing-root scan failure.
-    "/v1/watchlist/suggestions": () =>
-      success([{ root: "/workspace/acme", state: "ready", repositories: [] }]),
   });
 }

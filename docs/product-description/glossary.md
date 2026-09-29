@@ -20,7 +20,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 ## Workspace and identity
 
-**Workspace profile.** The saved local configuration that selects a GitHub host and account, workspace roots, rule paths, and watched repositories. Switching profiles returns the app to the Pull requests screen and reloads that profile's state. This is the internal name; the app calls it a *Workspace*.
+**Workspace profile.** The saved local configuration that selects a GitHub host and account, rule paths, and watched repositories with their checkouts. Switching profiles returns the app to the Pull requests screen and reloads that profile's state. This is the internal name; the app calls it a *Workspace*.
 
 **Workspace.** What the app calls a *workspace profile* everywhere the maintainer can see it: the Settings section, its Name and Active workspace controls, and the New workspace dialog. A workspace's stored identifier is derived from its name and is never shown.
 
@@ -28,13 +28,15 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **GitHub account.** The authenticated `gh` identity Patchdesk resolves for a workspace profile. Patchdesk obtains a token when needed and does not store it.
 
-**Workspace root.** An absolute local folder Patchdesk scans for Git repositories with GitHub remotes. The app calls one a folder. A root is saved as soon as its row commits, and discovery scans it from there.
+**Workspace root.** Retired in #641. A folder Patchdesk v0.0.12 and earlier scanned for checkouts. A profile that still lists roots loads normally; Patchdesk ignores them and leaves them out of its next save.
 
 **Rule path.** An absolute path to an instruction file that Patchdesk includes when it prepares represented Review context. A profile can have no rule paths.
 
 **Reviewing as.** The Settings status that compares the workspace profile's configured GitHub account with the account the GitHub CLI currently resolves. Re-checking probes the local CLI again; it does not perform a GitHub write.
 
-**Watched repository.** A repository saved in a workspace profile for use on the Pull requests screen. A watched repository can remain listed even when its recorded local path is outside every current workspace root.
+**Watched repository.** A repository saved in a workspace profile for use on the Pull requests screen. The maintainer adds one by `owner/repo`. It can have no checkout.
+
+**Configured checkout.** The local git checkout the maintainer chose for a watched repository with Choose checkout, saved as its top-level folder. Patchdesk accepts only a checkout whose `origin` names the repository and never searches the disk for one. A local Review needs it.
 
 **Selected repository.** The one watched repository whose GitHub pull requests the Pull requests screen currently represents. Filters, counts, pages, and refreshes apply only to this repository.
 

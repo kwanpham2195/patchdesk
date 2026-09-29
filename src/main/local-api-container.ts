@@ -19,7 +19,6 @@ import { LocalApplyOperationStore } from "../adapters/storage/local-apply-operat
 import type { InsightStore } from "../adapters/storage/insight-store";
 import { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
 import { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
-import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import { systemNow } from "../adapters/process/system-clock";
 import type {
   GitHubDirectSummaryGateway,
@@ -232,7 +231,7 @@ export async function buildLocalApiContainer(
   const dashboard = new DashboardController(
     profiles,
     github,
-    configuration.origins ?? new WorkspaceOriginFinder(commands),
+    readOnlyGit,
     paths,
     commands,
     avatarRailDependencies,

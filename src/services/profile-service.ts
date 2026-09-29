@@ -1,5 +1,3 @@
-import { homedir } from "node:os";
-
 import {
   parseAbsolutePath,
   parseGitHubHost,
@@ -129,21 +127,15 @@ async function detectActiveGitHubAccount(
     ?.login;
 }
 
-/** The user's home directory, only if it validates as an absolute path. */
-function detectHomeWorkspaceRoot(): AbsolutePath | undefined {
-  const parsed = parseAbsolutePath(homedir());
-  return parsed._tag === "ok" ? parsed.value : undefined;
-}
-
 /**
  * Derives the first-run profile from the actual machine instead of a
  * fabricated identity: the GitHub CLI's currently active account, if `gh` is
- * installed, authenticated, and answers within the bound; and the caller's
- * home directory, if it validates as an absolute path. Detection is
- * best-effort and never fabricates a value: a field that cannot be derived stays empty so
- * the UI can prompt for it instead of silently inheriting someone else's
- * identity. The profile still never conveys a credential (no token is ever
- * read, logged, or persisted here).
+ * installed, authenticated, and answers within the bound. Detection is
+ * best-effort and never fabricates a value: an account that cannot be derived
+ * stays empty so the UI can prompt for it instead of silently inheriting
+ * someone else's identity. It reads no folder: a checkout is only ever one the
+ * maintainer chose (#641). The profile still never conveys a credential (no
+ * token is ever read, logged, or persisted here).
  */
 export async function detectDefaultWorkspaceProfile(
   commands: CommandRunner,
@@ -157,20 +149,18 @@ export async function detectDefaultWorkspaceProfile(
     });
   }
   const ghAccount = await detectActiveGitHubAccount(commands, host.value);
-  const workspaceRoot = detectHomeWorkspaceRoot();
   return ok({
     id: id.value,
     label: "Default",
     githubHost: host.value,
     ghAccount: ghAccount ?? "",
-    workspaceRoots: workspaceRoot === undefined ? [] : [workspaceRoot],
     rulePaths: [],
     repos: [],
     analysisMergePolicy: "require_acknowledgement",
   });
 }
 
-/** Adds an explicitly chosen repo; discovery suggestions cannot enter the watchlist implicitly. */
+/** Adds an explicitly chosen repo to the watchlist; a repo already watched is refused. */
 export function addWatchedRepo(
   profile: WorkspaceProfileConfig,
   repo: WatchedRepoConfig,

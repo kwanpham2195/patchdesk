@@ -139,7 +139,6 @@ async function opening(
         label: "ACME",
         githubHost: "github.com",
         ghAccount: "fixture",
-        workspaceRoots: [],
         rulePaths: [],
         repos: localPath === undefined ? [] : [{ ...repository, localPath }],
       }),

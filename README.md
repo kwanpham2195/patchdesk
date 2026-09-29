@@ -136,9 +136,8 @@ commands.
 
 Check that `uname -m` prints `arm64`, `git --version` and `gh --version` work,
 and `gh auth status` shows an authenticated account. If it does not, run
-`gh auth login`. Open Patchdesk, choose the folder containing your checkouts,
-and select the repositories to review. The pull request list appears after you
-select the first repository.
+`gh auth login`. Open Patchdesk and add the repositories to review as
+`owner/repo`. Press Continue to see the pull request list.
 
 If a coding agent is doing the installation, give it this task:
 

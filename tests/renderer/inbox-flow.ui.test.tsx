@@ -260,10 +260,9 @@ describe("InboxFlow first run", () => {
     githubAccounts: [{ host: "github.com", login: "fixture", active: true }],
   };
 
-  it("finishes setup in place: the account step, then the folders and repositories step", async () => {
+  it("finishes setup in place: the account step, then the repositories step", async () => {
     stubPatchdesk({
       "/v1/environment": READY_ENVIRONMENT,
-      "/v1/watchlist/suggestions": [],
     });
     renderInboxFlow(
       <InboxFlow
@@ -282,14 +281,12 @@ describe("InboxFlow first run", () => {
     expect(
       within(flow).getByRole("region", { name: "1. Reviewing as" }),
     ).toBeTruthy();
-    // The fixture profile already carries an account, so the folders step is
-    // open rather than waiting behind it.
+    // The fixture profile already carries an account, so the repositories
+    // step is open rather than waiting behind it.
     expect(
-      within(flow).getByRole("region", {
-        name: "2. Folders and repositories",
-      }),
+      within(flow).getByRole("region", { name: "2. Repositories" }),
     ).toBeTruthy();
-    expect(await within(flow).findByLabelText("Folder 1")).toBeTruthy();
+    expect(within(flow).getByLabelText("Add a repository")).toBeTruthy();
     expect(screen.queryByText("Choose an account first.")).toBeNull();
     // The flow replaces the screen rather than sitting above it: none of the
     // inbox chrome is on screen for a workspace with nothing to list yet.
@@ -305,7 +302,6 @@ describe("InboxFlow first run", () => {
   it("stays on setup after the first repository is watched, until Continue", async () => {
     stubPatchdesk({
       "/v1/environment": READY_ENVIRONMENT,
-      "/v1/watchlist/suggestions": [],
     });
     const emptyInbox = { ...inbox, inbox: { ...inbox.inbox, rows: [] } };
     const flow = (
@@ -359,7 +355,6 @@ describe("InboxFlow first run", () => {
       "Git is not installed. Install Git for this platform, then re-check.";
     stubPatchdesk({
       "/v1/environment": READY_ENVIRONMENT,
-      "/v1/watchlist/suggestions": [],
     });
     renderInboxFlow(
       <InboxFlow
@@ -389,7 +384,6 @@ describe("InboxFlow first run", () => {
     desktop?.restore();
     stubPatchdesk({
       "/v1/environment": { ...READY_ENVIRONMENT, git: "missing" },
-      "/v1/watchlist/suggestions": [],
     });
     renderInboxFlow(
       <InboxFlow

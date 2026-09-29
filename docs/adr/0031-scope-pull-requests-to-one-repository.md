@@ -223,6 +223,8 @@ removes at the repository level.
   `GET /v1/dashboard` is a deleted route with a 404 regression test — so
   removing the fan-out does not disturb it. Its live half,
   `discoverWorkspaceRepos`, is a local git-origin scan and stays.
+  (Superseded 2026-09-29 by ADR 0053: the scan and `dashboard-service.ts`
+  are removed; checkouts are chosen, never found.)
 - The watchlist setup flow makes no GitHub call and does not depend on
   the scan.
 - The command palette jumps to queues through `window` custom events

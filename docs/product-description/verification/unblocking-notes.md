@@ -7,7 +7,6 @@ A blocked checklist row means the full expected result was not observed. It does
 Use separate fixtures for these checks. Do not combine them with an ordinary pass.
 
 - `LIST-02-B`: a Fresh, passing, mergeable pull request with a matching Review. Check its single Open action.
-- `DISC-01-D`: a failing workspace root beside a readable root.
 - `FOCUS-01`: a Review with a Reply textarea. Check the shortcut while that textarea has focus. The automated regression does not replace this desktop check.
 - `DIFF-01-A` through `DIFF-01-E`: file, hunk, and unresolved-thread targets for the keyboard matrix.
 - `INLINE-01-D`: an existing thread that can be resolved.

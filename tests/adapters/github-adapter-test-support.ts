@@ -64,7 +64,6 @@ export const profile = mustParse(
     label: "ACME",
     githubHost: "github.com",
     ghAccount: "octo-dev",
-    workspaceRoots: [],
     rulePaths: [],
     repos: [],
   }),
