@@ -186,6 +186,9 @@ describe("ReviewWorkbenchFlow commits on a shared local Review", () => {
     expect(
       screen.queryByRole("article", { name: "Note on src/a.ts:1" }),
     ).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /^Add note on/ })).toEqual(
+      [],
+    );
     await waitFor(() => expect(hoveredGutterButton({ line: 1 })).toBeNull());
     expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
     expect(screen.getByRole("note")).toBeTruthy();
