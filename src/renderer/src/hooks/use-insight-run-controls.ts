@@ -9,7 +9,11 @@ import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
 } from "../renderer-contracts";
-import { saveInsightRunPreference } from "../insight-run-preferences";
+import {
+  saveInsightRunPreference,
+  type InsightRunPreference,
+} from "../insight-run-preferences";
+import { seedInsightRunOptions } from "../insight-run-options";
 import { approveAgentRunRequests } from "../agent-run-requests";
 import {
   useInsightRun,
@@ -22,6 +26,10 @@ import {
   type InsightRunConfiguration,
 } from "./use-insight-configuration";
 import type { FindingRestoreOutcome } from "../components/analysis-reader";
+import {
+  useRunInsightsDialog,
+  type RunInsightsDialogController,
+} from "./use-run-insights-dialog";
 import type { InsightRunDialogType } from "../components/insight-run-dialog";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
@@ -35,7 +43,7 @@ const restoredFindingResponseSchema = v.strictObject({
   status: v.literal("open"),
 });
 
-/** Every run-side value the Insights slot renders from: the run configuration, the two per-type run controllers, and the run-dialog, finding-dismissal, and finding-restore commands. */
+/** Every run-side value the Insights slot renders from: the run configuration, the per-type run controllers, both run dialogs, and the finding-dismissal and finding-restore commands. */
 type InsightRunControlsHook = {
   readonly configuration: InsightRunConfiguration;
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
@@ -44,6 +52,7 @@ type InsightRunControlsHook = {
   readonly analysisRun: InsightRunController;
   readonly walkthroughRun: InsightRunController;
   readonly briefRun: InsightRunController;
+  readonly runs: Readonly<Record<InsightRunType, InsightRunController>>;
   readonly openRunDialog: (
     action: "run" | "retry" | "regenerate",
     type?: InsightRunType,
@@ -52,6 +61,8 @@ type InsightRunControlsHook = {
   ) => void;
   readonly closeRunDialog: () => void;
   readonly confirmRun: () => void;
+  /** The Run Insights dialog, which starts several Insights at once. */
+  readonly runInsights: RunInsightsDialogController;
   readonly dismissFinding: (
     finding: AnalysisFinding,
     reason: string,
@@ -136,6 +147,7 @@ export function useInsightRunControls({
     setConfiguration,
     changeProvider,
     activateCodex,
+    loadCodexModels,
     cancelCodexActivation,
   } = useInsightConfiguration({
     profileId,
@@ -276,24 +288,19 @@ export function useInsightRunControls({
     if (catalogError) return;
     runs[dialogType].dismissStartRefusal();
     setRunDialogRequestId(requestId);
-    const preference = preferencesRef.current[dialogType];
-    const nextModels =
-      catalog?.models.filter(
-        (candidate) => candidate.provider === (preference?.provider ?? "pi"),
-      ) ?? [];
     setConfiguration({
-      provider: preference?.provider ?? "pi",
-      reasoning: preference?.reasoning ?? "medium",
-      language: preference?.language ?? "en",
-      models: nextModels,
-      model:
-        preference !== undefined &&
-        nextModels.some((candidate) => candidate.id === preference.model)
-          ? preference.model
-          : (nextModels[0]?.id ?? null),
+      ...seedInsightRunOptions(preferencesRef.current[dialogType], catalog),
       runDialogType: dialogType,
       runDialogAction: action,
     });
+  };
+  /** A started run's options become that type's saved preference. */
+  const rememberRunPreference = (
+    type: InsightRunType,
+    preference: InsightRunPreference,
+  ): void => {
+    saveInsightRunPreference(profileId, type, preference);
+    preferencesRef.current = { ...preferencesRef.current, [type]: preference };
   };
   const closeRunDialog = (): void => {
     cancelCodexActivation();
@@ -316,15 +323,30 @@ export function useInsightRunControls({
             ),
           }),
         });
-        const preference = { provider, model, reasoning, language };
-        saveInsightRunPreference(profileId, dialogType, preference);
-        preferencesRef.current = {
-          ...preferencesRef.current,
-          [dialogType]: preference,
-        };
+        rememberRunPreference(dialogType, {
+          provider,
+          model,
+          reasoning,
+          language,
+        });
       },
     });
   };
+  const runInsights = useRunInsightsDialog({
+    catalog,
+    preferencesRef,
+    runs,
+    statuses: {
+      analysis: workbench.insights.analysis.status,
+      walkthrough: workbench.insights.walkthrough.status,
+      brief: workbench.insights.brief?.status ?? "not_generated",
+    },
+    agentRunRequests: workbench.agentRunRequests,
+    loadCodexModels,
+    cancelCodexActivation,
+    rememberRunPreference,
+    onWorkbenchPatch,
+  });
   return {
     configuration,
     setConfiguration,
@@ -333,9 +355,11 @@ export function useInsightRunControls({
     analysisRun,
     walkthroughRun,
     briefRun,
+    runs,
     openRunDialog,
     closeRunDialog,
     confirmRun,
+    runInsights,
     dismissFinding,
     restoreFinding,
   };

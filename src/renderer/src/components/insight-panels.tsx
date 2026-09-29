@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { History } from "lucide-react";
+import { History, Play } from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -52,6 +52,8 @@ export function InsightNavRail({
   workbench,
   selectedInsight,
   setSelectedInsight,
+  onRunInsights,
+  runInsightsDisabled = false,
   trailing,
 }: {
   readonly workbench: WorkbenchResponse;
@@ -59,6 +61,9 @@ export function InsightNavRail({
   readonly setSelectedInsight: React.Dispatch<
     React.SetStateAction<InsightRunDialogType>
   >;
+  /** Opens the Run Insights dialog; absent on a merged or closed Review, which can never run one. */
+  readonly onRunInsights?: (() => void) | undefined;
+  readonly runInsightsDisabled?: boolean;
   /** The selected document's meta line and run action, drawn at the row's right end so the tab strip is the only divider above the content. */
   readonly trailing?: React.ReactNode;
 }): React.JSX.Element {
@@ -73,25 +78,39 @@ export function InsightNavRail({
   >;
   return (
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b">
-      <nav
-        aria-label="Insight navigation"
-        className="max-w-full overflow-x-auto overflow-y-hidden"
-      >
-        <Tabs
-          value={selectedInsight}
-          onValueChange={(value) =>
-            // SAFETY: every TabsTrigger below is keyed by an InsightRunDialogType
-            // literal, so Base UI's reported value can only ever be one of those.
-            setSelectedInsight(value as InsightRunDialogType)
-          }
+      <div className="flex min-w-0 items-center gap-2">
+        <nav
+          aria-label="Insight navigation"
+          className="max-w-full overflow-x-auto overflow-y-hidden"
         >
-          <TabsList variant="line" className="pb-1">
-            {documents.map(([type, projection]) => (
-              <InsightTab key={type} type={type} status={projection.status} />
-            ))}
-          </TabsList>
-        </Tabs>
-      </nav>
+          <Tabs
+            value={selectedInsight}
+            onValueChange={(value) =>
+              // SAFETY: every TabsTrigger below is keyed by an InsightRunDialogType
+              // literal, so Base UI's reported value can only ever be one of those.
+              setSelectedInsight(value as InsightRunDialogType)
+            }
+          >
+            <TabsList variant="line" className="pb-1">
+              {documents.map(([type, projection]) => (
+                <InsightTab key={type} type={type} status={projection.status} />
+              ))}
+            </TabsList>
+          </Tabs>
+        </nav>
+        {onRunInsights === undefined ? null : (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="mb-1"
+            disabled={runInsightsDisabled}
+            onClick={onRunInsights}
+          >
+            <Play data-icon="inline-start" aria-hidden="true" />
+            Run Insights…
+          </Button>
+        )}
+      </div>
       {trailing}
     </div>
   );

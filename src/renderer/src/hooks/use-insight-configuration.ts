@@ -15,8 +15,10 @@ import {
 import { loadCodexModelCache, saveCodexModelCache } from "../codex-model-cache";
 import {
   parseInsightProviderCatalog,
+  type InsightProviderCatalog,
   type InsightProviderCatalogModel,
 } from "../insight-catalog-contracts";
+import { insightRunOptionsForProvider } from "../insight-run-options";
 import type { InsightRunDialogType } from "../components/insight-run-dialog";
 
 type InsightModelOption = {
@@ -80,6 +82,9 @@ type InsightConfigurationController = {
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
   readonly changeProvider: (provider: InsightProvider) => void;
   readonly activateCodex: () => void;
+  readonly loadCodexModels: (
+    onLoaded: (nextCatalog: InsightProviderCatalog) => void,
+  ) => void;
   readonly cancelCodexActivation: () => void;
 };
 export function useInsightConfiguration(input: {
@@ -175,27 +180,18 @@ export function useInsightConfiguration(input: {
 
   const activePreferenceType = runDialogType ?? selectedInsight;
   const changeProvider = (nextProvider: InsightProvider): void => {
-    const nextModels =
-      catalog?.models.filter(
-        (candidate) => candidate.provider === nextProvider,
-      ) ?? [];
-    const preference = preferencesRef.current[activePreferenceType];
-    const first = nextModels[0];
-    setConfiguration({
-      provider: nextProvider,
-      models: nextModels,
-      model:
-        preference?.provider === nextProvider &&
-        nextModels.some((candidate) => candidate.id === preference.model)
-          ? preference.model
-          : (nextModels[0]?.id ?? null),
-      reasoning:
-        preference?.provider === nextProvider
-          ? preference.reasoning
-          : (first?.defaultReasoning ?? first?.reasoning[0] ?? "medium"),
-    });
+    setConfiguration(
+      insightRunOptionsForProvider(
+        nextProvider,
+        preferencesRef.current[activePreferenceType],
+        catalog,
+      ),
+    );
   };
-  const activateCodex = (): void => {
+  /** Loads the Codex models into the catalog, then hands the merged catalog to `onLoaded`. */
+  const loadCodexModels = (
+    onLoaded: (nextCatalog: InsightProviderCatalog) => void,
+  ): void => {
     const generation = codexActivationGenerationRef.current + 1;
     codexActivationGenerationRef.current = generation;
     setConfiguration({
@@ -223,25 +219,14 @@ export function useInsightConfiguration(input: {
                 ],
                 models: mergeCodexModels(catalog.models, parsed.models),
               };
-        const codexModels = parsed.models.filter(
-          (candidate) => candidate.provider === "codex-cli-account",
+        saveCodexModelCache(
+          profileId,
+          parsed.models.filter(
+            (candidate) => candidate.provider === "codex-cli-account",
+          ),
         );
-        saveCodexModelCache(profileId, codexModels);
-        const preference = preferencesRef.current[activePreferenceType];
-        const first = codexModels[0];
-        setConfiguration({
-          catalog: nextCatalog,
-          models: codexModels,
-          model:
-            preference?.provider === "codex-cli-account" &&
-            codexModels.some((candidate) => candidate.id === preference.model)
-              ? preference.model
-              : (first?.id ?? null),
-          reasoning:
-            preference?.provider === "codex-cli-account"
-              ? preference.reasoning
-              : (first?.defaultReasoning ?? first?.reasoning[0] ?? "medium"),
-        });
+        setConfiguration({ catalog: nextCatalog });
+        onLoaded(nextCatalog);
       })
       .catch((cause: unknown) => {
         if (codexActivationGenerationRef.current !== generation) return;
@@ -253,12 +238,23 @@ export function useInsightConfiguration(input: {
         setConfiguration({ codexActivationPending: false });
       });
   };
+  const activateCodex = (): void =>
+    loadCodexModels((nextCatalog) =>
+      setConfiguration(
+        insightRunOptionsForProvider(
+          "codex-cli-account",
+          preferencesRef.current[activePreferenceType],
+          nextCatalog,
+        ),
+      ),
+    );
   return {
     configuration,
     preferencesRef,
     setConfiguration,
     changeProvider,
     activateCodex,
+    loadCodexModels,
     cancelCodexActivation,
   };
 }

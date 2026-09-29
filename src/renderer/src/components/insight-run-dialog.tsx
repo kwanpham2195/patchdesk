@@ -1,12 +1,19 @@
-import {
-  INSIGHT_LANGUAGES,
-  type InsightLanguage,
-  type InsightProvider,
-  type InsightReasoning,
+import type {
+  InsightLanguage,
+  InsightProvider,
+  InsightReasoning,
 } from "../../../domain/insight-provider";
-import { INSIGHT_LANGUAGE_LABELS } from "../insight-contracts";
 
-import { ModelCombobox, type ModelComboboxOption } from "./model-combobox";
+import {
+  CodexModelsControl,
+  InsightLanguageSelect,
+  InsightProviderSelect,
+  InsightReasoningSelect,
+  ModelListPrice,
+  type InsightModelOption,
+} from "./insight-run-option-controls";
+import { modelReasoningOptions } from "../insight-run-options";
+import { ModelCombobox } from "./model-combobox";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
@@ -17,14 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import { Spinner } from "./ui/spinner";
 
 export type InsightRunDialogType = "analysis" | "walkthrough" | "brief";
@@ -34,15 +33,6 @@ export const INSIGHT_NOUNS = {
   walkthrough: "Walkthrough",
   brief: "Brief",
 } as const satisfies Record<InsightRunDialogType, string>;
-/** Shown wherever loading the Codex model list failed. */
-const CODEX_MODELS_UNAVAILABLE =
-  "Codex models unavailable. Check the Codex CLI login.";
-export type InsightModelOption = {
-  readonly id: string;
-  readonly label: string;
-  readonly reasoning?: ReadonlyArray<InsightReasoning>;
-  readonly cost?: ModelComboboxOption["cost"];
-};
 
 /** Collects the provider choice and final disclosure before one Insight starts. */
 export function InsightRunDialog({
@@ -98,12 +88,6 @@ export function InsightRunDialog({
       : action === "retry"
         ? `Run ${noun} again`
         : `Run ${noun}`;
-  const selectedModel = models.find((candidate) => candidate.id === model);
-  const reasoningOptions = selectedModel?.reasoning ?? [
-    "low",
-    "medium",
-    "high",
-  ];
   return (
     <Dialog
       open={open}
@@ -134,75 +118,24 @@ export function InsightRunDialog({
             htmlFor="insight-run-provider"
           >
             Provider
-            <Select
+            <InsightProviderSelect
+              id="insight-run-provider"
+              ariaLabel="Insight provider"
               value={provider}
               disabled={pending}
-              items={[
-                { label: "API key", value: "pi" },
-                { label: "Codex CLI account", value: "codex-cli-account" },
-              ]}
-              onValueChange={(value) => {
-                if (value === "pi" || value === "codex-cli-account")
-                  onProviderChange(value);
-              }}
-            >
-              <SelectTrigger
-                id="insight-run-provider"
-                aria-label="Insight provider"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="pi">API key</SelectItem>
-                  <SelectItem value="codex-cli-account">
-                    Codex CLI account
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              onValueChange={onProviderChange}
+            />
           </label>
-          {provider === "codex-cli-account" && models.length === 0 ? (
-            <div className="grid gap-2 rounded-lg border border-dashed p-3 text-sm">
-              <Button
-                variant="outline"
-                disabled={codexActivationPending || pending}
-                onClick={onActivateCodex}
-              >
-                {codexActivationPending
-                  ? "Loading Codex models…"
-                  : "Load Codex models"}
-              </Button>
-              {codexActivationError ? (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    {CODEX_MODELS_UNAVAILABLE}
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-            </div>
-          ) : null}
-          {provider === "codex-cli-account" && models.length > 0 ? (
-            <div className="grid gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="justify-self-start"
-                disabled={codexActivationPending || pending}
-                onClick={onRefreshCodexModels}
-              >
-                {codexActivationPending
-                  ? "Refreshing models…"
-                  : "Refresh models"}
-              </Button>
-              {codexActivationError ? (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    {CODEX_MODELS_UNAVAILABLE}
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-            </div>
+          {provider === "codex-cli-account" ? (
+            <CodexModelsControl
+              loaded={models.length > 0}
+              loading={codexActivationPending}
+              failed={codexActivationError}
+              disabled={pending}
+              onLoad={
+                models.length > 0 ? onRefreshCodexModels : onActivateCodex
+              }
+            />
           ) : null}
           <label
             className="grid gap-1.5 text-sm font-medium"
@@ -224,81 +157,30 @@ export function InsightRunDialog({
               htmlFor="insight-run-reasoning"
             >
               Reasoning
-              <Select
+              <InsightReasoningSelect
+                id="insight-run-reasoning"
+                ariaLabel="Insight reasoning"
+                options={modelReasoningOptions(models, model)}
                 value={reasoning}
                 disabled={pending}
-                items={reasoningOptions.map((option) => ({
-                  label: option,
-                  value: option,
-                }))}
-                onValueChange={(value) => {
-                  const nextReasoning = reasoningOptions.find(
-                    (option) => option === value,
-                  );
-                  if (nextReasoning !== undefined)
-                    onReasoningChange(nextReasoning);
-                }}
-              >
-                <SelectTrigger
-                  id="insight-run-reasoning"
-                  aria-label="Insight reasoning"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {reasoningOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                onValueChange={onReasoningChange}
+              />
             </label>
             <label
               className="grid gap-1.5 text-sm font-medium"
               htmlFor="insight-run-language"
             >
               Language
-              <Select
+              <InsightLanguageSelect
+                id="insight-run-language"
+                ariaLabel="Insight language"
                 value={language}
                 disabled={pending}
-                items={INSIGHT_LANGUAGES.map((option) => ({
-                  label: INSIGHT_LANGUAGE_LABELS[option],
-                  value: option,
-                }))}
-                onValueChange={(value) => {
-                  const nextLanguage = INSIGHT_LANGUAGES.find(
-                    (option) => option === value,
-                  );
-                  if (nextLanguage !== undefined)
-                    onLanguageChange(nextLanguage);
-                }}
-              >
-                <SelectTrigger
-                  id="insight-run-language"
-                  aria-label="Insight language"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {INSIGHT_LANGUAGES.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {INSIGHT_LANGUAGE_LABELS[option]}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                onValueChange={onLanguageChange}
+              />
             </label>
           </div>
-          {selectedModel?.cost === undefined ? null : (
-            <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-              {`List price $${selectedModel.cost.input.toFixed(2)} input / $${selectedModel.cost.output.toFixed(2)} output per million tokens; billing may differ.`}
-            </p>
-          )}
+          <ModelListPrice models={models} model={model} />
         </div>
         <DialogFooter>
           <Button
