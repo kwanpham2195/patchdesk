@@ -117,7 +117,7 @@ After a switch failure, the prior profile remains active. After a rejected field
 - Duplicate repository identity is rejected even if local paths differ.
 - Two workspaces created with the same name get distinct identifiers: the derived slug, then `-2`, `-3`, and so on.
 - Updating a watched repository's local path does not change its GitHub identity.
-- A repository control used before a workspace has loaded reports `Workspace still loading.` and sends nothing.
+- A repository control or Workspace field used before a workspace has loaded reports `Workspace still loading.` and sends nothing; the field shows the loaded value once the workspace arrives.
 - The first save on a fresh install, before any workspace is stored, writes the `default` workspace Patchdesk holds in memory, labelled Default. It never creates or selects another one.
 
 ## Open questions and verification

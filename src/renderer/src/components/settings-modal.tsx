@@ -32,6 +32,8 @@ export type SettingsModalProps = {
   readonly diffThemePreferences: DiffThemePreferences;
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly profiles: ReadonlyArray<Profile>;
+  /** Main's unsaved `default` profile on a fresh install; only the Workspace editor reads it. */
+  readonly unsavedProfile?: Profile | undefined;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly profileSwitchState?: ProfileSwitchState;
   readonly onProfileSwitch?: (

@@ -216,6 +216,7 @@ function AppContent({
   } = useGlobalPreferences(fixtureMode);
   const {
     profiles,
+    unsavedProfile,
     dashboard,
     inbox,
     state,
@@ -440,6 +441,7 @@ function AppContent({
           void updateDiffTheme(next);
         }}
         profiles={profiles}
+        unsavedProfile={unsavedProfile}
         onWorkspaceReload={loadWorkspace}
         profileSwitchState={profileSwitchState}
         onProfileSwitch={async (id) =>
@@ -648,7 +650,7 @@ function AppContent({
         {...bootRestoreMissingField}
         onStoredReviewRefused={returnToDashboard}
         {...dashboardField}
-        profiles={profiles}
+        unsavedProfile={unsavedProfile}
         {...inboxField}
         state={state}
         refreshStatus={inboxFreshnessLabel({

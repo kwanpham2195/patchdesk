@@ -34,6 +34,7 @@ import { screenStateForInbox } from "../screen-state-for-inbox";
 import {
   dashboardFromInbox,
   isProfile,
+  unsavedDefaultProfile,
   workspaceReducer,
   type WorkspaceAction,
 } from "../workspace-state";
@@ -72,6 +73,8 @@ import { ok, type Result } from "../../../domain/result";
  */
 export type WorkspaceInbox = {
   readonly profiles: ReadonlyArray<Profile>;
+  /** Main's unsaved `default` profile on a fresh install; never listed in `profiles`. */
+  readonly unsavedProfile: Profile | undefined;
   readonly dashboard: Dashboard | undefined;
   readonly inbox: InboxResponse | undefined;
   readonly state: DashboardScreenState;
@@ -163,6 +166,7 @@ export function useWorkspaceInbox({
   });
   const {
     profiles,
+    unsavedProfile,
     dashboard,
     inbox,
     screen: state,
@@ -238,13 +242,13 @@ export function useWorkspaceInbox({
     const loadedInbox = parseInboxResponse(inboxPayload);
     if (loadedInbox === undefined) {
       // A fresh install lands here, since the parser refuses the unsaved
-      // `default` profile's empty account. The list carries that profile, so
-      // setup saves the account onto it instead of creating another.
+      // `default` profile's empty account. Setup saves the account onto that
+      // profile instead of creating another.
       if (initialState === undefined)
         dispatchWorkspace({
           _tag: "failed",
           screen: "empty",
-          profiles: nextProfiles,
+          unsavedProfile: unsavedDefaultProfile(nextProfiles),
         });
       return;
     }
@@ -600,6 +604,7 @@ export function useWorkspaceInbox({
       !sameInboxRows(confirmedInboxRequest, inboxRequest));
   return {
     profiles,
+    unsavedProfile,
     dashboard,
     inbox,
     state,

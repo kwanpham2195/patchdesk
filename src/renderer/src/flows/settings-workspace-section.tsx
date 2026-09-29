@@ -40,6 +40,7 @@ import { CreateWorkspaceDialog } from "./settings-workspace-create-dialog";
 
 type WorkspaceProfileSectionProps = {
   readonly dashboard: Dashboard | undefined;
+  readonly unsavedProfile: Profile | undefined;
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly profileSwitchState: ProfileSwitchState | undefined;
@@ -58,6 +59,7 @@ type WorkspaceProfileSectionProps = {
  */
 export function WorkspaceProfileSection({
   dashboard,
+  unsavedProfile,
   profiles,
   onWorkspaceReload,
   profileSwitchState,
@@ -65,6 +67,7 @@ export function WorkspaceProfileSection({
 }: WorkspaceProfileSectionProps): React.JSX.Element {
   const editor = useWorkspaceProfileEditor({
     dashboard,
+    unsavedProfile,
     profiles,
     onWorkspaceReload,
     onProfileSwitch,

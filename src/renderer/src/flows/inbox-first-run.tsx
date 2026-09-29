@@ -14,22 +14,26 @@ import { ReviewingAsCard, RepositoriesCard } from "./settings-workspace-cards";
  * Each added repository saves at once; Continue, offered once a repository
  * is watched, is what leaves setup, so the user can add several first.
  */
+/** The switcher is not offered here, so the editor never needs the list. */
+const NO_PROFILES: ReadonlyArray<Profile> = [];
+
 export function WorkspaceFirstRun({
   dashboard,
-  profiles,
+  unsavedProfile,
   onWorkspaceReload,
   onContinue,
 }: {
   readonly dashboard: Dashboard | undefined;
-  /** The listed profiles; on a fresh install, main's unsaved `default` the account saves onto. */
-  readonly profiles: ReadonlyArray<Profile>;
+  /** Main's unsaved `default` profile on a fresh install, which the first account saves onto. */
+  readonly unsavedProfile: Profile | undefined;
   readonly onWorkspaceReload: () => Promise<void>;
   /** Absent before a workspace has loaded, when nothing can be watched yet. */
   readonly onContinue: (() => void) | undefined;
 }): React.JSX.Element {
   const editor = useWorkspaceProfileEditor({
     dashboard,
-    profiles,
+    unsavedProfile,
+    profiles: NO_PROFILES,
     onWorkspaceReload,
     onProfileSwitch: undefined,
   });

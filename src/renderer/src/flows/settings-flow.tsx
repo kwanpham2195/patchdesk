@@ -61,6 +61,8 @@ type SettingsFlowProps = {
   readonly diffThemePreferences: DiffThemePreferences;
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly profiles: ReadonlyArray<Profile>;
+  /** Main's unsaved `default` profile on a fresh install; only the Workspace editor reads it. */
+  readonly unsavedProfile?: Profile | undefined;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly section?: SettingsSection;
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
@@ -120,6 +122,7 @@ export function SettingsFlow({
   diffThemePreferences,
   onDiffThemeChange,
   profiles,
+  unsavedProfile,
   onWorkspaceReload,
   section = "general",
   onCleanupSuccess,
@@ -134,6 +137,7 @@ export function SettingsFlow({
     return (
       <WorkspaceProfileSection
         dashboard={dashboard}
+        unsavedProfile={unsavedProfile}
         profiles={profiles}
         onWorkspaceReload={onWorkspaceReload}
         profileSwitchState={profileSwitchState}
