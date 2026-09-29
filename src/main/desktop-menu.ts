@@ -9,6 +9,7 @@ export function createDesktopMenuTemplate(
     readonly openSettings: () => void;
     readonly openDiagnostics: () => void;
     readonly refresh: () => void;
+    readonly find: () => void;
   },
 ): ReadonlyArray<MenuItemConstructorOptions> {
   const settingsItem: MenuItemConstructorOptions = {
@@ -52,6 +53,9 @@ export function createDesktopMenuTemplate(
       { role: "copy" },
       { role: "paste" },
       { role: "selectAll" },
+      { type: "separator" },
+      // The Diff answers ⌘F itself; the item reaches it from the menu.
+      { label: "Find", accelerator: "CommandOrControl+F", click: actions.find },
     ],
   };
   const viewItems: MenuItemConstructorOptions[] = [

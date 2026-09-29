@@ -7,7 +7,7 @@ import { useKeyboardJump } from "./use-keyboard-jump";
 
 function navigationKeyKind(
   key: string,
-): ReviewDiffNavigationStatus["kind"] | undefined {
+): Exclude<ReviewDiffNavigationStatus["kind"], "find"> | undefined {
   switch (key) {
     case ",":
     case ".":

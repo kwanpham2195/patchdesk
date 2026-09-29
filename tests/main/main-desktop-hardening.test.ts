@@ -98,6 +98,7 @@ describe("desktop hardening", () => {
       openSettings: () => undefined,
       openDiagnostics: () => undefined,
       refresh: () => undefined,
+      find: () => undefined,
     };
     const production = createDesktopMenuTemplate(
       "darwin",
@@ -120,6 +121,9 @@ describe("desktop hardening", () => {
     expect(JSON.stringify(production)).toContain('"label":"Settings…"');
     expect(JSON.stringify(production)).toContain(
       '"accelerator":"CommandOrControl+,"',
+    );
+    expect(JSON.stringify(production)).toContain(
+      '"accelerator":"CommandOrControl+F"',
     );
   });
 
@@ -273,6 +277,7 @@ describe("desktop hardening", () => {
         openSettings: () => undefined,
         openDiagnostics: () => undefined,
         refresh: () => undefined,
+        find: () => undefined,
       })[0],
     ).toMatchObject({
       label: "File",
@@ -287,6 +292,7 @@ describe("desktop hardening", () => {
         openSettings: () => undefined,
         openDiagnostics,
         refresh: () => undefined,
+        find: () => undefined,
       });
       const help = template.find((menu) => menu.role === "help");
       const submenu = Array.isArray(help?.submenu) ? help.submenu : [];

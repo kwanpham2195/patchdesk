@@ -260,6 +260,7 @@ export function DiffWorkbench({
             fileStatsByPath={parsedDiff.statsByPath}
             {...(selectedPath === undefined ? {} : { selectedPath })}
             onActiveFileChange={reportActiveFile}
+            onSelectedPathChange={selectFile}
             preferences={preferences}
             collapsedPaths={collapsedPaths}
             onPreferencesChange={updatePreferences}

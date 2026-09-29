@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import type { DesktopMenuAction } from "../../../main/ipc-contract";
+import { FIND_IN_DIFF_REQUEST } from "./use-review-diff-find";
 
 /**
  * Runs the native desktop menu's actions inside the renderer.
@@ -26,6 +27,7 @@ export function useDesktopMenuActions(
       openSettings,
       openDiagnostics,
       refresh: () => void refresh(),
+      find: () => window.dispatchEvent(new Event(FIND_IN_DIFF_REQUEST)),
     } satisfies Record<DesktopMenuAction, () => void>;
     return window.patchdesk.onMenuAction((action) => handlers[action]());
   }, [enabled, openSettings, openDiagnostics, refresh]);

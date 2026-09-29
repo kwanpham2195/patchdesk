@@ -517,6 +517,7 @@ function registerDesktopEvents(): void {
             openDiagnostics: () =>
               raiseWindowAndSendMenuAction("openDiagnostics"),
             refresh: () => raiseWindowAndSendMenuAction("refresh"),
+            find: () => raiseWindowAndSendMenuAction("find"),
           },
         ),
       ]),

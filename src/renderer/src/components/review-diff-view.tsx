@@ -61,6 +61,7 @@ import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import { pierreDiffColorsCss } from "@/diff-colors";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
+import { ReviewDiffFindBar } from "./review-diff-find-bar";
 import {
   diffThemeFor,
   type DiffThemePreferences,
@@ -70,6 +71,8 @@ import type { FileFindingCount } from "@/review-finding-counts";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigation";
+import { useReviewDiffFind } from "@/hooks/use-review-diff-find";
+import { useLargeDiffSelection } from "@/hooks/use-large-diff-selection";
 import { useReviewFindingNavigation } from "@/hooks/use-review-finding-navigation";
 import {
   reviewDiffNavigationResetIdentity,
@@ -238,6 +241,8 @@ type ReviewDiffViewProps = {
   ) => void;
   readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
   readonly onActiveFileChange?: (path: string) => void;
+  /** Lets ⌘F select a matched file in Selected; find is off without it. */
+  readonly onSelectedPathChange?: (path: string) => void;
   /** Optional main-process-only source seam used to hydrate omitted hunk context. */
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly virtualized?: boolean;
@@ -278,6 +283,7 @@ function ReviewDiffSurface({
   onPreferencesChange,
   onCollapsedPathsChange,
   onActiveFileChange,
+  onSelectedPathChange,
   sourceSession,
   virtualized = true,
   localCommentAuthoring,
@@ -408,6 +414,11 @@ function ReviewDiffSurface({
   useReviewCommentNavigation(navigationInputs);
   useReviewFindingNavigation(navigationInputs);
   useReviewSelectedModeNavigationHint(navigationInputs);
+  const find = useReviewDiffFind({
+    ...navigationInputs,
+    files,
+    onSelectedPathChange,
+  });
 
   return (
     <ReviewDiffRenderSite
@@ -436,6 +447,7 @@ function ReviewDiffSurface({
       virtualized={virtualized}
       browserSupportsPierre={browserSupportsPierre}
       navigationStatus={navigationStatus}
+      find={find}
       syntaxHighlightingStatus={syntaxHighlightingStatus}
       localCommentAuthoring={localCommentAuthoring}
       localComposerAnnotation={localComposerAnnotation}
@@ -493,6 +505,7 @@ type ReviewDiffRenderSiteProps = {
   readonly browserSupportsPierre: boolean;
   readonly syntaxHighlightingStatus: "loading" | "ready" | "unavailable";
   readonly navigationStatus: ReviewDiffNavigationFeedbackState["navigationStatus"];
+  readonly find: ReturnType<typeof useReviewDiffFind>;
   readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
   readonly draftRecovery: DraftRecovery | undefined;
@@ -548,6 +561,7 @@ function ReviewDiffRenderSite({
   virtualized,
   browserSupportsPierre,
   navigationStatus,
+  find,
   syntaxHighlightingStatus,
   localCommentAuthoring,
   localComposerAnnotation,
@@ -682,6 +696,7 @@ function ReviewDiffRenderSite({
           changes={changes}
         />
       ) : null}
+      <ReviewDiffFindBar find={find} />
       {!browserSupportsPierre &&
       localComposerAnnotation?.localComposer !== undefined ? (
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />
@@ -971,23 +986,4 @@ export function ReviewDiffView(props: ReviewDiffViewProps): React.JSX.Element {
       </SplitViewFallbackContext>
     </section>
   );
-}
-
-function useLargeDiffSelection(
-  selectedPath: string | undefined,
-  deferReplacement: boolean,
-): string | undefined {
-  const [renderedPath, setRenderedPath] = useState(selectedPath);
-  useEffect(() => {
-    if (!deferReplacement) return;
-    if (selectedPath === undefined) {
-      setRenderedPath(selectedPath);
-      return;
-    }
-    const timer = window.setTimeout(() => setRenderedPath(selectedPath), 150);
-    return () => window.clearTimeout(timer);
-  }, [deferReplacement, selectedPath]);
-  // Routing a normal review through the state above would render the surface
-  // once more with the outgoing path, which flips the navigator's highlight.
-  return deferReplacement ? renderedPath : selectedPath;
 }
