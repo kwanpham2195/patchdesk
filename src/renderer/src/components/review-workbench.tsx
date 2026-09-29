@@ -166,15 +166,6 @@ export function ReviewWorkbench({
   const title =
     model.pullRequest?.title ?? reviewSourceTitle(model.session.key.source);
   const unsentTextFields = useUnsentReviewTextFields();
-  useReviewNavigationState({
-    writePending:
-      actions.pendingReview?.busy === true ||
-      actions.directSummary?.busy === true,
-    unsentText:
-      actions.pendingReview?.finishDraft !== undefined ||
-      unsentTextFields.holdsUnsentText,
-    report: actions.reportNavigationState,
-  });
 
   const [overviewOpen, setOverviewOpen] = useState(
     initialState?.overviewOpen ?? false,
@@ -232,6 +223,17 @@ export function ReviewWorkbench({
     model.review.id,
     model.fullPatch,
   );
+  useReviewNavigationState({
+    writePending:
+      actions.pendingReview?.busy === true ||
+      actions.directSummary?.busy === true,
+    unsentText:
+      actions.pendingReview?.finishDraft !== undefined ||
+      unsentTextFields.holdsUnsentText ||
+      (pendingReviewDrafts.orphanedBody?.trim() ?? "") !== "" ||
+      pendingReviewDrafts.writes.some((write) => write._tag === "failed"),
+    report: actions.reportNavigationState,
+  });
   const selectedView = localPatchView?.selected ?? "combined";
   // Findings use Combined coordinates, so another view shows none (#556 D3); notes are placed per view.
   const onOtherView = selectedView !== "combined";
@@ -616,356 +618,362 @@ export function ReviewWorkbench({
     );
 
   return (
-    <section
-      className="flex min-h-0 flex-1 flex-col"
-      aria-label="Review workbench"
-    >
-      <ReviewWorkbenchHeader
-        model={model}
-        scope={onOtherView ? viewScope : model.scope}
-        actions={actions}
-        title={title}
-        repository={repository}
-        checksLabel={checksLabel}
-        freshnessLabel={freshnessLabel}
-        mergeStatus={mergeStatus}
-        hasUpdates={hasUpdates}
-        terminal={terminal}
-        externalPullRequest={externalPullRequest}
-        openOverview={openOverview}
-        setSummaryDialogOpen={setSummaryDialogOpen}
-        {...definedProps({ patchView: localPatchView?.selected })}
-      />
-
-      <div
-        className="flex shrink-0 items-center border-b px-4 py-1"
-        data-review-workbench-tabs
+    <UnsentReviewTextContext.Provider value={unsentTextFields.report}>
+      <section
+        className="flex min-h-0 flex-1 flex-col"
+        aria-label="Review workbench"
       >
-        <Tabs
-          value={activeTab}
-          // SAFETY: every TabsTrigger below is keyed by a WorkbenchActiveTab
-          // literal, so Base UI's reported value can only ever be one of those.
-          onValueChange={(value) => selectTab(value as WorkbenchActiveTab)}
+        <ReviewWorkbenchHeader
+          model={model}
+          scope={onOtherView ? viewScope : model.scope}
+          actions={actions}
+          title={title}
+          repository={repository}
+          checksLabel={checksLabel}
+          freshnessLabel={freshnessLabel}
+          mergeStatus={mergeStatus}
+          hasUpdates={hasUpdates}
+          terminal={terminal}
+          externalPullRequest={externalPullRequest}
+          openOverview={openOverview}
+          setSummaryDialogOpen={setSummaryDialogOpen}
+          {...definedProps({ patchView: localPatchView?.selected })}
+        />
+
+        <div
+          className="flex shrink-0 items-center border-b px-4 py-1"
+          data-review-workbench-tabs
         >
-          <TabsList variant="ghost">
-            {model.session.key.source.kind === "pull_request" ? (
-              <TabsTrigger value="conversation">Conversation</TabsTrigger>
-            ) : null}
-            <TabsTrigger value="diff">Diff</TabsTrigger>
-            <TabsTrigger value="insights">Insights</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      <div
-        className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
-        data-review-workbench-content
-      >
-        {activeTab === "conversation" ? (
-          <Conversation
-            conversation={model.conversation}
-            profileId={model.session.key.profileId}
-            {...definedProps({
-              pullRequest: externalPullRequest,
-              lastLooked: model.review.lastLooked,
-            })}
-            {...conversationTabProps}
-            {...(conversationRail === undefined
-              ? {}
-              : { rail: conversationRail })}
-          />
-        ) : activeTab === "diff" ? (
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {model.fullPatch === undefined ? (
-              <div className="p-6 text-sm text-muted-foreground">
-                {NO_PATCH_AVAILABLE}
-              </div>
-            ) : (
-              <div
-                data-review-diff-layout={
-                  navigatorVisible ? "with-navigator" : "collapsed-navigator"
-                }
-                style={navigatorVisible ? navigatorGridStyle : undefined}
-                className={cn(
-                  "grid h-full min-h-0 flex-1",
-                  navigatorVisible
-                    ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]"
-                    : "grid-cols-1",
-                )}
-              >
-                {navigatorVisible ? (
-                  <ReviewNavigator
-                    patch={
-                      selectedCommitSha !== undefined
-                        ? (commitDiff?.patch ?? "")
-                        : (sincePatch ?? reviewPatch ?? "")
-                    }
-                    conversationThreadEntries={conversationThreadEntries}
-                    findingCountsByPath={shownFindingCounts}
-                    section={section}
-                    {...definedProps({
-                      commits: sourceListsCommits(model.session.key.source)
-                        ? model.commits
-                        : undefined,
-                      localCommitTotal: model.commitTotal,
-                      notes:
-                        localDrafts === undefined
-                          ? undefined
-                          : {
-                              count: localDrafts.entries.length,
-                              list: (
-                                <LocalNotesList
-                                  controls={localDrafts}
-                                  placement={localNotes.placement}
-                                  onReveal={localNotes.reveal}
-                                />
-                              ),
-                            },
-                      visiblePaths: scopeFilteredPaths,
-                      selectedPath: diffSelectedPath,
-                      activePath: navigatorActivePath,
-                      selectedCommitSha,
-                      selectedThreadId,
-                      lastLooked: model.review.lastLooked,
-                    })}
-                    onSectionChange={selectNavigatorSection}
-                    onFileSelect={(path) => {
-                      commitWorkbenchPosition({
-                        activeTab: "diff",
-                        section: "files",
-                        selectedPath: path,
-                      });
-                      setActivePath(path);
-                      setSelectedThreadId(undefined);
-                      setSelectedRange(undefined);
-                    }}
-                    onCommitSelect={selectCommitSlice}
-                    onThreadSelect={(row: ConversationThreadRow) => {
-                      setSelectedThreadId(row.id);
-                      setSelectedRange({
-                        start: row.start,
-                        end: row.end,
-                        side: row.side,
-                      });
-                      commitWorkbenchPosition({
-                        activeTab: "diff",
-                        section: "threads",
-                        selectedPath: row.path,
-                      });
-                      setActivePath(row.path);
-                    }}
-                  />
-                ) : null}
-                {navigatorVisible ? (
-                  <ReviewNavigatorResizeHandle
-                    widthRem={navigatorWidthRem}
-                    onResize={handleNavigatorResize}
-                    onResizeEnd={handleNavigatorResizeEnd}
-                  />
-                ) : null}
-                <ReviewDiffPane model={model} findingStepSlot={findingStepSlot}>
-                  {selectedCommitSha !== undefined &&
-                  commitDiffState._tag === "Loading" ? (
-                    <p
-                      className="p-6 text-sm text-muted-foreground"
-                      role="status"
-                    >
-                      Loading commit diff…
-                    </p>
-                  ) : selectedCommitSha !== undefined &&
-                    commitDiffError ? null : selectedCommitSha === undefined &&
-                    onOtherView &&
-                    localPatchView?.status !== "ready" ? (
-                    <>
-                      <div className="flex min-h-9 items-center border-b px-2 py-1">
-                        {localViewControl}
-                      </div>
-                      {localPatchView?.status === "failed" ? (
-                        <InlineError className="px-4 py-2">
-                          The {localPatchViewLabels[selectedView]} view could
-                          not be loaded.
-                        </InlineError>
-                      ) : (
-                        <p
-                          className="p-6 text-sm text-muted-foreground"
-                          role="status"
-                        >
-                          Loading the {localPatchViewLabels[selectedView]} view…
-                        </p>
-                      )}
-                    </>
-                  ) : displayedPatch === undefined ? (
-                    <p className="p-6 text-sm text-muted-foreground">
-                      {NO_PATCH_AVAILABLE}
-                    </p>
-                  ) : selectionReady && diffSelectedPath === undefined ? (
-                    <ReviewEmptyPatch
-                      viewControl={localViewControl}
-                      {...definedProps({ commitHeader })}
-                    />
-                  ) : (
-                    <UnsentReviewTextContext.Provider
-                      value={unsentTextFields.report}
-                    >
-                      <DiffWorkbench
-                        key={
-                          selectedCommitSha ??
-                          (sincePatch !== undefined
-                            ? `since-${sinceReview.baseSha}`
-                            : onOtherView
-                              ? `${model.revision.reviewedHeadSha}-${selectedView}`
-                              : model.revision.reviewedHeadSha)
-                        }
-                        patch={displayedPatch}
-                        changes={definedProps({
-                          sinceReview: sinceReview.control,
-                          patchView: patchViewChoice,
-                        })}
-                        {...(narrowedDiff
-                          ? {}
-                          : {
-                              sourceSession: {
-                                profileId: model.session.key.profileId,
-                                sessionId: model.session.id,
-                                ...definedProps({
-                                  view: localPatchView?.shown.view,
-                                }),
-                              },
-                            })}
-                        {...definedProps({
-                          controlledSelectedPath: diffSelectedPath,
-                        })}
-                        selectedPathFollowsActive={selectionFollowsActive}
-                        onSelectedPathChange={(path: string) => {
-                          commitWorkbenchPosition({
-                            activeTab: "diff",
-                            section,
-                            selectedPath: path,
-                          });
-                          setActivePath(path);
-                        }}
-                        {...(selectedCommitSha === undefined
-                          ? {
-                              onActiveFileChange: (path: string) =>
-                                setActivePath(path),
-                            }
-                          : {})}
-                        {...(selectedCommitSha === undefined
-                          ? {
-                              annotations: sinceAnnotations ?? annotations,
-                              findingCountsByPath: shownFindingCounts,
-                              onOpenFindingInAnalysis: openFindingInAnalysis,
-                            }
-                          : {})}
-                        {...(selectedRange === undefined
-                          ? {}
-                          : { selectedRange })}
-                        {...definedProps({
-                          viewedFiles: narrowedDiff ? undefined : viewedFiles,
-                        })}
-                        {...(scopeFilteredPaths === undefined
-                          ? {}
-                          : { visiblePaths: scopeFilteredPaths })}
-                        {...(scopeFilter === undefined ? {} : { scopeFilter })}
-                        {...(!narrowedDiff
-                          ? actions.localCommentAuthoring === undefined
-                            ? {}
-                            : {
-                                localCommentAuthoring:
-                                  actions.localCommentAuthoring,
-                              }
-                          : commitCommentAuthoring === undefined
-                            ? {}
-                            : {
-                                localCommentAuthoring: commitCommentAuthoring,
-                              })}
-                        {...definedProps({
-                          pendingReviewComposer: actions.pendingReviewComposer,
-                        })}
-                        pendingReviewDrafts={pendingReviewDrafts}
-                        {...(diffConversationActions === undefined
-                          ? {}
-                          : { conversationActions: diffConversationActions })}
-                        bodyContext={definedProps({
-                          pullRequest: externalPullRequest,
-                          profileId: model.session.key.profileId,
-                        })}
-                        hideFileNavigation
-                        leadingAction={
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    setNavigatorVisible((visible) => !visible)
-                                  }
-                                  aria-label={
-                                    navigatorVisible
-                                      ? "Hide review navigator"
-                                      : "Show review navigator"
-                                  }
-                                  aria-expanded={navigatorVisible}
-                                />
-                              }
-                            >
-                              {navigatorVisible ? (
-                                <PanelLeftClose />
-                              ) : (
-                                <PanelLeftOpen />
-                              )}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {navigatorVisible
-                                ? "Hide review navigator"
-                                : "Show review navigator"}
-                            </TooltipContent>
-                          </Tooltip>
-                        }
-                        {...(commitHeader === undefined
-                          ? {}
-                          : {
-                              diffTitle: commitHeader.title,
-                              diffSubtitle: commitHeader.subtitle,
-                              copyValue: commitHeader.sha,
-                            })}
-                        className="min-h-0 h-full"
-                        fillViewport={false}
-                        preferences={preferences}
-                        onPreferencesChange={updatePreferences}
-                      />
-                    </UnsentReviewTextContext.Provider>
-                  )}
-                  {commitDiffError ? (
-                    <InlineError className="border-t px-4 py-2">
-                      This commit diff could not be loaded.
-                    </InlineError>
-                  ) : null}
-                  {sinceReview.state._tag === "Failed" ? (
-                    <InlineError className="border-t px-4 py-2">
-                      The diff since your review could not be loaded.
-                    </InlineError>
-                  ) : null}
-                </ReviewDiffPane>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div
-            data-review-workbench-insights
-            className="min-h-0 flex-1 overflow-hidden p-4"
+          <Tabs
+            value={activeTab}
+            // SAFETY: every TabsTrigger below is keyed by a WorkbenchActiveTab
+            // literal, so Base UI's reported value can only ever be one of those.
+            onValueChange={(value) => selectTab(value as WorkbenchActiveTab)}
           >
-            <ReviewWorkbenchFindingNavigationContext.Provider
-              value={findingNavigation}
-            >
-              {slots.insights}
-            </ReviewWorkbenchFindingNavigationContext.Provider>
-          </div>
-        )}
-      </div>
+            <TabsList variant="ghost">
+              {model.session.key.source.kind === "pull_request" ? (
+                <TabsTrigger value="conversation">Conversation</TabsTrigger>
+              ) : null}
+              <TabsTrigger value="diff">Diff</TabsTrigger>
+              <TabsTrigger value="insights">Insights</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
-      <UnsentReviewTextContext.Provider value={unsentTextFields.report}>
+        <div
+          className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+          data-review-workbench-content
+        >
+          {activeTab === "conversation" ? (
+            <Conversation
+              conversation={model.conversation}
+              profileId={model.session.key.profileId}
+              {...definedProps({
+                pullRequest: externalPullRequest,
+                lastLooked: model.review.lastLooked,
+              })}
+              {...conversationTabProps}
+              {...(conversationRail === undefined
+                ? {}
+                : { rail: conversationRail })}
+            />
+          ) : activeTab === "diff" ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {model.fullPatch === undefined ? (
+                <div className="p-6 text-sm text-muted-foreground">
+                  {NO_PATCH_AVAILABLE}
+                </div>
+              ) : (
+                <div
+                  data-review-diff-layout={
+                    navigatorVisible ? "with-navigator" : "collapsed-navigator"
+                  }
+                  style={navigatorVisible ? navigatorGridStyle : undefined}
+                  className={cn(
+                    "grid h-full min-h-0 flex-1",
+                    navigatorVisible
+                      ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]"
+                      : "grid-cols-1",
+                  )}
+                >
+                  {navigatorVisible ? (
+                    <ReviewNavigator
+                      patch={
+                        selectedCommitSha !== undefined
+                          ? (commitDiff?.patch ?? "")
+                          : (sincePatch ?? reviewPatch ?? "")
+                      }
+                      conversationThreadEntries={conversationThreadEntries}
+                      findingCountsByPath={shownFindingCounts}
+                      section={section}
+                      {...definedProps({
+                        commits: sourceListsCommits(model.session.key.source)
+                          ? model.commits
+                          : undefined,
+                        localCommitTotal: model.commitTotal,
+                        notes:
+                          localDrafts === undefined
+                            ? undefined
+                            : {
+                                count: localDrafts.entries.length,
+                                list: (
+                                  <LocalNotesList
+                                    controls={localDrafts}
+                                    placement={localNotes.placement}
+                                    onReveal={localNotes.reveal}
+                                  />
+                                ),
+                              },
+                        visiblePaths: scopeFilteredPaths,
+                        selectedPath: diffSelectedPath,
+                        activePath: navigatorActivePath,
+                        selectedCommitSha,
+                        selectedThreadId,
+                        lastLooked: model.review.lastLooked,
+                      })}
+                      onSectionChange={selectNavigatorSection}
+                      onFileSelect={(path) => {
+                        commitWorkbenchPosition({
+                          activeTab: "diff",
+                          section: "files",
+                          selectedPath: path,
+                        });
+                        setActivePath(path);
+                        setSelectedThreadId(undefined);
+                        setSelectedRange(undefined);
+                      }}
+                      onCommitSelect={selectCommitSlice}
+                      onThreadSelect={(row: ConversationThreadRow) => {
+                        setSelectedThreadId(row.id);
+                        setSelectedRange({
+                          start: row.start,
+                          end: row.end,
+                          side: row.side,
+                        });
+                        commitWorkbenchPosition({
+                          activeTab: "diff",
+                          section: "threads",
+                          selectedPath: row.path,
+                        });
+                        setActivePath(row.path);
+                      }}
+                    />
+                  ) : null}
+                  {navigatorVisible ? (
+                    <ReviewNavigatorResizeHandle
+                      widthRem={navigatorWidthRem}
+                      onResize={handleNavigatorResize}
+                      onResizeEnd={handleNavigatorResizeEnd}
+                    />
+                  ) : null}
+                  <ReviewDiffPane
+                    model={model}
+                    findingStepSlot={findingStepSlot}
+                  >
+                    {selectedCommitSha !== undefined &&
+                    commitDiffState._tag === "Loading" ? (
+                      <p
+                        className="p-6 text-sm text-muted-foreground"
+                        role="status"
+                      >
+                        Loading commit diff…
+                      </p>
+                    ) : selectedCommitSha !== undefined &&
+                      commitDiffError ? null : selectedCommitSha ===
+                        undefined &&
+                      onOtherView &&
+                      localPatchView?.status !== "ready" ? (
+                      <>
+                        <div className="flex min-h-9 items-center border-b px-2 py-1">
+                          {localViewControl}
+                        </div>
+                        {localPatchView?.status === "failed" ? (
+                          <InlineError className="px-4 py-2">
+                            The {localPatchViewLabels[selectedView]} view could
+                            not be loaded.
+                          </InlineError>
+                        ) : (
+                          <p
+                            className="p-6 text-sm text-muted-foreground"
+                            role="status"
+                          >
+                            Loading the {localPatchViewLabels[selectedView]}{" "}
+                            view…
+                          </p>
+                        )}
+                      </>
+                    ) : displayedPatch === undefined ? (
+                      <p className="p-6 text-sm text-muted-foreground">
+                        {NO_PATCH_AVAILABLE}
+                      </p>
+                    ) : selectionReady && diffSelectedPath === undefined ? (
+                      <ReviewEmptyPatch
+                        viewControl={localViewControl}
+                        {...definedProps({ commitHeader })}
+                      />
+                    ) : (
+                      <>
+                        <DiffWorkbench
+                          key={
+                            selectedCommitSha ??
+                            (sincePatch !== undefined
+                              ? `since-${sinceReview.baseSha}`
+                              : onOtherView
+                                ? `${model.revision.reviewedHeadSha}-${selectedView}`
+                                : model.revision.reviewedHeadSha)
+                          }
+                          patch={displayedPatch}
+                          changes={definedProps({
+                            sinceReview: sinceReview.control,
+                            patchView: patchViewChoice,
+                          })}
+                          {...(narrowedDiff
+                            ? {}
+                            : {
+                                sourceSession: {
+                                  profileId: model.session.key.profileId,
+                                  sessionId: model.session.id,
+                                  ...definedProps({
+                                    view: localPatchView?.shown.view,
+                                  }),
+                                },
+                              })}
+                          {...definedProps({
+                            controlledSelectedPath: diffSelectedPath,
+                          })}
+                          selectedPathFollowsActive={selectionFollowsActive}
+                          onSelectedPathChange={(path: string) => {
+                            commitWorkbenchPosition({
+                              activeTab: "diff",
+                              section,
+                              selectedPath: path,
+                            });
+                            setActivePath(path);
+                          }}
+                          {...(selectedCommitSha === undefined
+                            ? {
+                                onActiveFileChange: (path: string) =>
+                                  setActivePath(path),
+                              }
+                            : {})}
+                          {...(selectedCommitSha === undefined
+                            ? {
+                                annotations: sinceAnnotations ?? annotations,
+                                findingCountsByPath: shownFindingCounts,
+                                onOpenFindingInAnalysis: openFindingInAnalysis,
+                              }
+                            : {})}
+                          {...(selectedRange === undefined
+                            ? {}
+                            : { selectedRange })}
+                          {...definedProps({
+                            viewedFiles: narrowedDiff ? undefined : viewedFiles,
+                          })}
+                          {...(scopeFilteredPaths === undefined
+                            ? {}
+                            : { visiblePaths: scopeFilteredPaths })}
+                          {...(scopeFilter === undefined
+                            ? {}
+                            : { scopeFilter })}
+                          {...(!narrowedDiff
+                            ? actions.localCommentAuthoring === undefined
+                              ? {}
+                              : {
+                                  localCommentAuthoring:
+                                    actions.localCommentAuthoring,
+                                }
+                            : commitCommentAuthoring === undefined
+                              ? {}
+                              : {
+                                  localCommentAuthoring: commitCommentAuthoring,
+                                })}
+                          {...definedProps({
+                            pendingReviewComposer:
+                              actions.pendingReviewComposer,
+                          })}
+                          pendingReviewDrafts={pendingReviewDrafts}
+                          {...(diffConversationActions === undefined
+                            ? {}
+                            : { conversationActions: diffConversationActions })}
+                          bodyContext={definedProps({
+                            pullRequest: externalPullRequest,
+                            profileId: model.session.key.profileId,
+                          })}
+                          hideFileNavigation
+                          leadingAction={
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    size="icon-xs"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      setNavigatorVisible((visible) => !visible)
+                                    }
+                                    aria-label={
+                                      navigatorVisible
+                                        ? "Hide review navigator"
+                                        : "Show review navigator"
+                                    }
+                                    aria-expanded={navigatorVisible}
+                                  />
+                                }
+                              >
+                                {navigatorVisible ? (
+                                  <PanelLeftClose />
+                                ) : (
+                                  <PanelLeftOpen />
+                                )}
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {navigatorVisible
+                                  ? "Hide review navigator"
+                                  : "Show review navigator"}
+                              </TooltipContent>
+                            </Tooltip>
+                          }
+                          {...(commitHeader === undefined
+                            ? {}
+                            : {
+                                diffTitle: commitHeader.title,
+                                diffSubtitle: commitHeader.subtitle,
+                                copyValue: commitHeader.sha,
+                              })}
+                          className="min-h-0 h-full"
+                          fillViewport={false}
+                          preferences={preferences}
+                          onPreferencesChange={updatePreferences}
+                        />
+                      </>
+                    )}
+                    {commitDiffError ? (
+                      <InlineError className="border-t px-4 py-2">
+                        This commit diff could not be loaded.
+                      </InlineError>
+                    ) : null}
+                    {sinceReview.state._tag === "Failed" ? (
+                      <InlineError className="border-t px-4 py-2">
+                        The diff since your review could not be loaded.
+                      </InlineError>
+                    ) : null}
+                  </ReviewDiffPane>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              data-review-workbench-insights
+              className="min-h-0 flex-1 overflow-hidden p-4"
+            >
+              <ReviewWorkbenchFindingNavigationContext.Provider
+                value={findingNavigation}
+              >
+                {slots.insights}
+              </ReviewWorkbenchFindingNavigationContext.Provider>
+            </div>
+          )}
+        </div>
+
         <ReviewWorkbenchDialogs
           actions={actions}
           overview={overview}
@@ -977,7 +985,7 @@ export function ReviewWorkbench({
           setSummaryDialogOpen={setSummaryDialogOpen}
           externalPullRequest={externalPullRequest}
         />
-      </UnsentReviewTextContext.Provider>
-    </section>
+      </section>
+    </UnsentReviewTextContext.Provider>
   );
 }

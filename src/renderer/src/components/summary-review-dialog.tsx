@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import type { DirectSummaryReviewProjection } from "../renderer-contracts";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -75,6 +76,8 @@ function SummaryReviewDialogContent({
   const actionInFlightRef = useRef(false);
   const locked = busy || submitting || recovering;
   const effectiveState = writeAnother ? "idle" : state;
+  // A confirmed review keeps its text on screen; only an idle form holds unsent text.
+  useReportUnsentReviewText(open && effectiveState === "idle" ? body : "");
   const recovery =
     state === "recovery_required" && !writeAnother
       ? (recoveryResolution ?? "check_required")

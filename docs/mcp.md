@@ -270,7 +270,7 @@ error code and a sentence the agent can relay to you;
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
   - `type` (string, required): One of `analysis`, `walkthrough`, `brief`.
 
-- **show_review**: Switch the Patchdesk window to an existing Review, so the maintainer finds it on screen the next time they switch to Patchdesk. It never raises or focuses the window, and it does not create or refresh a Review. It shows any saved Review of the active profile, local or pull request, even one whose repository is no longer watched. Returns status shown, or held when unsent review text (a half-written note or comment, or a Finish review summary) or a GitHub write in progress keeps Patchdesk on its current screen; on held nothing moved, so tell the user the Review is ready for them to open. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it. A shared Review whose checkout is now on another branch is refused branch_mismatch, naming that branch.
+- **show_review**: Switch the Patchdesk window to an existing Review, so the maintainer finds it on screen the next time they switch to Patchdesk. It never raises or focuses the window, and it does not create or refresh a Review. It shows any saved Review of the active profile, local or pull request, even one whose repository is no longer watched. Returns status shown, or held when unsent review text (a half-written note, comment, or reply, or a review summary) or a GitHub write in progress keeps Patchdesk on its current screen; on held nothing moved, so tell the user the Review is ready for them to open. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it. A shared Review whose checkout is now on another branch is refused branch_mismatch, naming that branch.
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
 
 - **get_feedback** (read-only): Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against, the view it was written in (combined, committed, or uncommitted; its path, side, and lines are numbered in that view), inline (true when those lines sit inside a hunk of that view on the Review's current session), and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Pass nextCursor to read the next page.
@@ -296,8 +296,8 @@ The tools give the agent no way to:
 `show_review` switches the Patchdesk window to a Review the agent names, the
 way clicking a notification does, but never raises or focuses the window: the
 Review is on screen the next time you switch to Patchdesk. While you have
-unsent review text (a half-written note or comment, or a Finish review summary)
-or a GitHub write is in progress, it moves nothing and answers `held`.
+unsent review text (a half-written note, comment, or reply, or a review
+summary) or a GitHub write is in progress, it moves nothing and answers `held`.
 
 `review_local` and `refresh_review` store a snapshot of the checkout as git
 objects, a `refs/patchdesk/local/` ref, and a worktree in Patchdesk's cache.

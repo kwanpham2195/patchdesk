@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fixed a half-written note or comment being dropped without asking when Patchdesk leaves the Review. While a diff composer holds text, or Finish review is open with a typed summary, leaving the Review shows the leave dialog, as a kept summary already did, and Stay on this review keeps the text. This covers Back, a Visited pull requests row, a notification click, a pull request chosen in Navigate (⌘K), a workspace switch, Clear local review data, and closing the window. MCP `show_review` answers `held` and leaves the screen as it is. #643
+- Fixed a half-written note, comment, or reply being dropped without asking when Patchdesk leaves the Review. While a diff composer holds text, a thread reply or a comment or note edit is unsaved, a Dismiss review message is typed, Finish review or Summary review is open with a typed summary, or the Saved draft bar or a failed draft card holds text, leaving the Review shows the leave dialog, as a kept summary already did, and Stay on this review keeps the text. This covers Back, a Visited pull requests row, a notification click, a pull request chosen in Navigate (⌘K), a workspace switch, Clear local review data, and closing the window. MCP `show_review` answers `held` and leaves the screen as it is. #643
 
 - Fixed a workspace switch dropping a kept Finish review summary without asking. Choosing another workspace in the titlebar or in Settings → Workspace, and confirming Clear local review data in Settings → Data & recovery, now show the leave dialog while a summary is kept: Stay on this review keeps the summary, the workspace, and the local data, and Discard changes and leave returns to Pull requests before switching or clearing. #635
 

@@ -226,7 +226,7 @@ Amended 2026-09-29 (#592): an eighth tool, `show_review(reviewId)` → `{ status
 
 Amended 2026-09-29 (#632): `list_local_reviews` leaves out a Review whose current session record is missing, as after recovery quarantines an unreadable one, with one warning per session per process. No tool can read that Review's session, so an entry without one would only lead the agent to a `get_feedback` refusal, while refusing the list hid every other Review of the checkout. The output shape is unchanged. A session record that exists but cannot be read or parsed still refuses the list `storage`. The dialog's bases and `review_local`'s reused base read Review records only, so they still include that Review.
 
-Amended 2026-09-29 (#643): `dirty_draft` now also covers text the maintainer has not sent: a diff composer holding a half-written note or comment, and a Summary typed in the open Finish review dialog. `show_review` answers `held` for them as for a kept Finish review summary, so an agent's call no longer drops typed text.
+Amended 2026-09-29 (#643): `dirty_draft` now also covers text the maintainer has not sent: a diff composer holding a half-written note or comment, a Saved draft or failed draft card, an unsaved thread reply, comment edit, note edit, or Dismiss review message, and a summary typed in the open Finish review or Summary review dialog. `show_review` answers `held` for them as for a kept Finish review summary, so an agent's call no longer drops typed text.
 
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved

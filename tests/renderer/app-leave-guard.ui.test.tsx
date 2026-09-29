@@ -317,52 +317,60 @@ function workingTreeReview(): WorkbenchResponse {
   } as never);
 }
 
+/** Boots on the working-tree review-42 and types a note in the Diff composer. */
+async function bootOnLocalReviewWithTypedNote(): Promise<{
+  readonly double: DesktopDouble;
+  readonly user: ReturnType<typeof userEvent.setup>;
+}> {
+  window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
+  const double = installDesktopDouble(
+    {
+      ...APP_BOOT_ROUTES,
+      "/v1/profiles": () => success([profile]),
+      "/v1/inbox": () =>
+        success({
+          ...inboxWithRow,
+          profile,
+          inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
+        }),
+      "/v1/reviews/load": () => success(asJsonBody(workingTreeReview())),
+      "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
+      "/v1/insight-providers": () => failure({ error: "storage" }, 503),
+      // Context hydration is not under test; an unreadable file keeps the patch as it is.
+      "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
+    },
+    { operations: APP_BOOT_OPERATIONS },
+  );
+  installed = double;
+  const user = userEvent.setup({
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
+  render(
+    <App
+      reviewWorkbenchLoader={async () => ({ default: ReviewWorkbenchFlow })}
+    />,
+  );
+  await user.click(await screen.findByRole("tab", { name: "Diff" }));
+  const addNote = (
+    await screen.findAllByRole("button", { name: "Add note on src/a.ts" })
+  ).at(-1);
+  if (addNote === undefined) throw new Error("missing Add note action");
+  await user.click(addNote);
+  await user.type(
+    within(screen.getByRole("region", { name: "Note composer" })).getByRole(
+      "textbox",
+      { name: "Note" },
+    ),
+    "Guard the empty case.",
+  );
+  // ⌘K is ignored inside a text field.
+  await user.click(document.body);
+  return { double, user };
+}
+
 describe("App leave guard for text typed in a Review (#643)", () => {
   it("holds a pull request chosen in ⌘K behind the leave dialog while a note composer holds text, and Stay keeps the text", async () => {
-    window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
-    const double = installDesktopDouble(
-      {
-        ...APP_BOOT_ROUTES,
-        "/v1/profiles": () => success([profile]),
-        "/v1/inbox": () =>
-          success({
-            ...inboxWithRow,
-            profile,
-            inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
-          }),
-        "/v1/reviews/load": () => success(asJsonBody(workingTreeReview())),
-        "/v1/reviews/detect-updates": () =>
-          success({ updatesAvailable: false }),
-        "/v1/insight-providers": () => failure({ error: "storage" }, 503),
-        // Context hydration is not under test; an unreadable file keeps the patch as it is.
-        "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
-      },
-      { operations: APP_BOOT_OPERATIONS },
-    );
-    installed = double;
-    const user = userEvent.setup({
-      pointerEventsCheck: PointerEventsCheckLevel.Never,
-    });
-    render(
-      <App
-        reviewWorkbenchLoader={async () => ({ default: ReviewWorkbenchFlow })}
-      />,
-    );
-    await user.click(await screen.findByRole("tab", { name: "Diff" }));
-    const addNote = (
-      await screen.findAllByRole("button", { name: "Add note on src/a.ts" })
-    ).at(-1);
-    if (addNote === undefined) throw new Error("missing Add note action");
-    await user.click(addNote);
-    await user.type(
-      within(screen.getByRole("region", { name: "Note composer" })).getByRole(
-        "textbox",
-        { name: "Note" },
-      ),
-      "Guard the empty case.",
-    );
-    // ⌘K is ignored inside a text field.
-    await user.click(document.body);
+    const { double, user } = await bootOnLocalReviewWithTypedNote();
 
     await chooseAnotherPullRequest(user);
     await user.click(
@@ -376,5 +384,21 @@ describe("App leave guard for text typed in a Review (#643)", () => {
       throw new Error("expected the note textarea");
     expect(note.value).toBe("Guard the empty case.");
     expect(openRequests(double)).toBe(0);
+  });
+
+  it("holds a pull request chosen in ⌘K behind the leave dialog while a tab switch keeps the note as a Saved draft", async () => {
+    const { double, user } = await bootOnLocalReviewWithTypedNote();
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
+
+    await chooseAnotherPullRequest(user);
+    await user.click(
+      await screen.findByRole("button", { name: "Stay on this review" }),
+    );
+
+    expect(openRequests(double)).toBe(0);
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    expect(
+      await screen.findByRole("region", { name: "Saved draft" }),
+    ).toBeTruthy();
   });
 });
