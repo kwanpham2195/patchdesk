@@ -1,5 +1,3 @@
-import { readFile, realpath } from "node:fs/promises";
-
 import { minLength, pipe, strictObject, string } from "valibot";
 
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
@@ -16,17 +14,11 @@ import {
   type IsoTimestamp,
   type LocalBaseRef,
   type LocalBranchName,
-  type RepoRelativePath,
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { LocalDraft } from "../domain/local-draft";
-import {
-  carryLocalDraft,
-  type LocalDraftCarryTarget,
-} from "../domain/local-draft-carry";
-import type { LocalPatchView } from "../domain/local-patch-view";
 import { casesHandled, err, ok, type Result } from "../domain/result";
 import {
   createReview,
@@ -44,8 +36,7 @@ import {
   type LocalReviewSource,
   type LocalReviewSourceRequest,
 } from "../domain/review-source";
-import type { LocalReviewSession } from "../domain/review-session";
-import { readCheckoutFile } from "./local-apply-checkout";
+import { carryToSession, readCarryTargets } from "./local-draft-carry-targets";
 import type { LocalApplySettlement } from "./local-apply-settlement";
 import {
   listsBaseRef,
@@ -66,7 +57,9 @@ import {
   describeSharedReviews,
   listOpenSharedReviews,
   type CheckoutSharedReviews,
+  type SharedReviewStore,
 } from "./local-shared-review-list";
+import type { AppLogService } from "./app-log-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
   ReviewWorkbenchProjection,
@@ -216,6 +209,8 @@ export class LocalReviewOpening {
   private readonly agentRefreshStartedAt = new Map<string, number>();
   /** The Reviews an agent's refresh is reading now; a second one is refused rather than run beside it. */
   private readonly agentRefreshing = new Set<string>();
+  /** Saved Review records a shared lookup skipped and warned about, so each warns once (#591). */
+  private readonly warnedInvalid = new Set<string>();
 
   constructor(
     private readonly preparation: Pick<
@@ -245,9 +240,15 @@ export class LocalReviewOpening {
         LocalApplySettlement,
         "settleEarlierSession"
       >;
+      readonly logs: Pick<AppLogService, "write">;
     },
     private readonly now: () => IsoTimestamp,
   ) {}
+
+  private get sharedReviews(): SharedReviewStore {
+    const { reviews, logs } = this.lifecycle;
+    return { reviews, logs, warnedInvalid: this.warnedInvalid };
+  }
 
   async open(
     request: LocalReviewOpenRequest,
@@ -379,7 +380,7 @@ export class LocalReviewOpening {
     branch: LocalBranchName,
   ): Promise<Result<ReadonlyArray<LocalBaseRef>, LocalReviewOpenFailure>> {
     const listed = await listOpenSharedReviews(
-      this.lifecycle.reviews,
+      this.sharedReviews,
       profileId,
       repository,
       checkout,
@@ -404,7 +405,7 @@ export class LocalReviewOpening {
     if (found._tag === "err") return found;
     const { repository, checkout, configured, head } = found.value;
     const shared = await listOpenSharedReviews(
-      this.lifecycle.reviews,
+      this.sharedReviews,
       profileId,
       repository,
       configured ? undefined : checkout,
@@ -858,82 +859,6 @@ export class LocalReviewOpening {
               : "not_found",
         });
   }
-}
-
-/** Read every draft's new view before Apply settlement can change the stored Finding drafts (#568). */
-async function readCarryTargets(
-  drafts: ReadonlyArray<LocalDraft>,
-  session: LocalReviewSession,
-  preparation: Pick<LocalReviewSessionPreparation, "readCommitFiles">,
-): Promise<ReadonlyMap<LocalPatchView, LocalDraftCarryTarget> | undefined> {
-  const originView = (draft: LocalDraft): LocalPatchView =>
-    draft.view ?? "combined";
-  const pathsByView = new Map<LocalPatchView, Set<RepoRelativePath>>();
-  for (const draft of drafts) {
-    const paths = pathsByView.get(originView(draft)) ?? new Set();
-    pathsByView.set(originView(draft), paths.add(draft.anchor.path));
-  }
-  const targets = new Map<LocalPatchView, LocalDraftCarryTarget>();
-  for (const [view, paths] of pathsByView) {
-    const target = await carryTargetOf(session, view, [...paths], preparation);
-    if (target === undefined) return undefined;
-    targets.set(view, target);
-  }
-  return targets;
-}
-
-/** Carry drafts after settlement using the target files read before it, preserving applied Findings. */
-function carryToSession(
-  drafts: ReadonlyArray<LocalDraft>,
-  targets: ReadonlyMap<LocalPatchView, LocalDraftCarryTarget>,
-): ReadonlyArray<LocalDraft> {
-  return drafts.map((draft) => {
-    const target = targets.get(draft.view ?? "combined");
-    return target === undefined ? draft : carryLocalDraft(draft, target);
-  });
-}
-
-/**
- * One view's patch of `session` and the text of `paths` in that view's new
- * tree: the Local snapshot, read from the session's worktree, for Combined
- * and Uncommitted; the checkout `HEAD` commit, read as git objects, for
- * Committed.
- */
-async function carryTargetOf(
-  session: LocalReviewSession,
-  view: LocalPatchView,
-  paths: ReadonlyArray<RepoRelativePath>,
-  preparation: Pick<LocalReviewSessionPreparation, "readCommitFiles">,
-): Promise<LocalDraftCarryTarget | undefined> {
-  const patchPath =
-    view === "combined"
-      ? session.patchPath
-      : session.viewPatches?.[view].patchPath;
-  if (patchPath === undefined) return undefined;
-  const patch = await readFile(patchPath, "utf8").catch(() => undefined);
-  if (patch === undefined) return undefined;
-  if (view === "committed") {
-    if (session.checkoutHeadSha === undefined) return undefined;
-    const files = await preparation.readCommitFiles(
-      session,
-      session.checkoutHeadSha,
-      paths,
-    );
-    return files._tag === "ok"
-      ? { sessionId: session.id, patch, files: files.value }
-      : undefined;
-  }
-  // `readCheckoutFile` refuses any path whose resolution differs, so the root is resolved first.
-  const root = await realpath(session.worktree.path).catch(() => undefined);
-  if (root === undefined) return undefined;
-  const files = new Map<RepoRelativePath, string>();
-  await Promise.all(
-    paths.map(async (path) => {
-      const bytes = await readCheckoutFile(root, path);
-      if (bytes !== undefined) files.set(path, bytes.toString("utf8"));
-    }),
-  );
-  return { sessionId: session.id, patch, files };
 }
 
 /** `branch_mismatch` when the checkout's `HEAD` is not the one the request expects; a shared Review names a detached `HEAD` `detachedHeadBranch`. */

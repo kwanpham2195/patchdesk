@@ -78,7 +78,10 @@ kinds. Only the first exists today.
 > branches"; the symbolic `<remote>/HEAD` is left out. Inference still
 > considers local branches only. `local_branch` had not shipped in a release
 > tag, so records stored with `baseBranch` are not migrated: they no longer
-> parse and count as unreadable.
+> parse. Shared lookups (the dialog's bases, `list_local_reviews`, and
+> `review_local` without a base) skip a record that no longer parses, with
+> one warning per record per process, so such Reviews stop appearing; any
+> other unreadable record still refuses `storage` (ADR 0052, #572).
 
 A local source is opened only on a repository the workspace profile lists with
 a `localPath`. Patchdesk reads local refs only; it never fetches for a local

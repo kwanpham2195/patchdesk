@@ -140,7 +140,9 @@ async function fixture(listing: ListResult) {
 
 describe("InsightRecovery.recoverAll", () => {
   it("reports an unreadable Review and still recovers the readable ones", async () => {
-    const value = await fixture(ok({ reviews: [readable], unreadable: 1 }));
+    const value = await fixture(
+      ok({ reviews: [readable], unreadable: 1, invalid: [] }),
+    );
 
     await value.recovery.recoverAll();
 
@@ -161,7 +163,9 @@ describe("InsightRecovery.recoverAll", () => {
   });
 
   it("records nothing when every Review in the profile is readable", async () => {
-    const value = await fixture(ok({ reviews: [readable], unreadable: 0 }));
+    const value = await fixture(
+      ok({ reviews: [readable], unreadable: 0, invalid: [] }),
+    );
 
     await value.recovery.recoverAll();
 

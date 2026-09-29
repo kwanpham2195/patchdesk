@@ -277,6 +277,7 @@ export async function localApplyHarness(
         logs: { write: (entry) => logs.push(entry) },
         now: () => now,
       }),
+      logs: { write: (entry) => logs.push(entry) },
     },
     seams.openingNow ?? (() => now),
   );

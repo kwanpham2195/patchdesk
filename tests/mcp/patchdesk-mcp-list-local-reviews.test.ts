@@ -213,11 +213,11 @@ describe("list_local_reviews (#558)", () => {
       content: {
         reviews: [
           {
-            baseBranch: "main",
+            baseRef: "refs/heads/main",
             changeIntent: { kind: "text", source: "agent" },
           },
           {
-            baseBranch: "develop",
+            baseRef: "refs/heads/develop",
             changeIntent: { kind: "text", source: "maintainer" },
           },
         ],

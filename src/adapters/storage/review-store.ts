@@ -30,6 +30,8 @@ export type ReviewStoreFailure = StorageFailure | ReviewStoreConflict;
 export type ReviewListing = {
   readonly reviews: ReadonlyArray<Review>;
   readonly unreadable: number;
+  /** The skipped records that were read but no longer parse as a Review; `unreadable` counts them too. */
+  readonly invalid: ReadonlyArray<ReviewId>;
 };
 
 /** Owns one durable Review aggregate per workspace profile and pull request. */
@@ -157,7 +159,8 @@ export class ReviewStore {
         this.paths.profileWorkbenchesDirectory(profileId),
       );
     } catch (cause: unknown) {
-      if (isNotFound(cause)) return ok({ reviews: [], unreadable: 0 });
+      if (isNotFound(cause))
+        return ok({ reviews: [], unreadable: 0, invalid: [] });
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
     }
 
@@ -173,11 +176,18 @@ export class ReviewStore {
     );
 
     const reviews: Review[] = [];
+    const invalid: ReviewId[] = [];
     let unreadable = 0;
-    for (const review of loaded) {
+    for (const [index, review] of loaded.entries()) {
       if (review._tag === "err") {
         // A vanished file is an ordinary race with deletion, not a lost record.
         if (review.error.reason !== "not_found") unreadable += 1;
+        const reviewId = reviewIds[index];
+        if (
+          review.error.reason === "invalid_stored_value" &&
+          reviewId !== undefined
+        )
+          invalid.push(reviewId);
         continue;
       }
       reviews.push(review.value);
@@ -186,7 +196,7 @@ export class ReviewStore {
     reviews.sort((left, right) =>
       right.updatedAt.localeCompare(left.updatedAt),
     );
-    return ok({ reviews, unreadable });
+    return ok({ reviews, unreadable, invalid });
   }
 }
 

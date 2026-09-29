@@ -517,6 +517,7 @@ export async function buildLocalApiContainer(
         logs,
         now: systemNow,
       }),
+      logs,
     },
     systemNow,
   );

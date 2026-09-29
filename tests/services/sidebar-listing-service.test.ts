@@ -216,6 +216,7 @@ describe("SidebarListingService.list", () => {
           review({ number: 4, updatedAt: "2026-02-15T00:00:00.000Z" }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -241,6 +242,7 @@ describe("SidebarListingService.list", () => {
           }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -259,6 +261,7 @@ describe("SidebarListingService.list", () => {
           review({ number: 22, updatedAt: "2026-04-01T00:00:00.000Z" }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -280,7 +283,7 @@ describe("SidebarListingService.list", () => {
         lastOpenedAt: `2026-06-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
       }),
     );
-    const value = service(ok({ reviews, unreadable: 0 }));
+    const value = service(ok({ reviews, unreadable: 0, invalid: [] }));
 
     const listing = must(await value.listed.list(profileId));
 
@@ -309,6 +312,7 @@ describe("SidebarListingService.list", () => {
           featBranch,
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -354,6 +358,7 @@ describe("SidebarListingService.list", () => {
           }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -378,7 +383,11 @@ describe("SidebarListingService.list", () => {
       checkout: "/work/pd-ux-pass",
     });
     const value = service(
-      ok({ reviews: [configured, linked, linkedBranch], unreadable: 0 }),
+      ok({
+        reviews: [configured, linked, linkedBranch],
+        unreadable: 0,
+        invalid: [],
+      }),
     );
 
     const { rows } = must(await value.listed.list(profileId));
@@ -411,7 +420,7 @@ describe("SidebarListingService.list", () => {
       localReview("b-1", day(24), { repo: "herdr" }),
       localReview("b-2", day(25), { repo: "herdr" }),
     ];
-    const value = service(ok({ reviews, unreadable: 0 }));
+    const value = service(ok({ reviews, unreadable: 0, invalid: [] }));
 
     const listing = must(await value.listed.list(profileId));
 
@@ -431,6 +440,7 @@ describe("SidebarListingService.list", () => {
       ok({
         reviews: [review({ number: 7, updatedAt: "2026-03-01T00:00:00.000Z" })],
         unreadable: 2,
+        invalid: [],
       }),
     );
 
@@ -454,6 +464,7 @@ describe("SidebarListingService.list", () => {
       ok({
         reviews: [review({ number: 7, updatedAt: "2026-03-01T00:00:00.000Z" })],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -471,6 +482,7 @@ describe("SidebarListingService.list", () => {
               review({ number: 7, updatedAt: "2026-03-01T00:00:00.000Z" }),
             ],
             unreadable: 1,
+            invalid: [],
           });
         },
       },
@@ -499,6 +511,7 @@ describe("SidebarListingService.list", () => {
           review({ number: 8, updatedAt: "2026-02-01T00:00:00.000Z" }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -519,6 +532,7 @@ describe("SidebarListingService.list", () => {
           }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -549,6 +563,7 @@ describe("SidebarListingService.list", () => {
           }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -569,6 +584,7 @@ describe("SidebarListingService.list", () => {
           review({ number: 13, updatedAt: "2026-03-01T00:00:00.000Z" }),
         ],
         unreadable: 0,
+        invalid: [],
       }),
     );
 
@@ -666,6 +682,7 @@ describe("SidebarListingService agent marker (ADR 0052)", () => {
               },
             ],
             unreadable: 0,
+            invalid: [],
           }),
           insights,
         );

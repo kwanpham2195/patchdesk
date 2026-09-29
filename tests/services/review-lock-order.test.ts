@@ -268,7 +268,8 @@ function reviewRetention(
     {
       profiles: { load: async () => ok({ id: profileId, repos: [] }) },
       reviews: {
-        list: async () => ok({ reviews: [localReview], unreadable: 0 }),
+        list: async () =>
+          ok({ reviews: [localReview], unreadable: 0, invalid: [] }),
         load: async () => ok(localReview),
       },
       localApplyOperations: { load: async () => err({ reason: "io" }) },
