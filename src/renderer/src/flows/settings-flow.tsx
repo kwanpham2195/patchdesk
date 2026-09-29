@@ -70,6 +70,7 @@ type SettingsFlowProps = {
   readonly profileSwitchState?: ProfileSwitchState;
   readonly onProfileSwitch?: (
     profileId: string,
+    returnFocus: HTMLElement | null,
   ) => Promise<ProfileSwitchResult>;
 };
 

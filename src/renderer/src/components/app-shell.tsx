@@ -61,6 +61,12 @@ type ProfileEntry = {
   readonly label: string;
 };
 
+/** `returnFocus` is where a leave dialog's Stay puts focus back, since the chosen option is gone by then (#657). */
+type AppShellProfileSwitch = (
+  id: string,
+  returnFocus: HTMLElement | null,
+) => void;
+
 export function AppShell({
   destination,
   navigationBlocked = false,
@@ -89,7 +95,7 @@ export function AppShell({
   readonly profiles?: ReadonlyArray<ProfileEntry>;
   readonly activeProfileId?: string;
   readonly profileSwitchState?: ProfileSwitchState;
-  readonly onProfileSwitch?: (id: string) => void;
+  readonly onProfileSwitch?: AppShellProfileSwitch;
   /** Jumps the Pull requests screen to an open/merged preset from
    * `INBOX_STATE_FILTERS` — the palette and the filter bar share this one
    * list so the two surfaces cannot drift. A prop, not a window
@@ -211,57 +217,13 @@ export function AppShell({
         </div>
         <div className="flex items-center gap-1.5">
           {profiles !== undefined && profiles.length > 0 ? (
-            <div className="flex items-center gap-1.5">
-              <Select
-                value={activeProfileId ?? ""}
-                items={profiles.map((profile) => ({
-                  label: profile.label,
-                  value: profile.id,
-                }))}
-                onValueChange={(value) => {
-                  if (value !== null && onProfileSwitch !== undefined)
-                    onProfileSwitch(value);
-                }}
-              >
-                <SelectTrigger
-                  aria-label="Active workspace"
-                  className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted"
-                >
-                  <User className="size-3" />
-                  <SelectValue placeholder="Select workspace">
-                    {activeProfileLabel ?? "Workspace"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {profiles.map((profile) => (
-                      <SelectItem key={profile.id} value={profile.id}>
-                        {profile.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              {profileSwitchState?.pendingOwner === "header" ? (
-                <span
-                  className="flex items-center gap-1 text-xs text-muted-foreground"
-                  role="status"
-                >
-                  <Spinner aria-hidden="true" className="size-3" />
-                  Switching to{" "}
-                  {profiles.find(
-                    (profile) =>
-                      profile.id === profileSwitchState.pendingTarget,
-                  )?.label ?? "workspace"}
-                  …
-                </span>
-              ) : null}
-              {profileSwitchState?.error?.owner === "header" ? (
-                <InlineError className="text-xs">
-                  {profileSwitchState.error.message}
-                </InlineError>
-              ) : null}
-            </div>
+            <TitlebarWorkspaceSwitcher
+              profiles={profiles}
+              activeProfileId={activeProfileId}
+              activeProfileLabel={activeProfileLabel}
+              profileSwitchState={profileSwitchState}
+              onProfileSwitch={onProfileSwitch}
+            />
           ) : null}
           <Tooltip>
             <TooltipTrigger
@@ -399,5 +361,75 @@ function VisitedToggle({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** The titlebar's Active workspace select, with its switch progress and error. */
+function TitlebarWorkspaceSwitcher({
+  profiles,
+  activeProfileId,
+  activeProfileLabel,
+  profileSwitchState,
+  onProfileSwitch,
+}: {
+  readonly profiles: ReadonlyArray<ProfileEntry>;
+  readonly activeProfileId: string | undefined;
+  readonly activeProfileLabel: string | undefined;
+  readonly profileSwitchState: ProfileSwitchState | undefined;
+  readonly onProfileSwitch: AppShellProfileSwitch | undefined;
+}): React.JSX.Element {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  return (
+    <div className="flex items-center gap-1.5">
+      <Select
+        value={activeProfileId ?? ""}
+        items={profiles.map((profile) => ({
+          label: profile.label,
+          value: profile.id,
+        }))}
+        onValueChange={(value) => {
+          if (value !== null && onProfileSwitch !== undefined)
+            onProfileSwitch(value, triggerRef.current);
+        }}
+      >
+        <SelectTrigger
+          ref={triggerRef}
+          aria-label="Active workspace"
+          className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted"
+        >
+          <User className="size-3" />
+          <SelectValue placeholder="Select workspace">
+            {activeProfileLabel ?? "Workspace"}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {profiles.map((profile) => (
+              <SelectItem key={profile.id} value={profile.id}>
+                {profile.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      {profileSwitchState?.pendingOwner === "header" ? (
+        <span
+          className="flex items-center gap-1 text-xs text-muted-foreground"
+          role="status"
+        >
+          <Spinner aria-hidden="true" className="size-3" />
+          Switching to{" "}
+          {profiles.find(
+            (profile) => profile.id === profileSwitchState.pendingTarget,
+          )?.label ?? "workspace"}
+          …
+        </span>
+      ) : null}
+      {profileSwitchState?.error?.owner === "header" ? (
+        <InlineError className="text-xs">
+          {profileSwitchState.error.message}
+        </InlineError>
+      ) : null}
+    </div>
   );
 }

@@ -200,6 +200,8 @@ describe("App leave guard for a workspace switch or local data clear (#635)", ()
   it.each([
     {
       entry: "titlebar",
+      switcher: (): HTMLElement =>
+        screen.getByRole("combobox", { name: "Active workspace" }),
       openSwitcher: async (
         user: ReturnType<typeof userEvent.setup>,
       ): Promise<void> => {
@@ -210,6 +212,11 @@ describe("App leave guard for a workspace switch or local data clear (#635)", ()
     },
     {
       entry: "Settings",
+      switcher: (): HTMLElement =>
+        within(screen.getByRole("dialog", { name: "Settings" })).getByRole(
+          "combobox",
+          { name: "Active workspace" },
+        ),
       openSwitcher: async (
         user: ReturnType<typeof userEvent.setup>,
       ): Promise<void> => {
@@ -234,8 +241,8 @@ describe("App leave guard for a workspace switch or local data clear (#635)", ()
       },
     },
   ])(
-    "holds a $entry workspace switch behind the leave dialog",
-    async ({ openSwitcher }) => {
+    "holds a $entry workspace switch behind the leave dialog, and Stay returns focus to the switcher",
+    async ({ switcher, openSwitcher }) => {
       const { double, user } = await bootOnReviewWithKeptSummary();
 
       await openSwitcher(user);
@@ -245,6 +252,7 @@ describe("App leave guard for a workspace switch or local data clear (#635)", ()
       );
       expect(reviewOnScreen()).not.toBeNull();
       expect(requestsTo(double, "/v1/profiles/select")).toBe(0);
+      await waitFor(() => expect(document.activeElement).toBe(switcher()));
 
       await openSwitcher(user);
       await user.click(await screen.findByRole("option", { name: "Other" }));

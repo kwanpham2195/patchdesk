@@ -59,7 +59,7 @@ export type WorkspaceProfileEditorHook = {
   readonly commitList: (field: ProfileListField) => void;
   readonly addListEntry: (field: ProfileListField) => void;
   readonly removeListEntry: (field: ProfileListField, entryId: string) => void;
-  readonly selectProfile: (id: string) => void;
+  readonly selectProfile: (id: string, returnFocus: HTMLElement | null) => void;
 };
 
 /** How long a control keeps saying "Saved" before going quiet again. */
@@ -86,7 +86,10 @@ export function useWorkspaceProfileEditor({
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly onProfileSwitch:
-    | ((profileId: string) => Promise<ProfileSwitchResult>)
+    | ((
+        profileId: string,
+        returnFocus: HTMLElement | null,
+      ) => Promise<ProfileSwitchResult>)
     | undefined;
 }): WorkspaceProfileEditorHook {
   const baseProfile = dashboard?.profile ?? unsavedProfile;
@@ -275,13 +278,13 @@ export function useWorkspaceProfileEditor({
     commitRows(field, next);
   };
 
-  const selectProfile = (id: string): void => {
+  const selectProfile = (id: string, returnFocus: HTMLElement | null): void => {
     const selected = profiles.find((profile) => profile.id === id);
     if (selected === undefined || onProfileSwitch === undefined) return;
     // Switching takes the generation, so a save still in flight for the
     // profile being left cannot apply its body on top of the one arriving.
     const sent = ++generation.current;
-    void onProfileSwitch(id).then((result) => {
+    void onProfileSwitch(id, returnFocus).then((result) => {
       // A patch that started during the switch owns the profile state now.
       if (result !== "applied" || generation.current !== sent) return;
       adopt(profileValuesFor(selected));

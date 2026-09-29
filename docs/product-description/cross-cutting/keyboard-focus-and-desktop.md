@@ -58,7 +58,7 @@ Opening Settings writes a session-only section marker for reload restoration. Ch
 
 The titlebar busy bar appears for tracked loading actions and remains until all overlapping tracked actions settle. It is shared feedback, not a global lock: feature-local controls decide what remains usable.
 
-When a GitHub write is pending, the guard offers Wait for completion and prevents leaving or closing the window until the final result arrives. When an unsaved Review draft is reported instead, the guard offers Stay on this review or Discard changes and leave.
+When a GitHub write is pending, the guard offers Wait for completion and prevents leaving or closing the window until the final result arrives. When an unsaved Review draft is reported instead, the guard offers Stay on this review or Discard changes and leave. Stay returns focus to the control that started the leave; after choosing another workspace, that is the Active workspace selector in the titlebar or in Settings → Workspace, and in Settings the next Tab stays inside Settings.
 
 Settings itself holds nothing back: its sections save their own values, so closing the overlay, changing section, reload, window close, and quit are never blocked by it. A native close path can show the desktop warning when the renderer cannot remain visible.
 
