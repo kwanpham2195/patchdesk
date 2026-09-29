@@ -243,6 +243,8 @@ type ReviewDiffViewProps = {
   readonly onActiveFileChange?: (path: string) => void;
   /** Lets ⌘F select a matched file in Selected; find is off without it. */
   readonly onSelectedPathChange?: (path: string) => void;
+  /** True while `selectedPath` is just the file this diff reports active; that change never scrolls. */
+  readonly selectedPathFollowsActive?: boolean;
   /** Optional main-process-only source seam used to hydrate omitted hunk context. */
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly virtualized?: boolean;
@@ -284,6 +286,7 @@ function ReviewDiffSurface({
   onCollapsedPathsChange,
   onActiveFileChange,
   onSelectedPathChange,
+  selectedPathFollowsActive = false,
   sourceSession,
   virtualized = true,
   localCommentAuthoring,
@@ -380,7 +383,7 @@ function ReviewDiffSurface({
     fileMode: preferences.fileMode,
     markdownPreviewActive,
     selectionScrollPending,
-    activePathRef,
+    selectedPathFollowsActive,
   });
   // Keep a selected finding inside a collapsed unchanged hunk materialized;
   // the user's option still controls every other unchanged hunk.
