@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { AppLogService, readLogFile } from "../../src/services/app-log-service";
@@ -15,6 +15,7 @@ const rotatedSeqSchema = v.looseObject({ seq: v.number() });
 const roots: Array<string> = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   for (const root of roots.splice(0))
     await rm(root, { recursive: true, force: true });
 });
@@ -23,6 +24,31 @@ async function makePaths(): Promise<PatchdeskPaths> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-logs-"));
   roots.push(root);
   return PatchdeskPaths.forTest(root);
+}
+
+async function rotatedLogNames(
+  paths: PatchdeskPaths,
+): Promise<ReadonlyArray<string>> {
+  return (await readdir(paths.logsDirectory())).filter((name) =>
+    /^patchdesk-\d+\.jsonl$/.test(name),
+  );
+}
+
+async function rotatedLogSeqs(
+  paths: PatchdeskPaths,
+  names: ReadonlyArray<string>,
+): Promise<ReadonlyArray<number>> {
+  const seqs: Array<number> = [];
+  for (const name of names) {
+    for (const line of (
+      await readFile(join(paths.logsDirectory(), name), "utf8")
+    ).split("\n")) {
+      if (line.trim().length === 0) continue;
+      const parsed = v.safeParse(rotatedSeqSchema, JSON.parse(line));
+      if (parsed.success) seqs.push(parsed.output.seq);
+    }
+  }
+  return seqs;
 }
 
 function entry(
@@ -101,9 +127,7 @@ describe("AppLogService", () => {
     await service.flush();
     const file = await readFile(paths.logFile(), "utf8");
     expect(file.split("\n").filter(Boolean).length).toBeGreaterThan(0);
-    const rotated = (await readdir(paths.logsDirectory())).filter((name) =>
-      /^patchdesk-\d+\.jsonl$/.test(name),
-    );
+    const rotated = await rotatedLogNames(paths);
     expect(rotated.length).toBeGreaterThan(0);
     expect(rotated.length).toBeLessThanOrEqual(2);
 
@@ -112,19 +136,61 @@ describe("AppLogService", () => {
     expect(all.every((item) => item.schemaVersion === 1)).toBe(true);
     // Rotation prunes old files by design; the retained files must hold a
     // contiguous seq tail ending at the newest entry, with nothing lost mid-stream.
-    const seqs = new Set(all.map((item) => item.seq));
-    for (const name of rotated) {
-      for (const line of (
-        await readFile(join(paths.logsDirectory(), name), "utf8")
-      ).split("\n")) {
-        if (line.trim().length === 0) continue;
-        const parsed = v.safeParse(rotatedSeqSchema, JSON.parse(line));
-        if (parsed.success) seqs.add(parsed.output.seq);
-      }
-    }
+    const seqs = new Set([
+      ...all.map((item) => item.seq),
+      ...(await rotatedLogSeqs(paths, rotated)),
+    ]);
     expect(Math.max(...seqs)).toBe(199);
     const first = 200 - seqs.size;
     for (let seq = first; seq < 200; seq += 1) expect(seqs.has(seq)).toBe(true);
+  });
+
+  it("keeps both rotated files when two rotations happen in the same millisecond", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-29T12:00:00.000Z"));
+    const paths = await makePaths();
+    const service = new AppLogService(paths, {
+      maxFileBytes: 1_024,
+      rotatedFilesToKeep: 5,
+    });
+    // Each entry is over 512 bytes, so the file rotates before every third
+    // write: entries 0-1 and 2-3 are rotated away, and entry 4 stays current.
+    for (let index = 0; index < 5; index += 1) {
+      service.write(entry({ message: `entry-${index}`.padEnd(500, "x") }));
+    }
+    await service.flush();
+
+    const rotated = await rotatedLogNames(paths);
+    expect(rotated).toHaveLength(2);
+    const current = (await readLogFile(paths)).map((item) => item.seq);
+    const rotatedSeqs = await rotatedLogSeqs(paths, rotated);
+    expect([...rotatedSeqs, ...current].sort((a, b) => a - b)).toEqual([
+      0, 1, 2, 3, 4,
+    ]);
+  });
+
+  it("prunes the oldest rotation when rotations keep sharing a millisecond", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-29T12:00:00.000Z"));
+    const paths = await makePaths();
+    const service = new AppLogService(paths, {
+      maxFileBytes: 1_024,
+      rotatedFilesToKeep: 2,
+    });
+    // Four rotations of two entries each; only the two newest stay, and a
+    // rotation after a prune must not reuse the pruned file's name.
+    for (let index = 0; index < 9; index += 1) {
+      service.write(entry({ message: `entry-${index}`.padEnd(500, "x") }));
+    }
+    await service.flush();
+
+    const rotated = await rotatedLogNames(paths);
+    expect(rotated).toHaveLength(2);
+    const current = (await readLogFile(paths)).map((item) => item.seq);
+    const rotatedSeqs = await rotatedLogSeqs(paths, rotated);
+    expect([...rotatedSeqs, ...current].sort((a, b) => a - b)).toEqual([
+      4, 5, 6, 7, 8,
+    ]);
   });
 
   it("redacts credentials before persisting", async () => {

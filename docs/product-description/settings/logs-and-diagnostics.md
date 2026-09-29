@@ -97,7 +97,7 @@ If the app log request fails, Logs shows `Logs unavailable` and keeps any entrie
 ## Edge cases
 
 - The app log masks credential shapes and sensitive metadata keys but may retain local paths and error detail.
-- The app log rotates at 5 MB and keeps three rotated files by default; logging failures do not break app flows.
+- The app log rotates at 5 MB and keeps the three newest rotated files by default, even when several rotations happen in the same millisecond; logging failures do not break app flows.
 - Review activity shows at most 40 recent events, while the Diagnostic store bounds the profile history to 200 events and 256 KB of file data.
 - A malformed activity event is skipped individually; a malformed whole response shows the activity error.
 - Diagnostics loads activity but does not expose the support-bundle export route.

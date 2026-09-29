@@ -34,6 +34,7 @@ type LogTailPage = {
 const APP_LOG_DEFAULT_BUFFER_SIZE = 2_000;
 const APP_LOG_DEFAULT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 const APP_LOG_DEFAULT_ROTATED_FILES_TO_KEEP = 3;
+const ROTATED_LOG_NAME = /^patchdesk-(\d+)\.jsonl$/;
 
 /**
  * Unified local log stream: in-memory ring buffer for tailing plus an
@@ -157,9 +158,8 @@ export class AppLogService {
       return;
     }
     if (size < this.maxFileBytes) return;
-    const rotated = join(dirname(file), `patchdesk-${Date.now()}.jsonl`);
     try {
-      await rename(file, rotated);
+      await rename(file, await nextRotatedLogPath(dirname(file)));
       await this.pruneRotated(dirname(file));
     } catch {
       // Keep appending to the oversized file rather than losing the stream.
@@ -170,7 +170,7 @@ export class AppLogService {
     try {
       const entries = await readdir(directory);
       const rotated = entries
-        .filter((name) => /^patchdesk-\d+\.jsonl$/.test(name))
+        .filter((name) => ROTATED_LOG_NAME.test(name))
         .sort();
       const excess = rotated.length - this.rotatedFilesToKeep;
       if (excess <= 0) return;
@@ -181,6 +181,23 @@ export class AppLogService {
       // Pruning is housekeeping; never fail the write.
     }
   }
+}
+
+/**
+ * Name a rotated log after the current millisecond, or one past the newest
+ * rotated log when that is later. Two rotations in one millisecond would
+ * otherwise share a name, and `rename` overwrites; reusing a pruned name would
+ * sort the newest file first, so pruning would delete it.
+ */
+async function nextRotatedLogPath(directory: string): Promise<string> {
+  const nextStamps = (await readdir(directory)).flatMap((name) => {
+    const stamp = ROTATED_LOG_NAME.exec(name)?.[1];
+    return stamp === undefined ? [] : [Number(stamp) + 1];
+  });
+  return join(
+    directory,
+    `patchdesk-${Math.max(Date.now(), ...nextStamps)}.jsonl`,
+  );
 }
 
 /** Load every valid entry from a log file (used by tests and file recovery). */

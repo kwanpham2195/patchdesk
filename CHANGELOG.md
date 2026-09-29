@@ -34,6 +34,8 @@
 
 - Stopped Codex CLI account Insight runs from saving their threads under `~/.codex/sessions`. Brief, Walkthrough, and Analysis threads no longer appear in `codex resume` or leave copies of review prompts and diffs on disk. #596
 
+- Fixed the app log losing entries when it rotated twice in the same millisecond. The second rotated file took the first one's name and replaced it; each rotated file now gets its own name, and pruning still removes the oldest first. #654
+
 - Fixed **MCP** `list_local_reviews` refusing with `storage` for a whole checkout when one of its shared Reviews had lost its current session, such as one Patchdesk moved aside after a failed read. That Review is now left out with a warning in the log, and the checkout's other Reviews are listed. A session that exists but cannot be read still refuses with `storage`. #632
 
 - Fixed the Walkthrough View options menu moving away from its button while scrolling. It stays near the button, flips above it when space is limited, and hides when the button leaves the reader. #593
