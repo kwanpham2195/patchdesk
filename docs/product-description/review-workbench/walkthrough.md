@@ -6,7 +6,7 @@ Walkthrough is a generated, guided reading sequence for one represented Review r
 
 ## The simple case
 
-The maintainer opens the Walkthrough. If none exists, a borderless empty state centers the Walkthrough icon, the heading "No walkthrough yet", a one-line explanation, and the Generate walkthrough action in the available reader space. With a retained Walkthrough, they read the active section and its cited diff hunks, move with Previous section, Next section, the chapter rail, the arrow keys, or plain `j` and `k`, and mark sections reviewed. When they want fewer distractions they choose Focus section, and Escape brings the docked layout back. The chapter rail shows how many hunks the reading path does not explain and links to the full Diff.
+The maintainer opens the Walkthrough. If none exists, a borderless empty state centers the Walkthrough icon, the heading "No walkthrough yet", a one-line explanation, and the Generate walkthrough action in the available reader space. With a retained Walkthrough, they read the active section and its cited diff hunks, move with Previous section, Next section, the chapter rail, the arrow keys, or plain `j` and `k`, and mark sections reviewed, or unmark one by pressing Section reviewed again. When they want fewer distractions they choose Focus section, and Escape brings the docked layout back. The chapter rail shows how many hunks the reading path does not explain and links to the full Diff.
 
 ## The task, event by event
 
@@ -18,6 +18,7 @@ stateDiagram-v2
     moving --> docked : focus selected section heading
     docked --> reviewed : Mark section reviewed
     reviewed --> docked : choose another section
+    reviewed --> docked : Section reviewed (unmark)
     docked --> focused : Focus section
     focused --> docked : Exit focus or Escape
     docked --> diff : Open Diff for the full patch
@@ -46,7 +47,7 @@ Reading, scrolling, changing diff layout or wrapping, switching between docked a
 
 For multiple sections, Previous section and Next section move one section and disable at the first and last boundaries. The chapter rail can jump directly to a section. The Left arrow and `k` move to the previous section; the Right arrow and `j` move to the next, matching the Vim convention. These keys act only when no text field, select, or combobox has focus. One-section and zero-section Walkthroughs omit the movement buttons.
 
-Mark section reviewed records the current section's stable identity and is offered only while the Review is open. Open Diff switches to the full patch without marking any hunk reviewed.
+Mark section reviewed records the current section's stable identity and is offered only while the Review is open. On a reviewed section the same button reads Section reviewed and removes the mark, with no confirmation. Open Diff switches to the full patch without marking any hunk reviewed.
 
 Focus section hides the Insight tab strip with its meta line, the Walkthrough title, and the chapter rail, and leaves a single reading column. The same button, now named Exit focus, returns to the docked layout. The layout change fades out and back in.
 
@@ -68,7 +69,7 @@ After movement, focus moves to the selected section heading and progress reflect
 
 Escape in the focused layout returns to the docked layout and puts focus on the Focus section button. Escape in the docked layout moves focus to the current section heading. Escape never leaves the Walkthrough.
 
-A reviewed section shows "Section reviewed" on a disabled button and a "done" badge in the rail. On a merged or closed Review, saved section markers still show, but the mark button is disabled for a reviewed section and absent for an unreviewed section. Moving between sections there changes only the screen and saves nothing. If a save fails, the reader shows "Walkthrough progress could not be saved." above the Walkthrough while the marker stays on screen.
+A reviewed section shows "Section reviewed" on a pressed button and a "done" badge in the rail. Pressing it while the Review is open unmarks the section: the button reads Mark section reviewed again, the rail badge goes, and the reviewed count drops. The change is saved whole, so it survives a renderer reload. On a merged or closed Review, saved section markers still show, but the mark button is disabled for a reviewed section and absent for an unreviewed section. Moving between sections there changes only the screen and saves nothing. If a save fails, the reader shows "Walkthrough progress could not be saved." above the Walkthrough while the marker stays on screen.
 
 Reviewed indicators are projected for the exact Walkthrough revision. They do not submit a GitHub review, mark files viewed on GitHub, or change pending-review state.
 
@@ -124,7 +125,7 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - Full section titles remain available on hover in the chapter rail even when a title is truncated.
 - The chapter rail counts every uncited hunk, including those from legacy unverified citations, without listing them as a Walkthrough section. Open Diff leads to the full patch when it is loaded.
 - The count and Open Diff are in the chapter rail, so they are unavailable in the focused layout.
-- An already reviewed section keeps its indicator and disables another Mark action.
+- Pressing Section reviewed on an open Review unmarks the section and removes its rail badge.
 - `j` moves to the next section and `k` to the previous, so the letters follow Vim while the arrows follow reading direction.
 - The Left and Right arrows move between sections rather than scrolling a wide hunk sideways.
 - Arrow keys, `j`, and `k` do nothing while a text field, select, or combobox has focus.

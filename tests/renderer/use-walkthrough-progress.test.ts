@@ -20,13 +20,20 @@ afterEach(() => {
 
 const progressPath = "/v1/reviews/insights/walkthrough/progress";
 
-function renderProgress(patches: ReviewWorkbenchPatch[]) {
+function renderProgress(
+  patches: ReviewWorkbenchPatch[],
+  reviewedSectionIds: string[] = [],
+) {
+  const walkthrough = withWalkthrough().insights.walkthrough;
   return renderHook(() =>
     useWalkthroughProgress({
       profileId: "profile",
       reviewId: "review-42",
       reviewOpen: true,
-      walkthrough: withWalkthrough().insights.walkthrough,
+      walkthrough: {
+        ...walkthrough,
+        progress: { reviewedSectionIds, supportReviewed: false },
+      },
       onWorkbenchPatch: (patch) => patches.push(patch),
     }),
   );
@@ -40,7 +47,7 @@ describe("useWalkthroughProgress", () => {
     const patches: ReviewWorkbenchPatch[] = [];
     const { result } = renderProgress(patches);
 
-    act(() => result.current.markSectionReviewed?.("section-1"));
+    act(() => result.current.toggleSectionReviewed?.("section-1"));
 
     expect(result.current.progress.reviewedSectionIds).toEqual(["section-1"]);
     await waitFor(() => expect(patches).toHaveLength(1));
@@ -61,6 +68,23 @@ describe("useWalkthroughProgress", () => {
     });
   });
 
+  it("unmarks a reviewed section and saves the progress without it", async () => {
+    desktop = installDesktopDouble({
+      [progressPath]: () => success({ status: "saved" }),
+    });
+    const patches: ReviewWorkbenchPatch[] = [];
+    const { result } = renderProgress(patches, ["section-1", "section-2"]);
+
+    act(() => result.current.toggleSectionReviewed?.("section-1"));
+
+    expect(result.current.progress.reviewedSectionIds).toEqual(["section-2"]);
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(desktop.request.mock.calls[0]?.[0]).toMatchObject({
+      path: progressPath,
+      body: { reviewedSectionIds: ["section-2"] },
+    });
+  });
+
   it("does not patch the workbench with an older save that answers last", async () => {
     const answers: Array<(response: DesktopResponse) => void> = [];
     desktop = installDesktopDouble({
@@ -70,8 +94,8 @@ describe("useWalkthroughProgress", () => {
     const patches: ReviewWorkbenchPatch[] = [];
     const { result } = renderProgress(patches);
 
-    act(() => result.current.markSectionReviewed?.("section-1"));
-    act(() => result.current.markSectionReviewed?.("section-2"));
+    act(() => result.current.toggleSectionReviewed?.("section-1"));
+    act(() => result.current.toggleSectionReviewed?.("section-2"));
     await waitFor(() => expect(answers).toHaveLength(2));
     await act(async () => answers[1]?.(success({ status: "saved" })));
     await act(async () => answers[0]?.(success({ status: "saved" })));

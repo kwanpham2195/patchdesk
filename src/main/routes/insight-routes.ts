@@ -24,7 +24,6 @@ import {
 } from "../../domain/ids";
 import type { InsightType } from "../../domain/insight-record";
 import { definedProps } from "../../domain/defined-props";
-import { err } from "../../domain/result";
 import {
   agentRunDeclineRequestSchema,
   agentRunRequestFailureKinds,
@@ -121,6 +120,17 @@ export function registerInsightRoutes(
         context,
         insights,
         "dismiss",
+        context.req.param("findingId"),
+        await jsonBody(context),
+      ),
+  );
+  app.post(
+    "/v1/reviews/insights/analysis/findings/:findingId/restore",
+    async (context) =>
+      insightFindingResponse(
+        context,
+        insights,
+        "restore",
         context.req.param("findingId"),
         await jsonBody(context),
       ),
@@ -277,6 +287,7 @@ function insightResultResponse(
     | Awaited<ReturnType<InsightCoordinatorSeam["start"]>>
     | Awaited<ReturnType<InsightCoordinatorSeam["cancel"]>>
     | Awaited<ReturnType<InsightCoordinatorSeam["dismissFinding"]>>
+    | Awaited<ReturnType<InsightCoordinatorSeam["restoreFinding"]>>
     | Awaited<ReturnType<InsightRunCoordinator["updateWalkthroughProgress"]>>
     | Awaited<ReturnType<InsightRunCoordinator["updateAnalysisVerification"]>>,
   successStatus: 200 | 202 = 200,
@@ -379,7 +390,7 @@ async function analysisVerificationResponse(
 async function insightFindingResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
-  action: "dismiss",
+  action: "dismiss" | "restore",
   findingIdInput: string,
   body: unknown,
 ): Promise<Response> {
@@ -390,7 +401,8 @@ async function insightFindingResponse(
   if (
     !parsed.success ||
     findingId._tag === "err" ||
-    (action === "dismiss" && parsed.output.reason === undefined)
+    // Dismiss requires a reason; Restore drops the stored one and takes none.
+    (action === "dismiss") !== (parsed.output.reason !== undefined)
   )
     return context.json({ error: "invalid_input" }, 400);
   const profileId = parseWorkspaceProfileId(parsed.output.profileId);
@@ -402,17 +414,21 @@ async function insightFindingResponse(
     runId._tag === "err"
   )
     return context.json({ error: "invalid_input" }, 400);
-  const result =
-    coordinator.dismissFinding === undefined
-      ? err("storage_unavailable" as const)
-      : await coordinator.dismissFinding({
-          profileId: profileId.value,
-          reviewId: reviewId.value,
-          runId: runId.value,
-          findingId: findingId.value,
+  const finding = {
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    runId: runId.value,
+    findingId: findingId.value,
+  };
+  return insightResultResponse(
+    context,
+    action === "dismiss"
+      ? await coordinator.dismissFinding({
+          ...finding,
           reason: parsed.output.reason ?? "",
-        });
-  return insightResultResponse(context, result);
+        })
+      : await coordinator.restoreFinding(finding),
+  );
 }
 
 function parseInsightType(value: string | undefined): InsightType | undefined {

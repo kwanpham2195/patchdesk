@@ -707,6 +707,46 @@ describe("InsightsSlot Walkthrough progress", () => {
     });
     expect(marker.getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("unmarks a reviewed section and drops its rail badge", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+      "/v1/reviews/insights/walkthrough/progress": () =>
+        success({ status: "saved" }),
+    });
+    const workbench = withWalkthrough();
+    const user = userEvent.setup();
+    render(
+      <PatchedInsights
+        initial={{
+          ...workbench,
+          insights: {
+            ...workbench.insights,
+            walkthrough: {
+              ...workbench.insights.walkthrough,
+              progress: {
+                reviewedSectionIds: ["section-1"],
+                supportReviewed: false,
+              },
+            },
+          },
+        }}
+      />,
+    );
+    const rail = within(
+      screen.getByRole("region", { name: "Walkthrough chapters" }),
+    );
+    expect(rail.getByLabelText("Reviewed")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Section reviewed" }));
+
+    expect(
+      screen
+        .getByRole("button", { name: "Mark section reviewed" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(rail.queryByLabelText("Reviewed")).toBeNull();
+  });
 });
 
 /** Applies workbench patches the way the app shell does, so a remounted reader sees them. */

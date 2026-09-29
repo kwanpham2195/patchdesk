@@ -13,8 +13,8 @@ type WalkthroughProgress = NonNullable<
 export type WalkthroughProgressControls = {
   readonly progress: WalkthroughProgress;
   readonly saveFailed: boolean;
-  /** Absent on a merged or closed Review, whose progress the server refuses to change. */
-  readonly markSectionReviewed?: (sectionId: string) => void;
+  /** Marks the section reviewed, or unmarks it when it already is. Absent on a merged or closed Review, whose progress the server refuses to change. */
+  readonly toggleSectionReviewed?: (sectionId: string) => void;
   readonly selectSection: (sectionId: string) => void;
 };
 
@@ -90,11 +90,11 @@ export function useWalkthroughProgress({
   return {
     progress,
     saveFailed: state.saveFailed,
-    markSectionReviewed: (sectionId) =>
+    toggleSectionReviewed: (sectionId) =>
       save({
         ...progress,
         reviewedSectionIds: progress.reviewedSectionIds.includes(sectionId)
-          ? progress.reviewedSectionIds
+          ? progress.reviewedSectionIds.filter((id) => id !== sectionId)
           : [...progress.reviewedSectionIds, sectionId],
       }),
     selectSection,

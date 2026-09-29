@@ -13,11 +13,19 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
+  parseInsightRunId,
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
+  type InsightRunId,
 } from "../../src/domain/ids";
-import type { InsightType } from "../../src/domain/insight-record";
+import {
+  beginInsightRun,
+  completeInsightRun,
+  type InsightType,
+} from "../../src/domain/insight-record";
+import type { ReviewResult } from "../../src/domain/review-result";
+import { contentHash } from "../../src/services/review-artifact-hash";
 import { createReview } from "../../src/domain/review";
 import {
   createLocalReviewSession,
@@ -295,4 +303,66 @@ export async function settled(
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error("Insight did not settle");
+}
+
+/**
+ * Retains one Analysis result against the session's current revision, so a
+ * test can name the exact Finding a Finding command has to resolve without
+ * running a provider.
+ */
+export async function seedRetainedAnalysis(
+  value: Awaited<ReturnType<typeof fixture>>,
+  findings: ReviewResult["findings"],
+): Promise<InsightRunId> {
+  const patchHash = must(
+    parseContentHash(await contentHash(value.session.patchPath)),
+  );
+  const runId = must(
+    parseInsightRunId(`insight-analysis-1-aaaaaaaaaaaa-${value.review.id}`),
+  );
+  const revision = { sessionId: value.session.id, headSha, patchHash };
+  const begun = await value.insights.mutate({
+    profileId,
+    reviewId: value.review.id,
+    type: "analysis",
+    now,
+    operation: (record) =>
+      beginInsightRun(record, {
+        id: runId,
+        revision,
+        provider: "pi",
+        model: "model",
+        reasoning: "medium",
+        language: "en",
+        startedAt: now,
+      }),
+  });
+  if (begun._tag === "err") throw new Error("could not seed an Analysis run");
+  const retained = await value.insights.mutate({
+    profileId,
+    reviewId: value.review.id,
+    type: "analysis",
+    now,
+    operation: (record) =>
+      completeInsightRun(
+        record,
+        runId,
+        {
+          runId,
+          revision,
+          generatedAt: now,
+          provenance: {
+            provider: "pi",
+            model: "model",
+            reasoning: "medium",
+            language: "en",
+          },
+          value: { ...analysisResult, verdict: "comment", findings },
+        },
+        now,
+      ),
+  });
+  if (retained._tag === "err")
+    throw new Error("could not retain the Analysis result");
+  return runId;
 }

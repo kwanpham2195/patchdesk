@@ -265,6 +265,7 @@ export function InsightsSlot({
     closeRunDialog,
     confirmRun,
     dismissFinding,
+    restoreFinding,
   } = useInsightRunControls({
     workbench,
     profileId,
@@ -341,6 +342,7 @@ export function InsightsSlot({
             : undefined,
     }),
     dismissFinding,
+    restoreFinding,
     analysisVerification,
     walkthroughProgress,
     walkthroughFocused,

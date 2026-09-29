@@ -170,7 +170,7 @@ function buildActions(
   overrides: Partial<NarrativeWalkthroughActions> = {},
 ): NarrativeWalkthroughActions {
   return {
-    onMarkSectionReviewed: vi.fn(),
+    onToggleSectionReviewed: vi.fn(),
     onSelectSection: vi.fn(),
     ...overrides,
   };
@@ -426,12 +426,12 @@ describe("narrative walkthrough takeover", () => {
   });
 
   it("shows empty walkthrough content without section actions or navigation", () => {
-    const onMarkSectionReviewed = vi.fn();
+    const onToggleSectionReviewed = vi.fn();
     render(
       <NarrativeWalkthrough
         walkthrough={buildEmptyWalkthrough()}
         reviewedSectionIds={[]}
-        actions={buildActions({ onMarkSectionReviewed })}
+        actions={buildActions({ onToggleSectionReviewed })}
       />,
     );
 
@@ -448,7 +448,7 @@ describe("narrative walkthrough takeover", () => {
     expect(
       screen.queryByRole("button", { name: /section reviewed/i }),
     ).toBeNull();
-    expect(onMarkSectionReviewed).not.toHaveBeenCalled();
+    expect(onToggleSectionReviewed).not.toHaveBeenCalled();
   });
 
   it("shows the only navigable section position without navigation controls", () => {
@@ -547,39 +547,24 @@ describe("narrative walkthrough takeover", () => {
     ).toBe(false);
   });
 
-  it("dispatches Mark section reviewed", () => {
-    const onMarkSectionReviewed = vi.fn();
-    render(
-      <NarrativeWalkthrough
-        walkthrough={buildWalkthrough()}
-        reviewedSectionIds={[]}
-        actions={buildActions({ onMarkSectionReviewed })}
-      />,
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Mark section reviewed" }),
-    );
-    expect(onMarkSectionReviewed).toHaveBeenCalledWith("section-1");
-  });
-
-  it("preserves reviewed indicators and disables the toggle when already reviewed", () => {
-    const onMarkSectionReviewed = vi.fn();
-    const actions = buildActions({ onMarkSectionReviewed });
-    render(
-      <NarrativeWalkthrough
-        walkthrough={buildWalkthrough()}
-        reviewedSectionIds={["section-1"]}
-        actions={actions}
-      />,
-    );
-    const reviewedChips = screen.getAllByLabelText("Reviewed");
-    expect(reviewedChips.length).toBeGreaterThan(0);
-    const markButton = screen.getByRole("button", { name: "Section reviewed" });
-    // SAFETY: The test query targets the element rendered by this case; this cast narrows the DOM API result before the next property access.
-    expect((markButton as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(markButton);
-    expect(onMarkSectionReviewed).not.toHaveBeenCalled();
-  });
+  it.each([
+    { reviewedSectionIds: [], label: "Mark section reviewed" },
+    { reviewedSectionIds: ["section-1"], label: "Section reviewed" },
+  ])(
+    "dispatches the reviewed toggle from $label",
+    ({ reviewedSectionIds, label }) => {
+      const onToggleSectionReviewed = vi.fn();
+      render(
+        <NarrativeWalkthrough
+          walkthrough={buildWalkthrough()}
+          reviewedSectionIds={reviewedSectionIds}
+          actions={buildActions({ onToggleSectionReviewed })}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      expect(onToggleSectionReviewed).toHaveBeenCalledWith("section-1");
+    },
+  );
 
   it("renders unique block identifiers so repeated files do not collapse", () => {
     const base = buildWalkthrough();

@@ -32,6 +32,7 @@ type InsightReaderBuilderInput = {
     finding: AnalysisFinding,
     reason: string,
   ) => Promise<void>;
+  readonly restoreFinding: (finding: AnalysisFinding) => Promise<void>;
   readonly analysisVerification: AnalysisVerificationControls;
   readonly walkthroughProgress: WalkthroughProgressControls;
   readonly walkthroughFocused: boolean;
@@ -112,6 +113,7 @@ export function buildInsightReaders({
   localApply,
   localDrafts,
   dismissFinding,
+  restoreFinding,
   analysisVerification,
   walkthroughProgress,
   onOpenFindingInDiff,
@@ -205,10 +207,11 @@ export function buildInsightReaders({
             }
           : {})}
         {...(workbench.insights.analysis.status === "current" &&
-        // The server refuses Add and Dismiss on a merged or closed Review.
+        // The server refuses Add, Dismiss, and Restore on a merged or closed Review.
         workbench.review.status === "open"
           ? {
               onDismissFinding: dismissFinding,
+              onRestoreFinding: restoreFinding,
               ...definedProps({
                 onAddFinding: addFinding,
                 addAllFindings,

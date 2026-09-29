@@ -69,7 +69,7 @@ type NarrativeWalkthroughModel = {
 
 export type NarrativeWalkthroughActions = {
   /** Absent on a merged or closed Review: reviewed marks stay visible but cannot change. */
-  readonly onMarkSectionReviewed?: (sectionId: string) => void;
+  readonly onToggleSectionReviewed?: (sectionId: string) => void;
   readonly onSelectSection: (sectionId: string) => void;
 };
 
@@ -511,7 +511,7 @@ export function NarrativeWalkthrough({
               ))
             )}
             {sections.length === 0 ||
-            (actions.onMarkSectionReviewed === undefined &&
+            (actions.onToggleSectionReviewed === undefined &&
               !reviewedSet.has(activeSection.id)) ? null : (
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -520,12 +520,9 @@ export function NarrativeWalkthrough({
                     reviewedSet.has(activeSection.id) ? "secondary" : "outline"
                   }
                   onClick={() =>
-                    actions.onMarkSectionReviewed?.(activeSection.id)
+                    actions.onToggleSectionReviewed?.(activeSection.id)
                   }
-                  disabled={
-                    actions.onMarkSectionReviewed === undefined ||
-                    reviewedSet.has(activeSection.id)
-                  }
+                  disabled={actions.onToggleSectionReviewed === undefined}
                   aria-pressed={reviewedSet.has(activeSection.id)}
                 >
                   <CheckCircle2 />

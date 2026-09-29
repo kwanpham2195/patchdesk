@@ -5,16 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   parseContentHash,
   parseFindingId,
-  parseInsightRunId,
   parseRepoRelativePath,
-  type InsightRunId,
 } from "../../src/domain/ids";
-import {
-  beginInsightRun,
-  completeInsightRun,
-} from "../../src/domain/insight-record";
 import { err, ok, type Result } from "../../src/domain/result";
-import type { ReviewResult } from "../../src/domain/review-result";
 import { contentHash } from "../../src/services/review-artifact-hash";
 import type { BriefReachRequest } from "../../src/services/brief-reach-service";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
@@ -33,6 +26,7 @@ import {
   must,
   now,
   profileId,
+  seedRetainedAnalysis,
   settled,
 } from "./insight-run-fixture";
 
@@ -847,68 +841,6 @@ describe("InsightRunCoordinator Finding suggestions", () => {
     mappingStatus: "mapped",
     suggestedReplacement: { code: "guarded" },
   } as const;
-
-  /**
-   * Retains one Analysis result against the session's current revision, so a
-   * test can name the exact Finding the suggestion command has to resolve
-   * without running a provider.
-   */
-  async function seedRetainedAnalysis(
-    value: Awaited<ReturnType<typeof fixture>>,
-    findings: ReviewResult["findings"],
-  ): Promise<InsightRunId> {
-    const patchHash = must(
-      parseContentHash(await contentHash(value.session.patchPath)),
-    );
-    const runId = must(
-      parseInsightRunId(`insight-analysis-1-aaaaaaaaaaaa-${value.review.id}`),
-    );
-    const revision = { sessionId: value.session.id, headSha, patchHash };
-    const begun = await value.insights.mutate({
-      profileId,
-      reviewId: value.review.id,
-      type: "analysis",
-      now,
-      operation: (record) =>
-        beginInsightRun(record, {
-          id: runId,
-          revision,
-          provider: "pi",
-          model: "model",
-          reasoning: "medium",
-          language: "en",
-          startedAt: now,
-        }),
-    });
-    if (begun._tag === "err") throw new Error("could not seed an Analysis run");
-    const retained = await value.insights.mutate({
-      profileId,
-      reviewId: value.review.id,
-      type: "analysis",
-      now,
-      operation: (record) =>
-        completeInsightRun(
-          record,
-          runId,
-          {
-            runId,
-            revision,
-            generatedAt: now,
-            provenance: {
-              provider: "pi",
-              model: "model",
-              reasoning: "medium",
-              language: "en",
-            },
-            value: { ...analysisResult, verdict: "comment", findings },
-          },
-          now,
-        ),
-    });
-    if (retained._tag === "err")
-      throw new Error("could not retain the Analysis result");
-    return runId;
-  }
 
   it("rebuilds the anchor and the suggestion body from the represented patch", async () => {
     const value = await fixture({
