@@ -67,9 +67,11 @@ export type LocalReviewSession = ReviewSessionFields & {
    */
   readonly checkoutHeadSha?: GitSha;
   /**
-   * The checkout's read-only fingerprint when the Local snapshot was taken
-   * (#611), which the update check compares with the checkout. Only a
-   * `local_branch` session has one; one stored before #611 has none.
+   * The checkout's read-only fingerprint from the latest prepare that landed
+   * on this session (#611), which the update check compares with the
+   * checkout. Metadata, not identity: a later prepare may replace it. Only a
+   * `local_branch` session has one, and not always: one stored before #611,
+   * or whose fingerprint could not be read, has none.
    */
   readonly checkoutFingerprint?: ContentHash;
   /**

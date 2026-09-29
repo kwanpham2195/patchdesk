@@ -12,6 +12,7 @@ import {
   type LocalBranchName,
   type WorkspaceProfileId,
 } from "../domain/ids";
+import { definedProps } from "../domain/defined-props";
 import { casesHandled, err, ok, type Result } from "../domain/result";
 import type { ReviewRevision } from "../domain/review-session";
 import type {
@@ -206,14 +207,14 @@ export class LocalReviewRevisionService {
       repositoryPath,
       { headSha: head.value.sha, mergeBase },
     );
-    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the ordering is the point: the fingerprint is read before the snapshot, so an edit between the two leaves an older fingerprint, a spurious update Refresh settles rather than a missed one
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the ordering is the point: the fingerprint is read before the snapshot, so an edit between the two leaves an older fingerprint, a spurious update rather than a missed one; the next prepare of that session records the newer fingerprint
     const snapshot = await this.writeLocalSnapshot(
       profileId,
       repositoryPath,
       head.value.sha,
     );
     if (snapshot._tag === "err") return snapshot;
-    if (fingerprint === undefined) return err({ _tag: "LocalGitFailed" });
+    // An unreadable fingerprint never refuses the read: the update check fingerprints a session without one on its first check.
     return ok({
       source: {
         kind: "local_branch",
@@ -222,7 +223,7 @@ export class LocalReviewRevisionService {
       },
       revision: { headSha: snapshot.value, baseSha: mergeBase },
       checkoutHeadSha: head.value.sha,
-      checkoutFingerprint: fingerprint,
+      ...definedProps({ checkoutFingerprint: fingerprint }),
     });
   }
 

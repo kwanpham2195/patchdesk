@@ -268,8 +268,6 @@ export function useReviewObservation({
     void runDetect();
     if (workbench.review.status !== "open") return undefined;
     const timer = window.setInterval(() => {
-      // A hidden window is checked when it shows again, by the visibility and focus handlers below.
-      if (document.visibilityState !== "visible") return;
       if (focusTimerRef.current !== undefined) {
         window.clearTimeout(focusTimerRef.current);
         focusTimerRef.current = undefined;

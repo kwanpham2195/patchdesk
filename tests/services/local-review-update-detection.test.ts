@@ -158,6 +158,41 @@ describe("Detecting updates on a shared local Review", () => {
     expect(await detect(reviewId)).toMatchObject({ _tag: "RevisionChanged" });
   });
 
+  it("clears Updates available on Refresh when only `git add` changed the checkout, which keeps the same snapshot", async () => {
+    const harness = await localApplyHarness();
+    await writeFile(join(harness.repositoryPath, "added.txt"), "new\n");
+    const { reviewId } = await editedReview(harness);
+    const { detect } = detection(harness);
+    git(harness.repositoryPath, "add", "added.txt");
+    expect(await detect(reviewId)).toMatchObject({ _tag: "RevisionChanged" });
+
+    const refreshed = value(await harness.opening.refresh(profileId, reviewId));
+
+    expect(refreshed.session.id).toBe(
+      value(await harness.reviews.load(profileId, reviewId)).currentSessionId,
+    );
+    expect(await detect(reviewId)).toMatchObject({ _tag: "Unchanged" });
+  });
+
+  it("opens a shared Review over an untracked nested repository and reports a commit inside it", async () => {
+    const harness = await localApplyHarness();
+    const nested = join(harness.repositoryPath, "nested");
+    await mkdir(nested);
+    git(nested, "init", "-q");
+    await writeFile(join(nested, "inner.txt"), "inner\n");
+    git(nested, "add", "inner.txt");
+    git(nested, "commit", "-q", "-m", "inner");
+
+    const { reviewId } = await editedReview(harness);
+    const { detect } = detection(harness);
+    expect(await detect(reviewId)).toMatchObject({ _tag: "Unchanged" });
+
+    await writeFile(join(nested, "inner.txt"), "changed\n");
+    git(nested, "commit", "-q", "-am", "inner again");
+
+    expect(await detect(reviewId)).toMatchObject({ _tag: "RevisionChanged" });
+  });
+
   it("skips a Commit Review, whose commit cannot change", async () => {
     const harness = await localApplyHarness();
     const head = git(harness.repositoryPath, "rev-parse", "HEAD").trim();
