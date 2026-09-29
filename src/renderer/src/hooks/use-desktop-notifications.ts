@@ -21,8 +21,9 @@ export type NotificationWorkbenchFocus = {
 };
 
 /**
- * Routes a clicked desktop notification to its Review through `navigate`, so
- * an unsaved draft or a pending write still holds the maintainer in place.
+ * Routes a clicked desktop notification, or an agent's `show_review`, to its
+ * Review through `navigate`, so an unsaved draft or a pending write still
+ * holds the maintainer in place.
  * An Insight click also returns the workbench focus to mount with, but only
  * when the click actually moves the screen: a parked navigation or a held
  * Review leaves nothing behind for a later open. A watched pull request

@@ -9,6 +9,7 @@ import {
 } from "valibot";
 
 import type { AppCapability } from "./ipc-contract";
+import type { ReviewWindow } from "./desktop-review-window";
 import type { WorkspaceProfileId } from "../domain/ids";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type {
@@ -168,6 +169,8 @@ export type LocalApiConfiguration = {
   readonly watchedPullRequestPolling?: boolean;
   /** Where the MCP shim's socket listens (ADR 0052); absent starts no listener. */
   readonly mcpSocketPath?: () => Promise<string>;
+  /** The desktop window MCP `show_review` switches; absent refuses it `window_unavailable`. */
+  readonly reviewWindow?: ReviewWindow;
   /** Main-process push to the renderer when a poll finds a change; absent tells no one. */
   readonly watchedPullRequestChanged?: (profileId: WorkspaceProfileId) => void;
 };

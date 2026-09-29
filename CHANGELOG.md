@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added **MCP**: `show_review` switches the Patchdesk window to a saved Review by its id, local or pull request, even when its repository is no longer watched. It never raises or focuses the window, so the Review is on screen the next time you switch to Patchdesk; with no window open, it opens one in the background. While a Finish review summary is kept or a GitHub write is in progress, it answers `held` and leaves the screen as it is. It refuses a Review of another profile with `profile_changed` and a shared Review whose checkout moved to another branch with `branch_mismatch`. #592
+
 - Constrained Codex CLI account Brief and Analysis runs with an output schema, as Walkthrough runs already were, so Codex shapes the answer to the fields and limits Patchdesk checks instead of returning a result that fails validation after a paid run. An optional field Codex returns as `null` is read as absent. #597
 
 - Grouped the diff toolbar's controls into menus so it fits on one line in a narrow pane. **Changes** chooses All changes or Since your review on a pull request, and Combined, Committed, or Uncommitted on a local Review. **View options** now also holds All files and Selected and the Context switch, and a disabled Context shows its reason under it. The viewed count, now "3/15 viewed", opens a menu with Mark all viewed or Show all. Each menu button names its current choice, and keyboard shortcuts are unchanged. #613

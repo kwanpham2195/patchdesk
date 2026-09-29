@@ -123,6 +123,17 @@ export const mcpToolManifest = {
     }),
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
+  show_review: {
+    description:
+      "Switch the Patchdesk window to an existing Review, so the maintainer finds it on screen the next time they switch to Patchdesk. It never raises or focuses the window, and it does not create or refresh a Review. It shows any saved Review of the active profile, local or pull request, even one whose repository is no longer watched. Returns status shown, or held when an unsaved Finish review summary or a GitHub write in progress keeps Patchdesk on its current screen; on held nothing moved, so tell the user the Review is ready for them to open. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it. A shared Review whose checkout is now on another branch is refused branch_mismatch, naming that branch.",
+    inputSchema: v.strictObject({ reviewId }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   get_feedback: {
     description:
       "Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against, the view it was written in (combined, committed, or uncommitted; its path, side, and lines are numbered in that view), inline (true when those lines sit inside a hunk of that view on the Review's current session), and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Pass nextCursor to read the next page.",
