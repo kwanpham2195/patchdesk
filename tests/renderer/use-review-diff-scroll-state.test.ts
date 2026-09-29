@@ -109,6 +109,7 @@ describe("useReviewDiffScrollState", () => {
           markdownPreviewActive: false,
           selectionScrollPending: state.selectionScrollPending,
           selectedPathFollowsActive: false,
+          fileChoiceCount: 0,
         });
         // Mirrors review-diff-view, which clears the remembered active path
         // whenever the rendered item list changes.
@@ -190,6 +191,7 @@ describe("useReviewDiffSelectionScroll", () => {
         markdownPreviewActive: false,
         selectionScrollPending,
         selectedPathFollowsActive: false,
+        fileChoiceCount: 0,
       }),
     );
 
@@ -221,6 +223,7 @@ describe("useReviewDiffSelectionScroll", () => {
         markdownPreviewActive: false,
         selectionScrollPending,
         selectedPathFollowsActive: false,
+        fileChoiceCount: 0,
       }),
     );
 
@@ -250,6 +253,7 @@ describe("useReviewDiffSelectionScroll", () => {
         markdownPreviewActive: false,
         selectionScrollPending,
         selectedPathFollowsActive: false,
+        fileChoiceCount: 0,
       }),
     );
 
@@ -286,6 +290,7 @@ describe("useReviewDiffSelectionScroll", () => {
           markdownPreviewActive,
           selectionScrollPending,
           selectedPathFollowsActive: false,
+          fileChoiceCount: 0,
         }),
       { initialProps: { markdownPreviewActive: false } },
     );
@@ -329,6 +334,7 @@ describe("useReviewDiffSelectionScroll", () => {
           markdownPreviewActive: false,
           selectionScrollPending,
           selectedPathFollowsActive: false,
+          fileChoiceCount: 0,
         }),
       { initialProps: { rendered: items } },
     );
@@ -372,6 +378,7 @@ describe("useReviewDiffSelectionScroll", () => {
           markdownPreviewActive: false,
           selectionScrollPending,
           selectedPathFollowsActive,
+          fileChoiceCount: 0,
         }),
       { initialProps: { selectedPath: "src/a.ts" } },
     );
@@ -383,6 +390,37 @@ describe("useReviewDiffSelectionScroll", () => {
     await flushFrames();
 
     expect(scrollTo.mock.calls).toEqual(scrolls ? [[selectionTarget]] : []);
+    expect(selectionScrollPending.current).toBe(false);
+  });
+
+  it("scrolls to the file's header again when its already selected Browse row is clicked (#660)", async () => {
+    const scrollTo = vi.fn();
+    const selectionScrollPending = { current: false };
+    const viewer = fakeViewer(scrollTo, () => ["src/a.ts", "src/b.ts"]);
+    const { rerender } = renderHook(
+      ({ fileChoiceCount }: { readonly fileChoiceCount: number }) =>
+        useReviewDiffSelectionScroll({
+          viewer,
+          items,
+          selectedPath: "src/b.ts",
+          selectedLines: null,
+          diffStyle: "unified",
+          fileMode: "all",
+          markdownPreviewActive: false,
+          selectionScrollPending,
+          selectedPathFollowsActive: false,
+          fileChoiceCount,
+        }),
+      { initialProps: { fileChoiceCount: 1 } },
+    );
+    await flushFrames();
+    scrollTo.mockClear();
+
+    // The user scrolled inside src/b.ts; the click gives the same path back.
+    rerender({ fileChoiceCount: 2 });
+    await flushFrames();
+
+    expect(scrollTo.mock.calls).toEqual([[selectionTarget]]);
     expect(selectionScrollPending.current).toBe(false);
   });
 });

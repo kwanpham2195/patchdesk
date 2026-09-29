@@ -245,6 +245,8 @@ type ReviewDiffViewProps = {
   readonly onSelectedPathChange?: (path: string) => void;
   /** True while `selectedPath` is just the file this diff reports active; that change never scrolls. */
   readonly selectedPathFollowsActive?: boolean;
+  /** A new value scrolls to `selectedPath` again, such as a click on its Browse row. */
+  readonly fileChoiceCount?: number;
   /** Optional main-process-only source seam used to hydrate omitted hunk context. */
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly virtualized?: boolean;
@@ -287,6 +289,7 @@ function ReviewDiffSurface({
   onActiveFileChange,
   onSelectedPathChange,
   selectedPathFollowsActive = false,
+  fileChoiceCount = 0,
   sourceSession,
   virtualized = true,
   localCommentAuthoring,
@@ -384,6 +387,7 @@ function ReviewDiffSurface({
     markdownPreviewActive,
     selectionScrollPending,
     selectedPathFollowsActive,
+    fileChoiceCount,
   });
   // Keep a selected finding inside a collapsed unchanged hunk materialized;
   // the user's option still controls every other unchanged hunk.

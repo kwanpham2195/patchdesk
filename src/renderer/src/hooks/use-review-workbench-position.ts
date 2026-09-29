@@ -30,6 +30,10 @@ export type ReviewWorkbenchPositionState = {
   readonly commitWorkbenchPosition: (next: WorkbenchPosition) => void;
   readonly selectSection: (next: ReviewNavigatorSection) => void;
   readonly selectCommit: (sha: string) => void;
+  /** A Browse row click: opens the file in the Diff and drops any thread or range mark. */
+  readonly chooseFile: (path: string) => void;
+  /** Counts `chooseFile` calls, so a click on the file already selected still scrolls to it (#660). */
+  readonly fileChoiceCount: number;
 };
 
 /** A restored section the source has no tab for opens Browse (#557). */
@@ -153,6 +157,21 @@ export function useReviewWorkbenchPosition({
     },
     [loadCommit],
   );
+  const [fileChoiceCount, setFileChoiceCount] = useState(0);
+  const chooseFile = useCallback(
+    (path: string): void => {
+      commitWorkbenchPosition({
+        activeTab: "diff",
+        section: "files",
+        selectedPath: path,
+      });
+      setActivePath(path);
+      setSelectedThreadId(undefined);
+      setSelectedRange(undefined);
+      setFileChoiceCount((count) => count + 1);
+    },
+    [commitWorkbenchPosition],
+  );
   if (previousRevision !== model.revision.reviewedHeadSha) {
     setPreviousRevision(model.revision.reviewedHeadSha);
     setSelectedCommitSha(undefined);
@@ -175,5 +194,7 @@ export function useReviewWorkbenchPosition({
     commitWorkbenchPosition,
     selectSection,
     selectCommit,
+    chooseFile,
+    fileChoiceCount,
   };
 }

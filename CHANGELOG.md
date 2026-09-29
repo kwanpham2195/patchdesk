@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a click on the highlighted Browse row doing nothing in All files. After you choose a file and scroll inside it or past it, clicking its row again scrolls the diff back to that file's header, as a click on any other row does. Scrolling the diff still only moves the Browse highlight. #660
+
 - Fixed a shared local Review that had lost its current session, such as one Patchdesk moved aside after a failed read, refusing with `storage` when reopened from the Visited pull requests column or the Local review dialog after its checkout changed. It now opens on the checkout's content with no files viewed, and **MCP** `review_local` opens it the same way instead of failing; `list_local_reviews` then lists it again. A session that exists but cannot be read still refuses with `storage`, which `review_local` now names instead of `not_found`. #652
 
 - Fixed reloading with Settings → Workspace open creating and switching to a new empty workspace such as `default-3`. Patchdesk adopts the GitHub CLI account only after the workspace loads, and only into a workspace with no account. #649

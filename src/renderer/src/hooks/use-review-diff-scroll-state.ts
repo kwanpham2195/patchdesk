@@ -194,6 +194,7 @@ export function useReviewDiffSelectionScroll<T>({
   markdownPreviewActive,
   selectionScrollPending,
   selectedPathFollowsActive,
+  fileChoiceCount,
 }: {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
   readonly items: ReadonlyArray<Pick<CodeViewDiffItem<unknown>, "id">>;
@@ -210,8 +211,12 @@ export function useReviewDiffSelectionScroll<T>({
   /** No file is chosen, so `selectedPath` is the file the diff reported active.
    * Kept out of the key: the large-diff deferral lags the path behind it. */
   readonly selectedPathFollowsActive: boolean;
+  /** Bumped by each Browse row click, which gives the same path again when
+   * its row is already selected (#660). Scroll-follow never bumps it. */
+  readonly fileChoiceCount: number;
 }): void {
   const selectionScrollKey = [
+    fileChoiceCount,
     diffStyle,
     fileMode,
     markdownPreviewActive ? "preview" : "diff",

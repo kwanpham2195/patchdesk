@@ -256,6 +256,46 @@ test("file-tree selection scrolls the all-files viewer to the chosen file", asyn
   }
 });
 
+test("clicking the selected Browse row again scrolls back to that file's header (#660)", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
+    const diffViewport = page.locator(".review-diff-viewport");
+    const scrollTop = () =>
+      diffViewport.evaluate((viewport) => viewport.scrollTop);
+    const row = page.getByRole("treeitem", { name: "b.ts" });
+
+    await row.click();
+    // The sticky header stays visible while scrolling inside the file, so
+    // only the scroll position shows whether the file's top came back.
+    let headerTop = -1;
+    await expect
+      .poll(async () => {
+        const previous = headerTop;
+        headerTop = await scrollTop();
+        return headerTop > 0 && headerTop === previous;
+      })
+      .toBe(true);
+
+    await diffViewport.evaluate((viewport) => {
+      viewport.scrollTop += 300;
+    });
+    await expect(
+      page.locator('file-tree-container[data-active-path="src/b.ts"]'),
+    ).toBeVisible();
+    expect(await scrollTop()).toBeGreaterThan(headerTop);
+
+    await row.click();
+
+    await expect.poll(scrollTop).toBe(headerTop);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("Threads section selection on the new side scrolls the diff and marks the anchored line", async ({
   page,
 }) => {

@@ -55,6 +55,7 @@ export function DiffWorkbench({
   bodyContext,
   controlledSelectedPath,
   selectedPathFollowsActive,
+  fileChoiceCount,
   onSelectedPathChange,
   onActiveFileChange,
   hideFileNavigation = false,
@@ -87,6 +88,8 @@ export function DiffWorkbench({
   readonly controlledSelectedPath?: string;
   /** True while no file is chosen and `controlledSelectedPath` is just the file the diff reports active. */
   readonly selectedPathFollowsActive?: boolean;
+  /** Bumped by each Browse row click; a new value scrolls to the selected file even when its path is unchanged. */
+  readonly fileChoiceCount?: number;
   readonly onSelectedPathChange?: (path: string) => void;
   readonly onActiveFileChange?: (path: string) => void;
   readonly hideFileNavigation?: boolean;
@@ -220,8 +223,7 @@ export function DiffWorkbench({
           >
             <PierreFileTree
               files={fileRows}
-              {...(selectedPath === undefined ? {} : { selectedPath })}
-              {...(activePath === undefined ? {} : { activePath })}
+              {...definedProps({ selectedPath, activePath })}
               onSelect={selectFile}
             />
           </aside>
@@ -265,6 +267,7 @@ export function DiffWorkbench({
             onActiveFileChange={reportActiveFile}
             onSelectedPathChange={selectFile}
             selectedPathFollowsActive={selectedPathFollowsActive ?? false}
+            fileChoiceCount={fileChoiceCount ?? 0}
             preferences={preferences}
             collapsedPaths={collapsedPaths}
             onPreferencesChange={updatePreferences}
@@ -319,10 +322,7 @@ export function DiffWorkbench({
                       <div className="min-h-0 overflow-auto p-4">
                         <PierreFileTree
                           files={fileRows}
-                          {...(selectedPath === undefined
-                            ? {}
-                            : { selectedPath })}
-                          {...(activePath === undefined ? {} : { activePath })}
+                          {...definedProps({ selectedPath, activePath })}
                           onSelect={(path) => {
                             selectFile(path);
                             setNavigationOpen(false);

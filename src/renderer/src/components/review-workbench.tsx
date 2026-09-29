@@ -732,16 +732,7 @@ export function ReviewWorkbench({
                         lastLooked: model.review.lastLooked,
                       })}
                       onSectionChange={selectNavigatorSection}
-                      onFileSelect={(path) => {
-                        commitWorkbenchPosition({
-                          activeTab: "diff",
-                          section: "files",
-                          selectedPath: path,
-                        });
-                        setActivePath(path);
-                        setSelectedThreadId(undefined);
-                        setSelectedRange(undefined);
-                      }}
+                      onFileSelect={position.chooseFile}
                       onCommitSelect={selectCommitSlice}
                       onThreadSelect={(row: ConversationThreadRow) => {
                         setSelectedThreadId(row.id);
@@ -842,6 +833,7 @@ export function ReviewWorkbench({
                             controlledSelectedPath: diffSelectedPath,
                           })}
                           selectedPathFollowsActive={selectionFollowsActive}
+                          fileChoiceCount={position.fileChoiceCount}
                           onSelectedPathChange={(path: string) => {
                             commitWorkbenchPosition({
                               activeTab: "diff",
