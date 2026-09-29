@@ -74,19 +74,26 @@ export type CurrentSession = {
 };
 
 /**
- * A stored Review's current session, its patch hashed as read now. An
- * unreadable session record is `storage`; an unreadable patch leaves
+ * A stored Review's current session, its patch hashed as read now. A
+ * session record that is gone, as after quarantine, is `session_not_found`;
+ * one that cannot be read is `storage`; an unreadable patch leaves
  * `patchHash` out.
  */
 export async function describeCurrentSession(
   sessions: Pick<ReviewSessionStore, "load">,
   review: Pick<Review, "id" | "identity" | "currentSessionId">,
-): Promise<Result<CurrentSession, { readonly reason: "storage" }>> {
+): Promise<
+  Result<CurrentSession, { readonly reason: "storage" | "session_not_found" }>
+> {
   const session = await sessions.load(
     review.identity.profileId,
     review.currentSessionId,
   );
-  if (session._tag === "err") return err({ reason: "storage" });
+  if (session._tag === "err")
+    return err({
+      reason:
+        session.error.reason === "not_found" ? "session_not_found" : "storage",
+    });
   const patch = await readFile(session.value.patchPath, "utf8").catch(
     () => undefined,
   );

@@ -808,4 +808,62 @@ describe("the checkout's shared Reviews an agent looks up (#558)", () => {
       ),
     ).toHaveLength(1);
   });
+
+  /** A checkout with shared Reviews on `feature` and on `later`, the one on `later` opened last. */
+  const twoBranchReviews = async (harness: LocalApplyHarness) => {
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "untracked.txt"), "new\n");
+    const feature = await harness.open(shared());
+    git(repositoryPath, "checkout", "-q", "-b", "later");
+    const later = await harness.open(shared());
+    return {
+      feature,
+      laterSessionFile: harness.paths.sessionFile(
+        profileId,
+        value(parseReviewSessionId(later.session.id)),
+      ),
+      laterReviewId: later.review.id,
+    };
+  };
+
+  it("skips a Review whose current session is missing, warning once, and lists the others (#632)", async () => {
+    const harness = await localApplyHarness();
+    const { feature, laterSessionFile, laterReviewId } =
+      await twoBranchReviews(harness);
+    await rm(laterSessionFile);
+
+    const listed = await listFrom(harness, harness.repositoryPath);
+    await listFrom(harness, harness.repositoryPath);
+
+    expect(listed.reviews.map(({ reviewId }) => reviewId)).toEqual([
+      feature.review.id,
+    ]);
+    expect(listed.reviews[0]).toMatchObject({
+      sessionId: feature.session.id,
+      branch: "feature",
+    });
+    expect(
+      harness.logs.filter(
+        (entry) =>
+          entry.topic === "local-review-list" &&
+          entry.meta?.["reviewId"] === laterReviewId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("refuses storage when a listed Review's current session cannot be read", async () => {
+    const harness = await localApplyHarness();
+    const { laterSessionFile } = await twoBranchReviews(harness);
+    await rm(laterSessionFile);
+    // A directory where the record belongs reads as an I/O failure, not a missing file.
+    await mkdir(laterSessionFile);
+
+    const refused = await harness.opening.listSharedReviews(
+      profileId,
+      value(parseAbsolutePath(harness.repositoryPath)),
+    );
+
+    expect(refused).toEqual(err({ reason: "storage" }));
+  });
 });

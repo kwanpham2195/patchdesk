@@ -209,8 +209,8 @@ export class LocalReviewOpening {
   private readonly agentRefreshStartedAt = new Map<string, number>();
   /** The Reviews an agent's refresh is reading now; a second one is refused rather than run beside it. */
   private readonly agentRefreshing = new Set<string>();
-  /** Saved Review records a shared lookup skipped and warned about, so each warns once (#591). */
-  private readonly warnedInvalid = new Set<string>();
+  /** Saved Review records and missing current sessions a shared lookup skipped and warned about, so each warns once (#591, #632). */
+  private readonly warnedSkipped = new Set<string>();
 
   constructor(
     private readonly preparation: Pick<
@@ -247,7 +247,7 @@ export class LocalReviewOpening {
 
   private get sharedReviews(): SharedReviewStore {
     const { reviews, logs } = this.lifecycle;
-    return { reviews, logs, warnedInvalid: this.warnedInvalid };
+    return { reviews, logs, warnedSkipped: this.warnedSkipped };
   }
 
   async open(
@@ -394,8 +394,9 @@ export class LocalReviewOpening {
   /**
    * The open shared Reviews of the checkout containing `directory`, each on
    * its current session (ADR 0052 `list_local_reviews`). A read: it prepares
-   * nothing and stamps no `lastOpenedAt`. A current session that cannot be
-   * read refuses the whole list `storage` rather than hide that Review.
+   * nothing and stamps no `lastOpenedAt`. A Review whose current session is
+   * gone is left out; one that cannot be read refuses the whole list
+   * `storage` rather than hide that Review.
    */
   async listSharedReviews(
     profileId: WorkspaceProfileId,
@@ -413,6 +414,7 @@ export class LocalReviewOpening {
     if (shared._tag === "err") return shared;
     const reviews = await describeSharedReviews(
       this.lifecycle.sessions,
+      this.sharedReviews,
       shared.value,
     );
     return reviews._tag === "ok"
