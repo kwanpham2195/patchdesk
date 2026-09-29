@@ -32,6 +32,7 @@ import {
   isPullRequestReviewSession,
   type LocalCommit,
   type LocalReviewSession,
+  type LocalSessionRound,
   type LocalSessionViewPatch,
   type PullRequestReviewSession,
   type ReviewSession,
@@ -139,6 +140,19 @@ const localSessionSchema = v.strictObject({
       newest: v.array(localCommitSchema),
       total: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
     }),
+  ),
+  round: v.optional(
+    v.variant("_tag", [
+      v.strictObject({
+        _tag: v.literal("Patch"),
+        fromSessionId: v.string(),
+        patch: viewPatchSchema,
+      }),
+      v.strictObject({
+        _tag: v.literal("BaseMoved"),
+        fromSessionId: v.string(),
+      }),
+    ]),
   ),
 });
 
@@ -411,7 +425,8 @@ function parseLocalSession(
     return raw.checkoutHeadSha === undefined &&
       raw.checkoutFingerprint === undefined &&
       raw.viewPatches === undefined &&
-      raw.commits === undefined
+      raw.commits === undefined &&
+      raw.round === undefined
       ? fields
       : invalidRead();
   if (
@@ -429,6 +444,7 @@ function parseLocalSession(
   const committed = parseViewPatch(raw.viewPatches.committed);
   const uncommitted = parseViewPatch(raw.viewPatches.uncommitted);
   const newest = parseLocalCommits(raw.commits.newest);
+  const round = raw.round === undefined ? undefined : parseRound(raw.round);
   if (
     checkoutHeadSha._tag === "err" ||
     checkoutFingerprint?._tag === "err" ||
@@ -438,7 +454,8 @@ function parseLocalSession(
     newest === undefined ||
     newest.length > raw.commits.total ||
     combined.patchPath !== fields.value.patchPath ||
-    combined.patchHash !== fields.value.canonicalPatchHash
+    combined.patchHash !== fields.value.canonicalPatchHash ||
+    round === "invalid"
   )
     return invalidRead();
   return ok({
@@ -446,8 +463,24 @@ function parseLocalSession(
     checkoutHeadSha: checkoutHeadSha.value,
     viewPatches: { combined, committed, uncommitted },
     commits: { newest, total: raw.commits.total },
-    ...definedProps({ checkoutFingerprint: checkoutFingerprint?.value }),
+    ...definedProps({
+      checkoutFingerprint: checkoutFingerprint?.value,
+      round,
+    }),
   });
+}
+
+function parseRound(
+  raw: NonNullable<RawLocalSession["round"]>,
+): LocalSessionRound | "invalid" {
+  const fromSessionId = parseReviewSessionId(raw.fromSessionId);
+  if (fromSessionId._tag === "err") return "invalid";
+  if (raw._tag === "BaseMoved")
+    return { _tag: "BaseMoved", fromSessionId: fromSessionId.value };
+  const patch = parseViewPatch(raw.patch);
+  return patch === undefined
+    ? "invalid"
+    : { _tag: "Patch", fromSessionId: fromSessionId.value, patch };
 }
 
 function parseLocalCommits(

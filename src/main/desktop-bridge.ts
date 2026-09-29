@@ -96,6 +96,7 @@ const allowedRoutes = new Set([
   "GET /v1/reviews/local-branches",
   "POST /v1/reviews/local-refresh",
   "POST /v1/reviews/local-patch-view",
+  "POST /v1/reviews/local-since-last-refresh",
   "POST /v1/reviews/local-apply",
   "POST /v1/reviews/local-apply/recover",
   "POST /v1/reviews/local-drafts/add",

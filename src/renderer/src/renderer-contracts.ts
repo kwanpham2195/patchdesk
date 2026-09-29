@@ -864,6 +864,7 @@ const workbenchProjectionSchema = v.strictObject({
       uncommitted: patchViewSchema,
     }),
   ),
+  sinceLastRefresh: v.optional(v.picklist(["available", "none", "base_moved"])),
   scope: v.optional(changeScopeSchema),
   pullRequest: v.optional(pullRequestSummarySchema),
   commits: v.array(commitSchema),

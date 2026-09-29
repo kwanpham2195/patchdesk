@@ -172,6 +172,22 @@ export function registerLocalReviewRoutes(
     );
   });
 
+  // The current session's Since last Refresh patch, read from the file its move wrote (#604).
+  app.post("/v1/reviews/local-since-last-refresh", async (context) => {
+    const parsed = safeParse(
+      strictObject(draftWriteKeySchema),
+      await jsonBody(context),
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const key = parseDraftWriteKey(parsed.output);
+    if (key === undefined) return context.json({ error: "invalid_input" }, 400);
+    return serviceResponse(
+      context,
+      await container.localPatchViews.loadRound(key),
+      localPatchViewFailureKinds,
+    );
+  });
+
   // Identity only: the main process derives every range and replacement (ADR 0048).
   app.post("/v1/reviews/local-apply", async (context) => {
     const parsed = safeParse(localApplySchema, await jsonBody(context));

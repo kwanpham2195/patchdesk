@@ -15,6 +15,7 @@ import {
   type GitSha,
   type IsoTimestamp,
   type RepoRelativePath,
+  type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
 import { definedProps } from "../domain/defined-props";
@@ -28,6 +29,7 @@ import {
   createLocalReviewSession,
   isPullRequestReviewSession,
   type LocalReviewSession,
+  type LocalSessionRound,
   type LocalSessionViewPatch,
   type ReviewRevision,
 } from "../domain/review-session";
@@ -547,6 +549,89 @@ export class LocalReviewSessionPreparation {
       rendered.push({ view, patch: patch.value });
     }
     return ok(rendered);
+  }
+
+  /**
+   * Records on the session the Review moves to what the move changed (#604):
+   * the patch between the two Local snapshots, or `BaseMoved` when the merge
+   * base moved. It reads the previous snapshot's managed ref, so the caller
+   * records it before retention prunes that session. When the previous
+   * session cannot be read or the patch cannot be written, the session keeps
+   * no round rather than an earlier move's.
+   */
+  async recordRound(
+    resolved: ResolvedLocalReview,
+    sessionId: ReviewSessionId,
+    fromSessionId: ReviewSessionId,
+  ): Promise<
+    Result<LocalSessionRound | undefined, LocalReviewPreparationFailure>
+  > {
+    const { profileId } = resolved.identity;
+    const { sessions } = this.dependencies;
+    // A prepare can save the same session record, so the rewrite takes the profile lock too.
+    return this.dependencies.lifecycleGate.withProfileLock(
+      profileId,
+      async () => {
+        const [current, previous] = await Promise.all([
+          sessions.load(profileId, sessionId),
+          sessions.load(profileId, fromSessionId),
+        ]);
+        if (current._tag === "err" || isPullRequestReviewSession(current.value))
+          return err({ _tag: "SessionStorageUnavailable" });
+        const round =
+          previous._tag === "ok" && !isPullRequestReviewSession(previous.value)
+            ? await this.renderRound(
+                resolved.checkoutPath,
+                previous.value,
+                current.value,
+              )
+            : ok(undefined);
+        const { round: _replaced, ...rest } = current.value;
+        const saved = await sessions.save({
+          ...rest,
+          ...definedProps({
+            round: round._tag === "ok" ? round.value : undefined,
+          }),
+        });
+        return saved._tag === "ok"
+          ? round
+          : err({ _tag: "SessionStorageUnavailable" });
+      },
+    );
+  }
+
+  private async renderRound(
+    checkoutPath: string,
+    previous: LocalReviewSession,
+    current: LocalReviewSession,
+  ): Promise<Result<LocalSessionRound, LocalReviewPreparationFailure>> {
+    const fromSessionId = previous.id;
+    if (previous.key.baseSha !== current.key.baseSha)
+      return ok({ _tag: "BaseMoved", fromSessionId });
+    const patch = await this.dependencies.revisions.renderPatch(checkoutPath, {
+      baseSha: previous.key.headSha,
+      headSha: current.key.headSha,
+    });
+    if (patch._tag === "err") return patch;
+    const path = this.dependencies.paths.roundPatchFile(
+      current.key.profileId,
+      current.id,
+    );
+    if ((await writeAtomicFile(path, patch.value))._tag === "err")
+      return err({ _tag: "SessionStorageUnavailable" });
+    const patchPath = parseAbsolutePath(path);
+    const patchHash = parseContentHash(hashReviewArtifactContent(patch.value));
+    if (patchPath._tag === "err" || patchHash._tag === "err")
+      return err({ _tag: "PreparationUnavailable" });
+    return ok({
+      _tag: "Patch",
+      fromSessionId,
+      patch: {
+        patchPath: patchPath.value,
+        patchHash: patchHash.value,
+        paths: listPatchTouchedPaths(patch.value),
+      },
+    });
   }
 
   private async abort(

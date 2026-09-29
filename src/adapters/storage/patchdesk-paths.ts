@@ -269,6 +269,17 @@ export class PatchdeskPaths {
     );
   }
 
+  /** A shared Review session's patch from the session the Review moved from (#604); rewritten on each move onto the session. */
+  roundPatchFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(
+      this.sessionDirectory(profileId, sessionId),
+      "patch-since-last-refresh.diff",
+    );
+  }
+
   /** Immutable prepared inputs shared by every Insight for this exact PR head. */
   preparedDirectory(
     profileId: WorkspaceProfileId,

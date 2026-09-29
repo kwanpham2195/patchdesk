@@ -86,7 +86,26 @@ export type LocalReviewSession = ReviewSessionFields & {
    * absent on the other kinds.
    */
   readonly commits?: LocalSessionCommits;
+  /**
+   * What the move onto this session changed (#604), written each time the
+   * Review moves here. Absent on a Review's first session and on the other
+   * kinds.
+   */
+  readonly round?: LocalSessionRound;
 };
+
+/**
+ * The previous session's Local snapshot to this one's, or `BaseMoved` with no
+ * patch when the merge base moved, since that patch would hold the base
+ * branch's commits.
+ */
+export type LocalSessionRound =
+  | {
+      readonly _tag: "Patch";
+      readonly fromSessionId: ReviewSessionId;
+      readonly patch: LocalSessionViewPatch;
+    }
+  | { readonly _tag: "BaseMoved"; readonly fromSessionId: ReviewSessionId };
 
 /** One commit of a shared Review's branch, as `git log` reports it. */
 export type LocalCommit = {

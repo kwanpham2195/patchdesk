@@ -15,7 +15,11 @@ import type {
 import { definedProps } from "../domain/defined-props";
 import type { LocalPatchView } from "../domain/local-patch-view";
 import { err, ok, type Result } from "../domain/result";
-import { isPullRequestReviewSession } from "../domain/review-session";
+import {
+  isPullRequestReviewSession,
+  type LocalReviewSession,
+} from "../domain/review-session";
+import { hashReviewArtifactContent } from "./review-artifact-hash";
 
 export type LocalPatchViewFailure = {
   readonly reason: "not_found" | "stale_head" | "not_local_branch" | "storage";
@@ -52,33 +56,45 @@ export class LocalPatchViewService {
     },
   ) {}
 
+  /**
+   * The current session's Since last Refresh patch (#604), read from the file
+   * the move onto it wrote; `not_found` when that move recorded none. The file
+   * is rewritten by each move onto the session, so a hash that no longer
+   * matches the record reads as `storage`.
+   */
+  async loadRound(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly sessionId: ReviewSessionId;
+  }): Promise<
+    Result<
+      { readonly sessionId: ReviewSessionId; readonly patch: string },
+      LocalPatchViewFailure
+    >
+  > {
+    const session = await this.loadCurrentSession(input);
+    if (session._tag === "err") return session;
+    const round = session.value.round;
+    if (round?._tag !== "Patch") return err({ reason: "not_found" });
+    const patch = await readFile(round.patch.patchPath, "utf8").catch(
+      () => undefined,
+    );
+    if (
+      patch === undefined ||
+      hashReviewArtifactContent(patch) !== round.patch.patchHash
+    )
+      return err({ reason: "storage" });
+    return ok({ sessionId: input.sessionId, patch });
+  }
+
   async load(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly sessionId: ReviewSessionId;
     readonly view: LocalPatchView;
   }): Promise<Result<LocalPatchViewResult, LocalPatchViewFailure>> {
-    const review = await this.dependencies.reviews.load(
-      input.profileId,
-      input.reviewId,
-    );
-    if (review._tag === "err")
-      return err({
-        reason: review.error.reason === "not_found" ? "not_found" : "storage",
-      });
-    // A session the Review moved past is an old capture; the renderer refetches for the current one.
-    if (review.value.currentSessionId !== input.sessionId)
-      return err({ reason: "stale_head" });
-    const session = await this.dependencies.sessions.load(
-      input.profileId,
-      input.sessionId,
-    );
-    if (session._tag === "err")
-      return err({
-        reason: session.error.reason === "not_found" ? "not_found" : "storage",
-      });
-    if (isPullRequestReviewSession(session.value))
-      return err({ reason: "not_local_branch" });
+    const session = await this.loadCurrentSession(input);
+    if (session._tag === "err") return session;
     const stored = session.value.viewPatches?.[input.view];
     if (stored === undefined) return err({ reason: "not_local_branch" });
     const [patch, viewed] = await Promise.all([
@@ -102,5 +118,34 @@ export class LocalPatchViewService {
         viewedPaths: viewed._tag === "ok" ? viewed.value : undefined,
       }),
     });
+  }
+
+  private async loadCurrentSession(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly sessionId: ReviewSessionId;
+  }): Promise<Result<LocalReviewSession, LocalPatchViewFailure>> {
+    const review = await this.dependencies.reviews.load(
+      input.profileId,
+      input.reviewId,
+    );
+    if (review._tag === "err")
+      return err({
+        reason: review.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    // A session the Review moved past is an old capture; the renderer refetches for the current one.
+    if (review.value.currentSessionId !== input.sessionId)
+      return err({ reason: "stale_head" });
+    const session = await this.dependencies.sessions.load(
+      input.profileId,
+      input.sessionId,
+    );
+    if (session._tag === "err")
+      return err({
+        reason: session.error.reason === "not_found" ? "not_found" : "storage",
+      });
+    return isPullRequestReviewSession(session.value)
+      ? err({ reason: "not_local_branch" })
+      : ok(session.value);
   }
 }

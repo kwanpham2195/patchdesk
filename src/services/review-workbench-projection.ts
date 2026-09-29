@@ -152,6 +152,8 @@ export type ReviewWorkbenchProjection = {
       }
     >
   >;
+  /** Present exactly on a shared local Review: whether the move onto this session left a patch to show as Since last Refresh (#604); `none` until a move records one, as on a Review's first session. */
+  readonly sinceLastRefresh?: "available" | "none" | "base_moved";
   /**
    * The represented patch bucketed into core/tests/generated/docs/config.
    * Absent exactly when `fullPatch` is: an all-zero gauge would claim the
@@ -759,6 +761,15 @@ export class ReviewWorkbenchProjectionService {
         patchViews: isPullRequestReviewSession(session)
           ? undefined
           : projectPatchViews(session.viewPatches),
+        sinceLastRefresh:
+          isPullRequestReviewSession(session) ||
+          session.viewPatches === undefined
+            ? undefined
+            : session.round === undefined
+              ? "none"
+              : session.round._tag === "Patch"
+                ? "available"
+                : "base_moved",
         commitTotal: isPullRequestReviewSession(session)
           ? undefined
           : session.commits?.total,
