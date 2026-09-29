@@ -73,27 +73,42 @@ export type CurrentSession = {
   readonly patch?: string;
 };
 
+export type CurrentSessionFailure = {
+  readonly reason: "storage" | "session_not_found";
+};
+
 /**
- * A stored Review's current session, its patch hashed as read now. A
- * session record that is gone, as after quarantine, is `session_not_found`;
- * one that cannot be read is `storage`; an unreadable patch leaves
- * `patchHash` out.
+ * A stored Review's current session record. A record that is gone, as after
+ * quarantine, is `session_not_found`; one that cannot be read is `storage`.
  */
-export async function describeCurrentSession(
+export async function loadCurrentSession(
   sessions: Pick<ReviewSessionStore, "load">,
-  review: Pick<Review, "id" | "identity" | "currentSessionId">,
-): Promise<
-  Result<CurrentSession, { readonly reason: "storage" | "session_not_found" }>
-> {
+  review: Pick<Review, "identity" | "currentSessionId">,
+): Promise<Result<ReviewSession, CurrentSessionFailure>> {
   const session = await sessions.load(
     review.identity.profileId,
     review.currentSessionId,
   );
-  if (session._tag === "err")
-    return err({
-      reason:
-        session.error.reason === "not_found" ? "session_not_found" : "storage",
-    });
+  return session._tag === "ok"
+    ? session
+    : err({
+        reason:
+          session.error.reason === "not_found"
+            ? "session_not_found"
+            : "storage",
+      });
+}
+
+/**
+ * A stored Review's current session, its patch hashed as read now, failing
+ * as `loadCurrentSession` does; an unreadable patch leaves `patchHash` out.
+ */
+export async function describeCurrentSession(
+  sessions: Pick<ReviewSessionStore, "load">,
+  review: Pick<Review, "id" | "identity" | "currentSessionId">,
+): Promise<Result<CurrentSession, CurrentSessionFailure>> {
+  const session = await loadCurrentSession(sessions, review);
+  if (session._tag === "err") return session;
   const patch = await readFile(session.value.patchPath, "utf8").catch(
     () => undefined,
   );
