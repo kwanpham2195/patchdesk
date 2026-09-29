@@ -265,7 +265,7 @@ export class LocalDraftService {
       this.dependencies.sessions,
       review.value,
     );
-    if (current._tag === "err") return current;
+    if (current._tag === "err") return err({ reason: "storage" });
     const drafts = review.value.localDrafts ?? [];
     const inline = await inlineInOriginView(current.value, drafts);
     const page = pageLocalDrafts(drafts, cursor, (listed, prompted) => ({

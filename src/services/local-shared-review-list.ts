@@ -43,8 +43,8 @@ export type CheckoutSharedReviews = {
 export type SharedReviewStore = {
   readonly reviews: Pick<ReviewStore, "list">;
   readonly logs: Pick<AppLogService, "write">;
-  /** `<profile>:<review>` of each skipped record already warned about in this process. */
-  readonly warnedInvalid: Set<string>;
+  /** `<profile>:<review>` of each skipped record and `<profile>:<session>` of each missing current session already warned about in this process. */
+  readonly warnedSkipped: Set<string>;
 };
 
 type OpenSharedReview = {
@@ -82,8 +82,8 @@ export async function listOpenSharedReviews(
     return err({ reason: "storage" });
   for (const reviewId of listed.value.invalid) {
     const key = `${profileId}:${reviewId}`;
-    if (store.warnedInvalid.has(key)) continue;
-    store.warnedInvalid.add(key);
+    if (store.warnedSkipped.has(key)) continue;
+    store.warnedSkipped.add(key);
     store.logs.write({
       process: "main",
       level: "warn",
@@ -115,9 +115,10 @@ export async function listOpenSharedReviews(
   );
 }
 
-/** Each Review on its current session; one whose session cannot be read refuses the whole list, so no Review the maintainer means is hidden. */
+/** Each Review on its current session. One whose session record is gone is skipped with one warning, since no tool can read it (#632); any other unreadable session refuses the whole list. */
 export async function describeSharedReviews(
   sessions: Pick<ReviewSessionStore, "load">,
+  store: Pick<SharedReviewStore, "logs" | "warnedSkipped">,
   shared: ReadonlyArray<OpenSharedReview>,
 ): Promise<
   Result<ReadonlyArray<ListedSharedReview>, { readonly reason: "storage" }>
@@ -125,7 +126,24 @@ export async function describeSharedReviews(
   const described: Array<ListedSharedReview> = [];
   for (const { review, source } of shared) {
     const session = await describeCurrentSession(sessions, review);
-    if (session._tag === "err") return session;
+    if (session._tag === "err") {
+      if (session.error.reason === "storage") return err({ reason: "storage" });
+      const { profileId } = review.identity;
+      const key = `${profileId}:${review.currentSessionId}`;
+      if (!store.warnedSkipped.has(key)) {
+        store.warnedSkipped.add(key);
+        store.logs.write({
+          process: "main",
+          level: "warn",
+          topic: "local-review-list",
+          message:
+            "a shared Review's current session is missing; list_local_reviews skips it",
+          profileId,
+          meta: { reviewId: review.id, sessionId: review.currentSessionId },
+        });
+      }
+      continue;
+    }
     described.push({
       ...session.value.description,
       branch: source.branch,
