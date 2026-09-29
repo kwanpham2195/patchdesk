@@ -47,13 +47,11 @@ import { chooseRepositoryCheckout } from "../watched-repository-checkout";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
-const NO_PROFILES: ReadonlyArray<Profile> = [];
-
 export function InboxFlow({
   destination,
   reviewId,
   dashboard,
-  profiles = NO_PROFILES,
+  unsavedProfile,
   inbox,
   state,
   refreshStatus,
@@ -92,8 +90,8 @@ export function InboxFlow({
   readonly destination: "dashboard" | "workbench";
   readonly reviewId?: string;
   readonly dashboard?: Dashboard;
-  /** The listed profiles, which workspace setup saves the account onto before any workspace has loaded. */
-  readonly profiles?: ReadonlyArray<Profile>;
+  /** Main's unsaved `default` profile on a fresh install, which workspace setup saves the first account onto. */
+  readonly unsavedProfile?: Profile | undefined;
   readonly inbox?: InboxResponse;
   readonly state: DashboardScreenState;
   readonly refreshStatus: InboxFreshnessLabel;
@@ -232,7 +230,7 @@ export function InboxFlow({
     ) : (
       <BootstrapOutcome
         state={state}
-        profiles={profiles}
+        unsavedProfile={unsavedProfile}
         onRefresh={onRefresh}
         onSettings={onSettings}
         onWorkspaceReload={onWorkspaceReload}
@@ -250,7 +248,7 @@ export function InboxFlow({
         <div className="mx-auto max-w-[112rem]">
           <WorkspaceFirstRun
             dashboard={dashboard}
-            profiles={profiles}
+            unsavedProfile={undefined}
             onWorkspaceReload={onWorkspaceReload}
             onContinue={() => setFirstRunOpen(false)}
           />
@@ -570,13 +568,13 @@ function ReviewOpeningNotice({
  */
 function BootstrapOutcome({
   state,
-  profiles,
+  unsavedProfile,
   onRefresh,
   onSettings,
   onWorkspaceReload,
 }: {
   readonly state: DashboardScreenState;
-  readonly profiles: ReadonlyArray<Profile>;
+  readonly unsavedProfile: Profile | undefined;
   readonly onRefresh: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onWorkspaceReload: () => Promise<void>;
@@ -590,7 +588,7 @@ function BootstrapOutcome({
         <div className="mx-auto max-w-[112rem]">
           <WorkspaceFirstRun
             dashboard={undefined}
-            profiles={profiles}
+            unsavedProfile={unsavedProfile}
             onWorkspaceReload={onWorkspaceReload}
             onContinue={undefined}
           />

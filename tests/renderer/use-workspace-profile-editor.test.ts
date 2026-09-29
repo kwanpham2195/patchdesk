@@ -177,6 +177,7 @@ describe("useWorkspaceProfileEditor", () => {
     const { result } = renderHook(() =>
       useWorkspaceProfileEditor({
         dashboard,
+        unsavedProfile: undefined,
         profiles: [profile, other],
         onWorkspaceReload: async () => undefined,
         onProfileSwitch: async () => "applied",
@@ -285,6 +286,28 @@ describe("useWorkspaceProfileEditor", () => {
     expect(result.current.persisted.ghAccount).toBe("patchdesk");
   });
 
+  it("reports a save made before any workspace has loaded, and sends nothing", async () => {
+    const desktopApi = installDesktopApi();
+    const { result } = renderHook(() =>
+      useWorkspaceProfileEditor({
+        dashboard: undefined,
+        unsavedProfile: undefined,
+        profiles: [],
+        onWorkspaceReload: async () => undefined,
+        onProfileSwitch: undefined,
+      }),
+    );
+
+    act(() => result.current.editScalar("label", "Personal"));
+    act(() => result.current.commitScalar("label"));
+
+    expect(result.current.status.label).toEqual({
+      state: "failed",
+      message: "Workspace still loading.",
+    });
+    expect(profileCalls(desktopApi)).toEqual([]);
+  });
+
   it("refuses a rule path that is not an absolute path without sending it", async () => {
     const desktopApi = installDesktopApi();
     const { result } = renderEditor();
@@ -305,8 +328,8 @@ describe("useWorkspaceProfileEditor", () => {
 /**
  * The profile `DashboardController.listProfiles` holds in memory when nothing
  * has ever been saved: `default`, with no account. No workspace loads for it,
- * since the inbox parser refuses the empty account, so the editor finds it in
- * the profile list.
+ * since the inbox parser refuses the empty account, so the editor receives it
+ * on its own.
  */
 const unpersistedProfile: Profile = {
   id: "default",
@@ -316,13 +339,11 @@ const unpersistedProfile: Profile = {
   rulePaths: [],
 };
 
-/** A stable list, so the editor's resync effect runs once, as it does in the app. */
-const unpersistedProfiles: ReadonlyArray<Profile> = [unpersistedProfile];
-
 function renderEditor() {
   return renderHook(() =>
     useWorkspaceProfileEditor({
       dashboard,
+      unsavedProfile: undefined,
       profiles: [profile],
       onWorkspaceReload: async () => undefined,
       onProfileSwitch: undefined,
@@ -334,7 +355,8 @@ function renderUnpersistedEditor() {
   return renderHook(() =>
     useWorkspaceProfileEditor({
       dashboard: undefined,
-      profiles: unpersistedProfiles,
+      unsavedProfile: unpersistedProfile,
+      profiles: [],
       onWorkspaceReload: async () => undefined,
       onProfileSwitch: undefined,
     }),

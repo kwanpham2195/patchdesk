@@ -8,6 +8,12 @@ import { record, stringArray } from "./json-guards";
 
 type WorkspaceState = {
   readonly profiles: ReadonlyArray<Profile>;
+  /**
+   * Main's in-memory `default` profile on a fresh install, kept apart from
+   * `profiles` so the workspace switcher never offers it. Only the Workspace
+   * editor reads it, to save the first account onto.
+   */
+  readonly unsavedProfile?: Profile | undefined;
   readonly dashboard?: Dashboard;
   readonly inbox?: InboxResponse;
   readonly screen: DashboardScreenState;
@@ -20,8 +26,8 @@ export type WorkspaceAction =
   | {
       readonly _tag: "failed";
       readonly screen: DashboardScreenState;
-      /** The profiles listed before the failure; absent keeps the last list. */
-      readonly profiles?: ReadonlyArray<Profile>;
+      /** The unsaved `default` profile a fresh install lists; see `unsavedDefaultProfile`. */
+      readonly unsavedProfile?: Profile | undefined;
     }
   | {
       readonly _tag: "loaded";
@@ -51,13 +57,14 @@ export function workspaceReducer(
     case "failed":
       return {
         ...state,
-        profiles: action.profiles ?? state.profiles,
+        unsavedProfile: action.unsavedProfile,
         screen: action.screen,
       };
     case "loaded":
       return {
         ...state,
         profiles: action.profiles,
+        unsavedProfile: undefined,
         inbox: action.inbox,
         dashboard: action.dashboard,
         screen: action.screen,
@@ -85,6 +92,19 @@ export function workspaceReducer(
         screen: "loading",
       };
   }
+}
+
+/**
+ * The profile main holds in memory on a fresh install (`default`, with no
+ * account; see `DashboardController.listProfiles`), when it is the only one
+ * listed. A saved profile always has an account, so this never picks one.
+ */
+export function unsavedDefaultProfile(
+  profiles: ReadonlyArray<Profile>,
+): Profile | undefined {
+  const [only, ...rest] = profiles;
+  if (only === undefined || rest.length > 0) return undefined;
+  return only.ghAccount === "" ? only : undefined;
 }
 
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the Profile I/O boundary parser for the raw /v1/profiles response; there is no earlier boundary to move the parse to.

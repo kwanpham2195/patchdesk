@@ -314,7 +314,7 @@ describe("Reviewing as panel", () => {
     expect(profileWrites()).toEqual([]);
   });
 
-  it("saves the adopted account onto the unsaved default workspace on a fresh install", async () => {
+  it("holds the adoption until the fresh install's unsaved default arrives, then saves onto it", async () => {
     installDesktopApi(() => ({
       git: "ready",
       gh: "ready",
@@ -323,8 +323,11 @@ describe("Reviewing as panel", () => {
         { host: "github.com", login: "patchdesk", active: true },
       ],
     }));
-    // Main holds this profile in memory until an account is saved; no
-    // workspace has loaded, so the listing carries the only copy.
+    const { rerender } = render(settingsFlow({ profiles: [] }));
+    expect(await screen.findByText("patchdesk")).toBeTruthy();
+
+    // Main holds this profile in memory until an account is saved. No
+    // workspace loads for it, so it arrives on its own, after `gh` answered.
     const unsavedDefault: Profile = {
       id: "default",
       label: "Default",
@@ -332,7 +335,7 @@ describe("Reviewing as panel", () => {
       ghAccount: "",
       rulePaths: [],
     };
-    render(settingsFlow({ profiles: [unsavedDefault] }));
+    rerender(settingsFlow({ profiles: [], unsavedProfile: unsavedDefault }));
 
     await waitFor(() => expect(profileWrites()).toHaveLength(1));
     expect(profileWrites()).toEqual([
@@ -405,13 +408,16 @@ function renderSettings(
 function settingsFlow({
   dashboard,
   profiles,
+  unsavedProfile,
 }: {
   readonly dashboard?: Dashboard;
   readonly profiles: ReadonlyArray<Profile>;
+  readonly unsavedProfile?: Profile;
 }): React.JSX.Element {
   return (
     <SettingsFlow
       {...(dashboard === undefined ? {} : { dashboard })}
+      unsavedProfile={unsavedProfile}
       appearance="system"
       onAppearanceChange={() => undefined}
       diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}

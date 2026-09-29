@@ -75,18 +75,21 @@ const SAVED_STATUS_MS = 2_000;
  */
 export function useWorkspaceProfileEditor({
   dashboard,
+  unsavedProfile,
   profiles,
   onWorkspaceReload,
   onProfileSwitch,
 }: {
   readonly dashboard: Dashboard | undefined;
+  /** Main's unsaved `default` profile on a fresh install, saved onto while no workspace has loaded. */
+  readonly unsavedProfile: Profile | undefined;
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly onProfileSwitch:
     | ((profileId: string) => Promise<ProfileSwitchResult>)
     | undefined;
 }): WorkspaceProfileEditorHook {
-  const baseProfile = dashboard?.profile ?? unsavedDefaultProfile(profiles);
+  const baseProfile = dashboard?.profile ?? unsavedProfile;
   const [persisted, setPersisted] = useState(() =>
     profileValuesFor(baseProfile),
   );
@@ -164,8 +167,12 @@ export function useWorkspaceProfileEditor({
   const patch = useCallback(
     async (fields: ProfilePatch, field: ProfileEditorField): Promise<void> => {
       // An empty id means no profile has loaded yet, so there is nothing to
-      // save onto. Sending anyway is what once created stray workspaces.
-      if (requested.current.id === "") return;
+      // save onto. The field says so, as the repository controls do, and the
+      // load replaces what it shows once the profile arrives.
+      if (requested.current.id === "") {
+        putStatus(field, { state: "failed", message: WORKSPACE_LOADING });
+        return;
+      }
       const requestBody: ProfileValues = { ...requested.current, ...fields };
       requested.current = requestBody;
       const sent = ++generation.current;
@@ -308,19 +315,6 @@ export function useWorkspaceProfileEditor({
   };
 }
 
-/**
- * The profile main holds in memory on a fresh install (`default`, with no
- * account; see `DashboardController.listProfiles`), when it is the only one
- * listed. A saved profile always has an account, so this never picks one.
- */
-function unsavedDefaultProfile(
-  profiles: ReadonlyArray<Profile>,
-): Profile | undefined {
-  const [only, ...rest] = profiles;
-  if (only === undefined || rest.length > 0) return undefined;
-  return only.ghAccount === "" ? only : undefined;
-}
-
 /** Saves the workspace the editor holds, which already owns its id. */
 async function updateProfile(values: ProfileValues): Promise<void> {
   await requestJson("/v1/profiles", {
@@ -328,6 +322,8 @@ async function updateProfile(values: ProfileValues): Promise<void> {
     body: profileRequestBody(values),
   });
 }
+
+const WORKSPACE_LOADING = "Workspace still loading.";
 
 const IDLE: FieldStatus = { state: "idle" };
 const SAVING: FieldStatus = { state: "saving" };
