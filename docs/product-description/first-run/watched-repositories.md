@@ -35,7 +35,7 @@ Opening the card reads the saved workspace only. It runs no command and opens no
 
 Reading the list, typing in the field without pressing Add, and cancelling the folder picker change nothing. Closing Settings asks nothing, because every action saves at once.
 
-A profile saved by v0.0.12 or earlier can still list workspace roots. Patchdesk loads it with its watched repositories and their checkouts unchanged, ignores the roots, and leaves them out of the next save of that workspace. It does not turn them into checkouts.
+A profile saved by v0.0.12 or earlier can still list workspace roots. Patchdesk loads it with its watched repositories and their checkouts unchanged, ignores the roots, and saves the list back empty on the next save of that workspace, so a v0.0.12 build can still open it. It does not turn them into checkouts.
 
 ### Begin an action
 
@@ -85,7 +85,7 @@ A refused checkout keeps the saved one and says why beneath the row: `That folde
 
 **Review revision and freshness.** A checkout is where local Reviews are read and kept. Pointing a repository at a different checkout makes Reviews stored against the old one stop resolving, and retention removes them like a gone source.
 
-**Local persistence and recovery.** Watched repositories and checkouts are saved in the workspace profile file. A v0.0.12 profile with workspace roots loads, and the roots are dropped on its next save.
+**Local persistence and recovery.** Watched repositories and checkouts are saved in the workspace profile file. A v0.0.12 profile with workspace roots loads, and its next save writes the list back empty.
 
 **GitHub permissions and write authority.** Nothing here writes to GitHub.
 

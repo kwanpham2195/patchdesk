@@ -65,10 +65,12 @@ export class ProfileStore {
       });
     }
 
-    return writeAtomicJson(
-      this.paths.profileFile(parsed.value.id),
-      parsed.value,
-    );
+    return writeAtomicJson(this.paths.profileFile(parsed.value.id), {
+      ...parsed.value,
+      // v0.0.12 refuses a profile without this key and then opens no profile
+      // at all. Remove once a tagged release contains #641.
+      workspaceRoots: [],
+    });
   }
 
   async load(

@@ -41,7 +41,7 @@ Closing a clean profile editor, cancelling a folder picker, and choosing the alr
 
 ### Begin an action
 
-Saving validates the full profile at the main-process boundary. Identifiers, host, account, rule paths, repository identity, and optional local paths must satisfy their domain formats. A profile saved by v0.0.12 or earlier may still list workspace roots; Patchdesk loads it, ignores that list, and leaves it out of the next save. A creating request may omit the identifier, and the main process derives it from the name. [Workspace settings](../settings/workspace-profile-editor.md) owns control behavior and per-control save status.
+Saving validates the full profile at the main-process boundary. Identifiers, host, account, rule paths, repository identity, and optional local paths must satisfy their domain formats. A profile saved by v0.0.12 or earlier may still list workspace roots; Patchdesk loads it, ignores that list, and saves it back empty so a v0.0.12 build can still open the profile. A creating request may omit the identifier, and the main process derives it from the name. [Workspace settings](../settings/workspace-profile-editor.md) owns control behavior and per-control save status.
 
 Adding a repository requests a watchlist add with host, owner, and repository name. Stop watching requests removal. Choose checkout sends the folder the maintainer picked; the main process accepts it only inside a git checkout whose `origin` names that repository and saves the checkout's top-level folder. Each request names the workspace whose repositories the card is showing, so a control used while a workspace switch is still loading changes the workspace on screen, not the one arriving. A request naming a workspace that no longer exists fails.
 

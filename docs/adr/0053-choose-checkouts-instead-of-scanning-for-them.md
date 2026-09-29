@@ -39,8 +39,11 @@ and each suggested repository's `localPath`.
   asks for it before offering sources. Both write the same `localPath`, so a
   checkout chosen once is reused.
 - **Old profiles.** `workspaceRoots` shipped in v0.0.12 profiles. The profile
-  parser still accepts the key and ignores it; the next save of that profile
-  leaves it out. Its values are not migrated into checkouts.
+  parser still accepts the key and ignores it. Every save writes
+  `workspaceRoots: []`, because v0.0.12 refuses a profile without the key and
+  then opens no profile at all, and the maintainer runs a release build beside
+  the dev app on the same config folder. The write goes once a tagged release
+  contains #641. Old values are not migrated into checkouts.
 
 ## Consequences
 
