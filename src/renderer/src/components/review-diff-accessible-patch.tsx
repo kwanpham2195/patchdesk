@@ -105,12 +105,12 @@ export function AccessiblePatch({
                       side === "additions" ? line.newLine : line.oldLine;
                     if (
                       lineNumber === undefined ||
-                      localCommentAuthoring.canAuthor?.({
+                      localCommentAuthoring.refuseLocation?.({
                         path,
                         startLine: lineNumber,
                         line: lineNumber,
                         side: side === "additions" ? "new" : "old",
-                      }) === false
+                      }) !== undefined
                     )
                       return null;
                     const action =

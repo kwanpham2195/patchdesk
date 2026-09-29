@@ -8,8 +8,10 @@ import {
   parseRepoRelativePath,
 } from "../../../domain/ids";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import type { PendingReviewAnchor } from "../../../domain/pending-review";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { diffLineRangeLabel } from "../review-diff-line-range";
 import { workbenchPullRequestNumber } from "../review-source";
 import type { ReviewConversationActions } from "./conversation-thread-card";
 import type {
@@ -109,17 +111,35 @@ export function createHeadSideCommentAuthoring(
   if (base?.enabled !== true) return undefined;
   const files = parseUnifiedPatch(fullPatch);
   // This diff's new side is the pull request head, so a new-side line the full patch shows is the same GitHub coordinate; its old side is not the base.
-  const fullPatchAnchor = (location: LocalCommentLocation) => {
+  const fullPatchAnchor = (
+    location: LocalCommentLocation,
+  ):
+    | { readonly _tag: "ok"; readonly anchor: PendingReviewAnchor }
+    | { readonly _tag: "refused"; readonly reason: string } => {
+    const lines = diffLineRangeLabel(location.startLine, location.line);
+    const single = location.startLine === location.line;
+    if (location.side !== "new")
+      return {
+        _tag: "refused",
+        reason:
+          "A commit's old side is not the pull request's base. Comment on its new-side lines.",
+      };
     const path = parseRepoRelativePath(location.path);
-    if (location.side !== "new" || path._tag === "err") return undefined;
     const mapped = mapFindingLocation(files, {
       file: location.path,
       lineStart: location.startLine,
       lineEnd: location.line,
       diffSide: "new",
     });
-    if (mapped.mappingStatus !== "mapped" || mapped.path !== location.path)
-      return undefined;
+    if (
+      path._tag === "err" ||
+      mapped.mappingStatus !== "mapped" ||
+      mapped.path !== location.path
+    )
+      return {
+        _tag: "refused",
+        reason: `${lines} ${single ? "is" : "are"} not in the pull request's diff, so GitHub cannot anchor a comment there.`,
+      };
     const anchor = {
       path: path.value,
       startLine: location.startLine,
@@ -127,26 +147,31 @@ export function createHeadSideCommentAuthoring(
       side: location.side,
     };
     // GitHub refuses a range that leaves one hunk of the pull request diff, even when the commit's own hunk holds it.
-    return anchor.startLine === anchor.line ||
-      fingerprintPatchAnchor(fullPatch, anchor) !== undefined
-      ? anchor
-      : undefined;
+    return single || fingerprintPatchAnchor(fullPatch, anchor) !== undefined
+      ? { _tag: "ok", anchor }
+      : {
+          _tag: "refused",
+          reason: `${lines} reach outside one hunk of the pull request's diff. A comment covers lines inside one hunk.`,
+        };
   };
   return {
     enabled: true,
     ...definedProps({ kind: base.kind }),
-    canAuthor: (location) => fullPatchAnchor(location) !== undefined,
+    refuseLocation: (location) => {
+      const result = fullPatchAnchor(location);
+      return result._tag === "refused" ? result.reason : undefined;
+    },
     onSelectionChange: (location) => {
-      if (fullPatchAnchor(location) !== undefined)
+      if (fullPatchAnchor(location)._tag === "ok")
         base.onSelectionChange?.(location);
     },
     onSave: async (input) => {
-      const anchor = fullPatchAnchor(input);
-      if (anchor === undefined) return;
+      const result = fullPatchAnchor(input);
+      if (result._tag === "refused") return;
       return base.onSave({
         ...input,
         ...definedProps({
-          fingerprint: fingerprintPatchAnchor(fullPatch, anchor),
+          fingerprint: fingerprintPatchAnchor(fullPatch, result.anchor),
         }),
       });
     },

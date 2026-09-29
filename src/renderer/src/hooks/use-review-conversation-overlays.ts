@@ -289,7 +289,11 @@ export function useReviewConversationOverlays({
   const openComposer = useCallback(
     (location: LocalCommentLocation): void => {
       if (localCommentAuthoring?.enabled !== true) return;
-      if (localCommentAuthoring.canAuthor?.(location) === false) return;
+      const refused = localCommentAuthoring.refuseLocation?.(location);
+      if (refused !== undefined) {
+        setRefusal({ patch, message: refused });
+        return;
+      }
       setRefusal(undefined);
       if (
         localCommentAuthoring.kind === "note" &&
@@ -300,7 +304,7 @@ export function useReviewConversationOverlays({
       takeRecoverableDraft();
       setAuthoringSelection(location);
     },
-    [authoringSelection, localCommentAuthoring, takeRecoverableDraft],
+    [authoringSelection, localCommentAuthoring, patch, takeRecoverableDraft],
   );
 
   const beginAccessibleAuthoring = useCallback(
@@ -571,7 +575,7 @@ export function useReviewConversationOverlays({
       );
       if (
         localCommentAuthoring?.enabled === true &&
-        localCommentAuthoring.canAuthor?.(location) !== false
+        localCommentAuthoring.refuseLocation?.(location) === undefined
       ) {
         localCommentAuthoring.onSelectionChange?.(location);
         setAuthoringInitialBody(candidate.body);

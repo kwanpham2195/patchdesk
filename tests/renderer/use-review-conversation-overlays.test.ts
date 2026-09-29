@@ -127,7 +127,8 @@ function pendingOverlaysInput(
     viewer: { current: null },
     localCommentAuthoring: {
       enabled: true,
-      canAuthor: (location) => canAuthor(location.line),
+      refuseLocation: (location) =>
+        canAuthor(location.line) ? undefined : "Refused",
       onSave: async () => undefined,
     },
     pendingReviewComposer: {
