@@ -110,7 +110,7 @@ Each run opens a dialog where you choose the Insight provider, the model,
 and the reasoning level. Patchdesk asks every time; it does not remember a
 choice for you.
 
-There are two Insight providers.
+There are three Insight providers.
 
 ### API keys
 
@@ -165,7 +165,7 @@ The list in `src/adapters/pi/pi-provider-catalog.ts` is the authoritative one.
 
 Providers that sign in through OAuth or a login flow, such as GitHub Copilot
 or a Codex subscription, are left out of the API key provider on purpose;
-the Codex CLI account provider below covers the Codex case.
+the Codex CLI account and pi CLI account providers below cover those logins.
 
 Export the variable in your shell profile (`~/.zshrc`), then restart
 Patchdesk:
@@ -206,7 +206,27 @@ same `codex` your terminal runs.
 If Patchdesk cannot find Codex, the dialog says so directly: "Install Codex
 and expose codex on the app launch PATH, then log in externally."
 
-With either provider, the model never touches GitHub, your checkout, or the
+### pi CLI account
+
+This provider runs the `pi` coding agent you have installed, with any login
+you made in `pi`, for example a Claude or ChatGPT subscription. Install
+`pi` 0.80.4 or later and run `/login` in `pi` yourself; Patchdesk never
+reads or refreshes that login and never starts one for you.
+
+Patchdesk finds `pi` on your PATH the same way it finds `codex`. Choose
+pi CLI account in the run dialog, then press **Load pi models**; the list
+shows every model with reasoning support that your `pi` login can run, named `provider/model`, such as
+`anthropic/claude-sonnet-5`. If the list cannot load, the dialog says "pi
+models unavailable. Check the pi login.", or names the `pi` version to
+install when yours is older than 0.80.4.
+
+Each run starts a fresh `pi` with only its read-only tools (`read`,
+`grep`, `find`, and `ls`), with your `pi` extensions off, and with the
+reviewed checkout's own `pi` configuration ignored. Your skills and
+`AGENTS.md` context files still load, as they do for Codex. API keys you
+export in your shell do not reach `pi`; use the API key provider for those.
+
+With any provider, the model never touches GitHub, your checkout, or the
 network beyond the model API itself.
 
 ## Use Patchdesk from a coding agent (MCP)

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a **pi CLI account** Insight provider. It runs Brief, Walkthrough, and Analysis through the `pi` coding agent you installed, with any login made in `pi`, such as a Claude or ChatGPT subscription, so no API key is needed. Choose pi CLI account in a run dialog and press Load pi models; the list names each model `provider/model`. Each run starts a fresh `pi` in the Review's worktree with only its read-only tools, with your `pi` extensions and the checkout's own `pi` configuration off. Patchdesk never reads or refreshes the `pi` login. It needs `pi` 0.80.4 or later, and the dialog names that version when yours is older. #551
+
 - Fixed an Insight tab keeping its old status, such as Failed, Not run, or Outdated, while its run was in progress. A tab now shows Running from the moment its run is accepted, from its own run dialog or from Run Insights, and shows the result's status once the run completes, fails, or is cancelled. #670
 
 - Added notes, comments, and thread replies to the Walkthrough's cited hunks. The gutter `+` opens the Diff tab's composer there, and dragging it across lines of the hunk opens one composer for the range. A local Review gets a note, recorded on the Combined view whichever view the Diff tab shows; a pull request Review gets Comment now, Start a review, or Add review comment, and its threads get Reply and Resolve. A note or pending comment written in either place shows in both, and in Notes. A Walkthrough of an older revision offers no `+`. #598
