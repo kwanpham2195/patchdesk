@@ -60,14 +60,12 @@ import {
 } from "./review-workbench-overview";
 import { ReviewNavigatorResizeHandle } from "./review-navigator-resize-handle";
 import {
-  createHeadSideCommentAuthoring,
   directConversationActionProps,
   pullRequestExternalRef,
   visibleFinishReview,
 } from "./review-workbench-pull-request";
-import { useCommitDiff } from "../hooks/use-commit-diff";
 import { useReviewWorkbenchCommands } from "../hooks/use-review-workbench-commands";
-import { useSinceReviewMode } from "../hooks/use-since-review-mode";
+import { useNarrowedReviewDiff } from "../hooks/use-narrowed-review-diff";
 import { useInsightDiffNavigation } from "../hooks/use-insight-diff-navigation";
 import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
 import type { ViewedFilesControls } from "../hooks/use-viewed-files";
@@ -378,22 +376,16 @@ export function ReviewWorkbench({
     },
     [],
   );
-  const commitDiffOptions = {
-    revisionKey: model.revision.reviewedHeadSha,
-    loadCommitDiff: actions.loadCommitDiff,
-  };
-  const commitDiffState = useCommitDiff(
-    selectedCommitSha === undefined
-      ? commitDiffOptions
-      : { ...commitDiffOptions, selectedSha: selectedCommitSha },
-  );
-  const sinceReview = useSinceReviewMode({
-    model,
-    commitSliceActive: selectedCommitSha !== undefined,
-    loadSinceReviewDiff: actions.loadSinceReviewDiff,
-  });
-  const sincePatch =
-    sinceReview.state._tag === "Ready" ? sinceReview.state.patch : undefined;
+  const {
+    commitDiffState,
+    commitDiff,
+    commitDiffError,
+    sinceReview,
+    sincePatch,
+    narrowedDiff,
+    sliceAuthoringNote,
+    commitCommentAuthoring,
+  } = useNarrowedReviewDiff({ model, actions, selectedCommitSha });
   const { openFileInDiff, openScopeBucketInDiff } = useInsightDiffNavigation({
     position,
     selectPatchView,
@@ -426,38 +418,6 @@ export function ReviewWorkbench({
       openScopeBucketInDiff,
       rememberInsight,
     ],
-  );
-  // A commit slice and the since-review diff both show a narrower patch than the Review, so comments map back onto the full patch.
-  const narrowedDiff =
-    selectedCommitSha !== undefined || sincePatch !== undefined;
-  const commitDiff =
-    selectedCommitSha !== undefined &&
-    commitDiffState._tag === "Ready" &&
-    commitDiffState.projection.commit.sha === selectedCommitSha
-      ? commitDiffState.projection
-      : undefined;
-  // Only a diff whose new side is the represented head can anchor comments on GitHub.
-  const headSideDiff =
-    selectedCommitSha === undefined
-      ? sincePatch !== undefined
-      : selectedCommitSha === model.revision.reviewedHeadSha;
-  const sliceAuthoringNote =
-    selectedCommitSha === undefined ||
-    headSideDiff ||
-    actions.localCommentAuthoring?.enabled !== true
-      ? undefined
-      : actions.localCommentAuthoring.kind === "note"
-        ? "Notes show on a Patch view, not on a single commit."
-        : "Comments are available on the latest commit or All files.";
-  const commitCommentAuthoring = useMemo(
-    () =>
-      !headSideDiff || model.fullPatch === undefined
-        ? undefined
-        : createHeadSideCommentAuthoring(
-            actions.localCommentAuthoring,
-            model.fullPatch,
-          ),
-    [actions.localCommentAuthoring, headSideDiff, model.fullPatch],
   );
   const readOnlyConversationAnnotations = useMemo(
     () =>
@@ -550,9 +510,6 @@ export function ReviewWorkbench({
         : annotationsInPatch(annotations, sincePatch),
     [annotations, sincePatch],
   );
-  const commitDiffError =
-    commitDiffState._tag === "Failed" &&
-    commitDiffState.sha === selectedCommitSha;
   const displayedPatch = commitDiff?.patch ?? sincePatch ?? reviewPatch;
   const selectionReady =
     (selectedCommitSha === undefined || commitDiff !== undefined) &&
