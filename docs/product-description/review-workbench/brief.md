@@ -102,7 +102,7 @@ A failed run shows one warning block that names the failure category, such as a 
 
 **Review revision and freshness.** The Brief is retained against one Review session and represented revision. Its Walkthrough link opens a Walkthrough only when one stands for that same revision.
 
-**Local persistence and recovery.** Run identity, status, and retained Insight artifacts survive renderer replacement. A new run does not erase a previously retained result until success.
+**Local persistence and recovery.** Run identity, status, and retained Insight artifacts survive renderer replacement. A new run does not erase a previously retained result until success. A Codex CLI account run keeps its Codex thread in memory: it writes no session under `~/.codex/sessions` and does not appear in `codex resume`.
 
 **GitHub permissions and write authority.** Brief is read-only. It cannot send comments, submit a review, or merge.
 
@@ -142,4 +142,4 @@ A failed run shows one warning block that names the failure category, such as a 
 - Relative-time and partial-result wording, and command approval, need live checks; see [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
 - Confirm cancelled, failed, and timed-out run states; progress after switching readers; and focus after closing the run dialog.
 
-Baseline drafted from Patchdesk application source commit `dd613996`; verified against `737c515c`, including the Codex activity trace and the model list prices; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified.
+Baseline drafted from Patchdesk application source commit `dd613996`; verified against `737c515c`, including the Codex activity trace and the model list prices; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified. Codex thread persistence is revised from source (#596) and not live-verified.

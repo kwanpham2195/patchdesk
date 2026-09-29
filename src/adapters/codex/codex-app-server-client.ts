@@ -419,11 +419,13 @@ export class CodexAppServerClient {
     const thread = await child.request(
       "thread/start",
       // `untrusted` sends every command without an exec-policy Allow rule to `handleRequest`.
+      // `ephemeral` keeps the thread out of `~/.codex/sessions`; Patchdesk never resumes one (ADR 0016).
       {
         model: input.model,
         cwd: input.worktreePath,
         sandbox: "read-only",
         approvalPolicy: "untrusted",
+        ephemeral: true,
       },
       signal,
     );
