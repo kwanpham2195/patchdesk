@@ -74,6 +74,10 @@ import type { ViewedFilesControls } from "../hooks/use-viewed-files";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
 import { useReviewFileSelection } from "../hooks/use-review-file-selection";
 import { useLocalNotesNavigation } from "../hooks/use-local-notes-navigation";
+import {
+  useWalkthroughDiffAuthoring,
+  WalkthroughDiffAuthoringContext,
+} from "./walkthrough-diff-authoring";
 import { usePendingReviewDrafts } from "../hooks/use-pending-review-drafts";
 import { useReviewNavigationState } from "../hooks/use-review-navigation-state";
 import {
@@ -490,6 +494,12 @@ export function ReviewWorkbench({
       () => buildPendingReviewAnnotations({ pendingReview }),
       [pendingReview],
     );
+  const walkthroughDiffAuthoring = useWalkthroughDiffAuthoring({
+    model,
+    actions,
+    pendingReviewDrafts,
+    pendingReviewAnnotations,
+  });
   // A pending-review thread is also visible to the thread reader; dedupe
   // lives in `deriveConversationThreadEntries` so the diff and (eventually) a
   // Threads navigator section agree on the same entry list by construction.
@@ -960,7 +970,11 @@ export function ReviewWorkbench({
               <ReviewWorkbenchFindingNavigationContext.Provider
                 value={findingNavigation}
               >
-                {slots.insights}
+                <WalkthroughDiffAuthoringContext.Provider
+                  value={walkthroughDiffAuthoring}
+                >
+                  {slots.insights}
+                </WalkthroughDiffAuthoringContext.Provider>
               </ReviewWorkbenchFindingNavigationContext.Provider>
             </div>
           )}

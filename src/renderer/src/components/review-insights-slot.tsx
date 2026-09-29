@@ -1,5 +1,5 @@
 import { XIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 import { definedProps } from "../../../domain/defined-props";
 import type { LocalPatchView } from "../../../domain/local-patch-view";
 import { parseUnifiedPatch, type ParsedPatchFile } from "../../../domain/patch";
@@ -26,6 +26,7 @@ import {
 } from "./insight-panels";
 import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { buildInsightReaders } from "./insight-readers";
+import { WalkthroughDiffAuthoringContext } from "./walkthrough-diff-authoring";
 import { useInsightResultEntrance } from "../hooks/use-insight-result-entrance";
 import { useInsightSelection } from "../hooks/use-insight-selection";
 import { useWalkthroughFocusTransition } from "../hooks/use-walkthrough-focus-transition";
@@ -317,6 +318,7 @@ export function InsightsSlot({
   const currentRevision =
     workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
   const patchFiles = useParsedPatchFiles(workbench.fullPatch);
+  const walkthroughDiffAuthoring = useContext(WalkthroughDiffAuthoringContext);
   const retainedReader = buildInsightReaders({
     workbench,
     patchFiles,
@@ -327,6 +329,7 @@ export function InsightsSlot({
       addAllFindings,
       localApply,
       localDrafts,
+      walkthroughDiffAuthoring,
       onOpenFindingInDiff: openFindingInDiff,
       onOpenFileInDiff: openFileInDiff,
       onOpenScopeBucketInDiff: openScopeBucketInDiff,

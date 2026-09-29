@@ -15,7 +15,12 @@ import type { ReviewWorkbenchPatch } from "./use-review-observation";
 
 /** Maintainer notes on a local Review (ADR 0051). Each command rejects with a message its form shows beside the text. */
 export type LocalNoteControls = {
-  readonly add: (location: LocalCommentLocation, text: string) => Promise<void>;
+  /** `view` names the view whose line numbers `location` uses; the shown view when absent. */
+  readonly add: (
+    location: LocalCommentLocation,
+    text: string,
+    view?: LocalPatchView,
+  ) => Promise<void>;
   readonly edit: (noteId: string, text: string) => Promise<void>;
   readonly remove: (noteId: string) => Promise<void>;
 };
@@ -175,11 +180,11 @@ export function useLocalDrafts({
       }
     };
     return {
-      add: (location, text) =>
+      add: (location, text, lineView) =>
         send("note\nnew", "/v1/reviews/local-drafts/notes/add", {
           ...location,
           text,
-          ...definedProps({ view }),
+          ...definedProps({ view: lineView ?? view }),
         }),
       edit: (noteId, text) =>
         send(localDraftKey({ noteId }), "/v1/reviews/local-drafts/notes/edit", {

@@ -15,6 +15,8 @@ import {
   citedHunkRelation,
   type ReadOnlyConversationAnnotation,
 } from "../inline-conversation-mapping";
+import { deriveConversationThreadEntries } from "../conversation-thread-entries";
+import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReadOnlyConversationAnnotation> = [];
 
@@ -63,6 +65,7 @@ export function NarrativeWalkthroughDiff({
   sourceSession,
   preferences,
   annotations = EMPTY_ANNOTATIONS,
+  diffAuthoring,
 }: {
   readonly blockId: string;
   readonly patch?: string;
@@ -72,6 +75,8 @@ export function NarrativeWalkthroughDiff({
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly preferences?: ReviewViewPreferences;
   readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
+  /** Opens the Diff tab's composers on these hunks and shows its notes and pending comments there. */
+  readonly diffAuthoring?: WalkthroughDiffAuthoring;
 }): React.JSX.Element {
   const sourcePatch = useMemo(
     () => patch ?? buildFallbackPatch(allHunks ?? hunks),
@@ -110,7 +115,7 @@ export function NarrativeWalkthroughDiff({
       }),
     [annotations, hunks],
   );
-  const visibleAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
+  const publishedAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
     () =>
       visibleConversation.flatMap(({ annotation }) => {
         const threadId = parseGitHubThreadId(annotation.id);
@@ -135,6 +140,20 @@ export function NarrativeWalkthroughDiff({
         ];
       }),
     [visibleConversation],
+  );
+  const authoredAnnotations = diffAuthoring?.annotations;
+  // A pending comment's thread is also published to its author, so it shows once, as the pending card.
+  const visibleAnnotations = useMemo(
+    () =>
+      deriveConversationThreadEntries(
+        publishedAnnotations,
+        (authoredAnnotations ?? []).filter((annotation) =>
+          hunks.some(
+            (hunk) => citedHunkRelation(annotation, hunk) !== undefined,
+          ),
+        ),
+      ),
+    [authoredAnnotations, hunks, publishedAnnotations],
   );
   const selectedPath = hunks[0]?.path;
   // The file header inside the diff names the path, so the toolbar carries only the hunk ids.
@@ -179,6 +198,16 @@ export function NarrativeWalkthroughDiff({
             }
             onCollapsedPathsChange={() => undefined}
             {...(sourceSession === undefined ? {} : { sourceSession })}
+            {...(diffAuthoring === undefined
+              ? {}
+              : {
+                  pendingReviewDrafts: diffAuthoring.pendingReviewDrafts,
+                  conversationActions: diffAuthoring.conversationActions,
+                  ...definedProps({
+                    localCommentAuthoring: diffAuthoring.localCommentAuthoring,
+                    pendingReviewComposer: diffAuthoring.pendingReviewComposer,
+                  }),
+                })}
             virtualized={false}
             toolbarLeadingAction={
               <span className="px-1 text-xs text-muted-foreground tabular-nums">
