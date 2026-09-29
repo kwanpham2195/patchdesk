@@ -378,7 +378,10 @@ export function insightRunCoordinator(
     {
       load: track.stub("reviews.load", ok(values.review)),
       findOwner: track.stub("reviews.findOwner", ok(undefined)),
-      list: track.stub("reviews.list", ok({ reviews: [], unreadable: 0 })),
+      list: track.stub(
+        "reviews.list",
+        ok({ reviews: [], unreadable: 0, invalid: [] }),
+      ),
     } as never,
     sessionStore(track),
     {

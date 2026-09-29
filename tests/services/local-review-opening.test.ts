@@ -211,6 +211,7 @@ async function opening(
       // Retention has its own suite; these scenarios open one session each.
       retention: { pruneSuperseded: async () => ok(undefined) },
       applySettlement: { settleEarlierSession: async () => undefined },
+      logs: { write: () => undefined },
     },
     () => now,
   );
@@ -315,7 +316,7 @@ describe("LocalReviewOpening", () => {
     },
     {
       name: "incomplete",
-      listReviews: async () => ok({ reviews: [], unreadable: 1 }),
+      listReviews: async () => ok({ reviews: [], unreadable: 1, invalid: [] }),
     },
   ])(
     "refuses a $name saved-Review listing without creating another Review",

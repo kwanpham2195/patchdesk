@@ -15,6 +15,7 @@ import type {
 import { err, ok, type Result } from "../domain/result";
 import { isLocalReview, type Review } from "../domain/review";
 import type { LocalReviewSource } from "../domain/review-source";
+import type { AppLogService } from "./app-log-service";
 import type { RepositoryCheckout } from "./local-checkout";
 import type { LocalReviewOpenRequest } from "./local-review-session-preparation";
 import {
@@ -38,6 +39,14 @@ export type CheckoutSharedReviews = {
   readonly reviews: ReadonlyArray<ListedSharedReview>;
 };
 
+/** The saved Reviews a shared lookup reads, and where it reports a record it skips. */
+export type SharedReviewStore = {
+  readonly reviews: Pick<ReviewStore, "list">;
+  readonly logs: Pick<AppLogService, "write">;
+  /** `<profile>:<review>` of each skipped record already warned about in this process. */
+  readonly warnedInvalid: Set<string>;
+};
+
 type OpenSharedReview = {
   readonly review: Review<LocalReviewSource>;
   readonly source: Extract<
@@ -51,9 +60,12 @@ type OpenSharedReview = {
  * stored form (absent for the configured one), on `branch` when given, the
  * one the maintainer opened last first. The dialog's bases, an agent's reused
  * base, and `list_local_reviews` all read this one list. It only reads.
+ * A record that no longer parses as a Review, such as a shared Review stored
+ * before its base became a full ref (#591), is skipped with one warning per
+ * process; any other unreadable record refuses the list.
  */
 export async function listOpenSharedReviews(
-  reviews: Pick<ReviewStore, "list">,
+  store: SharedReviewStore,
   profileId: WorkspaceProfileId,
   repository: LocalReviewOpenRequest["repository"],
   checkout: AbsolutePath | undefined,
@@ -61,10 +73,26 @@ export async function listOpenSharedReviews(
 ): Promise<
   Result<ReadonlyArray<OpenSharedReview>, { readonly reason: "storage" }>
 > {
-  const listed = await reviews.list(profileId);
-  if (listed._tag === "err" || listed.value.unreadable > 0) {
-    // An unreadable row may be the maintainer's Review, so shared lookups require a complete list.
+  const listed = await store.reviews.list(profileId);
+  // An unreadable row may be the maintainer's Review, so only rows that no longer parse, which nothing can open as a shared Review, are skipped.
+  if (
+    listed._tag === "err" ||
+    listed.value.unreadable > listed.value.invalid.length
+  )
     return err({ reason: "storage" });
+  for (const reviewId of listed.value.invalid) {
+    const key = `${profileId}:${reviewId}`;
+    if (store.warnedInvalid.has(key)) continue;
+    store.warnedInvalid.add(key);
+    store.logs.write({
+      process: "main",
+      level: "warn",
+      topic: "local-review-list",
+      message:
+        "a saved Review record no longer parses; shared Review lookups skip it",
+      profileId,
+      meta: { reviewId },
+    });
   }
   const shared: Array<OpenSharedReview> = [];
   for (const review of listed.value.reviews) {

@@ -95,7 +95,7 @@ describe("ReviewStore", () => {
     });
     await expect(store.list(profileId)).resolves.toMatchObject({
       _tag: "ok",
-      value: { reviews: [second, first], unreadable: 0 },
+      value: { reviews: [second, first], unreadable: 0, invalid: [] },
     });
   });
 
@@ -138,11 +138,11 @@ describe("ReviewStore", () => {
     });
     await expect(store.list(otherProfileId)).resolves.toEqual({
       _tag: "ok",
-      value: { reviews: [], unreadable: 0 },
+      value: { reviews: [], unreadable: 0, invalid: [] },
     });
   });
 
-  it("skips and counts an unreadable Review while listing the readable ones", async () => {
+  it("skips and counts an unreadable Review, naming one that no longer parses, while listing the readable ones", async () => {
     const { paths, store } = await storeFixture();
     const readable = makeReview();
     await expect(store.save(readable)).resolves.toMatchObject({ _tag: "ok" });
@@ -155,7 +155,7 @@ describe("ReviewStore", () => {
 
     await expect(store.list(profileId)).resolves.toEqual({
       _tag: "ok",
-      value: { reviews: [readable], unreadable: 1 },
+      value: { reviews: [readable], unreadable: 1, invalid: [corrupt] },
     });
   });
 
@@ -173,7 +173,7 @@ describe("ReviewStore", () => {
 
     await expect(store.list(profileId)).resolves.toEqual({
       _tag: "ok",
-      value: { reviews: [readable], unreadable: 0 },
+      value: { reviews: [readable], unreadable: 0, invalid: [] },
     });
   });
 

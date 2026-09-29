@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added remote-tracking branches such as `origin/main` as shared local Review bases. The Local review dialog's Base branch picker now searches local and remote branches in one list, grouped under **Local branches** and **Remote branches**, and `review_local` accepts `base: "origin/main"`. Patchdesk reads the branch as your last fetch left it and never fetches; a base that `git fetch --prune` removes shows as gone, like a deleted local branch. `review_local` and `list_local_reviews` now name the base as `baseRef`, a full ref. #591
+- Added remote-tracking branches such as `origin/main` as shared local Review bases. The Local review dialog's Base branch picker now searches local and remote branches in one list, grouped under **Local branches** and **Remote branches**, and `review_local` accepts `base: "origin/main"`. Patchdesk reads the branch as your last fetch left it and never fetches; a base that `git fetch --prune` removes shows as gone, like a deleted local branch. `review_local` and `list_local_reviews` now name the base as `baseRef`, a full ref. A saved Review record that no longer parses, such as a shared Review stored before this change, is now skipped with a logged warning instead of making the Local review dialog, `list_local_reviews`, and `review_local` refuse with `storage`. #591
 
 - Made each Brief Scope card row with files a button that opens the Diff filtered to that bucket, such as "Filter the Diff to Tests". The Diff's Scope picker then shows the bucket and Clear scope removes it. Rows work on an outdated Brief too, since the card shows the current revision's Scope. #612
 

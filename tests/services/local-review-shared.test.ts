@@ -750,4 +750,62 @@ describe("the checkout's shared Reviews an agent looks up (#558)", () => {
 
     expect(listed.reviews).toEqual([]);
   });
+
+  it("skips a saved record that no longer parses, warning once, so the list and an agent's open still work (#591)", async () => {
+    const harness = await localApplyHarness();
+    const { repositoryPath } = harness;
+    git(repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(repositoryPath, "feature.txt"), "feature\n");
+    const valid = await harness.open(shared());
+    // A shared Review stored before its base became a full ref.
+    const oldId = value(
+      parseReviewId(
+        "github.com__octo-org__patchdesk__local-shared-old__review-000000000000",
+      ),
+    );
+    const record = JSON.parse(
+      await readFile(
+        harness.paths.reviewFile(
+          profileId,
+          value(parseReviewId(valid.review.id)),
+        ),
+        "utf8",
+      ),
+    );
+    const { baseRef: _baseRef, ...source } = record.identity.source;
+    const oldFile = harness.paths.reviewFile(profileId, oldId);
+    await mkdir(dirname(oldFile), { recursive: true });
+    await writeFile(
+      oldFile,
+      JSON.stringify({
+        ...record,
+        id: oldId,
+        identity: {
+          ...record.identity,
+          source: { ...source, baseBranch: "main" },
+        },
+      }),
+    );
+
+    const listed = await listFrom(harness, repositoryPath);
+    const opened = value(
+      await harness.opening.openForAgent({
+        profileId,
+        repository,
+        request: { kind: "local_branch" },
+      }),
+    );
+
+    expect(listed.reviews.map(({ reviewId }) => reviewId)).toEqual([
+      valid.review.id,
+    ]);
+    expect(opened.workbench.review.id).toBe(valid.review.id);
+    expect(
+      harness.logs.filter(
+        (entry) =>
+          entry.topic === "local-review-list" &&
+          entry.meta?.["reviewId"] === oldId,
+      ),
+    ).toHaveLength(1);
+  });
 });
