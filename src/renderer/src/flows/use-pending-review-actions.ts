@@ -356,6 +356,10 @@ export function usePendingReviewActions({
   const checkGitHubAgain = useCallback(async (): Promise<void> => {
     setPendingReviewBusy(true);
     setFinishDialogError(undefined);
+    const recovering = latestWorkbenchRef.current.pendingReview;
+    const recoveringSubmit =
+      recovering?.state === "recovery_required" &&
+      recovering.action === "submit";
     try {
       const value = await requestJson("/v1/reviews/pending-review/recover", {
         method: "POST",
@@ -365,6 +369,10 @@ export function usePendingReviewActions({
         },
       });
       const projection = applyPendingReviewProjection(value);
+      // No pending review after an unknown Submit is evidence it went through
+      // (ADR 0035), so its summary must never be offered again.
+      if (recoveringSubmit && projection?.state === "none")
+        setKeptFinishDraft(undefined);
       if (projection?.state === "recovery_required") {
         setFinishDialogError(
           "Patchdesk found the pending review, but it cannot identify the exact Finding comment. Inspect or discard the pending review on GitHub, then check again.",
@@ -380,7 +388,12 @@ export function usePendingReviewActions({
     } finally {
       setPendingReviewBusy(false);
     }
-  }, [applyPendingReviewProjection, reloadWorkbench, workbench]);
+  }, [
+    applyPendingReviewProjection,
+    latestWorkbenchRef,
+    reloadWorkbench,
+    workbench,
+  ]);
 
   const onOpenFinishDialog = useCallback((): void => {
     setFinishDialogOfferedSummary(undefined);
