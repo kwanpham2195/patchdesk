@@ -30,16 +30,19 @@ export function useReviewFileSelection({
           ),
     [patch, ready, visiblePaths],
   );
+  const chosen = selectedPath !== undefined && paths.includes(selectedPath);
   const resolvedPath =
     !ready || patch === undefined
       ? undefined
-      : selectedPath !== undefined && paths.includes(selectedPath)
+      : chosen
         ? selectedPath
         : activePath !== undefined && paths.includes(activePath)
           ? activePath
           : paths[0];
   return {
     selectedPath: resolvedPath,
+    /** No file was chosen, so the selection is whichever file the diff reports active. */
+    selectionFollowsActive: !chosen,
     activePath:
       !preferSelectedPath &&
       activePath !== undefined &&

@@ -540,16 +540,19 @@ export function ReviewWorkbench({
     (!onOtherView ||
       selectedCommitSha !== undefined ||
       localPatchView?.status === "ready");
-  const { selectedPath: diffSelectedPath, activePath: navigatorActivePath } =
-    useReviewFileSelection({
-      patch: displayedPatch,
-      ready: selectionReady,
-      visiblePaths: scopeFilteredPaths,
-      selectedPath,
-      activePath,
-      preferSelectedPath:
-        selectedCommitSha !== undefined || preferences.fileMode === "selected",
-    });
+  const {
+    selectedPath: diffSelectedPath,
+    activePath: navigatorActivePath,
+    selectionFollowsActive,
+  } = useReviewFileSelection({
+    patch: displayedPatch,
+    ready: selectionReady,
+    visiblePaths: scopeFilteredPaths,
+    selectedPath,
+    activePath,
+    preferSelectedPath:
+      selectedCommitSha !== undefined || preferences.fileMode === "selected",
+  });
   const shownFindingCounts = onOtherView
     ? NO_FINDING_COUNTS
     : findingCountsByPath;
@@ -823,6 +826,7 @@ export function ReviewWorkbench({
                         {...definedProps({
                           controlledSelectedPath: diffSelectedPath,
                         })}
+                        selectedPathFollowsActive={selectionFollowsActive}
                         onSelectedPathChange={(path: string) => {
                           commitWorkbenchPosition({
                             activeTab: "diff",

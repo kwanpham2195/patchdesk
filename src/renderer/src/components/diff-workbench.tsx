@@ -54,6 +54,7 @@ export function DiffWorkbench({
   conversationActions,
   bodyContext,
   controlledSelectedPath,
+  selectedPathFollowsActive,
   onSelectedPathChange,
   onActiveFileChange,
   hideFileNavigation = false,
@@ -84,6 +85,8 @@ export function DiffWorkbench({
   /** What an inline conversation or pending card resolves its images and links against. */
   readonly bodyContext?: PullRequestBodyContext;
   readonly controlledSelectedPath?: string;
+  /** True while no file is chosen and `controlledSelectedPath` is just the file the diff reports active. */
+  readonly selectedPathFollowsActive?: boolean;
   readonly onSelectedPathChange?: (path: string) => void;
   readonly onActiveFileChange?: (path: string) => void;
   readonly hideFileNavigation?: boolean;
@@ -261,6 +264,7 @@ export function DiffWorkbench({
             {...(selectedPath === undefined ? {} : { selectedPath })}
             onActiveFileChange={reportActiveFile}
             onSelectedPathChange={selectFile}
+            selectedPathFollowsActive={selectedPathFollowsActive ?? false}
             preferences={preferences}
             collapsedPaths={collapsedPaths}
             onPreferencesChange={updatePreferences}

@@ -112,6 +112,14 @@ export function materializeAndScrollTo<T>({
 /** Frames a line scroll is repeated for while its file's rows measure. */
 const LINE_SCROLL_SETTLE_FRAMES = 30;
 
+/** Input on the diff that means the user took the scroll over. */
+const USER_SCROLL_EVENTS = [
+  "wheel",
+  "touchmove",
+  "pointerdown",
+  "keydown",
+] as const;
+
 /**
  * Repeats a line scroll each frame until the target line's row is drawn and
  * the scroll position and content height have held still for two frames,
@@ -123,7 +131,10 @@ const LINE_SCROLL_SETTLE_FRAMES = 30;
  * such as wrapped lines, the line moves and nothing follows it, so a jump
  * into another file can stop short of its line.
  *
- * Returns a cleanup that cancels the pending frame.
+ * Wheel, touch, pointer, or key input on the diff stops the repeats at once
+ * and still calls `onSettled`, so the loop never re-centers under the user.
+ *
+ * Returns a cleanup that cancels the pending frame and the input listeners.
  */
 export function settleLineScroll<T>({
   viewer,
@@ -140,10 +151,28 @@ export function settleLineScroll<T>({
   let framesLeft = LINE_SCROLL_SETTLE_FRAMES;
   let previous: { top: number; height: number } | undefined;
   let stillFrames = 0;
+  const container = viewer.current?.getInstance()?.getContainerElement();
+  const stopListening = (): void => {
+    for (const type of USER_SCROLL_EVENTS)
+      container?.removeEventListener(type, yieldToUser);
+  };
+  const cancel = (): void => {
+    stopListening();
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+    pendingFrame = undefined;
+  };
+  // The user took the scroll over: stop re-centering under them, report the match where they are.
+  function yieldToUser(): void {
+    cancel();
+    if (!isStale()) onSettled();
+  }
   const check = (): void => {
     pendingFrame = undefined;
     const codeView = viewer.current?.getInstance();
-    if (isStale() || codeView === undefined) return;
+    if (isStale() || codeView === undefined) {
+      stopListening();
+      return;
+    }
     const drawn =
       codeView
         .getRenderedItems()
@@ -163,6 +192,7 @@ export function settleLineScroll<T>({
         ? stillFrames + 1
         : 0;
     if (stillFrames >= 2 || framesLeft === 0) {
+      stopListening();
       onSettled();
       return;
     }
@@ -171,8 +201,8 @@ export function settleLineScroll<T>({
     codeView.scrollTo(target);
     pendingFrame = requestAnimationFrame(check);
   };
+  for (const type of USER_SCROLL_EVENTS)
+    container?.addEventListener(type, yieldToUser, { passive: true });
   pendingFrame = requestAnimationFrame(check);
-  return () => {
-    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
-  };
+  return cancel;
 }
