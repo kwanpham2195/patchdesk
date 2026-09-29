@@ -67,7 +67,12 @@ provider/id` and `--thinking <level>`, then checks `get_state` and refuses
 - `pi`'s `read`, `grep`, `find`, and `ls` tools accept absolute paths, so the
   model can read files outside the worktree that the maintainer's account can
   read. This matches Codex's read-only sandbox, which also allows reads
-  anywhere. Neither provider can write.
+  anywhere. Neither provider can write. The readable files include pi's own
+  `~/.pi/agent/auth.json`, which holds the login's tokens: Patchdesk never
+  reads it, but the model's `read` tool can. A prompt injection in the
+  reviewed patch could have the model copy a token into a Finding, a Brief,
+  or a Walkthrough, where the maintainer might publish it. Patchdesk does not
+  scan results for secrets.
 - A pi CLI account run projects no activity trace; the running panel shows the
   spinner and start time as an API key run does.
 - A pi login lists hundreds of models, so the renderer's per-provider model

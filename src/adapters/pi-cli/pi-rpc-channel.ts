@@ -154,7 +154,12 @@ export class PiRpcChannel {
     // Split on LF only: U+2028 and U+2029 are valid inside a JSON string.
     const lines = this.buffer.split("\n");
     this.buffer = lines.pop() ?? "";
-    if (Buffer.byteLength(this.buffer, "utf8") > MAX_RECORD_BYTES) {
+    // A record that arrives whole in one chunk is as oversized as one still being buffered.
+    if (
+      [...lines, this.buffer].some(
+        (line) => Buffer.byteLength(line, "utf8") > MAX_RECORD_BYTES,
+      )
+    ) {
       this.stop();
       return;
     }

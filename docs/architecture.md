@@ -265,7 +265,7 @@ It is analysis guidance, never permission: no shell commands, no GitHub writes, 
 
 The architecture decision records, one file per decision, numbered in the order they were made.
 They document why the system looks the way it does:
-the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, the local pi CLI account, one-shot Insight children driving Pi directly, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys and `codex`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
+the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, the local pi CLI account, one-shot Insight children driving Pi directly, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys, `codex`, and `pi`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
 
 ### `tests/`
 
