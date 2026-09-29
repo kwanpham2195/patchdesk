@@ -14,15 +14,20 @@ import {
 import { isTextEntryTarget } from "../text-entry-target";
 import { useLatestCommitted } from "./use-latest-committed";
 
-/** The workbench tabs in strip order, with the digit that selects each under ⌘. */
+/**
+ * The workbench tabs in strip order, with the digit that selects each under ⌘.
+ * `code` names the physical key: on AZERTY-style layouts the digit row types
+ * `&`, `é`, `"` unshifted, so matching `key` would miss it.
+ */
 const WORKBENCH_TAB_COMMANDS = [
-  { tab: "conversation", label: "Conversation", key: "1" },
-  { tab: "diff", label: "Diff", key: "2" },
-  { tab: "insights", label: "Insights", key: "3" },
+  { tab: "conversation", label: "Conversation", digit: "1", code: "Digit1" },
+  { tab: "diff", label: "Diff", digit: "2", code: "Digit2" },
+  { tab: "insights", label: "Insights", digit: "3", code: "Digit3" },
 ] as const satisfies ReadonlyArray<{
   readonly tab: WorkbenchActiveTab;
   readonly label: string;
-  readonly key: string;
+  readonly digit: string;
+  readonly code: string;
 }>;
 
 const INSIGHT_READER_COMMANDS = [
@@ -100,7 +105,7 @@ export function useReviewWorkbenchCommands({
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey)
         return;
       const command = latest.current.tabCommands.find(
-        (candidate) => candidate.key === event.key,
+        (candidate) => candidate.code === event.code,
       );
       if (command === undefined) return;
       if (isTextEntryTarget(event) || focusInsideOverlay()) return;
@@ -133,7 +138,7 @@ export function useReviewWorkbenchCommands({
       ...current.tabCommands.map((command) => ({
         id: `tab-${command.tab}`,
         label: command.label,
-        shortcut: `⌘${command.key}`,
+        shortcut: `⌘${command.digit}`,
         run: () => current.selectTab(command.tab),
       })),
       ...INSIGHT_READER_COMMANDS.map((command) => ({
