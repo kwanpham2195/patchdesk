@@ -559,7 +559,9 @@ test("Pierre headers retain per-file totals while the navigator stays compact", 
 }) => {
   const server = await serveRenderer();
   try {
-    await page.setViewportSize({ width: 1_280, height: 800 });
+    // At 1440px the diff pane is ~866px, wide enough for Split view; at 1280px
+    // it is ~706px, below SPLIT_VIEW_MIN_PANE_WIDTH, so the switch is disabled.
+    await page.setViewportSize({ width: 1_440, height: 800 });
     await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
 
     await expect(page.getByRole("treeitem", { name: "a.ts" })).toBeVisible();
@@ -569,6 +571,9 @@ test("Pierre headers retain per-file totals while the navigator stays compact", 
     await expect(headerStats).toHaveAttribute("data-deletions", "48");
 
     await chooseDiffOptions(page, { split: true });
+    await expect(
+      page.getByRole("region", { name: "Review diff" }),
+    ).toHaveAttribute("data-diff-style", "split");
     await expect(headerStats).toHaveAttribute("data-additions", "48");
     await expect(headerStats).toHaveAttribute("data-deletions", "48");
 
