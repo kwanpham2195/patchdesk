@@ -603,6 +603,6 @@ install replaces a Homebrew-cask install in place, and the next
 
 ## Pull requests
 
-Base branch: `main`. Keep PRs focused on one logical change. User-visible
+Base branch: `main` (throwaway #605 base). Keep PRs focused on one logical change. User-visible
 behavior changes must update the relevant docs; architectural decisions go
 through an ADR in `docs/adr/`.
