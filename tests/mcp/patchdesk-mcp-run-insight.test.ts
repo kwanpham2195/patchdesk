@@ -171,6 +171,69 @@ describe("run_insight after the maintainer's Refresh", () => {
       sessionId: workbench.session.id,
     });
   });
+
+  it("answers awaiting_refresh for the session refresh_review prepared, and the maintainer's Refresh puts it on the bar with its notification", async () => {
+    const events: DesktopNotificationEvent[] = [];
+    app = await startAppWithLinkedWorktree({
+      desktopNotifier: { notify: (event) => events.push(event) },
+    });
+    const fixture = app;
+    const probe = join(fixture.repositoryPath, "probe.txt");
+    await writeFile(probe, "one\n");
+    const workbench = await openRoute(fixture, fixture.repositoryPath);
+    const client = await connectLegacyClient(fixture.socketPath);
+    await writeFile(probe, "two\n");
+    const refreshed = await call(client, "refresh_review", {
+      reviewId: workbench.review.id,
+    });
+    const { preparedSessionId } = v.parse(
+      v.looseObject({ preparedSessionId: v.string() }),
+      refreshed.content,
+    );
+
+    const asked = await call(client, "run_insight", {
+      reviewId: workbench.review.id,
+      sessionId: preparedSessionId,
+      type: "analysis",
+    });
+    const notifiedBeforeRefresh = [...events];
+    await fixture.route(
+      "v1/reviews/local-refresh",
+      JSON.stringify({ profileId: "acme", reviewId: workbench.review.id }),
+    );
+    const shown = parseWorkbenchResponse(
+      (
+        await fixture.route(
+          "v1/reviews/load",
+          JSON.stringify({ profileId: "acme", reviewId: workbench.review.id }),
+        )
+      ).body,
+    );
+
+    const { requestId } = v.parse(requestedSchema, asked.content);
+    expect(asked).toEqual({
+      isError: false,
+      content: {
+        reviewId: workbench.review.id,
+        sessionId: preparedSessionId,
+        type: "analysis",
+        status: "awaiting_refresh",
+        requestId,
+      },
+    });
+    expect(notifiedBeforeRefresh).toEqual([]);
+    expect(shown?.session.id).toBe(preparedSessionId);
+    expect(shown?.agentRunRequests).toEqual([
+      expect.objectContaining({ requestId, status: "awaiting_approval" }),
+    ]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        _tag: "AgentRunRequested",
+        reviewId: workbench.review.id,
+        insightType: "analysis",
+      }),
+    ]);
+  });
 });
 
 /** Begins a run of `type` on the workbench's session, as the maintainer's Run button does. */

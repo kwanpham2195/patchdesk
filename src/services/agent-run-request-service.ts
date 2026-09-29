@@ -46,7 +46,7 @@ export type AgentRunRequestFailure = {
     | "not_found"
     /** A pull request Review, which an agent never asks to run on. */
     | "not_applicable"
-    /** The session named is not the Review's current one. */
+    /** The session named is neither the Review's current one nor the one an agent's refresh prepared. */
     | "stale_session"
     /** Decline names a request that is not awaiting approval, or that the Review's move dropped. */
     | "request_not_awaiting"
@@ -75,13 +75,14 @@ export const agentRunDeclineRequestSchema = strictObject({
 /**
  * What `run_insight` answers: the request, or `running` with the run's id
  * when a run of that type is already active on the session and no agent
- * asked for it.
+ * asked for it. `awaiting_refresh` is an awaiting request on the prepared
+ * session, which the maintainer sees only once their Refresh moves there.
  */
 export type AgentRunRequestReply = {
   readonly reviewId: ReviewId;
   readonly sessionId: ReviewSessionId;
   readonly type: InsightType;
-  readonly status: AgentRunRequest["status"] | "running";
+  readonly status: AgentRunRequest["status"] | "running" | "awaiting_refresh";
   readonly requestId?: AgentRunRequestId;
   readonly runId?: InsightRunId;
 };
@@ -113,6 +114,8 @@ export class AgentRunRequestService {
    * An agent's `run_insight`. A request already awaiting, approved with its
    * run still active, or declined is answered as it stands and posts
    * nothing; otherwise a new request is recorded and one notification posted.
+   * A request on the prepared session posts nothing here: `announceMoved`
+   * posts it once the maintainer's Refresh moves the Review there.
    */
   async request(input: {
     readonly profileId: WorkspaceProfileId;
@@ -126,7 +129,8 @@ export class AgentRunRequestService {
       readonly reply: AgentRunRequestReply;
       readonly recorded?: Review<LocalReviewSource>;
     }>(input, async (review) => {
-      if (input.sessionId !== review.currentSessionId)
+      const prepared = input.sessionId === review.preparedSessionId;
+      if (!prepared && input.sessionId !== review.currentSessionId)
         return err({ reason: "stale_session" });
       const activeRun = await this.activeRunOn(input);
       if (activeRun._tag === "err") return activeRun;
@@ -145,7 +149,9 @@ export class AgentRunRequestService {
         existing !== undefined &&
         (existing.status !== "approved" || existing.runId === activeRun.value)
       )
-        return ok({ reply: { ...reply, ...requestReply(existing) } });
+        return ok({
+          reply: { ...reply, ...requestReply(existing, prepared) },
+        });
       if (activeRun.value !== undefined)
         return ok({
           reply: { ...reply, status: "running", runId: activeRun.value },
@@ -164,14 +170,35 @@ export class AgentRunRequestService {
       );
       if (saved._tag === "err") return saved;
       return ok({
-        reply: { ...reply, ...requestReply(request) },
-        recorded: saved.value,
+        reply: { ...reply, ...requestReply(request, prepared) },
+        ...definedProps({ recorded: prepared ? undefined : saved.value }),
       });
     });
     if (recorded._tag === "err") return recorded;
     if (recorded.value.recorded !== undefined)
-      await this.notify(recorded.value.recorded, input.type);
+      await this.notify(recorded.value.recorded, [input.type]);
     return ok(recorded.value.reply);
+  }
+
+  /**
+   * Posts the requests an agent made on the prepared session once a move
+   * lands the Review there, so no notification names a request the bar cannot
+   * show. `moved` is the Review the move saved, which kept only the requests
+   * of the session it landed on.
+   */
+  async announceMoved(
+    from: ReviewSessionId | undefined,
+    moved: Review<LocalReviewSource>,
+  ): Promise<void> {
+    if (from === moved.currentSessionId) return;
+    const awaiting = (moved.agentRunRequests ?? []).filter(
+      (request) => request.status === "awaiting_approval",
+    );
+    if (awaiting.length > 0)
+      await this.notify(
+        moved,
+        awaiting.map((request) => request.type),
+      );
   }
 
   /**
@@ -306,28 +333,34 @@ export class AgentRunRequestService {
     return saved._tag === "ok" ? ok(next.value) : err({ reason: "storage" });
   }
 
+  /** Posts one notification per Insight type requested on the Review. */
   private async notify(
     review: Review<LocalReviewSource>,
-    insightType: InsightType,
+    insightTypes: ReadonlyArray<InsightType>,
   ): Promise<void> {
     const subject = await localReviewNotificationSubject(
       this.dependencies.profiles,
       review,
     );
-    postDesktopNotification(this.dependencies.notifier, {
-      _tag: "AgentRunRequested",
-      reviewId: review.id,
-      insightType,
-      ...subject,
-    });
+    for (const insightType of insightTypes)
+      postDesktopNotification(this.dependencies.notifier, {
+        _tag: "AgentRunRequested",
+        reviewId: review.id,
+        insightType,
+        ...subject,
+      });
   }
 }
 
 function requestReply(
   request: AgentRunRequest,
+  prepared: boolean,
 ): Pick<AgentRunRequestReply, "status" | "requestId" | "runId"> {
   return {
-    status: request.status,
+    status:
+      prepared && request.status === "awaiting_approval"
+        ? "awaiting_refresh"
+        : request.status,
     requestId: request.requestId,
     ...definedProps({
       runId: request.status === "approved" ? request.runId : undefined,

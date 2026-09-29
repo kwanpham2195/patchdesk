@@ -489,6 +489,16 @@ export async function buildLocalApiContainer(
     sessions,
     configuration.readOnlyGit ?? readOnlyGit,
   );
+  const agentRunRequests = new AgentRunRequestService({
+    reviews,
+    insights,
+    profiles,
+    coordinator: reviewOperations,
+    now: systemNow,
+    createRequestId: () => createAgentRunRequestId(randomUUID()),
+    logs,
+    ...definedProps({ notifier: configuration.desktopNotifier }),
+  });
   const localReviewOpening = new LocalReviewOpening(
     new LocalReviewSessionPreparation({
       profiles,
@@ -518,6 +528,7 @@ export async function buildLocalApiContainer(
         now: systemNow,
       }),
       logs,
+      agentRunRequests,
     },
     systemNow,
   );
@@ -620,16 +631,7 @@ export async function buildLocalApiContainer(
         coordinator: reviewOperations,
         now: systemNow,
       }),
-      agentRunRequests: new AgentRunRequestService({
-        reviews,
-        insights,
-        profiles,
-        coordinator: reviewOperations,
-        now: systemNow,
-        createRequestId: () => createAgentRunRequestId(randomUUID()),
-        logs,
-        ...definedProps({ notifier: configuration.desktopNotifier }),
-      }),
+      agentRunRequests,
       retainedInsights: insights,
       reviewDiffSources,
       mergeWrites,

@@ -16,6 +16,7 @@ import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
 import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
 import {
+  createAgentRunRequestId,
   createLocalNoteId,
   parseContentHash,
   parseFindingId,
@@ -44,6 +45,8 @@ import type { ReviewResult } from "../../src/domain/review-result";
 import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
+import { AgentRunRequestService } from "../../src/services/agent-run-request-service";
+import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { LocalApplyService } from "../../src/services/local-apply-service";
 import { LocalApplySettlement } from "../../src/services/local-apply-settlement";
 import { LocalDraftService } from "../../src/services/local-draft-service";
@@ -118,6 +121,10 @@ export type LocalApplyHarness = {
   readonly retention: ReviewRetention;
   readonly diagnostics: ReviewDiagnosticService;
   readonly logs: ReadonlyArray<LogEntryInput>;
+  /** Agent run requests over the same stores and Review coordinator; request ids count up from `agent-request-fixture-1`. */
+  readonly agentRunRequests: AgentRunRequestService;
+  /** The desktop notifications the agent run requests and the opening's moves posted. */
+  readonly notifications: ReadonlyArray<DesktopNotificationEvent>;
   readonly open: (
     request?: LocalReviewSourceRequest,
   ) => Promise<ReviewWorkbenchProjection>;
@@ -235,6 +242,18 @@ export async function localApplyHarness(
     lifecycleGate,
     now: () => now,
   });
+  const notifications: DesktopNotificationEvent[] = [];
+  let requests = 0;
+  const agentRunRequests = new AgentRunRequestService({
+    reviews,
+    insights,
+    profiles,
+    coordinator,
+    notifier: { notify: (event) => notifications.push(event) },
+    now: () => now,
+    createRequestId: () =>
+      createAgentRunRequestId(`fixture-${String(++requests)}`),
+  });
   const opening = new LocalReviewOpening(
     {
       resolve: (request) => preparation.resolve(request),
@@ -279,6 +298,7 @@ export async function localApplyHarness(
         now: () => now,
       }),
       logs: { write: (entry) => logs.push(entry) },
+      agentRunRequests,
     },
     seams.openingNow ?? (() => now),
   );
@@ -324,6 +344,8 @@ export async function localApplyHarness(
     retention,
     diagnostics,
     logs,
+    agentRunRequests,
+    notifications,
     open: async (request = sharedAgainstMain()) =>
       value(await opening.open({ profileId, repository, request })),
   };

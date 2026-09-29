@@ -21,8 +21,8 @@ The loop the maintainer passes through, in order:
 3. The maintainer presses Run or Decline on the Agent requests bar.
 4. The run settles; the agent reads it (`get_insight`).
 5. The maintainer drafts notes and tells the agent to read them (`get_feedback`).
-6. The agent changes the code and prepares a new session (`refresh_review`). The header shows Updates available.
-7. The maintainer presses Refresh. The Review moves to the prepared session and carries the notes. The loop returns to step 2 or ends.
+6. The agent changes the code and prepares a new session (`refresh_review`). The header shows Updates available. The agent may ask for an Insight on that session at once; the request waits for the maintainer's Refresh.
+7. The maintainer presses Refresh. The Review moves to the prepared session and carries the notes, and a request made in step 6 appears on the Agent requests bar. The loop returns to step 2 or 3, or ends.
 
 ### Arrive
 
@@ -56,6 +56,8 @@ The optional `intent` is the task the agent was given, as Markdown. Patchdesk re
 
 `run_insight` asks for one Analysis, Walkthrough, or Brief on the Review's current session. It records an _Agent run request_ and returns at once with `awaiting_approval` and a request id. The tool has no provider, model, or effort field; those are the maintainer's to pick.
 
+`run_insight` also accepts the _prepared session_ that `refresh_review` returned as `preparedSessionId`, so the agent can ask for an Insight on the code it just wrote before the maintainer presses Refresh. It records the request for that session and answers `awaiting_refresh` with a request id; its description tells the agent to stop and ask the user to press Refresh. Any other session is refused `stale_session`.
+
 `show_review` switches the Patchdesk window to a saved Review of the active profile, local or pull request, by its id. The window opens the Review as a clicked notification does, and the open marks it opened as any open does, but the window is never raised or focused: the screen changes behind the app the maintainer is using, and the next ⌘-Tab lands on the Review. With no window open, Patchdesk opens one without activating it. A Review whose repository is no longer watched still shows. While the Review holds an [unsaved draft](../foundations/navigation-and-overlays.md#while-the-action-runs), such as a half-written note, comment, or reply, a review summary, or an unsaved Change intent edit, or a GitHub write is in progress, the call answers `held` and moves nothing: no leave dialog appears, and the maintainer opens the Review when ready. Otherwise it answers `shown`, also when the Review is already on screen. A Review the active profile does not hold is refused `not_found`, or `profile_changed` when another profile holds it; the tool never switches profile. A shared Review whose checkout is now on another branch is refused `branch_mismatch`, naming that branch, as the maintainer's own open is.
 
 > Technical note: `review_local` and `refresh_review` take a Local snapshot, which writes git objects, a `refs/patchdesk/local/` ref, and a worktree in Patchdesk's cache. They change no branch, index, or working-tree file (ADR 0050, ADR 0052 amendment of 2026-09-26).
@@ -71,6 +73,8 @@ An agent run request waits on the Review until the maintainer acts. While it wai
 - The Review's Insights tab shows the Agent requests bar. Each row names the Insight, the client's self-reported name (`An agent` when it sent none), and `asked <time>`. With more than one workspace profile, the heading reads `Agent requests · <label> profile`.
 
 A second `run_insight` for the same session and Insight returns the same request as it stands and posts nothing.
+
+A request on the prepared session waits for the maintainer's Refresh first. Until then it posts no notification, sets no `agent` marker, and stays off the Agent requests bar, and `get_insight` and `get_review_status` describe the current session without it. When the maintainer's Refresh moves the Review to that session, the notification posts, the marker shows, and the bar lists the request as if the agent had asked on that session. If the checkout changed again before the Refresh, the Refresh moves to the newer content and the request is dropped without a notification.
 
 ### Settle
 
@@ -88,7 +92,7 @@ The `agent` marker clears when the last request is settled or declined and no ru
 - `list_local_reviews`: which Reviews the maintainer has open for my checkout, so I read the one they are looking at.
 - `review_local`: open this checkout's Review so the maintainer can read my change, and record my task as the Change intent if the Review has none.
 - `refresh_review`: I changed the code; prepare it for the maintainer. The maintainer sees Updates available.
-- `run_insight`: ask the maintainer to run an Analysis, Walkthrough, or Brief on the current session.
+- `run_insight`: ask the maintainer to run an Analysis, Walkthrough, or Brief on the current session, or on the session I just prepared once they press Refresh.
 - `show_review`: put this Review on the maintainer's screen without taking focus from what they are doing.
 - `get_insight`: read one Insight's status and result. The status is `none`, `awaiting_approval`, `declined`, `running`, `completed`, or `failed`. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries `outdated: true`.
 - `get_feedback`: read the maintainer's _Local drafts_, in file and line order, with the same Markdown prompt that **Copy as agent prompt** copies.
@@ -138,7 +142,7 @@ The answer carries no Insight result and no note text; `get_insight` and `get_fe
 
 Both notifications go through the same macOS notifications as the rest of Patchdesk and follow the **Send notifications** setting.
 
-- `Agent asks for <Insight>` when an agent records a new request. The body is the Review's source title with its checkout folder, such as `feat/467 against main in patchdesk`, followed by `· <label> profile` when more than one profile exists.
+- `Agent asks for <Insight>` when an agent records a new request on the current session, or when the maintainer's Refresh moves the Review to a prepared session holding one. The body is the Review's source title with its checkout folder, such as `feat/467 against main in patchdesk`, followed by `· <label> profile` when more than one profile exists.
 - `<Insight> finished` or `<Insight> failed` when any Insight on a local Review settles. The body is the same source title, then `· requested by the agent` when an agent run request started the run, then the profile when more than one exists.
 
 A notification about the Review the focused window shows is not posted; the Agent requests bar or the Insight tab is the signal there. Clicking a notification opens its Review. Neither notification has buttons: Run and Decline are only in the app.
@@ -163,7 +167,7 @@ A refused call returns an error code and a sentence the agent can relay. The one
 - `profile_changed`: the Review belongs to another workspace profile than the active one; the sentence names the active profile. The maintainer switches profile in Patchdesk.
 - `branch_mismatch`: `refresh_review` or `show_review` named a shared Review whose checkout is now on another branch; the sentence names that branch.
 - `rate_limited`: `refresh_review` was called on this Review less than 10 seconds ago; the answer says how long to wait.
-- `stale_session`: `run_insight` named a session the Review has moved past. The agent reads the current session from `get_insight` or `review_local` and asks again.
+- `stale_session`: `run_insight` named a session that is neither the Review's current session nor its prepared session, such as one the Review has moved past. The agent reads the current session from `get_insight` or `review_local`, or the prepared one from `get_review_status`, and asks again.
 - `stale_cursor`: the drafts changed since the `get_feedback` cursor was issued. The agent reads again from the first page.
 
 Others name their cause: `checkout_not_found` for a directory outside every checkout of the profile's repositories, `checkout_missing` for a repository whose configured checkout folder no longer exists, naming that path, `repository_not_local`, `base_required` for a branch with no open shared Review and no other local branch behind `HEAD`, `revision_not_found` for a base branch or commit Git cannot find, or a base that shares no history with `HEAD` (when a saved Review's base was deleted, the answer names it and asks for explicit `base`), `not_found` for an unknown Review, `unmerged_index` during a merge conflict, `untracked_too_large` for a working tree with more than 5,000 untracked files or 100 MiB of them, naming the largest untracked paths, `patch_too_large` for a patch over 2 MiB (Combined, Committed, or Uncommitted), naming the files with the most changes, `in_progress` while Patchdesk is already working on that Review, `storage` when Patchdesk cannot read every saved Review during `review_local` or `list_local_reviews`, or cannot read a listed Review's current session, `intent_exists`, `not_applicable` for a pull request Review or, from `refresh_review`, a stored working-tree or branch Review, `window_unavailable` when `show_review` could not open a Patchdesk window, and `too_large` for an answer over 4 MiB.
@@ -219,12 +223,14 @@ The fixed rows, each with the case before and while an agent action runs.
 - A `run_insight` for an Insight that the maintainer is already running without a request answers `running` with that run's id and records nothing.
 - After an approved run settles, the same `run_insight` records a new request that needs a new approval.
 - A request for a session the Review has moved past is dropped; `get_insight` describes the new session, usually with status `none`.
+- A request on a prepared session that a later `refresh_review` replaced with newer content stays stored but unseen; the maintainer's Refresh to the newer content drops it, and `run_insight` naming that session is refused `stale_session`.
 - A draft whose text alone is larger than a page's size limit goes out on its own page, and that page's Markdown points to the entry for the full text.
 
 ## Open questions and verification
 
 - Confirm focused-window notification suppression and finished-run banner. Tests cover both; live checks saw log events only.
 - Confirm whether a new `review_local` Review should appear in Visited pull requests immediately; it currently appears on the next column read.
+- Confirm live that a `run_insight` request on the prepared session reaches the Agent requests bar and posts its notification after the maintainer's Refresh (#602). Tests cover it; no live check yet.
 - This page's variants and interrupts use bullets rather than template tables, and its task uses steps rather than a state diagram.
 
 Verified against Patchdesk application source commit `cebb7b0b`.
