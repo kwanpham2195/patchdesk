@@ -50,7 +50,7 @@ function LocalReviewScreen(): React.JSX.Element {
           source: {
             kind: "local_branch",
             branch: "main",
-            baseBranch: "develop",
+            baseRef: "refs/heads/develop",
           },
         },
       },

@@ -15,6 +15,7 @@ import {
   parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
+  parseLocalBaseRef,
   parseLocalBranchName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
@@ -115,6 +116,7 @@ function localReview(
 ): Review {
   const branchName = must(parseLocalBranchName(branch));
   const baseBranch = must(parseLocalBranchName("main"));
+  const baseRef = must(parseLocalBaseRef("refs/heads/main"));
   const checkout = definedProps({
     checkout:
       options.checkout === undefined
@@ -132,7 +134,9 @@ function localReview(
         ? { kind, commitSha: headSha, ...checkout }
         : kind === "working_tree"
           ? { kind, branch: branchName, ...checkout }
-          : { kind, branch: branchName, baseBranch, ...checkout },
+          : kind === "branch"
+            ? { kind, branch: branchName, baseBranch, ...checkout }
+            : { kind, branch: branchName, baseRef, ...checkout },
   };
   return {
     ...createReview({

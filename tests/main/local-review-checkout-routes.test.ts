@@ -44,7 +44,7 @@ function routeFixture(localReviewOpening: Partial<Opening> = {}) {
   return {
     open: (source: {
       readonly kind: "local_branch";
-      readonly baseBranch: string;
+      readonly baseRef: string;
       readonly checkout: string;
     }) =>
       app.request("/v1/reviews/open-local", {
@@ -77,14 +77,18 @@ describe("local Review checkout routes (#489)", () => {
 
     const opened = await fixture.open({
       kind: "local_branch",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
       checkout: "/work/linked",
     });
 
     expect(opened.status).toBe(404);
     expect(await opened.json()).toEqual({ error: "checkout_not_found" });
     expect(fixture.opens.map((input) => input.request)).toEqual([
-      { kind: "local_branch", baseBranch: "main", checkout: "/work/linked" },
+      {
+        kind: "local_branch",
+        baseRef: "refs/heads/main",
+        checkout: "/work/linked",
+      },
     ]);
   });
 
@@ -93,7 +97,7 @@ describe("local Review checkout routes (#489)", () => {
 
     const opened = await fixture.open({
       kind: "local_branch",
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
       checkout: "linked",
     });
 

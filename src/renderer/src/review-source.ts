@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { baseRefName } from "../../domain/ids";
 import type { LocalPatchView } from "../../domain/local-patch-view";
 import { casesHandled } from "../../domain/result";
 
@@ -26,7 +27,7 @@ const localReviewSourceSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("local_branch"),
     branch: v.pipe(v.string(), v.minLength(1)),
-    baseBranch: v.pipe(v.string(), v.minLength(1)),
+    baseRef: v.pipe(v.string(), v.minLength(1)),
     checkout: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
   v.strictObject({
@@ -79,7 +80,7 @@ export function localRevisionLabel(
     case "branch":
       return `Branch tip ${short} · read from the local checkout`;
     case "local_branch":
-      return `${localPatchViewLabels[view]} view · Local snapshot ${short} · ${source.branch === "detached" ? "detached HEAD" : source.branch} against ${source.baseBranch} · read from the local checkout`;
+      return `${localPatchViewLabels[view]} view · Local snapshot ${short} · ${source.branch === "detached" ? "detached HEAD" : source.branch} against ${baseRefName(source.baseRef)} · read from the local checkout`;
     case "commit":
       return `Commit ${short} · read from the local checkout`;
     default:

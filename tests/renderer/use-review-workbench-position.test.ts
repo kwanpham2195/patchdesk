@@ -34,7 +34,7 @@ describe("useReviewWorkbenchPosition", () => {
           source: {
             kind: "local_branch" as const,
             branch: "main",
-            baseBranch: "develop",
+            baseRef: "refs/heads/develop",
           },
         },
       },
@@ -61,7 +61,7 @@ describe("useReviewWorkbenchPosition", () => {
   const localBranch = {
     kind: "local_branch" as const,
     branch: "feature",
-    baseBranch: "main",
+    baseRef: "refs/heads/main",
   };
   it.each([
     {

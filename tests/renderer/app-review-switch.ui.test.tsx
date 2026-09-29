@@ -46,7 +46,11 @@ function localReview(id: string): WorkbenchResponse {
       ...base.session,
       key: {
         ...base.session.key,
-        source: { kind: "local_branch", branch: "main", baseBranch: "develop" },
+        source: {
+          kind: "local_branch",
+          branch: "main",
+          baseRef: "refs/heads/develop",
+        },
       },
     },
     pullRequest: undefined,

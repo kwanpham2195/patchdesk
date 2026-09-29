@@ -8,6 +8,7 @@ import { definedProps } from "../domain/defined-props";
 import type {
   AbsolutePath,
   IsoTimestamp,
+  LocalBaseRef,
   LocalBranchName,
   WorkspaceProfileId,
 } from "../domain/ids";
@@ -24,7 +25,7 @@ import {
 /** An open shared Review of a checkout on its current session, as `list_local_reviews` names it. */
 type ListedSharedReview = ReviewSessionDescription & {
   readonly branch: LocalBranchName;
-  readonly baseBranch: LocalBranchName;
+  readonly baseRef: LocalBaseRef;
   /** When the maintainer last opened it; absent when only an agent has. */
   readonly lastOpenedAt?: IsoTimestamp;
   /** Absent when the Review has no Change intent. */
@@ -100,7 +101,7 @@ export async function describeSharedReviews(
     described.push({
       ...session.value.description,
       branch: source.branch,
-      baseBranch: source.baseBranch,
+      baseRef: source.baseRef,
       ...definedProps({
         lastOpenedAt: review.lastOpenedAt,
         changeIntent:

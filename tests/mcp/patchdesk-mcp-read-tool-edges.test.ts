@@ -133,7 +133,7 @@ describe("review_local on the agent's side (the agent prepares, the maintainer m
     expect(called.content).toMatchObject({
       reviewId: shown.review.id,
       sessionId: shown.session.id,
-      baseBranch: "main",
+      baseRef: "refs/heads/main",
       baseInferred: false,
     });
     expect(called.content).not.toHaveProperty("changeIntent");

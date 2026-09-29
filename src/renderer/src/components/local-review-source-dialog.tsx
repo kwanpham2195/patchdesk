@@ -3,12 +3,16 @@ import { FolderGit2 } from "lucide-react";
 
 import type { LocalReviewSourceInput } from "../flows/use-inbox-review-opening";
 import { useApiProbe, type ApiProbeState } from "../hooks/use-api-probe";
+import { baseRefName } from "../../../domain/ids";
 import {
+  baseRefGroups,
   inferredBaseReason,
+  inferredBaseRef,
   parseLocalBranches,
   sharedReviewSource,
   type LocalBranches,
 } from "../local-branches";
+import { BaseRefCombobox } from "./base-ref-combobox";
 import { parseLocalCheckouts, type LocalCheckout } from "../local-checkouts";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -110,13 +114,17 @@ export function LocalReviewSourceDialog({
   // Undefined takes the inferred base; the maintainer's pick replaces it.
   const [pickedBase, setPickedBase] = useState<string>();
   const listing = branches.kind === "loaded" ? branches.value : undefined;
-  const baseBranch = pickedBase ?? listing?.inferred?.baseBranch;
+  const baseRef =
+    pickedBase ??
+    (listing?.inferred === undefined
+      ? undefined
+      : inferredBaseRef(listing.inferred));
   const source =
     kind === "commit"
       ? commitInput(commit)
-      : listing === undefined || baseBranch === undefined
+      : listing === undefined || baseRef === undefined
         ? undefined
-        : sharedReviewSource(baseBranch, listing.head, checkout);
+        : sharedReviewSource(baseRef, listing.head, checkout);
 
   const submit = async (): Promise<void> => {
     if (source === undefined) return;
@@ -187,7 +195,7 @@ export function LocalReviewSourceDialog({
               ) : null}
               <SharedReviewBase
                 branches={branches}
-                baseBranch={baseBranch}
+                baseRef={baseRef}
                 onChange={setPickedBase}
               />
             </>
@@ -226,18 +234,18 @@ function commitInput(value: string): LocalReviewSourceInput | undefined {
 }
 
 /**
- * The shared Review's base: the checkout's other local branches with the
- * inferred one preselected and its reason beside it, and the bases this
- * branch already has an open Review against.
+ * The shared Review's base: the checkout's other local branches and its
+ * remote-tracking branches, with the inferred one preselected and its reason
+ * beside it, and the bases this branch already has an open Review against.
  */
 function SharedReviewBase({
   branches,
-  baseBranch,
+  baseRef,
   onChange,
 }: {
   readonly branches: ApiProbeState<LocalBranches>;
-  readonly baseBranch: string | undefined;
-  readonly onChange: (baseBranch: string) => void;
+  readonly baseRef: string | undefined;
+  readonly onChange: (baseRef: string) => void;
 }): React.JSX.Element {
   if (branches.kind === "checking")
     return (
@@ -249,13 +257,14 @@ function SharedReviewBase({
         Patchdesk could not read the checkout&apos;s branches.
       </p>
     );
-  const { head, branches: bases, inferred, reviewedBases } = branches.value;
+  const { head, inferred, reviewedBases } = branches.value;
   const branch = head.kind === "branch" ? head.branch : "detached HEAD";
-  if (bases.length === 0)
+  const groups = baseRefGroups(branches.value);
+  if (groups.length === 0)
     return (
       <p className="text-sm text-muted-foreground">
-        {branch} is the only local branch, so there is no base to compare it
-        with. Create the base branch, or open one commit.
+        {branch} is the only branch, so there is no base to compare it with.
+        Create the base branch, or open one commit.
       </p>
     );
   return (
@@ -266,33 +275,20 @@ function SharedReviewBase({
       </p>
       <Field>
         <FieldLabel htmlFor="local-review-base-branch">Base branch</FieldLabel>
-        <Select
-          value={baseBranch ?? null}
-          items={bases.map((base) => ({ label: base, value: base }))}
-          onValueChange={(base) => {
-            if (base !== null) onChange(base);
-          }}
-        >
-          <SelectTrigger id="local-review-base-branch" aria-label="Base branch">
-            <SelectValue placeholder="Pick a base branch" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {bases.map((base) => (
-                <SelectItem key={base} value={base}>
-                  {base}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        {inferred !== undefined && baseBranch === inferred.baseBranch ? (
+        <BaseRefCombobox
+          id="local-review-base-branch"
+          groups={groups}
+          value={baseRef}
+          onValueChange={onChange}
+        />
+        {inferred !== undefined && baseRef === inferredBaseRef(inferred) ? (
           <FieldDescription>{inferredBaseReason(inferred)}</FieldDescription>
         ) : null}
       </Field>
       {reviewedBases.length === 0 ? null : (
         <p className="text-sm text-muted-foreground">
-          {branch} has open reviews against {reviewedBases.join(", ")}.
+          {branch} has open reviews against{" "}
+          {reviewedBases.map(baseRefName).join(", ")}.
         </p>
       )}
     </>

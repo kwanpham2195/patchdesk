@@ -25,6 +25,7 @@ import {
   parseAbsolutePath,
   parseGitSha,
   parseIsoTimestamp,
+  parseLocalBaseRef,
   parseLocalBranchName,
   parsePullRequestNumber,
   parseReviewId,
@@ -396,13 +397,16 @@ describe("local Review source IDs", () => {
     });
   });
 
-  function sharedIdentity(branch: string, baseBranch = "main"): ReviewIdentity {
+  function sharedIdentity(
+    branch: string,
+    baseRef = "refs/heads/main",
+  ): ReviewIdentity {
     return {
       ...repository,
       source: {
         kind: "local_branch",
         branch: must(parseLocalBranchName(branch)),
-        baseBranch: must(parseLocalBranchName(baseBranch)),
+        baseRef: must(parseLocalBaseRef(baseRef)),
       },
     };
   }
@@ -435,8 +439,13 @@ describe("local Review source IDs", () => {
     ],
     [
       "one branch's shared Reviews against two bases",
-      sharedIdentity("feat/login", "main"),
-      sharedIdentity("feat/login", "develop"),
+      sharedIdentity("feat/login", "refs/heads/main"),
+      sharedIdentity("feat/login", "refs/heads/develop"),
+    ],
+    [
+      "a local branch named origin/main and the remote-tracking origin/main as bases (#591)",
+      sharedIdentity("feat/login", "refs/heads/origin/main"),
+      sharedIdentity("feat/login", "refs/remotes/origin/main"),
     ],
     [
       "two branches that sanitize to the same slug",
@@ -532,6 +541,54 @@ describe("local Review source IDs", () => {
       source: { kind: "branch", branch: "feat/login", baseBranch: "main" },
     });
     expect(parseReview(stored)).toEqual({ _tag: "ok", value: local });
+  });
+
+  function storedSharedReview(baseRef: string) {
+    const identity = sharedIdentity("feat/login", baseRef);
+    const shared = createReview({
+      identity,
+      currentSessionId: createReviewSessionId({
+        ...identity,
+        headSha: firstSha,
+        baseSha,
+      }),
+      headSha: firstSha,
+      createdAt: now,
+    });
+    const stored = structuredClone(serializeReview(shared));
+    if (!("source" in stored.identity))
+      throw new Error("a local Review stores its source");
+    return { shared, stored, source: stored.identity.source };
+  }
+
+  it("round-trips a shared Review whose base is a remote-tracking branch (#591)", () => {
+    const { shared, stored, source } = storedSharedReview(
+      "refs/remotes/origin/main",
+    );
+
+    expect(source).toMatchObject({
+      baseRef: "refs/remotes/origin/main",
+    });
+    expect(parseReview(stored)).toEqual({ _tag: "ok", value: shared });
+  });
+
+  it.each([
+    ["a short branch name", "main"],
+    ["a remote's symbolic HEAD", "refs/remotes/origin/HEAD"],
+    ["a remote-tracking ref without a remote", "refs/remotes/main"],
+    ["a tag", "refs/tags/v1"],
+  ])("refuses a stored shared Review whose base is %s", (_case, baseRef) => {
+    const { stored, source } = storedSharedReview("refs/heads/main");
+
+    expect(
+      parseReview({
+        ...stored,
+        identity: {
+          ...stored.identity,
+          source: { ...source, baseRef },
+        },
+      })._tag,
+    ).toBe("err");
   });
 
   it("stores a named checkout with its source and refuses a relative one", () => {

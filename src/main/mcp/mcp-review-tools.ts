@@ -58,9 +58,9 @@ import {
  * because the Review exists either way (#513).
  */
 export type ReviewLocalResult = LocalReviewOpened & {
-  /** The shared Review's base branch; absent for a commit Review. */
-  readonly baseBranch?: string;
-  /** True when Patchdesk inferred `baseBranch`; false when the agent named it or an open Review of the branch supplied it. */
+  /** The shared Review's base as a full ref, such as `refs/heads/main` or `refs/remotes/origin/main`; absent for a commit Review. */
+  readonly baseRef?: string;
+  /** True when Patchdesk inferred `baseRef`; false when the agent named it or an open Review of the branch supplied it. */
   readonly baseInferred?: boolean;
   readonly intentRecorded?: boolean;
   readonly intentKept?: boolean;
@@ -173,11 +173,11 @@ function localReviewRefusal(
     };
   if (
     failure.reason === "revision_not_found" &&
-    failure.savedBaseBranch !== undefined
+    failure.savedBaseRef !== undefined
   )
     return {
       error: "revision_not_found",
-      message: `The saved Review uses base branch ${failure.savedBaseBranch}, which no longer exists locally. Pass base with the local branch to compare this change with.`,
+      message: `The saved Review uses base ${failure.savedBaseRef}, which no longer exists in the checkout. Pass base with the branch to compare this change with.`,
     };
   if (failure.reason === "checkout_missing")
     return {
@@ -298,7 +298,7 @@ export async function reviewLocal(
   const { source } = workbench.session.key;
   const base =
     source.kind === "local_branch"
-      ? { baseBranch: source.baseBranch, baseInferred }
+      ? { baseRef: source.baseRef, baseInferred }
       : undefined;
   const recorded =
     input.intent === undefined
@@ -350,9 +350,9 @@ function agentSourceRequest(
     return commit?.kind === "commit" ? commit : undefined;
   }
   if (input.base === undefined) return { kind: "local_branch", checkout };
-  const baseBranch = parseLocalBranchName(input.base);
-  return baseBranch._tag === "ok"
-    ? { kind: "local_branch", baseBranch: baseBranch.value, checkout }
+  const base = parseLocalBranchName(input.base);
+  return base._tag === "ok"
+    ? { kind: "local_branch", base: base.value, checkout }
     : undefined;
 }
 

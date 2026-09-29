@@ -2,15 +2,18 @@ import * as v from "valibot";
 
 import { definedProps } from "./defined-props";
 import {
+  baseRefName,
   checkoutFolderName,
   detachedHeadBranch,
   parseAbsolutePath,
   parseGitSha,
   parseGitShaPrefix,
+  parseLocalBaseRef,
   parseLocalBranchName,
   type AbsolutePath,
   type GitSha,
   type GitShaPrefix,
+  type LocalBaseRef,
   type LocalBranchName,
   type PullRequestNumber,
 } from "./ids";
@@ -48,15 +51,15 @@ type BranchReviewSource = LocalCheckout & {
 
 /**
  * The shared local Review (#555, ADR 0050): the checkout's Local snapshot
- * against its merge base with `baseBranch`, so committed and uncommitted work
- * on `branch` is one diff with one draft list. `branch` is the branch `HEAD`
- * names, `detachedHeadBranch` when it is detached, so a branch switch keys
- * another Review.
+ * against its merge base with `baseRef`, a local or remote-tracking branch
+ * (#591), so committed and uncommitted work on `branch` is one diff with one
+ * draft list. `branch` is the branch `HEAD` names, `detachedHeadBranch` when
+ * it is detached, so a branch switch keys another Review.
  */
 type LocalBranchReviewSource = LocalCheckout & {
   readonly kind: "local_branch";
   readonly branch: LocalBranchName;
-  readonly baseBranch: LocalBranchName;
+  readonly baseRef: LocalBaseRef;
 };
 
 /** One commit against its first parent, or the empty tree for a root commit. */
@@ -85,7 +88,7 @@ export type LocalReviewSourceRequest = LocalCheckout &
   (
     | {
         readonly kind: "local_branch";
-        readonly baseBranch: LocalBranchName;
+        readonly baseRef: LocalBaseRef;
         /** The branch the Review names; a checkout on another branch is refused instead of opening that branch's Review. */
         readonly expectedHead?: ExpectedCheckoutHead;
       }
@@ -112,11 +115,17 @@ export function sameReviewSource(
         left.checkout === right.checkout
       );
     case "branch":
-    case "local_branch":
       return (
-        right.kind === left.kind &&
+        right.kind === "branch" &&
         left.branch === right.branch &&
         left.baseBranch === right.baseBranch &&
+        left.checkout === right.checkout
+      );
+    case "local_branch":
+      return (
+        right.kind === "local_branch" &&
+        left.branch === right.branch &&
+        left.baseRef === right.baseRef &&
         left.checkout === right.checkout
       );
     case "commit":
@@ -149,7 +158,7 @@ export const storedLocalReviewSourceSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("local_branch"),
     branch: v.string(),
-    baseBranch: v.string(),
+    baseRef: v.string(),
     checkout: v.optional(v.string()),
   }),
   v.strictObject({
@@ -185,15 +194,25 @@ function parseStoredSourceSpec(
         ? ok({ kind: "working_tree", branch: branch.value })
         : invalidSource();
     }
-    case "branch":
-    case "local_branch": {
+    case "branch": {
       const branch = parseLocalBranchName(raw.branch);
       const baseBranch = parseLocalBranchName(raw.baseBranch);
       return branch._tag === "ok" && baseBranch._tag === "ok"
         ? ok({
-            kind: raw.kind,
+            kind: "branch",
             branch: branch.value,
             baseBranch: baseBranch.value,
+          })
+        : invalidSource();
+    }
+    case "local_branch": {
+      const branch = parseLocalBranchName(raw.branch);
+      const baseRef = parseLocalBaseRef(raw.baseRef);
+      return branch._tag === "ok" && baseRef._tag === "ok"
+        ? ok({
+            kind: "local_branch",
+            branch: branch.value,
+            baseRef: baseRef.value,
           })
         : invalidSource();
     }
@@ -228,7 +247,7 @@ const expectedHeadSchema = v.optional(
 export const localReviewSourceRequestSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("local_branch"),
-    baseBranch: nonEmpty,
+    baseRef: nonEmpty,
     expectedHead: expectedHeadSchema,
     checkout: v.optional(nonEmpty),
   }),
@@ -259,13 +278,13 @@ function parseSourceRequestSpec(
   raw: LocalReviewSourceRequestInput,
 ): LocalReviewSourceRequest | undefined {
   if (raw.kind === "local_branch") {
-    const baseBranch = parseLocalBranchName(raw.baseBranch);
+    const baseRef = parseLocalBaseRef(raw.baseRef);
     const expected = parseExpectedHead(raw.expectedHead);
-    return baseBranch._tag === "err" || expected === undefined
+    return baseRef._tag === "err" || expected === undefined
       ? undefined
       : {
           kind: "local_branch",
-          baseBranch: baseBranch.value,
+          baseRef: baseRef.value,
           ...definedProps({ expectedHead: expected.head }),
         };
   }
@@ -305,7 +324,7 @@ export function reopenLocalSourceRequest(
     case "local_branch":
       return {
         kind: "local_branch",
-        baseBranch: source.baseBranch,
+        baseRef: source.baseRef,
         expectedHead:
           source.branch === detachedHeadBranch
             ? { kind: "detached" }
@@ -336,9 +355,15 @@ type ReviewSourceText =
       readonly checkout?: string | undefined;
     }
   | {
-      readonly kind: "branch" | "local_branch";
+      readonly kind: "branch";
       readonly branch: string;
       readonly baseBranch: string;
+      readonly checkout?: string | undefined;
+    }
+  | {
+      readonly kind: "local_branch";
+      readonly branch: string;
+      readonly baseRef: string;
       readonly checkout?: string | undefined;
     }
   | {
@@ -357,7 +382,7 @@ export function reviewSourceTitle(source: ReviewSourceText): string {
     case "branch":
       return `Branch ${source.branch} against ${source.baseBranch}${checkoutSuffix(source.checkout)}`;
     case "local_branch":
-      return `${source.branch === detachedHeadBranch ? "Detached HEAD" : source.branch} against ${source.baseBranch}${checkoutSuffix(source.checkout)}`;
+      return `${source.branch === detachedHeadBranch ? "Detached HEAD" : source.branch} against ${baseRefName(source.baseRef)}${checkoutSuffix(source.checkout)}`;
     case "commit":
       return `Commit ${source.commitSha.slice(0, 8)}${checkoutSuffix(source.checkout)}`;
     default:

@@ -24,7 +24,7 @@ import {
   parseGitHubRepoName,
   parseInsightRunId,
   parseIsoTimestamp,
-  parseLocalBranchName,
+  parseLocalBaseRef,
   parseRepoRelativePath,
   parseWorkspaceProfileId,
   type AbsolutePath,
@@ -333,7 +333,7 @@ export function sharedAgainstMain(
 ): LocalReviewSourceRequest {
   return {
     kind: "local_branch",
-    baseBranch: value(parseLocalBranchName("main")),
+    baseRef: value(parseLocalBaseRef("refs/heads/main")),
     ...definedProps({ checkout }),
   };
 }

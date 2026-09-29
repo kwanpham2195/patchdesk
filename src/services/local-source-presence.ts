@@ -7,11 +7,11 @@ import { isNamedCheckoutGone, type LocalCheckoutReads } from "./local-checkout";
 
 /**
  * True when the repository at `localPath` still reads and the Review's source
- * certainly no longer resolves in it: its branch or base branch was deleted,
+ * certainly no longer resolves in it: its branch or base ref was deleted,
  * or its commit is gone. Every read exits 0 whether or not the name exists,
  * so a failed read (timeout, spawn failure) means unknown and keeps the
  * Review. Only ref and object lookups run, never the snapshot an open writes.
- * A shared Review on a detached `HEAD` has only its base branch to lose. A
+ * A shared Review on a detached `HEAD` has only its base ref to lose. A
  * named checkout that `git worktree list` no longer lists as live is gone too
  * (#489); a failed listing, or a locked worktree whose directory is missing,
  * keeps the Review. A working-tree or branch Review stored before the shared
@@ -42,21 +42,20 @@ export async function isLocalSourceGone(
       ? result.value.stdout.split("\n").filter((line) => line !== "")
       : undefined;
   };
-  const branchGone = async (branch: string): Promise<boolean | undefined> => {
-    const ref = `refs/heads/${branch}`;
+  const refGone = async (ref: string): Promise<boolean | undefined> => {
     const listed = await read("for-each-ref", "--format=%(refname)", ref);
     return listed === undefined ? undefined : !listed.includes(ref);
   };
   switch (source.kind) {
     case "local_branch": {
-      const [branch, baseBranch] = await Promise.all([
+      const [branch, base] = await Promise.all([
         source.branch === detachedHeadBranch
           ? false
-          : branchGone(source.branch),
-        branchGone(source.baseBranch),
+          : refGone(`refs/heads/${source.branch}`),
+        refGone(source.baseRef),
       ]);
-      if (branch === undefined || baseBranch === undefined) return false;
-      return branch || baseBranch;
+      if (branch === undefined || base === undefined) return false;
+      return branch || base;
     }
     case "commit": {
       const listed = await read(

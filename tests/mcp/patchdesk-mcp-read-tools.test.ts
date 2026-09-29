@@ -99,7 +99,7 @@ describe.each(mcpProtocolEras)(
           .trim(),
         patchHash: route.revision.patchHash,
         title: "feat/linked against main in linked",
-        baseBranch: "main",
+        baseRef: "refs/heads/main",
         baseInferred: false,
         changedFiles: [
           { path: "src/app.ts", status: "added", additions: 1, deletions: 0 },

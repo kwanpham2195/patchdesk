@@ -12,6 +12,7 @@ import {
   parseFindingId,
   parseGitSha,
   parseIsoTimestamp,
+  parseLocalBaseRef,
   parseLocalBranchName,
   parseRepoRelativePath,
   parseReviewSessionId,
@@ -314,6 +315,32 @@ describe("ReviewRetention", () => {
     ).toBe(false);
     expect(localRefs(harness.repositoryPath)).toEqual([]);
     expect(sessionWorktrees(harness.repositoryPath)).toEqual([]);
+  });
+
+  it("keeps a local Review on a remote-tracking base while the ref exists and removes it once a prune deletes it (#591)", async () => {
+    const harness = await localApplyHarness(undefined, {
+      retentionNow: () => fifteenDaysLater,
+    });
+    git(
+      harness.repositoryPath,
+      "update-ref",
+      "refs/remotes/origin/main",
+      "HEAD",
+    );
+    git(harness.repositoryPath, "checkout", "-q", "-b", "feature");
+    await writeFile(join(harness.repositoryPath, "probe.txt"), "feature\n");
+    const opened = await harness.open({
+      kind: "local_branch",
+      baseRef: value(parseLocalBaseRef("refs/remotes/origin/main")),
+    });
+
+    value(await harness.retention.sweepProfile(profileId));
+    const keptWithBase = await reviewKept(harness, opened);
+    git(harness.repositoryPath, "update-ref", "-d", "refs/remotes/origin/main");
+    value(await harness.retention.sweepProfile(profileId));
+
+    expect(keptWithBase).toBe(true);
+    expect(await reviewKept(harness, opened)).toBe(false);
   });
 
   it("keeps a local Review whose branch was deleted within the last 14 days", async () => {

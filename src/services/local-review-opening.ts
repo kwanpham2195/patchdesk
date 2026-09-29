@@ -9,10 +9,12 @@ import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
 import {
   createReviewId,
   detachedHeadBranch,
+  localBranchBaseRef,
   type AbsolutePath,
   type ContentHash,
   type GitSha,
   type IsoTimestamp,
+  type LocalBaseRef,
   type LocalBranchName,
   type RepoRelativePath,
   type ReviewId,
@@ -45,7 +47,11 @@ import {
 import type { LocalReviewSession } from "../domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
 import type { LocalApplySettlement } from "./local-apply-settlement";
-import type { LocalBranchListing } from "./local-base-inference";
+import {
+  listsBaseRef,
+  namedBaseRef,
+  type LocalBranchListing,
+} from "./local-base-inference";
 import type { UntrackedTooLarge } from "./local-untracked-size";
 import type {
   LocalReviewOpenRequest,
@@ -78,10 +84,10 @@ export type LocalReviewOpenFailure =
         | "storage"
         | "terminal";
     }
-  /** `savedBaseBranch` names a deleted base that a base-less agent open would otherwise reuse (#570). */
+  /** `savedBaseRef` names a deleted base that a base-less agent open would otherwise reuse (#570). */
   | {
       readonly reason: "revision_not_found";
-      readonly savedBaseBranch?: LocalBranchName;
+      readonly savedBaseRef?: LocalBaseRef;
     }
   /** The working tree's untracked files are over the `exceededLimit` snapshot limit; `largestPaths` are the ones to ignore (#485). */
   | {
@@ -118,14 +124,15 @@ export type LocalReviewAgentOpenRequest = Omit<
     | Exclude<LocalReviewSourceRequest, { readonly kind: "local_branch" }>
     | {
         readonly kind: "local_branch";
-        readonly baseBranch?: LocalBranchName;
+        /** A full base ref, or a branch name that `namedBaseRef` resolves. */
+        readonly base?: LocalBranchName;
         readonly checkout?: AbsolutePath;
       };
 };
 
 /** What the Local review dialog offers for the shared Review: the listing, and the bases the checkout's branch already has an open shared Review against, the one opened last first. */
 export type LocalReviewBranches = LocalBranchListing & {
-  readonly reviewedBases: ReadonlyArray<LocalBranchName>;
+  readonly reviewedBases: ReadonlyArray<LocalBaseRef>;
 };
 
 /** An agent's open: the Review on its current session, and whether its base was inferred rather than named or reused. */
@@ -316,16 +323,26 @@ export class LocalReviewOpening {
     const { request } = input;
     if (request.kind !== "local_branch")
       return ok({ request, baseInferred: false });
-    const { baseBranch, checkout } = request;
-    if (baseBranch !== undefined)
+    const { base, checkout } = request;
+    if (base !== undefined) {
+      const listed = await this.preparation.listBranches(
+        input.profileId,
+        input.repository,
+        checkout,
+      );
+      if (listed._tag === "err")
+        return err(mapPreparationFailure(listed.error));
+      const baseRef = namedBaseRef(listed.value.listing, base);
+      if (baseRef === undefined) return err({ reason: "revision_not_found" });
       return ok({
         request: {
           kind: "local_branch",
-          baseBranch,
+          baseRef,
           ...definedProps({ checkout }),
         },
         baseInferred: false,
       });
+    }
     const listing = await this.listBranches(
       input.profileId,
       input.repository,
@@ -334,18 +351,18 @@ export class LocalReviewOpening {
     if (listing._tag === "err") return listing;
     const { head, inferred, reviewedBases } = listing.value;
     const [reused] = reviewedBases;
-    if (
-      reused !== undefined &&
-      (head.kind !== "branch" || head.branch !== reused) &&
-      !listing.value.branches.includes(reused)
-    )
-      return err({ reason: "revision_not_found", savedBaseBranch: reused });
-    const base = reused ?? inferred?.baseBranch;
-    if (base === undefined) return err({ reason: "base_required" });
+    if (reused !== undefined && !listsBaseRef(listing.value, reused))
+      return err({ reason: "revision_not_found", savedBaseRef: reused });
+    const baseRef =
+      reused ??
+      (inferred === undefined
+        ? undefined
+        : localBranchBaseRef(inferred.baseBranch));
+    if (baseRef === undefined) return err({ reason: "base_required" });
     return ok({
       request: {
         kind: "local_branch",
-        baseBranch: base,
+        baseRef,
         // A branch switch after the listing is refused rather than opening another branch's Review on this base.
         expectedHead: head,
         ...definedProps({ checkout }),
@@ -360,7 +377,7 @@ export class LocalReviewOpening {
     repository: LocalReviewOpenRequest["repository"],
     checkout: AbsolutePath | undefined,
     branch: LocalBranchName,
-  ): Promise<Result<ReadonlyArray<LocalBranchName>, LocalReviewOpenFailure>> {
+  ): Promise<Result<ReadonlyArray<LocalBaseRef>, LocalReviewOpenFailure>> {
     const listed = await listOpenSharedReviews(
       this.lifecycle.reviews,
       profileId,
@@ -369,7 +386,7 @@ export class LocalReviewOpening {
       branch,
     );
     return listed._tag === "ok"
-      ? ok(listed.value.map(({ source }) => source.baseBranch))
+      ? ok(listed.value.map(({ source }) => source.baseRef))
       : listed;
   }
 

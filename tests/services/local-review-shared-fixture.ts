@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import {
+  localBranchBaseRef,
   parseLocalBranchName,
   parseReviewSessionId,
   type LocalBranchName,
@@ -21,11 +22,11 @@ import {
 
 export const main = value(parseLocalBranchName("main"));
 
-/** The shared Review of the checked-out branch against `baseBranch`, `main` by default. */
+/** The shared Review of the checked-out branch against the local branch `baseBranch`, `main` by default. */
 export function shared(
   baseBranch: LocalBranchName = main,
 ): LocalReviewSourceRequest {
-  return { kind: "local_branch", baseBranch };
+  return { kind: "local_branch", baseRef: localBranchBaseRef(baseBranch) };
 }
 
 /** The stored local session `sessionId` of the harness profile. */
