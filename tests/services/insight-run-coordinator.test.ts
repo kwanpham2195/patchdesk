@@ -467,6 +467,56 @@ describe("InsightRunCoordinator current lifecycle", () => {
     ).toMatchObject({ status: "completed", activity: trace });
   });
 
+  it("keeps no activity trace for a pi CLI account run, so its panel shows the start time", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const piCliCatalog = new InsightProviderCatalog(
+      { get: async () => ok({ models: [] }) },
+      () => {
+        throw new Error("Codex must not start for a pi run");
+      },
+      () => ({
+        listModels: async () =>
+          ok([
+            { id: "anthropic/model", label: "Model", reasoning: ["medium"] },
+          ]),
+      }),
+      async () => "/usr/local/bin/pi",
+    );
+    const value = await fixture(
+      {
+        async invoke() {
+          await wait;
+          return ok(analysisResult);
+        },
+      },
+      { providerCatalog: piCliCatalog },
+    );
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      provider: "pi-cli-account",
+      model: "anthropic/model",
+      reasoning: "medium",
+      language: "en",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    const polled = await value.coordinator.observe({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      runId: started.value.runId,
+    });
+    expect(polled).toMatchObject({ _tag: "ok" });
+    // The panel shows "Preparing…" instead of the start time while a trace says `preparing`.
+    expect(polled._tag === "ok" && polled.value.activity).toBe(undefined);
+    release();
+    await settled(value.coordinator, value.review.id, started.value.runId);
+  });
+
   it("never answers one run's poll with another run's trace", async () => {
     let release!: () => void;
     const wait = new Promise<void>((resolve) => {

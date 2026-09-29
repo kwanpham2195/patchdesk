@@ -49,6 +49,7 @@ import {
 import {
   INSIGHT_LANGUAGES,
   INSIGHT_PROVIDERS,
+  insightProviderReportsActivity,
   type InsightProvider,
   type InsightLanguage,
   type InsightReasoning,
@@ -142,7 +143,7 @@ export type InsightRunResponse = {
     | "invalid_result"
     | "superseded";
   readonly failureCategory?: InsightFailureCategory;
-  /** Present while this process holds the run's activity trace; a Pi run has none. */
+  /** Present while this process holds the run's activity trace; only a Codex run has one. */
   readonly activity?: InsightActivitySnapshot | undefined;
 };
 export type InsightCoordinatorInput = {
@@ -440,9 +441,10 @@ export class InsightRunCoordinator {
     await hooks?.started(review.value, runId.value);
     const controller = new AbortController();
     this.active.set(runId.value, { runId: runId.value, controller });
-    // Pi's child writes one result at exit, so a Pi run keeps today's panel instead of a trace.
-    const activity =
-      provider === "pi" ? undefined : new InsightActivityBuffer();
+    // A provider that streams no activity keeps the panel that shows the run's start time.
+    const activity = insightProviderReportsActivity(provider)
+      ? new InsightActivityBuffer()
+      : undefined;
     const traceKey = activityTraceKey(
       input.profileId,
       input.reviewId,
