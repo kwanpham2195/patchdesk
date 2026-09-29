@@ -448,6 +448,35 @@ describe("AnalysisReader", () => {
     expect(screen.getByText(findingFixture.explanation)).toBeTruthy();
   });
 
+  it("restores a dismissed Finding from its row and keeps a failure on that row", async () => {
+    const user = userEvent.setup();
+    const dismissed = {
+      ...findingFixture,
+      disposition: "dismissed" as const,
+      dismissalReason: "Covered by the API contract",
+    };
+    const onRestoreFinding = vi.fn(async () => {
+      throw new Error("restore refused");
+    });
+    render(
+      <AnalysisReader
+        result={{ ...result, findings: [dismissed] }}
+        onDismissFinding={vi.fn(async () => undefined)}
+        onRestoreFinding={onRestoreFinding}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+
+    expect(onRestoreFinding).toHaveBeenCalledWith(dismissed);
+    expect(
+      await screen.findByText(FINDING_ACTION_MESSAGES.fallback),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Restore" }).hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
   it("admits Add synchronously once and leaves another Finding usable", async () => {
     const first = deferred();
     const second = deferred();

@@ -29,7 +29,7 @@ export function WalkthroughProgressReader({
           : { currentSectionId: progress.currentSectionId })}
         actions={{
           ...definedProps({
-            onMarkSectionReviewed: controls.markSectionReviewed,
+            onToggleSectionReviewed: controls.toggleSectionReviewed,
           }),
           onSelectSection: controls.selectSection,
         }}

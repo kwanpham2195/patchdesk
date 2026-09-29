@@ -5,7 +5,10 @@ import { definedProps } from "../../../domain/defined-props";
 import type { InsightProvider } from "../../../domain/insight-provider";
 import { requestJson, untrustedWriteResponseError } from "../api-client";
 import { appLog } from "../lib/logger";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import {
+  parseWorkbenchResponse,
+  type WorkbenchResponse,
+} from "../renderer-contracts";
 import { saveInsightRunPreference } from "../insight-run-preferences";
 import { approveAgentRunRequests } from "../agent-run-requests";
 import {
@@ -26,8 +29,12 @@ const dismissedFindingResponseSchema = v.strictObject({
   findingId: v.pipe(v.string(), v.minLength(1)),
   status: v.literal("dismissed"),
 });
+const restoredFindingResponseSchema = v.strictObject({
+  findingId: v.pipe(v.string(), v.minLength(1)),
+  status: v.literal("open"),
+});
 
-/** Every run-side value the Insights slot renders from: the run configuration, the two per-type run controllers, and the run-dialog and finding-dismissal commands. */
+/** Every run-side value the Insights slot renders from: the run configuration, the two per-type run controllers, and the run-dialog, finding-dismissal, and finding-restore commands. */
 type InsightRunControlsHook = {
   readonly configuration: InsightRunConfiguration;
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
@@ -48,11 +55,13 @@ type InsightRunControlsHook = {
     finding: AnalysisFinding,
     reason: string,
   ) => Promise<void>;
+  readonly restoreFinding: (finding: AnalysisFinding) => Promise<void>;
 };
 
 /**
  * Owns the Insights slot's run side: the two `useInsightRun` controllers, the
- * run configuration, and the run-dialog and finding-dismissal commands.
+ * run configuration, and the run-dialog, finding-dismissal, and finding-restore
+ * commands.
  * Extracted out of `InsightsSlot` purely to keep that component's own body
  * short -- it isn't reused anywhere else.
  */
@@ -178,6 +187,37 @@ export function useInsightRunControls({
       },
     });
   };
+  const restoreFinding = async (finding: AnalysisFinding): Promise<void> => {
+    const runId = workbench.insights.analysis.retained?.runId;
+    // The reader offers Restore only for a retained Analysis, so a missing run is a defect.
+    if (runId === undefined) {
+      appLog.error("finding-action", "Analysis run is unavailable", {
+        findingId: finding.id,
+      });
+      throw new Error("Analysis run is unavailable");
+    }
+    const value = await requestJson(
+      `/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/restore`,
+      { method: "POST", body: { profileId, reviewId, runId } },
+    );
+    const parsed = v.safeParse(restoredFindingResponseSchema, value);
+    if (!parsed.success || parsed.output.findingId !== finding.id)
+      throw untrustedWriteResponseError("invalid-restored-finding-response");
+    // A dismissed Finding has no review status, so Add to review returns only with the server's projection.
+    const loaded = parseWorkbenchResponse(
+      await requestJson("/v1/reviews/load", {
+        method: "POST",
+        body: { profileId, reviewId },
+      }),
+    );
+    if (loaded === undefined)
+      throw untrustedWriteResponseError("invalid-review-load-response");
+    onInsightPatch(
+      "analysis",
+      loaded.insights.analysis,
+      definedProps({ analysisReviewActions: loaded.analysisReviewActions }),
+    );
+  };
   const runs = {
     analysis: analysisRun,
     walkthrough: walkthroughRun,
@@ -260,5 +300,6 @@ export function useInsightRunControls({
     closeRunDialog,
     confirmRun,
     dismissFinding,
+    restoreFinding,
   };
 }

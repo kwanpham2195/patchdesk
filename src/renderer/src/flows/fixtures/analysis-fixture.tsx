@@ -47,6 +47,7 @@ export function AnalysisFixture(): React.ReactNode {
           stop: () => undefined,
         },
         dismissFinding: async () => undefined,
+        restoreFinding: async () => undefined,
         analysisVerification: {
           checkedSteps,
           saveFailed: false,
@@ -61,7 +62,7 @@ export function AnalysisFixture(): React.ReactNode {
         walkthroughProgress: {
           progress: { reviewedSectionIds: [], supportReviewed: false },
           saveFailed: false,
-          markSectionReviewed: () => undefined,
+          toggleSectionReviewed: () => undefined,
           selectSection: () => undefined,
         },
         walkthroughFocused: false,

@@ -143,7 +143,7 @@ const allowedRoutes = new Set([
 
 const allowedRoutePatterns = [
   /^GET \/v1\/reviews\/insights\/runs\/[^/]+$/,
-  /^POST \/v1\/reviews\/insights\/analysis\/findings\/[^/]+\/dismiss$/,
+  /^POST \/v1\/reviews\/insights\/analysis\/findings\/[^/]+\/(?:dismiss|restore)$/,
 ];
 
 /**

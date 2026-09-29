@@ -39,7 +39,7 @@ import {
 } from "./ui/popover";
 
 type AnalysisFinding = AnalysisResult["findings"][number];
-export type FindingActionState = "adding" | "dismissing";
+export type FindingActionState = "adding" | "dismissing" | "restoring";
 
 /** The maintainer's one explicit authorization for this Finding's GitHub write. */
 function AddFindingButton({

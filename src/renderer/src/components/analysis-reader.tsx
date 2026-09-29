@@ -73,6 +73,8 @@ export type AnalysisReaderProps = {
     finding: AnalysisFinding,
     reason: string,
   ) => Promise<void>;
+  /** Offered wherever Dismiss is; returns a dismissed Finding to its open row. */
+  readonly onRestoreFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly findingStatuses?: Readonly<Record<string, FindingStatus>>;
   /** Findings whose published thread waits on the viewer's reply. */
   readonly needsReplyFindingIds?: ReadonlySet<string>;
@@ -100,6 +102,7 @@ export function AnalysisReader({
   result,
   onAddFinding,
   onDismissFinding,
+  onRestoreFinding,
   findingStatuses,
   needsReplyFindingIds,
   evidencePatch,
@@ -187,6 +190,18 @@ export function AnalysisReader({
         key={finding.id}
         finding={finding}
         location={findingLocation(finding)}
+        restoring={findingActions.get(finding.id) === "restoring"}
+        disabled={findingActions.has(finding.id) || batchProgress !== undefined}
+        actionError={findingErrors.get(finding.id)}
+        {...(onRestoreFinding === undefined
+          ? {}
+          : {
+              onRestoreFinding: (value: AnalysisFinding) => {
+                void runFindingAction(value.id, "restoring", () =>
+                  onRestoreFinding(value),
+                );
+              },
+            })}
       />
     ) : (
       <AnalysisFindingRow

@@ -330,6 +330,26 @@ export function dismissInsightFinding(
   });
 }
 
+/** Restores one dismissed Analysis Finding to open and drops its dismissal reason. */
+export function restoreInsightFinding(
+  record: InsightRecord<unknown>,
+  findingId: FindingId,
+  restoredAt: IsoTimestamp,
+): Result<InsightRecord<unknown>, "not_available"> {
+  if (record.type !== "analysis" || record.retained === undefined)
+    return err("not_available");
+  const dismissals = record.dismissals ?? [];
+  if (!dismissals.some((dismissal) => dismissal.findingId === findingId))
+    return ok(record);
+  return ok({
+    ...record,
+    dismissals: dismissals.filter(
+      (dismissal) => dismissal.findingId !== findingId,
+    ),
+    updatedAt: restoredAt,
+  });
+}
+
 /** Updates walkthrough progress for the currently retained walkthrough. */
 export function updateWalkthroughProgress(
   record: InsightRecord<unknown>,

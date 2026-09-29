@@ -109,9 +109,11 @@ export function WalkthroughFixture({
     setLifecycle("generating");
     window.setTimeout(() => setLifecycle("ready"), 50);
   };
-  const markSectionReviewed = (sectionId: string): void => {
+  const toggleSectionReviewed = (sectionId: string): void => {
     setReviewedSectionIds((current) =>
-      current.includes(sectionId) ? current : [...current, sectionId],
+      current.includes(sectionId)
+        ? current.filter((id) => id !== sectionId)
+        : [...current, sectionId],
     );
   };
   return (
@@ -136,7 +138,7 @@ export function WalkthroughFixture({
           onOpen: () => {
             setOpen(true);
           },
-          onMarkSectionReviewed: markSectionReviewed,
+          onToggleSectionReviewed: toggleSectionReviewed,
           onSelectSection: () => undefined,
         }}
         reviewedSectionIds={reviewedSectionIds}

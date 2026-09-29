@@ -35,11 +35,13 @@ import {
   beginInsightRun,
   dismissInsightFinding,
   requestInsightCancellation,
+  restoreInsightFinding,
   sameInsightRevision,
   setAnalysisVerificationStep,
   updateWalkthroughProgress,
   type AnalysisVerification,
   type InsightFailureCategory,
+  type InsightRecord,
   type InsightRevision,
   type InsightType,
   type WalkthroughProgress,
@@ -530,15 +532,39 @@ export class InsightRunCoordinator {
     >
   > {
     return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
-      this.dismissFindingUnlocked(input),
+      this.changeFindingDismissal(input, "dismissed", (record, at) =>
+        dismissInsightFinding(record, input.findingId, input.reason, at),
+      ),
     );
   }
 
-  private async dismissFindingUnlocked(
-    input: AnalysisFindingRef & { readonly reason: string },
+  /** Removes a Finding's dismissal under the same checks as Dismiss; the reason is dropped. */
+  async restoreFinding(
+    input: AnalysisFindingRef,
   ): Promise<
     Result<
-      { readonly findingId: FindingId; readonly status: "dismissed" },
+      { readonly findingId: FindingId; readonly status: "open" },
+      InsightCoordinatorFailure
+    >
+  > {
+    return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
+      this.changeFindingDismissal(input, "open", (record, at) =>
+        restoreInsightFinding(record, input.findingId, at),
+      ),
+    );
+  }
+
+  /** Dismiss and Restore both require the current retained Analysis, its run ID, and no active run. */
+  private async changeFindingDismissal<Status extends "dismissed" | "open">(
+    input: AnalysisFindingRef,
+    status: Status,
+    change: (
+      record: InsightRecord<unknown>,
+      at: IsoTimestamp,
+    ) => Result<InsightRecord<unknown>, "invalid_reason" | "not_available">,
+  ): Promise<
+    Result<
+      { readonly findingId: FindingId; readonly status: Status },
       InsightCoordinatorFailure
     >
   > {
@@ -567,12 +593,7 @@ export class InsightRunCoordinator {
           )
         )
           return err("not_available" as const);
-        return dismissInsightFinding(
-          record,
-          input.findingId,
-          input.reason,
-          timestamp.value,
-        );
+        return change(record, timestamp.value);
       },
     });
     if (changed._tag === "err") {
@@ -580,7 +601,7 @@ export class InsightRunCoordinator {
       if (changed.error === "not_available") return err("not_available");
       return err("storage_unavailable");
     }
-    return ok({ findingId: input.findingId, status: "dismissed" });
+    return ok({ findingId: input.findingId, status });
   }
 
   /**

@@ -44,7 +44,7 @@ export function WalkthroughFixtureControls({
     readonly onReasoningChange: (value: string | null) => void;
     readonly onConfirm: () => void;
     readonly onOpen: () => void;
-    readonly onMarkSectionReviewed: (sectionId: string) => void;
+    readonly onToggleSectionReviewed: (sectionId: string) => void;
     readonly onSelectSection: (sectionId: string) => void;
   };
   readonly reviewedSectionIds: ReadonlyArray<string>;
@@ -146,7 +146,7 @@ export function WalkthroughFixtureControls({
           rawPatch={walkthroughFixturePatch}
           sourceSession={{ profileId: "fixture", sessionId: "fixture-session" }}
           actions={{
-            onMarkSectionReviewed: actions.onMarkSectionReviewed,
+            onToggleSectionReviewed: actions.onToggleSectionReviewed,
             onSelectSection: actions.onSelectSection,
           }}
         />
