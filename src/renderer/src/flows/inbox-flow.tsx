@@ -29,6 +29,7 @@ import type { SettingsSection } from "./settings-flow";
 import type {
   Dashboard,
   DashboardScreenState,
+  Profile,
   RepoOutcome,
 } from "../renderer-models";
 import type {
@@ -46,10 +47,13 @@ import { chooseRepositoryCheckout } from "../watched-repository-checkout";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
+const NO_PROFILES: ReadonlyArray<Profile> = [];
+
 export function InboxFlow({
   destination,
   reviewId,
   dashboard,
+  profiles = NO_PROFILES,
   inbox,
   state,
   refreshStatus,
@@ -88,6 +92,8 @@ export function InboxFlow({
   readonly destination: "dashboard" | "workbench";
   readonly reviewId?: string;
   readonly dashboard?: Dashboard;
+  /** The listed profiles, which workspace setup saves the account onto before any workspace has loaded. */
+  readonly profiles?: ReadonlyArray<Profile>;
   readonly inbox?: InboxResponse;
   readonly state: DashboardScreenState;
   readonly refreshStatus: InboxFreshnessLabel;
@@ -226,6 +232,7 @@ export function InboxFlow({
     ) : (
       <BootstrapOutcome
         state={state}
+        profiles={profiles}
         onRefresh={onRefresh}
         onSettings={onSettings}
         onWorkspaceReload={onWorkspaceReload}
@@ -243,6 +250,7 @@ export function InboxFlow({
         <div className="mx-auto max-w-[112rem]">
           <WorkspaceFirstRun
             dashboard={dashboard}
+            profiles={profiles}
             onWorkspaceReload={onWorkspaceReload}
             onContinue={() => setFirstRunOpen(false)}
           />
@@ -562,11 +570,13 @@ function ReviewOpeningNotice({
  */
 function BootstrapOutcome({
   state,
+  profiles,
   onRefresh,
   onSettings,
   onWorkspaceReload,
 }: {
   readonly state: DashboardScreenState;
+  readonly profiles: ReadonlyArray<Profile>;
   readonly onRefresh: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onWorkspaceReload: () => Promise<void>;
@@ -580,6 +590,7 @@ function BootstrapOutcome({
         <div className="mx-auto max-w-[112rem]">
           <WorkspaceFirstRun
             dashboard={undefined}
+            profiles={profiles}
             onWorkspaceReload={onWorkspaceReload}
             onContinue={undefined}
           />

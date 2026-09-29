@@ -60,6 +60,8 @@ export type ReviewingAsProbeHook = {
 // oxlint-disable-next-line react/only-export-components -- The Reviewing-as probe hook shares this module with the panel that consumes it.
 export function useReviewingAsProbe(
   ghAccount: string,
+  /** False until the editor holds the workspace to save onto; the adoption waits for it. */
+  profileLoaded: boolean,
   onAdopt: (login: string, host: string) => void,
 ): ReviewingAsProbeHook {
   const [reviewingAsAttempt, setReviewingAsAttempt] = useState(0);
@@ -73,12 +75,15 @@ export function useReviewingAsProbe(
   // Defaults the account selection the first time authenticated accounts
   // load, but only when the profile has no account yet — a one-time
   // derivation, guarded so it never overwrites a value the user typed or a
-  // loaded profile already carried. With exactly one authenticated account,
-  // that account is the adoption target; with several, it's the one `gh`
-  // marks `active`. The adoption saves like any other account choice: there
-  // is no Save button left that could persist it afterwards.
+  // loaded profile already carried. It waits for the profile: `gh` often
+  // answers first after a reload, when the account still reads empty only
+  // because nothing has loaded (#649). With exactly one authenticated
+  // account, that account is the adoption target; with several, it's the one
+  // `gh` marks `active`. The adoption saves like any other account choice:
+  // there is no Save button left that could persist it afterwards.
   useEffect(() => {
     if (reviewingAsDefaultApplied.current) return;
+    if (!profileLoaded) return;
     if (reviewingAs.kind !== "loaded") return;
     const accounts = reviewingAs.value.githubAccounts;
     if (accounts.length === 0) return;
@@ -93,7 +98,7 @@ export function useReviewingAsProbe(
     }
     if (target === undefined) return;
     onAdoptRef.current(target.login, target.host);
-  }, [reviewingAs, ghAccount, onAdoptRef]);
+  }, [reviewingAs, ghAccount, profileLoaded, onAdoptRef]);
 
   return {
     reviewingAs,

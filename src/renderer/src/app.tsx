@@ -648,6 +648,7 @@ function AppContent({
         {...bootRestoreMissingField}
         onStoredReviewRefused={returnToDashboard}
         {...dashboardField}
+        profiles={profiles}
         {...inboxField}
         state={state}
         refreshStatus={inboxFreshnessLabel({

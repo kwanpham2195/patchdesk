@@ -259,7 +259,7 @@ describe("useWorkspaceProfileEditor", () => {
     expect(result.current.scalars.label).toBe("ACME");
   });
 
-  it("creates the workspace on the first save of a profile that was never persisted", async () => {
+  it("saves the first account onto the unsaved default workspace with a PUT, and never creates or selects one", async () => {
     const desktopApi = installDesktopApi();
     const { result } = renderUnpersistedEditor();
 
@@ -269,54 +269,20 @@ describe("useWorkspaceProfileEditor", () => {
     await waitFor(() =>
       expect(result.current.status.ghAccount.state).toBe("saved"),
     );
-    // No id is sent: the service derives it from the label, which defaults to
-    // "Default" because the ephemeral profile carries none.
     expect(profileCalls(desktopApi)).toEqual([
       [
         "/v1/profiles",
-        "POST",
+        "PUT",
         {
+          id: "default",
           label: "Default",
           githubHost: "github.com",
           ghAccount: "patchdesk",
           rulePaths: [],
         },
       ],
-      ["/v1/profiles/select", "POST", { id: "default" }],
     ]);
-    expect(result.current.persisted.id).toBe("default");
-
-    // The created id is adopted, so the next save updates rather than
-    // creating a second workspace.
-    act(() => result.current.editScalar("label", "Renamed"));
-    act(() => result.current.commitScalar("label"));
-    await waitFor(() => expect(profileSaveBodies(desktopApi)).toHaveLength(1));
-    expect(profileSaveBodies(desktopApi)[0]).toEqual(
-      expect.objectContaining({ id: "default", label: "Renamed" }),
-    );
-  });
-
-  it("reports a failed status and keeps the profile when the creation answers without an id", async () => {
-    const desktopApi = installDesktopApi({
-      profileCreate: () => success({}),
-    });
-    const { result } = renderUnpersistedEditor();
-
-    act(() => result.current.editScalar("ghAccount", "patchdesk"));
-    act(() => result.current.commitScalar("ghAccount"));
-
-    await waitFor(() =>
-      expect(result.current.status.ghAccount.state).toBe("failed"),
-    );
-    // Nothing was selected: an unreadable creation leaves no workspace to
-    // switch to, and the editor still holds the unpersisted profile.
-    expect(profileCalls(desktopApi)).toEqual([
-      ["/v1/profiles", "POST", expect.objectContaining({ label: "Default" })],
-    ]);
-    expect(result.current.persisted.id).toBe("");
-    expect(result.current.persisted.ghAccount).toBe("");
-    // The typed value stays on screen so the choice can be retried.
-    expect(result.current.scalars.ghAccount).toBe("patchdesk");
+    expect(result.current.persisted.ghAccount).toBe("patchdesk");
   });
 
   it("refuses a rule path that is not an absolute path without sending it", async () => {
@@ -337,25 +303,21 @@ describe("useWorkspaceProfileEditor", () => {
 });
 
 /**
- * The ephemeral profile `DashboardController.listProfiles` hands back when
- * nothing has ever been saved: no id, no label, and no account. The domain
- * parser refuses all three, so the editor's first save has to create the
- * workspace rather than update one.
+ * The profile `DashboardController.listProfiles` holds in memory when nothing
+ * has ever been saved: `default`, with no account. No workspace loads for it,
+ * since the inbox parser refuses the empty account, so the editor finds it in
+ * the profile list.
  */
 const unpersistedProfile: Profile = {
-  id: "",
-  label: "",
+  id: "default",
+  label: "Default",
   githubHost: "github.com",
   ghAccount: "",
   rulePaths: [],
 };
 
-/** A stable dashboard, so the editor's resync effect runs once — as it does
- * in the app, where the prop only changes when the server's profile does. */
-const unpersistedDashboard: Dashboard = {
-  profile: unpersistedProfile,
-  dashboard: { repos: [] },
-};
+/** A stable list, so the editor's resync effect runs once, as it does in the app. */
+const unpersistedProfiles: ReadonlyArray<Profile> = [unpersistedProfile];
 
 function renderEditor() {
   return renderHook(() =>
@@ -371,8 +333,8 @@ function renderEditor() {
 function renderUnpersistedEditor() {
   return renderHook(() =>
     useWorkspaceProfileEditor({
-      dashboard: unpersistedDashboard,
-      profiles: [],
+      dashboard: undefined,
+      profiles: unpersistedProfiles,
       onWorkspaceReload: async () => undefined,
       onProfileSwitch: undefined,
     }),
@@ -406,21 +368,11 @@ function profileSaveBodies(desktopApi: DesktopDouble) {
 function installDesktopApi(
   options: {
     readonly profileSave?: () => DesktopResponse | Promise<DesktopResponse>;
-    /** Answers `POST /v1/profiles`, the creation of a workspace that has none. */
-    readonly profileCreate?: () => DesktopResponse | Promise<DesktopResponse>;
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble({
-    "/v1/profiles": (input) => {
-      if (input.method === "POST")
-        return options.profileCreate === undefined
-          ? success({ id: "default" })
-          : options.profileCreate();
-      return options.profileSave === undefined
-        ? success({})
-        : options.profileSave();
-    },
-    "/v1/profiles/select": () => success({}),
+    "/v1/profiles": () =>
+      options.profileSave === undefined ? success({}) : options.profileSave(),
   });
   return desktop;
 }
