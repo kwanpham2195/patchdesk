@@ -24,9 +24,10 @@ From your side, a session looks like this:
 - You leave notes on diff lines, then tell the agent "check Patchdesk". It
   finds the Review you have open for its checkout without opening or moving
   one, then reads your notes and the Analysis Findings.
-- The agent fixes the code and prepares the new revision. Patchdesk shows
+- The agent fixes the code, answers each note (addressed, skipped with a
+  reason, or a question), and prepares the new revision. Patchdesk shows
   **Updates available**, and your **Refresh** moves the Review to the new code
-  and carries your notes.
+  and carries your notes. You resolve the notes that are done.
 
 [A coding agent over MCP](product-description/pull-requests/coding-agent-over-mcp.md)
 describes the whole loop screen by screen.
@@ -220,7 +221,7 @@ into your project's `CLAUDE.md` or `AGENTS.md`:
 - When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
 - To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
 - Before `get_feedback`, call `list_local_reviews` with your working directory as `cwd` to find the Review I am looking at, and use its `reviewId`. If it returns several Reviews for your branch, ask me which base I meant.
-- When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback`; address every Finding and comment, then call `refresh_review` and tell me the changes are ready. To get an Insight on the new code, call `run_insight` with the `preparedSessionId` from `refresh_review`; on `awaiting_refresh`, tell me to press Refresh in Patchdesk.
+- When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback` with `open: true`; address every Finding and comment, and answer each comment with `reply_to_note`: `addressed`, `skipped` with the reason, or `question`. Then call `refresh_review` and tell me the changes are ready. To get an Insight on the new code, call `run_insight` with the `preparedSessionId` from `refresh_review`; on `awaiting_refresh`, tell me to press Refresh in Patchdesk.
 ```
 
 ## Example prompts
@@ -273,9 +274,16 @@ error code and a sentence the agent can relay to you;
 - **show_review**: Switch the Patchdesk window to an existing Review, so the maintainer finds it on screen the next time they switch to Patchdesk. It never raises or focuses the window, and it does not create or refresh a Review. It shows any saved Review of the active profile, local or pull request, even one whose repository is no longer watched. Returns status shown, or held when unsent review text (a half-written note, comment, or reply, a review summary, or an unsaved Change intent edit) or a GitHub write in progress keeps Patchdesk on its current screen; on held nothing moved, so tell the user the Review is ready for them to open. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it. A shared Review whose checkout is now on another branch is refused branch_mismatch, naming that branch.
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
 
-- **get_feedback** (read-only): Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against, the view it was written in (combined, committed, or uncommitted; its path, side, and lines are numbered in that view), inline (true when those lines sit inside a hunk of that view on the Review's current session), and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Pass nextCursor to read the next page. handoff is present when the maintainer marked these comments ready for you, with Ready for agent or Copy as agent prompt, since the Review last moved: at, and verdict when they chose one (looks_good or changes_requested). changedSinceHandoff is true when a comment was added, edited, or removed after that, so the maintainer may still be writing; say so when you report back. A looks_good verdict with no comments means the review needs nothing more from you.
+- **get_feedback** (read-only): Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against, the view it was written in (combined, committed, or uncommitted; its path, side, and lines are numbered in that view), inline (true when those lines sit inside a hunk of that view on the Review's current session), and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Each comment also has draftId, which reply_to_note takes; resolved, true once the maintainer resolved it; and reply, your latest reply_to_note answer to it, when you sent one. Pass open: true to read only the comments the maintainer has not resolved; the Markdown prompt leaves resolved comments out either way. Pass nextCursor to read the next page, with the same open. handoff is present when the maintainer marked these comments ready for you, with Ready for agent or Copy as agent prompt, since the Review last moved: at, and verdict when they chose one (looks_good or changes_requested). changedSinceHandoff is true when a comment was added, edited, removed, resolved, or reopened after that, so the maintainer may still be writing; say so when you report back. A looks_good verdict with no comments means the review needs nothing more from you.
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
   - `cursor` (string, optional, at most 64 characters): The nextCursor of the previous page.
+  - `open` (boolean, optional): true to leave out the comments the maintainer resolved.
+
+- **reply_to_note**: Reply to one of the maintainer's review comments on a local Review, so they see what you did about it beside the comment in Patchdesk. status is addressed (you changed the code for it), skipped (you chose not to act on it; say why), or question (you need the maintainer's answer before you act). A skipped or question reply needs no code change. text is a short plain-text explanation for the maintainer. A new reply to the same comment replaces your earlier one. The reply changes neither the comment nor the diff, and the maintainer sees it the next time Patchdesk checks the Review. Only the maintainer resolves a comment; resolved in the result says whether they already did. A comment the maintainer removed is refused draft_not_found; call get_feedback for the current ones. Text that looks like a credential is refused reply_sensitive, and a pull request Review is refused not_applicable.
+  - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
+  - `draftId` (string, required, at most 1,024 characters): The draftId of a comment get_feedback returned.
+  - `status` (string, required): One of `addressed`, `skipped`, `question`.
+  - `text` (string, required, at most 4,096 characters): What you did about the comment and why, or your question, as plain text.
 
 - **get_review_status** (read-only): Read where a local Review stands in one call. Returns the Review's current session (sessionId, headSha, baseSha, patchHash); preparedSessionId while a session your refresh_review prepared waits for the maintainer's Refresh, absent once their Refresh has moved the Review to it; for each Insight (analysis, walkthrough, brief) the status and requestId get_insight reports; localDraftCounts, how many of the maintainer's drafts of each kind (finding, note) are in each state get_feedback reports (current, unchanged, changed, needs_attention, applied); handoff and changedSinceHandoff as get_feedback reports them, when the maintainer marked the drafts ready for you; and appliedFindings, the Findings whose suggestion the maintainer's Apply wrote to your checkout, each with findingId, title, path, startLine and line (new-side lines of the session it was drafted on), and appliedAt. It returns no Insight result and no draft text; get_insight and get_feedback read those. Read-only: it takes no snapshot and does not mark the Review opened. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it; a pull request Review is refused not_applicable.
   - `reviewId` (string, required, at most 512 characters): The reviewId review_local or list_local_reviews returned.
@@ -289,7 +297,8 @@ error code and a sentence the agent can relay to you;
 The tools give the agent no way to:
 
 - Start an Insight run without your **Run**, or choose the provider or model.
-- Press Apply, dismiss a Finding, or add, edit, or remove your notes.
+- Press Apply, dismiss a Finding, or add, edit, remove, or resolve your
+  notes.
 - Replace a Change intent the Review already holds.
 - Commit, push, change a branch, or write your index or working-tree files.
 - Read or write GitHub, or create or refresh a pull request Review.
@@ -328,6 +337,21 @@ the diff never changes under a note you are writing. The header shows
 **Updates available** when the window gains focus, or within 90 seconds while
 it stays in front. Press **Refresh** to move the Review to the new code. Each
 note then reads **Unchanged** or **Changed since your note**.
+
+### Read the agent's replies
+
+The agent answers a note with `reply_to_note`: **Addressed** when it changed
+the code, **Skipped** with the reason it left the note, or **Question** when
+it needs your answer first. The reply shows under the note in the Notes
+section when Patchdesk next checks the Review, on focus or within 90 seconds
+while the window stays in front. It changes neither your note nor the diff,
+and a newer reply replaces it. Patchdesk shows the reply as plain text and
+never puts it in an Insight or in Copy as agent prompt.
+
+Press **Resolve** on a note that needs nothing more. A resolved note stays in
+the list with a Resolved badge, leaves Copy as agent prompt, and drops out of
+`get_feedback` when the agent passes `open: true`. **Reopen** puts it back.
+Only you can resolve a note.
 
 The agent can ask for an Insight on the new code before you press Refresh, by
 calling `run_insight` with the `preparedSessionId` from `refresh_review`. It

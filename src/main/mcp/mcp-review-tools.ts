@@ -31,6 +31,8 @@ import {
   type LocalChangeIntentService,
 } from "../../services/local-change-intent-service";
 import type {
+  LocalDraftReplied,
+  LocalDraftReplyFailure,
   LocalDraftService,
   LocalFeedback,
 } from "../../services/local-draft-service";
@@ -89,7 +91,7 @@ export type McpReviewToolServices = {
     LocalChangeIntentService,
     "recordAgentIntent"
   >;
-  readonly localDrafts: Pick<LocalDraftService, "feedback">;
+  readonly localDrafts: Pick<LocalDraftService, "feedback" | "reply">;
   readonly agentRunRequests: Pick<AgentRunRequestService, "request">;
   readonly insightReader: Pick<ReviewInsightReader, "read" | "readStatuses">;
   readonly sessions: Pick<ReviewSessionStore, "load">;
@@ -110,6 +112,7 @@ type ServiceReason =
   | AgentIntentFailure["reason"]
   | InsightReadingFailure["reason"]
   | LocalFeedbackPageFailure["reason"]
+  | LocalDraftReplyFailure["reason"]
   | AgentRunRequestFailure["reason"]
   | "no_profile";
 
@@ -142,6 +145,10 @@ const refusalMessages = {
     "The intent holds what looks like a credential, which Patchdesk never stores. Remove it and try again.",
   stale_cursor:
     "The feedback changed since this cursor was issued. Call get_feedback again without a cursor.",
+  draft_not_found:
+    "The Review has no comment with that draftId; the maintainer may have removed it. Call get_feedback for the current comments.",
+  reply_sensitive:
+    "The reply holds what looks like a credential, which Patchdesk never stores. Remove it and try again.",
   stale_session:
     "sessionId is not a session this call accepts. Call get_review_status for the current sessionId and any preparedSessionId, then ask again.",
   request_not_awaiting: "That run request is no longer awaiting approval.",
@@ -420,13 +427,37 @@ export async function getFeedback(
   const feedback = await services.localDrafts.feedback(
     profiles.value.active.id,
     reviewId.value,
-    definedProps({ cursor: input.cursor }),
+    definedProps({ cursor: input.cursor, open: input.open }),
   );
   if (feedback._tag === "ok") return feedback;
   return err(
     feedback.error.reason === "not_found"
       ? await missingReviewRefusal(services, profiles.value, reviewId.value)
       : refusal(feedback.error.reason),
+  );
+}
+
+/** `reply_to_note`: `LocalDraftService.reply`, which stores the reply beside the draft; the workbench reads it at its next detection. */
+export async function replyToNote(
+  services: McpReviewToolServices,
+  input: ToolInput<"reply_to_note">,
+): Promise<Result<LocalDraftReplied, McpToolRefusal>> {
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const reviewId = parseReviewId(input.reviewId);
+  if (reviewId._tag === "err") return err(refusal("invalid_input"));
+  const replied = await services.localDrafts.reply({
+    profileId: profiles.value.active.id,
+    reviewId: reviewId.value,
+    draftId: input.draftId,
+    status: input.status,
+    text: input.text,
+  });
+  if (replied._tag === "ok") return replied;
+  return err(
+    replied.error.reason === "not_found"
+      ? await missingReviewRefusal(services, profiles.value, reviewId.value)
+      : refusal(replied.error.reason),
   );
 }
 

@@ -27,7 +27,10 @@ import type {
   McpSocketRequest,
   McpToolRefusal,
 } from "../../mcp/socket-protocol";
-import type { LocalFeedback } from "../../services/local-draft-service";
+import type {
+  LocalDraftReplied,
+  LocalFeedback,
+} from "../../services/local-draft-service";
 import type { CheckoutSharedReviews } from "../../services/local-shared-review-list";
 import type { AgentRunRequestReply } from "../../services/agent-run-request-service";
 import type { ReviewStatus } from "../../services/review-status-reading";
@@ -43,6 +46,7 @@ import {
   listLocalReviews,
   readActiveProfile,
   refreshReview,
+  replyToNote,
   reviewLocal,
   runInsight,
   showReview,
@@ -64,6 +68,7 @@ export type McpToolReply = Result<
   | LocalReviewPrepared
   | InsightReading
   | LocalFeedback
+  | LocalDraftReplied
   | AgentRunRequestReply
   | ReviewShown
   | ReviewStatus,
@@ -138,6 +143,10 @@ export function createMcpToolTable(services: McpToolServices): McpToolTable {
     get_review_status: {
       schema: mcpToolManifest.get_review_status.inputSchema,
       call: (input) => getReviewStatus(tools, input),
+    },
+    reply_to_note: {
+      schema: mcpToolManifest.reply_to_note.inputSchema,
+      call: (input) => replyToNote(tools, input),
     },
     run_insight: {
       schema: mcpToolManifest.run_insight.inputSchema,

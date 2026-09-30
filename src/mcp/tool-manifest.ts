@@ -136,7 +136,7 @@ export const mcpToolManifest = {
   },
   get_feedback: {
     description:
-      "Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against, the view it was written in (combined, committed, or uncommitted; its path, side, and lines are numbered in that view), inline (true when those lines sit inside a hunk of that view on the Review's current session), and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Pass nextCursor to read the next page. handoff is present when the maintainer marked these comments ready for you, with Ready for agent or Copy as agent prompt, since the Review last moved: at, and verdict when they chose one (looks_good or changes_requested). changedSinceHandoff is true when a comment was added, edited, or removed after that, so the maintainer may still be writing; say so when you report back. A looks_good verdict with no comments means the review needs nothing more from you.",
+      "Read the review comments the maintainer drafted on a local Review in file and line order, up to 25 per page and fewer when they are long, with the same Markdown prompt Copy as agent prompt gives. Each comment names the session it was written against, the view it was written in (combined, committed, or uncommitted; its path, side, and lines are numbered in that view), inline (true when those lines sit inside a hunk of that view on the Review's current session), and a state: current (written on the Review's current session), unchanged or changed (its lines since it was written), needs_attention (its lines could not be found), or applied. Each comment also has draftId, which reply_to_note takes; resolved, true once the maintainer resolved it; and reply, your latest reply_to_note answer to it, when you sent one. Pass open: true to read only the comments the maintainer has not resolved; the Markdown prompt leaves resolved comments out either way. Pass nextCursor to read the next page, with the same open. handoff is present when the maintainer marked these comments ready for you, with Ready for agent or Copy as agent prompt, since the Review last moved: at, and verdict when they chose one (looks_good or changes_requested). changedSinceHandoff is true when a comment was added, edited, removed, resolved, or reopened after that, so the maintainer may still be writing; say so when you report back. A looks_good verdict with no comments means the review needs nothing more from you.",
     inputSchema: v.strictObject({
       reviewId,
       cursor: v.optional(
@@ -147,8 +147,45 @@ export const mcpToolManifest = {
           v.description("The nextCursor of the previous page."),
         ),
       ),
+      open: v.optional(
+        v.pipe(
+          v.boolean(),
+          v.description(
+            "true to leave out the comments the maintainer resolved.",
+          ),
+        ),
+      ),
     }),
     annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  reply_to_note: {
+    description:
+      "Reply to one of the maintainer's review comments on a local Review, so they see what you did about it beside the comment in Patchdesk. status is addressed (you changed the code for it), skipped (you chose not to act on it; say why), or question (you need the maintainer's answer before you act). A skipped or question reply needs no code change. text is a short plain-text explanation for the maintainer. A new reply to the same comment replaces your earlier one. The reply changes neither the comment nor the diff, and the maintainer sees it the next time Patchdesk checks the Review. Only the maintainer resolves a comment; resolved in the result says whether they already did. A comment the maintainer removed is refused draft_not_found; call get_feedback for the current ones. Text that looks like a credential is refused reply_sensitive, and a pull request Review is refused not_applicable.",
+    inputSchema: v.strictObject({
+      reviewId,
+      draftId: v.pipe(
+        v.string(),
+        v.minLength(1),
+        v.maxLength(1_024),
+        v.description("The draftId of a comment get_feedback returned."),
+      ),
+      status: v.picklist(["addressed", "skipped", "question"]),
+      text: v.pipe(
+        v.string(),
+        v.minLength(1),
+        // The reply limit in src/domain/local-draft-reply.ts; `pnpm docs:mcp-tools` loads this file without the domain modules.
+        v.maxLength(4_096),
+        v.description(
+          "What you did about the comment and why, or your question, as plain text.",
+        ),
+      ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   get_review_status: {
     description:
