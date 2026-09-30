@@ -212,16 +212,22 @@ app_not_running: Patchdesk is not running. Start Patchdesk and try again. (ENOEN
 
 ## Tell your agent when to use it
 
-The agent calls these tools only when its instructions tell it to. Copy this
-into your project's `CLAUDE.md` or `AGENTS.md`:
+Patchdesk sends the agent its review loop rules as MCP server instructions
+when it connects: how to request an Insight, find the Review you are looking
+at, and answer your notes. With those alone, the agent opens a Review when you
+ask for one in Patchdesk.
+
+To have the agent open a Review whenever a change is ready, or if your MCP host
+ignores server instructions, copy this into your project's `CLAUDE.md` or
+`AGENTS.md`:
 
 ```markdown
 ## Review in Patchdesk
 
 - When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
-- To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
-- Before `get_feedback`, call `list_local_reviews` with your working directory as `cwd` to find the Review I am looking at, and use its `reviewId`. If it returns several Reviews for your branch, ask me which base I meant.
-- When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback` with `open: true`; address every Finding and comment, and answer each comment with `reply_to_note`: `addressed`, `skipped` with the reason, or `question`. Then call `refresh_review` and tell me the changes are ready. To get an Insight on the new code, call `run_insight` with the `preparedSessionId` from `refresh_review`; on `awaiting_refresh`, tell me to press Refresh in Patchdesk.
+- To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell the user the request waits for their approval in Patchdesk. Call `get_insight` when the user says it ran.
+- Before `get_feedback`, call `list_local_reviews` with your working directory as `cwd` to find the Review the user is looking at, and use its `reviewId`. If it returns several Reviews for your branch, ask the user which base they meant.
+- When the user says "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback` with `open: true`; address every Finding and comment, and answer each comment with `reply_to_note`: `addressed`, `skipped` with the reason, or `question`. Then call `refresh_review` and tell the user the changes are ready. To get an Insight on the new code, call `run_insight` with the `preparedSessionId` from `refresh_review`; on `awaiting_refresh`, tell the user to press Refresh in Patchdesk.
 ```
 
 ## Example prompts
