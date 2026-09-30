@@ -271,6 +271,40 @@ describe("BriefReader", () => {
     expect(screen.getByRole("region", { name: "Shape" })).toBeTruthy();
   });
 
+  it("renders each Moves row with its directories", () => {
+    const base = retained();
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={{
+          ...base,
+          value: {
+            ...briefValue,
+            moves: {
+              rows: [
+                {
+                  from: "job/<name>/",
+                  to: "cmd/<name>/",
+                  files: 13,
+                  editedFiles: 1,
+                  names: 6,
+                },
+              ],
+              hiddenRows: 0,
+              movedFiles: 13,
+              leads: true,
+            },
+          },
+        }}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const moves = screen.getByRole("region", { name: "Moves" });
+    expect(within(moves).getByText("job/<name>/")).toBeTruthy();
+    expect(within(moves).getByText("cmd/<name>/")).toBeTruthy();
+  });
+
   it("renders the Blast radius rows that found something and states how the counts were made", () => {
     render(
       <BriefReader

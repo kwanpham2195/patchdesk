@@ -52,7 +52,7 @@ const storedMovesSchema = v.strictObject({
       to: v.string(),
       files: storedLineCountSchema,
       editedFiles: storedLineCountSchema,
-      names: storedLineCountSchema,
+      names: v.pipe(v.number(), v.integer(), v.minValue(1)),
     }),
   ),
   hiddenRows: storedLineCountSchema,

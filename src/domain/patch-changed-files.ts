@@ -98,7 +98,7 @@ function changedFileStatus(draft: ChangedFileDraft): PatchChangedFileStatus {
 }
 
 /** Code-unit order, so the list never depends on the reader's locale. */
-function comparePaths(left: string, right: string): number {
+export function comparePaths(left: string, right: string): number {
   if (left < right) return -1;
   return left > right ? 1 : 0;
 }

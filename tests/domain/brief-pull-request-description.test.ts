@@ -252,4 +252,60 @@ describe("renderBriefAsPullRequestDescription", () => {
       "### Call tree: Recovery writes\n\n```diff",
     );
   });
+
+  it("writes Moves before Flow when moves lead the change and after it when they do not", () => {
+    const flow = {
+      trees: [
+        {
+          kind: "call_tree" as const,
+          title: "Recovery",
+          nodes: [
+            {
+              label: "recover()",
+              change: "added" as const,
+              citations: [],
+              children: [],
+            },
+          ],
+        },
+      ],
+    };
+    const moves = {
+      rows: [
+        { from: "job/", to: "deploy/", files: 36, editedFiles: 0, names: 1 },
+        { from: "", to: "cmd/", files: 1, editedFiles: 1, names: 1 },
+      ],
+      hiddenRows: 1,
+      movedFiles: 38,
+      leads: true,
+    };
+    const leading = renderBriefAsPullRequestDescription({
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      flow,
+      moves,
+    });
+    expect(leading).toContain(
+      [
+        "## Moves",
+        "",
+        "- `job/` → `deploy/` (36 files, unchanged)",
+        "- `./` → `cmd/` (1 file, 1 also edited)",
+        "- 1 more moved directory",
+      ].join("\n"),
+    );
+    expect(leading.indexOf("## Moves")).toBeLessThan(
+      leading.indexOf("## Flow"),
+    );
+
+    const following = renderBriefAsPullRequestDescription({
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      flow,
+      moves: { ...moves, leads: false },
+    });
+    expect(following.indexOf("## Flow")).toBeLessThan(
+      following.indexOf("## Moves"),
+    );
+  });
 });

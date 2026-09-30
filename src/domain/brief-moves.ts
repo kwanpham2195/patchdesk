@@ -1,5 +1,5 @@
 import { isUnchangedRename } from "./brief-ownership";
-import type { PatchChangedFile } from "./patch-changed-files";
+import { comparePaths, type PatchChangedFile } from "./patch-changed-files";
 
 /*
  * The Brief reader draws this block as "Moves": which directories a patch
@@ -76,7 +76,7 @@ export function briefMoves(
   if (movedFiles < MIN_MOVED_FILES) return undefined;
   const rows = mergeNamedRows([...pairs.values()]).sort(
     (left, right) =>
-      right.files - left.files || compareText(left.from, right.from),
+      right.files - left.files || comparePaths(left.from, right.from),
   );
   const otherChanges = { added: 0, removed: 0, modified: 0 };
   for (const file of files)
@@ -112,8 +112,13 @@ export function renderBriefPatchFacts(
     ),
   );
   if (moves.hiddenRows > 0)
-    lines.push(`- ${moves.hiddenRows} more moved directories`);
+    lines.push(`- ${moreMovedDirectories(moves.hiddenRows)}`);
   return lines.join("\n");
+}
+
+/** The counted remainder line for Moves rows past the cap. */
+export function moreMovedDirectories(count: number): string {
+  return `${count} more moved ${count === 1 ? "directory" : "directories"}`;
 }
 
 /** How a Moves directory reads: the repository root is `./`. */
@@ -209,10 +214,4 @@ function namedTemplate(
 
 function countOf(segments: ReadonlyArray<string>, value: string): number {
   return segments.filter((segment) => segment === value).length;
-}
-
-/** Code-unit order, so the rows never depend on the reader's locale. */
-function compareText(left: string, right: string): number {
-  if (left < right) return -1;
-  return left > right ? 1 : 0;
 }

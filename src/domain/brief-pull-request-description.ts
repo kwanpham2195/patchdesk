@@ -1,6 +1,11 @@
 import type { BriefCitation, NormalizedBrief } from "./brief";
 import { briefFlowKindLabel, flowRowLine, flowRows } from "./brief-flow-text";
 import type { BriefFlowTree } from "./brief-flow";
+import {
+  displayDirectory,
+  moreMovedDirectories,
+  type BriefMoves,
+} from "./brief-moves";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";
@@ -9,8 +14,9 @@ import { matchUnifiedHunkHeader } from "./unified-patch";
 
 /**
  * The retained Brief as a pull request description in Markdown (ADR 0050
- * "Handoff"): Flow, Shape, Blast radius, then Start here, in the order the
- * reader draws them, each a `##` section. Every citation is written as
+ * "Handoff"): Moves, Flow, Shape, Blast radius, then Start here, in the order
+ * the reader draws them, each a `##` section; Moves follows Flow when it does
+ * not lead. Every citation is written as
  * `path:line`, a hunk at its new-side start line. Only the citations the
  * reader shows as chips are written, and one that names no hunk location is
  * dropped.
@@ -19,11 +25,15 @@ export function renderBriefAsPullRequestDescription(
   brief: NormalizedBrief,
 ): string {
   const trees = brief.flow?.trees ?? [];
+  const moves =
+    brief.moves === undefined ? undefined : movesSection(brief.moves);
   const sections = [
+    brief.moves?.leads === true ? moves : undefined,
     // Each Flow view is a `###` under one `## Flow`, level with the other sections.
     trees.length === 0
       ? undefined
       : ["## Flow", ...trees.map(flowSection)].join("\n\n"),
+    brief.moves?.leads === false ? moves : undefined,
     brief.ownership === undefined
       ? undefined
       : ownershipSection(brief.ownership),
@@ -33,6 +43,23 @@ export function renderBriefAsPullRequestDescription(
       : startHereSection(brief.startHere),
   ].filter((section) => section !== undefined);
   return `${sections.join("\n\n")}\n`;
+}
+
+function movesSection(moves: BriefMoves): string {
+  return [
+    "## Moves",
+    "",
+    ...moves.rows.map((row) => {
+      const edited =
+        row.editedFiles === 0
+          ? "unchanged"
+          : `${String(row.editedFiles)} also edited`;
+      return `- \`${displayDirectory(row.from)}\` → \`${displayDirectory(row.to)}\` (${String(row.files)} ${row.files === 1 ? "file" : "files"}, ${edited})`;
+    }),
+    ...(moves.hiddenRows === 0
+      ? []
+      : [`- ${moreMovedDirectories(moves.hiddenRows)}`]),
+  ].join("\n");
 }
 
 function flowSection(tree: BriefFlowTree): string {

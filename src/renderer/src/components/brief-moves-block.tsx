@@ -1,5 +1,8 @@
 import type { BriefMoves } from "../brief-contracts";
-import { displayDirectory } from "../../../domain/brief-moves";
+import {
+  displayDirectory,
+  moreMovedDirectories,
+} from "../../../domain/brief-moves";
 
 /** The Moves block: directories the patch moved, from git's rename pairs. */
 export function MovesBlock({
@@ -32,7 +35,7 @@ export function MovesBlock({
         ))}
         {moves.hiddenRows === 0 ? null : (
           <span className="col-span-4 text-muted-foreground">
-            … {moves.hiddenRows} more moved directories
+            … {moreMovedDirectories(moves.hiddenRows)}
           </span>
         )}
       </div>

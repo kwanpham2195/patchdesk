@@ -117,8 +117,8 @@ export function normalizeBriefOwnership(
   const files = briefOwnershipFiles(patch);
   if (raw === undefined) return { value: { files, notes: [] }, rejected: 0 };
   const changedPaths = new Set(files.map((file) => file.path));
-  // The Moves block already says a pure move happened, so a note there only
-  // spends the note budget; it is dropped without counting as a model error.
+  // A file that only moved has nothing new to own, so a note there only spends
+  // the note budget; it is dropped without counting as a model error.
   const pureMoves = new Set(
     files.flatMap((file) => (isUnchangedRename(file) ? [file.path] : [])),
   );
