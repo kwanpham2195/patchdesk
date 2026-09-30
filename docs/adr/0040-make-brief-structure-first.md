@@ -12,9 +12,9 @@ sense.
 The reason is not redundancy, it is direction. A reviewer opening a pull
 request wants to understand the change without reading all of the code
 first. Prose that restates the change does not get them there — it is a
-sentence *about* the change, one more thing to read and cross-check against
+sentence _about_ the change, one more thing to read and cross-check against
 the diff. Structure does get them there: Flow does not describe the change,
-it *is* the change, laid out so the shape is visible before a single hunk is
+it _is_ the change, laid out so the shape is visible before a single hunk is
 opened. Goal was trying to do with sentences what Flow now does with a tree.
 
 ## The decision
@@ -135,3 +135,19 @@ Flow, Shape, Start here, and Reach guidance is unchanged.
   it; the model is no longer asked to pick one explaining hunk, and a Brief
   retained before this change keeps `contract` in its stored `ownership` as a
   tolerated-and-ignored key.
+
+## Amendment: Moves (2026-09-30)
+
+On large structural pull requests the model saw only rename headers buried in
+the patch, drew the one small behavior change as Flow, and spent the Shape
+note budget on moved fixtures and config files (#713, #715).
+
+- Patchdesk adds a Moves block computed from git's rename pairs. The model
+  never draws it: a pure rename has no hunk to cite, so a model-drawn move map
+  would always read as unverified.
+- Moves comes before Flow when moved files outnumber each other kind of change.
+  This is a fixed rule; letting the model choose the lead block is #714.
+- The Brief prompt carries a PATCH FACTS section with status counts and the
+  Moves rows, and Flow guidance says a moved file needs no root.
+- `normalizeBriefOwnership` drops a note on a renamed file with no line change
+  without counting it against the citation status.

@@ -62,6 +62,29 @@ describe("prepareBriefPrompt", () => {
     expect(prompt).not.toContain("do not repeat them in prose");
   });
 
+  it("states the moved directories before the patch, so the model sees a move without reading every rename header", async () => {
+    const prepared = await briefPromptResult(
+      [
+        "diff --git a/job/a.json b/deploy/a.json",
+        "similarity index 100%",
+        "rename from job/a.json",
+        "rename to deploy/a.json",
+        "diff --git a/job/b.json b/deploy/b.json",
+        "similarity index 100%",
+        "rename from job/b.json",
+        "rename to deploy/b.json",
+        "",
+      ].join("\n"),
+    );
+    if (prepared._tag === "err") throw new Error(prepared.error.reason);
+    const facts = prepared.value.slice(
+      prepared.value.indexOf("PATCH FACTS"),
+      prepared.value.indexOf("PATCH ARTIFACT"),
+    );
+    expect(facts).toContain("Changed files: 2 (2 renamed)");
+    expect(facts).toContain("job/ -> deploy/: 2 files, 0 also edited");
+  });
+
   it("returns patch_too_large for a patch past the bounded input size", async () => {
     await expect(
       briefPromptResult(Buffer.alloc(2 * 1024 * 1024 + 1, 0x78)),

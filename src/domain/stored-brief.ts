@@ -45,6 +45,20 @@ const storedOwnershipSchema = v.strictObject({
   /** Written by Briefs retained before this release; read and ignored. Delete after the next release (ADR 0040 drops the Shape contract hunk). */
   contract: v.optional(v.unknown()),
 });
+const storedMovesSchema = v.strictObject({
+  rows: v.array(
+    v.strictObject({
+      from: v.string(),
+      to: v.string(),
+      files: storedLineCountSchema,
+      editedFiles: storedLineCountSchema,
+      names: storedLineCountSchema,
+    }),
+  ),
+  hiddenRows: storedLineCountSchema,
+  movedFiles: storedLineCountSchema,
+  leads: v.boolean(),
+});
 const storedStartHereSchema = v.strictObject({
   lead: v.pipe(v.string(), v.minLength(1)),
   order: v.pipe(
@@ -156,6 +170,8 @@ const storedBriefSchema = v.strictObject({
   descriptionDrift: v.optional(v.unknown()),
   /** Absent on every Brief retained before the Ownership block existed. */
   ownership: v.optional(storedOwnershipSchema),
+  /** Absent on a Brief retained before the Moves block existed, and whenever the patch moved no directory. */
+  moves: v.optional(storedMovesSchema),
   /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
   startHere: v.optional(storedStartHereSchema),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
@@ -227,6 +243,7 @@ export function parseStoredBrief(
     citationStatus: parsed.output.citationStatus,
     ...definedProps({
       ownership: storedOwnership(parsed.output.ownership),
+      moves: parsed.output.moves,
       startHere: storedStartHere(parsed.output.startHere),
       reach: storedReach(parsed.output.reach),
       reachUnavailable: parsed.output.reachUnavailable,

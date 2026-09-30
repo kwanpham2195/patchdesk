@@ -116,6 +116,23 @@ describe("normalizeBriefOwnership", () => {
     expect(normalized.rejected).toBe(2);
   });
 
+  it("drops a note on a file that only moved, without counting it against the Brief", () => {
+    const patch = [
+      "diff --git a/job/a.json b/deploy/a.json",
+      "similarity index 100%",
+      "rename from job/a.json",
+      "rename to deploy/a.json",
+      "",
+    ].join("\n");
+    const normalized = normalizeBriefOwnership(
+      { notes: [{ path: "deploy/a.json", note: "holds the job config" }] },
+      patch,
+    );
+    expect(normalized.value.files).toHaveLength(1);
+    expect(normalized.value.notes).toEqual([]);
+    expect(normalized.rejected).toBe(0);
+  });
+
   it("caps a note at 140 characters", () => {
     const normalized = ownership({
       notes: [{ path: "src/writer.ts", note: "n".repeat(200) }],

@@ -1,3 +1,4 @@
+import { definedProps } from "./defined-props";
 import { tokenizeUnifiedPatch } from "./unified-patch";
 
 /** What the patch did to one changed file. */
@@ -12,6 +13,8 @@ export type PatchChangedFile = {
   readonly status: PatchChangedFileStatus;
   readonly additions: number;
   readonly deletions: number;
+  /** The path before the change; set only on a renamed file. */
+  readonly previousPath?: string;
 };
 
 /** Where one changed file stands while its patch section is still being read. */
@@ -75,6 +78,9 @@ export function listPatchChangedFiles(
               status,
               additions: draft.additions,
               deletions: draft.deletions,
+              ...definedProps({
+                previousPath: status === "renamed" ? draft.oldPath : undefined,
+              }),
             },
           ];
     })
