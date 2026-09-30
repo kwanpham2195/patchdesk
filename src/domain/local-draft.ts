@@ -42,6 +42,8 @@ export type FindingDraft = {
   /** Set when a confirmed Apply wrote this Finding's suggestion; the draft stays listed and leaves the agent prompt. */
   readonly appliedAt?: IsoTimestamp;
   readonly carry?: LocalDraftCarry;
+  /** Set when the maintainer resolved the draft; it stays listed and leaves the agent prompt. */
+  readonly resolvedAt?: IsoTimestamp;
 };
 
 /** A note the maintainer wrote on diff lines of a local Review (ADR 0051); the maintainer may edit its text. */
@@ -57,6 +59,8 @@ export type MaintainerNote = {
   readonly createdAt: IsoTimestamp;
   readonly updatedAt: IsoTimestamp;
   readonly carry?: LocalDraftCarry;
+  /** Set when the maintainer resolved the note; it stays listed and leaves the agent prompt. */
+  readonly resolvedAt?: IsoTimestamp;
 };
 
 /**
@@ -97,6 +101,7 @@ export type LocalDraftEntry =
       readonly title: string;
       readonly suggests: boolean;
       readonly state?: LocalDraftState;
+      readonly resolvedAt?: IsoTimestamp;
     }
   | {
       readonly kind: "note";
@@ -109,6 +114,7 @@ export type LocalDraftEntry =
       readonly line: number;
       readonly text: string;
       readonly state?: LocalDraftState;
+      readonly resolvedAt?: IsoTimestamp;
     };
 
 /** What the workbench labels a draft with; absent until the Review first moves to a new session. */
@@ -153,6 +159,7 @@ export const storedLocalDraftSchema = v.union([
     addedAt: nonEmpty,
     appliedAt: v.optional(nonEmpty),
     carry: storedCarrySchema,
+    resolvedAt: v.optional(nonEmpty),
   }),
   v.strictObject({
     author: v.literal("maintainer"),
@@ -164,6 +171,7 @@ export const storedLocalDraftSchema = v.union([
     createdAt: nonEmpty,
     updatedAt: nonEmpty,
     carry: storedCarrySchema,
+    resolvedAt: v.optional(nonEmpty),
   }),
 ]);
 
@@ -191,10 +199,15 @@ function parseStoredLocalDraft(
     entry.carry === undefined
       ? undefined
       : parseReviewSessionId(entry.carry.sessionId);
+  const resolvedAt =
+    entry.resolvedAt === undefined
+      ? undefined
+      : parseIsoTimestamp(entry.resolvedAt);
   if (
     sessionId._tag === "err" ||
     path._tag === "err" ||
     carriedTo?._tag === "err" ||
+    resolvedAt?._tag === "err" ||
     entry.anchor.line < entry.anchor.startLine
   )
     return undefined;
@@ -228,7 +241,7 @@ function parseStoredLocalDraft(
       text: text.value,
       createdAt: createdAt.value,
       updatedAt: updatedAt.value,
-      ...definedProps({ carry }),
+      ...definedProps({ carry, resolvedAt: resolvedAt?.value }),
     };
   }
   const findingId = parseFindingId(entry.findingId);
@@ -255,7 +268,11 @@ function parseStoredLocalDraft(
     comment: entry.comment,
     ...definedProps({ suggestion: entry.suggestion }),
     addedAt: addedAt.value,
-    ...definedProps({ appliedAt: appliedAt?.value, carry }),
+    ...definedProps({
+      appliedAt: appliedAt?.value,
+      carry,
+      resolvedAt: resolvedAt?.value,
+    }),
   };
 }
 
@@ -321,7 +338,10 @@ export function projectLocalDraft(draft: LocalDraft): LocalDraftEntry {
     side: draft.anchor.side,
     startLine: draft.anchor.startLine,
     line: draft.anchor.line,
-    ...definedProps({ state: localDraftState(draft) }),
+    ...definedProps({
+      state: localDraftState(draft),
+      resolvedAt: draft.resolvedAt,
+    }),
   };
   return isMaintainerNote(draft)
     ? { kind: "note", noteId: draft.noteId, ...location, text: draft.text }

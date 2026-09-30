@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { definedProps } from "../../src/domain/defined-props";
 import { parseRepoRelativePath } from "../../src/domain/ids";
 import type { LocalFeedback } from "../../src/services/local-draft-service";
 import {
@@ -54,7 +55,11 @@ async function readEveryPage(
   let cursor: string | undefined;
   do {
     const page = value(
-      await harness.drafts.feedback(profileId, reviewId, cursor),
+      await harness.drafts.feedback(
+        profileId,
+        reviewId,
+        definedProps({ cursor }),
+      ),
     );
     pages.push(page);
     cursor = page.nextCursor;

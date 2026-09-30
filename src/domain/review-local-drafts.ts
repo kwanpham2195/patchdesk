@@ -11,6 +11,7 @@ import {
   type LocalDraftTarget,
   type MaintainerNote,
 } from "./local-draft";
+import { localDraftTargetId, type LocalDraftReply } from "./local-draft-reply";
 import { err, ok, type Result } from "./result";
 import { laterTimestamp, type Review } from "./review";
 import type { LocalReviewSource } from "./review-source";
@@ -112,15 +113,93 @@ export function removeLocalDraft(
   const drafts = review.localDrafts ?? [];
   const kept = drafts.filter((entry) => !isLocalDraftOf(entry, target));
   if (kept.length === drafts.length) return ok(review);
-  const { localDrafts: _removed, ...rest } = review;
+  const replies = (review.localDraftReplies ?? []).filter(
+    (reply) => !sameLocalDraftTarget(reply.draft, target),
+  );
+  const {
+    localDrafts: _removed,
+    localDraftReplies: _replies,
+    ...rest
+  } = review;
   return ok({
     ...rest,
     ...definedProps({
       localDrafts: kept.length === 0 ? undefined : kept,
+      localDraftReplies: replies.length === 0 ? undefined : replies,
       handoff: handoffAfterDraftChange(review.handoff, updatedAt),
     }),
     updatedAt: laterTimestamp(review.updatedAt, updatedAt),
   });
+}
+
+/**
+ * Record the coding agent's reply to one Local draft, replacing its earlier
+ * reply (ADR 0052 "Replies"). The draft itself, the hand-off, and a
+ * resolved mark are left as they are: a reply is not a maintainer change.
+ */
+export function replyToLocalDraft(
+  review: Review<LocalReviewSource>,
+  reply: LocalDraftReply,
+): Result<
+  Review<LocalReviewSource>,
+  { readonly _tag: "ReviewTerminal" | "DraftNotFound" }
+> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  if (
+    !(review.localDrafts ?? []).some((draft) =>
+      isLocalDraftOf(draft, reply.draft),
+    )
+  )
+    return err({ _tag: "DraftNotFound" });
+  const others = (review.localDraftReplies ?? []).filter(
+    (entry) => !sameLocalDraftTarget(entry.draft, reply.draft),
+  );
+  return ok({
+    ...review,
+    localDraftReplies: [...others, reply],
+    updatedAt: laterTimestamp(review.updatedAt, reply.repliedAt),
+  });
+}
+
+/**
+ * Resolve or reopen one Local draft; only the maintainer does. A resolved
+ * draft stays listed and leaves the agent prompt, and the change counts as a
+ * draft change for the hand-off, since it changes what the agent is asked to
+ * address.
+ */
+export function setLocalDraftResolved(
+  review: Review<LocalReviewSource>,
+  target: LocalDraftTarget,
+  resolvedAt: IsoTimestamp | undefined,
+  updatedAt: IsoTimestamp,
+): Result<
+  Review<LocalReviewSource>,
+  { readonly _tag: "ReviewTerminal" | "DraftNotFound" }
+> {
+  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
+  const drafts = review.localDrafts ?? [];
+  const draft = drafts.find((entry) => isLocalDraftOf(entry, target));
+  if (draft === undefined) return err({ _tag: "DraftNotFound" });
+  if ((draft.resolvedAt === undefined) === (resolvedAt === undefined))
+    return ok(review);
+  const { resolvedAt: _previous, ...open } = draft;
+  const changed: LocalDraft =
+    resolvedAt === undefined ? open : { ...draft, resolvedAt };
+  return ok({
+    ...review,
+    localDrafts: drafts.map((entry) => (entry === draft ? changed : entry)),
+    ...definedProps({
+      handoff: handoffAfterDraftChange(review.handoff, updatedAt),
+    }),
+    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
+  });
+}
+
+function sameLocalDraftTarget(
+  left: LocalDraftTarget,
+  right: LocalDraftTarget,
+): boolean {
+  return localDraftTargetId(left) === localDraftTargetId(right);
 }
 
 /** Stamp a Feedback hand-off on a local Review, replacing an earlier one (ADR 0052). */

@@ -47,6 +47,7 @@ import {
   agentRunRequestsOnSession,
   type AgentRunRequest,
 } from "../domain/agent-run-request";
+import type { LocalDraftReply } from "../domain/local-draft-reply";
 import { err, ok, type Result } from "../domain/result";
 import type {
   PrepareReviewSessionFailure,
@@ -766,6 +767,7 @@ export class ReviewWorkbenchController {
   private async observeLocal(review: Review<LocalReviewSource>): Promise<
     ReviewObservation & {
       readonly agentRunRequests: ReadonlyArray<AgentRunRequest>;
+      readonly localDraftReplies: ReadonlyArray<LocalDraftReply>;
     }
   > {
     // The session's agent run requests ride along so a request an agent made while the Review is open reaches its bar.
@@ -782,6 +784,8 @@ export class ReviewWorkbenchController {
       _tag: changed ? "RevisionChanged" : "Unchanged",
       detectedAt: this.now(),
       agentRunRequests,
+      // An agent's reply_to_note reaches the Notes section at the next detection and leaves the diff alone (#600).
+      localDraftReplies: review.localDraftReplies ?? [],
     };
   }
 

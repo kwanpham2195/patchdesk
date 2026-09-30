@@ -24,14 +24,19 @@ const TASK_INSTRUCTION =
  * lines; a Finding draft carries its verified suggestion as a fenced block,
  * and verification already refused any suggestion holding a fence line (ADR
  * 0048). A maintainer note is its text alone. A draft whose lines changed
- * or could not be placed after a Refresh says so, and an applied Finding draft
- * is left out because its change is already made (#452). Follows the Analysis
+ * or could not be placed after a Refresh says so. An applied Finding draft is
+ * left out because its change is already made (#452), and a resolved draft
+ * because the maintainer closed it (#600); the agent's replies never enter
+ * the prompt, since their text is untrusted. Follows the Analysis
  * "Copy as markdown prompt" layout.
  */
 export function renderLocalDraftsAsAgentPrompt(
   all: ReadonlyArray<LocalDraft>,
 ): string {
-  const drafts = all.filter((draft) => localDraftState(draft) !== "applied");
+  const drafts = all.filter(
+    (draft) =>
+      localDraftState(draft) !== "applied" && draft.resolvedAt === undefined,
+  );
   const comments =
     drafts.length === 0
       ? "No review comments."

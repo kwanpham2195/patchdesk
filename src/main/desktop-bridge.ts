@@ -105,6 +105,7 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/local-drafts/notes/edit",
   "POST /v1/reviews/local-drafts/notes/remove",
   "POST /v1/reviews/local-drafts/handoff",
+  "POST /v1/reviews/local-drafts/resolve",
   "POST /v1/reviews/local-drafts/agent-prompt",
   "POST /v1/reviews/local-intent",
   "GET /v1/insight-providers",

@@ -46,6 +46,11 @@ import {
   storedLocalDraftSchema,
   type LocalDraft,
 } from "./local-draft";
+import {
+  localDraftReplySchema,
+  parseStoredLocalDraftReplies,
+  type LocalDraftReply,
+} from "./local-draft-reply";
 import { err, ok, type Result } from "./result";
 import type { ReviewSessionKey } from "./review-session";
 import {
@@ -151,6 +156,8 @@ export type Review<Source extends ReviewSource = ReviewSource> = {
   readonly lastLooked?: LastLooked;
   /** A local Review's draft list (ADR 0050); never present on a pull request Review, absent when empty. */
   readonly localDrafts?: ReadonlyArray<LocalDraft>;
+  /** The coding agent's latest reply to each Local draft it answered (ADR 0052), kept apart from the drafts; every move keeps it, absent when empty. */
+  readonly localDraftReplies?: ReadonlyArray<LocalDraftReply>;
   /** A local Review's Change intent (#467); never present on a pull request Review. Every move to a new session keeps it. */
   readonly changeIntent?: ChangeIntent;
   /**
@@ -276,6 +283,7 @@ const reviewV2Schema = v.strictObject({
     }),
   ),
   localDrafts: v.optional(v.array(storedLocalDraftSchema)),
+  localDraftReplies: v.optional(v.array(localDraftReplySchema)),
   changeIntent: v.optional(storedChangeIntentSchema),
   preparedSessionId: v.optional(v.string()),
   agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
@@ -661,6 +669,7 @@ function parseReviewBase(
     | "lastOpenedAt"
     | "lastLooked"
     | "localDrafts"
+    | "localDraftReplies"
     | "changeIntent"
     | "preparedSessionId"
     | "agentRunRequests"
@@ -721,6 +730,12 @@ function parseReviewBase(
       : source.value.kind === "pull_request" || raw.localDrafts.length === 0
         ? invalid()
         : parseStoredLocalDrafts(raw.localDrafts);
+  const localDraftReplies =
+    raw.localDraftReplies === undefined
+      ? ok(undefined)
+      : source.value.kind === "pull_request"
+        ? invalid()
+        : parseStoredLocalDraftReplies(raw.localDraftReplies);
   const changeIntent =
     raw.changeIntent === undefined
       ? ok(undefined)
@@ -751,6 +766,7 @@ function parseReviewBase(
     lastOpenedAt._tag === "err" ||
     lastLooked._tag === "err" ||
     localDrafts._tag === "err" ||
+    localDraftReplies._tag === "err" ||
     changeIntent._tag === "err" ||
     preparedSessionId._tag === "err" ||
     agentRunRequests._tag === "err" ||
@@ -769,6 +785,7 @@ function parseReviewBase(
       lastOpenedAt: lastOpenedAt.value,
       lastLooked: lastLooked.value,
       localDrafts: localDrafts.value,
+      localDraftReplies: localDraftReplies.value,
       changeIntent: changeIntent.value,
       preparedSessionId: preparedSessionId.value,
       agentRunRequests: agentRunRequests.value,

@@ -420,7 +420,7 @@ export async function getFeedback(
   const feedback = await services.localDrafts.feedback(
     profiles.value.active.id,
     reviewId.value,
-    input.cursor,
+    definedProps({ cursor: input.cursor }),
   );
   if (feedback._tag === "ok") return feedback;
   return err(
