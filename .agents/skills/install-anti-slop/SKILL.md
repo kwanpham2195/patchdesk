@@ -22,7 +22,7 @@ Install the bundled Oxlint plugin into the current repository and integrate it w
    node <skill-directory>/scripts/install.mjs
    ```
 
-   This creates `tools/oxlint/anti-slop/`. Pass another relative destination as the first argument when the repository has an established tooling layout. The script refuses to replace an existing destination; only use `--force` after backing up and reviewing existing files.
+   This creates `tools/lint-rules/anti-slop/`. Pass another relative destination as the first argument when the repository has an established tooling layout. The script refuses to replace an existing destination; only use `--force` after backing up and reviewing existing files.
 
 3. Install current compatible dependencies rather than trusting versions remembered by the agent:
    - Query `npm view oxlint version` and `npm view @oxlint/plugins version`.
@@ -45,10 +45,10 @@ Install the bundled Oxlint plugin into the current repository and integrate it w
      ".pi/**",
      ".roo/**",
      ".windsurf/**",
-     "tools/oxlint/anti-slop/**",
+     "tools/lint-rules/anti-slop/**",
    ],
    jsPlugins: [
-     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+     { name: "anti-slop", specifier: "./tools/lint-rules/anti-slop/index.ts" },
    ],
    ```
 

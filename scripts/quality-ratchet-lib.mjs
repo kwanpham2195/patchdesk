@@ -222,7 +222,7 @@ async function runCountRatchet(
  * The price of asking the change is that staging the baseline unchanged no
  * longer satisfies the rule, because it leaves no diff entry to see. A
  * configuration edit that moves no count -- a rule nothing violates, a
- * `tools/oxlint/LICENSE` line -- must therefore still write something into
+ * `tools/lint-rules/LICENSE` line -- must therefore still write something into
  * the baseline file. That is deliberate: the baseline carries a `note`
  * describing what its number counts, and an edit that changes which rules
  * produce that number changes what the note describes. Recording "recounted,
@@ -374,7 +374,7 @@ function describeRevision(revision) {
 
 /**
  * Any `.oxlintrc.json`, at the repository root or nested, plus the Oxlint
- * plugin sources under `tools/oxlint/`. Weakening a rule written in plugin
+ * plugin sources under `tools/lint-rules/`. Weakening a rule written in plugin
  * JavaScript lowers the count exactly the way weakening one written in the
  * config file does.
  *
@@ -383,7 +383,7 @@ function describeRevision(revision) {
  */
 function isOxlintConfigPath(path) {
   return (
-    basename(path) === ".oxlintrc.json" || path.startsWith("tools/oxlint/")
+    basename(path) === ".oxlintrc.json" || path.startsWith("tools/lint-rules/")
   );
 }
 

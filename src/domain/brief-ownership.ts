@@ -10,7 +10,7 @@ import {
  * The Brief reader draws this block under the heading "Shape". Every symbol
  * here is named for the question the block answers instead -- who owns what
  * after the change -- because `anti-slop/no-shape-in-symbol-names`
- * (`tools/oxlint/anti-slop`) rejects that word in any identifier. The heading
+ * (`tools/lint-rules/anti-slop`) rejects that word in any identifier. The heading
  * and the JSON key therefore differ on purpose.
  */
 

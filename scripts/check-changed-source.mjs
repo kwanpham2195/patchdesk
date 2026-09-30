@@ -145,7 +145,7 @@ async function mergeBaseWithHead(base, { cwd, run, output }) {
 
 /**
  * `D` is in the filter so a deleted `.oxlintrc.json`, or a deleted rule file
- * under `tools/oxlint/`, still reaches the count ratchet's configuration
+ * under `tools/lint-rules/`, still reaches the count ratchet's configuration
  * rule. The source checks consume the same list and are unharmed: a path
  * deleted at `head` is not on disk, so `checkSourcePaths` filters it out
  * before any tool or line count reads it.

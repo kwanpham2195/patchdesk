@@ -554,7 +554,7 @@ describe("checkChangedSource", () => {
     // `--diff-filter=ACDMR` includes deletions, so removing a rule file is
     // seen as the configuration change it is.
     const harness = createHarness({
-      diffOutput: "tools/oxlint/anti-slop/rules/no-drift.ts\0",
+      diffOutput: "tools/lint-rules/anti-slop/rules/no-drift.ts\0",
       existingPaths: new Set(),
     });
 

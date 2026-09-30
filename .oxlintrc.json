@@ -2,8 +2,8 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "react"],
   "jsPlugins": [
-    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" },
-    { "name": "patchdesk", "specifier": "./tools/oxlint/patchdesk/index.ts" }
+    { "name": "anti-slop", "specifier": "./tools/lint-rules/anti-slop/index.ts" },
+    { "name": "patchdesk", "specifier": "./tools/lint-rules/patchdesk/index.ts" }
   ],
   "categories": {
     "correctness": "off"
@@ -21,7 +21,7 @@
     ".agents/**",
     ".codex/**",
     ".pi/**",
-    "tools/oxlint/anti-slop/**"
+    "tools/lint-rules/anti-slop/**"
   ],
   "rules": {
     "constructor-super": "error",

@@ -6,7 +6,7 @@ If you want to become familiar with the code base, you are in the right place.
 For the vocabulary of the domain, read [CONTEXT.md](../CONTEXT.md) first.
 It defines the exact meaning of Review, Review session, Insight, Finding, and every other domain term used here.
 For the history of architectural decisions, read the records in [docs/adr](adr/).
-For how agents should explore this repository, read [docs/agents/domain.md](agents/domain.md).
+For how agents should explore this repository, read [docs/agent-notes/domain.md](agents/domain.md).
 
 The architecture has three layers of authority:
 

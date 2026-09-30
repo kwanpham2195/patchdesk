@@ -178,7 +178,7 @@ Tests and gates:
 - No file may grow past 1,000 lines and no new file past 500 (`scripts/file-growth-lib.mjs`, pre-commit). Check the size before adding to a large file and split first; this blocked 17 sessions.
 - Run one `pnpm check` at a time. Two at once reproduce the concurrent-load flakes (#108, #145). When a timing test fails and passes on retry, check `ps -Ao pid,pcpu,etime,comm | awk '$2>50'` for a hung `trash` before reading the test.
 - Knip does not read CSS: a dependency it flags may be live via `styles.css`. Deleting the last consumer of an export fails `knip:ratchet` at 0, so delete the dead export in the same commit.
-- `vi.spyOn` on a real module is banned (`tools/oxlint/patchdesk/no-method-spying`); record calls on the injected fake. Read `tools/oxlint/anti-slop/rules/` before naming a parameter type or writing a test double.
+- `vi.spyOn` on a real module is banned (`tools/lint-rules/patchdesk/no-method-spying`); record calls on the injected fake. Read `tools/lint-rules/anti-slop/rules/` before naming a parameter type or writing a test double.
 - Relative-time assertions against fixture timestamps drift with the calendar; pin the clock with `vi.setSystemTime`, never widen the regex.
 - Global keydown handlers check the focused editable element and bail on a held modifier (B-08, B-23). A control disabled by a state rule renders the reason beside it (B-10, B-11, B-19).
 

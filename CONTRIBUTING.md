@@ -173,7 +173,7 @@ finding count with the baseline recorded in `lint-baseline.json`, which is now
 - The count fell. The check fails too, and asks you to set `findings` to the
   new number and stage `lint-baseline.json` in the same commit. A drop nobody
   records is a drop that can drift back up unnoticed.
-- `.oxlintrc.json` (or an Oxlint plugin under `tools/oxlint/`) changed while
+- `.oxlintrc.json` (or an Oxlint plugin under `tools/lint-rules/`) changed while
   `lint-baseline.json` is not part of the change at all. The check fails
   before Oxlint even runs. "Part of the change" is read off the change's own
   path list — `git diff --cached --name-only` on a commit, the base/head diff
@@ -201,7 +201,7 @@ that nothing violates the rules that are switched on; it says nothing about
 which rules those are. Turn a rule off, or add a per-file override, and the
 count stays at zero and lint stays green. The config gate is the only check
 that makes such a change announce itself, by refusing any `.oxlintrc.json` or
-`tools/oxlint/` edit that does not change `lint-baseline.json` alongside it.
+`tools/lint-rules/` edit that does not change `lint-baseline.json` alongside it.
 `pnpm lint` guards the findings; the ratchet guards the rules.
 
 This claim was tested rather than assumed, both directions: three anti-slop

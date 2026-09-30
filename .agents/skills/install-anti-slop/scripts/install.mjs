@@ -11,7 +11,7 @@ const targetArgument = arguments_.find(
 );
 const target = resolve(
   process.cwd(),
-  targetArgument ?? "tools/oxlint/anti-slop",
+  targetArgument ?? "tools/lint-rules/anti-slop",
 );
 const force = arguments_.includes("--force");
 

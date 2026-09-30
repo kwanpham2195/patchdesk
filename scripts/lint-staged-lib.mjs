@@ -639,7 +639,7 @@ async function runSourceQualityChecks(
 
 /**
  * The staged change's paths. `D` is in the filter because deleting
- * `.oxlintrc.json`, or a rule file under `tools/oxlint/`, is a configuration
+ * `.oxlintrc.json`, or a rule file under `tools/lint-rules/`, is a configuration
  * change like any other and the count ratchet's rule 2 has to see it. The
  * size ratchet consumes the same list and is unharmed: `selectSourceFiles`
  * drops any path that is not on disk, and `checkFileSizes` skips a file that
