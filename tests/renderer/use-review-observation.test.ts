@@ -306,6 +306,36 @@ describe("useReviewObservation scheduling", () => {
     expect(patch).toHaveBeenCalledWith({ agentRunRequests: [request] });
   });
 
+  it("shows an agent's reply to a Local draft from the next interval detection (#600)", async () => {
+    vi.useFakeTimers();
+    const reply = {
+      draft: { noteId: "note-1" },
+      status: "question",
+      text: "Keep the guard?",
+      repliedAt: "2026-09-30T10:00:00.000Z",
+    } as const;
+    installObservationDouble({
+      detect: (call) => ({
+        _tag: "Unchanged",
+        agentRunRequests: [],
+        localDraftReplies: call > 1 ? [reply] : [],
+      }),
+    });
+    const { patch } = renderObservation(
+      projection({
+        ...localWorkbench("fresh"),
+        agentRunRequests: [],
+        localDraftReplies: [],
+      }),
+    );
+    await flush();
+    expect(patch).not.toHaveBeenCalled();
+
+    await flush(DETECT_INTERVAL_MS);
+
+    expect(patch).toHaveBeenCalledWith({ localDraftReplies: [reply] });
+  });
+
   it("leaves a pull request Review's Updates available alone when detection answers Unchanged", async () => {
     vi.useFakeTimers();
     installObservationDouble({ detect: () => ({ _tag: "Unchanged" }) });

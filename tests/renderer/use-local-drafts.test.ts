@@ -2,7 +2,10 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useLocalDrafts } from "../../src/renderer/src/flows/use-local-drafts";
+import {
+  localDraftKey,
+  useLocalDrafts,
+} from "../../src/renderer/src/flows/use-local-drafts";
 import type { LocalDraftEntry } from "../../src/renderer/src/local-draft-contracts";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import {
@@ -20,6 +23,7 @@ import {
 const ADD = "/v1/reviews/local-drafts/add";
 const REMOVE = "/v1/reviews/local-drafts/remove";
 const NOTE_ADD = "/v1/reviews/local-drafts/notes/add";
+const RESOLVE = "/v1/reviews/local-drafts/resolve";
 let restore: (() => void) | undefined;
 
 afterEach(() => {
@@ -240,6 +244,47 @@ describe("useLocalDrafts", () => {
       ).rejects.toThrow("looks like a credential");
     });
     expect(onWorkbenchPatch).not.toHaveBeenCalled();
+  });
+
+  it("resolves a Finding draft by its run and Finding, adopts the list, and keys the agent's reply by the same draft (#600)", async () => {
+    const resolvedDraft = {
+      ...drafted,
+      resolvedAt: "2026-09-30T00:00:00.000Z",
+    };
+    const double = installDesktopDouble({
+      [RESOLVE]: () => success({ localDrafts: [resolvedDraft] }),
+    });
+    restore = double.restore;
+    const reply = {
+      draft: { runId: "insight-analysis-1-fixture", findingId: "finding-1" },
+      status: "skipped" as const,
+      text: "The caller checks the bound.",
+      repliedAt: "2026-09-30T00:00:00.000Z",
+    };
+    const { result, onWorkbenchPatch } = renderDrafts(
+      projection({
+        ...localReview([drafted]),
+        localDraftReplies: [reply],
+      }),
+    );
+
+    expect(result.current?.replies.get(localDraftKey(drafted))).toEqual(reply);
+    await act(async () => result.current?.setResolved?.(drafted, true));
+
+    const call = double.request.mock.calls.find(
+      ([input]) => callPath(input) === RESOLVE,
+    );
+    expect(callBody(call?.[0])).toEqual({
+      profileId: "profile",
+      reviewId: "review-42",
+      sessionId: "session-a",
+      draft: { runId: "insight-analysis-1-fixture", findingId: "finding-1" },
+      resolved: true,
+    });
+    expect(onWorkbenchPatch).toHaveBeenCalledWith({
+      localDrafts: [resolvedDraft],
+      feedbackHandoff: null,
+    });
   });
 
   it("offers nothing on a pull request Review", () => {

@@ -1,6 +1,9 @@
 import type { LocalDraftControls } from "../flows/use-local-drafts";
 import { localDraftKey } from "../flows/use-local-drafts";
-import type { LocalDraftEntry } from "../local-draft-contracts";
+import type {
+  LocalDraftEntry,
+  LocalDraftReplyEntry,
+} from "../local-draft-contracts";
 import {
   placeLocalDraft,
   type InlineLocalDraftPlacement,
@@ -17,6 +20,7 @@ import {
 } from "./feedback-handoff-control";
 import { GeneratedMarkdownInline } from "./generated-markdown";
 import { LocalDraftStateBadge } from "./local-draft-state-badge";
+import { RelativeTime } from "./relative-time";
 import { InlineError } from "./ui/inline-error";
 
 /**
@@ -27,7 +31,9 @@ import { InlineError } from "./ui/inline-error";
  * removed (#452). A draft inline in the shown diff is a button that reveals its
  * lines; any other says why it is not inline, and selecting it moves nothing
  * (#557 D6). Ready for agent shows even with no drafts, so a Looks good
- * verdict needs no note (#603).
+ * verdict needs no note (#603). Each draft shows the coding agent's latest
+ * reply as plain text, since the agent wrote it, and Resolve or Reopen; a
+ * resolved draft leaves the agent prompt (#600).
  */
 export function LocalNotesList({
   controls,
@@ -40,6 +46,9 @@ export function LocalNotesList({
   readonly onReveal: (place: InlineLocalDraftPlacement) => void;
 }): React.JSX.Element {
   const count = controls.entries.length;
+  const resolved = controls.entries.filter(
+    (entry) => entry.resolvedAt !== undefined,
+  ).length;
   return (
     <div className="flex flex-col gap-2">
       {count === 0 ? (
@@ -52,6 +61,7 @@ export function LocalNotesList({
         {count === 0 ? null : (
           <p className="text-xs text-muted-foreground">
             {count} {count === 1 ? "draft" : "drafts"} for the coding agent
+            {resolved === 0 ? null : ` · ${String(resolved)} resolved`}
           </p>
         )}
         <div className="flex flex-wrap items-start gap-2">
@@ -77,6 +87,8 @@ export function LocalNotesList({
                 ? `${entry.path}:${String(entry.line)}`
                 : `${entry.path}:${String(entry.startLine)}-${String(entry.line)}`;
             const place = placeLocalDraft(entry, placement);
+            const reply = controls.replies.get(localDraftKey(entry));
+            const isResolved = entry.resolvedAt !== undefined;
             const details = (
               <LocalDraftDetails
                 entry={entry}
@@ -109,7 +121,21 @@ export function LocalNotesList({
                     </span>
                   </div>
                 )}
-                <div className="flex justify-end px-1">
+                {reply === undefined ? null : <AgentReply reply={reply} />}
+                <div className="flex justify-end gap-1 px-1">
+                  {controls.setResolved === undefined ? null : (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label={`${isResolved ? "Reopen" : "Resolve"} ${entry.kind} at ${location}`}
+                      disabled={controls.pending.has(localDraftKey(entry))}
+                      onClick={() =>
+                        void controls.setResolved?.(entry, !isResolved)
+                      }
+                    >
+                      {isResolved ? "Reopen" : "Resolve"}
+                    </Button>
+                  )}
                   <Button
                     size="xs"
                     variant="ghost"
@@ -162,11 +188,43 @@ function LocalDraftDetails({
           <Badge variant="secondary">{localPatchViewLabels[entry.view]}</Badge>
         ) : null}
         <LocalDraftStateBadge state={entry.state} />
+        {entry.resolvedAt === undefined ? null : (
+          <Badge variant="secondary">Resolved</Badge>
+        )}
       </span>
       <span className="block w-full min-w-0 truncate font-mono text-xs text-muted-foreground">
         {location}
       </span>
     </>
+  );
+}
+
+const replyStatusLabels = {
+  addressed: "Addressed",
+  skipped: "Skipped",
+  question: "Question",
+} as const satisfies Record<LocalDraftReplyEntry["status"], string>;
+
+/** The coding agent's latest reply; its text is untrusted, so it renders as plain text, never Markdown. */
+function AgentReply({
+  reply,
+}: {
+  readonly reply: LocalDraftReplyEntry;
+}): React.JSX.Element {
+  return (
+    <div
+      role="group"
+      aria-label="Agent reply"
+      className="mx-1 flex min-w-0 flex-col gap-1 border-l-2 border-border py-1 pl-2 text-xs"
+    >
+      <span className="flex flex-wrap items-center gap-1 text-muted-foreground">
+        <Badge variant="outline">{replyStatusLabels[reply.status]}</Badge>
+        <RelativeTime iso={reply.repliedAt} prefix="Agent replied " />
+      </span>
+      <p className="line-clamp-4 w-full min-w-0 break-words whitespace-pre-wrap">
+        {reply.text}
+      </p>
+    </div>
   );
 }
 
