@@ -16,8 +16,20 @@ install Patchdesk, get it working, and report a problem.
   locks the Review (#691). A missing Review worktree is blamed on GitHub
   (#616). Smaller bugs: #549, #550, #615, #617–#623, #692.
 - **Keep Electron patched.** #696, #697, #698.
+- **Live-check resolved UX friction.** Most resolved items in
+  `docs/product-description/ux-friction.md` say "Not checked live". Check them
+  in the next monthly verification (#336).
 
 ## Next
+
+- **Fresh-eyes UX pass.** Walk the path a new user takes: install, add a
+  repository, run an Insight, and finish one local Review loop with a coding
+  agent. Record friction in `docs/product-description/ux-friction.md` and file
+  issues. Run it before building the other Next items, since it may reorder
+  them. No issue yet.
+- **In-app agent setup.** Show the MCP configuration for Claude Code and
+  Codex in the app, copy it, and confirm when the agent connects. Today this
+  setup lives only in `docs/mcp.md`. No issue yet.
 
 - **Update check.** Tell users when a newer release is published, so they do
   not have to watch GitHub. No issue yet.
@@ -28,6 +40,10 @@ install Patchdesk, get it working, and report a problem.
   from Settings → Logs to attach to a report. No issue yet.
 
 ## Later
+
+- **Shortcut discoverability.** A keyboard shortcut sheet and in-place hints,
+  so Walkthrough navigation, diff navigation, and the command dialog are
+  findable without the docs.
 
 - **Finish local Review.** Remove a local Review (#511), reach drafts on
   other branches (#486), and signal a Change intent added after an Analysis
