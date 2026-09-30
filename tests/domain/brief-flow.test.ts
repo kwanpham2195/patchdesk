@@ -7,7 +7,7 @@ import {
   normalizeBriefFlow,
   patchTouchesUiComponents,
   type BriefFlowOutput,
-} from "../../src/domain/brief-flow";
+} from "../../src/domain/brief/flow";
 import { parseRepoRelativePath } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
 

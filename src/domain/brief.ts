@@ -10,7 +10,7 @@ import {
   flowCitations,
   normalizeBriefFlow,
   type BriefFlow,
-} from "./brief-flow";
+} from "./brief/flow";
 import {
   briefOwnershipOutputSchema,
   normalizeBriefOwnership,

@@ -3,7 +3,7 @@ import {
   MAX_FLOW_LABEL_LENGTH,
   MAX_FLOW_NODES_PER_TREE,
   MAX_FLOW_TREES,
-} from "./brief-flow";
+} from "./brief/flow";
 import type { InsightLanguage } from "./insight-provider";
 
 export type GuidedInsightType = "analysis" | "walkthrough" | "brief";

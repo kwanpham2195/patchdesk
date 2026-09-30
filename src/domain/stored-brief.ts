@@ -6,7 +6,7 @@ import {
   type BriefError,
   type NormalizedBrief,
 } from "./brief";
-import type { BriefFlow, BriefFlowNode, BriefFlowTree } from "./brief-flow";
+import type { BriefFlow, BriefFlowNode, BriefFlowTree } from "./brief/flow";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";

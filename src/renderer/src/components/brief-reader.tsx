@@ -11,7 +11,7 @@ import {
   briefFlowKindLabel,
   flowRows,
   type BriefFlowRow,
-} from "../../../domain/brief-flow-text";
+} from "../../../domain/brief/flow-text";
 import {
   BRIEF_REACH_UNAVAILABLE_LABELS,
   briefCitationChipLabel,

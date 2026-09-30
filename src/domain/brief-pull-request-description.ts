@@ -1,6 +1,6 @@
 import type { BriefCitation, NormalizedBrief } from "./brief";
-import { briefFlowKindLabel, flowRowLine, flowRows } from "./brief-flow-text";
-import type { BriefFlowTree } from "./brief-flow";
+import { briefFlowKindLabel, flowRowLine, flowRows } from "./brief/flow-text";
+import type { BriefFlowTree } from "./brief/flow";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";

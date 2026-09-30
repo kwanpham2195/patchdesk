@@ -1,4 +1,4 @@
-import type { BriefFlowTree } from "./brief-flow";
+import type { BriefFlowTree } from "../brief/flow";
 
 /*
  * Shared by the Brief reader and the main-process PR description serializer,

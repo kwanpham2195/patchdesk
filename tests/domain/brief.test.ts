@@ -15,7 +15,7 @@ import {
   MAX_FLOW_LABEL_LENGTH,
   MAX_FLOW_NODES_PER_TREE,
   MAX_FLOW_TREES,
-} from "../../src/domain/brief-flow";
+} from "../../src/domain/brief/flow";
 import {
   parseContentHash,
   parseGitSha,
