@@ -132,4 +132,28 @@ describe("explain_lines", () => {
       content: { error: "lines_not_in_diff" },
     });
   });
+
+  it("refuses a session other than the current one as stale_session, pointing to refresh_review rather than preparedSessionId", async () => {
+    app = await startAppWithLinkedWorktree();
+    const workbench = await reviewWithNotes(app, 0);
+    const client = await connectLegacyClient(app.socketPath);
+
+    const refused = await call(client, "explain_lines", {
+      reviewId: workbench.review.id,
+      sessionId: workbench.session.id.replace(/[a-f0-9]{12}$/u, "0".repeat(12)),
+      path: "long.txt",
+      side: "new",
+      line: 3,
+      text: "Explained.",
+    });
+
+    expect(refused).toMatchObject({
+      isError: true,
+      content: {
+        error: "stale_session",
+        message:
+          "sessionId is not the Review's current session. If you changed the code since, call refresh_review and ask the maintainer to press Refresh, then explain the lines on the new session.",
+      },
+    });
+  });
 });
