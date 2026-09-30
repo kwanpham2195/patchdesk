@@ -5,22 +5,15 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type RefObject,
 } from "react";
 import {
   type CodeViewItem,
   type DiffLineAnnotation,
   type FileDiffMetadata,
-  type LineDiffTypes,
   type SelectedLineRange,
 } from "@pierre/diffs";
-import {
-  CodeView,
-  FileDiff,
-  PatchDiff,
-  type CodeViewHandle,
-} from "@pierre/diffs/react";
+import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import type {
@@ -30,6 +23,12 @@ import type {
 import { type GitHubThreadId } from "../../../domain/ids";
 import { AccessiblePatch } from "./review-diff-accessible-patch";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
+import { NonVirtualizedReviewDiff } from "./review-diff-non-virtualized";
+import {
+  DEFAULT_LINE_DIFF_TYPE,
+  DIFF_CODE_METRICS,
+  gutterAuthoringOptions,
+} from "./review-diff-render-options";
 import { renderReviewDiffAnnotation } from "./review-diff-finding-card";
 import {
   ReviewDiffToolbar,
@@ -59,7 +58,6 @@ import {
 } from "./pull-request-description";
 import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
-import { pierreDiffColorsCss } from "@/diff-colors";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
 import { ReviewDiffFindBar } from "./review-diff-find-bar";
 import {
@@ -93,30 +91,10 @@ import {
   useReviewConversationOverlays,
   type DiffAuthoringRefusal,
 } from "@/hooks/use-review-conversation-overlays";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Spinner } from "@/components/ui/spinner";
 import { MarkdownFilePreview } from "./markdown-file-preview";
 import { canPreviewMarkdownFile } from "../markdown-preview-eligibility";
 
 registerPierreThemeLoaders();
-
-// Theme colors belong to the selected Pierre/Shiki descriptor. Patchdesk only
-// owns the code metrics at this boundary so changing an independently saved
-// light or dark theme changes both syntax and surface color as expected.
-// SAFETY: every key below is a valid CSSProperties key with a valid CSS
-// string value; the cast only widens the literal's inferred type.
-const DIFF_CODE_METRICS = {
-  fontSize: "13px",
-  lineHeight: "20px",
-  // Pierre's shadow-root stylesheet re-sets font-family on code elements, so
-  // the stack must be handed over as the `--diffs-font-family` custom
-  // property (custom properties cross the shadow boundary). `fontFamily`
-  // still covers host-level text outside the shadow root.
-  fontFamily: "var(--font-mono)",
-  "--diffs-font-family": "var(--font-mono)",
-} as CSSProperties;
-// @pierre/diffs' own default, named once for the three render call sites below.
-const DEFAULT_LINE_DIFF_TYPE: LineDiffTypes = "word-alt";
 
 export type SelectedDiffRange = {
   readonly start: number;
@@ -479,7 +457,7 @@ function ReviewDiffSurface({
   );
 }
 
-type ReviewDiffRenderSiteProps = {
+export type ReviewDiffRenderSiteProps = {
   readonly patch: string;
   readonly selectedPatch: string;
   readonly selectedPath: string | undefined;
@@ -772,193 +750,6 @@ function ReviewDiffRenderSite({
       )}
     </>
   );
-}
-
-type NonVirtualizedReviewDiffProps = Pick<
-  ReviewDiffRenderSiteProps,
-  | "patch"
-  | "selectedPatch"
-  | "selectedPath"
-  | "selectedRange"
-  | "preferences"
-  | "syntaxHighlightingStatus"
-  | "localCommentAuthoring"
-  | "beginAccessibleAuthoring"
-  | "selectedFile"
-  | "themePreferences"
-  | "appearance"
-  | "expandUnchanged"
-  | "expandSelectedRange"
-  | "selectedAnnotations"
-  | "selectedLines"
-  | "fileStatsByPath"
-  | "findingCountsByPath"
-  | "decorateConversationThread"
-  | "bodyContext"
-  | "onOpenFindingInAnalysis"
-  | "beginRangeAuthoring"
->;
-
-function NonVirtualizedReviewDiff({
-  patch,
-  selectedPatch,
-  selectedPath,
-  selectedRange,
-  preferences,
-  syntaxHighlightingStatus,
-  localCommentAuthoring,
-  beginAccessibleAuthoring,
-  selectedFile,
-  themePreferences,
-  appearance,
-  expandUnchanged,
-  expandSelectedRange,
-  selectedAnnotations,
-  selectedLines,
-  fileStatsByPath,
-  findingCountsByPath,
-  decorateConversationThread,
-  bodyContext,
-  onOpenFindingInAnalysis,
-  beginRangeAuthoring,
-}: NonVirtualizedReviewDiffProps): React.JSX.Element {
-  const renderAnnotation = useCallback(
-    (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
-      renderReviewDiffAnnotation(
-        annotation,
-        decorateConversationThread,
-        onOpenFindingInAnalysis,
-        bodyContext,
-      ),
-    [bodyContext, decorateConversationThread, onOpenFindingInAnalysis],
-  );
-  const renderPatchHeader = useCallback(
-    (file: FileDiffMetadata) => {
-      const stats = fileStatsByPath.get(file.name) ?? {
-        path: file.name,
-        additions: 0,
-        deletions: 0,
-      };
-      const findings = findingCountsByPath?.get(file.name);
-      return (
-        <FileHeaderRow
-          file={file}
-          stats={
-            <FileChangeCounts
-              stats={stats}
-              {...(findings === undefined ? {} : { findings })}
-            />
-          }
-        />
-      );
-    },
-    [fileStatsByPath, findingCountsByPath],
-  );
-  if (syntaxHighlightingStatus === "loading") {
-    return (
-      <div
-        className="flex min-h-48 items-center justify-center gap-2 p-3 text-sm text-muted-foreground"
-        role="status"
-        aria-label="Loading syntax highlighting"
-      >
-        <Spinner aria-hidden="true" />
-        Loading syntax highlighting…
-      </div>
-    );
-  }
-  if (syntaxHighlightingStatus === "unavailable") {
-    return (
-      <>
-        <Alert variant="destructive" className="m-3">
-          <AlertTitle>Syntax highlighting unavailable</AlertTitle>
-          <AlertDescription>
-            Showing plain text. Restart Patchdesk to retry.
-          </AlertDescription>
-        </Alert>
-        <AccessiblePatch
-          patch={preferences.fileMode === "all" ? patch : selectedPatch}
-          virtualized={false}
-          {...(selectedRange === undefined ? {} : { selectedRange })}
-          {...(localCommentAuthoring === undefined
-            ? {}
-            : {
-                localCommentAuthoring,
-                onAuthorLine: beginAccessibleAuthoring,
-              })}
-        />
-      </>
-    );
-  }
-  const options = {
-    theme: diffThemeFor(themePreferences),
-    themeType: appearance,
-    unsafeCSS: pierreDiffColorsCss,
-    disableBackground: !preferences.backgrounds,
-    disableLineNumbers: !preferences.lineNumbers,
-    diffStyle: preferences.diffStyle,
-    overflow: preferences.overflow,
-    hunkSeparators: "line-info" as const,
-    expandUnchanged: expandUnchanged || expandSelectedRange,
-    lineDiffType: DEFAULT_LINE_DIFF_TYPE,
-    diffIndicators: "bars" as const,
-    lineHoverHighlight: "both" as const,
-  };
-  const authoringEnabled = localCommentAuthoring?.enabled === true;
-  // `disableWorkerPool` stays: these evidence surfaces render outside
-  // `DiffWorkbench`, with no pool above them, and show small filtered hunks.
-  return selectedFile === undefined ? (
-    <PatchDiff
-      patch={selectedPatch}
-      disableWorkerPool
-      className="visual-diff min-h-0 overflow-x-auto font-mono"
-      style={DIFF_CODE_METRICS}
-      options={{
-        ...options,
-        ...gutterAuthoringOptions(authoringEnabled, (range) =>
-          beginRangeAuthoring(selectedPath ?? "diff", range),
-        ),
-      }}
-      lineAnnotations={selectedAnnotations}
-      selectedLines={selectedLines?.range ?? null}
-      renderAnnotation={renderAnnotation}
-      renderCustomHeader={renderPatchHeader}
-    />
-  ) : (
-    <FileDiff
-      fileDiff={selectedFile}
-      disableWorkerPool
-      className="visual-diff min-h-0 overflow-x-auto font-mono"
-      style={DIFF_CODE_METRICS}
-      options={{
-        ...options,
-        ...gutterAuthoringOptions(authoringEnabled, (range) =>
-          beginRangeAuthoring(selectedFile.name, range),
-        ),
-      }}
-      lineAnnotations={selectedAnnotations}
-      selectedLines={selectedLines?.range ?? null}
-      renderAnnotation={renderAnnotation}
-      renderCustomHeader={renderPatchHeader}
-    />
-  );
-}
-
-/**
- * Pierre's own gutter `+` opens the composer: a click selects one line and a
- * drag selects a range, which a custom `renderGutterUtility` cannot do (#552).
- * Line selection only highlights the dragged lines; it never opens a composer.
- */
-function gutterAuthoringOptions<TArgs extends ReadonlyArray<unknown>>(
-  enabled: boolean,
-  onGutterUtilityClick: (range: SelectedLineRange, ...rest: TArgs) => void,
-) {
-  return enabled
-    ? {
-        enableGutterUtility: true,
-        enableLineSelection: true,
-        onGutterUtilityClick,
-      }
-    : {};
 }
 
 const MemoizedReviewDiffSurface = memo(ReviewDiffSurface);
