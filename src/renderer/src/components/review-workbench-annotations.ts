@@ -10,8 +10,12 @@ import type { ReviewWorkbenchActions } from "./review-workbench";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { ConversationThreadCardData } from "./conversation-thread-card";
 import type { LocalNoteControls } from "../flows/use-local-drafts";
-import type { LocalDraftEntry } from "../local-draft-contracts";
+import type {
+  AgentExplanationEntry,
+  LocalDraftEntry,
+} from "../local-draft-contracts";
 import {
+  placeAgentExplanation,
   placeLocalDraft,
   type LocalDraftPlacementContext,
 } from "../local-draft-placement";
@@ -151,6 +155,47 @@ export function buildLocalNoteAnnotations(
               notes === undefined
                 ? undefined
                 : () => notes.remove(entry.noteId),
+          }),
+        },
+      },
+    ];
+  });
+}
+
+/**
+ * A local Review's Agent explanations as diff annotations (#665), where
+ * `placeAgentExplanation` places them. The diff's own composer adds Reply.
+ */
+export function buildAgentExplanationAnnotations(
+  entries: ReadonlyArray<AgentExplanationEntry>,
+  dismiss: ((explanationId: string) => Promise<void>) | undefined,
+  context: LocalDraftPlacementContext,
+): ReadonlyArray<ReviewInlineAnnotation> {
+  return entries.flatMap((entry) => {
+    const place = placeAgentExplanation(entry, context);
+    if (place === undefined) return [];
+    return [
+      {
+        id: `agent-explanation:${entry.explanationId}`,
+        path: place.path,
+        start: place.startLine,
+        end: place.line,
+        side: place.side,
+        severity: "note",
+        title: "Agent explanation",
+        explanation: "",
+        agentExplanation: {
+          explanationId: entry.explanationId,
+          path: entry.path,
+          startLine: entry.startLine,
+          line: entry.line,
+          text: entry.text,
+          outdated: entry.outdated === true,
+          ...definedProps({
+            onDismiss:
+              dismiss === undefined
+                ? undefined
+                : () => dismiss(entry.explanationId),
           }),
         },
       },

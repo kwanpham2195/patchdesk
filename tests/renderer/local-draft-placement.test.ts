@@ -4,8 +4,12 @@ import {
   indexPatchHunks,
   type LocalPatchView,
 } from "../../src/domain/local-patch-view";
-import type { LocalDraftEntry } from "../../src/renderer/src/local-draft-contracts";
+import type {
+  AgentExplanationEntry,
+  LocalDraftEntry,
+} from "../../src/renderer/src/local-draft-contracts";
 import {
+  placeAgentExplanation,
   placeLocalDraft,
   type LocalDraftPlacement,
   type LocalDraftPlacementContext,
@@ -167,5 +171,61 @@ describe("placeLocalDraft", () => {
     },
   ])("$name", ({ entry, context, expected }) => {
     expect(placeLocalDraft(entry, context)).toEqual(expected);
+  });
+});
+
+describe("placeAgentExplanation", () => {
+  const explanation = (
+    overrides: Partial<AgentExplanationEntry> = {},
+  ): AgentExplanationEntry => ({
+    explanationId: "explanation-1",
+    sessionId: "session-a",
+    path: "src/a.ts",
+    side: "old",
+    startLine: 3,
+    line: 3,
+    text: "Removed because the caller checks it.",
+    createdAt: "2026-09-30T00:00:00.000Z",
+    ...overrides,
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly entry: AgentExplanationEntry;
+    readonly context: LocalDraftPlacementContext;
+    readonly expected: ReturnType<typeof placeAgentExplanation>;
+  }>([
+    {
+      name: "shows on its lines in Combined",
+      entry: explanation(),
+      context: shown("combined"),
+      expected: {
+        placement: "inline",
+        path: "src/a.ts",
+        side: "old",
+        startLine: 3,
+        line: 3,
+      },
+    },
+    {
+      name: "stays out of Committed, where a Combined old-side note would show, so Reply writes in Combined",
+      entry: explanation(),
+      context: shown("committed"),
+      expected: undefined,
+    },
+    {
+      name: "stays out of an earlier session's diff",
+      entry: explanation({ sessionId: "session-old" }),
+      context: shown("combined"),
+      expected: undefined,
+    },
+    {
+      name: "stays out when no hunk of Combined shows its lines",
+      entry: explanation({ startLine: 40, line: 41 }),
+      context: shown("combined"),
+      expected: undefined,
+    },
+  ])("$name", ({ entry, context, expected }) => {
+    expect(placeAgentExplanation(entry, context)).toEqual(expected);
   });
 });

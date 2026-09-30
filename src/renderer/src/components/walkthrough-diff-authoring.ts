@@ -10,7 +10,10 @@ import type {
   ReviewConversationActions,
   ReviewInlineAnnotation,
 } from "./review-diff-view";
-import { buildLocalNoteAnnotations } from "./review-workbench-annotations";
+import {
+  buildAgentExplanationAnnotations,
+  buildLocalNoteAnnotations,
+} from "./review-workbench-annotations";
 import type { ReviewWorkbenchActions } from "./review-workbench-contracts";
 
 /** The Diff tab's note and comment authoring as a Walkthrough hunk uses it, so both write to the same lists (#598). */
@@ -19,7 +22,7 @@ export type WalkthroughDiffAuthoring = {
   readonly pendingReviewComposer?: PendingReviewComposerActions;
   readonly pendingReviewDrafts: PendingReviewDrafts;
   readonly conversationActions: ReviewConversationActions;
-  /** Pending-review comments and a local Review's notes at their Combined lines; published threads come from the Walkthrough's own discussion rule. */
+  /** Pending-review comments, a local Review's notes, and its Agent explanations at their Combined lines; published threads come from the Walkthrough's own discussion rule. */
   readonly annotations: ReadonlyArray<ReviewInlineAnnotation>;
 };
 
@@ -42,7 +45,7 @@ export function useWalkthroughDiffAuthoring({
 }: {
   readonly model: Pick<
     WorkbenchResponse,
-    "session" | "patchViews" | "fullPatch" | "localDrafts"
+    "session" | "patchViews" | "fullPatch" | "localDrafts" | "agentExplanations"
   >;
   readonly actions: ReviewWorkbenchActions;
   readonly pendingReviewDrafts: PendingReviewDrafts;
@@ -51,6 +54,7 @@ export function useWalkthroughDiffAuthoring({
   const {
     localCommentAuthoring: diffAuthoring,
     localNotes,
+    dismissAgentExplanation,
     pendingReviewComposer,
     setThreadState,
     replyToThread,
@@ -79,30 +83,37 @@ export function useWalkthroughDiffAuthoring({
     [deleteComment, editComment, replyToThread, setThreadState],
   );
   const sessionId = model.session.id;
-  const { patchViews, fullPatch, localDrafts } = model;
-  const annotations = useMemo(
-    () => [
-      ...pendingReviewAnnotations,
-      ...buildLocalNoteAnnotations(localDrafts ?? [], localNotes, {
-        sessionId,
-        view: patchViews === undefined ? undefined : "combined",
-        notes:
-          patchViews === undefined || fullPatch === undefined
-            ? undefined
-            : localNotePlacementInput(patchViews, "combined", fullPatch),
-        analysisRunId: undefined,
-        findings: [],
-      }),
-    ],
-    [
-      fullPatch,
-      localDrafts,
-      localNotes,
-      patchViews,
-      pendingReviewAnnotations,
+  const { patchViews, fullPatch, localDrafts, agentExplanations } = model;
+  const annotations = useMemo(() => {
+    const placement = {
       sessionId,
-    ],
-  );
+      view: patchViews === undefined ? undefined : ("combined" as const),
+      notes:
+        patchViews === undefined || fullPatch === undefined
+          ? undefined
+          : localNotePlacementInput(patchViews, "combined", fullPatch),
+      analysisRunId: undefined,
+      findings: [],
+    };
+    return [
+      ...pendingReviewAnnotations,
+      ...buildLocalNoteAnnotations(localDrafts ?? [], localNotes, placement),
+      ...buildAgentExplanationAnnotations(
+        agentExplanations ?? [],
+        dismissAgentExplanation,
+        placement,
+      ),
+    ];
+  }, [
+    agentExplanations,
+    dismissAgentExplanation,
+    fullPatch,
+    localDrafts,
+    localNotes,
+    patchViews,
+    pendingReviewAnnotations,
+    sessionId,
+  ]);
   return useMemo(
     () => ({
       ...definedProps({ localCommentAuthoring, pendingReviewComposer }),

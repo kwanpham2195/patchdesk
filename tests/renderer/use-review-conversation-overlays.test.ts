@@ -315,6 +315,54 @@ describe("useReviewConversationOverlays", () => {
 
     expect(rendered.result.current.displayedAnnotations).toHaveLength(0);
   });
+
+  it("opens the note composer on an Agent explanation's lines from its Reply (#665)", () => {
+    const explanation: ReviewInlineAnnotation = {
+      id: "agent-explanation:explanation-1",
+      path: PATH,
+      start: 1,
+      end: 2,
+      side: "new",
+      severity: "note",
+      title: "Agent explanation",
+      explanation: "",
+      agentExplanation: {
+        explanationId: "explanation-1",
+        path: PATH,
+        startLine: 1,
+        line: 2,
+        text: "b is the value the caller expects.",
+        outdated: false,
+      },
+    };
+    const { result } = renderHook(() =>
+      useReviewConversationOverlays({
+        patch: PATCH,
+        annotations: [explanation],
+        viewer: { current: null },
+        localCommentAuthoring: {
+          enabled: true,
+          kind: "note",
+          onSave: async () => undefined,
+        },
+        pendingReviewComposer: undefined,
+        pendingReviewDrafts: undefined,
+        conversationActions: undefined,
+      }),
+    );
+    const card = result.current.displayedAnnotations.find(
+      (annotation) => annotation.agentExplanation !== undefined,
+    );
+
+    act(() => card?.agentExplanation?.onReply?.());
+
+    expect(result.current.localComposerAnnotation).toMatchObject({
+      path: PATH,
+      start: 1,
+      end: 2,
+      side: "new",
+    });
+  });
 });
 
 describe("pending-review draft recovery", () => {

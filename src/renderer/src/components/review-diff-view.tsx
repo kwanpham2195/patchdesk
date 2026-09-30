@@ -51,6 +51,7 @@ import {
   InlineCommentComposer,
 } from "./review-diff-authoring";
 import { DraftRecoveryPrompt, type DraftRecovery } from "./draft-recovery";
+import type { AgentExplanationCardProps } from "./agent-explanation-card";
 import type { LocalNoteCardProps } from "./local-note-card";
 import {
   EMPTY_BODY_CONTEXT,
@@ -133,6 +134,8 @@ export type ReviewInlineAnnotation = {
   readonly localComposer?: LocalComposerConfig;
   /** A maintainer note on a local Review, from the Review record (ADR 0051). */
   readonly localNote?: LocalNoteCardProps;
+  /** The coding agent's explanation on a local Review (#665); the diff's composer supplies its Reply. */
+  readonly agentExplanation?: AgentExplanationCardProps;
   /** Marks an Analysis Finding card, the only annotation `(` and `)` visit. */
   readonly analysisFinding?: true;
 };

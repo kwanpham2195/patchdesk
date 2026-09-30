@@ -5,7 +5,10 @@ import {
   type LocalPatchViewPaths,
   type PatchHunkIndex,
 } from "../../domain/local-patch-view";
-import type { LocalDraftEntry } from "./local-draft-contracts";
+import type {
+  AgentExplanationEntry,
+  LocalDraftEntry,
+} from "./local-draft-contracts";
 import type { WorkbenchResponse } from "./renderer-contracts";
 
 /** The shown patch view of a shared local Review, which places notes across views (ADR 0051). */
@@ -129,5 +132,34 @@ function placeDraftedFinding(
     side: finding.diffSide,
     startLine: finding.lineStart,
     line: finding.lineEnd ?? finding.lineStart,
+  };
+}
+
+/**
+ * Where an Agent explanation renders inline (#665): as a note written in
+ * Combined, on the session it names, in the Combined view only, so its Reply
+ * opens the note composer there. Undefined when it has no inline place.
+ */
+export function placeAgentExplanation(
+  entry: AgentExplanationEntry,
+  context: LocalDraftPlacementContext,
+): InlineLocalDraftPlacement | undefined {
+  const shownView = context.notes?.view ?? context.view;
+  if (
+    entry.sessionId !== context.sessionId ||
+    (shownView !== undefined && shownView !== "combined")
+  )
+    return undefined;
+  if (
+    context.notes !== undefined &&
+    placeInView(entry, "combined", context.notes).placement !== "inline"
+  )
+    return undefined;
+  return {
+    placement: "inline",
+    path: entry.path,
+    side: entry.side,
+    startLine: entry.startLine,
+    line: entry.line,
   };
 }
