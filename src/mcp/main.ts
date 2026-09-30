@@ -3,6 +3,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { version } from "../../package.json";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { createPatchdeskMcpServer } from "./patchdesk-mcp-server";
+import { runSetupCommand } from "./setup-cli";
 import { callPatchdeskApp } from "./socket-client";
 import { MCP_SOCKET_ENV, resolveMcpSocketPath } from "./socket-protocol";
 
@@ -12,9 +13,14 @@ import { MCP_SOCKET_ENV, resolveMcpSocketPath } from "./socket-protocol";
  * diagnostic goes to stderr.
  */
 const usage = `Usage: patchdesk mcp [--check]
+       patchdesk setup <status | add-repo | set-checkout> [--cwd <path>] [--json]
 
-  patchdesk mcp          Serve Patchdesk's tools to a coding agent over MCP (stdio).
-  patchdesk mcp --check  Call list_repositories on the running app and print the result.
+  patchdesk mcp                 Serve Patchdesk's tools to a coding agent over MCP (stdio).
+  patchdesk mcp --check         Call list_repositories on the running app and print the result.
+  patchdesk setup status        Print the GitHub account, workspace, and repositories, and the steps left.
+  patchdesk setup add-repo      Watch the repository of the checkout at --cwd (default: here), with that
+                                checkout. Creates the workspace from the active gh account if there is none.
+  patchdesk setup set-checkout  Use the checkout at --cwd for the repository it belongs to, as after a move.
 `;
 
 const socketPath = resolveMcpSocketPath(
@@ -24,7 +30,8 @@ const socketPath = resolveMcpSocketPath(
 const report = (line: string): void => {
   process.stderr.write(`${line}\n`);
 };
-const command = process.argv.slice(2).join(" ");
+const args = process.argv.slice(2);
+const command = args.join(" ");
 
 if (command === "mcp") {
   serveStdio(
@@ -39,6 +46,15 @@ if (command === "mcp") {
   );
 } else if (command === "mcp --check") {
   process.exitCode = await check();
+} else if (args[0] === "setup") {
+  const exitCode = await runSetupCommand(args.slice(1), {
+    socketPath,
+    cwd: process.cwd(),
+    out: (text) => process.stdout.write(text),
+    report,
+  });
+  if (exitCode === undefined) process.stderr.write(usage);
+  process.exitCode = exitCode ?? 2;
 } else if (command === "") {
   process.stdout.write(usage);
 } else {

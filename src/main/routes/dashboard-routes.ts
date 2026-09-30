@@ -30,7 +30,6 @@ import {
   parseGitHubRepoName,
   parseWorkspaceProfileId,
 } from "../../domain/ids";
-import { GitHubEnvironmentProbe } from "../../services/github-environment-probe";
 import type { InboxRepositoryRef } from "../../services/maintainer-inbox-service";
 import { readObjectField } from "../../services/read-object-field";
 import type { LocalApiContainer } from "../local-api-container";
@@ -46,10 +45,10 @@ export function registerDashboardRoutes(
   onSettingsSaved: (notifications: NotificationSettings) => void,
 ): void {
   const {
-    commands,
     dashboard,
     diagnostics,
     github,
+    githubEnvironment: environment,
     parsedConfiguration,
     recordProfileReloadFailure,
   } = container;
@@ -224,9 +223,6 @@ export function registerDashboardRoutes(
       await dashboard.chooseWatchedRepoCheckout(await jsonBody(context)),
     ),
   );
-  // One per local API start, which is one per launch: that is the window its
-  // ready answer is held for.
-  const environment = new GitHubEnvironmentProbe(commands);
   app.get("/v1/environment", async (context) => {
     // `recheck=1` is the Re-check button on the Reviewing-as panel, the one
     // explicit "ask gh again" the renderer offers.

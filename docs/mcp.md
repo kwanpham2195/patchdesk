@@ -96,10 +96,35 @@ and exits 0:
 
 ```text
 Usage: patchdesk mcp [--check]
+       patchdesk setup <status | add-repo | set-checkout> [--cwd <path>] [--json]
 
-  patchdesk mcp          Serve Patchdesk's tools to a coding agent over MCP (stdio).
-  patchdesk mcp --check  Call list_repositories on the running app and print the result.
+  patchdesk mcp                 Serve Patchdesk's tools to a coding agent over MCP (stdio).
+  patchdesk mcp --check         Call list_repositories on the running app and print the result.
+  patchdesk setup status        Print the GitHub account, workspace, and repositories, and the steps left.
+  patchdesk setup add-repo      Watch the repository of the checkout at --cwd (default: here), with that
+                                checkout. Creates the workspace from the active gh account if there is none.
+  patchdesk setup set-checkout  Use the checkout at --cwd for the repository it belongs to, as after a move.
 ```
+
+## Set up the workspace from the terminal
+
+With Patchdesk open, the `patchdesk setup` commands finish workspace setup
+from a checkout, so a coding agent can do it without you opening Settings.
+They make the same change as Settings and are checked the same way.
+
+- `patchdesk setup status` prints the GitHub account, the active workspace,
+  each repository with its checkout, and the steps left.
+- `patchdesk setup add-repo` watches the repository whose `origin` the
+  checkout names, with that checkout. Run it in the checkout, or pass
+  `--cwd <path>`. With no workspace yet, it first creates the Default
+  workspace from the account `gh` has active. If `gh` has no signed-in
+  account, it changes nothing and asks you to run `gh auth login`.
+- `patchdesk setup set-checkout` points a watched repository at the checkout
+  it moved to. It never adds a repository.
+
+Add `--json` for the full result. Removing a repository and editing the
+workspace stay in Settings. These commands are not MCP tools: an agent runs
+them in its terminal, and its MCP tools still cannot change settings.
 
 ## Add it to your agent
 
@@ -391,20 +416,23 @@ server as failed.
 - **Patchdesk does not answer.** Calls return `app_not_responding` when the
   app accepts the connection but sends no answer within 30 seconds. Check
   that Patchdesk is not stuck, then retry.
-- **No workspace profile.** Calls return `no_profile`. Finish
+- **No workspace profile.** Calls return `no_profile`. Run
+  `patchdesk setup add-repo` in a checkout, or finish
   [first run](user-guide.md#first-run) in Patchdesk.
 - **You switched workspace profiles.** A call about a Review of another
   profile returns `profile_changed` and names the active one. Switch back in
   Patchdesk, or have the agent call `review_local` again to open a Review in
   the active profile.
 - **The repository has no local path.** `list_repositories` leaves it out,
-  and `review_local` returns `checkout_not_found`. In Settings → Workspace,
+  and `review_local` returns `checkout_not_found`. Run
+  `patchdesk setup add-repo` in the checkout. Or, in Settings → Workspace,
   add the repository if it is not watched, then press Choose checkout on its
   row and pick the folder that holds the checkout.
 - **The repository moved on disk.** `review_local` and `refresh_review`
-  return `checkout_missing` and name the path the profile still holds. In
+  return `checkout_missing` and name the path the profile still holds. Run
+  `patchdesk setup set-checkout` in the checkout's new folder, or, in
   Settings → Workspace, under Repositories, press Choose checkout on the
-  repository and pick the checkout's new folder. Its Reviews reopen on the
+  repository and pick that folder. Its Reviews reopen on the
   same sessions. If the repository has linked
   worktrees of your own, run `git worktree repair` in the moved checkout.
 - **Too many untracked files.** `review_local` and `refresh_review` return

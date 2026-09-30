@@ -19,7 +19,9 @@ import {
   type McpSocketReply,
   type McpToolRefusal,
 } from "../../mcp/socket-protocol";
+import { isSetupCommandName } from "../../mcp/setup-commands";
 import { isMcpToolName } from "../../mcp/tool-manifest";
+import type { WorkspaceSetupService } from "../../services/workspace-setup-service";
 import type { LogWriter } from "../local-api-container";
 import {
   dispatchMcpTool,
@@ -27,6 +29,10 @@ import {
   type McpToolReply,
   type McpToolTable,
 } from "./mcp-tool-dispatcher";
+import {
+  dispatchSetupCommand,
+  type SetupCommandReply,
+} from "./setup-command-dispatcher";
 
 /** How binding ended: `in_use` is another live instance on the path, left alone. */
 export type McpSocketListenOutcome = "listening" | "in_use" | "failed";
@@ -39,6 +45,8 @@ export type McpSocketListener = {
 export type McpSocketListenerOptions = {
   readonly socketPath: () => Promise<string>;
   readonly tools: McpToolTable;
+  /** Answers the `patchdesk setup` requests (#702); without it they are refused as unknown tools. */
+  readonly setup?: WorkspaceSetupService;
   readonly logs: LogWriter;
   /** Refused and failed calls also go to the diagnostics Settings lists. */
   readonly recordRefusal?: (refused: McpRefusedCall) => Promise<void>;
@@ -292,9 +300,13 @@ async function answerLine(
     return;
   }
   const startedAt = performance.now();
-  let reply: McpToolReply;
+  let reply: McpToolReply | SetupCommandReply;
   try {
-    reply = await dispatchMcpTool(options.tools, request.output);
+    reply =
+      (options.setup === undefined
+        ? undefined
+        : await dispatchSetupCommand(options.setup, request.output)) ??
+      (await dispatchMcpTool(options.tools, request.output));
   } catch (cause: unknown) {
     options.logs.write({
       process: "main",
@@ -350,7 +362,10 @@ async function answerLine(
   if (serialized.outcome !== "ok")
     // An unknown tool name is the agent's own text, so the diagnostics phase names only the request.
     await options.recordRefusal?.({
-      ...(isMcpToolName(request.output.tool) && { tool: request.output.tool }),
+      ...((isMcpToolName(request.output.tool) ||
+        isSetupCommandName(request.output.tool)) && {
+        tool: request.output.tool,
+      }),
       reason: serialized.outcome,
       durationMs,
     });
@@ -367,7 +382,10 @@ const invalidRequest: McpToolRefusal = {
 };
 
 /** Serializes the reply; one over the bound is replaced by a `too_large` refusal. */
-function serializeReply(reply: McpToolReply, bounds: McpSocketBounds) {
+function serializeReply(
+  reply: McpToolReply | SetupCommandReply,
+  bounds: McpSocketBounds,
+) {
   const wire: McpSocketReply =
     reply._tag === "ok"
       ? { ok: true, result: reply.value }

@@ -16,7 +16,10 @@ import {
   type RepositoryIdentity,
 } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type {
+  WatchedRepoConfig,
+  WorkspaceProfileConfig,
+} from "../domain/workspace-profile";
 import { resolveCheckoutRoot } from "./local-apply-checkout";
 import type { GitReadExecutor } from "./review-worktree-service";
 
@@ -114,6 +117,40 @@ export async function chosenRepositoryCheckout(
   repository: RepositoryIdentity,
   folder: AbsolutePath,
 ): Promise<Result<AbsolutePath, ChosenCheckoutFailure>> {
+  const read = await readCheckoutOrigin(git, folder);
+  if (read._tag === "ok")
+    return sameRepositoryIdentity(repository, read.value.origin)
+      ? ok(read.value.root)
+      : err({ reason: "checkout_origin_mismatch" });
+  return err({
+    reason:
+      read.error.reason === "checkout_not_a_repository"
+        ? "checkout_not_a_repository"
+        : "checkout_origin_mismatch",
+  });
+}
+
+export type CheckoutOriginFailure = {
+  readonly reason: "checkout_not_a_repository" | "checkout_no_github_origin";
+};
+
+/**
+ * The top-level of the git checkout holding `folder` and the GitHub
+ * repository its `origin` names: how `patchdesk setup` learns which watched
+ * repository a working directory belongs to.
+ */
+export async function readCheckoutOrigin(
+  git: GitReadExecutor,
+  folder: AbsolutePath,
+): Promise<
+  Result<
+    {
+      readonly root: AbsolutePath;
+      readonly origin: Omit<WatchedRepoConfig, "localPath">;
+    },
+    CheckoutOriginFailure
+  >
+> {
   const root = await resolveCheckoutRoot(git, folder);
   const path = root === undefined ? undefined : parseAbsolutePath(root);
   if (path === undefined || path._tag === "err")
@@ -130,9 +167,9 @@ export async function chosenRepositoryCheckout(
     origin._tag === "ok"
       ? parseGitHubOrigin(origin.value.stdout.trim())
       : undefined;
-  return sameRepositoryIdentity(repository, named)
-    ? ok(path.value)
-    : err({ reason: "checkout_origin_mismatch" });
+  return named === undefined
+    ? err({ reason: "checkout_no_github_origin" })
+    : ok({ root: path.value, origin: named });
 }
 
 /**

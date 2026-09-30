@@ -113,6 +113,7 @@ export async function startLocalApiServer(
             ...container,
             ...definedProps({ reviewWindow: configuration.reviewWindow }),
           }),
+          setup: container.workspaceSetup,
           logs,
           recordRefusal: createMcpRefusalRecorder(container),
         });
