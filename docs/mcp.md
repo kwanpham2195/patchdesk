@@ -221,6 +221,8 @@ To have the agent open a Review whenever a change is ready, or if your MCP host
 ignores server instructions, copy this into your project's `CLAUDE.md` or
 `AGENTS.md`:
 
+<!-- START AUTOMATED AGENT INSTRUCTIONS -->
+
 ```markdown
 ## Review in Patchdesk
 
@@ -229,6 +231,8 @@ ignores server instructions, copy this into your project's `CLAUDE.md` or
 - Before `get_feedback`, call `list_local_reviews` with your working directory as `cwd` to find the Review the user is looking at, and use its `reviewId`. If it returns several Reviews for your branch, ask the user which base they meant.
 - When the user says "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback` with `open: true`; address every Finding and comment, and answer each comment with `reply_to_note`: `addressed`, `skipped` with the reason, or `question`. Then call `refresh_review` and tell the user the changes are ready. To get an Insight on the new code, call `run_insight` with the `preparedSessionId` from `refresh_review`; on `awaiting_refresh`, tell the user to press Refresh in Patchdesk.
 ```
+
+<!-- END AUTOMATED AGENT INSTRUCTIONS -->
 
 ## Example prompts
 

@@ -34,6 +34,28 @@ export function updateMcpToolsBlock(document, manifest) {
   return `${document.slice(0, start)}${START_MARKER}\n\n${tools.join("\n\n")}\n\n${document.slice(end)}`;
 }
 
+const AGENT_START = "<!-- START AUTOMATED AGENT INSTRUCTIONS -->";
+const AGENT_END = "<!-- END AUTOMATED AGENT INSTRUCTIONS -->";
+
+/**
+ * Replace the "Review in Patchdesk" block between the markers in
+ * `docs/mcp.md` with the text the MCP server sends, so the docs hold no
+ * hand-kept copy.
+ *
+ * @param {string} document
+ * @param {string} block
+ * @returns {string}
+ */
+export function updateAgentInstructionsBlock(document, block) {
+  const start = document.indexOf(AGENT_START);
+  const end = document.indexOf(AGENT_END);
+  if (start === -1 || end < start)
+    throw new Error(
+      `The document has no ${AGENT_START} ... ${AGENT_END} block.`,
+    );
+  return `${document.slice(0, start)}${AGENT_START}\n\n\`\`\`markdown\n${block}\n\`\`\`\n\n${document.slice(end)}`;
+}
+
 /**
  * @param {string} name
  * @param {McpToolDefinition} tool

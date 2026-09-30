@@ -3,8 +3,11 @@ import { resolve } from "node:path";
 
 import { expect, it } from "vitest";
 
-import { updateMcpToolsBlock } from "../../scripts/mcp-tools-doc-lib.mjs";
-import { reviewLoopSteps } from "../../src/mcp/review-loop-instructions";
+import {
+  updateAgentInstructionsBlock,
+  updateMcpToolsBlock,
+} from "../../scripts/mcp-tools-doc-lib.mjs";
+import { agentInstructionsBlock } from "../../src/mcp/review-loop-instructions";
 import { mcpToolManifest } from "../../src/mcp/tool-manifest";
 
 const readDoc = (path: string): Promise<string> =>
@@ -16,27 +19,10 @@ it("lists the tool manifest in docs/mcp.md (run pnpm docs:mcp-tools when this fa
   expect(document).toBe(updateMcpToolsBlock(document, mcpToolManifest));
 });
 
-it("gives the same agent instructions in README.md and docs/mcp.md", async () => {
-  // README.md nests the block in a numbered step, so compare it without its indent.
-  const agentBlock = (document: string): string | undefined => {
-    const found =
-      /^( *)```markdown\n\1## Review in Patchdesk\n[\s\S]*?\n\1```/m.exec(
-        document,
-      );
-    return found?.[0]
-      .split("\n")
-      .map((line) => line.slice(found[1]?.length))
-      .join("\n");
-  };
-
-  const fromReadme = agentBlock(await readDoc("README.md"));
-
-  expect(fromReadme).toBeDefined();
-  expect(agentBlock(await readDoc("docs/mcp.md"))).toBe(fromReadme);
-});
-
-it("repeats the server's review loop steps in the docs/mcp.md agent block", async () => {
+it("gives the server's review loop rules as the docs/mcp.md agent block (run pnpm docs:mcp-tools when this fails)", async () => {
   const document = await readDoc("docs/mcp.md");
 
-  for (const step of reviewLoopSteps) expect(document).toContain(`\n${step}\n`);
+  expect(document).toBe(
+    updateAgentInstructionsBlock(document, agentInstructionsBlock),
+  );
 });
