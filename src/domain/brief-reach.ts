@@ -123,7 +123,63 @@ type ReachSurfaceCondition = {
   readonly basenamePrefixes?: ReadonlyArray<string>;
   readonly basenameContains?: ReadonlyArray<string>;
   readonly pathContains?: ReadonlyArray<string>;
+  /**
+   * The condition also holds for a file that is not source code, such as a
+   * workflow YAML or an OpenAPI document. Without it, a condition matches
+   * source files only, so `api/Dockerfile` is not a Public API.
+   */
+  readonly anyFile?: true;
 };
+
+/** Extensions a surface condition and the No matching test row read as source code. */
+const SOURCE_EXTENSIONS = new Set([
+  ".c",
+  ".cc",
+  ".cjs",
+  ".cpp",
+  ".cs",
+  ".ex",
+  ".exs",
+  ".go",
+  ".graphql",
+  ".h",
+  ".hpp",
+  ".java",
+  ".js",
+  ".jsx",
+  ".kt",
+  ".kts",
+  ".mjs",
+  ".php",
+  ".prisma",
+  ".proto",
+  ".py",
+  ".rb",
+  ".rs",
+  ".scala",
+  ".sql",
+  ".svelte",
+  ".swift",
+  ".ts",
+  ".tsx",
+  ".vue",
+]);
+
+function isSourcePath(path: string): boolean {
+  const name = basename(path);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && SOURCE_EXTENSIONS.has(name.slice(dot).toLowerCase());
+}
+
+/** A generated or hand-written test double: nobody writes a test for a mock. */
+function isTestDoublePath(path: string): boolean {
+  const segments = normalizeReachPath(path).split("/");
+  const name = segments.at(-1) ?? "";
+  return (
+    segments.some((segment) => /^(?:mocks?|fakes?|stubs?)$/.test(segment)) ||
+    /^mock_|_mock\.|\.mock\./.test(name)
+  );
+}
 
 /**
  * The default surface rules, in the order the reader draws their chips. Each
@@ -145,7 +201,7 @@ const REACH_SURFACE_RULES: ReadonlyArray<{
       { pathPattern: /^src\/index\.[^/]+$/ },
       { extensions: [".d.ts"] },
       { segments: ["api", "proto"] },
-      { basenamePrefixes: ["openapi"] },
+      { basenamePrefixes: ["openapi"], anyFile: true },
       // pkg/.../v1/... -- a versioned Go package, e.g. pkg/model/crm/v1/route-planning.go.
       { segments: ["pkg"], segmentPattern: /^v\d+$/ },
     ],
@@ -157,19 +213,19 @@ const REACH_SURFACE_RULES: ReadonlyArray<{
   {
     surface: "Stored data",
     conditions: [
-      { segments: ["migrations", "migration", "prisma"] },
+      { segments: ["migrations", "migration", "prisma"], anyFile: true },
       // .../<name>-repo/... or .../repository/... -- a Go or Java repository directory.
       { pathContains: ["repo/", "repository"] },
       { pathContains: ["store/"] },
       { basenameContains: ["store"] },
       { extensions: [".sql"] },
-      { basenamePrefixes: ["schema"] },
+      { basenamePrefixes: ["schema"], anyFile: true },
     ],
   },
   {
     surface: "Security boundary",
     conditions: [
-      { pathPattern: /^\.github\/workflows\// },
+      { pathPattern: /^\.github\/workflows\//, anyFile: true },
       {
         pathContains: [
           "auth",
@@ -338,14 +394,17 @@ export function surfacesCrossed(
       const segments = candidate.split("/");
       const segmentSet = new Set(segments);
       const name = basename(candidate);
-      return rule.conditions.some((condition) =>
-        matchesSurfaceCondition(
-          candidate,
-          segments,
-          segmentSet,
-          name,
-          condition,
-        ),
+      const source = isSourcePath(candidate);
+      return rule.conditions.some(
+        (condition) =>
+          (source || condition.anyFile === true) &&
+          matchesSurfaceCondition(
+            candidate,
+            segments,
+            segmentSet,
+            name,
+            condition,
+          ),
       );
     });
     return path === undefined
@@ -369,8 +428,10 @@ export function surfacesCrossed(
  * `label-service` or names it in a describe block still counts. What counts
  * as a "test file" is `classifyChangedPath`'s `tests` bucket (js/ts `.test.`,
  * Go/Rust/C `_test.*`, Python, JVM, Ruby, Elixir conventions, and test
- * directories). Generated, docs, and config files and the tests themselves are
- * never reported: a test cannot cover prose or settings.
+ * directories). Only source files are reported: generated, docs, and config
+ * files, build files such as a `Makefile`, test doubles under a `mocks`
+ * folder, and the tests themselves are never reported, because a test cannot
+ * cover prose, settings, or another test's fake.
  */
 export function untestedReach(
   files: ReadonlyArray<BriefReachFile>,
@@ -400,7 +461,11 @@ export function untestedReach(
       );
       continue;
     }
-    if (bucket === "core")
+    if (
+      bucket === "core" &&
+      isSourcePath(file.path) &&
+      !isTestDoublePath(file.path)
+    )
       candidates.push({
         path: file.path,
         stem: normalizeReachIdentifier(pathStem(file.path)),

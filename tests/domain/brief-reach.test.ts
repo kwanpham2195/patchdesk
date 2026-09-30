@@ -403,6 +403,25 @@ describe("surfacesCrossed", () => {
     });
   });
 
+  it("reads only source files by their folder, so a Dockerfile under api/ or a YAML under cmd/ lights nothing", () => {
+    expect(
+      surfacesCrossed(["api/Dockerfile", "cmd/api/config.yaml", "api/v1.go"]),
+    ).toEqual([
+      { surface: "Public API", path: "api/v1.go" },
+      { surface: "CLI" },
+      { surface: "Stored data" },
+      { surface: "Security boundary" },
+      { surface: "Network write path" },
+    ]);
+  });
+
+  it("still lights a surface whose rule names a non-code file, such as an OpenAPI document", () => {
+    expect(surfacesCrossed(["docs/openapi.yaml"])[0]).toEqual({
+      surface: "Public API",
+      path: "docs/openapi.yaml",
+    });
+  });
+
   it("stays unlit on every surface for a plain docs path", () => {
     expect(surfacesCrossed(["docs/x.md"])).toEqual([
       { surface: "Public API" },
@@ -441,6 +460,20 @@ describe("untestedReach", () => {
         { path: "src/writer.ts", changedText: "export const a = 1;" },
       ]),
     ).toEqual([{ path: "src/writer.ts", reason: "no_test_in_pr" }]);
+  });
+
+  it("never reports a build file, a properties file, or a test double as untested", () => {
+    expect(
+      untestedReach([
+        { path: "Makefile", changedText: "lint:" },
+        { path: "sonar-project.properties", changedText: "sonar.sources=." },
+        {
+          path: "internal/mocks/repository/role_repository.go",
+          changedText: "func (m *Mock) Get() {}",
+        },
+        { path: "internal/role/service.go", changedText: "func Get() {}" },
+      ]),
+    ).toEqual([{ path: "internal/role/service.go", reason: "no_test_in_pr" }]);
   });
 
   it("never reports a test file or a generated file as untested", () => {
