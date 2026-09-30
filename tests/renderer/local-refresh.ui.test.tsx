@@ -138,7 +138,7 @@ describe("Local drafts inline after a Refresh", () => {
       <>
         {buildLocalNoteAnnotations(
           workbench.localDrafts ?? [],
-          undefined,
+          {},
           withoutViews(workbench.session.id),
         ).map((annotation) =>
           annotation.localNote === undefined ? null : (

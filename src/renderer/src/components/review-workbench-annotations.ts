@@ -9,7 +9,11 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { ConversationThreadCardData } from "./conversation-thread-card";
-import type { LocalNoteControls } from "../flows/use-local-drafts";
+import {
+  localDraftKey,
+  type LocalDraftControls,
+  type LocalNoteControls,
+} from "../flows/use-local-drafts";
 import type {
   AgentExplanationEntry,
   LocalDraftEntry,
@@ -115,6 +119,13 @@ export function buildPendingReviewAnnotations(
   });
 }
 
+/** What a note card needs beyond its note; the commands are absent once the Review is merged or closed. */
+export type LocalNoteAnnotationControls = {
+  readonly notes?: LocalNoteControls;
+  readonly replies?: LocalDraftControls["replies"];
+  readonly setResolved?: LocalDraftControls["setResolved"];
+};
+
 /**
  * A local Review's maintainer notes as diff annotations, each at the place
  * `placeLocalDraft` gives it in the shown diff; a note with no inline place
@@ -122,9 +133,10 @@ export function buildPendingReviewAnnotations(
  */
 export function buildLocalNoteAnnotations(
   entries: ReadonlyArray<LocalDraftEntry>,
-  notes: LocalNoteControls | undefined,
+  controls: LocalNoteAnnotationControls,
   context: LocalDraftPlacementContext,
 ): ReadonlyArray<ReviewInlineAnnotation> {
+  const { notes, replies, setResolved } = controls;
   return entries.flatMap((entry) => {
     if (entry.kind !== "note") return [];
     const place = placeLocalDraft(entry, context);
@@ -145,8 +157,14 @@ export function buildLocalNoteAnnotations(
           startLine: entry.startLine,
           line: entry.line,
           text: entry.text,
+          resolved: entry.resolvedAt !== undefined,
           ...definedProps({
             state: entry.state,
+            reply: replies?.get(localDraftKey(entry)),
+            onSetResolved:
+              setResolved === undefined
+                ? undefined
+                : (resolved: boolean) => setResolved(entry, resolved),
             onEdit:
               notes === undefined
                 ? undefined

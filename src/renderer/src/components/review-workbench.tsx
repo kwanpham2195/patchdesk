@@ -31,6 +31,7 @@ import {
   buildLocalNoteAnnotations,
   buildPendingReviewAnnotations,
   buildReadOnlyConversationAnnotations,
+  type LocalNoteAnnotationControls,
   type MappedFinding,
 } from "./review-workbench-annotations";
 import type {
@@ -464,9 +465,22 @@ export function ReviewWorkbench({
       () => buildPendingReviewAnnotations({ pendingReview }),
       [pendingReview],
     );
+  // Pieces rather than `localDrafts`, whose object is new on every render.
+  const noteReplies = localDrafts?.replies;
+  const setNoteResolved = localDrafts?.setResolved;
+  const noteControls = useMemo(
+    (): LocalNoteAnnotationControls =>
+      definedProps({
+        notes: actions.localNotes,
+        replies: noteReplies,
+        setResolved: setNoteResolved,
+      }),
+    [actions.localNotes, noteReplies, setNoteResolved],
+  );
   const walkthroughDiffAuthoring = useWalkthroughDiffAuthoring({
     model,
     actions,
+    noteControls,
     pendingReviewDrafts,
     pendingReviewAnnotations,
   });
@@ -500,7 +514,7 @@ export function ReviewWorkbench({
       ),
       ...buildLocalNoteAnnotations(
         model.localDrafts ?? [],
-        actions.localNotes,
+        noteControls,
         localNotes.placement,
       ),
       ...buildAgentExplanationAnnotations(
@@ -511,12 +525,12 @@ export function ReviewWorkbench({
     ],
     [
       actions.dismissAgentExplanation,
-      actions.localNotes,
       conversationThreadEntries,
       findings,
       localNotes.placement,
       model.agentExplanations,
       model.localDrafts,
+      noteControls,
       onOtherView,
     ],
   );

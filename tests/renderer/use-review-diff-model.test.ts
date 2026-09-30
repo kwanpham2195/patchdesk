@@ -6,6 +6,7 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 
 import { useReviewDiffModel } from "../../src/renderer/src/hooks/use-review-diff-model";
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
+import type { LocalNoteCardProps } from "../../src/renderer/src/components/local-note-card";
 import type { ReviewInlineAnnotation } from "../../src/renderer/src/components/review-diff-view";
 import {
   installDesktopDouble,
@@ -110,55 +111,79 @@ describe("useReviewDiffModel", () => {
     ]);
   });
 
-  it("hands CodeView a new item version when a note's text is edited in place", () => {
-    desktop = installDesktopDouble({});
-    const viewer: RefObject<CodeViewHandle<
-      ReviewInlineAnnotation | undefined
-    > | null> = { current: null };
-    const note = (text: string): ReviewInlineAnnotation => ({
-      id: "local-note:note-1",
-      path: "docs/README.md",
-      start: 1,
-      end: 1,
-      side: "new",
-      severity: "note",
-      title: "Note",
-      explanation: "",
-      localNote: {
-        noteId: "note-1",
-        path: "docs/README.md",
-        startLine: 1,
-        line: 1,
-        text,
+  it.each<{
+    readonly change: string;
+    readonly after: Partial<LocalNoteCardProps>;
+  }>([
+    { change: "its text is edited", after: { text: "After" } },
+    { change: "it is resolved", after: { resolved: true } },
+    {
+      change: "the agent replies to it",
+      after: {
+        reply: {
+          draft: { noteId: "note-1" },
+          status: "addressed",
+          text: "Returned early.",
+          repliedAt: "2026-09-30T00:00:00.000Z",
+        },
       },
-    });
-    const { result, rerender } = renderHook(
-      ({
-        annotations,
-      }: {
-        annotations: ReadonlyArray<ReviewInlineAnnotation>;
-      }) =>
-        useReviewDiffModel({
-          patch: fullPatch,
-          parsedFiles: parseReviewDiff(fullPatch).files,
-          selectedPath: "docs/README.md",
-          selectedRange: undefined,
+    },
+  ])(
+    "hands CodeView a new item version when a note keeps its id and $change",
+    ({ after }) => {
+      desktop = installDesktopDouble({});
+      const viewer: RefObject<CodeViewHandle<
+        ReviewInlineAnnotation | undefined
+      > | null> = { current: null };
+      const note = (
+        change: Partial<LocalNoteCardProps>,
+      ): ReviewInlineAnnotation => ({
+        id: "local-note:note-1",
+        path: "docs/README.md",
+        start: 1,
+        end: 1,
+        side: "new",
+        severity: "note",
+        title: "Note",
+        explanation: "",
+        localNote: {
+          noteId: "note-1",
+          path: "docs/README.md",
+          startLine: 1,
+          line: 1,
+          text: "Before",
+          resolved: false,
+          ...change,
+        },
+      });
+      const { result, rerender } = renderHook(
+        ({
           annotations,
-          preferences: { fileMode: "all" },
-          collapsedPaths: new Set(),
-          expandUnchanged: false,
-          themePreferences: { light: "pierre-light", dark: "pierre-dark" },
-          sourceSession: undefined,
-          virtualized: false,
-          viewer,
-          onActiveFileChange: undefined,
-        }),
-      { initialProps: { annotations: [note("Before")] } },
-    );
-    const before = result.current.items[0]?.version;
+        }: {
+          annotations: ReadonlyArray<ReviewInlineAnnotation>;
+        }) =>
+          useReviewDiffModel({
+            patch: fullPatch,
+            parsedFiles: parseReviewDiff(fullPatch).files,
+            selectedPath: "docs/README.md",
+            selectedRange: undefined,
+            annotations,
+            preferences: { fileMode: "all" },
+            collapsedPaths: new Set(),
+            expandUnchanged: false,
+            themePreferences: { light: "pierre-light", dark: "pierre-dark" },
+            sourceSession: undefined,
+            virtualized: false,
+            viewer,
+            onActiveFileChange: undefined,
+          }),
+        { initialProps: { annotations: [note({})] } },
+      );
+      const before = result.current.items[0]?.version;
 
-    rerender({ annotations: [note("After")] });
+      rerender({ annotations: [note(after)] });
 
-    expect(result.current.items[0]?.version).not.toBe(before);
-  });
+      expect(result.current.items[0]?.version).not.toBe(before);
+    },
+  );
 });
