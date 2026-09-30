@@ -118,9 +118,15 @@ They make the same change as Settings and are checked the same way.
   checkout names, with that checkout. Run it in the checkout, or pass
   `--cwd <path>`. With no workspace yet, it first creates the Default
   workspace from the account `gh` has active. If `gh` has no signed-in
-  account, it changes nothing and asks you to run `gh auth login`.
+  account, it changes nothing and asks you to run `gh auth login`. If the
+  repository is already watched and its checkout still exists, it keeps
+  that checkout.
 - `patchdesk setup set-checkout` points a watched repository at the checkout
   it moved to. It never adds a repository.
+
+Both refuse a checkout whose `origin` names another host than the
+workspace's GitHub host, such as GitLab or an SSH host alias like
+`git@github-work:owner/repo.git`.
 
 Add `--json` for the full result. Removing a repository and editing the
 workspace stay in Settings. These commands are not MCP tools: an agent runs
