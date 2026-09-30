@@ -28,7 +28,9 @@ README must find what to read and what to run.
   - **Agent entry point.** A short "For coding agents" section near the top
     of the README and an `llms.txt` index that link the exact docs to read.
   - **One-prompt setup.** One README prompt an agent follows end to end:
-    install, register the MCP server, run `patchdesk mcp --check`, add the
+    install, link the `patchdesk` command after a disk-image install, run
+    `patchdesk setup`, register the MCP server, run `patchdesk mcp --check`,
+    add the
     instructions block, and report the steps left for the user, such as
     `gh auth login`.
   - **`patchdesk setup` commands.** Let an agent finish workspace setup from
