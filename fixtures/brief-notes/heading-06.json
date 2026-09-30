@@ -1,0 +1,5 @@
+{
+  "case": "heading-06",
+  "input": "# Title 06",
+  "expected": "Title 06"
+}
