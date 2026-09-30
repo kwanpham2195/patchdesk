@@ -33,6 +33,7 @@ import type {
 } from "../../services/local-draft-service";
 import type { CheckoutSharedReviews } from "../../services/local-shared-review-list";
 import type { AgentRunRequestReply } from "../../services/agent-run-request-service";
+import type { AgentExplanationAdded } from "../../services/agent-explanation-service";
 import type { ReviewStatus } from "../../services/review-status-reading";
 import {
   isMcpToolName,
@@ -40,6 +41,7 @@ import {
   type McpToolName,
 } from "../../mcp/tool-manifest";
 import {
+  explainLines,
   getFeedback,
   getInsight,
   getReviewStatus,
@@ -69,6 +71,7 @@ export type McpToolReply = Result<
   | InsightReading
   | LocalFeedback
   | LocalDraftReplied
+  | AgentExplanationAdded
   | AgentRunRequestReply
   | ReviewShown
   | ReviewStatus,
@@ -147,6 +150,10 @@ export function createMcpToolTable(services: McpToolServices): McpToolTable {
     reply_to_note: {
       schema: mcpToolManifest.reply_to_note.inputSchema,
       call: (input) => replyToNote(tools, input),
+    },
+    explain_lines: {
+      schema: mcpToolManifest.explain_lines.inputSchema,
+      call: (input) => explainLines(tools, input),
     },
     run_insight: {
       schema: mcpToolManifest.run_insight.inputSchema,

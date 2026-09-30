@@ -7,6 +7,7 @@ import { definedProps } from "../../domain/defined-props";
 import {
   parseAbsolutePath,
   parseLocalBranchName,
+  parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
   type AbsolutePath,
@@ -19,6 +20,11 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import type { McpToolRefusal } from "../../mcp/socket-protocol";
 import type { ReviewShowOutcome, ReviewWindow } from "../desktop-review-window";
 import type { mcpToolManifest } from "../../mcp/tool-manifest";
+import type {
+  AgentExplanationAdded,
+  AgentExplanationFailure,
+  AgentExplanationService,
+} from "../../services/agent-explanation-service";
 import type {
   AgentRunRequestFailure,
   AgentRunRequestReply,
@@ -92,6 +98,7 @@ export type McpReviewToolServices = {
     "recordAgentIntent"
   >;
   readonly localDrafts: Pick<LocalDraftService, "feedback" | "reply">;
+  readonly agentExplanations: Pick<AgentExplanationService, "explain">;
   readonly agentRunRequests: Pick<AgentRunRequestService, "request">;
   readonly insightReader: Pick<ReviewInsightReader, "read" | "readStatuses">;
   readonly sessions: Pick<ReviewSessionStore, "load">;
@@ -113,6 +120,7 @@ type ServiceReason =
   | InsightReadingFailure["reason"]
   | LocalFeedbackPageFailure["reason"]
   | LocalDraftReplyFailure["reason"]
+  | AgentExplanationFailure["reason"]
   | AgentRunRequestFailure["reason"]
   | "no_profile";
 
@@ -149,6 +157,12 @@ const refusalMessages = {
     "The Review has no comment with that draftId; the maintainer may have removed it. Call get_feedback for the current comments.",
   reply_sensitive:
     "The reply holds what looks like a credential, which Patchdesk never stores. Remove it and try again.",
+  lines_not_in_diff:
+    "The lines are not on one side of one hunk of the Combined diff of this session. Pick lines the diff shows.",
+  explanation_limit:
+    "The Review already holds 10 explanations. Keep the most important ones, or ask the maintainer to dismiss some.",
+  explanation_sensitive:
+    "The explanation holds what looks like a credential, which Patchdesk never stores. Remove it and try again.",
   stale_session:
     "sessionId is not a session this call accepts. Call get_review_status for the current sessionId and any preparedSessionId, then ask again.",
   request_not_awaiting: "That run request is no longer awaiting approval.",
@@ -458,6 +472,42 @@ export async function replyToNote(
     replied.error.reason === "not_found"
       ? await missingReviewRefusal(services, profiles.value, reviewId.value)
       : refusal(replied.error.reason),
+  );
+}
+
+/** `explain_lines`: `AgentExplanationService.explain`, which stores the explanation on the Review; the workbench reads it at its next detection. */
+export async function explainLines(
+  services: McpReviewToolServices,
+  input: ToolInput<"explain_lines">,
+): Promise<Result<AgentExplanationAdded, McpToolRefusal>> {
+  const profiles = await readActiveProfile(services);
+  if (profiles._tag === "err") return profiles;
+  const reviewId = parseReviewId(input.reviewId);
+  const sessionId = parseReviewSessionId(input.sessionId);
+  const path = parseRepoRelativePath(input.path);
+  if (
+    reviewId._tag === "err" ||
+    sessionId._tag === "err" ||
+    path._tag === "err"
+  )
+    return err(refusal("invalid_input"));
+  const explained = await services.agentExplanations.explain({
+    profileId: profiles.value.active.id,
+    reviewId: reviewId.value,
+    sessionId: sessionId.value,
+    anchor: {
+      path: path.value,
+      side: input.side,
+      startLine: input.startLine ?? input.line,
+      line: input.line,
+    },
+    text: input.text,
+  });
+  if (explained._tag === "ok") return explained;
+  return err(
+    explained.error.reason === "not_found"
+      ? await missingReviewRefusal(services, profiles.value, reviewId.value)
+      : refusal(explained.error.reason),
   );
 }
 
