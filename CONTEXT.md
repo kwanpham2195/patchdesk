@@ -86,6 +86,10 @@ _Avoid_: Agent comment, agent note, response
 A Local draft the maintainer marked done with Resolve. It stays listed with a Resolved badge, leaves the agent prompt, and drops out of `get_feedback` when the agent asks for open drafts; Reopen undoes it. Only the maintainer resolves (#600, ADR 0052).
 _Avoid_: Closed note, done note, dismissed draft
 
+**Agent explanation**:
+The coding agent's short explanation of its change on diff lines of a local Review's Combined view, left with `explain_lines` when the maintainer asks it to explain its key changes. It is not a Local draft: it is stored beside the drafts, shown inline only, with an Agent badge, and never enters `get_feedback`, the agent prompt, the hand-off, or an Insight prompt. The maintainer replies with an ordinary note or dismisses it. A move keeps it on unchanged lines, marks it outdated when its lines changed, and deletes it when it cannot be placed. A Review holds at most 10 (#665, ADR 0052).
+_Avoid_: Agent note, agent comment, annotation
+
 **Feedback hand-off**:
 The maintainer's mark that a local Review's Local drafts are ready for the coding agent, made with Ready for agent, with an optional verdict (looks good or changes requested), or with Copy as agent prompt, which carries none. The agent reads when it was made, the verdict, and whether a draft was added, edited, removed, resolved, or reopened since; it cannot set or clear the mark. A new mark replaces the old one, and a move to a new session clears it (#603, ADR 0052).
 _Avoid_: Submit, send to agent, review done
