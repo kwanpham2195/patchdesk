@@ -257,6 +257,25 @@ A note is shown inline only on the session its anchor belongs to, and on a share
 | The text holds what looks like a credential, which Patchdesk never stores    | `The note contains what looks like a credential. Remove it and save again.`                           |
 | Any other failure                                                            | `The note was not saved.`                                                                             |
 
+### Agent explanations
+
+When the maintainer asks the coding agent to explain its change, the agent can leave short explanations on the diff lines that matter with `explain_lines` ([Explanations](coding-agent-over-mcp.md#explanations), #665). An **Agent explanation** is not a Local draft: it is not listed in the Notes section, not counted in the Notes badge, and never enters Copy as agent prompt, `get_feedback`, or the hand-off's `Drafts changed after you marked them ready.`
+
+An explanation shows inline under its lines as a card named `Agent explanation on path:line`, with a dashed border and a muted background so it reads apart from the maintainer's notes. The card holds an `Agent` badge, its lines (`Line 12` or `Lines 12–18`), `From the coding agent`, and the agent's text as plain text. It shows in the Combined view of the Diff tab and in a current Walkthrough's cited hunks; it does not show in the Committed or Uncommitted view, in a commit slice, or in a Walkthrough of an older revision. It arrives at the Review's next check for updates, on focus or within 90 seconds while the window stays in front, without a Refresh.
+
+- **Reply** opens the note composer on the explanation's lines. The reply is an ordinary maintainer note, listed in the Notes section and read by the agent through `get_feedback`; the explanation stays.
+- **Dismiss** deletes the explanation at once, without asking, and frees one of the Review's 10 places for explanations.
+
+On a merged or closed Review, the card shows neither button.
+
+| Cause                                                     | Sentence under the explanation's text                                   |
+| --------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Another action on the Review is running                   | `Another action on this review is running. Try again when it finishes.` |
+| The Review moved to another session since the diff loaded | `The review changed. Press Refresh, then try again.`                    |
+| Any other failure                                         | `The explanation was not dismissed.`                                    |
+
+A move to a new session carries each explanation by the rule [Refresh](#refresh) applies to a draft on Combined lines. An explanation on unchanged lines stays as it was. One whose lines changed gets an `Outdated` badge, which stays on later moves. One that cannot be placed, or is placed on lines the new Combined diff does not show, is deleted, since an explanation has no list to wait in.
+
 ## Refresh
 
 **Refresh** at the end of a local Review's header line reads the Review's source from the checkout again, the same way opening does, under the Review lock. The workbench changes only when the maintainer presses Refresh, opens the Review again, or applies suggestions (ADR 0032, ADR 0050). The button reads `Refreshing…` while the read runs.
@@ -399,5 +418,6 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - Remote-tracking bases (#591) are covered by service, MCP, and dialog tests; the grouped search and a pruned remote base still need a live check.
 - The first-review checkout step (#641) is covered by dialog and service tests; it still needs a live check with a repository that has no checkout.
 - Since last Refresh (#604) is covered by service, hook, toolbar, and flow tests; it still needs a live check that one line changed and refreshed shows as that one line.
+- Agent explanations (#665) are covered by service, MCP, hook, and card tests; the inline card, Reply opening the composer, and Dismiss still need a live check on the Diff tab and a current Walkthrough.
 
 Drafted from Patchdesk application source commits `502acfd8`, `7d9a660a`, `d893476a`, `8cb71ffa`, and `de713f03`. Note recovery was checked against `fce8d4d7`, Viewed save queues against `d2df8aca`, and Viewed carry against `501871ef`. The checkout update check (#611) was drafted from `cc6bbc56` with its implementation, and remote-tracking bases (#591) from `1447906d` with theirs. Since last Refresh (#604) was drafted with its implementation.

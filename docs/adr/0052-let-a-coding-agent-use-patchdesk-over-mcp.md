@@ -238,6 +238,8 @@ Amended 2026-09-30 (#602): `run_insight(reviewId, sessionId, type)` accepts the 
 
 Amended 2026-09-30 (#600): a tenth tool, `reply_to_note(reviewId, draftId, status, text)`, answers one Local draft, a note or a Finding draft, with `status` `addressed`, `skipped`, or `question` and plain text of at most 4,096 characters; the "Replies" amendment under "Feedback hand-off" records how it is stored and shown. It returns `{ draftId, status, repliedAt, resolved }`. Refusals: `not_found`, `profile_changed`, `not_applicable` (a pull request Review), `terminal`, `in_progress`, `invalid_input`, `draft_not_found` for a `draftId` the Review does not hold, `reply_sensitive` for credential-shaped text, and `storage`. `get_feedback` takes an optional `open` and adds `draftId`, `resolved`, and `reply` to each entry.
 
+Amended 2026-09-30 (#665): an eleventh tool, `explain_lines(reviewId, sessionId, path, side, startLine?, line, text)`, stores one Agent explanation on lines of the Combined diff of `sessionId`, which must be the Review's current session. `side` is `new` or `old`, `startLine` defaults to `line`, and the range follows the note rule of #552: one side, one hunk. `text` is plain text of 1 to 1,000 characters. It returns `explanationId`, `explanationCount`, and the session description; the same lines and text again return the explanation already stored. It is annotated as `show_review` is, and its description tells the agent to use it only when the maintainer asks it to explain its changes. Refusals: `stale_session`, `lines_not_in_diff`, `explanation_limit`, `explanation_sensitive`, `invalid_input`, `not_found`, `profile_changed`, `not_applicable`, `terminal`, `in_progress`, and `storage`. `get_review_status` adds `explanationCount`. The "Explanations" amendment under "Feedback hand-off" records how explanations are stored and shown.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run
@@ -276,6 +278,11 @@ after a week of real use.
 Amended 2026-09-30 (#600): `reply_to_note` shipped. A reply sits beside a
 note and never edits it, and resolving or reopening a note stays with the
 maintainer.
+
+Amended 2026-09-30 (#665): `explain_lines` replaces the `add_agent_note`
+candidate. An explanation is the agent's own text beside the code, never one
+of the maintainer's notes, so "adding the maintainer's notes" stays never
+exposed.
 
 ### Per-run approval in the app
 
@@ -391,6 +398,38 @@ Resolve between two pages refuses the next with `stale_cursor`. Resolve and
 Reopen count as a draft change for the hand-off's `draftsChangedAt`, since
 they change what the agent is asked to address; a reply does not.
 `get_review_status` counts are unchanged and still include resolved drafts.
+
+Amended 2026-09-30 (#665), explanations: an Agent explanation is not a
+Local draft. It lives on the Review record as `agentExplanations`, apart from
+`localDrafts` as the replies are, with the session, the Combined anchor
+fingerprint, the text, and `outdated` once set. Copy as agent prompt, the
+Notes count, `get_feedback`, and `changedSinceHandoff` ignore it, so the agent
+is never asked to address its own text, and `reply_to_note` refuses an
+explanation's id `draft_not_found`; an explanation has no Resolve. A Review
+holds at most 10, carried ones included. `explain_lines` fingerprints the
+lines against the current session's Combined patch under the Review lock, and
+text that `containsSensitiveData` flags is refused `explanation_sensitive`
+before the lock.
+
+The workbench projection and a local Review's detection answer carry the
+explanations, so one reaches the diff at the next detection without a
+Refresh. A card shows inline only, placed as a Combined note is, in the
+Combined view of the Diff tab and in a current Walkthrough; a Walkthrough of
+an older revision shows none. Showing it in Combined only keeps Reply
+writing its note in Combined: **Reply** opens the note composer on the
+explanation's lines, the reply is an ordinary maintainer note, and the
+explanation stays. **Dismiss** deletes it through
+`POST /v1/reviews/agent-explanations/dismiss`, which names the session on
+screen as every draft write does, without confirmation, and frees a place.
+Dismiss runs as a direct command, so a detection read before it cannot bring
+the explanation back. On a merged or closed Review both are hidden.
+
+A move carries each explanation by the Local draft carry rule against the new
+Combined patch: unchanged lines keep it, changed lines set `outdated: true`
+for good, and one the rule cannot place, or places outside every hunk of the
+new Combined patch, is deleted, since it has no list to wait in. The text is
+untrusted: it is shown as plain text and never enters an Insight prompt, the
+log, or the copied prompt.
 
 ### Multiple checkouts
 
@@ -663,6 +702,8 @@ was replaced by the shared Review, #555.)
   Amended 2026-09-30 (#603): it also gains `handoff`, under the same rule.
   Amended 2026-09-30 (#600): it also gains `localDraftReplies`, and each
   Local draft gains `resolvedAt`, under the same rule.
+  Amended 2026-09-30 (#665): it also gains `agentExplanations`, under the
+  same rule.
 - `refresh_review` prepares sessions the Review has not moved to; retention
   and the per-move prune treat a prepared session as live.
 - Every request schema has one home and two consumers; a tool that needs a
