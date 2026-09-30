@@ -56,6 +56,26 @@ export function updateAgentInstructionsBlock(document, block) {
   return `${document.slice(0, start)}${AGENT_START}\n\n\`\`\`markdown\n${block}\n\`\`\`\n\n${document.slice(end)}`;
 }
 
+const LOOP_START = "<!-- START AUTOMATED REVIEW LOOP -->";
+const LOOP_END = "<!-- END AUTOMATED REVIEW LOOP -->";
+
+/**
+ * Replace the review loop between the markers in the Patchdesk agent skill
+ * (`skills/patchdesk/SKILL.md`, #704) with the instructions the MCP server
+ * sends, so the skill and the server cannot drift.
+ *
+ * @param {string} document
+ * @param {string} instructions
+ * @returns {string}
+ */
+export function updateSkillReviewLoop(document, instructions) {
+  const start = document.indexOf(LOOP_START);
+  const end = document.indexOf(LOOP_END);
+  if (start === -1 || end < start)
+    throw new Error(`The document has no ${LOOP_START} ... ${LOOP_END} block.`);
+  return `${document.slice(0, start)}${LOOP_START}\n\n${instructions}\n\n${document.slice(end)}`;
+}
+
 /**
  * @param {string} name
  * @param {McpToolDefinition} tool

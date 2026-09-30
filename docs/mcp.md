@@ -265,6 +265,18 @@ ignores server instructions, copy this into your project's `CLAUDE.md` or
 
 <!-- END AUTOMATED AGENT INSTRUCTIONS -->
 
+Agents that load agent skills, such as Claude Code and Codex, can install the
+Patchdesk skill instead of pasting the block. It holds the same review loop,
+plus how to set Patchdesk up and fix common refusals when the tools are
+missing, and the agent loads it only when you mention Patchdesk:
+
+```bash
+npx skills add kwanpham2195/patchdesk --skill patchdesk
+```
+
+The skill does not open a Review for every change on its own; paste the block
+for that.
+
 ## Example prompts
 
 With the block above in place, short prompts are enough:

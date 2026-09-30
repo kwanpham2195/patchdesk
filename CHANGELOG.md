@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a Patchdesk agent skill for Claude Code, Codex, and other agents that load skills: `npx skills add kwanpham2195/patchdesk --skill patchdesk`. It holds the review loop the MCP server sends, plus setup and common refusals for when the tools are missing. #704
+
 - Fixed `patchdesk` saying "has no tool named" when the running app is older than the command; it now says to quit and reopen Patchdesk. #709
 
 ## 0.0.14 - 2026-09-30
