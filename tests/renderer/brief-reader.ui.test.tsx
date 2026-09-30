@@ -847,6 +847,22 @@ describe("briefOwnershipTree", () => {
     expect(tree[1]?.files[0]?.note).toBeUndefined();
   });
 
+  it("draws a directory note once, on the nearest group under the noted directory", () => {
+    const tree = briefOwnershipTree({
+      files: [
+        ...files(1, "deploy/a/configs/"),
+        ...files(1, "deploy/b/configs/"),
+        ...files(1, "src/"),
+      ],
+      notes: [{ path: "deploy/", note: "holds each job's config" }],
+    });
+    expect(tree.map((group) => group.note)).toEqual([
+      "holds each job's config",
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("collapses a directory past twelve files to a counted remainder", () => {
     const tree = briefOwnershipTree({ files: files(15, "src/"), notes: [] });
     expect(tree[0]?.files).toHaveLength(12);

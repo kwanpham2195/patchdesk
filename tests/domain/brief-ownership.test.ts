@@ -133,6 +133,19 @@ describe("normalizeBriefOwnership", () => {
     expect(normalized.rejected).toBe(0);
   });
 
+  it("keeps a note on a directory that holds a changed file, and drops and counts one on a directory that holds none", () => {
+    const normalized = ownership({
+      notes: [
+        { path: "src/", note: "owns the writers" },
+        { path: "fixtures/", note: "no changed file lives here" },
+      ],
+    });
+    expect(normalized.value.notes).toEqual([
+      { path: "src/", note: "owns the writers" },
+    ]);
+    expect(normalized.rejected).toBe(1);
+  });
+
   it("caps a note at 140 characters", () => {
     const normalized = ownership({
       notes: [{ path: "src/writer.ts", note: "n".repeat(200) }],

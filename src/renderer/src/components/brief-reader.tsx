@@ -360,8 +360,17 @@ function OwnershipBlock({
       <div className="flex min-w-0 flex-col gap-2 rounded-md border p-3 font-mono text-xs">
         {tree.map((group) => (
           <div key={group.directory} className="flex min-w-0 flex-col">
-            <span className="text-muted-foreground">
-              {group.directory === "" ? "./" : group.directory}
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="shrink-0 text-muted-foreground">
+                {group.directory === "" ? "./" : group.directory}
+              </span>
+              {group.note === undefined ? null : (
+                <span
+                  className={`min-w-0 font-sans text-muted-foreground ${notesExpanded ? "break-words" : "truncate"}`}
+                >
+                  {group.note}
+                </span>
+              )}
             </span>
             {group.files.map((row) => (
               <OwnershipRow

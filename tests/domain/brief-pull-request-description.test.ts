@@ -226,6 +226,32 @@ describe("renderBriefAsPullRequestDescription", () => {
     );
   });
 
+  it("writes directory notes at the top of Shape, before the files", () => {
+    const brief: NormalizedBrief = {
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      ownership: {
+        files: [
+          {
+            path: "cmd/api/testdata/a.json",
+            status: "modified",
+            additions: 1,
+            deletions: 1,
+          },
+        ],
+        notes: [{ path: "cmd/api/testdata/", note: "Holds router fixtures." }],
+      },
+    };
+    expect(renderBriefAsPullRequestDescription(brief)).toContain(
+      [
+        "## Shape",
+        "",
+        "- `cmd/api/testdata/`: Holds router fixtures.",
+        "- `cmd/api/testdata/a.json` (modified, +1 -1)",
+      ].join("\n"),
+    );
+  });
+
   it("keeps a Flow title with line breaks on its heading line", () => {
     const brief: NormalizedBrief = {
       snapshot: SNAPSHOT,

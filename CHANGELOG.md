@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed Brief Shape to take one note for a directory of similar files, such as `cmd/api/testdata/`, instead of a note on every fixture or config file, so large pull requests keep their notes for code. #719
+
 - Fixed Brief Blast radius lighting surfaces from non-code files, such as a `Dockerfile` under `api/` read as a Public API, and listing a `Makefile`, a properties file, or a generated mock under No matching test. #720
 
 - Changed Brief Flow to draw one view per behavior instead of one per kind, so two unrelated call paths each get their own call tree, up to five views, with a line saying how many more were left out. When a pull request is mostly a move, the model still draws Flow for what else changed, such as a workflow rule. #717

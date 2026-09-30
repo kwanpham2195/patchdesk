@@ -21,7 +21,11 @@ import {
  */
 export type BriefOwnershipFile = Omit<PatchChangedFile, "previousPath">;
 
-/** One short model note about what a changed file is responsible for afterwards. */
+/**
+ * One short model note about what a changed file, or a directory of changed
+ * files, is responsible for afterwards. A directory note's `path` ends in `/`
+ * (#719).
+ */
 type BriefOwnershipNote = {
   readonly path: string;
   readonly note: string;
@@ -61,7 +65,7 @@ export const briefOwnershipOutputSchema = v.optional(
       ),
       v.maxLength(MAX_OWNERSHIP_NOTES),
       v.description(
-        "One short note for each changed file, keyed by its exact path from the patch, saying what that file is responsible for after the change.",
+        "One short note for each changed file, keyed by its exact path from the patch, or for a directory of changed files, keyed by the directory path ending in /, saying what it is responsible for after the change.",
       ),
     ),
   }),
@@ -106,8 +110,8 @@ export function briefOwnershipFiles(
  * Builds the Ownership block from one patch and whatever the model offered.
  *
  * A note survives only when its path is one of the changed files the skeleton
- * kept; a note on a file outside the diff is the model naming something it did
- * not read. Everything dropped is counted, so the Brief's citation status
+ * kept, or a directory ending in `/` that holds at least one of them; a note
+ * on a path outside the diff is the model naming something it did not read. Everything dropped is counted, so the Brief's citation status
  * records it.
  */
 export function normalizeBriefOwnership(
@@ -128,7 +132,10 @@ export function normalizeBriefOwnership(
   for (const item of raw.notes) {
     if (pureMoves.has(item.path)) continue;
     const note = item.note.trim().slice(0, MAX_OWNERSHIP_NOTE_LENGTH);
-    if (!changedPaths.has(item.path) || noted.has(item.path) || note === "") {
+    const known = item.path.endsWith("/")
+      ? files.some((file) => file.path.startsWith(item.path))
+      : changedPaths.has(item.path);
+    if (!known || noted.has(item.path) || note === "") {
       rejected += 1;
       continue;
     }

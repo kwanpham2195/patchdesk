@@ -73,6 +73,7 @@ export function insightOutputGuidance(
     "Patchdesk keeps a limited number of notes, so note added and modified code first; prefer to skip a fixture, a config file, or a file that only moved or only follows a move. Patchdesk shows moved directories itself and drops a note on a moved file whose content did not change.",
     "Say what the file is responsible for after the change; do not say what the code does.",
     "A note that only re-words the file name teaches nothing: for a test file, name the behavior the tests hold in place, not the file they sit next to.",
+    "When many changed files in one directory share one job, such as fixtures, config files, or generated code, give that directory one note keyed by its path ending in /, such as cmd/api/testdata/, instead of a note per file.",
     "Together the notes read as a shallow file tree of who owns what:",
     "src/",
     "|-- commands/       # parses user actions",

@@ -695,6 +695,8 @@ export type BriefOwnershipRow = {
 export type BriefOwnershipDirectory = {
   /** `""` for a file at the repository root. */
   readonly directory: string;
+  /** The model's note on this directory, or on the nearest noted directory above it, drawn once. */
+  readonly note?: string;
   readonly files: ReadonlyArray<BriefOwnershipRow>;
   /** Files past the collapse limit, reported as a count instead of drawn. */
   readonly hidden: number;
@@ -725,11 +727,27 @@ export function briefOwnershipTree(
     });
     groups.set(directory, rows);
   }
-  return [...groups].map(([directory, rows]) => ({
-    directory,
-    files: rows.slice(0, MAX_OWNERSHIP_DIRECTORY_FILES),
-    hidden: Math.max(0, rows.length - MAX_OWNERSHIP_DIRECTORY_FILES),
-  }));
+  // Longest first, so a group takes its nearest noted directory.
+  const directoryNotes = ownership.notes
+    .filter((note) => note.path.endsWith("/"))
+    .sort((left, right) => right.path.length - left.path.length);
+  const drawn = new Set<string>();
+  return [...groups].map(([directory, rows]) => {
+    const directoryNote = directoryNotes.find((note) =>
+      directory.startsWith(note.path),
+    );
+    const note =
+      directoryNote === undefined || drawn.has(directoryNote.path)
+        ? undefined
+        : directoryNote.note;
+    if (directoryNote !== undefined) drawn.add(directoryNote.path);
+    return {
+      directory,
+      ...definedProps({ note }),
+      files: rows.slice(0, MAX_OWNERSHIP_DIRECTORY_FILES),
+      hidden: Math.max(0, rows.length - MAX_OWNERSHIP_DIRECTORY_FILES),
+    };
+  });
 }
 
 /**

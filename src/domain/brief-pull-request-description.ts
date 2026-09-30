@@ -123,9 +123,13 @@ function fenceFor(lines: ReadonlyArray<string>): string {
 
 function ownershipSection(ownership: BriefOwnership): string {
   const notes = new Map(ownership.notes.map((note) => [note.path, note.note]));
+  const directoryNotes = ownership.notes.flatMap((note) =>
+    note.path.endsWith("/") ? [`- \`${note.path}\`: ${note.note}`] : [],
+  );
   return [
     "## Shape",
     "",
+    ...directoryNotes,
     ...ownership.files.map((file) => {
       const note = notes.get(file.path);
       const counts = `${file.status}, +${String(file.additions)} -${String(file.deletions)}`;
