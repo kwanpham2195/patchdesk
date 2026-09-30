@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.14 - 2026-09-30
+
 - Added `patchdesk setup`, so a coding agent can finish workspace setup from the terminal: `status` lists the steps left, `add-repo` watches the current checkout's repository and creates the workspace from your `gh` account if there is none, and `set-checkout` fixes a moved checkout. #702
 
 - Changed `patchdesk mcp` to send its review loop rules when an agent connects, so pasting a block into `AGENTS.md` is now optional. #701
