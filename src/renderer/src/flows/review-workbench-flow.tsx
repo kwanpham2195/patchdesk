@@ -9,6 +9,7 @@ import { useWorkbenchActions } from "./use-workbench-actions";
 import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useAddAllFindings } from "./use-add-all-findings";
 import { useLocalApply } from "./use-local-apply";
+import { useAgentExplanationDismiss } from "./use-agent-explanation-dismiss";
 import { useLocalDrafts } from "./use-local-drafts";
 import { useLocalPatchView } from "./use-local-patch-view";
 import { useLocalRefresh } from "./use-local-refresh";
@@ -173,6 +174,11 @@ export function ReviewWorkbenchFlow({
     view: localPatchView?.shown.view,
     onWorkbenchPatch,
   });
+  const dismissAgentExplanation = useAgentExplanationDismiss({
+    workbench,
+    runDirectCommand,
+    onWorkbenchPatch,
+  });
   // A local Review refreshes from the checkout, not from GitHub (#452).
   const changeIntent = useChangeIntent({ workbench, onWorkbenchPatch });
   const localRefresh = useLocalRefresh({
@@ -209,6 +215,7 @@ export function ReviewWorkbenchFlow({
     metadata,
     conversation,
     localNotes: localDrafts?.notes,
+    dismissAgentExplanation,
     changeIntent,
     observation:
       localRefresh === undefined

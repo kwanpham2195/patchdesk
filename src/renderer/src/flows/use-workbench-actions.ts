@@ -40,6 +40,9 @@ export type WorkbenchActionsInput = {
   readonly conversation: DirectConversationActions;
   /** A local Review's maintainer notes; the diff composer adds one instead of a GitHub comment. */
   readonly localNotes: LocalNoteControls | undefined;
+  readonly dismissAgentExplanation:
+    | ReviewWorkbenchActions["dismissAgentExplanation"]
+    | undefined;
   readonly changeIntent: ChangeIntentControls | undefined;
   readonly observation: Pick<
     ReviewObservationResult,
@@ -67,6 +70,7 @@ export function useWorkbenchActions({
   metadata,
   conversation,
   localNotes,
+  dismissAgentExplanation,
   changeIntent,
   observation,
   merge,
@@ -211,6 +215,7 @@ export function useWorkbenchActions({
         merge: githubWritesLocked ? undefined : merge,
         localCommentAuthoring,
         localNotes,
+        dismissAgentExplanation,
         changeIntent,
         pendingReviewComposer: githubWritesLocked
           ? undefined
@@ -231,6 +236,7 @@ export function useWorkbenchActions({
       changeIntent,
       conversationActions,
       directSummary,
+      dismissAgentExplanation,
       draftStateAction,
       githubWritesLocked,
       labelActions,

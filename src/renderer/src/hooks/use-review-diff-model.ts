@@ -236,6 +236,10 @@ export function useReviewDiffModel({
             annotation.localNote === undefined
               ? ""
               : `${annotation.localNote.text}\u0000${annotation.localNote.onEdit === undefined ? "" : "editable"}`,
+            // A move can mark an explanation outdated under the same id; Reply and Dismiss come and go with the Review's state.
+            annotation.agentExplanation === undefined
+              ? ""
+              : `${String(annotation.agentExplanation.outdated)}\u0000${annotation.agentExplanation.onReply === undefined ? "" : "reply"}\u0000${annotation.agentExplanation.onDismiss === undefined ? "" : "dismiss"}`,
             annotation.conversationThread === undefined
               ? ""
               : JSON.stringify([

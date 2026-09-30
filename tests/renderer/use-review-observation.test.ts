@@ -336,6 +336,42 @@ describe("useReviewObservation scheduling", () => {
     expect(patch).toHaveBeenCalledWith({ localDraftReplies: [reply] });
   });
 
+  it("shows an agent's explanation from the next interval detection (#665)", async () => {
+    vi.useFakeTimers();
+    const explanation = {
+      explanationId: "explanation-1",
+      sessionId: "session-a",
+      path: "src/a.ts",
+      side: "new",
+      startLine: 1,
+      line: 1,
+      text: "I guessed this timeout.",
+      createdAt: "2026-09-30T10:00:00.000Z",
+    } as const;
+    installObservationDouble({
+      detect: (call) => ({
+        _tag: "Unchanged",
+        agentRunRequests: [],
+        localDraftReplies: [],
+        agentExplanations: call > 1 ? [explanation] : [],
+      }),
+    });
+    const { patch } = renderObservation(
+      projection({
+        ...localWorkbench("fresh"),
+        agentRunRequests: [],
+        localDraftReplies: [],
+        agentExplanations: [],
+      }),
+    );
+    await flush();
+    expect(patch).not.toHaveBeenCalled();
+
+    await flush(DETECT_INTERVAL_MS);
+
+    expect(patch).toHaveBeenCalledWith({ agentExplanations: [explanation] });
+  });
+
   it("leaves a pull request Review's Updates available alone when detection answers Unchanged", async () => {
     vi.useFakeTimers();
     installObservationDouble({ detect: () => ({ _tag: "Unchanged" }) });

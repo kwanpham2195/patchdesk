@@ -42,6 +42,8 @@ export type ReviewWorkbenchActions = {
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   /** Edit and Remove on a local Review's maintainer notes in the diff (ADR 0051). */
   readonly localNotes?: LocalNoteControls;
+  /** Dismiss on a local Review's Agent explanations (#665); absent once the Review is merged or closed. */
+  readonly dismissAgentExplanation?: (explanationId: string) => Promise<void>;
   /** A local Review's Change intent in the header (#467). */
   readonly changeIntent?: ChangeIntentControls;
   readonly pendingReviewComposer?: PendingReviewComposerActions;

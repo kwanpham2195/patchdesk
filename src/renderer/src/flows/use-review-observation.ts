@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 
+import { agentExplanationEntrySchema } from "../../../domain/agent-explanation";
 import { agentRunRequestSchema } from "../../../domain/agent-run-request";
 import { localDraftReplySchema } from "../../../domain/local-draft-reply";
 import {
@@ -199,6 +200,15 @@ export function useReviewObservation({
       )
         onWorkbenchPatchRef.current({
           localDraftReplies: replies.output.localDraftReplies,
+        });
+      const explanations = v.safeParse(localDetectionExplanationsSchema, value);
+      if (
+        explanations.success &&
+        JSON.stringify(explanations.output.agentExplanations) !==
+          JSON.stringify(current.agentExplanations ?? [])
+      )
+        onWorkbenchPatchRef.current({
+          agentExplanations: explanations.output.agentExplanations,
         });
       if (observation !== undefined) {
         if (observation._tag === "Reconciled") {
@@ -583,6 +593,11 @@ const localDetectionRequestsSchema = v.looseObject({
 /** And the coding agent's replies to the Local drafts, so a reply shows without a Refresh (#600). */
 const localDetectionRepliesSchema = v.looseObject({
   localDraftReplies: v.array(localDraftReplySchema),
+});
+
+/** And the coding agent's explanations on diff lines, so one shows without a Refresh (#665). */
+const localDetectionExplanationsSchema = v.looseObject({
+  agentExplanations: v.array(agentExplanationEntrySchema),
 });
 
 function isReviewObservation(

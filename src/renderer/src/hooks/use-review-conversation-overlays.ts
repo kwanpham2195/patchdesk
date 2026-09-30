@@ -307,6 +307,12 @@ export function useReviewConversationOverlays({
     [authoringSelection, localCommentAuthoring, patch, takeRecoverableDraft],
   );
 
+  // Reply on an Agent explanation opens the note composer on its lines (#665); stable, so the cards keep their identity.
+  const latestOpenComposer = useLatestCommitted(openComposer);
+  const replyInNote =
+    localCommentAuthoring?.enabled === true &&
+    localCommentAuthoring.kind === "note";
+
   const beginAccessibleAuthoring = useCallback(
     (path: string, line: number, side: "additions" | "deletions"): void =>
       openComposer({
@@ -714,6 +720,24 @@ export function useReviewConversationOverlays({
     const projectionEntries = new Set<ReviewInlineAnnotation>(annotations);
     const displayed: Array<ReviewInlineAnnotation> = [];
     for (const annotation of renderedAnnotations) {
+      const explanation = annotation.agentExplanation;
+      if (explanation !== undefined && replyInNote) {
+        const { path, start, end, side } = annotation;
+        displayed.push({
+          ...annotation,
+          agentExplanation: {
+            ...explanation,
+            onReply: () =>
+              latestOpenComposer.current({
+                path,
+                startLine: start,
+                line: end,
+                side,
+              }),
+          },
+        });
+        continue;
+      }
       const thread = annotation.conversationThread;
       if (thread === undefined) {
         displayed.push(annotation);
@@ -761,7 +785,9 @@ export function useReviewConversationOverlays({
     annotations,
     deletedCommentIds,
     editedBodies,
+    latestOpenComposer,
     renderedAnnotations,
+    replyInNote,
     resolvedThreads,
   ]);
 

@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { agentExplanationEntrySchema } from "../../domain/agent-explanation";
 import { feedbackHandoffReadingSchema } from "../../domain/feedback-handoff";
 import { localDraftReplySchema } from "../../domain/local-draft-reply";
 
@@ -50,3 +51,13 @@ export type LocalDraftEntry = v.InferOutput<typeof localDraftEntrySchema>;
 
 /** The coding agent's latest reply to one draft (`LocalDraftReply` in `src/domain/local-draft-reply.ts`). */
 export type LocalDraftReplyEntry = v.InferOutput<typeof localDraftReplySchema>;
+
+/** The coding agent's explanation on diff lines (`AgentExplanationEntry` in `src/domain/agent-explanation.ts`). */
+export type AgentExplanationEntry = v.InferOutput<
+  typeof agentExplanationEntrySchema
+>;
+
+/** What Dismiss answers: the explanations left. */
+export const agentExplanationListSchema = v.strictObject({
+  agentExplanations: v.array(agentExplanationEntrySchema),
+});
