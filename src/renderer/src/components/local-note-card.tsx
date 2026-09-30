@@ -8,8 +8,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
 import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
-import type { LocalDraftEntry } from "../local-draft-contracts";
+import type {
+  LocalDraftEntry,
+  LocalDraftReplyEntry,
+} from "../local-draft-contracts";
 import { diffLineRangeLabel } from "../review-diff-line-range";
+import { LocalDraftAgentReply } from "./local-draft-agent-reply";
 import { LocalDraftStateBadge } from "./local-draft-state-badge";
 
 export type LocalNoteCardProps = {
@@ -19,12 +23,21 @@ export type LocalNoteCardProps = {
   readonly line: number;
   readonly text: string;
   readonly state?: LocalDraftEntry["state"];
+  readonly resolved: boolean;
+  /** The coding agent's latest reply to the note (#600). */
+  readonly reply?: LocalDraftReplyEntry;
   /** Absent once the Review is merged or closed; rejects with the message to show. */
   readonly onEdit?: (text: string) => Promise<void>;
   readonly onRemove?: () => Promise<void>;
+  /** The Notes list's Resolve and Reopen, which report a failure there; absent once the Review is merged or closed. */
+  readonly onSetResolved?: (resolved: boolean) => Promise<void>;
 };
 
-/** A maintainer note inline at its diff lines (ADR 0051), edited and removed in place. */
+/**
+ * A maintainer note inline at its diff lines (ADR 0051), edited, resolved,
+ * and removed in place. It shows the Resolved state and the agent's reply as
+ * its Notes list row does (#688), and stays visible once resolved.
+ */
 export function LocalNoteCard({
   noteId,
   path,
@@ -32,12 +45,17 @@ export function LocalNoteCard({
   line,
   text,
   state,
+  resolved,
+  reply,
   onEdit,
   onRemove,
+  onSetResolved,
 }: LocalNoteCardProps): React.JSX.Element {
   const [draft, setDraft] = useState<string | undefined>(undefined);
   useReportUnsentReviewText(draft !== undefined && draft !== text ? draft : "");
-  const [busy, setBusy] = useState<"saving" | "removing" | undefined>();
+  const [busy, setBusy] = useState<
+    "saving" | "removing" | "resolving" | undefined
+  >();
   const [error, setError] = useState<string | undefined>();
   const errorId = `local-note-${useId()}-error`;
   const location =
@@ -46,7 +64,7 @@ export function LocalNoteCard({
       : `${path}:${String(startLine)}-${String(line)}`;
 
   const run = async (
-    action: "saving" | "removing",
+    action: "saving" | "removing" | "resolving",
     command: () => Promise<void>,
   ): Promise<boolean> => {
     if (busy !== undefined) return false;
@@ -83,21 +101,40 @@ export function LocalNoteCard({
       data-review-local-note={noteId}
       aria-label={`Note on ${location}`}
     >
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="outline">Note</Badge>
         <LocalDraftStateBadge state={state} />
+        {resolved ? <Badge variant="secondary">Resolved</Badge> : null}
         <span>{diffLineRangeLabel(startLine, line)}</span>
         <span>For the coding agent</span>
-        {draft !== undefined || onEdit === undefined ? null : (
+        {draft !== undefined ||
+        (onEdit === undefined && onSetResolved === undefined) ? null : (
           <div className="ml-auto flex gap-1">
-            <Button
-              size="xs"
-              variant="ghost"
-              disabled={busy !== undefined}
-              onClick={() => setDraft(text)}
-            >
-              Edit note
-            </Button>
+            {onEdit === undefined ? null : (
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={busy !== undefined}
+                onClick={() => setDraft(text)}
+              >
+                Edit note
+              </Button>
+            )}
+            {onSetResolved === undefined ? null : (
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={busy !== undefined}
+                onClick={() =>
+                  void run("resolving", () => onSetResolved(!resolved))
+                }
+              >
+                {busy === "resolving" ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                {resolved ? "Reopen note" : "Resolve note"}
+              </Button>
+            )}
             {onRemove === undefined ? null : (
               <Button
                 size="xs"
@@ -119,6 +156,9 @@ export function LocalNoteCard({
           <p className="mt-2 whitespace-pre-wrap break-words text-foreground">
             {text}
           </p>
+          {reply === undefined ? null : (
+            <LocalDraftAgentReply reply={reply} className="mt-2" />
+          )}
           {error === undefined ? null : (
             <InlineError className="mt-2">{error}</InlineError>
           )}

@@ -340,6 +340,7 @@ describe("Walkthrough diff authoring", () => {
       useWalkthroughDiffAuthoring({
         model: projection({ fullPatch: PATCH }),
         actions,
+        noteControls: {},
         pendingReviewDrafts: authoring().pendingReviewDrafts,
         pendingReviewAnnotations: [],
       }),

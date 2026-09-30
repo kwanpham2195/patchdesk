@@ -232,10 +232,16 @@ export function useReviewDiffModel({
             annotation.pendingReviewThread === undefined
               ? ""
               : `${annotation.pendingReviewThread.nodeId}\u0000${annotation.pendingReviewThread.threadId}\u0000${annotation.pendingReviewThread.body}`,
-            // An edited note keeps its id, and a closed Review drops its actions.
+            // An edited, resolved, or answered note keeps its id, and a closed Review drops its actions.
             annotation.localNote === undefined
               ? ""
-              : `${annotation.localNote.text}\u0000${annotation.localNote.onEdit === undefined ? "" : "editable"}`,
+              : JSON.stringify([
+                  annotation.localNote.text,
+                  annotation.localNote.onEdit !== undefined,
+                  annotation.localNote.onSetResolved !== undefined,
+                  annotation.localNote.resolved,
+                  annotation.localNote.reply ?? null,
+                ]),
             // A move can mark an explanation outdated under the same id; Reply and Dismiss come and go with the Review's state.
             annotation.agentExplanation === undefined
               ? ""

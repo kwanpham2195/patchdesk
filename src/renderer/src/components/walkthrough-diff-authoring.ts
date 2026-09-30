@@ -13,6 +13,7 @@ import type {
 import {
   buildAgentExplanationAnnotations,
   buildLocalNoteAnnotations,
+  type LocalNoteAnnotationControls,
 } from "./review-workbench-annotations";
 import type { ReviewWorkbenchActions } from "./review-workbench-contracts";
 
@@ -40,6 +41,7 @@ export const WalkthroughDiffAuthoringContext = createContext<
 export function useWalkthroughDiffAuthoring({
   model,
   actions,
+  noteControls,
   pendingReviewDrafts,
   pendingReviewAnnotations,
 }: {
@@ -48,6 +50,8 @@ export function useWalkthroughDiffAuthoring({
     "session" | "patchViews" | "fullPatch" | "localDrafts" | "agentExplanations"
   >;
   readonly actions: ReviewWorkbenchActions;
+  /** The Diff tab's note card controls, so a card's reply and Resolve match there (#688). */
+  readonly noteControls: LocalNoteAnnotationControls;
   readonly pendingReviewDrafts: PendingReviewDrafts;
   readonly pendingReviewAnnotations: ReadonlyArray<ReviewInlineAnnotation>;
 }): WalkthroughDiffAuthoring {
@@ -97,7 +101,7 @@ export function useWalkthroughDiffAuthoring({
     };
     return [
       ...pendingReviewAnnotations,
-      ...buildLocalNoteAnnotations(localDrafts ?? [], localNotes, placement),
+      ...buildLocalNoteAnnotations(localDrafts ?? [], noteControls, placement),
       ...buildAgentExplanationAnnotations(
         agentExplanations ?? [],
         dismissAgentExplanation,
@@ -109,7 +113,7 @@ export function useWalkthroughDiffAuthoring({
     dismissAgentExplanation,
     fullPatch,
     localDrafts,
-    localNotes,
+    noteControls,
     patchViews,
     pendingReviewAnnotations,
     sessionId,

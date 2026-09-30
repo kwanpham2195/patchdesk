@@ -1,9 +1,6 @@
 import type { LocalDraftControls } from "../flows/use-local-drafts";
 import { localDraftKey } from "../flows/use-local-drafts";
-import type {
-  LocalDraftEntry,
-  LocalDraftReplyEntry,
-} from "../local-draft-contracts";
+import type { LocalDraftEntry } from "../local-draft-contracts";
 import {
   placeLocalDraft,
   type InlineLocalDraftPlacement,
@@ -19,8 +16,8 @@ import {
   FeedbackHandoffStatus,
 } from "./feedback-handoff-control";
 import { GeneratedMarkdownInline } from "./generated-markdown";
+import { LocalDraftAgentReply } from "./local-draft-agent-reply";
 import { LocalDraftStateBadge } from "./local-draft-state-badge";
-import { RelativeTime } from "./relative-time";
 import { InlineError } from "./ui/inline-error";
 
 /**
@@ -121,7 +118,9 @@ export function LocalNotesList({
                     </span>
                   </div>
                 )}
-                {reply === undefined ? null : <AgentReply reply={reply} />}
+                {reply === undefined ? null : (
+                  <LocalDraftAgentReply reply={reply} className="mx-1" />
+                )}
                 <div className="flex justify-end gap-1 px-1">
                   {controls.setResolved === undefined ? null : (
                     <Button
@@ -196,35 +195,6 @@ function LocalDraftDetails({
         {location}
       </span>
     </>
-  );
-}
-
-const replyStatusLabels = {
-  addressed: "Addressed",
-  skipped: "Skipped",
-  question: "Question",
-} as const satisfies Record<LocalDraftReplyEntry["status"], string>;
-
-/** The coding agent's latest reply; its text is untrusted, so it renders as plain text, never Markdown. */
-function AgentReply({
-  reply,
-}: {
-  readonly reply: LocalDraftReplyEntry;
-}): React.JSX.Element {
-  return (
-    <div
-      role="group"
-      aria-label="Agent reply"
-      className="mx-1 flex min-w-0 flex-col gap-1 border-l-2 border-border py-1 pl-2 text-xs"
-    >
-      <span className="flex flex-wrap items-center gap-1 text-muted-foreground">
-        <Badge variant="outline">{replyStatusLabels[reply.status]}</Badge>
-        <RelativeTime iso={reply.repliedAt} prefix="Agent replied " />
-      </span>
-      <p className="line-clamp-4 w-full min-w-0 break-words whitespace-pre-wrap">
-        {reply.text}
-      </p>
-    </div>
   );
 }
 

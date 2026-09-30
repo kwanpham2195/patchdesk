@@ -34,6 +34,13 @@ import {
 const ADD = "/v1/reviews/local-drafts/notes/add";
 const EDIT = "/v1/reviews/local-drafts/notes/edit";
 const REMOVE = "/v1/reviews/local-drafts/notes/remove";
+const RESOLVE = "/v1/reviews/local-drafts/resolve";
+const REPLY = {
+  draft: { noteId: "note-1" },
+  status: "question" as const,
+  text: "Should an empty list return 0?",
+  repliedAt: "2026-09-30T00:00:00.000Z",
+};
 let restore: (() => void) | undefined;
 
 afterEach(() => {
@@ -95,13 +102,16 @@ function LocalReviewScreen(): React.JSX.Element {
 }
 
 /** A local Review's inline note cards, built and wired the way the Diff tab builds them, over the real Local draft hook. */
-function InlineNotes(): React.JSX.Element {
-  const [workbench, setWorkbench] = useState(() =>
+function InlineNotes({
+  initial = () =>
     projection({
       ...workingTreeReview(),
       localDrafts: [note("Guard the empty case.")],
     }),
-  );
+}: {
+  readonly initial?: () => WorkbenchResponse;
+}): React.JSX.Element {
+  const [workbench, setWorkbench] = useState(initial);
   const localDrafts = useLocalDrafts({
     workbench,
     view: undefined,
@@ -114,7 +124,7 @@ function InlineNotes(): React.JSX.Element {
     <>
       {buildLocalNoteAnnotations(
         workbench.localDrafts ?? [],
-        localDrafts?.notes,
+        localDrafts ?? {},
         withoutViews(workbench.session.id),
       ).map((annotation) =>
         annotation.localNote === undefined ? null : (
@@ -263,5 +273,100 @@ describe("Maintainer notes on a local Review", () => {
         },
       ],
     ]);
+  });
+
+  it("shows the agent's reply on a note's card, and Resolve and Reopen there mark the note in place (#688)", async () => {
+    const open = note("Guard the empty case.");
+    const resolves = [
+      success({
+        localDrafts: [{ ...open, resolvedAt: "2026-09-30T01:00:00.000Z" }],
+        localDraftReplies: [REPLY],
+      }),
+      success({ localDrafts: [open], localDraftReplies: [REPLY] }),
+    ];
+    const double = installDesktopDouble({
+      [RESOLVE]: () => resolves.shift() ?? failure({ error: "storage" }, 503),
+    });
+    restore = double.restore;
+    const user = userEvent.setup();
+    render(
+      <InlineNotes
+        initial={() =>
+          projection({
+            ...workingTreeReview(),
+            localDrafts: [open],
+            localDraftReplies: [REPLY],
+          })
+        }
+      />,
+    );
+    const card = screen.getByRole("article", { name: "Note on src/a.ts:1" });
+
+    const reply = within(card).getByRole("group", { name: "Agent reply" });
+    expect(
+      within(reply).getByText("Should an empty list return 0?"),
+    ).toBeTruthy();
+    expect(within(card).queryByText("Resolved")).toBeNull();
+    await user.click(
+      within(card).getByRole("button", { name: "Resolve note" }),
+    );
+    await within(card).findByRole("button", { name: "Reopen note" });
+    expect(within(card).getByText("Resolved")).toBeTruthy();
+    expect(
+      within(card).getByRole("group", { name: "Agent reply" }),
+    ).toBeTruthy();
+    await user.click(within(card).getByRole("button", { name: "Reopen note" }));
+    await within(card).findByRole("button", { name: "Resolve note" });
+    expect(within(card).queryByText("Resolved")).toBeNull();
+
+    const resolveCalls = double.request.mock.calls.flatMap(([input]) =>
+      callPath(input) === RESOLVE ? [callBody(input)] : [],
+    );
+    expect(resolveCalls).toEqual([
+      {
+        profileId: "profile",
+        reviewId: "review-42",
+        sessionId: "session-a",
+        draft: { noteId: "note-1" },
+        resolved: true,
+      },
+      {
+        profileId: "profile",
+        reviewId: "review-42",
+        sessionId: "session-a",
+        draft: { noteId: "note-1" },
+        resolved: false,
+      },
+    ]);
+  });
+
+  it("keeps a resolved, answered note's card on a merged Review, without Resolve or Reopen (#688)", () => {
+    const base = workingTreeReview();
+    render(
+      <InlineNotes
+        initial={() =>
+          projection({
+            ...base,
+            review: { ...base.review, status: "merged" },
+            localDrafts: [
+              {
+                ...note("Guard the empty case."),
+                resolvedAt: "2026-09-30T01:00:00.000Z",
+              },
+            ],
+            localDraftReplies: [REPLY],
+          })
+        }
+      />,
+    );
+    const card = screen.getByRole("article", { name: "Note on src/a.ts:1" });
+
+    expect(within(card).getByText("Resolved")).toBeTruthy();
+    expect(
+      within(card).getByRole("group", { name: "Agent reply" }).textContent,
+    ).toContain("Should an empty list return 0?");
+    expect(
+      within(card).queryByRole("button", { name: /^(Resolve|Reopen) note$/ }),
+    ).toBeNull();
   });
 });
