@@ -1,0 +1,23 @@
+# Patchdesk
+
+> Patchdesk is a macOS desktop app for Apple Silicon for reviewing GitHub pull requests and a coding agent's local changes, with the diff in view. A coding agent connects to it over MCP with the `patchdesk mcp` command, opens a local Review of its change, reads the user's notes, and answers them. The user stays the reviewer: Insights run only after the user presses Run, and the agent cannot commit, push, write to GitHub, or resolve notes.
+
+To set Patchdesk up for a user, read the README's install and "Connect a coding agent" sections, then the MCP server guide. Insight providers are chosen in the app by the user.
+
+## Setup
+
+- [README](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/README.md): prerequisites, install options, the steps only the user can do, and how to connect a coding agent
+- [Patchdesk MCP server](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/docs/mcp.md): install the `patchdesk` command, register it with Claude Code, Codex, or another MCP host, check the connection, and the instructions block that tells an agent when to use Patchdesk
+- [User guide](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/docs/user-guide.md): requirements, first run, Insight providers and API keys, storage locations, and known limits
+
+## Using Patchdesk from an agent
+
+- [MCP tools and limits](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/docs/mcp.md): each tool's arguments, what the agent cannot do, approving Insight runs, Refresh, replies, and troubleshooting by error code
+- [A coding agent over MCP](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/docs/product-description/pull-requests/coding-agent-over-mcp.md): the whole review loop as the user sees it, screen by screen
+
+## Optional
+
+- [Product description](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/docs/product-description/README.md): every feature of the app, one page each
+- [Changelog](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/CHANGELOG.md): changes in each release
+- [Roadmap](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/ROADMAP.md): direction, order, and what is not planned
+- [Contributing](https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/CONTRIBUTING.md): build, test, and release the app from source
