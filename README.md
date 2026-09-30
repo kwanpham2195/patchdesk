@@ -167,11 +167,26 @@ and `gh auth status` shows an authenticated account. If it does not, run
 terminal instead; see
 [Set up the workspace from the terminal](docs/mcp.md#set-up-the-workspace-from-the-terminal).
 
-If a coding agent is doing the installation, give it this task:
+To have a coding agent do the whole setup, run it in the project you want
+to review and give it this task:
 
-> Install Patchdesk using this README. Check the prerequisites and any existing
-> installation first. Verify that the app opens. Tell me when I need to sign in
-> with `gh` or select repositories in Patchdesk. Report what you installed.
+> Set up Patchdesk for this project using
+> https://github.com/kwanpham2195/patchdesk. Follow these steps in order:
+>
+> 1. Check the prerequisites and any existing installation, then install
+>    Patchdesk if it is missing.
+> 2. After a disk-image install, link the `patchdesk` command.
+> 3. Open Patchdesk with `open -a Patchdesk` if it is not running.
+> 4. Run `patchdesk setup status`. If it asks for `gh auth login`, stop and
+>    ask me to run it.
+> 5. Run `patchdesk setup add-repo` in this project's checkout.
+> 6. Register the MCP server with yourself, then run `patchdesk mcp --check`.
+> 7. Ask me whether you should open a Review for every change. If yes, add
+>    the "Review in Patchdesk" block from
+>    [Tell your agent when to use it](docs/mcp.md#tell-your-agent-when-to-use-it)
+>    to this project's `AGENTS.md` or `CLAUDE.md`.
+> 8. Report what you installed and changed, and what is left for me, such as
+>    choosing an Insight provider in Patchdesk.
 
 ## Understand the change before you approve it
 
