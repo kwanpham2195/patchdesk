@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { countMoveReferenceUpdates } from "../../src/domain/move-reference-updates";
+import { listPatchChangedFiles } from "../../src/domain/patch-changed-files";
 
 function edited(
   path: string,
@@ -17,8 +18,23 @@ function edited(
   ].join("\n");
 }
 
+function rename(from: string, to: string): string {
+  return [
+    `diff --git a/${from} b/${to}`,
+    "similarity index 100%",
+    `rename from ${from}`,
+    `rename to ${to}`,
+  ].join("\n");
+}
+
+/** Every case moves `shared/mocks/` and `shared/run.ts`, so imports into them follow a move. */
 function count(...sections: ReadonlyArray<string>): number {
-  return countMoveReferenceUpdates(`${sections.join("\n")}\n`);
+  const patch = `${[
+    rename("shared/mocks/repo.go", "internal/bulkupdate/mocks/repo.go"),
+    rename("src/shared/run.ts", "src/core/run.ts"),
+    ...sections,
+  ].join("\n")}\n`;
+  return countMoveReferenceUpdates(patch, listPatchChangedFiles(patch));
 }
 
 describe("countMoveReferenceUpdates", () => {
@@ -29,49 +45,71 @@ describe("countMoveReferenceUpdates", () => {
           "api/handler_test.go",
           [
             '\tsharedmocks "example.com/svc/shared/mocks"',
-            '\tv1 "example.com/svc/api/pkg/model/v1"',
             "\trepo := sharedmocks.NewBulkUpdateRepository(t)",
-            "\tvar req v1.ConfirmRequest",
           ],
           [
             '\tbulkupdatemocks "example.com/svc/internal/bulkupdate/mocks"',
-            '\tbulkupdateapi "example.com/svc/pkg/api/bulkupdate"',
             "\trepo := bulkupdatemocks.NewBulkUpdateRepository(t)",
-            "\tvar req bulkupdateapi.ConfirmRequest",
           ],
         ),
       ),
     ).toBe(1);
   });
 
-  it("counts a module file whose only change is an import path", () => {
+  it("counts a module file whose relative import now resolves into the moved directory", () => {
     expect(
       count(
         edited(
-          "src/app.ts",
-          ['import { run } from "./old/run";'],
-          ['import { run } from "./new/run";'],
+          "src/app/main.ts",
+          ['import { run } from "../shared/run";'],
+          ['import { run } from "../core/run";'],
         ),
       ),
     ).toBe(1);
   });
 
-  it("does not count a file that also changes behavior next to its import", () => {
+  it("does not count a file that reorders its code next to a moved import", () => {
     expect(
       count(
         edited(
-          "api/service.go",
-          ['\t"example.com/svc/shared"', "\tif err != nil { return err }"],
+          "src/app/main.ts",
           [
-            '\t"example.com/svc/internal/platform"',
-            "\tif err != nil { return platform.Wrap(err) }",
+            'import { run } from "../shared/run";',
+            "validate(x);",
+            "store.put(x);",
+          ],
+          [
+            'import { run } from "../core/run";',
+            "store.put(x);",
+            "validate(x);",
           ],
         ),
       ),
     ).toBe(0);
   });
 
-  it("does not count a changed exported string constant as an import", () => {
+  it("does not count a file that only adds an import or an export", () => {
+    expect(
+      count(
+        edited("src/index.ts", [], ['export { run } from "./core/run";']),
+        edited("cmd/main.go", [], ['import _ "net/http/pprof"']),
+      ),
+    ).toBe(0);
+  });
+
+  it("does not count an import swap that points nowhere a file moved to", () => {
+    expect(
+      count(
+        edited(
+          "src/app/main.ts",
+          ['import { log } from "../logging/log";'],
+          ['import { log } from "../telemetry/log";'],
+        ),
+      ),
+    ).toBe(0);
+  });
+
+  it("does not count a changed exported string, a JSON list, or a behavior change next to an import", () => {
     expect(
       count(
         edited(
@@ -79,32 +117,18 @@ describe("countMoveReferenceUpdates", () => {
           ['export const root = "./old";'],
           ['export const root = "./new";'],
         ),
-      ),
-    ).toBe(0);
-  });
-
-  it("does not count an edit with no changed import, or a file the patch adds or renames", () => {
-    expect(
-      count(
-        edited("api/a.go", ["\tshared.Run()"], ["\tplatform.Run()"]),
-        [
-          "diff --git a/src/new.ts b/src/new.ts",
-          "--- /dev/null",
-          "+++ b/src/new.ts",
-          "@@ -0,0 +1 @@",
-          '+import { run } from "./run";',
-        ].join("\n"),
-        [
-          "diff --git a/src/old/b.ts b/src/new/b.ts",
-          "similarity index 90%",
-          "rename from src/old/b.ts",
-          "rename to src/new/b.ts",
-          "--- a/src/old/b.ts",
-          "+++ b/src/new/b.ts",
-          "@@ -1 +1 @@",
-          '-import { run } from "../old/run";',
-          '+import { run } from "../new/run";',
-        ].join("\n"),
+        edited("tsconfig.json", ['    "src"'], ['    "lib"']),
+        edited(
+          "api/service.go",
+          [
+            '\t"example.com/svc/shared/mocks"',
+            "\tif err != nil { return err }",
+          ],
+          [
+            '\t"example.com/svc/internal/bulkupdate/mocks"',
+            "\tif err != nil { return mocks.Wrap(err) }",
+          ],
+        ),
       ),
     ).toBe(0);
   });
