@@ -14,6 +14,11 @@ import {
 } from "./change-intent";
 import { definedProps } from "./defined-props";
 import {
+  parseFeedbackHandoff,
+  storedFeedbackHandoffSchema,
+  type FeedbackHandoff,
+} from "./feedback-handoff";
+import {
   createReviewId,
   parseContentHash,
   parseGitHubHost,
@@ -26,27 +31,20 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
-  type FindingId,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
   type GitSha,
-  type InsightRunId,
   type IsoTimestamp,
-  type LocalNoteId,
   type PullRequestNumber,
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "./ids";
 import {
-  isLocalDraftOf,
-  isMaintainerNote,
   parseStoredLocalDrafts,
   storedLocalDraftSchema,
   type LocalDraft,
-  type LocalDraftTarget,
-  type MaintainerNote,
 } from "./local-draft";
 import { err, ok, type Result } from "./result";
 import type { ReviewSessionKey } from "./review-session";
@@ -162,6 +160,8 @@ export type Review<Source extends ReviewSource = ReviewSource> = {
   readonly preparedSessionId?: ReviewSessionId;
   /** A local Review's agent run requests for its current session (ADR 0052); a move drops the rest, absent when empty. */
   readonly agentRunRequests?: ReadonlyArray<AgentRunRequest>;
+  /** A local Review's Feedback hand-off (ADR 0052); a move to a new session clears it. */
+  readonly handoff?: FeedbackHandoff;
 };
 
 /**
@@ -279,6 +279,7 @@ const reviewV2Schema = v.strictObject({
   changeIntent: v.optional(storedChangeIntentSchema),
   preparedSessionId: v.optional(v.string()),
   agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
+  handoff: v.optional(storedFeedbackHandoffSchema),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -371,7 +372,12 @@ export function moveLocalReviewToSession(
   },
 ): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
-  const { preparedSessionId: _moved, agentRunRequests, ...rest } = review;
+  const {
+    preparedSessionId: _moved,
+    handoff: _handedOff,
+    agentRunRequests,
+    ...rest
+  } = review;
   return ok({
     ...rest,
     currentSessionId: input.sessionId,
@@ -551,89 +557,6 @@ export function markReviewTerminal(
   };
 }
 
-/**
- * Add one Local draft to a local Review's list (ADR 0050, ADR 0051). A Finding
- * already drafted keeps its entry, so adding twice is one draft.
- */
-export function addLocalDraft(
-  review: Review<LocalReviewSource>,
-  draft: LocalDraft,
-): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
-  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
-  const drafts = review.localDrafts ?? [];
-  const target = isMaintainerNote(draft)
-    ? { noteId: draft.noteId }
-    : { runId: draft.analysisRunId, findingId: draft.findingId };
-  if (drafts.some((entry) => isLocalDraftOf(entry, target))) return ok(review);
-  return ok({
-    ...review,
-    localDrafts: [...drafts, draft],
-    updatedAt: laterTimestamp(
-      review.updatedAt,
-      isMaintainerNote(draft) ? draft.createdAt : draft.addedAt,
-    ),
-  });
-}
-
-/** Replace one maintainer note's text; a Finding draft is never edited (ADR 0051). */
-export function editMaintainerNote(
-  review: Review<LocalReviewSource>,
-  edit: {
-    readonly noteId: LocalNoteId;
-    readonly text: string;
-    readonly updatedAt: IsoTimestamp;
-  },
-): Result<
-  Review<LocalReviewSource>,
-  { readonly _tag: "ReviewTerminal" | "NoteNotFound" }
-> {
-  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
-  const drafts = review.localDrafts ?? [];
-  const note = drafts.find(
-    (entry): entry is MaintainerNote =>
-      isMaintainerNote(entry) && entry.noteId === edit.noteId,
-  );
-  if (note === undefined) return err({ _tag: "NoteNotFound" });
-  if (note.text === edit.text) return ok(review);
-  const updatedAt = laterTimestamp(review.updatedAt, edit.updatedAt);
-  return ok({
-    ...review,
-    localDrafts: drafts.map((entry) =>
-      entry === note ? { ...note, text: edit.text, updatedAt } : entry,
-    ),
-    updatedAt,
-  });
-}
-
-/**
- * Mark the Finding drafts a confirmed Apply wrote as applied (#452). They stay
- * listed for the maintainer and leave the agent prompt.
- */
-export function markLocalDraftsApplied(
-  review: Review<LocalReviewSource>,
-  applied: {
-    readonly runId: InsightRunId;
-    readonly findingIds: ReadonlyArray<FindingId>;
-    readonly appliedAt: IsoTimestamp;
-  },
-): Review<LocalReviewSource> {
-  const drafts = review.localDrafts ?? [];
-  const wrote = (draft: LocalDraft) =>
-    !isMaintainerNote(draft) &&
-    draft.appliedAt === undefined &&
-    applied.findingIds.some((findingId) =>
-      isLocalDraftOf(draft, { runId: applied.runId, findingId }),
-    );
-  if (!drafts.some(wrote)) return review;
-  return {
-    ...review,
-    localDrafts: drafts.map((draft) =>
-      wrote(draft) ? { ...draft, appliedAt: applied.appliedAt } : draft,
-    ),
-    updatedAt: laterTimestamp(review.updatedAt, applied.appliedAt),
-  };
-}
-
 /** Set or clear a local Review's Change intent; setting the one it holds changes nothing. */
 export function setChangeIntent(
   review: Review<LocalReviewSource>,
@@ -667,25 +590,8 @@ export function setAgentRunRequests(
   });
 }
 
-/** Remove one Local draft; removing a draft that is not listed changes nothing. */
-export function removeLocalDraft(
-  review: Review<LocalReviewSource>,
-  target: LocalDraftTarget,
-  updatedAt: IsoTimestamp,
-): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
-  if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
-  const drafts = review.localDrafts ?? [];
-  const kept = drafts.filter((entry) => !isLocalDraftOf(entry, target));
-  if (kept.length === drafts.length) return ok(review);
-  const { localDrafts: _removed, ...rest } = review;
-  return ok({
-    ...rest,
-    ...definedProps({ localDrafts: kept.length === 0 ? undefined : kept }),
-    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
-  });
-}
-
-function laterTimestamp(
+/** The later of two timestamps, or 1 ms after `previous`, so every change moves `updatedAt` forward. */
+export function laterTimestamp(
   previous: IsoTimestamp,
   requested: IsoTimestamp,
 ): IsoTimestamp {
@@ -753,6 +659,7 @@ function parseReviewBase(
     | "changeIntent"
     | "preparedSessionId"
     | "agentRunRequests"
+    | "handoff"
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
@@ -827,6 +734,12 @@ function parseReviewBase(
       : source.value.kind === "pull_request"
         ? invalid()
         : parseStoredAgentRunRequests(raw.agentRunRequests);
+  const handoff =
+    raw.handoff === undefined
+      ? ok(undefined)
+      : source.value.kind === "pull_request"
+        ? invalid()
+        : parseFeedbackHandoff(raw.handoff);
   if (
     representedRemote._tag === "err" ||
     status._tag === "err" ||
@@ -835,7 +748,8 @@ function parseReviewBase(
     localDrafts._tag === "err" ||
     changeIntent._tag === "err" ||
     preparedSessionId._tag === "err" ||
-    agentRunRequests._tag === "err"
+    agentRunRequests._tag === "err" ||
+    handoff._tag === "err"
   )
     return invalid();
 
@@ -853,6 +767,7 @@ function parseReviewBase(
       changeIntent: changeIntent.value,
       preparedSessionId: preparedSessionId.value,
       agentRunRequests: agentRunRequests.value,
+      handoff: handoff.value,
     }),
     status: status.value,
     createdAt: createdAt.value,

@@ -32,6 +32,7 @@ import {
 
 const ADD = "/v1/reviews/local-drafts/add";
 const REMOVE = "/v1/reviews/local-drafts/remove";
+const HANDOFF = "/v1/reviews/local-drafts/handoff";
 let restore: (() => void) | undefined;
 
 afterEach(() => {
@@ -193,6 +194,51 @@ describe("Local drafts on a local Review", () => {
     ).toBeTruthy();
   });
 
+  it("marks the drafts Ready for agent with a verdict from the Notes section and shows when (#603)", async () => {
+    const at = "2026-09-30T10:00:00.000Z";
+    const double = installDesktopDouble({
+      "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
+      "/v1/insight-providers": () => failure({ error: "storage" }, 503),
+      "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
+      [HANDOFF]: () =>
+        success({
+          localDrafts: [],
+          feedbackHandoff: {
+            handoff: { at, verdict: "looks_good" },
+            changedSinceHandoff: false,
+          },
+        }),
+    });
+    restore = double.restore;
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
+    const { container } = render(<DraftingReview />);
+
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await user.click(screen.getByRole("tab", { name: /^Notes/ }));
+    await user.click(screen.getByRole("button", { name: "Ready for agent" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Looks good" }),
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector(`time[datetime="${at}"]`)).not.toBeNull(),
+    );
+    expect(
+      double.request.mock.calls.flatMap(([input]) =>
+        callPath(input) === HANDOFF ? [callBody(input)] : [],
+      ),
+    ).toEqual([
+      {
+        profileId: "profile",
+        reviewId: "review-42",
+        sessionId: "session-a",
+        verdict: "looks_good",
+      },
+    ]);
+  });
+
   it("names each Remove in the Notes list by kind when a note and a Finding share lines", async () => {
     const remove = vi.fn<LocalDraftControls["remove"]>(async () => undefined);
     const note = {
@@ -217,6 +263,7 @@ describe("Local drafts on a local Review", () => {
           add: async () => undefined,
           remove,
           loadAgentPrompt: async () => "",
+          handingOff: false,
           forFinding: () => ({ drafted: true, pending: false }),
         }}
         placement={withoutViews("session-a")}

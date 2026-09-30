@@ -12,7 +12,7 @@ import {
 } from "../main/mcp-app-fixture";
 import { profileId, value } from "../services/local-apply-fixture";
 import { closeMcpTestClients, connectLegacyClient } from "./mcp-test-clients";
-import { call, reviewWithNotes } from "./mcp-read-tools-fixture";
+import { addNote, call, reviewWithNotes } from "./mcp-read-tools-fixture";
 
 let app: McpAppFixture | undefined;
 
@@ -131,5 +131,55 @@ describe("get_review_status", () => {
       sessionId: refreshed.preparedSessionId,
     });
     expect(afterRefresh.content).not.toHaveProperty("preparedSessionId");
+  });
+
+  it("returns the maintainer's Ready for agent with get_feedback, and changedSinceHandoff once a note is added after it (#603)", async () => {
+    app = await startAppWithLinkedWorktree();
+    const fixture = app;
+    const workbench = await reviewWithNotes(fixture, 2);
+    const reviewId = workbench.review.id;
+    const client = await connectLegacyClient(fixture.socketPath);
+    const handoffSchema = v.looseObject({
+      handoff: v.strictObject({ at: v.string(), verdict: v.string() }),
+      changedSinceHandoff: v.boolean(),
+    });
+
+    const ready = await fixture.route(
+      "v1/reviews/local-drafts/handoff",
+      JSON.stringify({
+        profileId: "acme",
+        reviewId,
+        sessionId: workbench.session.id,
+        verdict: "changes_requested",
+      }),
+    );
+    const handedOff = answered(
+      handoffSchema,
+      await call(client, "get_feedback", { reviewId }),
+    );
+    await addNote(fixture, workbench, 3);
+    const feedback = answered(
+      handoffSchema,
+      await call(client, "get_feedback", { reviewId }),
+    );
+    const status = answered(
+      handoffSchema,
+      await call(client, "get_review_status", { reviewId }),
+    );
+
+    expect(ready.status).toBe(200);
+    expect(handedOff).toMatchObject({
+      handoff: { verdict: "changes_requested" },
+      changedSinceHandoff: false,
+    });
+    expect(Number.isNaN(Date.parse(handedOff.handoff.at))).toBe(false);
+    expect(feedback).toMatchObject({
+      handoff: handedOff.handoff,
+      changedSinceHandoff: true,
+    });
+    expect(status).toMatchObject({
+      handoff: handedOff.handoff,
+      changedSinceHandoff: true,
+    });
   });
 });

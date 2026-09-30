@@ -11,11 +11,8 @@ import {
   parseReviewId,
 } from "../../src/domain/ids";
 import { ok } from "../../src/domain/result";
-import {
-  isLocalReview,
-  markLocalDraftsApplied,
-  setAgentRunRequests,
-} from "../../src/domain/review";
+import { isLocalReview, setAgentRunRequests } from "../../src/domain/review";
+import { markLocalDraftsApplied } from "../../src/domain/review-local-drafts";
 import { ReviewInsightReader } from "../../src/services/review-insight-reading";
 import { readReviewStatus } from "../../src/services/review-status-reading";
 import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";

@@ -1,4 +1,8 @@
 import { definedProps } from "../domain/defined-props";
+import {
+  readFeedbackHandoff,
+  type FeedbackHandoffReading,
+} from "../domain/feedback-handoff";
 import type {
   FindingId,
   IsoTimestamp,
@@ -41,19 +45,21 @@ type AppliedFindingReading = {
 /**
  * What `get_review_status` answers (ADR 0052 "Tools, v1"): where a local
  * Review stands, without any Insight result or draft text, which
- * `get_insight` and `get_feedback` read.
+ * `get_insight` and `get_feedback` read. `handoff` and `changedSinceHandoff`
+ * are present while the maintainer's hand-off stands (#603).
  */
-export type ReviewStatus = ReviewSessionDescription & {
-  /** The session an agent's refresh prepared, present until the maintainer's Refresh moves the Review to it. */
-  readonly preparedSessionId?: ReviewSessionId;
-  readonly insights: InsightStatusesReading["insights"];
-  readonly localDraftCounts: {
-    readonly finding: LocalDraftStateCounts;
-    readonly note: LocalDraftStateCounts;
+export type ReviewStatus = ReviewSessionDescription &
+  Partial<FeedbackHandoffReading> & {
+    /** The session an agent's refresh prepared, present until the maintainer's Refresh moves the Review to it. */
+    readonly preparedSessionId?: ReviewSessionId;
+    readonly insights: InsightStatusesReading["insights"];
+    readonly localDraftCounts: {
+      readonly finding: LocalDraftStateCounts;
+      readonly note: LocalDraftStateCounts;
+    };
+    /** In file then line order, as `get_feedback` lists drafts. */
+    readonly appliedFindings: ReadonlyArray<AppliedFindingReading>;
   };
-  /** In file then line order, as `get_feedback` lists drafts. */
-  readonly appliedFindings: ReadonlyArray<AppliedFindingReading>;
-};
 
 /**
  * Reads a local Review's status. It takes no snapshot, never answers
@@ -76,6 +82,7 @@ export async function readReviewStatus(
   return ok({
     ...session,
     ...definedProps({ preparedSessionId: review.preparedSessionId }),
+    ...readFeedbackHandoff(review.handoff),
     insights,
     localDraftCounts: {
       finding: countByState(drafts.filter((draft) => !isMaintainerNote(draft))),

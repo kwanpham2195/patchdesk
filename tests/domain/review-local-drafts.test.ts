@@ -25,17 +25,21 @@ import {
 } from "../../src/domain/local-draft";
 import type { Result } from "../../src/domain/result";
 import {
-  addLocalDraft,
   createReview,
-  editMaintainerNote,
   moveLocalReviewToSession,
   parseReview,
-  removeLocalDraft,
   serializeReview,
   setAgentRunRequests,
   type Review,
   type ReviewIdentity,
 } from "../../src/domain/review";
+import {
+  addLocalDraft,
+  editMaintainerNote,
+  recordFeedbackHandoff,
+  removeLocalDraft,
+} from "../../src/domain/review-local-drafts";
+import { readFeedbackHandoff } from "../../src/domain/feedback-handoff";
 import type { LocalReviewSource } from "../../src/domain/review-source";
 
 function must<T>(result: Result<T, unknown>): T {
@@ -354,6 +358,81 @@ describe("Local drafts on a Review", () => {
         preparedSessionId: localReview().currentSessionId,
       }),
     ).toEqual({ _tag: "err", error: { _tag: "InvalidReview" } });
+  });
+});
+
+describe("Feedback hand-off on a Review (#603)", () => {
+  const drafted = added(
+    added(localReview(), draft("finding-bound")),
+    note("Name this total."),
+  );
+  const handedOff = must(
+    recordFeedbackHandoff(drafted, { at: addedAt, verdict: "looks_good" }),
+  );
+
+  it.each([
+    {
+      change: "adding a note",
+      after: () =>
+        added(handedOff, {
+          ...note("Also here."),
+          noteId: must(parseLocalNoteId("note-2")),
+        }),
+      changed: true,
+    },
+    {
+      change: "editing a note's text",
+      after: () =>
+        must(
+          editMaintainerNote(handedOff, {
+            noteId,
+            text: "Rename it.",
+            updatedAt: removedAt,
+          }),
+        ),
+      changed: true,
+    },
+    {
+      change: "removing a draft",
+      after: () => must(removeLocalDraft(handedOff, { noteId }, removedAt)),
+      changed: true,
+    },
+    {
+      change: "adding a Finding already drafted",
+      after: () => added(handedOff, draft("finding-bound")),
+      changed: false,
+    },
+    {
+      change: "saving a note with its text unchanged",
+      after: () =>
+        must(
+          editMaintainerNote(handedOff, {
+            noteId,
+            text: "Name this total.",
+            updatedAt: removedAt,
+          }),
+        ),
+      changed: false,
+    },
+  ])(
+    "reads changedSinceHandoff $changed after $change",
+    ({ after, changed }) => {
+      expect(readFeedbackHandoff(after().handoff)).toEqual({
+        handoff: { at: addedAt, verdict: "looks_good" },
+        changedSinceHandoff: changed,
+      });
+    },
+  );
+
+  it("round-trips a hand-off with its verdict and draft change through the stored form, and a new hand-off replaces it", () => {
+    const changed = must(removeLocalDraft(handedOff, { noteId }, removedAt));
+    const again = must(recordFeedbackHandoff(changed, { at: removedAt }));
+
+    expect(parseReview(structuredClone(serializeReview(changed)))).toEqual({
+      _tag: "ok",
+      value: changed,
+    });
+    expect(again.handoff).toEqual({ at: removedAt });
   });
 });
 

@@ -332,6 +332,26 @@ view's diff (usually `changed`), and when that view's patch cannot be read.
 Only the stored session patches are read, never the checkout. The Markdown
 prompt is unchanged.
 
+Amended 2026-09-30 (#603): the maintainer can also mark the drafts ready.
+**Ready for agent** in the Local draft list header stamps
+`handoff: { at, verdict? }` on the Review record, where the optional verdict
+is `looks_good` or `changes_requested`; **Copy as agent prompt** stamps one
+without a verdict, since copying the prompt is already a hand-off. Each stamp
+replaces the one before, and a move to a new session clears it. The first
+Local draft add, edit, or removal after the stamp is recorded on it as
+`draftsChangedAt`. An Apply moves the Review, so it clears the stamp too.
+`get_feedback` and `get_review_status` return `handoff` and
+`changedSinceHandoff` while a hand-off stands and omit both otherwise, so an
+agent resumed early can say the maintainer changed the notes after marking
+them ready, and `looks_good` with no drafts ends the loop without a note that
+says only "done". The workbench reads the same record through
+`readFeedbackHandoff`. The agent cannot set or clear the hand-off, the
+server still sends no notifications, and no description asks the agent to
+poll. The verdict stays out of the Copy as agent prompt Markdown; changing
+that prompt needs a chat review. Stamping takes the Review lock, so Copy as
+agent prompt is refused `in_progress` while another action holds the Review,
+and on a merged or closed Review it copies without stamping.
+
 ### Multiple checkouts
 
 Shipped in #489: `review_local` resolves `cwd` to the configured `localPath`
@@ -600,6 +620,7 @@ was replaced by the shared Review, #555.)
   surface.
 - The Review record gains `agentRunRequests`, `updatesAvailable`, and
   `changeIntent.source`; stored records without them parse unchanged.
+  Amended 2026-09-30 (#603): it also gains `handoff`, under the same rule.
 - `refresh_review` prepares sessions the Review has not moved to; retention
   and the per-move prune treat a prepared session as live.
 - Every request schema has one home and two consumers; a tool that needs a

@@ -2,6 +2,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
+import {
+  feedbackHandoffReadingSchema,
+  type FeedbackHandoffVerdict,
+} from "../../../domain/feedback-handoff";
 import { findingDraftStates } from "../../../domain/local-draft";
 import type { LocalPatchView } from "../../../domain/local-patch-view";
 import { isApiErrorCode, requestJson } from "../api-client";
@@ -39,8 +43,13 @@ export type LocalDraftControls = {
   readonly add: (findingId: string) => Promise<void>;
   /** Remove from the Notes list; a failure shows as `error`. */
   readonly remove: (entry: LocalDraftEntry) => Promise<void>;
-  /** The drafts as one prompt for the coding agent, composed by the main process. */
+  /** The drafts as one prompt for the coding agent, composed by the main process; copying it also hands the drafts off. */
   readonly loadAgentPrompt: () => Promise<string>;
+  /** The last hand-off since the Review moved, absent when there is none (#603). */
+  readonly feedbackHandoff?: NonNullable<WorkbenchResponse["feedbackHandoff"]>;
+  /** Ready for agent, with an optional verdict; a failure shows as `error`. Absent once the Review is merged or closed. */
+  readonly handOff?: (verdict?: FeedbackHandoffVerdict) => Promise<void>;
+  readonly handingOff: boolean;
   /** One Finding row's toggle: Add to draft, or Remove once drafted. */
   readonly forFinding: (findingId: string) => {
     readonly drafted: boolean;
@@ -51,16 +60,23 @@ export type LocalDraftControls = {
   readonly notes?: LocalNoteControls;
 };
 
-/** What a command names beside the Review: a Finding, a note's lines and text, or a note. */
+/** What a command names beside the Review: a Finding, a note's lines and text, a note, or a hand-off's verdict. */
 type LocalDraftCommand =
   | { readonly runId: string; readonly findingId: string }
   | (LocalCommentLocation & {
       readonly text: string;
       readonly view?: LocalPatchView;
     })
-  | { readonly noteId: string; readonly text?: string };
+  | { readonly noteId: string; readonly text?: string }
+  | { readonly verdict?: FeedbackHandoffVerdict };
 
-const agentPromptSchema = v.strictObject({ markdown: v.string() });
+const agentPromptSchema = v.strictObject({
+  markdown: v.string(),
+  feedbackHandoff: v.exactOptional(feedbackHandoffReadingSchema),
+});
+
+/** The `post` key of Ready for agent, which no draft key can equal. */
+const HANDOFF_KEY = "handoff";
 
 /** One draft's identity: its Analysis run and Finding, or its note id. */
 export function localDraftKey(
@@ -93,6 +109,14 @@ function noteFailureMessage(cause: unknown): string {
   if (isApiErrorCode(cause, "draft_sensitive"))
     return "The note contains what looks like a credential. Remove it and save again.";
   return "The note was not saved.";
+}
+
+function handoffFailureMessage(cause: unknown): string {
+  if (isApiErrorCode(cause, "in_progress"))
+    return "Another action on this review is running. Try again when it finishes.";
+  if (isApiErrorCode(cause, "not_applicable"))
+    return "The review changed. Press Refresh, then mark the drafts ready again.";
+  return "The drafts were not marked ready for the agent.";
 }
 
 /**
@@ -138,7 +162,10 @@ export function useLocalDrafts({
           }),
         );
         if (!parsed.success) throw new Error("Unexpected Local draft response");
-        onWorkbenchPatch({ localDrafts: parsed.output.localDrafts });
+        onWorkbenchPatch({
+          localDrafts: parsed.output.localDrafts,
+          feedbackHandoff: parsed.output.feedbackHandoff ?? null,
+        });
       } finally {
         pendingRef.current.delete(key);
         setPending(new Set(pendingRef.current));
@@ -230,8 +257,27 @@ export function useLocalDrafts({
       }),
     );
     if (!parsed.success) throw new Error("Unexpected agent prompt response");
+    // A merged or closed Review copies without a hand-off, so the one shown stays.
+    if (parsed.output.feedbackHandoff !== undefined)
+      onWorkbenchPatch({ feedbackHandoff: parsed.output.feedbackHandoff });
     return parsed.output.markdown;
-  }, [profileId, reviewId]);
+  }, [onWorkbenchPatch, profileId, reviewId]);
+
+  const handOff = useCallback(
+    async (verdict?: FeedbackHandoffVerdict): Promise<void> => {
+      setError(undefined);
+      try {
+        await post(
+          HANDOFF_KEY,
+          "/v1/reviews/local-drafts/handoff",
+          definedProps({ verdict }),
+        );
+      } catch (cause: unknown) {
+        setError(handoffFailureMessage(cause));
+      }
+    },
+    [post],
+  );
 
   const entries = workbench.localDrafts;
   if (entries === undefined) return undefined;
@@ -250,6 +296,7 @@ export function useLocalDrafts({
     add,
     remove,
     loadAgentPrompt,
+    handingOff: pending.has(HANDOFF_KEY),
     forFinding: (findingId) => {
       const drafted = draftedFindingIds.has(findingId);
       const allowed = drafted ? reviewOpen : canAdd;
@@ -268,6 +315,11 @@ export function useLocalDrafts({
         }),
       };
     },
-    ...definedProps({ error, notes: reviewOpen ? notes : undefined }),
+    ...definedProps({
+      error,
+      notes: reviewOpen ? notes : undefined,
+      handOff: reviewOpen ? handOff : undefined,
+      feedbackHandoff: workbench.feedbackHandoff ?? undefined,
+    }),
   };
 }
