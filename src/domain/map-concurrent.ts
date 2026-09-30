@@ -8,6 +8,7 @@ export async function mapConcurrent<T, R>(
   concurrency: number,
   map: (item: T) => Promise<R>,
 ): Promise<ReadonlyArray<R>> {
+  assertConcurrency(concurrency);
   const values: Array<R> = [];
   let nextIndex = 0;
   const worker = async (): Promise<void> => {
@@ -22,4 +23,12 @@ export async function mapConcurrent<T, R>(
     Array.from({ length: Math.min(concurrency, items.length) }, worker),
   );
   return values;
+}
+
+/** A concurrency below one would start no worker and resolve with nothing mapped. */
+function assertConcurrency(concurrency: number): void {
+  if (!Number.isInteger(concurrency) || concurrency < 1)
+    throw new RangeError(
+      `concurrency must be a positive integer: ${concurrency}`,
+    );
 }
