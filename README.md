@@ -216,12 +216,14 @@ can send their work to Patchdesk over MCP:
 2. You press **Run** in Patchdesk. Nothing spends your model account without
    that click.
 3. You leave notes on diff lines, then tell the agent "check Patchdesk".
-4. The agent reads your notes, fixes the code, and prepares the new revision.
+4. The agent reads your notes, fixes the code, answers each note, and
+   prepares the new revision.
 5. You press **Refresh**. Patchdesk moves the Review to the new code and marks
    each note **Unchanged**, **Changed since your note**, or **Needs attention**.
+   You resolve the notes the agent handled.
 
-Patchdesk gives the agent no way to apply a suggestion, commit, edit your
-notes, or reach GitHub. To set it up, see
+Patchdesk gives the agent no way to apply a suggestion, commit, edit or
+resolve your notes, or reach GitHub. To set it up, see
 [Connect a coding agent](#connect-a-coding-agent).
 
 ## Local-first by design
@@ -262,7 +264,7 @@ After a disk-image install, [link it yourself](docs/mcp.md#install-the-command).
    - When a change is ready for review, call the Patchdesk tool `review_local` with your working directory as `cwd` and the task you were given as `intent`.
    - To get an Analysis, Walkthrough, or Brief, call `run_insight` with the `reviewId` and `sessionId` from `review_local`. It returns `awaiting_approval`: stop, and tell me the request waits for my approval in Patchdesk. Call `get_insight` when I say it ran.
    - Before `get_feedback`, call `list_local_reviews` with your working directory as `cwd` to find the Review I am looking at, and use its `reviewId`. If it returns several Reviews for your branch, ask me which base I meant.
-   - When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback`; address every Finding and comment, then call `refresh_review` and tell me the changes are ready. To get an Insight on the new code, call `run_insight` with the `preparedSessionId` from `refresh_review`; on `awaiting_refresh`, tell me to press Refresh in Patchdesk.
+   - When I say "check Patchdesk", call `get_insight` for any Insight you requested, then `get_feedback` with `open: true`; address every Finding and comment, and answer each comment with `reply_to_note`: `addressed`, `skipped` with the reason, or `question`. Then call `refresh_review` and tell me the changes are ready. To get an Insight on the new code, call `run_insight` with the `preparedSessionId` from `refresh_review`; on `awaiting_refresh`, tell me to press Refresh in Patchdesk.
    ```
 
 The Review compares the agent's branch with its base branch, so the agent's
