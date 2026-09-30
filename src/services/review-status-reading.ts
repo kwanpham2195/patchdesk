@@ -59,6 +59,8 @@ export type ReviewStatus = ReviewSessionDescription &
     };
     /** In file then line order, as `get_feedback` lists drafts. */
     readonly appliedFindings: ReadonlyArray<AppliedFindingReading>;
+    /** How many Agent explanations the Review holds, out of `MAX_AGENT_EXPLANATIONS` (#665). */
+    readonly explanationCount: number;
   };
 
 /**
@@ -99,6 +101,7 @@ export async function readReviewStatus(
         line: draft.anchor.line,
         appliedAt: draft.appliedAt,
       })),
+    explanationCount: review.agentExplanations?.length ?? 0,
   });
 }
 

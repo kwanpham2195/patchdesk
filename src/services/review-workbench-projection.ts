@@ -27,6 +27,10 @@ import {
   readFeedbackHandoff,
   type FeedbackHandoffReading,
 } from "../domain/feedback-handoff";
+import {
+  projectAgentExplanation,
+  type AgentExplanationEntry,
+} from "../domain/agent-explanation";
 import { projectLocalDraft, type LocalDraftEntry } from "../domain/local-draft";
 import type { LocalDraftReply } from "../domain/local-draft-reply";
 import type { LocalPatchView } from "../domain/local-patch-view";
@@ -194,6 +198,8 @@ export type ReviewWorkbenchProjection = {
   readonly localDrafts?: ReadonlyArray<LocalDraftEntry>;
   /** Present exactly on a local Review: the coding agent's latest reply to each draft it answered, empty when none (#600). */
   readonly localDraftReplies?: ReadonlyArray<LocalDraftReply>;
+  /** Present exactly on a local Review: the coding agent's explanations on diff lines, empty when none (#665). */
+  readonly agentExplanations?: ReadonlyArray<AgentExplanationEntry>;
   /** Present exactly on a local Review, `null` when it has no Change intent (#467). */
   readonly changeIntent?: ChangeIntentView | null;
   /** Present exactly on a local Review, `null` when the drafts have not been handed off since the last move (#603). */
@@ -754,6 +760,11 @@ export class ReviewWorkbenchProjectionService {
           : undefined,
         localDraftReplies: isLocalReview(stableReview.value)
           ? (stableReview.value.localDraftReplies ?? [])
+          : undefined,
+        agentExplanations: isLocalReview(stableReview.value)
+          ? (stableReview.value.agentExplanations ?? []).map(
+              projectAgentExplanation,
+            )
           : undefined,
         agentRunRequests: isLocalReview(stableReview.value)
           ? (stableReview.value.agentRunRequests ?? []).filter(

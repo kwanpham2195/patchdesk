@@ -127,7 +127,8 @@ export const MAX_MAINTAINER_NOTE_LENGTH = 65_536;
 
 const lineNumber = v.pipe(v.number(), v.integer(), v.minValue(1));
 const nonEmpty = v.pipe(v.string(), v.minLength(1));
-const storedAnchorSchema = v.strictObject({
+/** The stored form of a draft's anchor fingerprint; an Agent explanation stores the same. */
+export const storedAnchorSchema = v.strictObject({
   path: nonEmpty,
   side: v.picklist(["new", "old"]),
   startLine: lineNumber,

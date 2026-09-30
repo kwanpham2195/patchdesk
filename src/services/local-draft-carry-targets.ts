@@ -1,23 +1,36 @@
 import { readFile, realpath } from "node:fs/promises";
 
+import type { AgentExplanation } from "../domain/agent-explanation";
+import type { ReviewAnchorFingerprint } from "../domain/diff-anchor";
 import type { RepoRelativePath } from "../domain/ids";
 import type { LocalDraft } from "../domain/local-draft";
 import {
+  carryAgentExplanation,
   carryLocalDraft,
   type LocalDraftCarryTarget,
 } from "../domain/local-draft-carry";
-import type { LocalPatchView } from "../domain/local-patch-view";
+import type {
+  LocalPatchView,
+  StoredLocalPatchView,
+} from "../domain/local-patch-view";
 import type { LocalReviewSession } from "../domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
 import type { LocalReviewSessionPreparation } from "./local-review-session-preparation";
 
-/** Read every draft's new view before Apply settlement can change the stored Finding drafts (#568). */
+/**
+ * Read the new view of every draft and Agent explanation before Apply
+ * settlement can change the stored Finding drafts (#568). An explanation has
+ * no view field, so it reads Combined.
+ */
 export async function readCarryTargets(
-  drafts: ReadonlyArray<LocalDraft>,
+  drafts: ReadonlyArray<{
+    readonly view?: StoredLocalPatchView;
+    readonly anchor: Pick<ReviewAnchorFingerprint, "path">;
+  }>,
   session: LocalReviewSession,
   preparation: Pick<LocalReviewSessionPreparation, "readCommitFiles">,
 ): Promise<ReadonlyMap<LocalPatchView, LocalDraftCarryTarget> | undefined> {
-  const originView = (draft: LocalDraft): LocalPatchView =>
+  const originView = (draft: (typeof drafts)[number]): LocalPatchView =>
     draft.view ?? "combined";
   const pathsByView = new Map<LocalPatchView, Set<RepoRelativePath>>();
   for (const draft of drafts) {
@@ -42,6 +55,18 @@ export function carryToSession(
     const target = targets.get(draft.view ?? "combined");
     return target === undefined ? draft : carryLocalDraft(draft, target);
   });
+}
+
+/** Carry Agent explanations to the new Combined patch, dropping those it cannot place (#665). */
+export function carryAgentExplanationsToSession(
+  explanations: ReadonlyArray<AgentExplanation>,
+  targets: ReadonlyMap<LocalPatchView, LocalDraftCarryTarget>,
+): ReadonlyArray<AgentExplanation> {
+  const combined = targets.get("combined");
+  if (combined === undefined) return [];
+  return explanations.flatMap(
+    (explanation) => carryAgentExplanation(explanation, combined) ?? [],
+  );
 }
 
 /**

@@ -30,6 +30,8 @@ export type FindingId = Brand<string, "FindingId">;
 export type AgentRunRequestId = Brand<string, "AgentRunRequestId">;
 /** A maintainer note's identity on its local Review's Local draft list. */
 export type LocalNoteId = Brand<string, "LocalNoteId">;
+/** A coding agent's explanation on diff lines of a local Review (#665). */
+export type AgentExplanationId = Brand<string, "AgentExplanationId">;
 /** An opaque GitHub GraphQL review-thread node identifier. */
 export type GitHubThreadId = Brand<string, "GitHubThreadId">;
 /** GitHub REST pull-request review identifier (serialized integer). */
@@ -290,6 +292,17 @@ export function createAgentRunRequestId(uuid: string): AgentRunRequestId {
 /** A new maintainer note identifier from a random UUID the caller supplies. */
 export function createLocalNoteId(uuid: string): LocalNoteId {
   return brand(`note-${uuid}`);
+}
+
+export function parseAgentExplanationId(
+  input: unknown,
+): Result<AgentExplanationId, InvalidDomainValue> {
+  return parseSafeSlug<"AgentExplanationId">(input, "agentExplanationId");
+}
+
+/** A new Agent explanation identifier from a random UUID the caller supplies. */
+export function createAgentExplanationId(uuid: string): AgentExplanationId {
+  return brand(`explanation-${uuid}`);
 }
 
 /** Parse an opaque GitHub review-thread node identifier. */

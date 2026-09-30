@@ -42,6 +42,11 @@ import {
   type WorkspaceProfileId,
 } from "./ids";
 import {
+  parseStoredAgentExplanations,
+  storedAgentExplanationSchema,
+  type AgentExplanation,
+} from "./agent-explanation";
+import {
   parseStoredLocalDrafts,
   storedLocalDraftSchema,
   type LocalDraft,
@@ -158,6 +163,8 @@ export type Review<Source extends ReviewSource = ReviewSource> = {
   readonly localDrafts?: ReadonlyArray<LocalDraft>;
   /** The coding agent's latest reply to each Local draft it answered (ADR 0052), kept apart from the drafts; every move keeps it, absent when empty. */
   readonly localDraftReplies?: ReadonlyArray<LocalDraftReply>;
+  /** The coding agent's explanations on diff lines (#665), apart from the Local drafts; a move carries or drops them, absent when empty. */
+  readonly agentExplanations?: ReadonlyArray<AgentExplanation>;
   /** A local Review's Change intent (#467); never present on a pull request Review. Every move to a new session keeps it. */
   readonly changeIntent?: ChangeIntent;
   /**
@@ -284,6 +291,7 @@ const reviewV2Schema = v.strictObject({
   ),
   localDrafts: v.optional(v.array(storedLocalDraftSchema)),
   localDraftReplies: v.optional(v.array(localDraftReplySchema)),
+  agentExplanations: v.optional(v.array(storedAgentExplanationSchema)),
   changeIntent: v.optional(storedChangeIntentSchema),
   preparedSessionId: v.optional(v.string()),
   agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
@@ -377,6 +385,8 @@ export function moveLocalReviewToSession(
     readonly headSha: GitSha;
     readonly updatedAt: IsoTimestamp;
     readonly localDrafts?: ReadonlyArray<LocalDraft>;
+    /** The Agent explanations the move carried; absent keeps the stored ones. */
+    readonly agentExplanations?: ReadonlyArray<AgentExplanation>;
   },
 ): Result<Review<LocalReviewSource>, { readonly _tag: "ReviewTerminal" }> {
   if (review.status._tag === "Terminal") return err({ _tag: "ReviewTerminal" });
@@ -384,8 +394,10 @@ export function moveLocalReviewToSession(
     preparedSessionId: _moved,
     handoff: _handedOff,
     agentRunRequests,
+    agentExplanations,
     ...rest
   } = review;
+  const explanations = input.agentExplanations ?? agentExplanations;
   return ok({
     ...rest,
     currentSessionId: input.sessionId,
@@ -394,6 +406,7 @@ export function moveLocalReviewToSession(
     updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
     ...definedProps({
       localDrafts: input.localDrafts ?? review.localDrafts,
+      agentExplanations: explanations?.length === 0 ? undefined : explanations,
       agentRunRequests: agentRunRequestsOnSession(
         agentRunRequests,
         input.sessionId,
@@ -670,6 +683,7 @@ function parseReviewBase(
     | "lastLooked"
     | "localDrafts"
     | "localDraftReplies"
+    | "agentExplanations"
     | "changeIntent"
     | "preparedSessionId"
     | "agentRunRequests"
@@ -736,6 +750,12 @@ function parseReviewBase(
       : source.value.kind === "pull_request"
         ? invalid()
         : parseStoredLocalDraftReplies(raw.localDraftReplies);
+  const agentExplanations =
+    raw.agentExplanations === undefined
+      ? ok(undefined)
+      : source.value.kind === "pull_request"
+        ? invalid()
+        : parseStoredAgentExplanations(raw.agentExplanations);
   const changeIntent =
     raw.changeIntent === undefined
       ? ok(undefined)
@@ -767,6 +787,7 @@ function parseReviewBase(
     lastLooked._tag === "err" ||
     localDrafts._tag === "err" ||
     localDraftReplies._tag === "err" ||
+    agentExplanations._tag === "err" ||
     changeIntent._tag === "err" ||
     preparedSessionId._tag === "err" ||
     agentRunRequests._tag === "err" ||
@@ -786,6 +807,7 @@ function parseReviewBase(
       lastLooked: lastLooked.value,
       localDrafts: localDrafts.value,
       localDraftReplies: localDraftReplies.value,
+      agentExplanations: agentExplanations.value,
       changeIntent: changeIntent.value,
       preparedSessionId: preparedSessionId.value,
       agentRunRequests: agentRunRequests.value,

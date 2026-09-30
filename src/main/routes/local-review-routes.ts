@@ -22,6 +22,7 @@ import { definedProps } from "../../domain/defined-props";
 import { feedbackHandoffVerdicts } from "../../domain/feedback-handoff";
 import {
   parseAbsolutePath,
+  parseAgentExplanationId,
   parseFindingId,
   parseGitHubHost,
   parseGitHubOwner,
@@ -47,6 +48,7 @@ import {
   changeIntentFailureKinds,
   changeIntentRequestSchema,
 } from "../../services/local-change-intent-service";
+import { agentExplanationFailureKinds } from "../../services/agent-explanation-service";
 import { describeRepositoryCheckout } from "../../services/local-checkout";
 import { localDraftFailureKinds } from "../../services/local-draft-service";
 import { localPatchViewFailureKinds } from "../../services/local-patch-view-service";
@@ -353,6 +355,27 @@ export function registerLocalReviewRoutes(
     );
   });
 
+  // Dismiss on an Agent explanation (#665); the coding agent adds them over MCP.
+  app.post("/v1/reviews/agent-explanations/dismiss", async (context) => {
+    const parsed = safeParse(
+      agentExplanationDismissSchema,
+      await jsonBody(context),
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const key = parseDraftWriteKey(parsed.output);
+    const explanationId = parseAgentExplanationId(parsed.output.explanationId);
+    if (key === undefined || explanationId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return serviceResponse(
+      context,
+      await container.agentExplanations.dismiss({
+        ...key,
+        explanationId: explanationId.value,
+      }),
+      agentExplanationFailureKinds,
+    );
+  });
+
   // Ready for agent (#603); Copy as agent prompt below also stamps a hand-off.
   app.post("/v1/reviews/local-drafts/handoff", async (context) => {
     const parsed = safeParse(feedbackHandoffSchema, await jsonBody(context));
@@ -490,6 +513,11 @@ const localDraftResolveSchema = strictObject({
   ...draftWriteKeySchema,
   draft: localDraftReplySchema.entries.draft,
   resolved: boolean(),
+});
+
+const agentExplanationDismissSchema = strictObject({
+  ...draftWriteKeySchema,
+  explanationId: pipe(string(), minLength(1)),
 });
 
 function parseNoteKey(raw: InferOutput<typeof localNoteSchema>) {
