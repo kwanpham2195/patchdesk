@@ -1,6 +1,7 @@
 import type { Context, Hono } from "hono";
 import {
   array,
+  boolean,
   integer,
   maxLength,
   minLength,
@@ -34,6 +35,10 @@ import {
   type FindingId,
 } from "../../domain/ids";
 import { MAX_MAINTAINER_NOTE_LENGTH } from "../../domain/local-draft";
+import {
+  localDraftReplySchema,
+  parseLocalDraftTarget,
+} from "../../domain/local-draft-reply";
 import { localPatchViews } from "../../domain/local-patch-view";
 import { ok } from "../../domain/result";
 import { reviewRequestSchema } from "../../domain/review";
@@ -329,6 +334,25 @@ export function registerLocalReviewRoutes(
     );
   });
 
+  // Resolve and Reopen (#600); only the maintainer resolves a draft.
+  app.post("/v1/reviews/local-drafts/resolve", async (context) => {
+    const parsed = safeParse(localDraftResolveSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const key = parseDraftWriteKey(parsed.output);
+    const draft = parseLocalDraftTarget(parsed.output.draft);
+    if (key === undefined || draft === undefined)
+      return context.json({ error: "invalid_input" }, 400);
+    return serviceResponse(
+      context,
+      await container.localDrafts.setResolved({
+        ...key,
+        draft,
+        resolved: parsed.output.resolved,
+      }),
+      localDraftFailureKinds,
+    );
+  });
+
   // Ready for agent (#603); Copy as agent prompt below also stamps a hand-off.
   app.post("/v1/reviews/local-drafts/handoff", async (context) => {
     const parsed = safeParse(feedbackHandoffSchema, await jsonBody(context));
@@ -460,6 +484,12 @@ const localNoteEditSchema = strictObject({
 const feedbackHandoffSchema = strictObject({
   ...draftWriteKeySchema,
   verdict: optional(picklist(feedbackHandoffVerdicts)),
+});
+
+const localDraftResolveSchema = strictObject({
+  ...draftWriteKeySchema,
+  draft: localDraftReplySchema.entries.draft,
+  resolved: boolean(),
 });
 
 function parseNoteKey(raw: InferOutput<typeof localNoteSchema>) {

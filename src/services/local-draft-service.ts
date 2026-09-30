@@ -37,8 +37,17 @@ import {
   type LocalDraft,
   type LocalDraftEntry,
   type LocalDraftFeedbackState,
+  type LocalDraftTarget,
   type MaintainerNote,
 } from "../domain/local-draft";
+import {
+  localDraftId,
+  localDraftTargetId,
+  parseLocalDraftId,
+  parseLocalDraftReplyText,
+  type LocalDraftReply,
+  type LocalDraftReplyStatus,
+} from "../domain/local-draft-reply";
 import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
 import {
   indexPatchHunks,
@@ -54,6 +63,8 @@ import {
   editMaintainerNote,
   recordFeedbackHandoff,
   removeLocalDraft,
+  replyToLocalDraft,
+  setLocalDraftResolved,
 } from "../domain/review-local-drafts";
 import { parseReviewResult } from "../domain/review-result";
 import {
@@ -112,6 +123,30 @@ export type FeedbackHandoffRequest = ReviewKey & {
   readonly verdict?: FeedbackHandoffVerdict;
 };
 
+/** Resolve or Reopen on one draft; only the maintainer sends it. */
+export type LocalDraftResolveRequest = ReviewKey & {
+  readonly draft: LocalDraftTarget;
+  readonly resolved: boolean;
+};
+
+/** The coding agent's reply to one draft (ADR 0052 `reply_to_note`); it names no session, since a draft keeps its id across moves. */
+export type LocalDraftReplyRequest = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  /** A `localDraftId` as `get_feedback` listed it. */
+  readonly draftId: string;
+  readonly status: LocalDraftReplyStatus;
+  readonly text: string;
+};
+
+/** What `reply_to_note` answers: the stored reply, and whether the maintainer already resolved the draft. */
+export type LocalDraftReplied = {
+  readonly draftId: string;
+  readonly status: LocalDraftReplyStatus;
+  readonly repliedAt: IsoTimestamp;
+  readonly resolved: boolean;
+};
+
 export type LocalDraftFailure = {
   readonly reason:
     | "in_progress"
@@ -119,11 +154,25 @@ export type LocalDraftFailure = {
     | "terminal"
     /** Not a local Review; the Review moved to another session than the one named; the Finding is not a current, open, Mapped Finding; or a note's lines are not in the named view's patch, or the session has no such view. */
     | "not_applicable"
-    /** A note's text is empty or longer than the comment limit. */
+    /** A note's or reply's text is empty or longer than its limit. */
     | "invalid_input"
     /** The draft holds a credential-shaped value, which Patchdesk never stores. */
     | "draft_sensitive"
+    /** A reply holds a credential-shaped value. */
+    | "reply_sensitive"
+    /** The Review has no draft with that id, as after the maintainer removed it. */
+    | "draft_not_found"
     | "storage";
+};
+
+/** What taking the Review lock and loading the Review can refuse with. */
+type LocalDraftLockFailure = {
+  readonly reason: "in_progress" | "not_found" | "storage";
+};
+
+/** What `reply_to_note` can refuse with; it never writes the drafts, so never `draft_sensitive`. */
+export type LocalDraftReplyFailure = {
+  readonly reason: Exclude<LocalDraftFailure["reason"], "draft_sensitive">;
 };
 
 /** What a read of the Local drafts can refuse with; a read never writes, so never `draft_sensitive`. */
@@ -135,6 +184,8 @@ type LocalDraftReadFailure = {
 export const localDraftFailureKinds = {
   invalid_input: "invalid",
   draft_sensitive: "invalid",
+  reply_sensitive: "invalid",
+  draft_not_found: "not_found",
   stale_cursor: "conflict",
   not_found: "not_found",
   in_progress: "conflict",
@@ -151,19 +202,26 @@ export type LocalDraftList = {
   readonly feedbackHandoff?: FeedbackHandoffReading;
 };
 
-/** Omits `state` from each member of a union, keeping the members apart. */
-type WithoutState<Entry> = Entry extends unknown ? Omit<Entry, "state"> : never;
+/** Omits `state` and `resolvedAt` from each member of a union, keeping the members apart. */
+type WithoutState<Entry> = Entry extends unknown
+  ? Omit<Entry, "state" | "resolvedAt">
+  : never;
 
 /**
  * A draft as the workbench lists it, with a state always present: `current`
  * for a draft written on the Review's current session, which the workbench
  * leaves unlabelled. `inline` says whether its lines sit inside a hunk of its
- * origin view on the current session. A Finding draft adds its comment and
- * verified suggestion.
+ * origin view on the current session. `draftId` is what `reply_to_note`
+ * names, `resolved` says the maintainer resolved it, and `reply` is the
+ * agent's latest reply. A Finding draft adds its comment and verified
+ * suggestion.
  */
 type LocalFeedbackEntry = WithoutState<LocalDraftEntry> & {
+  readonly draftId: string;
   readonly state: LocalDraftFeedbackState;
   readonly inline: boolean;
+  readonly resolved: boolean;
+  readonly reply?: Omit<LocalDraftReply, "draft">;
   readonly comment?: string;
   readonly suggestion?: string;
 };
@@ -265,6 +323,76 @@ export class LocalDraftService {
     );
   }
 
+  /** Resolve or Reopen one draft (#600). */
+  setResolved(
+    request: LocalDraftResolveRequest,
+  ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
+    return this.locked(request, async (review) => {
+      const now = this.dependencies.now();
+      return openReviewChange(
+        setLocalDraftResolved(
+          review,
+          request.draft,
+          request.resolved ? now : undefined,
+          now,
+        ),
+      );
+    });
+  }
+
+  /**
+   * The coding agent's reply to one draft (ADR 0052 `reply_to_note`),
+   * replacing its earlier one. Text that looks like a credential is refused
+   * before the Review lock, as for an agent intent.
+   */
+  reply(
+    request: LocalDraftReplyRequest,
+  ): Promise<Result<LocalDraftReplied, LocalDraftReplyFailure>> {
+    const draft = parseLocalDraftId(request.draftId);
+    if (draft === undefined)
+      return Promise.resolve(err({ reason: "draft_not_found" }));
+    const text = parseLocalDraftReplyText(request.text);
+    if (text._tag === "err")
+      return Promise.resolve(err({ reason: "invalid_input" }));
+    if (containsSensitiveData(text.value))
+      return Promise.resolve(err({ reason: "reply_sensitive" }));
+    return this.withReviewLock<LocalDraftReplied, LocalDraftReplyFailure>(
+      request,
+      async (review) => {
+        if (!isLocalReview(review)) return err({ reason: "not_applicable" });
+        const repliedAt = this.dependencies.now();
+        const replied = replyToLocalDraft(review, {
+          draft,
+          status: request.status,
+          text: text.value,
+          repliedAt,
+        });
+        if (replied._tag === "err")
+          return err({
+            reason:
+              replied.error._tag === "DraftNotFound"
+                ? "draft_not_found"
+                : "terminal",
+          });
+        const saved = await this.dependencies.reviews.save(
+          replied.value,
+          review.updatedAt,
+        );
+        if (saved._tag === "err") return err({ reason: "storage" });
+        const draftId = localDraftTargetId(draft);
+        return ok({
+          draftId,
+          status: request.status,
+          repliedAt,
+          resolved: (review.localDrafts ?? []).some(
+            (entry) =>
+              localDraftId(entry) === draftId && entry.resolvedAt !== undefined,
+          ),
+        });
+      },
+    );
+  }
+
   /** Ready for agent: stamps the Feedback hand-off, replacing an earlier one (ADR 0052). */
   handOff(
     request: FeedbackHandoffRequest,
@@ -287,7 +415,11 @@ export class LocalDraftService {
   async feedback(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-    cursor?: string,
+    page: {
+      readonly cursor?: string;
+      /** Leaves out the drafts the maintainer resolved (#600). */
+      readonly open?: boolean;
+    } = {},
   ): Promise<
     Result<LocalFeedback, LocalDraftReadFailure | LocalFeedbackPageFailure>
   > {
@@ -298,18 +430,23 @@ export class LocalDraftService {
       review.value,
     );
     if (current._tag === "err") return err({ reason: "storage" });
-    const drafts = review.value.localDrafts ?? [];
+    const drafts = (review.value.localDrafts ?? []).filter(
+      (draft) => page.open !== true || draft.resolvedAt === undefined,
+    );
+    const replies = review.value.localDraftReplies ?? [];
     const inline = await inlineInOriginView(current.value, drafts);
-    const page = pageLocalDrafts(drafts, cursor, (listed, prompted) => ({
+    const paged = pageLocalDrafts(drafts, page.cursor, (listed, prompted) => ({
       ...current.value.description,
       ...readFeedbackHandoff(review.value.handoff),
-      localDrafts: listed.map((draft) => projectFeedbackEntry(draft, inline)),
+      localDrafts: listed.map((draft) =>
+        projectFeedbackEntry(draft, inline, replies),
+      ),
       markdown: renderLocalDraftsAsAgentPrompt(prompted),
     }));
-    if (page._tag === "err") return page;
+    if (paged._tag === "err") return paged;
     return ok({
-      ...page.value.page,
-      ...definedProps({ nextCursor: page.value.nextCursor }),
+      ...paged.value.page,
+      ...definedProps({ nextCursor: paged.value.nextCursor }),
     });
   }
 
@@ -398,13 +535,16 @@ export class LocalDraftService {
   }
 
   /** Runs `write` on the Review it loaded while holding the Review lock. */
-  private async withReviewLock<T>(
+  private async withReviewLock<
+    T,
+    Failure extends LocalDraftFailure = LocalDraftFailure,
+  >(
     request: {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;
     },
-    write: (review: Review) => Promise<Result<T, LocalDraftFailure>>,
-  ): Promise<Result<T, LocalDraftFailure>> {
+    write: (review: Review) => Promise<Result<T, NoInfer<Failure>>>,
+  ): Promise<Result<T, Failure | LocalDraftLockFailure>> {
     const key = `${request.profileId}:${request.reviewId}`;
     if (!this.dependencies.coordinator.acquire(key))
       return err({ reason: "in_progress" });
@@ -610,12 +750,30 @@ function readViewPatch(
 function projectFeedbackEntry(
   draft: LocalDraft,
   inline: (entry: LocalDraftEntry) => boolean,
+  replies: ReadonlyArray<LocalDraftReply>,
 ): LocalFeedbackEntry {
   const projected = projectLocalDraft(draft);
+  const { resolvedAt: _resolvedAt, ...listed } = projected;
+  const draftId = localDraftId(draft);
+  const reply = replies.find(
+    (candidate) => localDraftTargetId(candidate.draft) === draftId,
+  );
   const entry = {
-    ...projected,
+    ...listed,
+    draftId,
     state: localDraftFeedbackState(draft),
     inline: inline(projected),
+    resolved: draft.resolvedAt !== undefined,
+    ...definedProps({
+      reply:
+        reply === undefined
+          ? undefined
+          : {
+              status: reply.status,
+              text: reply.text,
+              repliedAt: reply.repliedAt,
+            },
+    }),
   };
   if (isMaintainerNote(draft)) return entry;
   return {
@@ -629,11 +787,14 @@ function projectFeedbackEntry(
 function openReviewChange(
   changed: Result<
     Review<LocalReviewSource>,
-    { readonly _tag: "ReviewTerminal" | "NoteNotFound" }
+    { readonly _tag: "ReviewTerminal" | "NoteNotFound" | "DraftNotFound" }
   >,
 ): Result<Review<LocalReviewSource>, LocalDraftFailure> {
   if (changed._tag === "ok") return changed;
-  return err({
-    reason: changed.error._tag === "NoteNotFound" ? "not_found" : "terminal",
-  });
+  const reasons = {
+    ReviewTerminal: "terminal",
+    NoteNotFound: "not_found",
+    DraftNotFound: "draft_not_found",
+  } as const;
+  return err({ reason: reasons[changed.error._tag] });
 }

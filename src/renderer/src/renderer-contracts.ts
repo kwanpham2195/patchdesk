@@ -28,6 +28,7 @@ import {
 } from "../../domain/change-intent";
 import { changeScopeSchema } from "../../domain/change-scope";
 import { feedbackHandoffReadingSchema } from "../../domain/feedback-handoff";
+import { localDraftReplySchema } from "../../domain/local-draft-reply";
 import {
   CHECK_OVERALL_STATES,
   GITHUB_MERGE_STATE_STATUSES,
@@ -893,6 +894,7 @@ const workbenchProjectionSchema = v.strictObject({
     }),
   ),
   localDrafts: v.optional(v.array(localDraftEntrySchema)),
+  localDraftReplies: v.optional(v.array(localDraftReplySchema)),
   changeIntent: v.optional(v.nullable(changeIntentViewSchema)),
   feedbackHandoff: v.optional(v.nullable(feedbackHandoffReadingSchema)),
   agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
