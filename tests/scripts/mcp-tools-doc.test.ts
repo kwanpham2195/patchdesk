@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { expect, it } from "vitest";
 
 import { updateMcpToolsBlock } from "../../scripts/mcp-tools-doc-lib.mjs";
+import { reviewLoopSteps } from "../../src/mcp/review-loop-instructions";
 import { mcpToolManifest } from "../../src/mcp/tool-manifest";
 
 const readDoc = (path: string): Promise<string> =>
@@ -32,4 +33,10 @@ it("gives the same agent instructions in README.md and docs/mcp.md", async () =>
 
   expect(fromReadme).toBeDefined();
   expect(agentBlock(await readDoc("docs/mcp.md"))).toBe(fromReadme);
+});
+
+it("repeats the server's review loop steps in the docs/mcp.md agent block", async () => {
+  const document = await readDoc("docs/mcp.md");
+
+  for (const step of reviewLoopSteps) expect(document).toContain(`\n${step}\n`);
 });

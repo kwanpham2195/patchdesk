@@ -1,6 +1,7 @@
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { toStandardJsonSchema } from "@valibot/to-json-schema";
 
+import { reviewLoopInstructions } from "./review-loop-instructions";
 import { callPatchdeskApp } from "./socket-client";
 import type {
   McpSocketBounds,
@@ -27,10 +28,10 @@ export type PatchdeskMcpServerOptions = {
 export function createPatchdeskMcpServer(
   options: PatchdeskMcpServerOptions,
 ): McpServer {
-  const server = new McpServer({
-    name: "patchdesk",
-    version: options.version,
-  });
+  const server = new McpServer(
+    { name: "patchdesk", version: options.version },
+    { instructions: reviewLoopInstructions },
+  );
   for (const name of mcpToolNames) {
     const tool = mcpToolManifest[name];
     server.registerTool(

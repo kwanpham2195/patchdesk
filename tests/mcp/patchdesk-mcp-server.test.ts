@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { reviewLoopInstructions } from "../../src/mcp/review-loop-instructions";
 import { mcpToolNames } from "../../src/mcp/tool-manifest";
 import {
   startAppWithLinkedWorktree,
@@ -46,6 +47,12 @@ describe.each(mcpProtocolEras)(
           },
         ],
       });
+    });
+
+    it("sends the review loop rules as its instructions at connect", async () => {
+      const client = await connect("/tmp/pd-mcp-missing/patchdesk.sock");
+
+      expect(client.getInstructions()).toBe(reviewLoopInstructions);
     });
   },
 );

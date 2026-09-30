@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added the review loop rules to `patchdesk mcp` as MCP server instructions, so a connected coding agent knows how to request an Insight, find your Review, and answer your notes without a block pasted into `AGENTS.md`. The pasted block is now only needed to have the agent open a Review for every change, or for an MCP host that ignores server instructions. #701
+
 ## 0.0.13 - 2026-09-30
 
 - Changed a local Review's inline note card to show the note's Resolved badge and the coding agent's latest reply, with its status, `Agent replied <age>`, and text, as the Notes section does, in the Diff tab and in a Walkthrough's cited hunks. **Resolve note** and **Reopen note** on the card do what Resolve and Reopen do in Notes, and a resolved note's card stays under its lines. A merged or closed Review shows the badge and reply without the buttons. #688
