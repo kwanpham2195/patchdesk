@@ -187,9 +187,65 @@ export const mcpToolManifest = {
       openWorldHint: false,
     },
   },
+  explain_lines: {
+    description:
+      "Leave a short explanation of your change on the diff lines it concerns, so the maintainer reads your reasoning beside the code in Patchdesk. Use it only when the maintainer asks you to explain your changes, and only on key lines: why you chose something, what a branch covers, or a value you guessed. Do not restate what the code does. Each call adds one explanation; a Review holds at most 10. Lines are numbered in the Combined diff of sessionId, which must be the Review's current session; the range stays on one side and inside one hunk. The maintainer may reply, which reaches you through get_feedback as their note, or dismiss it; get_feedback never returns explanations. Refusals: stale_session (if you changed the code since, call refresh_review and ask the maintainer to press Refresh), lines_not_in_diff, explanation_limit (keep the most important, or ask the maintainer to dismiss some), and explanation_sensitive when the text looks like a credential.",
+    inputSchema: v.strictObject({
+      reviewId,
+      sessionId: v.pipe(
+        v.string(),
+        v.minLength(1),
+        v.maxLength(512),
+        v.description(
+          "The Review's current sessionId, as review_local, list_local_reviews, or get_review_status returned it.",
+        ),
+      ),
+      path: v.pipe(
+        v.string(),
+        v.minLength(1),
+        v.maxLength(4_096),
+        v.description(
+          "The file's path in the diff, relative to the repository root.",
+        ),
+      ),
+      side: v.pipe(
+        v.picklist(["new", "old"]),
+        v.description(
+          "new for lines of the changed file, old for removed lines.",
+        ),
+      ),
+      startLine: v.optional(
+        v.pipe(
+          v.number(),
+          v.integer(),
+          v.minValue(1),
+          v.description("The first line of the range; defaults to line."),
+        ),
+      ),
+      line: v.pipe(
+        v.number(),
+        v.integer(),
+        v.minValue(1),
+        v.description("The last line of the range."),
+      ),
+      text: v.pipe(
+        v.string(),
+        v.minLength(1),
+        // The explanation limit in src/domain/agent-explanation.ts; `pnpm docs:mcp-tools` loads this file without the domain modules.
+        v.maxLength(1_000),
+        v.description("Your reasoning for these lines, as plain text."),
+      ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   get_review_status: {
     description:
-      "Read where a local Review stands in one call. Returns the Review's current session (sessionId, headSha, baseSha, patchHash); preparedSessionId while a session your refresh_review prepared waits for the maintainer's Refresh, absent once their Refresh has moved the Review to it; for each Insight (analysis, walkthrough, brief) the status and requestId get_insight reports; localDraftCounts, how many of the maintainer's drafts of each kind (finding, note) are in each state get_feedback reports (current, unchanged, changed, needs_attention, applied); counts include resolved drafts; get_feedback with open: true lists the open ones; handoff and changedSinceHandoff as get_feedback reports them, when the maintainer marked the drafts ready for you; and appliedFindings, the Findings whose suggestion the maintainer's Apply wrote to your checkout, each with findingId, title, path, startLine and line (new-side lines of the session it was drafted on), and appliedAt. It returns no Insight result and no draft text; get_insight and get_feedback read those. Read-only: it takes no snapshot and does not mark the Review opened. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it; a pull request Review is refused not_applicable.",
+      "Read where a local Review stands in one call. Returns the Review's current session (sessionId, headSha, baseSha, patchHash); preparedSessionId while a session your refresh_review prepared waits for the maintainer's Refresh, absent once their Refresh has moved the Review to it; for each Insight (analysis, walkthrough, brief) the status and requestId get_insight reports; localDraftCounts, how many of the maintainer's drafts of each kind (finding, note) are in each state get_feedback reports (current, unchanged, changed, needs_attention, applied); counts include resolved drafts; get_feedback with open: true lists the open ones; explanationCount, how many of your explain_lines explanations the Review holds; handoff and changedSinceHandoff as get_feedback reports them, when the maintainer marked the drafts ready for you; and appliedFindings, the Findings whose suggestion the maintainer's Apply wrote to your checkout, each with findingId, title, path, startLine and line (new-side lines of the session it was drafted on), and appliedAt. It returns no Insight result and no draft text; get_insight and get_feedback read those. Read-only: it takes no snapshot and does not mark the Review opened. A reviewId the active profile does not hold is refused not_found, or profile_changed when another profile holds it; a pull request Review is refused not_applicable.",
     inputSchema: v.strictObject({ reviewId }),
     annotations: { readOnlyHint: true, openWorldHint: false },
   },

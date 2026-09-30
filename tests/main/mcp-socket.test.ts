@@ -100,6 +100,10 @@ function recordingTools(reply: McpToolReply = emptyListing()) {
       schema: mcpToolManifest.reply_to_note.inputSchema,
       call: record("reply_to_note"),
     },
+    explain_lines: {
+      schema: mcpToolManifest.explain_lines.inputSchema,
+      call: record("explain_lines"),
+    },
   };
   return { calls, tools };
 }
@@ -420,6 +424,7 @@ describe("MCP tool dispatcher", () => {
       },
       localChangeIntent: { recordAgentIntent: unavailable },
       localDrafts: { feedback: unavailable, reply: unavailable },
+      agentExplanations: { explain: unavailable },
       agentRunRequests: { request: unavailable },
       reviewWorkbench: { load: unavailable },
       sessions: { load: unreadable },
