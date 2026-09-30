@@ -122,7 +122,10 @@ describe("LocalDraftService", () => {
     expect(reopened.localDrafts).toMatchObject([
       { kind: "finding", findingId: "finding-bound" },
     ]);
-    expect(removed).toEqual({ _tag: "ok", value: { localDrafts: [] } });
+    expect(removed).toEqual({
+      _tag: "ok",
+      value: { localDrafts: [], localDraftReplies: [] },
+    });
     const stored = value(
       await harness.reviews.load(profileId, request.reviewId),
     );
@@ -438,7 +441,10 @@ describe("LocalDraftService", () => {
       expect(reopened.localDrafts).toMatchObject([
         { kind: "note", text: "Stop before values.length." },
       ]);
-      expect(removed).toEqual({ _tag: "ok", value: { localDrafts: [] } });
+      expect(removed).toEqual({
+        _tag: "ok",
+        value: { localDrafts: [], localDraftReplies: [] },
+      });
     });
 
     it("fingerprints a note made on Committed against the Committed patch and stores its view (#556)", async () => {

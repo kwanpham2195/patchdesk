@@ -188,6 +188,10 @@ export function useLocalDrafts({
         if (!parsed.success) throw new Error("Unexpected Local draft response");
         onWorkbenchPatch({
           localDrafts: parsed.output.localDrafts,
+          // A removal drops the draft's reply; adopting the list keeps a re-added draft from showing it until the next detection.
+          ...definedProps({
+            localDraftReplies: parsed.output.localDraftReplies,
+          }),
           feedbackHandoff: parsed.output.feedbackHandoff ?? null,
         });
       } finally {

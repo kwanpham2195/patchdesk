@@ -19,7 +19,7 @@ const localDraftReplyStatuses = ["addressed", "skipped", "question"] as const;
 
 export type LocalDraftReplyStatus = (typeof localDraftReplyStatuses)[number];
 
-/** A reply is a short answer; the cap keeps a `get_feedback` page of 25 replies well under its size bound. */
+/** A reply is a short answer. The cap keeps each entry small; `get_feedback`'s byte-bounded pager, not this cap, keeps a page under its size bound. */
 const MAX_LOCAL_DRAFT_REPLY_LENGTH = 4_096;
 
 /**

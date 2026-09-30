@@ -287,6 +287,43 @@ describe("useLocalDrafts", () => {
     });
   });
 
+  it("drops a removed Finding draft's reply with the list the main process returns, so the draft added again shows no old reply (#600)", async () => {
+    const double = installDesktopDouble({
+      [REMOVE]: () => success({ localDrafts: [], localDraftReplies: [] }),
+      [ADD]: () => success({ localDrafts: [drafted], localDraftReplies: [] }),
+    });
+    restore = double.restore;
+    const onWorkbenchPatch = vi.fn();
+    let workbench = projection({
+      ...localReview([drafted]),
+      localDraftReplies: [
+        {
+          draft: {
+            runId: "insight-analysis-1-fixture",
+            findingId: "finding-1",
+          },
+          status: "addressed" as const,
+          text: "Fixed the bound.",
+          repliedAt: "2026-09-30T00:00:00.000Z",
+        },
+      ],
+    });
+    onWorkbenchPatch.mockImplementation((patch: Partial<WorkbenchResponse>) => {
+      workbench = { ...workbench, ...patch };
+    });
+    const { result, rerender } = renderHook(() =>
+      useLocalDrafts({ workbench, view: undefined, onWorkbenchPatch }),
+    );
+
+    await act(async () => result.current?.remove(drafted));
+    rerender();
+    await act(async () => result.current?.add("finding-1"));
+    rerender();
+
+    expect(result.current?.entries).toEqual([drafted]);
+    expect(result.current?.replies.get(localDraftKey(drafted))).toBeUndefined();
+  });
+
   it("offers nothing on a pull request Review", () => {
     restore = installDesktopDouble({}).restore;
 
