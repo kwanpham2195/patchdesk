@@ -78,8 +78,16 @@ _Avoid_: Stash, WIP commit, temp commit
 A Finding a maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent: the list is copied to the agent as one prompt and never becomes a GitHub comment (ADR 0051). Each move to a new session carries it as unchanged, changed since the note, or needs attention; it is never discarded, and one whose Finding was applied stays listed but leaves the prompt.
 _Avoid_: Local comment, queued finding, offline draft
 
+**Agent reply**:
+The coding agent's latest answer to one Local draft, sent with `reply_to_note`: addressed, skipped with a reason, or a question, with a short plain-text explanation. It is stored beside the drafts, never in them, a newer reply replaces it, and it survives every move. Its text is untrusted: it is shown in the Notes section and returned to the agent, and never enters an Insight prompt or the agent prompt (#600, ADR 0052).
+_Avoid_: Agent comment, agent note, response
+
+**Resolved draft**:
+A Local draft the maintainer marked done with Resolve. It stays listed with a Resolved badge, leaves the agent prompt, and drops out of `get_feedback` when the agent asks for open drafts; Reopen undoes it. Only the maintainer resolves (#600, ADR 0052).
+_Avoid_: Closed note, done note, dismissed draft
+
 **Feedback hand-off**:
-The maintainer's mark that a local Review's Local drafts are ready for the coding agent, made with Ready for agent, with an optional verdict (looks good or changes requested), or with Copy as agent prompt, which carries none. The agent reads when it was made, the verdict, and whether a draft was added, edited, or removed since; it cannot set or clear the mark. A new mark replaces the old one, and a move to a new session clears it (#603, ADR 0052).
+The maintainer's mark that a local Review's Local drafts are ready for the coding agent, made with Ready for agent, with an optional verdict (looks good or changes requested), or with Copy as agent prompt, which carries none. The agent reads when it was made, the verdict, and whether a draft was added, edited, removed, resolved, or reopened since; it cannot set or clear the mark. A new mark replaces the old one, and a move to a new session clears it (#603, ADR 0052).
 _Avoid_: Submit, send to agent, review done
 
 **Change intent**:

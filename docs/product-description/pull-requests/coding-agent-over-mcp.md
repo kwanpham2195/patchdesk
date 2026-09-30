@@ -21,8 +21,8 @@ The loop the maintainer passes through, in order:
 3. The maintainer presses Run or Decline on the Agent requests bar.
 4. The run settles; the agent reads it (`get_insight`).
 5. The maintainer drafts notes, marks them ready with **Ready for agent** or **Copy as agent prompt**, and tells the agent to read them (`get_feedback`).
-6. The agent changes the code and prepares a new session (`refresh_review`). The header shows Updates available. The agent may ask for an Insight on that session at once; the request waits for the maintainer's Refresh.
-7. The maintainer presses Refresh. The Review moves to the prepared session and carries the notes, and a request made in step 6 appears on the Agent requests bar. The loop returns to step 2 or 3, or ends.
+6. The agent changes the code, answers each note (`reply_to_note`), and prepares a new session (`refresh_review`). The header shows Updates available. The agent may ask for an Insight on that session at once; the request waits for the maintainer's Refresh.
+7. The maintainer presses Refresh. The Review moves to the prepared session and carries the notes, and a request made in step 6 appears on the Agent requests bar. The maintainer reads the agent's replies and resolves the notes that are done. The loop returns to step 2 or 3, or ends.
 
 ### Arrive
 
@@ -95,7 +95,8 @@ The `agent` marker clears when the last request is settled or declined and no ru
 - `run_insight`: ask the maintainer to run an Analysis, Walkthrough, or Brief on the current session, or on the session I just prepared once they press Refresh.
 - `show_review`: put this Review on the maintainer's screen without taking focus from what they are doing.
 - `get_insight`: read one Insight's status and result. The status is `none`, `awaiting_approval`, `declined`, `running`, `completed`, or `failed`. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries `outdated: true`.
-- `get_feedback`: read the maintainer's _Local drafts_, in file and line order, with the same Markdown prompt that **Copy as agent prompt** copies, and whether the maintainer marked them ready, with which verdict, and whether they changed since.
+- `get_feedback`: read the maintainer's _Local drafts_, in file and line order, with the same Markdown prompt that **Copy as agent prompt** copies, each with my latest reply and whether the maintainer resolved it, and whether the maintainer marked them ready, with which verdict, and whether they changed since.
+- `reply_to_note`: tell the maintainer what I did about one note: addressed, skipped with the reason, or a question.
 - `get_review_status`: where does this Review stand? Has the maintainer's Refresh taken what I prepared, what state is each Insight in, how many notes are there in each state, and which Findings did the maintainer apply to my checkout?
 
 Every answer that describes a session names its id, head, base, and patch hash, so the agent can tell which code a Finding or note is about.
@@ -122,6 +123,8 @@ The maintainer's [Refresh](opening-a-local-review.md#refresh) reads the checkout
 
 `inline` is `true` when the draft is on the Review's current session and its lines sit inside a hunk of its view, where the Diff shows it inline in that view. It is `false` for a draft that kept an earlier session, as a `needs_attention` draft does; for a carried draft whose lines left its view's diff, as when the agent reverts the lines under a note (usually `changed`); and when Patchdesk cannot read that view's stored patch. Patchdesk reads only the session's stored patches for this, never the checkout. The Markdown prompt does not name the view or `inline`.
 
+Each entry also carries `draftId`, the id `reply_to_note` takes: a note's id, or `<analysisRunId>/<findingId>` for a Finding draft. `resolved` is `true` once the maintainer resolved the draft, and `reply` is the agent's latest [reply](#replies) to it, when there is one. With `open: true`, `get_feedback` leaves resolved drafts out. The Markdown prompt leaves them out either way, as Copy as agent prompt does, and never carries a reply.
+
 A page holds at most 25 drafts, and fewer when they are long, so a page stays within what a client accepts in one answer. The answer carries a cursor for the next page. When the drafts change between pages, the next page is refused `stale_cursor` and the agent starts again without a cursor.
 
 The agent does not poll for feedback. The maintainer tells the agent when the notes are ready.
@@ -131,9 +134,21 @@ The agent does not poll for feedback. The maintainer tells the agent when the no
 The maintainer can mark the drafts ready in Patchdesk before telling the agent: **Ready for agent** in the Notes section, with an optional verdict, or **Copy as agent prompt**, which marks them ready without a verdict ([Local drafts](opening-a-local-review.md#local-drafts)). While that mark stands, `get_feedback` also returns:
 
 - `handoff`: `at`, when the maintainer marked the drafts ready, and `verdict` when they chose one, `looks_good` or `changes_requested`.
-- `changedSinceHandoff`: `true` once a draft was added, edited, or removed after the mark. An agent resumed before the maintainer finished can then say that the notes changed after they were marked ready.
+- `changedSinceHandoff`: `true` once a draft was added, edited, removed, resolved, or reopened after the mark. An agent resumed before the maintainer finished can then say that the notes changed after they were marked ready.
 
 Without a mark, both fields are absent. A new mark replaces the one before and resets `changedSinceHandoff`; any move to a new session, by the maintainer's Refresh, an Apply, or a reopen, clears the mark. `looks_good` with no drafts tells the agent that the review needs nothing more, so the loop ends without a note that says only "done". The agent can neither set nor clear the mark, and Patchdesk sends it no message when the mark is made. The copied prompt names no verdict.
+
+## Replies
+
+`reply_to_note` answers one Local draft, a note or a Finding draft, with a status and a short plain-text text of at most 4,096 characters (#600):
+
+- `addressed`: the agent changed the code for it.
+- `skipped`: the agent left it on purpose and says why.
+- `question`: the agent needs the maintainer's answer before it acts.
+
+A `skipped` or `question` reply needs no code change. The reply is stored on the Review beside the drafts, so the maintainer's note stays as written, and a newer reply to the same draft replaces it. It leaves the diff alone and survives every move to a new session; removing the draft removes its reply. The Notes section shows it at the Review's next check for updates, when the window gains focus or within 90 seconds while it stays in front ([Local drafts](opening-a-local-review.md#local-drafts)). The answer names the `draftId`, `status`, `repliedAt`, and `resolved`, which says whether the maintainer already resolved the draft.
+
+The reply text is untrusted. Patchdesk shows it as plain text, returns it in `get_feedback`, and never puts it in an Insight prompt or in the Copy as agent prompt Markdown. Text that looks like a credential is refused `reply_sensitive` and nothing is stored. A `draftId` the Review does not hold, as after the maintainer removed the draft, is refused `draft_not_found`; a merged or closed Review is refused `terminal`; and a Review another action holds is refused `in_progress`. Only the maintainer resolves a draft.
 
 ## Review status
 
@@ -160,7 +175,7 @@ A notification about the Review the focused window shows is not posted; the Agen
 ## What MCP never does
 
 - Start an Insight run without the maintainer's Run, or choose the provider or model.
-- Press Apply, Dismiss a Finding, add, edit, or remove the maintainer's notes, or mark them ready or clear that mark.
+- Press Apply, Dismiss a Finding, add, edit, remove, resolve, or reopen the maintainer's notes, or mark them ready or clear that mark. A reply sits beside a note and never changes it.
 - Replace a Change intent the Review already holds.
 - Commit, push, change a branch, or write the maintainer's index or working-tree files.
 - Read or write GitHub, or create or refresh a pull request Review.
