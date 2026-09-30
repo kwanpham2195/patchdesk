@@ -233,10 +233,11 @@ network beyond the model API itself.
 
 A terminal coding agent, such as Claude Code or Codex, can use Patchdesk as
 its review desk through the `patchdesk mcp` command. The agent opens a local
-Review of its change, asks for Insights, and reads the notes you drafted. You
-stay the reviewer: an Insight runs only after you press Run in Patchdesk, and
-the Review moves to the agent's newer changes only when you press Refresh.
-Its tools cannot Apply, edit your notes, commit, or touch GitHub.
+Review of its change, asks for Insights, reads the notes you drafted, and
+answers each one. You stay the reviewer: an Insight runs only after you press
+Run in Patchdesk, the Review moves to the agent's newer changes only when you
+press Refresh, and only you resolve a note. Its tools cannot Apply, edit or
+resolve your notes, commit, or touch GitHub.
 [A coding agent over MCP](product-description/pull-requests/coding-agent-over-mcp.md)
 describes the whole loop.
 

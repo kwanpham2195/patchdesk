@@ -236,6 +236,8 @@ Amended 2026-09-29 (#599): a ninth tool, `get_review_status(reviewId)`, answers 
 
 Amended 2026-09-30 (#602): `run_insight(reviewId, sessionId, type)` accepts the Review's `preparedSessionId` as `sessionId` and answers `awaiting_refresh` for it; the amendment under "Decline is final for the session" records how that request reaches the maintainer.
 
+Amended 2026-09-30 (#600): a tenth tool, `reply_to_note(reviewId, draftId, status, text)`, answers one Local draft, a note or a Finding draft, with `status` `addressed`, `skipped`, or `question` and plain text of at most 4,096 characters; the "Replies" amendment under "Feedback hand-off" records how it is stored and shown. It returns `{ draftId, status, repliedAt, resolved }`. Refusals: `not_found`, `profile_changed`, `not_applicable` (a pull request Review), `terminal`, `in_progress`, `invalid_input`, `draft_not_found` for a `draftId` the Review does not hold, `reply_sensitive` for credential-shaped text, and `storage`. `get_feedback` takes an optional `open` and adds `draftId`, `resolved`, and `reply` to each entry.
+
 Amended 2026-09-26 (slice 4): `run_insight` returns `reviewId`, `sessionId`,
 `type`, `status`, and `requestId`, plus `runId` once approved. An approved
 request is returned as it stands while its run is active; after that run
@@ -270,6 +272,10 @@ Never exposed: Apply, Dismiss, adding, editing, or removing the maintainer's
 notes, provider settings, profile selection, and pull request Reviews. v2
 candidates (`reply_to_note`, `add_agent_note`, `cancel_insight`) are decided
 after a week of real use.
+
+Amended 2026-09-30 (#600): `reply_to_note` shipped. A reply sits beside a
+note and never edits it, and resolving or reopening a note stays with the
+maintainer.
 
 ### Per-run approval in the app
 
@@ -351,6 +357,40 @@ poll. The verdict stays out of the Copy as agent prompt Markdown; changing
 that prompt needs a chat review. Stamping takes the Review lock, so Copy as
 agent prompt is refused `in_progress` while another action holds the Review,
 and on a merged or closed Review it copies without stamping.
+
+Amended 2026-09-30 (#600), replies: the agent answers a Local draft with
+`reply_to_note`. Replies live on the Review record as `localDraftReplies`,
+apart from `localDrafts`, one per draft keyed by its `LocalDraftTarget`, so
+the maintainer's text stays as written; a newer reply to the same draft
+replaces it. A move to a new session keeps them, and removing a draft removes
+its reply. A `draftId` is a note's id, or `<analysisRunId>/<findingId>` for a
+Finding draft, since a Finding id holds no `/`. A reply is recorded under the
+Review lock and names no session: a `skipped` or `question` reply may come
+with no code change, and a draft keeps its id across moves. It leaves the
+diff and the hand-off alone. The workbench projection returns the replies,
+and a local Review's detection answer carries them, so the Notes section
+shows a reply at the next detection without a Refresh. The detection answer
+carries the replies only, never the drafts, so a detection read before a
+draft command cannot undo that command.
+
+Reply text is untrusted. It is shown as plain text, returned by
+`get_feedback`, and never enters an Insight prompt or the Copy as agent
+prompt Markdown. Text that `containsSensitiveData` flags is refused
+`reply_sensitive` before the lock, as an agent intent is refused
+`change_intent_sensitive`.
+
+Only the maintainer resolves. **Resolve** and **Reopen** in the Notes section
+set or clear `resolvedAt` on the draft itself through
+`POST /v1/reviews/local-drafts/resolve`, which names the session on screen as
+every draft write does. A resolved draft stays listed, carries across moves,
+and leaves the Copy as agent prompt Markdown, as an applied Finding draft
+does. With every draft resolved the prompt reads "No review comments.", so the
+prompt gains no new wording. `get_feedback` with `open: true` leaves resolved
+drafts out before paging, so its cursor digest covers the filtered list and a
+Resolve between two pages refuses the next with `stale_cursor`. Resolve and
+Reopen count as a draft change for the hand-off's `draftsChangedAt`, since
+they change what the agent is asked to address; a reply does not.
+`get_review_status` counts are unchanged and still include resolved drafts.
 
 ### Multiple checkouts
 
@@ -621,6 +661,8 @@ was replaced by the shared Review, #555.)
 - The Review record gains `agentRunRequests`, `updatesAvailable`, and
   `changeIntent.source`; stored records without them parse unchanged.
   Amended 2026-09-30 (#603): it also gains `handoff`, under the same rule.
+  Amended 2026-09-30 (#600): it also gains `localDraftReplies`, and each
+  Local draft gains `resolvedAt`, under the same rule.
 - `refresh_review` prepares sessions the Review has not moved to; retention
   and the per-move prune treat a prepared session as live.
 - Every request schema has one home and two consumers; a tool that needs a
