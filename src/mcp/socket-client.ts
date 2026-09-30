@@ -90,10 +90,35 @@ function parseReply(line: string): McpSocketCall {
     return notResponding("malformed reply");
   }
   const parsed = v.safeParse(mcpSocketReplySchema, decoded);
-  return parsed.success
-    ? { reply: parsed.output }
-    : notResponding("malformed reply");
+  if (!parsed.success) return notResponding("malformed reply");
+  return isUnknownToolRefusal(parsed.output)
+    ? { reply: appOutdated, failure: parsed.output.message }
+    : { reply: parsed.output };
 }
+
+/**
+ * The app does not know the tool or setup command asked for, because the
+ * command is newer than the running app, as after `brew upgrade` with the
+ * old app still open (#709). Apps up to 0.0.14 refuse it as `invalid_input`
+ * with this message.
+ */
+function isUnknownToolRefusal(
+  reply: McpSocketReply,
+): reply is Extract<McpSocketReply, { ok: false }> {
+  return (
+    !reply.ok &&
+    (reply.error === "unknown_tool" ||
+      (reply.error === "invalid_input" &&
+        reply.message.startsWith("Patchdesk has no tool named ")))
+  );
+}
+
+const appOutdated: McpSocketReply = {
+  ok: false,
+  error: "app_outdated",
+  message:
+    "The running Patchdesk is older than this command. Quit and reopen Patchdesk, or update it.",
+};
 
 function notRunning(failure: string): McpSocketCall {
   return {

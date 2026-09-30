@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed `patchdesk` saying "has no tool named" when the running app is older than the command; it now says to quit and reopen Patchdesk. #709
+
 ## 0.0.14 - 2026-09-30
 
 - Added `patchdesk setup`, so a coding agent can finish workspace setup from the terminal: `status` lists the steps left, `add-repo` watches the current checkout's repository and creates the workspace from your `gh` account if there is none, and `set-checkout` fixes a moved checkout. #702
