@@ -93,8 +93,8 @@ so the reader never sees a tree that stops making sense partway down.
 ### Boundary with Walkthrough
 
 Flow and Walkthrough both describe order, but different orders. Walkthrough
-orders the *diff* — the sequence a reviewer should read hunks in. Flow orders
-the *runtime* — the sequence steps ran in, before and after. Start here
+orders the _diff_ — the sequence a reviewer should read hunks in. Flow orders
+the _runtime_ — the sequence steps ran in, before and after. Start here
 already links to Walkthrough; that link is unchanged.
 
 ### Rendering
@@ -136,3 +136,5 @@ inventing one.
 - An invented step can reach the reader; the missing chip and the
   partially-verified status are the signal, and the model is told to leave
   citations empty rather than drop a step.
+
+> **Superseded in part (2026-10-01, #717):** Flow no longer keeps one tree per kind. It keeps one tree per behavior, of any kind, up to five, and counts the trees it leaves out. The kinds and their drawing rules are unchanged.

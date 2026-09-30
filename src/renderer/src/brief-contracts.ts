@@ -197,6 +197,7 @@ const briefFlowSchema = v.strictObject({
     ),
     v.minLength(1),
   ),
+  omittedTrees: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
 });
 
 const briefSchema = v.strictObject({

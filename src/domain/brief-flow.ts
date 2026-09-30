@@ -6,8 +6,9 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
 /*
  * The Brief reader draws this block as "Flow": a before/after tree of a
  * runtime sequence. Every tree carries a `kind` -- call_tree, control_flow,
- * component, state, or contract -- and the Brief keeps at most one tree per
- * kind and at most `MAX_FLOW_TREES` trees in all.
+ * component, state, or contract -- that sets how the tree is drawn. The Brief
+ * keeps one tree per behavior the model names, of any kind, and at most
+ * `MAX_FLOW_TREES` trees in all, counting the rest in `omittedTrees` (#717).
  *
  * A component view is a claim about a user-interface tree; a patch with no
  * UI file cannot support one, so it is dropped regardless of what the model
@@ -26,17 +27,16 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  * discarded and counted exactly like one on a changed step.
  *
  * A tree left with no surviving changed step at any depth says nothing
- * changed, so the whole tree is dropped; of the survivors, a second tree of
- * a kind already kept is dropped too (input order wins), and only the first
- * `MAX_FLOW_TREES` survivors after that are kept, in the order the model
- * proposed them.
+ * changed, so the whole tree is dropped; of the survivors, only the first
+ * `MAX_FLOW_TREES` are kept, in the order the model proposed them, and the
+ * rest are counted so the reader can say a Flow was left out.
  *
  * `rejected` counts citation failures only -- a discarded alias, and an
  * `added`/`removed` node left with zero surviving hunk citations (kept, but
  * counted as an unverified claim, not a dropped one). Every other cap below
  * (the per-tree node cap, the depth cut, a whitespace-only label, an
- * all-unchanged tree, a repeat-kind tree, a surviving tree past
- * `MAX_FLOW_TREES`) is silent, the same way `normalizeBriefStartHere`'s
+ * all-unchanged tree) is silent, and a surviving tree past `MAX_FLOW_TREES`
+ * is counted in `omittedTrees` rather than in `rejected`, the same way `normalizeBriefStartHere`'s
  * five-file cap and an unmatched Start here path are silent.
  *
  * Patchdesk does not reshape a tree the model proposes -- a step nested
@@ -51,8 +51,7 @@ type BriefFlowChange = "added" | "removed" | "unchanged";
 /**
  * What a Flow tree draws: a call tree of real function/method names, a
  * pseudocode control-flow sketch, a component tree, a lifecycle's states and
- * their transitions, or an exported contract's signature and fields. The
- * Brief keeps at most one tree per kind (see `MAX_FLOW_TREES`).
+ * their transitions, or an exported contract's signature and fields.
  */
 type BriefFlowKind =
   | "call_tree"
@@ -76,9 +75,11 @@ export type BriefFlowTree = {
   readonly nodes: ReadonlyArray<BriefFlowNode>;
 };
 
-/** The Flow block: up to `MAX_FLOW_TREES` before/after trees, at most one per kind. */
+/** The Flow block: up to `MAX_FLOW_TREES` before/after trees, one per behavior. */
 export type BriefFlow = {
   readonly trees: ReadonlyArray<BriefFlowTree>;
+  /** Surviving trees past `MAX_FLOW_TREES`; absent when none were left out. */
+  readonly omittedTrees?: number;
 };
 
 /** File extensions that mark a changed path as a user-interface component file. */
@@ -105,8 +106,8 @@ export function patchTouchesUiComponents(
 }
 
 // Exported so `insightOutputGuidance("brief")` states each Flow limit once, in the schema's own number.
-/** Kept trees per Brief, at most one per kind -- past this, Flow starts reading as the whole diff again. */
-export const MAX_FLOW_TREES = 3;
+/** Kept trees per Brief -- past this, Flow starts reading as the whole diff again. */
+export const MAX_FLOW_TREES = 5;
 /** Kept node depth; a root node is depth 1. `walkFlowNodes` drops every node below it. */
 export const MAX_FLOW_DEPTH = 3;
 /** Pre-order nodes visited per tree before the rest of that tree is dropped. */
@@ -122,7 +123,7 @@ const MAX_FLOW_CITATIONS_PER_NODE = 8;
 /** Raw children (and root nodes) the schema accepts per level -- well past `MAX_FLOW_NODES_PER_TREE`, so the pre-order cap, not the schema, decides what survives. */
 const MAX_FLOW_CHILDREN_PER_NODE = 20;
 /** Raw trees the schema accepts per Brief; mirrors `MAX_FLOW_TREES` the same way. */
-const MAX_FLOW_TREES_INPUT = 5;
+const MAX_FLOW_TREES_INPUT = 8;
 /** Raw alias length the schema accepts; mirrors `MAX_ALIAS_LENGTH` in brief.ts. */
 const MAX_FLOW_ALIAS_LENGTH = 16;
 
@@ -404,9 +405,10 @@ function normalizeFlowTitle(rawTitle: string): string {
  * five-file cap and an unmatched Start here path are silent: the per-tree
  * node cap, the `MAX_FLOW_DEPTH` cut (the schema accepts deeper input up to
  * six levels), a whitespace-only label, a tree with no surviving
- * changed node, a second surviving tree of a kind already kept, a surviving
- * tree past `MAX_FLOW_TREES`, and a `component` tree dropped for touching no
- * UI file in `changedPaths` (see `patchTouchesUiComponents`).
+ * changed node, a repeat of a kept tree's kind and title, and a `component`
+ * tree dropped for touching no UI file in
+ * `changedPaths` (see `patchTouchesUiComponents`). A surviving tree past
+ * `MAX_FLOW_TREES` is counted in `omittedTrees`.
  */
 export function normalizeBriefFlow(
   raw: BriefFlowOutput,
@@ -433,28 +435,28 @@ export function normalizeBriefFlow(
     });
   }
 
-  // At most one surviving tree per kind, input order wins; then at most
-  // `MAX_FLOW_TREES` overall. Both drops here are silent.
-  const trees: Array<BriefFlowTree> = [];
-  const keptKinds = new Set<BriefFlowKind>();
-  for (const tree of survivors) {
-    if (trees.length >= MAX_FLOW_TREES) continue;
-    if (keptKinds.has(tree.kind)) continue;
-    keptKinds.add(tree.kind);
-    trees.push(tree);
-  }
-
   // A component view is a claim about a user-interface tree; a patch with no
   // UI file cannot support one, so it is dropped regardless of what the
-  // model proposed. Silent, like the two drops above -- it is noise, not a
-  // citation failure.
-  const keptTrees = patchTouchesUiComponents(changedPaths)
-    ? trees
-    : trees.filter((tree) => tree.kind !== "component");
+  // model proposed. Silent -- it is noise, not a citation failure.
+  // A second tree with the same kind and title repeats a behavior already
+  // drawn, so it is dropped silently too.
+  const touchesUi = patchTouchesUiComponents(changedPaths);
+  const seen = new Set<string>();
+  const shown = survivors.filter((tree) => {
+    const key = `${tree.kind}\n${tree.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return tree.kind !== "component" || touchesUi;
+  });
+  const trees = shown.slice(0, MAX_FLOW_TREES);
+  const omittedTrees = shown.length - trees.length;
 
-  return keptTrees.length === 0
+  return trees.length === 0
     ? { value: undefined, rejected }
-    : { value: { trees: keptTrees }, rejected };
+    : {
+        value: omittedTrees > 0 ? { trees, omittedTrees } : { trees },
+        rejected,
+      };
 }
 
 /**

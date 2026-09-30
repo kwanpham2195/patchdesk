@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed Brief Flow to draw one view per behavior instead of one per kind, so two unrelated call paths each get their own call tree, up to five views, with a line saying how many more were left out. When a pull request is mostly a move, the model still draws Flow for what else changed, such as a workflow rule. #717
+
 - Added a Moves block to the Brief. When a pull request moves files between directories, it lists each move, such as `job/<name>/ → deploy/<name>/  36 files · unchanged`, from git's rename data, and comes before Flow when moves are most of the change. The Brief model now gets the change counts and moves up front, stops drawing Flow for files that only moved, and skips Shape notes on them. A local Review's Brief also writes Moves into the PR description it copies. Files edited only to follow the move, such as a new import path or a renamed Go package qualifier, count with the move. #713 #715 #718
 
 - Added a Patchdesk agent skill for Claude Code, Codex, and other agents that load skills: `npx skills add kwanpham2195/patchdesk --skill patchdesk`. It holds the review loop the MCP server sends, plus setup and common refusals for when the tools are missing. #704

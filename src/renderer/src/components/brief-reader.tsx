@@ -432,14 +432,25 @@ function FlowBlock({
       </h3>
       <div className="flex min-w-0 flex-col gap-3">
         {flow.trees.map((tree) => (
-          // `normalizeBriefFlow` guarantees at most one tree per kind, so
-          // `tree.kind` is a stable, unique key without needing the array
-          // index.
-          <FlowView key={tree.kind} tree={tree} citedHunks={citedHunks} />
+          // `normalizeBriefFlow` keeps one tree per kind and title.
+          <FlowView
+            key={`${tree.kind}\n${tree.title}`}
+            tree={tree}
+            citedHunks={citedHunks}
+          />
         ))}
+        {flow.omittedTrees === undefined ? null : (
+          <p className="text-xs text-muted-foreground">
+            {moreFlows(flow.omittedTrees)}
+          </p>
+        )}
       </div>
     </section>
   );
+}
+
+function moreFlows(count: number): string {
+  return `${String(count)} more ${count === 1 ? "flow" : "flows"} not shown`;
 }
 
 /**

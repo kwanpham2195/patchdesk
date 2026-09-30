@@ -69,3 +69,5 @@ Patchdesk adds a diagram only when a trial on real pull requests shows that.
   older Patchdesk build.
 - The guidance names five kinds against a cap of three trees, so a patch that
   touches every kind shows only the three the model ranks first.
+
+> **Superseded in part (2026-10-01, #717):** Flow no longer keeps one tree per kind. It keeps one tree per behavior, of any kind, up to five, and counts the trees it leaves out. The kinds and their drawing rules are unchanged.

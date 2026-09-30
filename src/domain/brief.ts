@@ -102,7 +102,7 @@ export type NormalizedBrief = {
   readonly citedHunks?: Readonly<Record<string, string>>;
   /**
    * The Flow block: up to `MAX_FLOW_TREES` before/after trees of a runtime
-   * sequence, at most one per kind. Absent on a Brief retained before the
+   * sequence, one per behavior. Absent on a Brief retained before the
    * block existed, and whenever no tree survived normalization.
    */
   readonly flow?: BriefFlow;

@@ -276,7 +276,7 @@ describe("normalizeBriefFlow", () => {
     expect(result.rejected).toBe(0);
   });
 
-  it("keeps only the first of two same-kind trees, dropping the second silently", () => {
+  it("keeps two trees of the same kind, one for each behavior", () => {
     const raw: BriefFlowOutput = [
       {
         kind: "call_tree",
@@ -292,7 +292,51 @@ describe("normalizeBriefFlow", () => {
     const result = normalize(raw, NON_UI_PATHS);
     expect(result.value?.trees.map((tree) => tree.title)).toEqual([
       "First call tree",
+      "Second call tree",
     ]);
+    expect(result.value?.omittedTrees).toBeUndefined();
+    expect(result.rejected).toBe(0);
+  });
+
+  it("drops a second tree that repeats a kept tree's kind and title", () => {
+    const tree = {
+      kind: "call_tree" as const,
+      title: "Save",
+      nodes: [{ label: "save()", change: "added" as const, citations: ["h1"] }],
+    };
+    const result = normalize([tree, tree], NON_UI_PATHS);
+    expect(result.value?.trees).toHaveLength(1);
+    expect(result.value?.omittedTrees).toBeUndefined();
+  });
+
+  it("keeps the first five surviving trees and counts the rest as left out, after dropping a component tree the patch cannot support", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "component",
+        title: "Not a UI patch",
+        nodes: [{ label: "<Panel>", change: "added", citations: ["h1"] }],
+      },
+      ...["A", "B", "C", "D", "E", "F", "G"].map((name) => ({
+        kind: "call_tree" as const,
+        title: `Behavior ${name}`,
+        nodes: [
+          {
+            label: `run${name}()`,
+            change: "added" as const,
+            citations: ["h1"],
+          },
+        ],
+      })),
+    ];
+    const result = normalize(raw, NON_UI_PATHS);
+    expect(result.value?.trees.map((tree) => tree.title)).toEqual([
+      "Behavior A",
+      "Behavior B",
+      "Behavior C",
+      "Behavior D",
+      "Behavior E",
+    ]);
+    expect(result.value?.omittedTrees).toBe(2);
     expect(result.rejected).toBe(0);
   });
 

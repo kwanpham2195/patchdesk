@@ -48,7 +48,7 @@ describe("prepareBriefPrompt", () => {
 
   it("includes the shared Flow tree limits in the Brief prompt", async () => {
     const prompt = await briefPrompt();
-    expect(prompt).toContain("Give at most 3 flow trees, one for each kind.");
+    expect(prompt).toContain("Give at most 5 flow trees.");
     expect(prompt).toContain(
       "Keep each tree at most 3 levels deep and at most 15 steps.",
     );

@@ -32,7 +32,15 @@ export function renderBriefAsPullRequestDescription(
     // Each Flow view is a `###` under one `## Flow`, level with the other sections.
     trees.length === 0
       ? undefined
-      : ["## Flow", ...trees.map(flowSection)].join("\n\n"),
+      : [
+          "## Flow",
+          ...trees.map(flowSection),
+          ...(brief.flow?.omittedTrees === undefined
+            ? []
+            : [
+                `${String(brief.flow.omittedTrees)} more ${brief.flow.omittedTrees === 1 ? "flow" : "flows"} not shown.`,
+              ]),
+        ].join("\n\n"),
     brief.moves?.leads === false ? moves : undefined,
     brief.ownership === undefined
       ? undefined

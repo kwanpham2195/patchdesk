@@ -143,6 +143,34 @@ describe("normalizeBrief", () => {
     ).toEqual({ _tag: "ok", value: normalized.value });
   });
 
+  it("keeps the count of left-out Flow trees through storage", () => {
+    const normalized = normalizeBrief(
+      {
+        flow: ["A", "B", "C", "D", "E", "F"].map((name) => ({
+          kind: "call_tree" as const,
+          title: `Behavior ${name}`,
+          nodes: [
+            {
+              label: `run${name}()`,
+              change: "added" as const,
+              citations: ["h1"],
+            },
+          ],
+        })),
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow?.omittedTrees).toBe(1);
+    const stored: unknown = JSON.parse(JSON.stringify(normalized.value));
+    expect(parseStoredBrief(stored)).toEqual({
+      _tag: "ok",
+      value: normalized.value,
+    });
+  });
+
   it("still reads a Brief retained before the Ownership block existed", () => {
     const normalized = normalizeBrief({}, MANIFEST, PATCH, SNAPSHOT);
     if (normalized._tag === "err") throw new Error("expected a Brief");
@@ -254,10 +282,10 @@ describe("insightOutputGuidance", () => {
   it("gives the Brief its own Flow rules and still forbids prose numbers", () => {
     const guidance = insightOutputGuidance("brief", "en");
     expect(guidance).toContain(
-      "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, component, state, and contract.",
+      "In flow, give one tree for each behavior the patch changes, and title it by that behavior; the kind -- call_tree, control_flow, component, state, or contract -- only sets how the tree is drawn.",
     );
     expect(guidance).toContain(
-      "Give at most three trees; prefer the kinds that show the change most directly.",
+      `Give at most ${MAX_FLOW_TREES} trees, most important first; Patchdesk says how many it left out.`,
     );
     expect(guidance).toContain(
       "Give a state tree only when the patch adds, removes, or rewires a named state of a lifecycle, such as a write, a run, a session, or a review.",
@@ -330,9 +358,7 @@ describe("insightOutputGuidance", () => {
 
   it("states each Flow limit once, in the number the schema enforces", () => {
     const guidance = insightOutputGuidance("brief", "en");
-    expect(guidance).toContain(
-      `Give at most ${MAX_FLOW_TREES} flow trees, one for each kind.`,
-    );
+    expect(guidance).toContain(`Give at most ${MAX_FLOW_TREES} flow trees.`);
     expect(guidance).toContain(
       `Keep each tree at most ${MAX_FLOW_DEPTH} levels deep and at most ${MAX_FLOW_NODES_PER_TREE} steps.`,
     );
@@ -576,39 +602,11 @@ describe("normalizeBrief flow", () => {
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
-    // All three survive `MAX_FLOW_TREES` because each is a different kind,
-    // and the patch touches a UI file so `component` survives its own gate.
+    // The patch touches a UI file, so `component` survives its own gate.
     expect(normalized.value.flow?.trees.map((tree) => tree.title)).toEqual([
       "Tree A",
       "Tree B",
       "Tree C",
-    ]);
-    expect(normalized.value.citationStatus).toBe("verified");
-  });
-
-  it("keeps only the first of two same-kind trees, past the one-per-kind cap", () => {
-    const normalized = normalizeBrief(
-      {
-        flow: [
-          {
-            kind: "call_tree",
-            title: "Tree A",
-            nodes: [{ label: "change A", change: "added", citations: ["h1"] }],
-          },
-          {
-            kind: "call_tree",
-            title: "Tree B",
-            nodes: [{ label: "change B", change: "added", citations: ["h2"] }],
-          },
-        ],
-      },
-      MANIFEST,
-      PATCH,
-      SNAPSHOT,
-    );
-    if (normalized._tag === "err") throw new Error("expected a Brief");
-    expect(normalized.value.flow?.trees.map((tree) => tree.title)).toEqual([
-      "Tree A",
     ]);
     expect(normalized.value.citationStatus).toBe("verified");
   });

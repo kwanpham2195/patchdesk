@@ -110,6 +110,7 @@ const storedFlowTreeSchema = v.strictObject({
 });
 const storedFlowSchema = v.strictObject({
   trees: v.pipe(v.array(storedFlowTreeSchema), v.minLength(1)),
+  omittedTrees: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
 });
 const storedReachMentionSchema = v.strictObject({
   path: v.pipe(v.string(), v.minLength(1)),
@@ -233,7 +234,10 @@ export function parseStoredBrief(
       if (parsedTree === undefined) return malformedBrief();
       trees.push(parsedTree);
     }
-    flow = { trees };
+    flow = {
+      trees,
+      ...definedProps({ omittedTrees: parsed.output.flow.omittedTrees }),
+    };
   }
   return ok({
     snapshot: {
