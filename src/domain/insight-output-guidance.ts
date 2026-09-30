@@ -90,7 +90,7 @@ export function insightOutputGuidance(
     `Give at most ${MAX_FLOW_TREES} trees, most important first; Patchdesk says how many it left out.`,
     "Give every entry point whose behavior this patch changes -- each command, request path, and error path -- its own root.",
     "A changed file with no root in any tree is a gap, not a simplification, except a file that only moved or only updated import paths or package qualifiers to follow a move: it needs no root, because Patchdesk shows moves itself.",
-    "When several workflow or config files gain the same steps, draw those steps once under one root and name the files in its label.",
+    "When several workflow or config files gain the same steps, that is one behavior: draw one tree with one root that names the files, never one tree per file.",
     "Omit a kind the patch does not change.",
     "Omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",
     "Read PATCH FACTS before choosing trees: when most changed files moved, Patchdesk draws the move itself, and flow covers only the behavior the patch also changed, such as a changed workflow rule, a new condition, or a new error path. Omit flow only when nothing besides the move changed.",
