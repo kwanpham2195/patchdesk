@@ -390,6 +390,11 @@ export function moveLocalReviewToSession(
         agentRunRequests,
         input.sessionId,
       ),
+      // A reopen or unchanged refresh lands on the same session, which is not a move and keeps the mark.
+      handoff:
+        input.sessionId === review.currentSessionId
+          ? review.handoff
+          : undefined,
     }),
   });
 }

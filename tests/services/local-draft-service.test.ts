@@ -745,6 +745,21 @@ describe("LocalDraftService", () => {
       expect(afterMove.localDrafts).toHaveLength(2);
     });
 
+    it("keeps the hand-off when the Review is reopened on unchanged content (#603)", async () => {
+      const { harness, key } = await notedReview();
+      value(await harness.drafts.handOff({ ...key, verdict: "looks_good" }));
+
+      const reopened = await harness.open();
+
+      expect(reopened.session.id).toBe(key.sessionId);
+      expect(reopened.feedbackHandoff).toMatchObject({
+        handoff: { at: now, verdict: "looks_good" },
+        changedSinceHandoff: false,
+      });
+      const stored = value(await harness.reviews.load(profileId, key.reviewId));
+      expect(stored.handoff).toEqual({ at: now, verdict: "looks_good" });
+    });
+
     it("stamps a hand-off without a verdict on Copy as agent prompt, replacing Ready for agent's, and keeps the verdict out of the prompt (#603)", async () => {
       const { harness, key } = await notedReview();
       value(

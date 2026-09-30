@@ -208,6 +208,35 @@ describe("LocalReviewOpening.prepareForAgent", () => {
     expect(stored.freshness._tag).toBe("Fresh");
   });
 
+  it("keeps the maintainer's hand-off through agent refreshes that end on the Review's own content (#603)", async () => {
+    let clock = now;
+    const harness = await localApplyHarness(undefined, {
+      openingNow: () => clock,
+    });
+    const { probe, workbench, reviewId } = await notedReview(harness);
+    value(
+      await harness.drafts.handOff({
+        profileId,
+        reviewId,
+        sessionId: workbench.session.id,
+        verdict: "changes_requested",
+      }),
+    );
+    await writeFile(probe, probeContent(1));
+    value(await harness.opening.prepareForAgent(profileId, reviewId));
+    await writeFile(probe, probeContent(0));
+    clock = later(10_000);
+
+    const reverted = value(
+      await harness.opening.prepareForAgent(profileId, reviewId),
+    );
+
+    expect(reverted.changed).toBe(false);
+    const stored = value(await harness.reviews.load(profileId, reviewId));
+    expect(stored.currentSessionId).toBe(workbench.session.id);
+    expect(stored.handoff).toMatchObject({ verdict: "changes_requested" });
+  });
+
   it("refuses a second agent refresh of the Review within 10 s with the wait left, and accepts one after", async () => {
     let clock = now;
     const harness = await localApplyHarness(undefined, {
