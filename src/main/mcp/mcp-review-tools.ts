@@ -504,6 +504,13 @@ export async function explainLines(
     text: input.text,
   });
   if (explained._tag === "ok") return explained;
+  // explain_lines refuses a prepared session too, so the shared message's advice to pass preparedSessionId does not apply.
+  if (explained.error.reason === "stale_session")
+    return err({
+      error: "stale_session",
+      message:
+        "sessionId is not the Review's current session. If you changed the code since, call refresh_review and ask the maintainer to press Refresh, then explain the lines on the new session.",
+    });
   return err(
     explained.error.reason === "not_found"
       ? await missingReviewRefusal(services, profiles.value, reviewId.value)

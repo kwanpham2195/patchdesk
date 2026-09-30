@@ -274,7 +274,7 @@ On a merged or closed Review, the card shows neither button.
 | The Review moved to another session since the diff loaded | `The review changed. Press Refresh, then try again.`                    |
 | Any other failure                                         | `The explanation was not dismissed.`                                    |
 
-A move to a new session carries each explanation by the rule [Refresh](#refresh) applies to a draft on Combined lines. An explanation on unchanged lines stays as it was. One whose lines changed gets an `Outdated` badge, which stays on later moves. One that cannot be placed, or is placed on lines the new Combined diff does not show, is deleted, since an explanation has no list to wait in.
+A move to a new session carries each explanation by the rule [Refresh](#refresh) applies to a draft on Combined lines. An explanation on unchanged lines stays as it was. One whose lines changed gets an `Outdated` badge, which stays on later moves. One that cannot be placed, or is placed on lines the new Combined diff does not show, is deleted, since an explanation has no list to wait in. An explanation within a few lines of an edit can be dropped too, because the lines around it changed.
 
 ## Refresh
 
