@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 
 import { agentRunRequestSchema } from "../../../domain/agent-run-request";
+import { localDraftReplySchema } from "../../../domain/local-draft-reply";
 import {
   appendRecentWriteReceipts,
   type RecentReviewWrite,
@@ -189,6 +190,15 @@ export function useReviewObservation({
       )
         onWorkbenchPatchRef.current({
           agentRunRequests: agentRunRequests.output.agentRunRequests,
+        });
+      const replies = v.safeParse(localDetectionRepliesSchema, value);
+      if (
+        replies.success &&
+        JSON.stringify(replies.output.localDraftReplies) !==
+          JSON.stringify(current.localDraftReplies ?? [])
+      )
+        onWorkbenchPatchRef.current({
+          localDraftReplies: replies.output.localDraftReplies,
         });
       if (observation !== undefined) {
         if (observation._tag === "Reconciled") {
@@ -568,6 +578,11 @@ const reviewObservationSchema = v.variant("_tag", [
 /** A local Review's detection also carries its session's agent run requests (ADR 0052). */
 const localDetectionRequestsSchema = v.looseObject({
   agentRunRequests: v.array(agentRunRequestSchema),
+});
+
+/** And the coding agent's replies to the Local drafts, so a reply shows without a Refresh (#600). */
+const localDetectionRepliesSchema = v.looseObject({
+  localDraftReplies: v.array(localDraftReplySchema),
 });
 
 function isReviewObservation(

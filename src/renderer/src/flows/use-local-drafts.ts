@@ -13,6 +13,7 @@ import type { LocalCommentLocation } from "../components/review-diff-view";
 import {
   localDraftListSchema,
   type LocalDraftEntry,
+  type LocalDraftReplyEntry,
 } from "../local-draft-contracts";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewWorkbenchPatch } from "./use-review-observation";
@@ -50,6 +51,13 @@ export type LocalDraftControls = {
   /** Ready for agent, with an optional verdict; a failure shows as `error`. Absent once the Review is merged or closed. */
   readonly handOff?: (verdict?: FeedbackHandoffVerdict) => Promise<void>;
   readonly handingOff: boolean;
+  /** The coding agent's latest reply to each draft, keyed by `localDraftKey` (#600). */
+  readonly replies: ReadonlyMap<string, LocalDraftReplyEntry>;
+  /** Resolve or Reopen one draft; a failure shows as `error`. Absent once the Review is merged or closed. */
+  readonly setResolved?: (
+    entry: LocalDraftEntry,
+    resolved: boolean,
+  ) => Promise<void>;
   /** One Finding row's toggle: Add to draft, or Remove once drafted. */
   readonly forFinding: (findingId: string) => {
     readonly drafted: boolean;
@@ -68,7 +76,13 @@ type LocalDraftCommand =
       readonly view?: LocalPatchView;
     })
   | { readonly noteId: string; readonly text?: string }
-  | { readonly verdict?: FeedbackHandoffVerdict };
+  | { readonly verdict?: FeedbackHandoffVerdict }
+  | {
+      readonly draft:
+        | { readonly noteId: string }
+        | { readonly runId: string; readonly findingId: string };
+      readonly resolved: boolean;
+    };
 
 const agentPromptSchema = v.strictObject({
   markdown: v.string(),
@@ -109,6 +123,16 @@ function noteFailureMessage(cause: unknown): string {
   if (isApiErrorCode(cause, "draft_sensitive"))
     return "The note contains what looks like a credential. Remove it and save again.";
   return "The note was not saved.";
+}
+
+function resolveFailureMessage(cause: unknown): string {
+  if (isApiErrorCode(cause, "in_progress"))
+    return "Another action on this review is running. Try again when it finishes.";
+  if (isApiErrorCode(cause, "not_applicable"))
+    return "The review changed. Press Refresh, then try again.";
+  if (isApiErrorCode(cause, "draft_not_found"))
+    return "This draft was removed. Press Refresh.";
+  return "The draft was not changed.";
 }
 
 function handoffFailureMessage(cause: unknown): string {
@@ -279,6 +303,43 @@ export function useLocalDrafts({
     [post],
   );
 
+  const setResolved = useCallback(
+    async (entry: LocalDraftEntry, resolved: boolean): Promise<void> => {
+      setError(undefined);
+      try {
+        await post(localDraftKey(entry), "/v1/reviews/local-drafts/resolve", {
+          draft:
+            entry.kind === "note"
+              ? { noteId: entry.noteId }
+              : { runId: entry.analysisRunId, findingId: entry.findingId },
+          resolved,
+        });
+      } catch (cause: unknown) {
+        setError(resolveFailureMessage(cause));
+      }
+    },
+    [post],
+  );
+
+  const replyList = workbench.localDraftReplies;
+  const replies = useMemo(
+    () =>
+      new Map(
+        (replyList ?? []).map((reply) => [
+          localDraftKey(
+            "noteId" in reply.draft
+              ? reply.draft
+              : {
+                  analysisRunId: reply.draft.runId,
+                  findingId: reply.draft.findingId,
+                },
+          ),
+          reply,
+        ]),
+      ),
+    [replyList],
+  );
+
   const entries = workbench.localDrafts;
   if (entries === undefined) return undefined;
   const reviewOpen = workbench.review.status === "open";
@@ -293,6 +354,7 @@ export function useLocalDrafts({
     canAdd,
     canRemove: reviewOpen,
     pending,
+    replies,
     add,
     remove,
     loadAgentPrompt,
@@ -319,6 +381,7 @@ export function useLocalDrafts({
       error,
       notes: reviewOpen ? notes : undefined,
       handOff: reviewOpen ? handOff : undefined,
+      setResolved: reviewOpen ? setResolved : undefined,
       feedbackHandoff: workbench.feedbackHandoff ?? undefined,
     }),
   };

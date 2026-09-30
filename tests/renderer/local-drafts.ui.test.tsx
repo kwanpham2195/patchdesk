@@ -15,7 +15,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LocalNotesList } from "../../src/renderer/src/components/local-notes-list";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { LocalDraftControls } from "../../src/renderer/src/flows/use-local-drafts";
+import {
+  localDraftKey,
+  type LocalDraftControls,
+} from "../../src/renderer/src/flows/use-local-drafts";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import {
   failure,
@@ -239,6 +242,75 @@ describe("Local drafts on a local Review", () => {
     ]);
   });
 
+  it("shows the agent's reply under its note, and Resolve and Reopen send the draft's new mark (#600)", async () => {
+    const setResolved = vi.fn<NonNullable<LocalDraftControls["setResolved"]>>(
+      async () => undefined,
+    );
+    const note = {
+      kind: "note" as const,
+      noteId: "note-1",
+      sessionId: "session-a",
+      view: "combined" as const,
+      path: "src/a.ts",
+      side: "new" as const,
+      startLine: 1,
+      line: 1,
+      text: "Guard the empty case.",
+    };
+    const resolvedFinding = {
+      ...drafted,
+      resolvedAt: "2026-09-30T00:00:00.000Z",
+    };
+    render(
+      <LocalNotesList
+        controls={{
+          entries: [note, resolvedFinding],
+          draftedFindingIds: new Set(["finding-1"]),
+          canAdd: true,
+          canRemove: true,
+          pending: new Set(),
+          replies: new Map([
+            [
+              localDraftKey(note),
+              {
+                draft: { noteId: "note-1" },
+                status: "question" as const,
+                text: "Should an empty list return 0?",
+                repliedAt: "2026-09-30T00:00:00.000Z",
+              },
+            ],
+          ]),
+          add: async () => undefined,
+          remove: async () => undefined,
+          setResolved,
+          loadAgentPrompt: async () => "",
+          handingOff: false,
+          forFinding: () => ({ drafted: true, pending: false }),
+        }}
+        placement={withoutViews("session-a")}
+        onReveal={vi.fn()}
+      />,
+    );
+
+    const reply = screen.getByRole("group", { name: "Agent reply" });
+    expect(
+      within(reply).getByText("Should an empty list return 0?"),
+    ).toBeTruthy();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Resolve note at src/a.ts:1" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Reopen finding at src/a.ts:1" }),
+    );
+
+    expect(
+      setResolved.mock.calls.map(([entry, resolved]) => [entry.kind, resolved]),
+    ).toEqual([
+      ["note", true],
+      ["finding", false],
+    ]);
+  });
+
   it("names each Remove in the Notes list by kind when a note and a Finding share lines", async () => {
     const remove = vi.fn<LocalDraftControls["remove"]>(async () => undefined);
     const note = {
@@ -260,6 +332,7 @@ describe("Local drafts on a local Review", () => {
           canAdd: true,
           canRemove: true,
           pending: new Set(),
+          replies: new Map(),
           add: async () => undefined,
           remove,
           loadAgentPrompt: async () => "",
