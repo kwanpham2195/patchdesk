@@ -419,6 +419,10 @@ server as failed.
 - **Patchdesk is not running.** Calls return `app_not_running`. Start
   Patchdesk; the command never starts it. The next call works without
   restarting the agent.
+- **Patchdesk is older than the command.** Calls and `patchdesk setup`
+  return `app_outdated` when the running app does not know the tool or
+  command, as after `brew upgrade` with the old app still open. Quit and
+  reopen Patchdesk.
 - **Patchdesk does not answer.** Calls return `app_not_responding` when the
   app accepts the connection but sends no answer within 30 seconds. Check
   that Patchdesk is not stuck, then retry.

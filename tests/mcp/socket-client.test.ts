@@ -76,6 +76,33 @@ describe("callPatchdeskApp", () => {
     },
   );
 
+  it.each([
+    {
+      from: "unknown_tool",
+      message: "Patchdesk has no tool named setup_status.",
+    },
+    {
+      from: "invalid_input",
+      message: "Patchdesk has no tool named setup_status.",
+    },
+  ])(
+    "gives app_outdated when the app refuses the tool as $from",
+    async ({ from, message }) => {
+      const socketPath = await misbehavingApp((socket) =>
+        socket.end(`${JSON.stringify({ ok: false, error: from, message })}\n`),
+      );
+
+      const call = await callPatchdeskApp(socketPath, request);
+
+      expect(call.reply).toEqual({
+        ok: false,
+        error: "app_outdated",
+        message:
+          "The running Patchdesk is older than this command. Quit and reopen Patchdesk, or update it.",
+      });
+    },
+  );
+
   it("gives too_large for a reply over the bound", async () => {
     const socketPath = await misbehavingApp((socket) =>
       socket.end(

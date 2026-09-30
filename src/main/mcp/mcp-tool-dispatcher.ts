@@ -201,8 +201,9 @@ export async function dispatchMcpTool(
   request: McpSocketRequest,
 ): Promise<McpToolReply> {
   if (!isMcpToolName(request.tool))
+    // Its own code, so a newer command talking to this app can tell a version gap from bad input (#709).
     return err({
-      error: "invalid_input",
+      error: "unknown_tool",
       message: `Patchdesk has no tool named ${request.tool}.`,
     });
   const tool: McpToolEntry<McpToolName> = table[request.tool];

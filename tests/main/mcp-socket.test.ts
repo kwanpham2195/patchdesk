@@ -377,7 +377,7 @@ describe("MCP socket listener (ADR 0052)", () => {
     },
   );
 
-  it("answers an unknown tool with invalid_input and calls nothing", async () => {
+  it("answers an unknown tool with unknown_tool and calls nothing", async () => {
     const socketPath = join(await socketDirectory(), "patchdesk.sock");
     const recording = recordingTools();
     await (
@@ -391,7 +391,7 @@ describe("MCP socket listener (ADR 0052)", () => {
       ),
     );
 
-    expect(reply).toMatchObject({ ok: false, error: "invalid_input" });
+    expect(reply).toMatchObject({ ok: false, error: "unknown_tool" });
     expect(recording.calls).toEqual([]);
   });
 });
