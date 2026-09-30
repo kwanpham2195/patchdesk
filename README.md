@@ -173,20 +173,28 @@ to review and give it this task:
 > Set up Patchdesk for this project using
 > https://github.com/kwanpham2195/patchdesk. Follow these steps in order:
 >
-> 1. Check the prerequisites and any existing installation, then install
->    Patchdesk if it is missing.
-> 2. After a disk-image install, link the `patchdesk` command.
-> 3. Open Patchdesk with `open -a Patchdesk` if it is not running.
-> 4. Run `patchdesk setup status`. If it asks for `gh auth login`, stop and
->    ask me to run it.
-> 5. Run `patchdesk setup add-repo` in this project's checkout.
-> 6. Register the MCP server with yourself, then run `patchdesk mcp --check`.
-> 7. Ask me whether you should open a Review for every change. If yes, add
+> 1. Check the prerequisites in [Finish setup](#finish-setup): `uname -m`
+>    prints `arm64`, and `git --version` and `gh --version` work.
+> 2. If `command -v patchdesk` finds nothing, install Patchdesk
+>    [with Homebrew](#install-with-homebrew). If
+>    `/Applications/Patchdesk.app` already exists,
+>    [link the command](docs/mcp.md#install-the-command) instead.
+> 3. Run `patchdesk setup status`. If it answers `app_not_running`, run
+>    `open -a Patchdesk`, wait a few seconds, and run it again. If it asks
+>    for `gh auth login`, stop and ask me to run it.
+> 4. Run `patchdesk setup add-repo` in this project's checkout.
+> 5. Register the MCP server unless `claude mcp get patchdesk` or
+>    `codex mcp get patchdesk` already finds it: run
+>    `claude mcp add patchdesk -- patchdesk mcp` in Claude Code or
+>    `codex mcp add patchdesk -- patchdesk mcp` in Codex. Then run
+>    `patchdesk mcp --check`, which lists this checkout when the app answers.
+> 6. Ask me whether you should open a Review for every change. If yes, add
 >    the "Review in Patchdesk" block from
 >    [Tell your agent when to use it](docs/mcp.md#tell-your-agent-when-to-use-it)
 >    to this project's `AGENTS.md` or `CLAUDE.md`.
-> 8. Report what you installed and changed, and what is left for me, such as
->    choosing an Insight provider in Patchdesk.
+> 7. Report what you installed and changed, and what is left for me:
+>    restarting you so the Patchdesk tools load, and choosing an Insight
+>    provider in Patchdesk.
 
 ## Understand the change before you approve it
 
