@@ -24,15 +24,6 @@ README must find what to read and what to run.
 
 ## Next
 
-- **Agent-friendly onboarding.**
-  - **One-prompt setup.** One README prompt an agent follows end to end:
-    install, link the `patchdesk` command after a disk-image install, run
-    `patchdesk setup`, register the MCP server, run `patchdesk mcp --check`,
-    add the instructions block if the project wants a Review for every
-    change, and report the steps left for the user, such as `gh auth login`. #703
-  - **Patchdesk skill.** Ship the review loop as an installable agent skill
-    as an alternative to copying instructions. Revisit now that the
-    server sends its instructions. #704
 - **Fresh-eyes UX pass.** Walk the path a new user takes: install, add a
   repository, run an Insight, and finish one local Review loop with a coding
   agent. Run it twice. The agent run, given only the README, is the check for

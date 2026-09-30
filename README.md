@@ -310,7 +310,9 @@ After a disk-image install, [link it yourself](docs/mcp.md#install-the-command).
    agent opens a Review when you ask for one. To make it automatic, or if
    your agent ignores MCP server instructions, copy the block in
    [Tell your agent when to use it](docs/mcp.md#tell-your-agent-when-to-use-it)
-   into your project's `CLAUDE.md` or `AGENTS.md`.
+   into your project's `CLAUDE.md` or `AGENTS.md`. To teach an agent that
+   loads skills how to set Patchdesk up and handle its refusals, install the
+   Patchdesk skill with `npx skills add kwanpham2195/patchdesk --skill patchdesk`.
 
 The Review compares the agent's branch with its base branch, so the agent's
 commits stay in the diff and your notes stay on their lines after it commits.
