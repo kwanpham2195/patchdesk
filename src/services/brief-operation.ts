@@ -64,7 +64,10 @@ export async function prepareBriefPrompt(input: {
       "PATCH FACTS, counted by Patchdesk:",
       renderBriefPatchFacts(
         changedFiles,
-        briefMoves(changedFiles, countMoveReferenceUpdates(patch.value)),
+        briefMoves(
+          changedFiles,
+          countMoveReferenceUpdates(patch.value, changedFiles),
+        ),
       ),
       "BRIEF CITATION MANIFEST:",
       renderBriefManifest(manifest),

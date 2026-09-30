@@ -41,7 +41,7 @@ function movesOf(...sections: ReadonlyArray<string>) {
   const patch = `${sections.join("\n")}\n`;
   return briefMoves(
     listPatchChangedFiles(patch),
-    countMoveReferenceUpdates(patch),
+    countMoveReferenceUpdates(patch, listPatchChangedFiles(patch)),
   );
 }
 

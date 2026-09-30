@@ -294,15 +294,20 @@ export function normalizeBrief(
       rejectedCitationCount === 0 ? "verified" : "partially_verified",
     ownership: ownership.value,
     ...definedProps({
-      moves: briefMoves(
-        listPatchChangedFiles(patch),
-        countMoveReferenceUpdates(patch),
-      ),
+      moves: movesFor(patch),
       startHere: startHere.value,
       flow: flow.value,
       citedHunks: Object.keys(citedHunks).length > 0 ? citedHunks : undefined,
     }),
   });
+}
+
+function movesFor(patch: string): BriefMoves | undefined {
+  const changedFiles = listPatchChangedFiles(patch);
+  return briefMoves(
+    changedFiles,
+    countMoveReferenceUpdates(patch, changedFiles),
+  );
 }
 
 /**

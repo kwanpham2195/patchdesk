@@ -1,3 +1,4 @@
+import type { PatchChangedFile } from "./patch-changed-files";
 import { tokenizeUnifiedPatch } from "./unified-patch";
 
 /*
@@ -10,9 +11,24 @@ import { tokenizeUnifiedPatch } from "./unified-patch";
 
 /** The changed lines of one file the patch edits in place: not added, removed, or renamed. */
 type EditedFile = {
+  readonly path: string;
   readonly removed: Array<string>;
   readonly added: Array<string>;
 };
+
+/** Languages whose import and qualifier rules this module knows; any other file is a real change. */
+const REFERENCE_UPDATE_EXTENSIONS = [
+  ".go",
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+];
+const IMPORT_SPECIFIER = /['"]([^'"]+)['"]/;
 
 const QUALIFIER_PLACEHOLDER = "\u0000";
 
@@ -28,16 +44,28 @@ const MODULE_DEFAULT_OR_NAMESPACE =
   /^import\s+(?:type\s+)?(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)/;
 
 /**
- * How many files this patch edits only to follow a move: every changed line
- * is an import, re-export, or package line, or matches a removed line once
- * the package qualifiers those import changes rename are set aside. A file
- * the patch adds, removes, renames, or edits without a changed import is
- * never one.
+ * How many Go or JavaScript-family files this patch edits only to follow a
+ * move: the file swaps at least one import for one that points into a
+ * directory a renamed file moved to, and every other changed line matches its
+ * removed counterpart, in order, once the package qualifiers those import
+ * changes rename are set aside. A file that only adds an import or export, a
+ * file in another language, and a file the patch adds, removes, or renames
+ * are never counted.
  */
-export function countMoveReferenceUpdates(patch: string): number {
+export function countMoveReferenceUpdates(
+  patch: string,
+  changedFiles: ReadonlyArray<PatchChangedFile>,
+): number {
+  const movedTo = new Set<string>();
+  for (const file of changedFiles) {
+    if (file.previousPath === undefined) continue;
+    const to = directoryOf(file.path);
+    if (to !== directoryOf(file.previousPath) && to !== "") movedTo.add(to);
+  }
+  if (movedTo.size === 0) return 0;
   let count = 0;
   for (const file of editedFiles(patch))
-    if (isReferenceUpdate(file)) count += 1;
+    if (isReferenceUpdate(file, movedTo)) count += 1;
   return count;
 }
 
@@ -47,7 +75,15 @@ function editedFiles(patch: string): ReadonlyArray<EditedFile> {
   for (const token of tokenizeUnifiedPatch(patch)) {
     if (token.kind === "file_header") {
       if (current !== undefined && !current.skipped) files.push(current);
-      current = { removed: [], added: [], skipped: false };
+      const path = token.newPath ?? "";
+      current = {
+        path,
+        removed: [],
+        added: [],
+        skipped: !REFERENCE_UPDATE_EXTENSIONS.some((extension) =>
+          path.endsWith(extension),
+        ),
+      };
     } else if (current === undefined) continue;
     else if (token.kind === "old_file_path" || token.kind === "new_file_path")
       current.skipped ||= token.path === "/dev/null";
@@ -62,28 +98,68 @@ function editedFiles(patch: string): ReadonlyArray<EditedFile> {
   return files;
 }
 
-function isReferenceUpdate(file: EditedFile): boolean {
+function isReferenceUpdate(
+  file: EditedFile,
+  movedTo: ReadonlySet<string>,
+): boolean {
   const removedImports = file.removed.filter(isImportLine);
   const addedImports = file.added.filter(isImportLine);
-  if (removedImports.length === 0 && addedImports.length === 0) return false;
+  if (removedImports.length === 0 || addedImports.length === 0) return false;
+  if (
+    !addedImports.some((line) => pointsIntoMovedDirectory(line, file, movedTo))
+  )
+    return false;
   const qualifiers = new Set([
     ...removedImports.flatMap(importQualifiers),
     ...addedImports.flatMap(importQualifiers),
   ]);
   const normalize = (lines: ReadonlyArray<string>) =>
-    lines
-      .flatMap((line) =>
-        line === "" || isImportLine(line)
-          ? []
-          : [withoutQualifiers(line, qualifiers)],
-      )
-      .sort();
+    lines.flatMap((line) =>
+      line === "" || isImportLine(line)
+        ? []
+        : [withoutQualifiers(line, qualifiers)],
+    );
   const removed = normalize(file.removed);
   const added = normalize(file.added);
   return (
     removed.length === added.length &&
     removed.every((line, index) => line === added[index])
   );
+}
+
+/**
+ * Whether an import's specifier names a directory a file moved to: a Go
+ * module path ending in it, or a relative module path that resolves into it.
+ */
+function pointsIntoMovedDirectory(
+  line: string,
+  file: EditedFile,
+  movedTo: ReadonlySet<string>,
+): boolean {
+  const specifier = IMPORT_SPECIFIER.exec(line)?.[1];
+  if (specifier === undefined) return false;
+  const resolved = specifier.startsWith(".")
+    ? resolveRelative(directoryOf(file.path), specifier)
+    : specifier;
+  const wrapped = `/${resolved}/`;
+  for (const directory of movedTo)
+    if (wrapped.includes(`/${directory}`)) return true;
+  return false;
+}
+
+/** `dir/` for `dir/name`; `""` at the repository root. */
+function directoryOf(path: string): string {
+  const cut = path.lastIndexOf("/");
+  return cut < 0 ? "" : path.slice(0, cut + 1);
+}
+
+function resolveRelative(directory: string, specifier: string): string {
+  const parts = directory.split("/").filter((part) => part !== "");
+  for (const part of specifier.split("/")) {
+    if (part === "..") parts.pop();
+    else if (part !== "." && part !== "") parts.push(part);
+  }
+  return parts.join("/");
 }
 
 function isImportLine(line: string): boolean {
