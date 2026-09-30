@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `patchdesk setup` so a coding agent can finish workspace setup from a terminal. `patchdesk setup status` prints the GitHub account, the workspace, each repository's checkout, and the steps left. `patchdesk setup add-repo` watches the repository of the checkout it runs in, with that checkout, and creates the Default workspace from your active `gh` account when there is none. `patchdesk setup set-checkout` points a watched repository at the checkout it moved to. Both make the same change as Settings; removing a repository stays in Settings. #702
+
 - Added the review loop rules to `patchdesk mcp` as MCP server instructions, so a connected coding agent knows how to request an Insight, find your Review, and answer your notes without a block pasted into `AGENTS.md`. The pasted block is now only needed to have the agent open a Review for every change, or for an MCP host that ignores server instructions. #701
 
 ## 0.0.13 - 2026-09-30

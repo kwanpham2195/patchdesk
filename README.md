@@ -162,7 +162,10 @@ commands.
 Check that `uname -m` prints `arm64`, `git --version` and `gh --version` work,
 and `gh auth status` shows an authenticated account. If it does not, run
 `gh auth login`. Open Patchdesk and add the repositories to review as
-`owner/repo`. Press Continue to see the pull request list.
+`owner/repo`. Press Continue to see the pull request list. With Patchdesk open,
+`patchdesk setup add-repo` run in a checkout adds its repository from the
+terminal instead; see
+[Set up the workspace from the terminal](docs/mcp.md#set-up-the-workspace-from-the-terminal).
 
 If a coding agent is doing the installation, give it this task:
 

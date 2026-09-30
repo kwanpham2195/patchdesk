@@ -74,6 +74,8 @@ import { ReviewDiffSourceService } from "../services/review-diff-source-service"
 import { SidebarListingService } from "../services/sidebar-listing-service";
 import { WatchedPullRequestService } from "../services/watched-pull-request-service";
 import type { AppLogService } from "../services/app-log-service";
+import { GitHubEnvironmentProbe } from "../services/github-environment-probe";
+import { WorkspaceSetupService } from "../services/workspace-setup-service";
 
 /** The narrow log seam every request-scoped writer needs. */
 export type LogWriter = Pick<AppLogService, "write">;
@@ -95,6 +97,9 @@ export type LocalApiContainer = {
   recordProfileReloadFailure(phase: string): Promise<void>;
   readonly configuredProfiles: ReadonlyArray<WorkspaceProfileConfig>;
   readonly dashboard: DashboardController;
+  /** One per local API start, which is one per launch: the window its ready answer is held for. Settings and `patchdesk setup status` share it. */
+  readonly githubEnvironment: GitHubEnvironmentProbe;
+  readonly workspaceSetup: WorkspaceSetupService;
   readonly recovery: ReviewRecoveryService;
   readonly reviewWorkbench: ReviewWorkbenchSeam;
   readonly localReviewOpening: LocalReviewOpening;
@@ -235,6 +240,7 @@ export async function buildLocalApiContainer(
     log: logs,
   });
   const avatarRailDependencies = { paths, sync: avatarSync };
+  const githubEnvironment = new GitHubEnvironmentProbe(commands);
   const dashboard = new DashboardController(
     profiles,
     github,
@@ -615,6 +621,13 @@ export async function buildLocalApiContainer(
       recordProfileReloadFailure,
       configuredProfiles: configuredProfiles.value,
       dashboard,
+      githubEnvironment,
+      workspaceSetup: new WorkspaceSetupService({
+        dashboard,
+        git: readOnlyGit,
+        commands,
+        environment: githubEnvironment,
+      }),
       recovery,
       reviewWorkbench,
       localReviewOpening,
