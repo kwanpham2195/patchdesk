@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -58,8 +58,24 @@ async function openPicker(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /**
+ * Resolves after the animation frame already queued when it is called.
+ * jsdom's frames tick on a ~16ms interval, so without this wait a test
+ * observes that frame's work only when the interval happens to fire first.
+ */
+function nextAnimationFrame(): Promise<void> {
+  return act(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      }),
+  );
+}
+
+/**
  * Open it the way a keyboard user does, and hand back the trigger so a test
- * can assert focus came back to it.
+ * can assert focus came back to it. Base UI's `FloatingFocusManager` moves
+ * focus into the opened popup on the next animation frame (`enqueueFocus`),
+ * so this waits out that frame before a test reads or moves focus.
  */
 async function openPickerFromKeyboard(
   user: ReturnType<typeof userEvent.setup>,
@@ -67,6 +83,7 @@ async function openPickerFromKeyboard(
   const trigger = screen.getByRole("button", { name: "Manage assignees" });
   trigger.focus();
   await user.keyboard("{Enter}");
+  await nextAnimationFrame();
   return trigger;
 }
 
