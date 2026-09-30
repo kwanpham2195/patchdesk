@@ -28,6 +28,13 @@
 
 <p align="center"><em>Start with the shape of the change, follow its implementation, then review the evidence.</em></p>
 
+## Watch the tour
+
+A five-minute walkthrough: triage pull requests, read a diff with Insights,
+send a review, and review a coding agent's change over MCP.
+
+https://github.com/user-attachments/assets/861a56f9-c76d-4b77-8254-43762a924251
+
 ## Features
 
 - **Pull request triage.** Filter a repository's pull requests by state,
