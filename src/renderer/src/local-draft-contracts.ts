@@ -1,5 +1,7 @@
 import * as v from "valibot";
 
+import { feedbackHandoffReadingSchema } from "../../domain/feedback-handoff";
+
 const nonEmpty = v.pipe(v.string(), v.minLength(1));
 const lineNumber = v.pipe(v.number(), v.integer(), v.minValue(1));
 const location = {
@@ -34,9 +36,10 @@ export const localDraftEntrySchema = v.variant("kind", [
   }),
 ]);
 
-/** What every Local draft command answers with: the whole list after the change. */
+/** What every Local draft command answers with: the whole list after the change, and the hand-off when the Review has one. */
 export const localDraftListSchema = v.strictObject({
   localDrafts: v.array(localDraftEntrySchema),
+  feedbackHandoff: v.exactOptional(feedbackHandoffReadingSchema),
 });
 
 export type LocalDraftEntry = v.InferOutput<typeof localDraftEntrySchema>;

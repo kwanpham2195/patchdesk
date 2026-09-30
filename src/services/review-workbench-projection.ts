@@ -23,6 +23,10 @@ import {
   sessionRepresentsReview,
   type ReviewFreshness,
 } from "../domain/review";
+import {
+  readFeedbackHandoff,
+  type FeedbackHandoffReading,
+} from "../domain/feedback-handoff";
 import { projectLocalDraft, type LocalDraftEntry } from "../domain/local-draft";
 import type { LocalPatchView } from "../domain/local-patch-view";
 import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
@@ -189,6 +193,8 @@ export type ReviewWorkbenchProjection = {
   readonly localDrafts?: ReadonlyArray<LocalDraftEntry>;
   /** Present exactly on a local Review, `null` when it has no Change intent (#467). */
   readonly changeIntent?: ChangeIntentView | null;
+  /** Present exactly on a local Review, `null` when the drafts have not been handed off since the last move (#603). */
+  readonly feedbackHandoff?: FeedbackHandoffReading | null;
   /** Present exactly on a local Review: the agent run requests on this session, empty when none (ADR 0052). */
   readonly agentRunRequests?: ReadonlyArray<AgentRunRequest>;
 };
@@ -753,6 +759,9 @@ export class ReviewWorkbenchProjectionService {
           : stableReview.value.changeIntent === undefined
             ? null
             : changeIntentView(stableReview.value.changeIntent),
+        feedbackHandoff: isLocalReview(stableReview.value)
+          ? (readFeedbackHandoff(stableReview.value.handoff) ?? null)
+          : undefined,
         localCheckout: projectLocalCheckoutWarning(
           session.localCheckoutWarning,
         ),

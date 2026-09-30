@@ -14,7 +14,8 @@ import {
   parseReviewSessionId,
 } from "../../src/domain/ids";
 import { dismissInsightFinding } from "../../src/domain/insight-record";
-import { isLocalReview, markLocalDraftsApplied } from "../../src/domain/review";
+import { isLocalReview } from "../../src/domain/review";
+import { markLocalDraftsApplied } from "../../src/domain/review-local-drafts";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,

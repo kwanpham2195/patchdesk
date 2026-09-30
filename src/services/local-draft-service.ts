@@ -6,6 +6,11 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { ReviewStore } from "../adapters/storage/review-store";
 import { definedProps } from "../domain/defined-props";
 import type { FailureKinds } from "../domain/failure-kind";
+import {
+  readFeedbackHandoff,
+  type FeedbackHandoffReading,
+  type FeedbackHandoffVerdict,
+} from "../domain/feedback-handoff";
 import { fingerprintPatchAnchor } from "../domain/diff-anchor";
 import {
   isAcceptableSuggestionCode,
@@ -43,13 +48,13 @@ import {
 } from "../domain/local-patch-view";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
+import { isLocalReview, type Review } from "../domain/review";
 import {
   addLocalDraft,
   editMaintainerNote,
-  isLocalReview,
+  recordFeedbackHandoff,
   removeLocalDraft,
-  type Review,
-} from "../domain/review";
+} from "../domain/review-local-drafts";
 import { parseReviewResult } from "../domain/review-result";
 import {
   isPullRequestReviewSession,
@@ -102,6 +107,11 @@ export type LocalNoteEditRequest = ReviewKey & {
   readonly text: string;
 };
 
+/** Ready for agent: the maintainer hands the drafts on the named session to the coding agent. */
+export type FeedbackHandoffRequest = ReviewKey & {
+  readonly verdict?: FeedbackHandoffVerdict;
+};
+
 export type LocalDraftFailure = {
   readonly reason:
     | "in_progress"
@@ -135,8 +145,10 @@ export const localDraftFailureKinds = {
   LocalDraftFailure["reason"] | LocalFeedbackPageFailure["reason"]
 >;
 
+/** What every Local draft write answers with; the hand-off is absent when the Review has none. */
 export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;
+  readonly feedbackHandoff?: FeedbackHandoffReading;
 };
 
 /** Omits `state` from each member of a union, keeping the members apart. */
@@ -156,12 +168,17 @@ type LocalFeedbackEntry = WithoutState<LocalDraftEntry> & {
   readonly suggestion?: string;
 };
 
-/** What the coding agent reads back (ADR 0052 `get_feedback`): one page of Local drafts, the prompt that page renders as, and the session the Review is on. */
-export type LocalFeedback = ReviewSessionDescription & {
-  readonly localDrafts: ReadonlyArray<LocalFeedbackEntry>;
-  readonly markdown: string;
-  readonly nextCursor?: string;
-};
+/**
+ * What the coding agent reads back (ADR 0052 `get_feedback`): one page of
+ * Local drafts, the prompt that page renders as, the session the Review is
+ * on, and the hand-off with `changedSinceHandoff` when the maintainer made one.
+ */
+export type LocalFeedback = ReviewSessionDescription &
+  Partial<FeedbackHandoffReading> & {
+    readonly localDrafts: ReadonlyArray<LocalFeedbackEntry>;
+    readonly markdown: string;
+    readonly nextCursor?: string;
+  };
 
 type LocalDraftDependencies = {
   readonly reviews: Pick<ReviewStore, "load" | "save">;
@@ -248,6 +265,20 @@ export class LocalDraftService {
     );
   }
 
+  /** Ready for agent: stamps the Feedback hand-off, replacing an earlier one (ADR 0052). */
+  handOff(
+    request: FeedbackHandoffRequest,
+  ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
+    return this.locked(request, async (review) =>
+      openReviewChange(
+        recordFeedbackHandoff(review, {
+          at: this.dependencies.now(),
+          ...definedProps({ verdict: request.verdict }),
+        }),
+      ),
+    );
+  }
+
   /**
    * One page of the Local drafts as the workbench lists them, each with its
    * carry state, and the prompt Copy as agent prompt renders for that page
@@ -271,6 +302,7 @@ export class LocalDraftService {
     const inline = await inlineInOriginView(current.value, drafts);
     const page = pageLocalDrafts(drafts, cursor, (listed, prompted) => ({
       ...current.value.description,
+      ...readFeedbackHandoff(review.value.handoff),
       localDrafts: listed.map((draft) => projectFeedbackEntry(draft, inline)),
       markdown: renderLocalDraftsAsAgentPrompt(prompted),
     }));
@@ -281,19 +313,42 @@ export class LocalDraftService {
     });
   }
 
-  /** The Local drafts as one prompt for the coding agent. */
-  async agentPrompt(
+  /**
+   * The Local drafts as one prompt for the coding agent. Copying it is a
+   * hand-off, so it stamps one without a verdict on an open Review; the
+   * prompt carries no verdict (#603).
+   */
+  agentPrompt(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
-  ): Promise<Result<{ readonly markdown: string }, LocalDraftReadFailure>> {
-    const review = await this.loadLocal(profileId, reviewId);
-    return review._tag === "ok"
-      ? ok({
-          markdown: renderLocalDraftsAsAgentPrompt(
-            review.value.localDrafts ?? [],
-          ),
-        })
-      : review;
+  ): Promise<
+    Result<
+      {
+        readonly markdown: string;
+        readonly feedbackHandoff?: FeedbackHandoffReading;
+      },
+      LocalDraftFailure
+    >
+  > {
+    return this.withReviewLock({ profileId, reviewId }, async (review) => {
+      if (!isLocalReview(review)) return err({ reason: "not_applicable" });
+      const markdown = renderLocalDraftsAsAgentPrompt(review.localDrafts ?? []);
+      const handedOff = recordFeedbackHandoff(review, {
+        at: this.dependencies.now(),
+      });
+      if (handedOff._tag === "err") return ok({ markdown });
+      const saved = await this.dependencies.reviews.save(
+        handedOff.value,
+        review.updatedAt,
+      );
+      if (saved._tag === "err") return err({ reason: "storage" });
+      return ok({
+        markdown,
+        ...definedProps({
+          feedbackHandoff: readFeedbackHandoff(handedOff.value.handoff),
+        }),
+      });
+    });
   }
 
   private async loadLocal(
@@ -316,19 +371,7 @@ export class LocalDraftService {
       review: Review<LocalReviewSource>,
     ) => Promise<Result<Review<LocalReviewSource>, LocalDraftFailure>>,
   ): Promise<Result<LocalDraftList, LocalDraftFailure>> {
-    const key = `${request.profileId}:${request.reviewId}`;
-    if (!this.dependencies.coordinator.acquire(key))
-      return err({ reason: "in_progress" });
-    try {
-      const loaded = await this.dependencies.reviews.load(
-        request.profileId,
-        request.reviewId,
-      );
-      if (loaded._tag === "err")
-        return err({
-          reason: loaded.error.reason === "not_found" ? "not_found" : "storage",
-        });
-      const review = loaded.value;
+    return this.withReviewLock(request, async (review) => {
       if (
         !isLocalReview(review) ||
         review.currentSessionId !== request.sessionId
@@ -349,7 +392,32 @@ export class LocalDraftService {
       }
       return ok({
         localDrafts: (next.localDrafts ?? []).map(projectLocalDraft),
+        ...definedProps({ feedbackHandoff: readFeedbackHandoff(next.handoff) }),
       });
+    });
+  }
+
+  /** Runs `write` on the Review it loaded while holding the Review lock. */
+  private async withReviewLock<T>(
+    request: {
+      readonly profileId: WorkspaceProfileId;
+      readonly reviewId: ReviewId;
+    },
+    write: (review: Review) => Promise<Result<T, LocalDraftFailure>>,
+  ): Promise<Result<T, LocalDraftFailure>> {
+    const key = `${request.profileId}:${request.reviewId}`;
+    if (!this.dependencies.coordinator.acquire(key))
+      return err({ reason: "in_progress" });
+    try {
+      const loaded = await this.dependencies.reviews.load(
+        request.profileId,
+        request.reviewId,
+      );
+      if (loaded._tag === "err")
+        return err({
+          reason: loaded.error.reason === "not_found" ? "not_found" : "storage",
+        });
+      return await write(loaded.value);
     } finally {
       this.dependencies.coordinator.release(key);
     }

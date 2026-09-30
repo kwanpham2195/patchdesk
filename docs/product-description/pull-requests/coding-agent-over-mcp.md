@@ -20,7 +20,7 @@ The loop the maintainer passes through, in order:
 2. The agent asks for an Insight (`run_insight`). The request waits.
 3. The maintainer presses Run or Decline on the Agent requests bar.
 4. The run settles; the agent reads it (`get_insight`).
-5. The maintainer drafts notes and tells the agent to read them (`get_feedback`).
+5. The maintainer drafts notes, marks them ready with **Ready for agent** or **Copy as agent prompt**, and tells the agent to read them (`get_feedback`).
 6. The agent changes the code and prepares a new session (`refresh_review`). The header shows Updates available. The agent may ask for an Insight on that session at once; the request waits for the maintainer's Refresh.
 7. The maintainer presses Refresh. The Review moves to the prepared session and carries the notes, and a request made in step 6 appears on the Agent requests bar. The loop returns to step 2 or 3, or ends.
 
@@ -95,7 +95,7 @@ The `agent` marker clears when the last request is settled or declined and no ru
 - `run_insight`: ask the maintainer to run an Analysis, Walkthrough, or Brief on the current session, or on the session I just prepared once they press Refresh.
 - `show_review`: put this Review on the maintainer's screen without taking focus from what they are doing.
 - `get_insight`: read one Insight's status and result. The status is `none`, `awaiting_approval`, `declined`, `running`, `completed`, or `failed`. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries `outdated: true`.
-- `get_feedback`: read the maintainer's _Local drafts_, in file and line order, with the same Markdown prompt that **Copy as agent prompt** copies.
+- `get_feedback`: read the maintainer's _Local drafts_, in file and line order, with the same Markdown prompt that **Copy as agent prompt** copies, and whether the maintainer marked them ready, with which verdict, and whether they changed since.
 - `get_review_status`: where does this Review stand? Has the maintainer's Refresh taken what I prepared, what state is each Insight in, how many notes are there in each state, and which Findings did the maintainer apply to my checkout?
 
 Every answer that describes a session names its id, head, base, and patch hash, so the agent can tell which code a Finding or note is about.
@@ -126,6 +126,15 @@ A page holds at most 25 drafts, and fewer when they are long, so a page stays wi
 
 The agent does not poll for feedback. The maintainer tells the agent when the notes are ready.
 
+## Hand-off
+
+The maintainer can mark the drafts ready in Patchdesk before telling the agent: **Ready for agent** in the Notes section, with an optional verdict, or **Copy as agent prompt**, which marks them ready without a verdict ([Local drafts](opening-a-local-review.md#local-drafts)). While that mark stands, `get_feedback` also returns:
+
+- `handoff`: `at`, when the maintainer marked the drafts ready, and `verdict` when they chose one, `looks_good` or `changes_requested`.
+- `changedSinceHandoff`: `true` once a draft was added, edited, or removed after the mark. An agent resumed before the maintainer finished can then say that the notes changed after they were marked ready.
+
+Without a mark, both fields are absent. A new mark replaces the one before and resets `changedSinceHandoff`; any move to a new session, by the maintainer's Refresh, an Apply, or a reopen, clears the mark. `looks_good` with no drafts tells the agent that the review needs nothing more, so the loop ends without a note that says only "done". The agent can neither set nor clear the mark, and Patchdesk sends it no message when the mark is made. The copied prompt names no verdict.
+
 ## Review status
 
 `get_review_status` tells the agent where a local Review stands in one call, so it can choose its next step: wait for the maintainer's Refresh, read new notes, read a finished Insight, or re-read files the maintainer changed with Apply. The answer holds:
@@ -134,6 +143,7 @@ The agent does not poll for feedback. The maintainer tells the agent when the no
 - `preparedSessionId` while a session the agent's `refresh_review` prepared waits for the maintainer's Refresh. After the Refresh moves the Review to it, the field is absent and the current session is that session.
 - For Analysis, Walkthrough, and Brief, the status and request id `get_insight` reports, without the result.
 - How many Local drafts of each kind, Finding or note, are in each [feedback state](#feedback-states). Every count is present, including zeros.
+- `handoff` and `changedSinceHandoff`, as `get_feedback` returns them, while the maintainer's [hand-off](#hand-off) stands.
 - The applied Findings, in file and line order, each with its Finding id, title, file, lines, and when the maintainer applied it. Apply writes the suggestion into the agent's own checkout, so these are the lines that changed under the agent.
 
 The answer carries no Insight result and no note text; `get_insight` and `get_feedback` read those. The call takes no snapshot, is never refused `in_progress`, and does not mark the Review opened. A Review the active profile does not hold is refused `not_found`, or `profile_changed` when another profile holds it, and a pull request Review is refused `not_applicable`. Its description does not ask the agent to poll.
@@ -150,7 +160,7 @@ A notification about the Review the focused window shows is not posted; the Agen
 ## What MCP never does
 
 - Start an Insight run without the maintainer's Run, or choose the provider or model.
-- Press Apply, Dismiss a Finding, or add, edit, or remove the maintainer's notes.
+- Press Apply, Dismiss a Finding, add, edit, or remove the maintainer's notes, or mark them ready or clear that mark.
 - Replace a Change intent the Review already holds.
 - Commit, push, change a branch, or write the maintainer's index or working-tree files.
 - Read or write GitHub, or create or refresh a pull request Review.

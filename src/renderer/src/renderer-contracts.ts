@@ -27,6 +27,7 @@ import {
   changeIntentViewSchema,
 } from "../../domain/change-intent";
 import { changeScopeSchema } from "../../domain/change-scope";
+import { feedbackHandoffReadingSchema } from "../../domain/feedback-handoff";
 import {
   CHECK_OVERALL_STATES,
   GITHUB_MERGE_STATE_STATUSES,
@@ -893,6 +894,7 @@ const workbenchProjectionSchema = v.strictObject({
   ),
   localDrafts: v.optional(v.array(localDraftEntrySchema)),
   changeIntent: v.optional(v.nullable(changeIntentViewSchema)),
+  feedbackHandoff: v.optional(v.nullable(feedbackHandoffReadingSchema)),
   agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;

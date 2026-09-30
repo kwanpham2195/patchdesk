@@ -10,7 +10,8 @@ import {
 } from "../../src/domain/ids";
 import { dismissInsightFinding } from "../../src/domain/insight-record";
 import { ok } from "../../src/domain/result";
-import { isLocalReview, markLocalDraftsApplied } from "../../src/domain/review";
+import { isLocalReview } from "../../src/domain/review";
+import { markLocalDraftsApplied } from "../../src/domain/review-local-drafts";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import { ReviewInsightReader } from "../../src/services/review-insight-reading";
 import {
@@ -682,6 +683,120 @@ describe("LocalDraftService", () => {
       expect(
         await harness.drafts.editNote({ ...key, noteId, text: "Gone." }),
       ).toEqual({ _tag: "err", error: { reason: "not_found" } });
+    });
+
+    it("stores Ready for agent, reports a note added after it as changedSinceHandoff, and clears the hand-off on a move (#603)", async () => {
+      const { harness, key } = await notedReview();
+      value(
+        await harness.drafts.addNote({
+          view: "combined",
+          ...key,
+          anchor: { path: probePath, side: "new", startLine: 3, line: 3 },
+          text: "Off by one.",
+        }),
+      );
+
+      const handedOff = await harness.drafts.handOff({
+        ...key,
+        verdict: "changes_requested",
+      });
+      const beforeLateNote = value(
+        await harness.drafts.feedback(profileId, key.reviewId),
+      );
+      const lateNote = await harness.drafts.addNote({
+        view: "combined",
+        ...key,
+        anchor: { path: probePath, side: "new", startLine: 2, line: 2 },
+        text: "Start at zero.",
+      });
+      const afterLateNote = value(
+        await harness.drafts.feedback(profileId, key.reviewId),
+      );
+      await writeFile(
+        join(harness.repositoryPath, "probe.ts"),
+        `${probe}export const more = 1;\n`,
+      );
+      const moved = await harness.open();
+      const afterMove = value(
+        await harness.drafts.feedback(profileId, key.reviewId),
+      );
+
+      const handoff = { at: now, verdict: "changes_requested" };
+      expect(handedOff).toMatchObject({
+        _tag: "ok",
+        value: { feedbackHandoff: { handoff, changedSinceHandoff: false } },
+      });
+      expect(beforeLateNote).toMatchObject({
+        handoff,
+        changedSinceHandoff: false,
+      });
+      expect(lateNote).toMatchObject({
+        _tag: "ok",
+        value: { feedbackHandoff: { handoff, changedSinceHandoff: true } },
+      });
+      expect(afterLateNote).toMatchObject({
+        handoff,
+        changedSinceHandoff: true,
+      });
+      expect(moved.session.id).not.toBe(key.sessionId);
+      expect(moved.feedbackHandoff).toBeNull();
+      expect(afterMove).not.toHaveProperty("handoff");
+      expect(afterMove).not.toHaveProperty("changedSinceHandoff");
+      expect(afterMove.localDrafts).toHaveLength(2);
+    });
+
+    it("stamps a hand-off without a verdict on Copy as agent prompt, replacing Ready for agent's, and keeps the verdict out of the prompt (#603)", async () => {
+      const { harness, key } = await notedReview();
+      value(
+        await harness.drafts.addNote({
+          view: "combined",
+          ...key,
+          anchor: { path: probePath, side: "new", startLine: 3, line: 3 },
+          text: "Off by one.",
+        }),
+      );
+      value(await harness.drafts.handOff({ ...key, verdict: "looks_good" }));
+      value(await harness.drafts.removeNote({ ...key, noteId }));
+
+      const copied = value(
+        await harness.drafts.agentPrompt(profileId, key.reviewId),
+      );
+      const feedback = value(
+        await harness.drafts.feedback(profileId, key.reviewId),
+      );
+
+      expect(copied.feedbackHandoff).toEqual({
+        handoff: { at: now },
+        changedSinceHandoff: false,
+      });
+      expect(feedback).toMatchObject({
+        handoff: { at: now },
+        changedSinceHandoff: false,
+      });
+      expect(feedback.handoff).not.toHaveProperty("verdict");
+      expect(copied.markdown).not.toMatch(/looks_good|looks good/i);
+    });
+
+    it("refuses Ready for agent on a session the Review has moved past, and Copy as agent prompt while the Review is held (#603)", async () => {
+      const { harness, key } = await notedReview();
+      await writeFile(
+        join(harness.repositoryPath, "probe.ts"),
+        `${probe}export const more = 1;\n`,
+      );
+      await harness.open();
+      const lock = `${profileId}:${key.reviewId}`;
+
+      const stale = await harness.drafts.handOff(key);
+      expect(harness.coordinator.acquire(lock)).toBe(true);
+      const held = await harness.drafts.agentPrompt(profileId, key.reviewId);
+      harness.coordinator.release(lock);
+
+      expect([stale, held]).toEqual([
+        { _tag: "err", error: { reason: "not_applicable" } },
+        { _tag: "err", error: { reason: "in_progress" } },
+      ]);
+      const stored = value(await harness.reviews.load(profileId, key.reviewId));
+      expect(stored.handoff).toBeUndefined();
     });
   });
 });

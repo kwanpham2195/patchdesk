@@ -17,6 +17,8 @@ import {
 } from "valibot";
 
 import { parseChangeIntent } from "../../domain/change-intent";
+import { definedProps } from "../../domain/defined-props";
+import { feedbackHandoffVerdicts } from "../../domain/feedback-handoff";
 import {
   parseAbsolutePath,
   parseFindingId,
@@ -327,6 +329,22 @@ export function registerLocalReviewRoutes(
     );
   });
 
+  // Ready for agent (#603); Copy as agent prompt below also stamps a hand-off.
+  app.post("/v1/reviews/local-drafts/handoff", async (context) => {
+    const parsed = safeParse(feedbackHandoffSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const key = parseDraftWriteKey(parsed.output);
+    if (key === undefined) return context.json({ error: "invalid_input" }, 400);
+    return serviceResponse(
+      context,
+      await container.localDrafts.handOff({
+        ...key,
+        ...definedProps({ verdict: parsed.output.verdict }),
+      }),
+      localDraftFailureKinds,
+    );
+  });
+
   app.post("/v1/reviews/local-drafts/agent-prompt", async (context) => {
     const parsed = safeParse(reviewRequestSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
@@ -437,6 +455,11 @@ const localNoteSchema = strictObject({
 const localNoteEditSchema = strictObject({
   ...localNoteSchema.entries,
   text: noteText,
+});
+
+const feedbackHandoffSchema = strictObject({
+  ...draftWriteKeySchema,
+  verdict: optional(picklist(feedbackHandoffVerdicts)),
 });
 
 function parseNoteKey(raw: InferOutput<typeof localNoteSchema>) {

@@ -95,7 +95,10 @@ describe("useLocalDrafts", () => {
       runId: "insight-analysis-1-fixture",
       findingId: "finding-1",
     });
-    expect(onWorkbenchPatch).toHaveBeenCalledWith({ localDrafts: [drafted] });
+    expect(onWorkbenchPatch).toHaveBeenCalledWith({
+      localDrafts: [drafted],
+      feedbackHandoff: null,
+    });
   });
 
   it("removes a draft from an earlier Analysis run under that run's id", async () => {
@@ -120,7 +123,10 @@ describe("useLocalDrafts", () => {
       runId: "insight-analysis-0-earlier",
       findingId: "finding-1",
     });
-    expect(onWorkbenchPatch).toHaveBeenCalledWith({ localDrafts: [] });
+    expect(onWorkbenchPatch).toHaveBeenCalledWith({
+      localDrafts: [],
+      feedbackHandoff: null,
+    });
   });
 
   it("keeps the list and says why when the main process refuses", async () => {
@@ -184,7 +190,10 @@ describe("useLocalDrafts", () => {
       text: "Guard the empty case.",
     });
     expect(onWorkbenchPatch).toHaveBeenCalledTimes(1);
-    expect(onWorkbenchPatch).toHaveBeenCalledWith({ localDrafts: [note] });
+    expect(onWorkbenchPatch).toHaveBeenCalledWith({
+      localDrafts: [note],
+      feedbackHandoff: null,
+    });
     expect(refusal).toBeInstanceOf(Error);
   });
 

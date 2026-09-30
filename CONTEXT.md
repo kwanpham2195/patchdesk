@@ -78,6 +78,10 @@ _Avoid_: Stash, WIP commit, temp commit
 A Finding a maintainer added to a local Review's draft list, or a note the maintainer wrote on a diff line. It is feedback for the coding agent: the list is copied to the agent as one prompt and never becomes a GitHub comment (ADR 0051). Each move to a new session carries it as unchanged, changed since the note, or needs attention; it is never discarded, and one whose Finding was applied stays listed but leaves the prompt.
 _Avoid_: Local comment, queued finding, offline draft
 
+**Feedback hand-off**:
+The maintainer's mark that a local Review's Local drafts are ready for the coding agent, made with Ready for agent, with an optional verdict (looks good or changes requested), or with Copy as agent prompt, which carries none. The agent reads when it was made, the verdict, and whether a draft was added, edited, or removed since; it cannot set or clear the mark. A new mark replaces the old one, and a move to a new session clears it (#603, ADR 0052).
+_Avoid_: Submit, send to agent, review done
+
 **Change intent**:
 The spec a local Review's change is checked against: Markdown the maintainer entered, or a repository-relative spec file read from the reviewed head commit (the Local snapshot of a shared Review), never from the working tree. Only Analysis reads it, as the change's stated goal; an Analysis result records the intent it ran against. A pull request Review has none (#467, ADR 0051).
 _Avoid_: Task, prompt, requirements, PR description

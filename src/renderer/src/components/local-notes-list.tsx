@@ -11,6 +11,10 @@ import { localPatchViewLabels } from "../review-source";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { CopyLoadedTextButton } from "./copy-loaded-text-button";
+import {
+  FeedbackHandoffButton,
+  FeedbackHandoffStatus,
+} from "./feedback-handoff-control";
 import { GeneratedMarkdownInline } from "./generated-markdown";
 import { LocalDraftStateBadge } from "./local-draft-state-badge";
 import { InlineError } from "./ui/inline-error";
@@ -22,7 +26,8 @@ import { InlineError } from "./ui/inline-error";
  * that could not be placed keeps its earlier lines under Needs attention until
  * removed (#452). A draft inline in the shown diff is a button that reveals its
  * lines; any other says why it is not inline, and selecting it moves nothing
- * (#557 D6).
+ * (#557 D6). Ready for agent shows even with no drafts, so a Looks good
+ * verdict needs no note (#603).
  */
 export function LocalNotesList({
   controls,
@@ -42,18 +47,25 @@ export function LocalNotesList({
           Select diff lines to add a note, or add a finding to draft, to collect
           your feedback for the coding agent.
         </p>
-      ) : (
-        <div className="flex flex-col items-start gap-2 px-2">
+      ) : null}
+      <div className="flex flex-col items-start gap-2 px-2">
+        {count === 0 ? null : (
           <p className="text-xs text-muted-foreground">
             {count} {count === 1 ? "draft" : "drafts"} for the coding agent
           </p>
-          <CopyLoadedTextButton
-            label="Copy as agent prompt"
-            load={controls.loadAgentPrompt}
-            failure="The drafts could not be copied."
-          />
+        )}
+        <div className="flex flex-wrap items-start gap-2">
+          {count === 0 ? null : (
+            <CopyLoadedTextButton
+              label="Copy as agent prompt"
+              load={controls.loadAgentPrompt}
+              failure="The drafts could not be copied."
+            />
+          )}
+          <FeedbackHandoffButton controls={controls} />
         </div>
-      )}
+        <FeedbackHandoffStatus controls={controls} />
+      </div>
       {controls.error === undefined ? null : (
         <InlineError>{controls.error}</InlineError>
       )}

@@ -13,7 +13,8 @@ import {
   type LocalApplyFile,
   type LocalApplyOperation,
 } from "../domain/local-apply-operation";
-import { isLocalReview, markLocalDraftsApplied } from "../domain/review";
+import { isLocalReview } from "../domain/review";
+import { markLocalDraftsApplied } from "../domain/review-local-drafts";
 import type { AppLogService } from "./app-log-service";
 import {
   hashFileBytes,
