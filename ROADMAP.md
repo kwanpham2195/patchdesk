@@ -24,12 +24,6 @@ README must find what to read and what to run.
 
 ## Next
 
-- **Fresh-eyes UX pass.** Walk the path a new user takes: install, add a
-  repository, run an Insight, and finish one local Review loop with a coding
-  agent. Run it twice: once by hand, and once by a coding agent given only the
-  README. Record friction in `docs/product-description/ux-friction.md` and
-  file issues. Run it before building the other Next items, since it may
-  reorder them. No issue yet.
 - **Agent-friendly onboarding.** No issues yet.
   - **Agent entry point.** A short "For coding agents" section near the top
     of the README and an `llms.txt` index that link the exact docs to read.
@@ -42,9 +36,12 @@ README must find what to read and what to run.
     `AGENTS.md`.
   - **Patchdesk skill.** Ship the review loop as an installable agent skill
     as an alternative to copying instructions.
-- **In-app agent setup.** Show the MCP configuration for Claude Code and
-  Codex in the app, copy it, and confirm when the agent connects. Today this
-  setup lives only in `docs/mcp.md`. No issue yet.
+- **Fresh-eyes UX pass.** Walk the path a new user takes: install, add a
+  repository, run an Insight, and finish one local Review loop with a coding
+  agent. Run it twice. The agent run, given only the README, is the check for
+  agent-friendly onboarding. The run by hand covers the app itself. Record
+  friction in `docs/product-description/ux-friction.md` and file issues. No
+  issue yet.
 - **Insight provider onboarding.** First run covers the GitHub account and
   repositories but not Insight providers, so a new user may never reach Brief,
   Walkthrough, or Analysis. No issue yet.
@@ -55,10 +52,13 @@ README must find what to read and what to run.
 
 ## Later
 
+- **In-app agent setup.** Show the MCP configuration for Claude Code and
+  Codex in the app, copy it, and confirm when the agent connects. Today this
+  setup lives only in `docs/mcp.md`. Less urgent once one-prompt
+  setup works. No issue yet.
 - **Shortcut discoverability.** A keyboard shortcut sheet and in-place hints,
   so Walkthrough navigation, diff navigation, and the command dialog are
   findable without the docs.
-
 - **Finish local Review.** Remove a local Review (#511), reach drafts on
   other branches (#486), and signal a Change intent added after an Analysis
   (#499).
