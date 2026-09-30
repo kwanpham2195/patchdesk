@@ -24,25 +24,25 @@ README must find what to read and what to run.
 
 ## Next
 
-- **Agent-friendly onboarding.** No issues yet.
+- **Agent-friendly onboarding.**
   - **Agent entry point.** A short "For coding agents" section near the top
-    of the README and an `llms.txt` index that link the exact docs to read.
+    of the README and an `llms.txt` index that link the exact docs to read. #700
   - **One-prompt setup.** One README prompt an agent follows end to end:
     install, link the `patchdesk` command after a disk-image install, run
     `patchdesk setup`, register the MCP server, run `patchdesk mcp --check`,
     add the instructions block, and report the steps left for the user, such
-    as `gh auth login`.
+    as `gh auth login`. #703
   - **`patchdesk setup` commands.** Let an agent finish workspace setup from
     the terminal, for example `patchdesk setup status` and
     `patchdesk setup add-repo --cwd .` to add the repository and its checkout.
     The commands go through the running app and the service Settings uses,
     so the profile files stay private and are validated the same way.
-    Signing in with `gh auth login` stays a user step.
+    Signing in with `gh auth login` stays a user step. #702
   - **MCP server instructions.** Send the review loop rules when the agent
     connects, so it knows when to call Patchdesk without a block pasted into
-    `AGENTS.md`.
+    `AGENTS.md`. #701
   - **Patchdesk skill.** Ship the review loop as an installable agent skill
-    as an alternative to copying instructions.
+    as an alternative to copying instructions. #704
 - **Fresh-eyes UX pass.** Walk the path a new user takes: install, add a
   repository, run an Insight, and finish one local Review loop with a coding
   agent. Run it twice. The agent run, given only the README, is the check for
