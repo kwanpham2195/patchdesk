@@ -7,6 +7,7 @@ import {
   type NormalizedBrief,
 } from "./brief";
 import type { BriefFlow, BriefFlowNode, BriefFlowTree } from "./brief-flow";
+import type { BriefMoves } from "./brief-moves";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";
@@ -57,6 +58,7 @@ const storedMovesSchema = v.strictObject({
   ),
   hiddenRows: storedLineCountSchema,
   movedFiles: storedLineCountSchema,
+  referenceUpdates: v.optional(storedLineCountSchema),
   leads: v.boolean(),
 });
 const storedStartHereSchema = v.strictObject({
@@ -243,7 +245,7 @@ export function parseStoredBrief(
     citationStatus: parsed.output.citationStatus,
     ...definedProps({
       ownership: storedOwnership(parsed.output.ownership),
-      moves: parsed.output.moves,
+      moves: storedMoves(parsed.output.moves),
       startHere: storedStartHere(parsed.output.startHere),
       reach: storedReach(parsed.output.reach),
       reachUnavailable: parsed.output.reachUnavailable,
@@ -318,6 +320,15 @@ function storedStartHere(
       ...definedProps({ why: entry.why }),
     })),
   };
+}
+
+/** Rebuilds the Moves block; `referenceUpdates` is absent on a Brief retained before it was counted. */
+function storedMoves(
+  stored: v.InferOutput<typeof storedMovesSchema> | undefined,
+): BriefMoves | undefined {
+  if (stored === undefined) return undefined;
+  const { referenceUpdates, ...moves } = stored;
+  return { ...moves, ...definedProps({ referenceUpdates }) };
 }
 
 /** Rebuilds the Ownership block; `undefined` is a Brief retained before it existed. */

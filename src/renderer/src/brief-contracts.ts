@@ -57,6 +57,7 @@ const briefMovesSchema = v.strictObject({
   ),
   hiddenRows: v.pipe(v.number(), v.integer(), v.minValue(0)),
   movedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  referenceUpdates: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   leads: v.boolean(),
 });
 

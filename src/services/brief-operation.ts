@@ -5,6 +5,7 @@ import {
 } from "../domain/brief";
 import { briefMoves, renderBriefPatchFacts } from "../domain/brief-moves";
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
+import { countMoveReferenceUpdates } from "../domain/move-reference-updates";
 import type { InsightLanguage } from "../domain/insight-provider";
 import { listPatchChangedFiles } from "../domain/patch-changed-files";
 import { err, ok, type Result } from "../domain/result";
@@ -61,7 +62,10 @@ export async function prepareBriefPrompt(input: {
       "Every citation in flow must be an h alias from the supplied BRIEF CITATION MANIFEST; a citation that does not resolve is discarded.",
       `List in reachSymbols up to ${MAX_REACH_SYMBOLS} exported functions, types, or constants whose signature or meaning this patch changes. Write the exact identifier names, as spelled in the patch, and nothing else: no counts, no paths, no prose. Prefer names that callers outside the changed files use -- a helper whose behavior changed and that other files call matters more than a new constant only the patch references. Patchdesk counts their callers itself.`,
       "PATCH FACTS, counted by Patchdesk:",
-      renderBriefPatchFacts(changedFiles, briefMoves(changedFiles)),
+      renderBriefPatchFacts(
+        changedFiles,
+        briefMoves(changedFiles, countMoveReferenceUpdates(patch.value)),
+      ),
       "BRIEF CITATION MANIFEST:",
       renderBriefManifest(manifest),
       "PATCH ARTIFACT:",

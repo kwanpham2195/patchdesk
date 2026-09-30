@@ -16,6 +16,9 @@ export function MovesBlock({
         Moves
         <span className="text-xs font-normal text-muted-foreground">
           {moves.movedFiles} files changed directory
+          {(moves.referenceUpdates ?? 0) > 0
+            ? ` · ${String(moves.referenceUpdates)} more only update references to them`
+            : null}
         </span>
       </h3>
       <div className="grid min-w-0 grid-cols-[minmax(0,auto)_auto_minmax(0,auto)_1fr] items-baseline gap-x-3 gap-y-1 rounded-md border p-3 font-mono text-xs">

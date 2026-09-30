@@ -8,6 +8,7 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
+import { countMoveReferenceUpdates } from "../../src/domain/move-reference-updates";
 import { listPatchChangedFiles } from "../../src/domain/patch-changed-files";
 import type { Result } from "../../src/domain/result";
 import { parseStoredBrief } from "../../src/domain/stored-brief";
@@ -37,7 +38,11 @@ function modified(path: string): string {
 }
 
 function movesOf(...sections: ReadonlyArray<string>) {
-  return briefMoves(listPatchChangedFiles(`${sections.join("\n")}\n`));
+  const patch = `${sections.join("\n")}\n`;
+  return briefMoves(
+    listPatchChangedFiles(patch),
+    countMoveReferenceUpdates(patch),
+  );
 }
 
 function value<T>(result: Result<T, unknown>): T {
@@ -73,6 +78,28 @@ describe("briefMoves", () => {
       to: "internal/platform/",
     });
     expect(moves?.leads).toBe(false);
+  });
+
+  it("leads when files that only follow the move make moves the larger share", () => {
+    const importUpdate = (path: string) =>
+      [
+        `diff --git a/${path} b/${path}`,
+        `--- a/${path}`,
+        `+++ b/${path}`,
+        "@@ -1 +1 @@",
+        '-import { pool } from "../shared/db/pool";',
+        '+import { pool } from "../internal/platform/db/pool";',
+      ].join("\n");
+    const moves = movesOf(
+      rename("shared/db/pool.ts", "internal/platform/db/pool.ts"),
+      rename("shared/db/tx.ts", "internal/platform/db/tx.ts"),
+      importUpdate("api/a.ts"),
+      importUpdate("api/b.ts"),
+      importUpdate("api/c.ts"),
+      modified("Makefile"),
+    );
+    expect(moves?.referenceUpdates).toBe(3);
+    expect(moves?.leads).toBe(true);
   });
 
   it("is absent when renames stay in their directory or only one file moved", () => {

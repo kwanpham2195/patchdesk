@@ -17,6 +17,7 @@ import {
   type BriefOwnership,
 } from "./brief-ownership";
 import { briefMoves, type BriefMoves } from "./brief-moves";
+import { countMoveReferenceUpdates } from "./move-reference-updates";
 import type { BriefReach, BriefReachUnavailableReason } from "./brief-reach";
 import {
   briefStartHereOutputSchema,
@@ -293,7 +294,10 @@ export function normalizeBrief(
       rejectedCitationCount === 0 ? "verified" : "partially_verified",
     ownership: ownership.value,
     ...definedProps({
-      moves: briefMoves(listPatchChangedFiles(patch)),
+      moves: briefMoves(
+        listPatchChangedFiles(patch),
+        countMoveReferenceUpdates(patch),
+      ),
       startHere: startHere.value,
       flow: flow.value,
       citedHunks: Object.keys(citedHunks).length > 0 ? citedHunks : undefined,

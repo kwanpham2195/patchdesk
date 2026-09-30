@@ -30,7 +30,13 @@ export type BriefMoves = {
   readonly hiddenRows: number;
   /** Renamed files whose directory changed. */
   readonly movedFiles: number;
-  /** Moved files outnumber every other kind of change, so the reader draws Moves before Flow. */
+  /**
+   * Files edited in place only to follow the move, such as a changed import
+   * path or package qualifier (`countMoveReferenceUpdates`). Absent on a Brief
+   * retained before they were counted.
+   */
+  readonly referenceUpdates?: number;
+  /** Moved files and reference updates outnumber every other kind of change, so the reader draws Moves before Flow. */
   readonly leads: boolean;
 };
 
@@ -54,6 +60,7 @@ type MutableMoveRow = {
  */
 export function briefMoves(
   files: ReadonlyArray<PatchChangedFile>,
+  referenceUpdates: number,
 ): BriefMoves | undefined {
   const pairs = new Map<string, MutableMoveRow>();
   let movedFiles = 0;
@@ -78,14 +85,16 @@ export function briefMoves(
     (left, right) =>
       right.files - left.files || comparePaths(left.from, right.from),
   );
-  const otherChanges = { added: 0, removed: 0, modified: 0 };
+  const otherChanges = { added: 0, removed: 0, modified: -referenceUpdates };
   for (const file of files)
     if (file.status !== "renamed") otherChanges[file.status] += 1;
+  const followingMove = movedFiles + referenceUpdates;
   return {
     rows: rows.slice(0, MAX_MOVE_ROWS),
     hiddenRows: Math.max(0, rows.length - MAX_MOVE_ROWS),
     movedFiles,
-    leads: Object.values(otherChanges).every((count) => movedFiles > count),
+    referenceUpdates,
+    leads: Object.values(otherChanges).every((count) => followingMove > count),
   };
 }
 
@@ -113,6 +122,10 @@ export function renderBriefPatchFacts(
   );
   if (moves.hiddenRows > 0)
     lines.push(`- ${moreMovedDirectories(moves.hiddenRows)}`);
+  if ((moves.referenceUpdates ?? 0) > 0)
+    lines.push(
+      `${String(moves.referenceUpdates)} modified files only update import paths or package qualifiers to follow the move; they need no flow root and no ownership note.`,
+    );
   return lines.join("\n");
 }
 
