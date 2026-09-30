@@ -196,9 +196,14 @@ export const localDraftFailureKinds = {
   LocalDraftFailure["reason"] | LocalFeedbackPageFailure["reason"]
 >;
 
-/** What every Local draft write answers with; the hand-off is absent when the Review has none. */
+/**
+ * What every Local draft write answers with; the hand-off is absent when the
+ * Review has none. The agent's replies ride along, so a removal that drops a
+ * reply clears it on screen at once.
+ */
 export type LocalDraftList = {
   readonly localDrafts: ReadonlyArray<LocalDraftEntry>;
+  readonly localDraftReplies: ReadonlyArray<LocalDraftReply>;
   readonly feedbackHandoff?: FeedbackHandoffReading;
 };
 
@@ -529,6 +534,7 @@ export class LocalDraftService {
       }
       return ok({
         localDrafts: (next.localDrafts ?? []).map(projectLocalDraft),
+        localDraftReplies: next.localDraftReplies ?? [],
         ...definedProps({ feedbackHandoff: readFeedbackHandoff(next.handoff) }),
       });
     });
