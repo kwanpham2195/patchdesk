@@ -8,7 +8,9 @@ coding agents** and review that output every day. Local Review and the MCP
 server are the core of the product; pull request review stays supported.
 
 The near-term goal is **outside users**: someone other than the maintainer can
-install Patchdesk, get it working, and report a problem.
+install Patchdesk, get it working, and report a problem. A coding agent often
+does that setup, so the docs are part of onboarding: an agent starting from the
+README must find what to read and what to run.
 
 ## Now
 
@@ -24,18 +26,30 @@ install Patchdesk, get it working, and report a problem.
 
 - **Fresh-eyes UX pass.** Walk the path a new user takes: install, add a
   repository, run an Insight, and finish one local Review loop with a coding
-  agent. Record friction in `docs/product-description/ux-friction.md` and file
-  issues. Run it before building the other Next items, since it may reorder
-  them. No issue yet.
+  agent. Run it twice: once by hand, and once by a coding agent given only the
+  README. Record friction in `docs/product-description/ux-friction.md` and
+  file issues. Run it before building the other Next items, since it may
+  reorder them. No issue yet.
+- **Agent-friendly onboarding.** No issues yet.
+  - **Agent entry point.** A short "For coding agents" section near the top
+    of the README and an `llms.txt` index that link the exact docs to read.
+  - **One-prompt setup.** One README prompt an agent follows end to end:
+    install, register the MCP server, run `patchdesk mcp --check`, add the
+    instructions block, and report the steps left for the user, such as
+    `gh auth login` and choosing repositories.
+  - **MCP server instructions.** Send the review loop rules when the agent
+    connects, so it knows when to call Patchdesk without a block pasted into
+    `AGENTS.md`.
+  - **Patchdesk skill.** Ship the review loop as an installable agent skill
+    as an alternative to copying instructions.
 - **In-app agent setup.** Show the MCP configuration for Claude Code and
   Codex in the app, copy it, and confirm when the agent connects. Today this
   setup lives only in `docs/mcp.md`. No issue yet.
-
-- **Update check.** Tell users when a newer release is published, so they do
-  not have to watch GitHub. No issue yet.
 - **Insight provider onboarding.** First run covers the GitHub account and
   repositories but not Insight providers, so a new user may never reach Brief,
   Walkthrough, or Analysis. No issue yet.
+- **Update check.** Tell users when a newer release is published, so they do
+  not have to watch GitHub. No issue yet.
 - **Feedback channel.** Add issue templates, and let users export diagnostics
   from Settings → Logs to attach to a report. No issue yet.
 
