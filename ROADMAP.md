@@ -30,7 +30,13 @@ README must find what to read and what to run.
   - **One-prompt setup.** One README prompt an agent follows end to end:
     install, register the MCP server, run `patchdesk mcp --check`, add the
     instructions block, and report the steps left for the user, such as
-    `gh auth login` and choosing repositories.
+    `gh auth login`.
+  - **`patchdesk setup` commands.** Let an agent finish workspace setup from
+    the terminal, for example `patchdesk setup status` and
+    `patchdesk setup add-repo --cwd .` to add the repository and its checkout.
+    The commands go through the running app and the service Settings uses,
+    so the profile files stay private and are validated the same way.
+    Signing in with `gh auth login` stays a user step.
   - **MCP server instructions.** Send the review loop rules when the agent
     connects, so it knows when to call Patchdesk without a block pasted into
     `AGENTS.md`.
