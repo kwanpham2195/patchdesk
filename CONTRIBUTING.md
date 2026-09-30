@@ -405,11 +405,12 @@ did not run package smoke or release operations either.
 
 ## Release
 
-A release is one tag. You prepare the version locally, push the tag, and,
-since the `Release` workflow is paused as of 2026-09-03, run the same build
-and checks locally, ending with a draft GitHub release for you to read
-before anyone can install it. Nothing is published without a person
-publishing it.
+A release is one tag. You prepare the version locally and push the tag; the
+`Release` workflow then runs the checks, builds the package, and opens a
+draft GitHub release for you to read before anyone can install it. Nothing
+is published without a person publishing it. The `Pull request gates`
+workflow stays paused (see above); only `Release` runs in CI, since
+2026-09-30.
 
 1. Start on `main` with a clean working tree, up to date with `origin`.
 
@@ -435,9 +436,10 @@ publishing it.
    git push origin main v0.2.0
    ```
 
-4. The `Release` workflow (`.github/workflows/release.yml`) would normally
-   run on `macos-14` when the tag is pushed; while it is paused, the
-   maintainer runs the same steps locally instead, in this order:
+4. The `Release` workflow (`.github/workflows/release.yml`) runs on
+   `macos-14` when the tag is pushed. Watch it with `gh run watch`. If it
+   cannot run, the maintainer runs the same steps locally instead, in this
+   order:
 
    ```bash
    pnpm --silent release:notes 0.2.0 > release-notes.md
