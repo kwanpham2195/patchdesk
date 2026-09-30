@@ -30,12 +30,6 @@ README must find what to read and what to run.
     `patchdesk setup`, register the MCP server, run `patchdesk mcp --check`,
     add the instructions block if the project wants a Review for every
     change, and report the steps left for the user, such as `gh auth login`. #703
-  - **`patchdesk setup` commands.** Let an agent finish workspace setup from
-    the terminal, for example `patchdesk setup status` and
-    `patchdesk setup add-repo --cwd .` to add the repository and its checkout.
-    The commands go through the running app and the service Settings uses,
-    so the profile files stay private and are validated the same way.
-    Signing in with `gh auth login` stays a user step. #702
   - **Patchdesk skill.** Ship the review loop as an installable agent skill
     as an alternative to copying instructions. Revisit now that the
     server sends its instructions. #704
