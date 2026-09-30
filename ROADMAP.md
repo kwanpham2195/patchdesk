@@ -30,9 +30,8 @@ README must find what to read and what to run.
   - **One-prompt setup.** One README prompt an agent follows end to end:
     install, link the `patchdesk` command after a disk-image install, run
     `patchdesk setup`, register the MCP server, run `patchdesk mcp --check`,
-    add the
-    instructions block, and report the steps left for the user, such as
-    `gh auth login`.
+    add the instructions block, and report the steps left for the user, such
+    as `gh auth login`.
   - **`patchdesk setup` commands.** Let an agent finish workspace setup from
     the terminal, for example `patchdesk setup status` and
     `patchdesk setup add-repo --cwd .` to add the repository and its checkout.
