@@ -55,6 +55,8 @@ export type WorkspaceSetupFailure = {
     | "not_watched"
     | "checkout_not_a_repository"
     | "checkout_no_github_origin"
+    /** The origin names a host other than the workspace's GitHub host, such as GitLab or an SSH host alias. */
+    | "checkout_other_host"
     | "checkout_origin_mismatch"
     | "invalid_input"
     | "storage";
@@ -123,12 +125,28 @@ export class WorkspaceSetupService {
   ): Promise<Result<WorkspaceRepositorySet, WorkspaceSetupFailure>> {
     const read = await readCheckoutOrigin(this.dependencies.git, folder);
     if (read._tag === "err") return read;
-    const profile = await this.activeOrCreatedProfile();
+    const repository = read.value.origin;
+    const profile = await this.activeOrCreatedProfile(repository.host);
     if (profile._tag === "err") return profile;
     const { active, created } = profile.value;
-    const repository = read.value.origin;
-    const watched = isWatched(active, repository);
-    if (!watched) {
+    const watched = active.repos.find((candidate) =>
+      sameRepositoryIdentity(candidate, repository),
+    );
+    // An add never moves a checkout that still exists: an agent in a
+    // throwaway worktree would otherwise point every Review at a folder that
+    // is about to go. `set-checkout` is the explicit move.
+    if (
+      watched?.localPath !== undefined &&
+      (await missingCheckout(watched.localPath)) === undefined
+    )
+      return ok({
+        profile: summary(active),
+        profileCreated: created,
+        repositoryAdded: false,
+        repository,
+        localPath: watched.localPath,
+      });
+    if (watched === undefined) {
       const added = await this.dependencies.dashboard.updateWatchlist({
         profileId: active.id,
         add: [repository],
@@ -138,7 +156,7 @@ export class WorkspaceSetupService {
     }
     return await this.chooseCheckout(active, repository, read.value.root, {
       profileCreated: created,
-      repositoryAdded: !watched,
+      repositoryAdded: watched === undefined,
     });
   }
 
@@ -152,6 +170,8 @@ export class WorkspaceSetupService {
     if (profiles._tag === "err") return profiles;
     const active = profiles.value.active;
     const repository = read.value.origin;
+    if (repository.host !== active.githubHost)
+      return err({ reason: "checkout_other_host" });
     if (!isWatched(active, repository)) return err({ reason: "not_watched" });
     return await this.chooseCheckout(active, repository, read.value.root, {
       profileCreated: false,
@@ -181,10 +201,14 @@ export class WorkspaceSetupService {
 
   /**
    * The saved active profile, or the Default one made from the active `gh`
-   * account. It detects afresh on every call, unlike first run's memo, so a
-   * user who runs `gh auth login` after a refusal can run the command again.
+   * account, when its GitHub host is `host`. It detects afresh on every call,
+   * unlike first run's memo, so a user who runs `gh auth login` after a
+   * refusal can run the command again. A checkout on another host is refused
+   * before anything is saved.
    */
-  private async activeOrCreatedProfile(): Promise<
+  private async activeOrCreatedProfile(
+    host: string,
+  ): Promise<
     Result<
       { readonly active: WorkspaceProfileConfig; readonly created: boolean },
       WorkspaceSetupFailure
@@ -193,11 +217,14 @@ export class WorkspaceSetupService {
     const { dashboard, commands } = this.dependencies;
     const saved = await dashboard.savedProfiles();
     if (saved._tag === "ok")
-      return ok({ active: saved.value.active, created: false });
+      return saved.value.active.githubHost === host
+        ? ok({ active: saved.value.active, created: false })
+        : err({ reason: "checkout_other_host" });
     if (saved.error.reason === "storage") return err({ reason: "storage" });
     const detected = await detectDefaultWorkspaceProfile(commands);
     if (detected._tag === "err") return err({ reason: "storage" });
     const { id, label, githubHost, ghAccount, rulePaths } = detected.value;
+    if (githubHost !== host) return err({ reason: "checkout_other_host" });
     if (ghAccount.length === 0) return err({ reason: "no_github_account" });
     const created = await dashboard.saveProfile({
       id,

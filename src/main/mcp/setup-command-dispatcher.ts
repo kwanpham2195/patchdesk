@@ -32,6 +32,8 @@ const setupRefusalMessages = {
   checkout_not_a_repository: "The folder is not inside a git checkout.",
   checkout_no_github_origin:
     "The checkout's origin remote does not name a GitHub repository.",
+  checkout_other_host:
+    "The checkout's origin names a host other than the workspace's GitHub host. Point origin at the GitHub URL, not a host alias or another service.",
   checkout_origin_mismatch:
     "The checkout's origin remote names a different repository.",
   invalid_input: "Patchdesk could not read the request.",

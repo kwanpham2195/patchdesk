@@ -171,6 +171,52 @@ describe("WorkspaceSetupService", () => {
     });
   });
 
+  it("refuses a checkout whose origin is on another host, before creating a workspace", async () => {
+    const { checkout, store, setup } = await setUp();
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "set-url",
+      "origin",
+      "git@github-work:octo-org/patchdesk.git",
+    ]);
+
+    expect(await setup.addRepository(absolute(checkout))).toEqual({
+      _tag: "err",
+      error: { reason: "checkout_other_host" },
+    });
+    expect(await store.list()).toEqual({ _tag: "ok", value: [] });
+  });
+
+  it("keeps a watched repository's checkout that still exists when add-repo runs in another one", async () => {
+    const { root, checkout, store, setup } = await setUp();
+    await setup.addRepository(absolute(checkout));
+    const worktree = join(root, "worktree");
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-q",
+      "--allow-empty",
+      "-m",
+      "root",
+    ]);
+    execFileSync("git", ["-C", checkout, "worktree", "add", "-q", worktree]);
+
+    expect(await setup.addRepository(absolute(worktree))).toMatchObject({
+      _tag: "ok",
+      value: { repositoryAdded: false, localPath: checkout },
+    });
+    expect(await store.list()).toMatchObject({
+      value: [{ repos: [{ repo: "patchdesk", localPath: checkout }] }],
+    });
+  });
+
   it("refuses a checkout of an unwatched repository or one with no GitHub origin", async () => {
     const { root, checkout, setup } = await setUp();
     await setup.addRepository(absolute(checkout));
