@@ -61,7 +61,12 @@ import { LocalApplySettlement } from "../services/local-apply-settlement";
 import { LocalChangeIntentService } from "../services/local-change-intent-service";
 import { LocalDraftService } from "../services/local-draft-service";
 import { LocalPatchViewService } from "../services/local-patch-view-service";
-import { createAgentRunRequestId, createLocalNoteId } from "../domain/ids";
+import {
+  createAgentExplanationId,
+  createAgentRunRequestId,
+  createLocalNoteId,
+} from "../domain/ids";
+import { AgentExplanationService } from "../services/agent-explanation-service";
 import { AgentRunRequestService } from "../services/agent-run-request-service";
 import { ReviewRetention } from "../services/review-retention";
 import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
@@ -97,6 +102,8 @@ export type LocalApiContainer = {
   readonly reviewRetention: ReviewRetention;
   readonly localApply: LocalApplyService;
   readonly localDrafts: LocalDraftService;
+  /** The coding agent's explanations on diff lines of a local Review (#665). */
+  readonly agentExplanations: AgentExplanationService;
   /** A shared local Review's Committed and Uncommitted patches, read from the session's stored files (#556). */
   readonly localPatchViews: LocalPatchViewService;
   readonly localChangeIntent: LocalChangeIntentService;
@@ -620,6 +627,13 @@ export async function buildLocalApiContainer(
         coordinator: reviewOperations,
         now: systemNow,
         createNoteId: () => createLocalNoteId(randomUUID()),
+      }),
+      agentExplanations: new AgentExplanationService({
+        reviews,
+        sessions,
+        coordinator: reviewOperations,
+        now: systemNow,
+        createExplanationId: () => createAgentExplanationId(randomUUID()),
       }),
       localPatchViews: new LocalPatchViewService({
         reviews,

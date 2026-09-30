@@ -117,6 +117,7 @@ describe("get_review_status", () => {
           },
         },
         appliedFindings: [],
+        explanationCount: 0,
       },
     });
     expect(waiting.content).toHaveProperty(

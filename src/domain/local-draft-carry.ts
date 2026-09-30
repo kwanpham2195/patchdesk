@@ -1,4 +1,10 @@
-import { locatePatchAnchor, type ReviewAnchorFingerprint } from "./diff-anchor";
+import type { AgentExplanation } from "./agent-explanation";
+import { definedProps } from "./defined-props";
+import {
+  fingerprintPatchAnchor,
+  locatePatchAnchor,
+  type ReviewAnchorFingerprint,
+} from "./diff-anchor";
 import {
   isAcceptableSuggestionCode,
   resolveSuggestionTarget,
@@ -32,17 +38,7 @@ export function carryLocalDraft(
 ): LocalDraft {
   if (!isMaintainerNote(draft) && draft.appliedAt !== undefined) return draft;
   const notedLines = draft.carry?.notedLines ?? draft.anchor.selectedLines;
-  const locations = locatePatchAnchor(target.patch, draft.anchor);
-  const location = locations.length === 1 ? locations[0] : undefined;
-  const anchor =
-    location !== undefined
-      ? { ...draft.anchor, ...location }
-      : draft.anchor.side === "new"
-        ? regionBetweenContext(
-            draft.anchor,
-            target.files.get(draft.anchor.path),
-          )
-        : undefined;
+  const anchor = carryAnchor(draft.anchor, target);
   if (anchor === undefined)
     return withoutStaleSuggestion(
       {
@@ -72,6 +68,46 @@ export function carryLocalDraft(
     notedLines,
     target.patch,
   );
+}
+
+/**
+ * An Agent explanation after a move (#665), by the Local draft carry rule:
+ * lines that did not change keep it, changed lines mark it outdated for good,
+ * and an explanation the rule cannot place, or places outside every hunk of
+ * the new Combined patch, is dropped, because it shows only inline.
+ */
+export function carryAgentExplanation(
+  explanation: AgentExplanation,
+  target: LocalDraftCarryTarget,
+): AgentExplanation | undefined {
+  const anchor = carryAnchor(explanation.anchor, target);
+  if (
+    anchor === undefined ||
+    fingerprintPatchAnchor(target.patch, anchor) === undefined
+  )
+    return undefined;
+  const changed =
+    explanation.outdated === true ||
+    !sameLines(anchor.selectedLines, explanation.anchor.selectedLines);
+  return {
+    ...explanation,
+    sessionId: target.sessionId,
+    anchor,
+    ...definedProps({ outdated: changed ? (true as const) : undefined }),
+  };
+}
+
+/** Where an anchor lands in the new patch: its one exact match, else the new-side lines between its context. */
+function carryAnchor(
+  anchor: ReviewAnchorFingerprint,
+  target: LocalDraftCarryTarget,
+): ReviewAnchorFingerprint | undefined {
+  const locations = locatePatchAnchor(target.patch, anchor);
+  const location = locations.length === 1 ? locations[0] : undefined;
+  if (location !== undefined) return { ...anchor, ...location };
+  return anchor.side === "new"
+    ? regionBetweenContext(anchor, target.files.get(anchor.path))
+    : undefined;
 }
 
 /**

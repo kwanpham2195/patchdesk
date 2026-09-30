@@ -36,7 +36,11 @@ import {
   type LocalReviewSource,
   type LocalReviewSourceRequest,
 } from "../domain/review-source";
-import { carryToSession, readCarryTargets } from "./local-draft-carry-targets";
+import {
+  carryAgentExplanationsToSession,
+  carryToSession,
+  readCarryTargets,
+} from "./local-draft-carry-targets";
 import type { LocalApplySettlement } from "./local-apply-settlement";
 import {
   listsBaseRef,
@@ -793,11 +797,17 @@ export class LocalReviewOpening {
     }
     const now = this.now();
     const drafts = stored?.localDrafts;
+    const explanations = stored?.agentExplanations;
     const needsCarry =
-      drafts !== undefined && stored?.currentSessionId !== session.value.id;
+      (drafts !== undefined || explanations !== undefined) &&
+      stored?.currentSessionId !== session.value.id;
     // Read every carry target before Apply settlement can change a Finding draft (#568).
     const targets = needsCarry
-      ? await readCarryTargets(drafts, session.value, this.preparation)
+      ? await readCarryTargets(
+          [...(drafts ?? []), ...(explanations ?? [])],
+          session.value,
+          this.preparation,
+        )
       : undefined;
     if (needsCarry && targets === undefined) return err({ reason: "storage" });
     if (
@@ -858,10 +868,14 @@ export class LocalReviewOpening {
       stored = settled.value;
     }
     let carried: ReadonlyArray<LocalDraft> | undefined;
-    if (targets !== undefined) {
+    if (targets !== undefined && drafts !== undefined) {
       if (stored?.localDrafts === undefined) return err({ reason: "storage" });
       carried = carryToSession(stored.localDrafts, targets);
     }
+    const carriedExplanations =
+      targets === undefined || stored?.agentExplanations === undefined
+        ? undefined
+        : carryAgentExplanationsToSession(stored.agentExplanations, targets);
     const moved = moveLocalReviewToSession(
       stored ??
         createReview({
@@ -874,7 +888,10 @@ export class LocalReviewOpening {
         sessionId: session.value.id,
         headSha: session.value.key.headSha,
         updatedAt: now,
-        ...definedProps({ localDrafts: carried }),
+        ...definedProps({
+          localDrafts: carried,
+          agentExplanations: carriedExplanations,
+        }),
       },
     );
     if (moved._tag === "err") return err({ reason: "terminal" });

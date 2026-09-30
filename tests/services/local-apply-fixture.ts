@@ -17,6 +17,7 @@ import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-wri
 import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
 import {
   createAgentRunRequestId,
+  createAgentExplanationId,
   createLocalNoteId,
   parseContentHash,
   parseFindingId,
@@ -45,6 +46,7 @@ import type { ReviewResult } from "../../src/domain/review-result";
 import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
+import { AgentExplanationService } from "../../src/services/agent-explanation-service";
 import { AgentRunRequestService } from "../../src/services/agent-run-request-service";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { LocalApplyService } from "../../src/services/local-apply-service";
@@ -117,6 +119,8 @@ export type LocalApplyHarness = {
   readonly insights: InsightStore;
   /** Add to draft, maintainer notes, and Remove over the same stores and Review coordinator; note ids count up from `note-fixture-1`. */
   readonly drafts: LocalDraftService;
+  /** The coding agent's explanations over the same stores and Review coordinator; ids count up from `explanation-fixture-1`. */
+  readonly explanations: AgentExplanationService;
   readonly coordinator: ReviewOperationCoordinator;
   readonly retention: ReviewRetention;
   readonly diagnostics: ReviewDiagnosticService;
@@ -184,6 +188,7 @@ export async function localApplyHarness(
   );
   const sessions = new ReviewSessionStore(paths);
   let notes = 0;
+  let explanations = 0;
   const reviews = new ReviewStore(paths);
   const viewedFiles = new ViewedFilesStore(paths, { write: () => undefined });
   const insights = new InsightStore(paths);
@@ -339,6 +344,14 @@ export async function localApplyHarness(
       coordinator,
       now: () => now,
       createNoteId: () => createLocalNoteId(`fixture-${String(++notes)}`),
+    }),
+    explanations: new AgentExplanationService({
+      reviews,
+      sessions,
+      coordinator,
+      now: () => now,
+      createExplanationId: () =>
+        createAgentExplanationId(`fixture-${String(++explanations)}`),
     }),
     coordinator,
     retention,

@@ -47,6 +47,10 @@ import {
   agentRunRequestsOnSession,
   type AgentRunRequest,
 } from "../domain/agent-run-request";
+import {
+  projectAgentExplanation,
+  type AgentExplanationEntry,
+} from "../domain/agent-explanation";
 import type { LocalDraftReply } from "../domain/local-draft-reply";
 import { err, ok, type Result } from "../domain/result";
 import type {
@@ -768,6 +772,7 @@ export class ReviewWorkbenchController {
     ReviewObservation & {
       readonly agentRunRequests: ReadonlyArray<AgentRunRequest>;
       readonly localDraftReplies: ReadonlyArray<LocalDraftReply>;
+      readonly agentExplanations: ReadonlyArray<AgentExplanationEntry>;
     }
   > {
     // The session's agent run requests ride along so a request an agent made while the Review is open reaches its bar.
@@ -786,6 +791,10 @@ export class ReviewWorkbenchController {
       agentRunRequests,
       // An agent's reply_to_note reaches the Notes section at the next detection and leaves the diff alone (#600).
       localDraftReplies: review.localDraftReplies ?? [],
+      // An agent's explain_lines reaches the diff at the next detection, as a reply does (#665).
+      agentExplanations: (review.agentExplanations ?? []).map(
+        projectAgentExplanation,
+      ),
     };
   }
 

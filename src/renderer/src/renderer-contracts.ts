@@ -28,6 +28,7 @@ import {
 } from "../../domain/change-intent";
 import { changeScopeSchema } from "../../domain/change-scope";
 import { feedbackHandoffReadingSchema } from "../../domain/feedback-handoff";
+import { agentExplanationEntrySchema } from "../../domain/agent-explanation";
 import { localDraftReplySchema } from "../../domain/local-draft-reply";
 import {
   CHECK_OVERALL_STATES,
@@ -895,6 +896,7 @@ const workbenchProjectionSchema = v.strictObject({
   ),
   localDrafts: v.optional(v.array(localDraftEntrySchema)),
   localDraftReplies: v.optional(v.array(localDraftReplySchema)),
+  agentExplanations: v.optional(v.array(agentExplanationEntrySchema)),
   changeIntent: v.optional(v.nullable(changeIntentViewSchema)),
   feedbackHandoff: v.optional(v.nullable(feedbackHandoffReadingSchema)),
   agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
