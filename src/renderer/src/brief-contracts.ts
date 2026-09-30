@@ -44,6 +44,22 @@ const briefOwnershipSchema = v.strictObject({
   ),
 });
 
+/** The Moves block: directories the patch moved, computed from git's rename pairs. */
+const briefMovesSchema = v.strictObject({
+  rows: v.array(
+    v.strictObject({
+      from: v.string(),
+      to: v.string(),
+      files: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      editedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      names: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    }),
+  ),
+  hiddenRows: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  movedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  leads: v.boolean(),
+});
+
 /**
  * The Start here block. The main process already cut this order down to files
  * the patch changes, so the reader draws it as given; the numbering is honest
@@ -192,6 +208,8 @@ const briefSchema = v.strictObject({
   citationStatus: v.picklist(["verified", "partially_verified"]),
   /** Absent on a Brief retained before the Ownership block existed. */
   ownership: v.optional(briefOwnershipSchema),
+  /** Absent on a Brief retained before the Moves block existed, and whenever the patch moved no directory. */
+  moves: v.optional(briefMovesSchema),
   /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
   startHere: v.optional(briefStartHereSchema),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
@@ -227,6 +245,7 @@ export type BriefInsight = v.InferOutput<typeof briefInsightSchema>;
 export type Brief = v.InferOutput<typeof briefSchema>;
 export type BriefCitation = v.InferOutput<typeof briefCitationSchema>;
 export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
+export type BriefMoves = v.InferOutput<typeof briefMovesSchema>;
 export type BriefReach = v.InferOutput<typeof briefReachSchema>;
 type BriefReachMention = v.InferOutput<typeof briefReachMentionSchema>;
 export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;

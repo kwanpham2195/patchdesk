@@ -16,6 +16,7 @@ import {
   normalizeBriefOwnership,
   type BriefOwnership,
 } from "./brief-ownership";
+import { briefMoves, type BriefMoves } from "./brief-moves";
 import type { BriefReach, BriefReachUnavailableReason } from "./brief-reach";
 import {
   briefStartHereOutputSchema,
@@ -28,6 +29,7 @@ import {
   narrativeHunkManifest,
   type NarrativeSnapshot,
 } from "./narrative-walkthrough";
+import { listPatchChangedFiles } from "./patch-changed-files";
 import { err, ok, type Result } from "./result";
 
 /**
@@ -69,6 +71,12 @@ export type NormalizedBrief = {
    * the patch rather than asked of the model.
    */
   readonly ownership?: BriefOwnership;
+  /**
+   * Directories the patch moved, computed from git's rename pairs. Absent on
+   * a Brief retained before the block existed, and whenever fewer than two
+   * renamed files changed directory.
+   */
+  readonly moves?: BriefMoves;
   /**
    * Where to start reading. Absent on a Brief retained before the block
    * existed, and whenever no path the model proposed is a file this patch
@@ -285,6 +293,7 @@ export function normalizeBrief(
       rejectedCitationCount === 0 ? "verified" : "partially_verified",
     ownership: ownership.value,
     ...definedProps({
+      moves: briefMoves(listPatchChangedFiles(patch)),
       startHere: startHere.value,
       flow: flow.value,
       citedHunks: Object.keys(citedHunks).length > 0 ? citedHunks : undefined,

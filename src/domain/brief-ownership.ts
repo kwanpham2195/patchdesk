@@ -19,7 +19,7 @@ import {
  * `ChangeScopeFile.path`: it is a display line and the key a model note must
  * match, never a path Patchdesk opens.
  */
-export type BriefOwnershipFile = PatchChangedFile;
+export type BriefOwnershipFile = Omit<PatchChangedFile, "previousPath">;
 
 /** One short model note about what a changed file is responsible for afterwards. */
 type BriefOwnershipNote = {
@@ -88,8 +88,17 @@ export type NormalizedBriefOwnership = {
 export function briefOwnershipFiles(
   patch: string,
 ): ReadonlyArray<BriefOwnershipFile> {
-  return listPatchChangedFiles(patch).filter(
-    (file) => classifyChangedPath(file) !== "generated",
+  return listPatchChangedFiles(patch).flatMap((file) =>
+    classifyChangedPath(file) === "generated"
+      ? []
+      : [
+          {
+            path: file.path,
+            status: file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+          },
+        ],
   );
 }
 
@@ -108,10 +117,16 @@ export function normalizeBriefOwnership(
   const files = briefOwnershipFiles(patch);
   if (raw === undefined) return { value: { files, notes: [] }, rejected: 0 };
   const changedPaths = new Set(files.map((file) => file.path));
+  // The Moves block already says a pure move happened, so a note there only
+  // spends the note budget; it is dropped without counting as a model error.
+  const pureMoves = new Set(
+    files.flatMap((file) => (isUnchangedRename(file) ? [file.path] : [])),
+  );
   const notes: Array<BriefOwnershipNote> = [];
   const noted = new Set<string>();
   let rejected = 0;
   for (const item of raw.notes) {
+    if (pureMoves.has(item.path)) continue;
     const note = item.note.trim().slice(0, MAX_OWNERSHIP_NOTE_LENGTH);
     if (!changedPaths.has(item.path) || noted.has(item.path) || note === "") {
       rejected += 1;
@@ -121,4 +136,15 @@ export function normalizeBriefOwnership(
     notes.push({ path: item.path, note });
   }
   return { value: { files, notes }, rejected };
+}
+
+/** A renamed file whose content the patch did not touch. */
+export function isUnchangedRename(file: {
+  readonly status: PatchChangedFile["status"];
+  readonly additions: number;
+  readonly deletions: number;
+}): boolean {
+  return (
+    file.status === "renamed" && file.additions === 0 && file.deletions === 0
+  );
 }
