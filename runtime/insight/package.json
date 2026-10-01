@@ -5,7 +5,7 @@
   "scripts": {
     "generate:catalog": "node scripts/generate-model-catalog.mjs",
     "build": "pnpm generate:catalog && vite build && node scripts/write-manifest.mjs",
-    "test": "vitest",
+    "test": "vitest --maxWorkers=4",
     "deploy:verify": "pnpm install --frozen-lockfile --prod --offline --ignore-scripts --config.auto-install-peers=false"
   },
   "dependencies": {

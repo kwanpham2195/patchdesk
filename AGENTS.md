@@ -177,6 +177,7 @@ Tests and gates:
 
 - No file may grow past 1,000 lines and no new file past 500 (`scripts/file-growth-lib.mjs`, pre-commit). Check the size before adding to a large file and split first; this blocked 17 sessions.
 - Run one `pnpm check` at a time. Two at once reproduce the concurrent-load flakes (#108, #145). When a timing test fails and passes on retry, check `ps -Ao pid,pcpu,etime,comm | awk '$2>50'` for a hung `trash` before reading the test.
+- Vitest runs at most 4 workers because the maintainer's laptop overheats. The cap lives in `vitest.config.ts` and in `runtime/insight`'s `test` script; do not raise it or override it with `VITEST_MAX_WORKERS` or `--maxWorkers`.
 - Knip does not read CSS: a dependency it flags may be live via `styles.css`. Deleting the last consumer of an export fails `knip:ratchet` at 0, so delete the dead export in the same commit.
 - `vi.spyOn` on a real module is banned (`tools/oxlint/patchdesk/no-method-spying`); record calls on the injected fake. Read `tools/oxlint/anti-slop/rules/` before naming a parameter type or writing a test double.
 - Relative-time assertions against fixture timestamps drift with the calendar; pin the clock with `vi.setSystemTime`, never widen the regex.
