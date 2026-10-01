@@ -6,6 +6,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,6 +15,7 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import {
+  createReviewSessionId,
   parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
@@ -29,7 +31,11 @@ import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile"
 import { CommandRunner } from "../../src/adapters/github/command-runner";
 import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
 import { ReviewDiffSourceService } from "../../src/services/review-diff-source-service";
-import type { GitReadExecutor } from "../../src/services/review-worktree-service";
+import {
+  ReviewWorktreeService,
+  type GitReadExecutor,
+} from "../../src/services/review-worktree-service";
+import { ok } from "../../src/domain/result";
 import {
   cleanupLocalApplyRoots,
   git,
@@ -101,6 +107,11 @@ class SourceGit implements GitReadExecutor {
     return { _tag: "err" as const, error: { _tag: "GitReadFailed" as const } };
   }
 }
+
+/** Stands in for the worktree owner in tests whose fake git never needs a checkout on disk. */
+const restoredWorktrees = {
+  restoreMissingWorktree: async () => ok(undefined),
+};
 
 async function saveSession(input: {
   readonly paths: PatchdeskPaths;
@@ -183,6 +194,7 @@ describe("ReviewDiffSourceService", () => {
         profiles,
         sessions,
         new SourceGit({ base: "before\n", head: "after\n" }),
+        restoredWorktrees,
         {
           stat: async (path) => await stat(path),
           read: async (path) => {
@@ -303,6 +315,7 @@ describe("ReviewDiffSourceService", () => {
         profileStore,
         new ReviewSessionStore(paths),
         git,
+        restoredWorktrees,
         {
           stat: async (path) => await stat(path),
           read: async (path) => {
@@ -458,6 +471,7 @@ describe("ReviewDiffSourceService", () => {
         profiles,
         new ReviewSessionStore(paths),
         new SourceGit({ base: "\0", head: "\0" }),
+        restoredWorktrees,
       ).load({ profileId: "acme", sessionId, path: "src/example.ts" });
 
       expect(loaded).toEqual({
@@ -531,6 +545,7 @@ describe("ReviewDiffSourceService", () => {
         new ProfileStore(paths),
         new ReviewSessionStore(paths),
         new SourceGit({ base: "before\n", head: "different\n" }),
+        restoredWorktrees,
       ).load({
         profileId: "acme",
         sessionId: session.id,
@@ -583,6 +598,7 @@ describe("ReviewDiffSourceService", () => {
           profiles,
           sessions,
           new SourceGit(source),
+          restoredWorktrees,
         ).load({
           profileId: "acme",
           sessionId: session.id,
@@ -629,6 +645,7 @@ describe("ReviewDiffSourceService", () => {
         profiles,
         sessions,
         newGit,
+        restoredWorktrees,
       ).load({
         profileId: "acme",
         sessionId: newSession.id,
@@ -667,6 +684,7 @@ describe("ReviewDiffSourceService", () => {
         profiles,
         sessions,
         deletedGit,
+        restoredWorktrees,
       ).load({
         profileId: "acme",
         sessionId: deletedSession.id,
@@ -727,6 +745,7 @@ describe("ReviewDiffSourceService on a shared local Review's patch views (#556)"
             return realGit.run(argv, environment);
           },
         },
+        restoredWorktrees,
       );
 
       const loaded = await service.load({
@@ -754,4 +773,206 @@ describe("ReviewDiffSourceService on a shared local Review's patch views (#556)"
       expect(session.worktree.path).not.toBe(repositoryPath);
     },
   );
+
+  it("re-creates a deleted local Review worktree before reading from it (#616)", async () => {
+    const harness = await localApplyHarness();
+    await writeFile(join(harness.repositoryPath, "tracked.txt"), "one\ntwo\n");
+    const opened = await harness.open();
+    const sessions = new ReviewSessionStore(harness.paths);
+    const realGit = createReadOnlyGitExecutor(new CommandRunner());
+    const service = new ReviewDiffSourceService(
+      new ProfileStore(harness.paths),
+      sessions,
+      realGit,
+      new ReviewWorktreeService(
+        harness.paths,
+        realGit,
+        { environmentFor: async () => ok({}) },
+        async () => undefined,
+      ),
+    );
+    const session = must(
+      await sessions.load(localProfileId, opened.session.id),
+    );
+    await rm(session.worktree.path, { recursive: true, force: true });
+
+    const loaded = await service.load({
+      profileId: localProfileId,
+      sessionId: opened.session.id,
+      path: "tracked.txt",
+    });
+
+    expect(loaded).toEqual({
+      _tag: "ok",
+      value: {
+        state: "ready",
+        oldFile: { name: "tracked.txt", contents: "one\n" },
+        newFile: { name: "tracked.txt", contents: "one\ntwo\n" },
+      },
+    });
+    expect((await stat(session.worktree.path)).isDirectory()).toBe(true);
+  });
+});
+
+describe("ReviewDiffSourceService when the Review worktree is missing (#616)", () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    await Promise.all(
+      roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+    );
+  });
+
+  /** A real repository with base and head commits pinned under the session's managed refs, and a worktree on disk. */
+  async function reviewWithWorktree() {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-missing-worktree-"));
+    roots.push(root);
+    const repositoryPath = join(root, "repo");
+    execFileSync("git", ["init", "-q", "-b", "main", repositoryPath]);
+    await writeFile(join(repositoryPath, "example.txt"), "before\n");
+    git(repositoryPath, "add", "example.txt");
+    git(repositoryPath, "commit", "-q", "-m", "base");
+    const baseSha = must(
+      parseGitSha(git(repositoryPath, "rev-parse", "HEAD").trim()),
+    );
+    await writeFile(join(repositoryPath, "example.txt"), "after\n");
+    git(repositoryPath, "commit", "-q", "-am", "head");
+    const headSha = must(
+      parseGitSha(git(repositoryPath, "rev-parse", "HEAD").trim()),
+    );
+    const paths = PatchdeskPaths.forTest(join(root, "app"));
+    const profileId = must(parseWorkspaceProfileId("acme"));
+    const profiles = new ProfileStore(paths);
+    await profiles.save(
+      must(
+        parseWorkspaceProfileConfig({
+          id: "acme",
+          label: "ACME",
+          githubHost: "github.com",
+          ghAccount: "fixture",
+          rulePaths: [],
+          repos: [
+            {
+              host: "github.com",
+              owner: "octo-org",
+              repo: "patchdesk",
+              localPath: repositoryPath,
+            },
+          ],
+        }),
+      ),
+    );
+    const key = {
+      profileId,
+      host: must(parseGitHubHost("github.com")),
+      owner: must(parseGitHubOwner("octo-org")),
+      repo: must(parseGitHubRepoName("patchdesk")),
+      source: {
+        kind: "pull_request" as const,
+        prNumber: must(parsePullRequestNumber(7)),
+      },
+      headSha,
+      baseSha,
+    };
+    const sessionId = createReviewSessionId(key);
+    const baseRef = `refs/patchdesk/reviews/acme/${sessionId}/base`;
+    const headRef = `refs/patchdesk/reviews/acme/${sessionId}/head`;
+    git(repositoryPath, "update-ref", baseRef, baseSha);
+    git(repositoryPath, "update-ref", headRef, headSha);
+    const worktreePath = paths.worktreeDirectory(profileId, sessionId);
+    await mkdir(join(worktreePath, ".."), { recursive: true });
+    git(repositoryPath, "worktree", "add", "--detach", worktreePath, headRef);
+    const patchPath = must(
+      parseAbsolutePath(paths.patchFile(profileId, sessionId)),
+    );
+    const session = createReviewSession({
+      key,
+      pr: { headSha, baseSha, isDraft: false, isOpen: true },
+      patchPath,
+      worktree: { path: must(parseAbsolutePath(worktreePath)), headSha },
+      createdAt: must(parseIsoTimestamp("2026-07-24T00:00:00.000Z")),
+    });
+    await mkdir(paths.sessionDirectory(profileId, sessionId), {
+      recursive: true,
+    });
+    await writeFile(
+      patchPath,
+      "diff --git a/example.txt b/example.txt\n--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-before\n+after\n",
+    );
+    const sessions = new ReviewSessionStore(paths);
+    await sessions.save(session);
+    const realGit = createReadOnlyGitExecutor(new CommandRunner());
+    const service = new ReviewDiffSourceService(
+      profiles,
+      sessions,
+      realGit,
+      new ReviewWorktreeService(
+        paths,
+        realGit,
+        { environmentFor: async () => ok({}) },
+        async () => undefined,
+      ),
+    );
+    return {
+      service,
+      repositoryPath,
+      worktreePath,
+      baseRef,
+      headRef,
+      load: () =>
+        service.load({
+          profileId: "acme",
+          sessionId,
+          path: "example.txt",
+        }),
+    };
+  }
+
+  const readyContents = {
+    _tag: "ok",
+    value: {
+      state: "ready",
+      oldFile: { name: "example.txt", contents: "before\n" },
+      newFile: { name: "example.txt", contents: "after\n" },
+    },
+  };
+
+  it("re-creates a deleted worktree from the session refs and reads Context from it", async () => {
+    const review = await reviewWithWorktree();
+    // Clear cache removes the directory without `git worktree remove`.
+    await rm(review.worktreePath, { recursive: true, force: true });
+
+    expect(await review.load()).toEqual(readyContents);
+
+    expect((await stat(review.worktreePath)).isDirectory()).toBe(true);
+    expect(
+      await readFile(join(review.worktreePath, "example.txt"), "utf8"),
+    ).toBe("after\n");
+    const listed = git(
+      review.repositoryPath,
+      "worktree",
+      "list",
+      "--porcelain",
+    );
+    expect(listed.match(/^worktree /gm)).toHaveLength(2);
+  });
+
+  it("reads the same after the rebuild has already happened", async () => {
+    const review = await reviewWithWorktree();
+    await rm(review.worktreePath, { recursive: true, force: true });
+    await review.load();
+
+    expect(await review.load()).toEqual(readyContents);
+  });
+
+  it("names the missing worktree, not GitHub, when the session refs are gone too", async () => {
+    const review = await reviewWithWorktree();
+    await rm(review.worktreePath, { recursive: true, force: true });
+    git(review.repositoryPath, "update-ref", "-d", review.baseRef);
+    git(review.repositoryPath, "update-ref", "-d", review.headRef);
+
+    expect(await review.load()).toEqual({
+      _tag: "ok",
+      value: { state: "unavailable", reason: "worktree_missing" },
+    });
+  });
 });

@@ -131,6 +131,20 @@ describe("reviewContextControl", () => {
     });
   });
 
+  it("names the local checkout, not the saved revisions, when the worktree cannot be re-created", () => {
+    expect(
+      reviewContextControl({
+        hasSourceSession: true,
+        status: "unavailable",
+        renderedContext: "unknown",
+        expanded: false,
+        unavailableReason: "worktree_missing",
+      }).description,
+    ).toBe(
+      "Patchdesk could not re-create this review's local checkout, so unchanged context is unavailable",
+    );
+  });
+
   it("keeps Context disabled without calling it unavailable when every shown file is added or deleted", () => {
     expect(
       reviewContextControl({

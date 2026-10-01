@@ -63,6 +63,10 @@ export type WorktreeFailure =
   // write the ownership marker) from the GitHub-side failures above; both
   // fail closed, but for a different underlying reason.
   | { readonly _tag: "WorktreeStorageUnavailable" };
+/** The worktree directory is gone and could not be re-created from the session's managed refs. */
+export type WorktreeRestoreFailure = {
+  readonly _tag: "WorktreeRestoreFailed";
+};
 export type UnsafeWorktreeCleanup = { readonly _tag: "UnsafeWorktreeCleanup" };
 
 export type WorktreeCleanupInput = {
@@ -492,6 +496,68 @@ export class ReviewWorktreeService {
       "repair",
       worktreePath,
     ]);
+  }
+
+  /**
+   * Re-creates a session's worktree when its directory is gone, as after
+   * Settings > Clear cache, which deletes the directories without
+   * `git worktree remove` (#616). The checkout is rebuilt from the managed
+   * refs the session already pinned; nothing is fetched. A ref that no
+   * longer name commits fails the restore and is left alone.
+   */
+  async restoreMissingWorktree(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly sessionId: ReviewSessionId;
+    readonly sourceKind: "pull_request" | "local";
+    readonly localPath: string | undefined;
+  }): Promise<Result<void, WorktreeRestoreFailure>> {
+    const path = this.paths.worktreeDirectory(input.profileId, input.sessionId);
+    if (await pathExists(path)) return ok(undefined);
+    const failed = err({ _tag: "WorktreeRestoreFailed" as const });
+    if (input.localPath === undefined) return failed;
+    let repositoryPath: string;
+    try {
+      repositoryPath = await realpath(input.localPath);
+    } catch {
+      return failed;
+    }
+    const headRef =
+      input.sourceKind === "local"
+        ? localSessionHeadRef(input.profileId, input.sessionId)
+        : pullRequestSessionRef(input.profileId, input.sessionId, "head");
+    const markerRefs =
+      input.sourceKind === "local"
+        ? { headRef }
+        : {
+            baseRef: pullRequestSessionRef(
+              input.profileId,
+              input.sessionId,
+              "base",
+            ),
+            headRef,
+          };
+    for (const ref of Object.values(markerRefs)) {
+      const pinned = await this.git.run([
+        "git",
+        "-C",
+        repositoryPath,
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        `${ref}^{commit}`,
+      ]);
+      if (pinned._tag === "err") return failed;
+    }
+    const checkedOut = await this.checkOutManagedHead({
+      repositoryPath,
+      profileId: input.profileId,
+      sessionId: input.sessionId,
+      localPath: input.localPath,
+      headRef,
+      markerRefs,
+    });
+    return checkedOut._tag === "ok" ? ok(undefined) : failed;
   }
 
   /**

@@ -90,6 +90,8 @@ function unavailableContextDescription(
   switch (reason) {
     case "github_read":
       return "Patchdesk could not load unchanged context from the saved review revisions";
+    case "worktree_missing":
+      return "Patchdesk could not re-create this review's local checkout, so unchanged context is unavailable";
     case "binary":
       return "Unchanged context is unavailable for binary files";
     case "too_large":

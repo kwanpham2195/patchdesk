@@ -501,6 +501,7 @@ export async function buildLocalApiContainer(
     profiles,
     sessions,
     configuration.readOnlyGit ?? readOnlyGit,
+    worktrees,
   );
   const agentRunRequests = new AgentRunRequestService({
     reviews,
