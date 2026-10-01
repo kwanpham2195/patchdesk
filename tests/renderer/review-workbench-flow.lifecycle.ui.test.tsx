@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
@@ -26,9 +26,7 @@ import {
 
 function mount(
   workbench: WorkbenchResponse,
-  callbacks: Partial<
-    Record<"replace" | "patch", ReturnType<typeof vi.fn>>
-  > = {},
+  callbacks: Partial<Record<"replace" | "patch", Mock>> = {},
 ) {
   const replace = callbacks.replace ?? vi.fn();
   const patch = callbacks.patch ?? vi.fn();
