@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Updated DOMPurify, which sanitizes Mermaid diagrams in PR descriptions, to 3.4.16 for a low security advisory. #335
+
 - Fixed the packaged app loading the page named by `ELECTRON_RENDERER_URL` into its window and trusting that page for its local API. It now always loads its bundled renderer; only the development app reads the variable. #697
 
 - Changed the packaged app to set Electron fuses: it ignores `NODE_OPTIONS` and `--inspect`, and loads only its own checked `app.asar`. #698
