@@ -105,6 +105,53 @@ describe("briefSignals", () => {
     });
   });
 
+  it("does not read a handler call or an HTTP client call as a route", () => {
+    const result = signals([
+      edited(
+        "internal/role/service.go",
+        ["\treturn nil"],
+        ["\treturn s.handler.Handle(ctx, cmd)"],
+      ),
+      edited(
+        "src/client.ts",
+        ["a"],
+        ['const users = await api.get("/users");'],
+      ),
+    ]);
+    expect(result.row("routes")?.count).toBe(0);
+  });
+
+  it("does not count a removed toString call as a removed assertion", () => {
+    const result = signals([
+      edited(
+        "tests/label.test.ts",
+        ["  const id = n.toString();", "  expect(id).toBe('1');"],
+        ["  expect(String(n)).toBe('1');"],
+      ),
+    ]);
+    expect(result.row("tests_weakened")?.count).toBe(0);
+  });
+
+  it("does not read new or moved snapshot files as weakened tests", () => {
+    const names = ["a", "b", "c", "d", "e"];
+    const result = signals([
+      ...names.map((name) =>
+        created(`src/__snapshots__/${name}.test.ts.snap`, [
+          "exports[`x`] = 1;",
+        ]),
+      ),
+      ...names.map((name) =>
+        [
+          `diff --git a/old/__snapshots__/${name}.snap b/new/__snapshots__/${name}.snap`,
+          "similarity index 100%",
+          `rename from old/__snapshots__/${name}.snap`,
+          `rename to new/__snapshots__/${name}.snap`,
+        ].join("\n"),
+      ),
+    ]);
+    expect(result.row("tests_weakened")?.count).toBe(0);
+  });
+
   it("reads deleted tests, removed assertions, and focused or skipped tests as weakened", () => {
     const result = signals([
       deleted("tests/old.test.ts", ["it('works', () => {});"]),
