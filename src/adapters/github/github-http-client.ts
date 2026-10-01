@@ -111,6 +111,18 @@ type ResponseBodyMode = "json" | "text";
 const graphQlErrorsSchema = v.looseObject({
   errors: v.optional(v.array(v.unknown())),
 });
+const graphQlDataSchema = v.looseObject({
+  data: v.nullable(v.record(v.string(), v.unknown())),
+});
+
+/** `data` is null, or it has root fields and every one of them is null. */
+function hasEmptyMutationData(
+  body: v.InferOutput<typeof graphQlDataSchema>,
+): boolean {
+  if (body.data === null) return true;
+  const roots = Object.values(body.data);
+  return roots.length > 0 && roots.every((root) => root === null);
+}
 const pathAwareGraphQlPartialDataSchema = v.looseObject({
   data: v.looseObject({}),
   errors: v.pipe(
@@ -333,6 +345,13 @@ export class GitHubHttpClient {
           stderr: body.value.slice(0, 1024),
         },
       );
+    }
+    // A mutation answered with no `errors` and nothing in its root fields did
+    // not do what it was asked: GitHub refused it without saying so (#768).
+    if (/^\s*mutation\b/.test(request.document)) {
+      const answer = v.safeParse(graphQlDataSchema, parsed.value);
+      if (answer.success && hasEmptyMutationData(answer.output))
+        return err({ _tag: "CommandUnprocessable" });
     }
     return ok(parsed.value);
   }

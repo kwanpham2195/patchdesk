@@ -5,7 +5,7 @@
 > Review moves to another session. See the 2026-09-26 note in ADR 0050
 > "Operations and recovery". GitHub writes are unchanged.
 
-Patchdesk persists the exact Review write intent before a GitHub mutation can start and marks it outcome-unknown immediately before the network call. It persists confirmation before reporting success. A deterministic rejection removes the intent; an unavailable response, malformed success, or interrupted confirmation keeps the Review locked.
+Patchdesk persists the exact Review write intent before a GitHub mutation can start and marks it outcome-unknown immediately before the network call. It persists confirmation before reporting success. A deterministic rejection removes the intent; an unavailable response, malformed success, or interrupted confirmation keeps the Review locked. A mutation GitHub answers with no `errors` and an empty answer (a null root field or a null created or changed node) is a deterministic rejection, not a malformed success.
 
 Recovery is a read-only GitHub operation under the existing Review coordinator. It never repeats the mutation. Only complete evidence may clear the lock: one exact creation or reply match, the intended thread state or edited body, or confirmed absence for a deletion. Incomplete evidence remains check-required. Multiple plausible creation matches require manual resolution.
 

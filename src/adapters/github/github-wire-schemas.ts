@@ -122,25 +122,41 @@ export const createdInlineCommentSchema = v.looseObject({
 export const addedReviewThreadSchema = v.looseObject({
   data: v.looseObject({
     addPullRequestReviewThread: v.looseObject({
-      thread: v.looseObject({
-        id: v.string(),
-        comments: v.looseObject({
-          nodes: v.array(v.looseObject({ id: v.string() })),
+      // An explicit null is GitHub declining the write with no `errors` (#768).
+      thread: v.nullable(
+        v.looseObject({
+          id: v.string(),
+          comments: v.looseObject({
+            nodes: v.array(v.looseObject({ id: v.string() })),
+          }),
         }),
-      }),
+      ),
     }),
   }),
 });
 export const addedThreadReplySchema = v.looseObject({
   data: v.looseObject({
     addPullRequestReviewThreadReply: v.looseObject({
-      comment: v.looseObject({
-        id: v.string(),
-        pullRequestReview: v.nullish(v.looseObject({ id: v.string() })),
-      }),
+      // An explicit null is GitHub declining the write with no `errors` (#768).
+      comment: v.nullable(
+        v.looseObject({
+          id: v.string(),
+          pullRequestReview: v.nullish(v.looseObject({ id: v.string() })),
+        }),
+      ),
     }),
   }),
 });
+/**
+ * A mutation whose answer carried no node it created or changed, under any
+ * root field. Only an explicit null matches; a mutation whose body is anything
+ * else keeps its caller's handling.
+ */
+export function nullMutationNodeSchema(node: string) {
+  return v.looseObject({
+    data: v.record(v.string(), v.looseObject({ [node]: v.null() })),
+  });
+}
 
 // GitHub's collaborator-permission REST endpoint also returns a top-level
 // `permission` field, but that field only ever carries the legacy four-value
