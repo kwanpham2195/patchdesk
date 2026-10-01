@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Updated Electron to 43.7.7 for four high security advisories, and `hono` to 4.13.12 for four moderate ones. #696
+
 - Removed Start here from the Brief; Walkthrough is the reading path. **Open walkthrough** and **Generate walkthrough** moved to the Brief header beside Regenerate, and a local Review's PR description no longer has a Start here section. #716
 
 - Removed Surfaces crossed from Brief Blast radius; the Signals Areas rows replace it. #721

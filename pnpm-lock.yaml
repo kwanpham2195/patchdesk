@@ -7,10 +7,10 @@ settings:
 dependencies:
   '@hono/node-server':
     specifier: ^2.1.1
-    version: 2.1.1(hono@4.13.2)
+    version: 2.1.1(hono@4.13.12)
   hono:
-    specifier: ^4.13.2
-    version: 4.13.2
+    specifier: ^4.13.12
+    version: 4.13.12
   valibot:
     specifier: ^1.5.0
     version: 1.5.0(typescript@5.9.3)
@@ -92,8 +92,8 @@ devDependencies:
     specifier: ^1.1.1
     version: 1.1.1(@types/react-dom@19.2.3)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)
   electron:
-    specifier: ^43.1.1
-    version: 43.1.1
+    specifier: ^43.7.7
+    version: 43.7.7
   electron-builder:
     specifier: ^26.15.3
     version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
@@ -1251,13 +1251,13 @@ packages:
     resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
     dev: true
 
-  /@hono/node-server@2.1.1(hono@4.13.2):
+  /@hono/node-server@2.1.1(hono@4.13.12):
     resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
     dependencies:
-      hono: 4.13.2
+      hono: 4.13.12
     dev: false
 
   /@humanfs/core@0.19.2:
@@ -5582,8 +5582,8 @@ packages:
       - supports-color
     dev: true
 
-  /electron@43.1.1:
-    resolution: {integrity: sha512-I5c5vfuVvaXpWx3IZdwvXgxQW44+e7OP1wXGVQkogLeSFSkUZ6sLCcWV05AdEcs65AO5tAIJJwbp7ixw+LdarA==}
+  /electron@43.7.7:
+    resolution: {integrity: sha512-y0pg+KhWLAkW2Ts2njkFFNFl3KtB1FmbUp9Te9i+R2Og2v1fcI/I6MADJ7jvnzB5UKdt+U+0EUoCnVL79xMPMA==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
     dependencies:
@@ -6335,8 +6335,8 @@ packages:
       hermes-estree: 0.25.1
     dev: true
 
-  /hono@4.13.2:
-    resolution: {integrity: sha512-JydRilDRkYBQMt9qR9U92mXxmbGqsqSn/IKOrh4e7/gEbn+0zSr8igTu0obwJoNGN4sez28DIql7FBHWydoJpA==}
+  /hono@4.13.12:
+    resolution: {integrity: sha512-6E2QDAc9Ick9Sq77ZrGS/dk2WUYni91aufTw6LJKpV7w8kW5/GxVUc650FOADOmlwg3K+f7Pun6XlV+pYmW6gw==}
     engines: {node: '>=16.9.0'}
     dev: false
 
