@@ -739,5 +739,127 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       expect(result.current.inboxRequest.baseBranch).toBeUndefined();
       expect(result.current.inboxRequest.repository).toEqual(longRepository);
     });
+
+    it("turns a filter off from an over-budget state instead of ignoring the click", async () => {
+      const paths: string[] = [];
+      const { result } = await nearLimitHook(paths);
+      act(() => {
+        result.current.updateInboxRequest({
+          ...result.current.inboxRequest,
+          preset: "my_pull_requests",
+          reviewState: "approved",
+          checkStatus: "success",
+        });
+      });
+      expect(result.current.inboxFilterBudget.fits({ preset: undefined })).toBe(
+        true,
+      );
+
+      act(() => {
+        result.current.changeInboxPreset(undefined);
+      });
+      expect(result.current.inboxRequest.preset).toBeUndefined();
+
+      act(() => {
+        result.current.changeInboxReviewState(undefined);
+      });
+      expect(result.current.inboxRequest.reviewState).toBeUndefined();
+
+      act(() => {
+        result.current.changeInboxLabels([]);
+      });
+      expect(result.current.inboxRequest.selectedLabels).toEqual([]);
+      expect(result.current.inboxRequest.checkStatus).toBe("success");
+    });
+
+    it("drops filters in order and names them when the saved repository was removed and a longer one resolves at launch", async () => {
+      saveInboxViewPreferences("a", {
+        selectedRepository: repositoryB,
+        author: "a".repeat(39),
+        baseBranch: "b".repeat(100),
+        preset: "my_pull_requests",
+        reviewState: "approved",
+        checkStatus: "success",
+      });
+      const paths: string[] = [];
+      desktop = installDesktopDouble({
+        "/v1/profiles": () =>
+          success([{ ...profileA, repos: [longRepository] }]),
+        "/v1/logs": () => success({}),
+        "/v1/inbox": (input) => {
+          paths.push(input.path);
+          return success(inbox({ ...profileA, repos: [longRepository] }));
+        },
+      });
+      const { result } = renderHook(() =>
+        useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+      );
+      await act(async () => {
+        await result.current.loadWorkspace();
+      });
+
+      await waitFor(() =>
+        expect(result.current.inboxRequest.repository).toEqual(longRepository),
+      );
+      expect(result.current.inboxFilterBudget.dropped).toEqual([
+        "Author",
+        "Base branch",
+      ]);
+      expect(result.current.inboxRequest).toMatchObject({
+        preset: "my_pull_requests",
+        reviewState: "approved",
+        checkStatus: "success",
+      });
+      expect(result.current.inboxRequest.author).toBeUndefined();
+      expect(result.current.inboxRequest.baseBranch).toBeUndefined();
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("author");
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("baseBranch");
+      await waitFor(() => expect(paths.at(-1)).not.toContain("author="));
+    });
+
+    it("drops filters in order and names them when the selected repository is removed mid-session and a longer one resolves", async () => {
+      let watched: ReadonlyArray<RepositoryFixture> = [repositoryA];
+      desktop = installDesktopDouble({
+        "/v1/profiles": () => success([{ ...profileA, repos: watched }]),
+        "/v1/logs": () => success({}),
+        "/v1/inbox": () => success(inbox({ ...profileA, repos: watched })),
+      });
+      const { result } = renderHook(() =>
+        useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+      );
+      await act(async () => {
+        await result.current.loadWorkspace();
+      });
+      await waitFor(() =>
+        expect(result.current.dashboard?.profile.id).toBe("a"),
+      );
+      act(() => {
+        result.current.updateInboxRequest({
+          ...result.current.inboxRequest,
+          author: "a".repeat(39),
+          baseBranch: "b".repeat(100),
+          reviewState: "approved",
+        });
+      });
+      saveInboxViewPreferences("a", {
+        author: "a".repeat(39),
+        baseBranch: "b".repeat(100),
+        reviewState: "approved",
+      });
+
+      watched = [longRepository];
+      await act(async () => {
+        await result.current.loadWorkspace();
+      });
+
+      expect(result.current.inboxRequest.repository).toEqual(longRepository);
+      expect(result.current.inboxFilterBudget.dropped).toEqual([
+        "Author",
+        "Base branch",
+      ]);
+      expect(result.current.inboxRequest.reviewState).toBe("approved");
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("author");
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("baseBranch");
+    });
   });
 });

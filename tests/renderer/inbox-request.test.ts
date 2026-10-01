@@ -311,7 +311,7 @@ describe("reconcileInboxRepository", () => {
       pageToken: "page-1",
       previousPageTokens: [undefined],
     });
-    const next = reconcileInboxRepository(
+    const { request: next } = reconcileInboxRepository(
       base,
       [profile({ repos: [repoA] })],
       "profile",
@@ -339,7 +339,7 @@ describe("reconcileInboxRepository", () => {
       reviewState: "approved",
       checkStatus: "failure",
     });
-    const next = reconcileInboxRepository(
+    const { request: next } = reconcileInboxRepository(
       base,
       [profile({ repos: [repoA] })],
       "profile",
@@ -362,7 +362,7 @@ describe("reconcileInboxRepository", () => {
       author: "octocat",
       baseBranch: "main",
     });
-    const next = reconcileInboxRepository(
+    const { request: next } = reconcileInboxRepository(
       base,
       [profile({ repos: [repoA] })],
       "profile",
@@ -376,14 +376,16 @@ describe("reconcileInboxRepository", () => {
     saveInboxViewPreferences("profile", { selectedRepository: repoA });
     const base = request({ repository: repoA, selectedLabels: ["bug"] });
     expect(
-      reconcileInboxRepository(base, [profile({ repos: [repoA] })], "profile"),
+      reconcileInboxRepository(base, [profile({ repos: [repoA] })], "profile")
+        .request,
     ).toBe(base);
   });
 
   it("returns the request untouched when the active profile is not in the list yet", () => {
     const base = request({ repository: repoA });
     expect(
-      reconcileInboxRepository(base, [profile({ repos: [repoB] })], "other"),
+      reconcileInboxRepository(base, [profile({ repos: [repoB] })], "other")
+        .request,
     ).toBe(base);
   });
 });

@@ -15,12 +15,15 @@ import {
   saveInboxViewPreferences,
 } from "../inbox-view-preferences";
 import {
+  dropFiltersToFit,
+  droppedFilterPreferences,
   firstInboxRequest,
   firstInboxRequestFor,
   inboxRequestPath,
   type InboxFilterBudget,
   nextInboxRequest,
   reconcileInboxRepository,
+  requestFitsQueryBudget,
   resolveInboxRepository,
   sameInboxRows,
   type InboxRequestState,
@@ -41,20 +44,16 @@ import {
   type WorkspaceAction,
 } from "../workspace-state";
 import {
-  INBOX_PRESET_FILTERS,
-  inboxSearchQueryExcess,
   MAX_INBOX_FILTER_LABELS,
   parseInboxAuthorFilter,
   parseInboxBaseBranchFilter,
   type InboxCheckStatusFilter,
-  type InboxFilter,
   type InboxFilterChange,
   type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxPreset,
   type InboxReviewStateFilter,
 } from "../../../domain/maintainer-inbox";
-import { definedProps } from "../../../domain/defined-props";
 import { sameRepositoryIdentity } from "../../../domain/repository-identity";
 import { ok, type Result } from "../../../domain/result";
 
@@ -126,38 +125,6 @@ const CHANGEABLE_FILTER_KEYS = [
   "checkStatus",
 ] as const satisfies ReadonlyArray<keyof InboxFilterChange>;
 
-/** Filters a repository change drops, in the order it drops them, until the query fits; the label filter is already cleared by then. */
-const DROP_ORDER = [
-  { key: "author", name: () => "Author" },
-  { key: "baseBranch", name: () => "Base branch" },
-  {
-    key: "preset",
-    name: (request: InboxRequestState) =>
-      INBOX_PRESET_FILTERS.find((option) => option.preset === request.preset)
-        ?.label ?? "Preset",
-  },
-  { key: "reviewState", name: () => "Review state" },
-  { key: "checkStatus", name: () => "Check status" },
-] as const;
-
-/** Drops filters from the request, Author first, then Base branch, then the rest, until its query fits; returns the request and the name of each filter dropped. */
-type FittedRequest = {
-  readonly request: InboxRequestState;
-  readonly dropped: ReadonlyArray<string>;
-};
-
-function dropFiltersToFit(request: InboxRequestState): FittedRequest {
-  let fitted = request;
-  const dropped: string[] = [];
-  for (const entry of DROP_ORDER) {
-    if (requestFitsQueryBudget(fitted)) break;
-    if (fitted[entry.key] === undefined) continue;
-    dropped.push(entry.name(fitted));
-    fitted = nextInboxRequest(fitted, { [entry.key]: undefined });
-  }
-  return { request: fitted, dropped };
-}
-
 /** Resolves a free-text More filter to the value to send: an empty one clears the filter, while any other broken rule refuses the commit so the field can report it. */
 function commitFilterText(
   value: string | undefined,
@@ -167,31 +134,6 @@ function commitFilterText(
   const parsed = parse(value);
   if (parsed._tag === "ok") return parsed;
   return parsed.error === "empty" ? ok(undefined) : parsed;
-}
-
-/** The GitHub search filter a pending request would compose, so its query can be measured before the request is sent. */
-function filterFor(request: InboxRequestState): InboxFilter {
-  return {
-    state: request.state,
-    labels: request.selectedLabels,
-    ...definedProps({
-      preset: request.preset,
-      reviewState: request.reviewState,
-      checkStatus: request.checkStatus,
-      author: request.author,
-      baseBranch: request.baseBranch,
-    }),
-  };
-}
-
-/** True when the request's composed search query is inside GitHub's cap for the repository it names. */
-function requestFitsQueryBudget(request: InboxRequestState): boolean {
-  return (
-    inboxSearchQueryExcess(
-      request.repository === undefined ? [] : [request.repository],
-      filterFor(request),
-    ) === 0
-  );
 }
 
 export function useWorkspaceInbox({
@@ -264,17 +206,26 @@ export function useWorkspaceInbox({
       // mid-flight aside) is reconciled against the fresh watchlist instead
       // — see `reconcileInboxRepository` — so a repository removed from
       // Settings while this screen held it is never resent.
-      const initialRequest = resetInboxStateOnProfileLoad.current
-        ? firstInboxRequest
-        : inboxRequestRef.current === firstInboxRequest
-          ? firstInboxRequestFor(nextProfiles)
+      const reconciled =
+        resetInboxStateOnProfileLoad.current ||
+        inboxRequestRef.current === firstInboxRequest
+          ? undefined
           : reconcileInboxRepository(
               inboxRequestRef.current,
               nextProfiles,
               activeInboxProfileId.current,
             );
-      if (initialRequest !== inboxRequestRef.current)
+      const initialRequest = resetInboxStateOnProfileLoad.current
+        ? firstInboxRequest
+        : (reconciled?.request ?? firstInboxRequestFor(nextProfiles));
+      if (initialRequest !== inboxRequestRef.current) {
         updateInboxRequest(initialRequest);
+        if (reconciled !== undefined && reconciled.dropped.length > 0)
+          setDroppedNotice({
+            request: initialRequest,
+            names: reconciled.dropped,
+          });
+      }
       inboxPayload = await api(inboxRequestPath(initialRequest));
       if (generation !== workspaceGeneration.current) return;
       // The rows about to be shown are this request's answer. Without this
@@ -370,6 +321,7 @@ export function useWorkspaceInbox({
     );
     // Only now, with the repository resolved, can the stored filter's whole
     // composed query be measured — the repository name is part of its length.
+    // Labels go first, then `dropFiltersToFit` drops the rest below.
     const preferences = inboxPreferencesWithinQueryBudget(stored, repository);
     const repositoryChanged = !sameRepositoryIdentity(
       repository,
@@ -398,15 +350,7 @@ export function useWorkspaceInbox({
       preferences.pageSize === inboxRequestRef.current.pageSize
     )
       return;
-    if (repositoryChanged) {
-      const selectedRepositoryField =
-        repository === undefined ? {} : { selectedRepository: repository };
-      saveInboxViewPreferences(profileId, {
-        ...selectedRepositoryField,
-        selectedLabels: [],
-      });
-    }
-    const request = nextInboxRequest(inboxRequestRef.current, {
+    const restored = nextInboxRequest(inboxRequestRef.current, {
       repository,
       state: preferences.state,
       pageSize: preferences.pageSize,
@@ -417,7 +361,19 @@ export function useWorkspaceInbox({
       author: preferences.author,
       baseBranch: preferences.baseBranch,
     });
+    const { request, dropped } = dropFiltersToFit(restored);
+    const selectedRepositoryField =
+      repository === undefined ? {} : { selectedRepository: repository };
+    if (repositoryChanged)
+      saveInboxViewPreferences(profileId, {
+        ...selectedRepositoryField,
+        selectedLabels: [],
+        ...droppedFilterPreferences(request),
+      });
+    else if (dropped.length > 0)
+      saveInboxViewPreferences(profileId, droppedFilterPreferences(request));
     updateInboxRequest(request);
+    if (dropped.length > 0) setDroppedNotice({ request, names: dropped });
     void refreshInbox(request);
   }, [
     dashboard?.profile.id,
@@ -433,51 +389,6 @@ export function useWorkspaceInbox({
     updateInboxRequest(request);
     await refreshInbox(request);
   }, [refreshInbox, updateInboxRequest]);
-  const changeInboxState = useCallback(
-    (nextState: InboxRequestState["state"]): void => {
-      const request = nextInboxRequest(inboxRequestRef.current, {
-        state: nextState,
-      });
-      if (!requestFitsQueryBudget(request)) return;
-      const profileId = activeInboxProfileId.current;
-      if (profileId !== undefined)
-        saveInboxViewPreferences(profileId, { state: nextState });
-      updateInboxRequest(request);
-      void refreshInbox(request);
-    },
-    [refreshInbox, updateInboxRequest],
-  );
-  const changeInboxPageSize = useCallback(
-    (pageSize: InboxPageSize): void => {
-      const request = nextInboxRequest(inboxRequestRef.current, { pageSize });
-      const profileId = activeInboxProfileId.current;
-      if (profileId !== undefined)
-        saveInboxViewPreferences(profileId, { pageSize });
-      updateInboxRequest(request);
-      void refreshInbox(request);
-    },
-    [refreshInbox, updateInboxRequest],
-  );
-  /**
-   * Changes the label filter — GitHub's `label:"NAME"` search
-   * qualifier, never a local, in-page filter. Resets the page cursor: a
-   * cursor minted under the previous label filter belongs to a different
-   * search query and is rejected as `invalid_page`.
-   */
-  const changeInboxLabels = useCallback(
-    (selectedLabels: ReadonlyArray<string>): void => {
-      const request = nextInboxRequest(inboxRequestRef.current, {
-        selectedLabels,
-      });
-      if (!requestFitsQueryBudget(request)) return;
-      const profileId = activeInboxProfileId.current;
-      if (profileId !== undefined)
-        saveInboxViewPreferences(profileId, { selectedLabels });
-      updateInboxRequest(request);
-      void refreshInbox(request);
-    },
-    [refreshInbox, updateInboxRequest],
-  );
   /**
    * Whether the label menu may still select this label: a sixth label breaks
    * `MAX_INBOX_FILTER_LABELS`, and one long enough to breach the query cap
@@ -505,6 +416,53 @@ export function useWorkspaceInbox({
       !lengthens || requestFitsQueryBudget(nextInboxRequest(current, change))
     );
   }, []);
+  const changeInboxState = useCallback(
+    (nextState: InboxRequestState["state"]): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        state: nextState,
+      });
+      if (!inboxChangeFits({ state: nextState })) return;
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { state: nextState });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [inboxChangeFits, refreshInbox, updateInboxRequest],
+  );
+  const changeInboxPageSize = useCallback(
+    (pageSize: InboxPageSize): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, { pageSize });
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { pageSize });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /**
+   * Changes the label filter — GitHub's `label:"NAME"` search
+   * qualifier, never a local, in-page filter. Resets the page cursor: a
+   * cursor minted under the previous label filter belongs to a different
+   * search query and is rejected as `invalid_page`.
+   */
+  const changeInboxLabels = useCallback(
+    (selectedLabels: ReadonlyArray<string>): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        selectedLabels,
+      });
+      const held = new Set(inboxRequestRef.current.selectedLabels);
+      const adds = selectedLabels.some((label) => !held.has(label));
+      if (adds && !requestFitsQueryBudget(request)) return;
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { selectedLabels });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
   /**
    * Selects the one-click preset (ADR 0031), or clears it with `undefined`.
    * Its qualifier composes with the state and label filters rather than
@@ -516,14 +474,14 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         preset,
       });
-      if (!requestFitsQueryBudget(request)) return;
+      if (!inboxChangeFits({ preset })) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { preset });
       updateInboxRequest(request);
       void refreshInbox(request);
     },
-    [refreshInbox, updateInboxRequest],
+    [inboxChangeFits, refreshInbox, updateInboxRequest],
   );
   /** Changes GitHub's review-state qualifier and starts a fresh first page. */
   const changeInboxReviewState = useCallback(
@@ -531,14 +489,14 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         reviewState,
       });
-      if (!requestFitsQueryBudget(request)) return;
+      if (!inboxChangeFits({ reviewState })) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { reviewState });
       updateInboxRequest(request);
       void refreshInbox(request);
     },
-    [refreshInbox, updateInboxRequest],
+    [inboxChangeFits, refreshInbox, updateInboxRequest],
   );
   /** Changes GitHub's check-status qualifier and starts a fresh first page. */
   const changeInboxCheckStatus = useCallback(
@@ -546,14 +504,14 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         checkStatus,
       });
-      if (!requestFitsQueryBudget(request)) return;
+      if (!inboxChangeFits({ checkStatus })) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { checkStatus });
       updateInboxRequest(request);
       void refreshInbox(request);
     },
-    [refreshInbox, updateInboxRequest],
+    [inboxChangeFits, refreshInbox, updateInboxRequest],
   );
   /** Changes GitHub's author qualifier and starts a fresh first page; a value the route would refuse is reported back instead of being saved or sent. */
   const changeInboxAuthor = useCallback(
@@ -562,7 +520,8 @@ export function useWorkspaceInbox({
       if (parsed._tag === "err") return parsed.error;
       const author = parsed.value;
       const request = nextInboxRequest(inboxRequestRef.current, { author });
-      if (!requestFitsQueryBudget(request)) return "query_too_long";
+      if (author !== undefined && !requestFitsQueryBudget(request))
+        return "query_too_long";
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { author });
@@ -579,7 +538,8 @@ export function useWorkspaceInbox({
       if (parsed._tag === "err") return parsed.error;
       const baseBranch = parsed.value;
       const request = nextInboxRequest(inboxRequestRef.current, { baseBranch });
-      if (!requestFitsQueryBudget(request)) return "query_too_long";
+      if (baseBranch !== undefined && !requestFitsQueryBudget(request))
+        return "query_too_long";
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { baseBranch });
@@ -628,11 +588,7 @@ export function useWorkspaceInbox({
         saveInboxViewPreferences(profileId, {
           selectedRepository: repository,
           selectedLabels: [],
-          ...Object.fromEntries(
-            DROP_ORDER.filter((entry) => request[entry.key] === undefined).map(
-              (entry) => [entry.key, undefined],
-            ),
-          ),
+          ...droppedFilterPreferences(request),
         });
       updateInboxRequest(request);
       setDroppedNotice({ request, names: dropped });

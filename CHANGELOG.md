@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Pull requests sending a search longer than GitHub's 256-character limit when saved filters were restored at launch for a longer repository, or when the selected repository was removed in Settings. Filters now drop in the order a Repository switch uses, and a line names them. Turning a filter off from a search that is already too long is now applied instead of ignored. #786
+
 - Fixed Open and Merged, Awaiting review from you, Your pull requests, Review state, and Check status being sent to GitHub even when they pushed the search past its 256-character limit, which ended in a generic request error. An option that would not fit is now disabled with `Too long alongside the other filters`, in the filter bar and in the command palette. Choosing another repository is never refused: it clears labels, then drops Author, Base branch, and the other filters until the search fits, and names each one dropped. #620
 - Fixed a reply, edit, resolve, or new pending-review comment that GitHub answered with an empty result and no error. A reply or a new pending-review comment used to lock the Review until Check GitHub status, and an edit or resolve was recorded as done. Each now shows that GitHub could not accept it and locks nothing; a resolve is still checked with a read first. #768
 

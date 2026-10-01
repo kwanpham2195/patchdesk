@@ -5,13 +5,17 @@ import {
 } from "./inbox-view-preferences";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_PRESET_FILTERS,
+  inboxSearchQueryExcess,
   type InboxCheckStatusFilter,
+  type InboxFilter,
   type InboxFilterChange,
   type InboxPageSize,
   type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
+import { definedProps } from "../../domain/defined-props";
 import {
   sameRepositoryIdentity,
   type RepositoryIdentity,
@@ -245,6 +249,74 @@ export function firstInboxRequestFor(
   };
 }
 
+/** Filters a repository change drops, in the order it drops them, until the query fits; the label filter is already cleared by then. */
+export const DROP_ORDER = [
+  { key: "author", name: () => "Author" },
+  { key: "baseBranch", name: () => "Base branch" },
+  {
+    key: "preset",
+    name: (request: InboxRequestState) =>
+      INBOX_PRESET_FILTERS.find((option) => option.preset === request.preset)
+        ?.label ?? "Preset",
+  },
+  { key: "reviewState", name: () => "Review state" },
+  { key: "checkStatus", name: () => "Check status" },
+] as const;
+
+/** Drops filters from the request, Author first, then Base branch, then the rest, until its query fits; returns the request and the name of each filter dropped. */
+export type FittedRequest = {
+  readonly request: InboxRequestState;
+  readonly dropped: ReadonlyArray<string>;
+};
+
+export function dropFiltersToFit(request: InboxRequestState): FittedRequest {
+  let fitted = request;
+  const dropped: string[] = [];
+  for (const entry of DROP_ORDER) {
+    if (requestFitsQueryBudget(fitted)) break;
+    if (fitted[entry.key] === undefined) continue;
+    dropped.push(entry.name(fitted));
+    fitted = nextInboxRequest(fitted, { [entry.key]: undefined });
+  }
+  return { request: fitted, dropped };
+}
+
+/** The GitHub search filter a pending request would compose, so its query can be measured before the request is sent. */
+function filterFor(request: InboxRequestState): InboxFilter {
+  return {
+    state: request.state,
+    labels: request.selectedLabels,
+    ...definedProps({
+      preset: request.preset,
+      reviewState: request.reviewState,
+      checkStatus: request.checkStatus,
+      author: request.author,
+      baseBranch: request.baseBranch,
+    }),
+  };
+}
+
+/** True when the request's composed search query is inside GitHub's cap for the repository it names. */
+export function requestFitsQueryBudget(request: InboxRequestState): boolean {
+  return (
+    inboxSearchQueryExcess(
+      request.repository === undefined ? [] : [request.repository],
+      filterFor(request),
+    ) === 0
+  );
+}
+
+/** The saved-preference update that clears every filter `fitted` no longer carries, so a dropped filter does not come back on the next launch. */
+export function droppedFilterPreferences(
+  fitted: InboxRequestState,
+): Partial<Record<(typeof DROP_ORDER)[number]["key"], undefined>> {
+  return Object.fromEntries(
+    DROP_ORDER.filter((entry) => fitted[entry.key] === undefined).map(
+      (entry) => [entry.key, undefined],
+    ),
+  );
+}
+
 /** Builds the renderer-owned inbox URL without decoding the opaque page token. */
 export function inboxRequestPath(request: InboxRequestState): string {
   const query = new URLSearchParams({
@@ -287,21 +359,26 @@ export function reconcileInboxRepository(
   base: InboxRequestState,
   profiles: ReadonlyArray<Profile>,
   activeProfileId: string | undefined,
-): InboxRequestState {
+): FittedRequest {
   const profile = profiles.find(
     (candidate) => candidate.id === activeProfileId,
   );
-  if (profile === undefined) return base;
+  if (profile === undefined) return { request: base, dropped: [] };
   const repository = resolveInboxRepository(
     profile.repos ?? [],
     loadInboxViewPreferences(profile.id).selectedRepository,
   );
-  if (sameRepositoryIdentity(repository, base.repository)) return base;
+  if (sameRepositoryIdentity(repository, base.repository))
+    return { request: base, dropped: [] };
+  const fitted = dropFiltersToFit(
+    nextInboxRequest(base, { repository, selectedLabels: [] }),
+  );
   const selectedRepositoryField =
     repository === undefined ? {} : { selectedRepository: repository };
   saveInboxViewPreferences(profile.id, {
     ...selectedRepositoryField,
     selectedLabels: [],
+    ...droppedFilterPreferences(fitted.request),
   });
-  return nextInboxRequest(base, { repository, selectedLabels: [] });
+  return fitted;
 }
