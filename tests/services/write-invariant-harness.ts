@@ -11,6 +11,10 @@ import {
   createReviewSession,
   type PullRequestReviewSession,
 } from "../../src/domain/review-session";
+import {
+  parseGitHubReviewNodeId,
+  parseGitHubReviewRestId,
+} from "../../src/domain/ids";
 import { err, ok, type Result } from "../../src/domain/result";
 import { PendingReviewService } from "../../src/services/pending-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -18,6 +22,7 @@ import {
   anchor,
   at,
   login,
+  must,
   reviewCommentId,
   reviewNodeId,
   reviewRestId,
@@ -41,7 +46,6 @@ export const GATEWAY_WRITES: ReadonlySet<string> = new Set([
   "addPendingReviewThread",
   "submitPendingReview",
   "discardPendingReview",
-  "createPendingReview",
   "createDirectSummaryReview",
   "createInlineComment",
   "createThreadReply",
@@ -431,10 +435,31 @@ const pendingThreadWrite = {
   createdThreadId: threadId,
 };
 
+/** What the viewer's pending-review read answers once a write was sent: the landed check's evidence. */
+export type ViewerReadAfterWrite =
+  | "recorded_review"
+  | "none"
+  | "different_review"
+  | "failed";
+
+/** Another pending review of the same viewer: same fixture, different ids. */
+function otherPendingOwner(): Extract<PendingReviewState, { _tag: "Pending" }> {
+  const owner = pendingOwner();
+  return {
+    ...owner,
+    review: {
+      ...owner.review,
+      restId: must(parseGitHubReviewRestId("9002")),
+      nodeId: must(parseGitHubReviewNodeId("PRR_kwDOother")),
+    },
+  };
+}
+
 export function pendingReviewFlow(
   fixture: WriteFlowFixture,
   state: PendingReviewState,
   command: (service: PendingReviewService) => Promise<Result<unknown, unknown>>,
+  afterWrite: ViewerReadAfterWrite = "recorded_review",
 ): () => Promise<FlowRun> {
   return async () => {
     const trace: Trace = [];
@@ -442,15 +467,40 @@ export function pendingReviewFlow(
       ...values.session,
       pendingReview: state,
     });
+    // Reads before the first write (Finish's own check) see the recorded review; reads after it are the landed check.
+    let sent = false;
+    const sending =
+      <T>(write: () => Promise<Result<T, unknown>>) =>
+      async () => {
+        sent = true;
+        return write();
+      };
     const gateway = {
       getPullRequest: async () => ok(values.snapshot.pullRequest),
-      // Finish reads the pending review first; here it still exists.
       resolveAuthenticatedAccount: async () => ok({ account: "fixture" }),
-      getViewerPendingReview: async () => ok(pendingOwner()),
-      startPendingReviewWithThread: gatewayWrite(fixture, pendingThreadWrite),
-      addPendingReviewThread: gatewayWrite(fixture, pendingThreadWrite),
-      submitPendingReview: gatewayWrite(fixture, { reviewId: reviewRestId }),
-      discardPendingReview: gatewayWrite(fixture, undefined),
+      getViewerPendingReview: async () => {
+        if (!sent) return ok(pendingOwner());
+        switch (afterWrite) {
+          case "recorded_review":
+            return ok(pendingOwner());
+          case "none":
+            return ok({ _tag: "None" as const });
+          case "different_review":
+            return ok(otherPendingOwner());
+          case "failed":
+            return err({ _tag: "GitHubReadFailed" as const });
+        }
+      },
+      startPendingReviewWithThread: sending(
+        gatewayWrite(fixture, pendingThreadWrite),
+      ),
+      addPendingReviewThread: sending(
+        gatewayWrite(fixture, pendingThreadWrite),
+      ),
+      submitPendingReview: sending(
+        gatewayWrite(fixture, { reviewId: reviewRestId }),
+      ),
+      discardPendingReview: sending(gatewayWrite(fixture, undefined)),
     };
     const service = new PendingReviewService(
       // SAFETY: this fixture gate answers with the parsed fixture Review and

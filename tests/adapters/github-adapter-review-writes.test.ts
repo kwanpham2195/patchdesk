@@ -16,40 +16,16 @@ import {
 } from "./github-adapter-test-support";
 
 describe("GitHubAdapter review creation and read-back writes", () => {
-  it("creates a pending review and submits its selected event through JSON stdin", async () => {
-    const [createArgv, submitArgv, createPayload, submitPayload] =
-      await Promise.all([
-        golden("create-pending-review"),
-        golden("submit-pending-review"),
-        payload("create-pending-review.json"),
-        payload("submit-pending-review.json"),
-      ]);
+  it("submits a pending review's selected event through JSON stdin", async () => {
+    const [submitArgv, submitPayload] = await Promise.all([
+      golden("submit-pending-review"),
+      payload("submit-pending-review.json"),
+    ]);
     const transport = orderedTransport([
-      JSON.stringify({ id: 9001, state: "PENDING" }),
       JSON.stringify({ id: 9001, state: "SUBMITTED" }),
     ]);
     const adapter = testAdapter(transport);
 
-    await expect(
-      adapter.createPendingReview({
-        profile,
-        pr,
-        headSha: mustParse(parseGitSha(headSha)),
-        summaryBody: "Keep the safety check.",
-        comments: [
-          {
-            body: "Comment body",
-            path: "src/review.ts",
-            line: 7,
-            lineEnd: 9,
-            diffSide: "new",
-          },
-        ],
-      }),
-    ).resolves.toEqual({
-      _tag: "ok",
-      value: { reviewId: "9001", state: "PENDING" },
-    });
     await expect(
       adapter.submitPendingReview({
         profile,
@@ -60,42 +36,10 @@ describe("GitHubAdapter review creation and read-back writes", () => {
       }),
     ).resolves.toEqual({ _tag: "ok", value: { reviewId: "9001" } });
 
-    expect(sentArgv(transport)).toEqual([createArgv, submitArgv]);
+    expect(sentArgv(transport)).toEqual([submitArgv]);
     expect(JSON.parse(sent(transport, 0).stdin ?? "{}")).toEqual(
-      JSON.parse(createPayload),
-    );
-    expect(JSON.parse(sent(transport, 1).stdin ?? "{}")).toEqual(
       JSON.parse(submitPayload),
     );
-  });
-
-  it("rejects a create response unless GitHub confirms the review is pending", async () => {
-    const adapter = testAdapter(
-      orderedTransport([JSON.stringify({ id: 9001, state: "SUBMITTED" })]),
-    );
-    await expect(
-      adapter.createPendingReview({
-        profile,
-        pr,
-        headSha: mustParse(parseGitSha(headSha)),
-        summaryBody: "summary",
-        comments: [
-          {
-            body: "Comment body",
-            path: "src/review.ts",
-            line: 7,
-            diffSide: "new",
-          },
-        ],
-      }),
-    ).resolves.toEqual({
-      _tag: "err",
-      error: {
-        _tag: "GitHubWriteFailure",
-        category: "unavailable",
-        message: "GitHub did not return a PENDING review.",
-      },
-    });
   });
 
   it("uses the same explicit event endpoint for a summary-only submit", async () => {

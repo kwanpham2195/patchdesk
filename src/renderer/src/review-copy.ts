@@ -106,6 +106,7 @@ const WRITE_SERVICE_UNAVAILABLE =
 export const FINISH_REVIEW_MESSAGES: ContextualMessages = {
   fallback:
     "Patchdesk could not finish this review. Check GitHub again or refresh.",
+  refusalAction: "submission",
   invalid_input: INVALID_WRITE_REQUEST,
   unavailable: WRITE_SERVICE_UNAVAILABLE,
   outcome_unknown: UNCONFIRMED_SUBMISSION,
@@ -153,6 +154,7 @@ export const PENDING_REVIEW_RECOVERY_MESSAGES: ContextualMessages = {
 export const DIRECT_SUMMARY_MESSAGES: ContextualMessages = {
   fallback:
     "Patchdesk could not submit this review summary. Check GitHub again or refresh.",
+  refusalAction: "review summary",
   invalid_input: INVALID_WRITE_REQUEST,
   unavailable: WRITE_SERVICE_UNAVAILABLE,
   outcome_unknown: UNCONFIRMED_SUBMISSION,
@@ -274,6 +276,8 @@ export const FINDING_RESTORED_REFRESH_NOTICE =
 /** Adding a Finding to the review, or dismissing it, from the Analysis reader. */
 export const FINDING_ACTION_MESSAGES: ContextualMessages = {
   fallback: "The Finding action could not be saved. Try again.",
+  // Adding a Finding to the review writes one pending-review comment.
+  refusalAction: "review comment",
   outcome_unknown: UNCONFIRMED_FINDING_ACTION,
   ambiguous_write: UNCONFIRMED_FINDING_ACTION,
   timeout: UNCONFIRMED_FINDING_ACTION,

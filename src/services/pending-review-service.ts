@@ -11,7 +11,6 @@ import {
   confirmPendingReviewWrite,
   isPendingReviewLocked,
   markPendingReviewOutcomeUnknown,
-  matchPendingReviewThread,
   reconcilePendingReviewState,
   rejectPendingReviewWrite,
   type GitHubReviewEvent,
@@ -33,6 +32,7 @@ import {
 } from "../domain/ids";
 import type { PullRequestReviewSession } from "../domain/review-session";
 import type { GitHubWriteFailure } from "../domain/github-write";
+import type { RefusalCause } from "../domain/github-write-refusal";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import {
@@ -41,6 +41,7 @@ import {
   type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import { settleRefusedWrite } from "./refused-write-settlement";
 import {
   postDesktopNotification,
   type DesktopNotifier,
@@ -59,6 +60,11 @@ import {
   sameFindingSource,
   type FindingReceiptEvidence,
 } from "./pending-review-finding-receipts";
+import {
+  recordedReviewStillPending,
+  resolvePendingReviewConflict,
+  type PendingReviewThreadIntent,
+} from "./pending-review-reads";
 import type { AppLogService } from "./app-log-service";
 
 export type StartPendingReviewInput = {
@@ -89,7 +95,14 @@ export type DiscardPendingReviewInput = {
   readonly confirmation: true;
 };
 
+/** GitHub refused the write and the refusal is final: nothing was written and the Review is unlocked. */
+export class GitHubRefusedPendingReviewWrite {
+  readonly reason = "github_refused";
+  constructor(readonly cause: RefusalCause) {}
+}
+
 export type PendingReviewServiceFailure =
+  | GitHubRefusedPendingReviewWrite
   | "invalid_input"
   | "not_found"
   | "not_fresh"
@@ -117,19 +130,6 @@ type PendingReviewReconciled = {
   readonly state: PendingReviewState;
   readonly unavailable: boolean;
 };
-
-/** The one thread a Start or AddThread meant to create, as the write sent it. */
-type PendingReviewThreadIntent = {
-  readonly profile: WorkspaceProfileConfig;
-  readonly anchor: PendingReviewAnchor;
-  readonly body: string;
-};
-
-/** What the reconciling read proved about a `pending_review` refusal. */
-type PendingReviewConflictOutcome =
-  | { readonly _tag: "Landed"; readonly write: PendingReviewThreadWrite }
-  | { readonly _tag: "Refused"; readonly observed: PendingReviewRead }
-  | { readonly _tag: "Uncertain" };
 
 /** The session-level fields `adoptObservedState` decides to update, if any. */
 export type PendingReviewObservedAdoption = {
@@ -411,6 +411,7 @@ export class PendingReviewService {
         return this.executeWrite(
           input.profileId,
           input.reviewId,
+          profile,
           session,
           state,
           operation,
@@ -476,6 +477,7 @@ export class PendingReviewService {
         return this.executeWrite(
           input.profileId,
           input.reviewId,
+          profile,
           session,
           state,
           operation,
@@ -524,6 +526,7 @@ export class PendingReviewService {
         return this.executeWrite(
           input.profileId,
           input.reviewId,
+          profile,
           session,
           state,
           operation,
@@ -623,6 +626,7 @@ export class PendingReviewService {
         return this.executeWrite(
           input.profileId,
           input.reviewId,
+          profile,
           session,
           state,
           operation,
@@ -679,6 +683,7 @@ export class PendingReviewService {
   private async executeWrite(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
+    profile: WorkspaceProfileConfig,
     session: PullRequestReviewSession,
     state: PendingReviewState,
     operation: PendingReviewOperation,
@@ -707,8 +712,9 @@ export class PendingReviewService {
       written.error.category === "pending_review" &&
       conflict !== undefined
     ) {
-      const resolved = await this.resolvePendingReviewConflict(
-        session,
+      const resolved = await resolvePendingReviewConflict(
+        this.github,
+        sessionPr(session),
         conflict,
       );
       if (resolved._tag === "Landed") written = ok(resolved.write);
@@ -731,11 +737,31 @@ export class PendingReviewService {
       }
     }
     if (written._tag === "err") {
-      // Slice 4 of #755 settles a refusal; until then it stays outcome unknown.
-      if (
-        written.error.category === "unavailable" ||
-        written.error.category === "refused"
-      ) {
+      if (written.error.category === "refused") {
+        const { cause } = written.error;
+        const settled = await settleRefusedWrite({
+          kind: `PendingReview${operation._tag}`,
+          cause,
+          isUnchanged: () =>
+            recordedReviewStillPending(
+              this.github,
+              profile,
+              sessionPr(session),
+              operation,
+            ),
+          recordRejection: async () => {
+            const rejected = rejectPendingReviewWrite(begun.value);
+            return (
+              rejected._tag === "ok" &&
+              (await this.persist(session, rejected.value))
+            );
+          },
+        });
+        return settled._tag === "Refused"
+          ? err(new GitHubRefusedPendingReviewWrite(cause))
+          : err(await this.lockOutcomeUnknown(reviewId, session, begun.value));
+      }
+      if (written.error.category === "unavailable") {
         // Timeout, lost response, or unconfirmable outcome: lock and require
         // read-side reconciliation; never retry automatically.
         return err(
@@ -838,53 +864,6 @@ export class PendingReviewService {
       reviewId,
       pullRequest: sessionPr(session),
     });
-  }
-
-  /**
-   * What a `pending_review` refusal of a Start or AddThread really means.
-   * GitHub answers the same 422 whether it already held the viewer's pending
-   * review or the first request landed and the renderer's transport resent it
-   * (ADR 0046), so the refusal alone is not evidence the write failed. One
-   * read of the viewer's pending review decides: it holds the intended
-   * thread, it holds someone else's work, or it proves nothing and the write
-   * stays uncertain.
-   */
-  private async resolvePendingReviewConflict(
-    session: PullRequestReviewSession,
-    intent: PendingReviewThreadIntent,
-  ): Promise<PendingReviewConflictOutcome> {
-    const account = await this.github.resolveAuthenticatedAccount(
-      intent.profile,
-    );
-    if (account._tag === "err") return { _tag: "Uncertain" };
-    const login = parseGitHubLogin(account.value.account);
-    if (login._tag === "err") return { _tag: "Uncertain" };
-    const read = await this.github.getViewerPendingReview({
-      profile: intent.profile,
-      pr: sessionPr(session),
-      account: login.value,
-    });
-    if (read._tag === "err" || read.value._tag === "Unavailable")
-      return { _tag: "Uncertain" };
-    // GitHub refused because a pending review exists, so a read finding none
-    // contradicts the refusal: one of the two is stale and the outcome is not
-    // established. Incomplete evidence stays check-required (ADR 0035).
-    if (read.value._tag === "None") return { _tag: "Uncertain" };
-    const matched = matchPendingReviewThread(
-      read.value.review,
-      intent.anchor,
-      intent.body,
-    );
-    if (matched._tag === "Ambiguous") return { _tag: "Uncertain" };
-    return matched._tag === "Match"
-      ? {
-          _tag: "Landed",
-          write: {
-            review: read.value.review,
-            createdThreadId: matched.threadId,
-          },
-        }
-      : { _tag: "Refused", observed: read.value };
   }
 
   private async persist(

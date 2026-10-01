@@ -9,6 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import { FinishReviewDialog } from "../../src/renderer/src/components/finish-review-dialog";
 import type { PendingReviewProjection } from "../../src/renderer/src/renderer-contracts";
 
@@ -281,6 +282,49 @@ describe("FinishReviewDialog", () => {
     expect(
       screen.queryByRole("button", { name: "Check GitHub again" }),
     ).toBeNull();
+  });
+
+  it("keeps the dialog open and names a refused submission and a refused discard", async () => {
+    const refusal = () =>
+      new PatchdeskApiError(
+        "github_refused",
+        409,
+        false,
+        "refused",
+        "raw provider refusal",
+        { error: "github_refused", cause: "unprocessable" },
+      );
+    const onSubmit = vi.fn(async () => {
+      throw refusal();
+    });
+    const onDiscard = vi.fn(async () => {
+      throw refusal();
+    });
+    render(
+      <FinishReviewDialog
+        open
+        onClose={vi.fn()}
+        projection={projection}
+        actions={{ busy: false, onSubmit, onDiscard }}
+      />,
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Final review summary" }),
+      { target: { value: "Summary" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "GitHub could not accept the submission as sent.",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Discard review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm discard" }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "GitHub could not accept the discard as sent.",
+      ),
+    );
   });
 
   it("shows human decision labels in the closed select and submits uppercase values", async () => {

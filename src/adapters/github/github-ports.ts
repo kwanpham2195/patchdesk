@@ -250,28 +250,8 @@ export type GitHubFileContents =
   | { readonly state: "available"; readonly contents: string }
   | { readonly state: "binary" | "too_large" };
 
-export type PendingReviewComment = {
-  readonly body: string;
-  readonly path: string;
-  readonly line: number;
-  readonly lineEnd?: number;
-  readonly diffSide: "new" | "old";
-};
-
 /** Explicit write boundary. Product services must recheck the PR head immediately before calling it. */
 export interface GitHubReviewWriter {
-  createPendingReview(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly headSha: GitSha;
-    readonly summaryBody: string;
-    readonly comments: ReadonlyArray<PendingReviewComment>;
-  }): Promise<
-    Result<
-      { readonly reviewId: string; readonly state: "PENDING" },
-      GitHubWriteFailure
-    >
-  >;
   submitPendingReview(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;

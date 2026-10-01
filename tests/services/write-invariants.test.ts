@@ -420,9 +420,9 @@ const conflictRefusal: GitHubWriteFailure = {
 /**
  * Invariant 3 (issue #755): a refusal the kind's landed check confirms ends
  * `Rejected`, not outcome-unknown, and leaves the Review free to write again.
- * Merge, conversation, and published-feedback writes are converted; every
- * other write still reports a refusal as outcome unknown and names the slice
- * that converts it.
+ * Merge, conversation, published-feedback, pending-review, and direct-summary
+ * writes are converted; every other write still reports a refusal as outcome
+ * unknown and names the slice that converts it.
  */
 type RefusedWriteRow = {
   readonly flow: WriteFlow;
@@ -452,6 +452,17 @@ const refusedWriteFlows: ReadonlyArray<RefusedWriteRow> = [
       error: refusedConversation,
       lock: "<released>",
     })),
+  ...journalingWriteFlows(refusedWrite)
+    .filter(
+      (flow) =>
+        flow.name.startsWith("pending review: ") ||
+        flow.name.startsWith("direct summary: "),
+    )
+    .map((flow) => ({
+      flow,
+      error: refusedConversation,
+      lock: "<released>",
+    })),
 ];
 /** A refused published-feedback write the landed check cannot prove unchanged: the lock stays until recovery settles it. */
 const lockedPublishedFeedbackRows: ReadonlyArray<{
@@ -469,12 +480,46 @@ const lockedPublishedFeedbackRows: ReadonlyArray<{
     .filter((flow) => flow.name === flowName)
     .map((flow) => ({ name: `${flowName} (${check})`, flow })),
 );
+/** A refused submit or discard whose landed check cannot prove the recorded pending review is still there: the lock stays until recovery settles it. */
+const lockedPendingReviewRows: ReadonlyArray<{
+  readonly name: string;
+  readonly flow: WriteFlow;
+}> = (
+  [
+    ["none", "submit"],
+    ["different_review", "submit"],
+    ["failed", "submit"],
+    ["none", "discard"],
+    ["different_review", "discard"],
+    ["failed", "discard"],
+  ] as const
+).map(([afterWrite, operation]) => ({
+  name: `pending review: ${operation} (${afterWrite})`,
+  flow: {
+    name: `pending review: ${operation}`,
+    run: pendingReviewFlow(
+      refusedWrite,
+      pendingOwner(),
+      (service) =>
+        operation === "submit"
+          ? service.submit({
+              profileId,
+              reviewId,
+              expected,
+              event: "COMMENT",
+              summaryBody: "summary",
+            })
+          : service.discard({
+              profileId,
+              reviewId,
+              expected,
+              confirmation: true,
+            }),
+      afterWrite,
+    ),
+  },
+}));
 const unconvertedRefusalRows: ReadonlyArray<string> = [
-  "pending review: start (slice 4)",
-  "pending review: add thread (slice 4)",
-  "pending review: submit (slice 4)",
-  "pending review: discard (slice 4)",
-  "direct summary: submit (slice 4)",
   "metadata: add labels (slice 5)",
   "metadata: remove labels (slice 5)",
   "metadata: add assignees (slice 5)",
@@ -500,6 +545,16 @@ describe("a refused GitHub write is recorded as rejected and releases the Review
     });
   }
   for (const { name, flow } of lockedPublishedFeedbackRows) {
+    it(`${name} stays outcome unknown and locked when the landed check cannot prove it unchanged`, async () => {
+      const run = await flow.run();
+      expect(run.result).toMatchObject({
+        _tag: "err",
+        error: "outcome_unknown",
+      });
+      expect(run.writeLock()).toBe("OutcomeUnknown");
+    });
+  }
+  for (const { name, flow } of lockedPendingReviewRows) {
     it(`${name} stays outcome unknown and locked when the landed check cannot prove it unchanged`, async () => {
       const run = await flow.run();
       expect(run.result).toMatchObject({

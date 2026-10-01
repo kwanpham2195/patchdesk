@@ -8,6 +8,7 @@ import type {
 import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { DirectSummaryReviewState } from "../domain/direct-summary-review";
+import type { RefusalCause } from "../domain/github-write-refusal";
 import {
   parseGitHubLogin,
   type IsoTimestamp,
@@ -29,6 +30,7 @@ import {
   type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import { settleRefusedWrite } from "./refused-write-settlement";
 import {
   postDesktopNotification,
   type DesktopNotifier,
@@ -41,7 +43,14 @@ import {
  */
 const sessionMutationLocks = new KeyedMutex();
 
+/** GitHub refused the review summary and the refusal is final: nothing was written and the Review is unlocked. */
+export class GitHubRefusedDirectSummaryReview {
+  readonly reason = "github_refused";
+  constructor(readonly cause: RefusalCause) {}
+}
+
 export type DirectSummaryReviewFailure =
+  | GitHubRefusedDirectSummaryReview
   | "invalid_input"
   | "not_found"
   | "not_fresh"
@@ -198,7 +207,18 @@ export class DirectSummaryReviewService {
         body,
       });
       if (written._tag === "err") {
-        // Slice 4 of #755 settles a refusal; until then it stays outcome unknown.
+        if (written.error.category === "refused") {
+          const { cause } = written.error;
+          // A refusal is final with no read: the review summary creates something new, so a landed first delivery cannot produce it (ADR 0046).
+          const settled = await settleRefusedWrite({
+            kind: "DirectSummaryReview",
+            cause,
+            isUnchanged: async () => false,
+            recordRejection: () => this.clear(fresh.value.session),
+          });
+          if (settled._tag === "Refused")
+            return err(new GitHubRefusedDirectSummaryReview(cause));
+        }
         if (
           written.error.category === "unavailable" ||
           written.error.category === "refused"

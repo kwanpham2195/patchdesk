@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
+import { refusedWriteMessage } from "../api-client";
 import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import type { PendingReviewProjection } from "../renderer-contracts";
 import type { GitHubReviewEvent } from "../../../domain/pending-review";
@@ -132,11 +133,13 @@ function FinishReviewDialogContent({
     setSubmitError(undefined);
     try {
       await actions.onSubmit(event, summary);
-    } catch {
+    } catch (cause) {
       setSubmitError(
-        error ??
+        refusedWriteMessage(cause, "submission") ??
+          error ??
           "Patchdesk could not finish this review. Check GitHub again or refresh.",
       );
+    } finally {
       setSubmitting(false);
     }
   };
@@ -153,13 +156,15 @@ function FinishReviewDialogContent({
     setSubmitError(undefined);
     try {
       await actions.onDiscard();
-    } catch {
+    } catch (cause) {
       setSubmitError(
-        error ??
+        refusedWriteMessage(cause, "discard") ??
+          error ??
           "Patchdesk could not discard this review. Check GitHub again or refresh.",
       );
-      setSubmitting(false);
       setDiscardArmed(false);
+    } finally {
+      setSubmitting(false);
     }
   };
 

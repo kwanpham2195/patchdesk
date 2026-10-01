@@ -9,6 +9,7 @@ import type { Result } from "../../domain/result";
 import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
 import { isPullRequestReviewSession } from "../../domain/review-session";
 import {
+  GitHubRefusedPendingReviewWrite,
   projectPendingReview,
   type PendingReviewCommandResult,
   type PendingReviewProjection,
@@ -16,7 +17,9 @@ import {
   type PendingReviewServiceFailure,
 } from "../../services/pending-review-service";
 import {
+  GitHubRefusedDirectSummaryReview,
   projectDirectSummaryReview,
+  type DirectSummaryReviewFailure,
   type DirectSummaryReviewService,
 } from "../../services/direct-summary-review-service";
 import type { FindingSuggestionCommand } from "../../services/insight-run-coordinator";
@@ -238,7 +241,7 @@ async function pendingReviewWriteResponse(
   );
   return context.json(
     {
-      error: result.error,
+      ...failureBody(result.error),
       ...definedProps({ pendingReview: projection, composed }),
     },
     pendingReviewFailureStatus(result.error),
@@ -272,7 +275,7 @@ async function pendingReviewRecoverResponse(
     });
   }
   return context.json(
-    { error: result.error },
+    failureBody(result.error),
     pendingReviewFailureStatus(result.error),
   );
 }
@@ -291,9 +294,29 @@ async function storedPendingReviewProjection(
   );
 }
 
+type WriteFailure = PendingReviewServiceFailure | DirectSummaryReviewFailure;
+
+/** The error body: a settled refusal carries its cause so the renderer can say why; every other failure is its code. */
+function failureBody(
+  failure: WriteFailure,
+):
+  | { readonly error: string }
+  | { readonly error: "github_refused"; readonly cause: string } {
+  return failure instanceof GitHubRefusedPendingReviewWrite ||
+    failure instanceof GitHubRefusedDirectSummaryReview
+    ? { error: failure.reason, cause: failure.cause }
+    : { error: failure };
+}
+
 function pendingReviewFailureStatus(
-  failure: string,
+  failure: WriteFailure,
 ): 400 | 403 | 404 | 409 | 503 {
+  // A refusal GitHub gave and the service settled: 409 matches the other conflicts with GitHub's state.
+  if (
+    failure instanceof GitHubRefusedPendingReviewWrite ||
+    failure instanceof GitHubRefusedDirectSummaryReview
+  )
+    return 409;
   if (failure === "invalid_input") return 400;
   if (failure === "not_found") return 404;
   if (failure === "forbidden") return 403;
@@ -334,7 +357,7 @@ async function directSummarySubmitResponse(
   return result._tag === "ok"
     ? context.json({ directSummary: projectDirectSummaryReview(result.value) })
     : context.json(
-        { error: result.error },
+        failureBody(result.error),
         pendingReviewFailureStatus(result.error),
       );
 }
@@ -359,7 +382,7 @@ async function directSummaryRecoverResponse(
   return result._tag === "ok"
     ? context.json({ directSummary: projectDirectSummaryReview(result.value) })
     : context.json(
-        { error: result.error },
+        failureBody(result.error),
         pendingReviewFailureStatus(result.error),
       );
 }

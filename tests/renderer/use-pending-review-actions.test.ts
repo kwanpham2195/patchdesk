@@ -364,6 +364,30 @@ describe("usePendingReviewActions commands", () => {
     expect(panelOf(result).goneNotice).toBeUndefined();
   });
 
+  it("keeps Finish open when GitHub refuses a Submit or a Discard, so the dialog can name the refusal", async () => {
+    installPendingDouble({
+      commandFailure: () =>
+        failure({ error: "github_refused", cause: "unprocessable" }, 409),
+    });
+    const { result } = renderPendingReview(
+      projection({ pendingReview: pending("pending") as never }),
+    );
+    act(() => panelOf(result).onOpenFinishDialog());
+    await act(async () => {
+      await expect(
+        panelOf(result).onSubmit("REQUEST_CHANGES", "Summary"),
+      ).rejects.toMatchObject({ kind: "github_refused" });
+    });
+    expect(panelOf(result).finishDialogOpen).toBe(true);
+
+    await act(async () => {
+      await expect(panelOf(result).onDiscard()).rejects.toMatchObject({
+        kind: "github_refused",
+      });
+    });
+    expect(panelOf(result).finishDialogOpen).toBe(true);
+  });
+
   it("opens Finish without the error of an earlier failed Finish", async () => {
     installPendingDouble({
       commandFailure: () => failure({ error: "github_rejected" }, 422),
