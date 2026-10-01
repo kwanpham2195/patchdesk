@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed the packaged app to set Electron fuses: it ignores `NODE_OPTIONS` and `--inspect`, and loads only its own checked `app.asar`. #698
+
 - Updated Electron to 43.7.7 for four high security advisories, and `hono` to 4.13.12 for four moderate ones. #696
 
 - Removed Start here from the Brief; Walkthrough is the reading path. **Open walkthrough** and **Generate walkthrough** moved to the Brief header beside Regenerate, and a local Review's PR description no longer has a Start here section. #716

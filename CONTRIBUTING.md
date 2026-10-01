@@ -534,6 +534,16 @@ signs and notarizes that build itself, and an anonymous signature has nothing
 to add to a real one. `pnpm test:package-smoke` checks the seal and prints
 which kind it is.
 
+Before it signs, the same hook sets Electron fuses on the app binary: it turns
+off `NODE_OPTIONS` and the `--inspect` arguments, and makes the app load only
+from an `app.asar` whose hash matches `Info.plist`. `RunAsNode` stays on,
+because the `patchdesk` CLI and the Pi Insight child run the binary as Node.
+To check a build:
+
+```bash
+npx @electron/fuses read --app release/mac-arm64/Patchdesk.app
+```
+
 A secret that was never configured reaches the build as an empty string, not
 as an absent variable, and electron-builder reads an empty `CSC_LINK` as "sign
 with this". `scripts/package-mac-lib.mjs` drops empty values first, which is
