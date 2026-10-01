@@ -20,7 +20,6 @@ export const BRIEF_SIGNAL_KINDS = [
   "config_or_deploy",
   "tests_weakened",
   "tests_added",
-  "leftovers",
   "skimmable",
 ] as const;
 
@@ -44,7 +43,6 @@ export const BRIEF_SIGNAL_LABELS = {
   config_or_deploy: "Config or deploy",
   tests_weakened: "Tests weakened",
   tests_added: "Tests added",
-  leftovers: "Debug leftovers",
   skimmable: "To skim",
 } as const satisfies Record<BriefSignalKind, string>;
 
@@ -65,7 +63,7 @@ export const BRIEF_SIGNAL_GROUPS: ReadonlyArray<{
     ],
   },
   { title: "Tests", kinds: ["tests_weakened", "tests_added"] },
-  { title: "Code", kinds: ["leftovers", "skimmable"] },
+  { title: "Code", kinds: ["skimmable"] },
 ];
 
 /** A lit row that asks for a closer look; `tests_added` and `skimmable` only inform. */
@@ -108,8 +106,6 @@ const ASSERTION =
 const SKIPPED_TEST =
   /\b(?:it|test|describe)\.(?:skip|todo|only)\(|\b[xf](?:it|test|describe)\(|\bt\.Skip(?:Now|f)?\(|@Disabled|@Ignore|pytest\.mark\.skip/;
 const TEST_CASE = /\b(?:it|test)\(\s*['"`]|\bfunc Test\w*\(|\bdef test_\w*\(/;
-const LEFTOVER =
-  /\bconsole\.(?:log|debug)\(|\bdebugger\b|\bfmt\.Print(?:ln|f)?\(|\bspew\.|\bTODO\b|\bFIXME\b/;
 
 type FileText = {
   readonly added: Array<string>;
@@ -187,7 +183,6 @@ export function briefSignals(
         routes.added += added;
         routes.removed += removed;
         add("routes", file.path, added + removed);
-        add("leftovers", file.path, countMatches(lines.added, LEFTOVER));
       }
     }
   }

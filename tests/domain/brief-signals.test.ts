@@ -134,17 +134,6 @@ describe("briefSignals", () => {
     expect(result.row("tests_weakened")?.count).toBe(0);
   });
 
-  it("finds debug leftovers in code and ignores them in tests", () => {
-    const result = signals([
-      edited("src/sync.ts", ["run();"], ["console.log(state);", "run();"]),
-      edited("tests/sync.test.ts", ["a"], ["console.log(result);"]),
-    ]);
-    expect(result.row("leftovers")).toMatchObject({
-      count: 1,
-      paths: ["src/sync.ts"],
-    });
-  });
-
   it("counts moved, move-following, and generated files as skimmable and raises nothing else for them", () => {
     const result = signals(
       [
