@@ -530,6 +530,7 @@ const graphqlErrorEntrySchema = v.looseObject({
   ),
 });
 const graphqlErrorBodySchema = v.looseObject({
+  data: v.optional(v.nullable(v.record(v.string(), v.unknown()))),
   errors: v.optional(v.array(graphqlErrorEntrySchema)),
 });
 
@@ -584,6 +585,8 @@ export function classifyRestStatus(
 }
 
 type GraphqlErrorSignal = {
+  /** True when the body's `data` is null, absent, or has only null fields: nothing in the response proves the mutation did anything. */
+  readonly dataEmpty: boolean;
   readonly type?: string;
   readonly code?: string;
   readonly message?: string;
@@ -615,7 +618,17 @@ function extractGraphqlErrorSignal(
   const codeField = code === undefined ? {} : { code };
   const messageField = message === undefined ? {} : { message };
   const samlFailureField = samlFailure === undefined ? {} : { samlFailure };
-  return { ...typeField, ...codeField, ...messageField, ...samlFailureField };
+  const dataEmpty =
+    parsed.output.data === undefined ||
+    parsed.output.data === null ||
+    Object.values(parsed.output.data).every((field) => field === null);
+  return {
+    dataEmpty,
+    ...typeField,
+    ...codeField,
+    ...messageField,
+    ...samlFailureField,
+  };
 }
 
 /**
@@ -625,9 +638,16 @@ function extractGraphqlErrorSignal(
  * is also live-reproduced (plan 009 — an IP-allow-list-blocked read, see the
  * IP-allow-list row in `tests/adapters/github-graphql-errors.test.ts`);
  * classifyForbiddenReason further attributes it to a specific closed
- * ForbiddenReason. UNPROCESSABLE, INTERNAL, and SERVICE_UNAVAILABLE were
- * never observed or confirmed, so they intentionally answer undefined and
- * leave the caller to report a plain failure rather than being guessed at.
+ * ForbiddenReason. UNPROCESSABLE is a validation refusal (issue #755). The
+ * type name comes from GitHub's public error enum; no live error of this
+ * type could be produced on 2026-10-01: a 65,537-character reply was
+ * accepted, a 3,000,000-character and a blank reply returned `comment: null`
+ * with no `errors`, and a repeated resolve, a reply on a closed or locked
+ * pull request, and NUL or lone-surrogate bodies all succeeded. It maps only when `data` is null or every field
+ * under it is null, because an error beside non-null data may mean the
+ * mutation partly landed. INTERNAL and SERVICE_UNAVAILABLE were never
+ * observed or confirmed, so they intentionally answer undefined and leave
+ * the caller to report a plain failure rather than being guessed at.
  *
  * RATE_LIMITED is mapped here because a GraphQL budget exhausted over HTTPS
  * arrives as a 200 whose only signal is this type (issue #276, step T2).
@@ -636,6 +656,8 @@ function classifyGraphqlSignal(
   signal: GraphqlErrorSignal,
 ): CommandFailure | undefined {
   if (signal.type === "NOT_FOUND") return { _tag: "CommandNotFound" };
+  if (signal.type === "UNPROCESSABLE" && signal.dataEmpty)
+    return { _tag: "CommandUnprocessable" };
   if (signal.type === "RATE_LIMITED") return { _tag: "CommandRateLimited" };
   if (signal.type === "INSUFFICIENT_SCOPES") {
     return { _tag: "CommandForbidden", reason: "insufficient_scopes" };

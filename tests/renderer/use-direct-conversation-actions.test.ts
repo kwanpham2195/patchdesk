@@ -228,6 +228,21 @@ describe("useDirectConversationActions", () => {
     },
   );
 
+  it.each(cases)(
+    "$name reports a refusal GitHub gave without arming recovery",
+    async ({ invoke }) => {
+      const rendered = renderActions(() =>
+        failure({ error: "github_refused", cause: "unprocessable" }, 409),
+      );
+      await expect(invoke(rendered.result.current)).rejects.toMatchObject({
+        kind: "github_refused",
+        status: 409,
+      });
+      expect(rendered.requireRecovery).not.toHaveBeenCalled();
+      expect(rendered.appendRecentWrites).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     { kind: "timeout", status: 408 },
     { kind: "unavailable", status: 503 },

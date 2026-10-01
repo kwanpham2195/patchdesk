@@ -246,7 +246,7 @@ describe("a GraphQL error on a write is the category its type means", () => {
     {
       type: "UNPROCESSABLE",
       message: "The thread is already resolved.",
-      expected: "unavailable",
+      expected: "refused",
     },
     // gh reached this through the rate-limit phrase in its own stderr; the
     // HTTP transport has no stderr, so the structural type is its only signal.
@@ -273,6 +273,19 @@ describe("a GraphQL error on a write is the category its type means", () => {
       expect(failure.category).not.toBe("rejected");
     },
   );
+
+  it("keeps an error beside non-null data unavailable, because the mutation may have partly landed", async () => {
+    const failure = await mutationWrite(
+      json(200, {
+        data: {
+          addPullRequestReviewThreadReply: { comment: { id: "PRRC_1" } },
+        },
+        errors: [{ type: "UNPROCESSABLE", message: "Validation failed" }],
+      }),
+    );
+
+    expect(failure.category).toBe("unavailable");
+  });
 });
 
 /**

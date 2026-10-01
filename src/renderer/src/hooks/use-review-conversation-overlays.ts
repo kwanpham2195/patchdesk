@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import type { SelectedLineRange } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import { isOutcomeUnknownRetry } from "../api-client";
+import { isOutcomeUnknownRetry, refusedWriteMessage } from "../api-client";
 import { definedProps } from "../../../domain/defined-props";
 import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
 import {
@@ -52,6 +52,8 @@ type CreatedThreadOverlay =
       readonly end: number;
       readonly side: "new" | "old";
       readonly body: string;
+      /** What GitHub's refusal means, when GitHub refused the comment; the card otherwise shows its generic copy. */
+      readonly message?: string;
     }
   | {
       readonly _tag: "published";
@@ -425,7 +427,8 @@ export function useReviewConversationOverlays({
             entry.localId === localId ? nextEntry : entry,
           ),
         );
-      } catch {
+      } catch (cause) {
+        const refused = refusedWriteMessage(cause, "comment");
         setCreatedThreads((current) =>
           current.map((entry) =>
             entry.localId === localId
@@ -437,6 +440,7 @@ export function useReviewConversationOverlays({
                   end: entry.end,
                   side: entry.side,
                   body: entry.body,
+                  ...definedProps({ message: refused }),
                 }
               : entry,
           ),
@@ -620,6 +624,9 @@ export function useReviewConversationOverlays({
               localId: entry.localId,
               status: entry._tag,
               body: entry.body,
+              ...definedProps({
+                message: entry._tag === "failed" ? entry.message : undefined,
+              }),
               onDismiss: (localId: string) =>
                 setCreatedThreads((current) =>
                   current.filter((candidate) => candidate.localId !== localId),

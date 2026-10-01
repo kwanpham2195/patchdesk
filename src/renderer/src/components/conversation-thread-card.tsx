@@ -1,7 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
-import { PatchdeskApiError, contextualMessage } from "../api-client";
+import {
+  PatchdeskApiError,
+  contextualMessage,
+  refusedWriteMessage,
+} from "../api-client";
 import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import {
   COMMENT_DELETE_MESSAGES,
@@ -83,6 +87,8 @@ type ThreadStateFailure = {
 };
 
 function threadStateFailure(cause: unknown): ThreadStateFailure {
+  const refused = refusedWriteMessage(cause, "thread update");
+  if (refused !== undefined) return { message: refused };
   if (cause instanceof PatchdeskApiError && cause.kind === "forbidden")
     return {
       message:

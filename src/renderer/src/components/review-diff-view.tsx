@@ -120,6 +120,8 @@ export type ReviewInlineAnnotation = {
     readonly localId: string;
     readonly status: "sending" | "failed";
     readonly body: string;
+    /** Why a failed write failed, when GitHub refused it; absent shows the generic failure copy. */
+    readonly message?: string;
     readonly onDismiss: (localId: string) => void;
   };
   /** Renderer-only card for a pending-review Start/Add write in flight or confirmed failed; no GitHub identity. */

@@ -83,8 +83,16 @@ export const unavailable = {
   message: "fixture timeout",
 } as const;
 
-/** What a row's gateway write answers: a lost response or a confirmed success. */
-export type GatewayWriteOutcome = "unavailable" | "confirmed";
+/** The refusal GitHub gives a write that failed validation: it never happened, whatever the first delivery did. */
+export const refused = {
+  _tag: "GitHubWriteFailure",
+  category: "refused",
+  message: "fixture refusal",
+  cause: "unprocessable",
+} as const;
+
+/** What a row's gateway write answers: a lost response, a refusal, or a confirmed success. */
+export type GatewayWriteOutcome = "unavailable" | "refused" | "confirmed";
 
 /** What the own-write journal's `append` answers after a confirmed write. */
 export type JournalAppendOutcome = "stored" | "failed";
@@ -101,6 +109,12 @@ export const unavailableWrite: WriteFlowFixture = {
   journal: "stored",
 };
 
+/** The fixture the refusal invariant runs under. */
+export const refusedWrite: WriteFlowFixture = {
+  gateway: "refused",
+  journal: "stored",
+};
+
 /** The fixture the confirmed-write invariant runs under. */
 export const confirmedWriteFailingJournal: WriteFlowFixture = {
   gateway: "confirmed",
@@ -111,9 +125,11 @@ export const confirmedWriteFailingJournal: WriteFlowFixture = {
 export function gatewayWrite<T>(
   fixture: WriteFlowFixture,
   confirmed: T,
-): () => Promise<Result<T, typeof unavailable>> {
-  return async () =>
-    fixture.gateway === "unavailable" ? err(unavailable) : ok(confirmed);
+): () => Promise<Result<T, typeof unavailable | typeof refused>> {
+  return async () => {
+    if (fixture.gateway === "unavailable") return err(unavailable);
+    return fixture.gateway === "refused" ? err(refused) : ok(confirmed);
+  };
 }
 
 /** One gateway method, in the only shape this file calls one. */

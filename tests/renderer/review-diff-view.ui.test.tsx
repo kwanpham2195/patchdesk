@@ -14,6 +14,7 @@ import {
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
 import { usePendingReviewDrafts } from "../../src/renderer/src/hooks/use-pending-review-drafts";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
@@ -382,7 +383,25 @@ describe("review diff hydration", () => {
     }
   });
 
-  it("shows a failed create card with dismiss and no GitHub controls when the write is rejected", async () => {
+  it.each([
+    {
+      name: "shows a failed create card with dismiss and no GitHub controls when the write is rejected",
+      failure: new Error("timeout"),
+      message: undefined,
+    },
+    {
+      name: "words a failed create card by the cause GitHub refused it for, with no Check GitHub step",
+      failure: new PatchdeskApiError(
+        "github_refused",
+        409,
+        false,
+        "refused",
+        "raw provider refusal",
+        { error: "github_refused", cause: "unprocessable" },
+      ),
+      message: refusalCausePhrase("unprocessable", "comment"),
+    },
+  ])("$name", async ({ failure, message }) => {
     const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
     if (
       styleSheet?.value !== undefined &&
@@ -397,7 +416,7 @@ describe("review diff hydration", () => {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
     const onSave = vi.fn(async () => {
-      throw new Error("timeout");
+      throw failure;
     });
     const patch =
       "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
@@ -428,7 +447,11 @@ describe("review diff hydration", () => {
         name: "Comment failed conversation",
       });
       expect(failed).toBeTruthy();
-      expect(screen.getByRole("alert")).toBeTruthy();
+      const alert = screen.getByRole("alert");
+      if (message !== undefined) {
+        expect(alert.textContent).toBe(message);
+        expect(alert.textContent).not.toContain("Check GitHub");
+      }
       // A failed card has no GitHub identity and no write actions.
       expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();

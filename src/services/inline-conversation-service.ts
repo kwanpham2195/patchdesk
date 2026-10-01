@@ -22,6 +22,7 @@ import {
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import type { GitHubWriteFailure } from "../domain/github-write";
+import type { RefusalCause } from "../domain/github-write-refusal";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
@@ -34,6 +35,8 @@ import {
   postDesktopNotification,
   type DesktopNotifier,
 } from "./desktop-notifier";
+import { settleRefusedWrite } from "./refused-write-settlement";
+import { classifyConversationIntent } from "./review-write-recovery-service";
 
 export type DirectConversationCommand =
   | {
@@ -106,11 +109,21 @@ export type DirectConversationFailure =
   | "outcome_unknown"
   | "rate_limited"
   | "review_write_in_progress"
-  | "confirmation_required";
+  | "confirmation_required"
+  | GitHubRefusedConversationWrite;
+
+/** GitHub refused the write and the refusal is final: nothing was written and the Review is unlocked. */
+export class GitHubRefusedConversationWrite {
+  readonly reason = "github_refused";
+  constructor(readonly cause: RefusalCause) {}
+}
 
 type Gateway = Pick<
   GitHubReader,
-  "getPullRequest" | "getReviewThreadTarget" | "getReviewCommentTarget"
+  | "getPullRequest"
+  | "getPullRequestComments"
+  | "getReviewThreadTarget"
+  | "getReviewCommentTarget"
 > &
   Pick<
     GitHubReviewWriter,
@@ -332,6 +345,19 @@ export class InlineConversationService {
             threadId: command.threadId,
             state: command.state,
           }),
+          // A resent resolve whose first delivery landed is refused the same way, so only a complete comments read that does not show the intended state proves the refusal.
+          async (operation) => {
+            const comments = await this.github.getPullRequestComments({
+              profile: fresh.value.profile,
+              pr,
+            });
+            return (
+              comments._tag === "ok" &&
+              comments.value.complete === true &&
+              classifyConversationIntent(operation, comments.value)._tag !==
+                "Confirmed"
+            );
+          },
         );
       }
       case "EditComment":
@@ -395,6 +421,15 @@ export class InlineConversationService {
             _tag: "CommentDeleted",
             commentId: command.commentId,
           }),
+          // A resent delete whose first delivery landed is refused the same way, so only a comment that still exists proves the refusal.
+          async () => {
+            const target = await this.github.getReviewCommentTarget({
+              profile: fresh.value.profile,
+              pr,
+              commentId: command.commentId,
+            });
+            return target._tag === "ok" && target.value.found;
+          },
         );
       }
     }
@@ -410,6 +445,10 @@ export class InlineConversationService {
     intent: Extract<ReviewWriteIntent, { readonly expected: unknown }>,
     write: () => Promise<Result<T, GitHubWriteFailure>>,
     toReceipt: (value: T) => DirectConversationReceipt,
+    /** The write kind's landed-check read (ADR 0046); omitted for kinds whose refusal is final with no read. True only when the read proves the write did not land. */
+    isUnchanged: (
+      operation: ReviewWriteOperation,
+    ) => Promise<boolean> = async () => false,
   ): Promise<Result<DirectConversationReceipt, DirectConversationFailure>> {
     // Set once this call's own operation is outcome-unknown; only `reject` or `remove` clears it.
     let leftLocked = false;
@@ -439,11 +478,26 @@ export class InlineConversationService {
         return err("outcome_unknown");
       }
       if (result._tag === "err") {
-        // Slice 2 of #755 settles a refusal; until then it stays outcome unknown.
-        if (
-          result.error.category === "unavailable" ||
-          result.error.category === "refused"
-        )
+        if (result.error.category === "refused") {
+          const { cause } = result.error;
+          const settled = await settleRefusedWrite({
+            kind: intent._tag,
+            cause,
+            isUnchanged: async () => {
+              try {
+                return await isUnchanged(operation);
+              } catch {
+                return false;
+              }
+            },
+            recordRejection: async () =>
+              (await this.operations.reject(operation))._tag === "ok",
+          });
+          if (settled._tag === "OutcomeUnknown") return err("outcome_unknown");
+          leftLocked = false;
+          return err(new GitHubRefusedConversationWrite(cause));
+        }
+        if (result.error.category === "unavailable")
           return err("outcome_unknown");
         const rejected = await this.operations.reject(operation);
         if (rejected._tag === "err") return err("outcome_unknown");
