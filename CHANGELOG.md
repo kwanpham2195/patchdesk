@@ -2,74 +2,61 @@
 
 ## Unreleased
 
-- Fixed Pull requests sending a search longer than GitHub's 256-character limit when saved filters were restored at launch for a longer repository, or when the selected repository was removed in Settings. Filters now drop in the order a Repository switch uses, and a line names them. Turning a filter off from a search that is already too long is now applied instead of ignored. #786
+- Added Signals to the top of the Brief: fixed checks computed from the diff, grouped as Areas, Tests, and Code, each row shown with a count when it matched. #721
 
-- Fixed Open and Merged, Awaiting review from you, Your pull requests, Review state, and Check status being sent to GitHub even when they pushed the search past its 256-character limit, which ended in a generic request error. An option that would not fit is now disabled with `Too long alongside the other filters`, in the filter bar and in the command palette. Choosing another repository is never refused: it clears labels, then drops Author, Base branch, and the other filters until the search fits, and names each one dropped. #620
-- Fixed a reply, edit, resolve, or new pending-review comment that GitHub answered with an empty result and no error. A reply or a new pending-review comment used to lock the Review until Check GitHub status, and an edit or resolve was recorded as done. Each now shows that GitHub could not accept it and locks nothing; a resolve is still checked with a read first. #768
+- Added a Moves block to the Brief that lists files moved between directories, and stops Flow and Shape notes from covering files that only moved. #713 #715 #718
 
-- Fixed the Visited column still listing Reviews that the daily retention sweep had removed, which led to a failed open when clicked. The column now reads again when a sweep removes Reviews. #740
+- Added a Patchdesk agent skill for Claude Code, Codex, and other agents: `npx skills add kwanpham2195/patchdesk --skill patchdesk`. #704
 
-- Changed links in pull request descriptions and comments to show their destination host in a chip beside the link text when the host is not `github.com` or the Review's GitHub host, so a link whose text names one site and opens another is visible before the click. A link around a single image shows the host on the lightbox's Open link button. #699
+- Changed links in pull request descriptions and comments to show a host chip when they point away from `github.com` or the Review's GitHub host. #699
 
-- Fixed the first-run Set up your workspace screen having no page heading, so keyboard and screen reader users landed on the page body instead of its title. The title is now the page heading and takes focus on arrival, like every other screen. #779
-- Fixed Context and Preview staying unavailable after Settings → Clear cache removed a Review's checkout. Opening the Review now re-creates its checkout from the saved revisions before reading files, so Context and Markdown Preview work again. If the checkout cannot be re-created, Context now says so instead of blaming the saved review revisions. #616
+- Changed Brief Shape to take one note for a directory of similar files instead of one per file. #719
 
-- Fixed a local Review that kept showing its old Refresh error after you reopened it, such as after choosing the moved checkout with Choose checkout in Settings → Workspace. Reopening a Review, or opening another one, now clears the error. #549
-- Fixed Review activity showing underscore phase names raw, such as `Retention_sweep`; it now reads `Retention sweep`. The Insights panel's no-model message no longer sends Codex and pi users to an API key: it names a provider API key exported in your shell profile, or the Codex or pi CLI on the PATH Patchdesk launches with, then relaunching Patchdesk. A model list that fails to load now has its own message. #622
-- Fixed keyboard focus staying on the page body after moving between Pull requests and a Review when the screen re-rendered before the next frame. The page heading now receives focus once per destination change. #619
+- Changed Brief Flow to draw one view per behavior, up to five. #717
 
-- Fixed the Walkthrough moving to another section when an arrow key, `j`, or `k` was pressed with Command, Control, Option, or Shift held, such as ⌘+Right. Modified keys now keep their usual meaning. #623
+- Changed the packaged app to ignore `NODE_OPTIONS` and `--inspect` and load only its own `app.asar`. #698
 
-- Fixed the Walkthrough moving to another section when an arrow key, `j`, or `k` was pressed with Command, Control, Option, or Shift held, such as ⌘+Right. Modified keys now keep their usual meaning. #623
-- Fixed Finding badges in Browse and on diff file headers counting Findings you had already dismissed or added to a review. A badge now counts only Findings that still need attention, the same rule as the Analysis headline, so a file you cleared loses its count and tone. The inline Finding card stays, where a dismissal is undone. #621
+- Fixed GitHub refusing a label, assignee, reviewer, draft, base branch, comment, reply, edit, resolve, deletion, dismissal, review, or merge change locking the Review. The refusal now names its cause and the next write stays available. #755
 
-- Fixed a label, assignee, reviewer, draft, or base branch change that GitHub refuses (for example adding a label deleted on GitHub after the picker loaded) being reported as not confirmed and locking the Review until Check GitHub status. The picker or dialog now shows a sentence naming the cause, the next write is not blocked, and no GitHub status check is offered. A change is treated as refused only while a fresh read shows the label, assignee, reviewer, draft state, or base branch unchanged; otherwise it stays unconfirmed. A base branch deleted after the picker loaded is refused this way too. #755
+- Fixed a merge Patchdesk or GitHub refuses, such as an unallowed merge method, showing Merge not confirmed and locking the Review. It now shows Merge refused with the cause, and the method picker offers only allowed methods. #691 #756
 
-- Fixed a pending-review comment, a Finish review submit or discard, or a direct review summary that GitHub refuses (for example Request changes on your own pull request, or a comment body GitHub says is invalid) being reported as not confirmed and locking the Review until Check GitHub status. It now shows a sentence naming the cause, the next write is not blocked, and no GitHub status check is offered; Finish review stays open with your summary and decision. A start, added comment, or summary is refused with no read; a submit or discard only while a read still shows your pending review, otherwise it stays unconfirmed. #755
+- Fixed a reply, edit, resolve, or new pending-review comment that GitHub answered with an empty result locking the Review or being recorded as done. It now shows that GitHub could not accept it. #768
 
-- Fixed an edit or deletion of a published comment, or a review dismissal, that GitHub refuses (for example an edit body GitHub says is too long, or dismissing a review GitHub will not dismiss) being reported as not confirmed and locking the Review until Check GitHub status. The edit, deletion, or dismissal now shows a sentence naming the cause, the next write is not blocked, and no GitHub status check is offered. An edit is refused with no read; a deletion is treated as refused only while a read still shows the comment, and a dismissal only while a read shows the review not dismissed; otherwise it stays unconfirmed. The edit and deletion copy from the previous entry is now reachable from every comment row. #755
+- Fixed Pull requests sending GitHub a search over its 256-character limit. Filters that do not fit are disabled with `Too long alongside the other filters`, and restored filters are dropped until the search fits. #786 #620
 
-- Fixed a comment, reply, edit, resolve, or delete that GitHub refuses (not found, failed validation such as a comment on a file whose diff GitHub says is too large, or not allowed) being reported as not confirmed and locking the Review until Check GitHub status. The comment, reply, edit, deletion, or thread update now shows a sentence naming the cause, the next write is not blocked, and no GitHub status check is offered. A comment, reply, or edit is refused with no read; a resolve is treated as refused only after a read shows the thread unchanged, and a delete only while the comment still exists; otherwise it stays unconfirmed. Edit and delete copy is wired for every comment row. #755
+- Fixed Review details and the Brief tag on Pull requests showing Not run for a finished Insight until Refresh pull requests was pressed. #692
 
-- Fixed a merge that GitHub answered with not found (404) being reported as not confirmed and locking the Review. Merge now shows Merge refused: the pull request could not be found. A merge GitHub answers with not implemented (415, 501) now gets its own copy, pointing to merging on GitHub, with no extra read. Merge refusals now run on one shared rule that the other GitHub writes will move onto. #755
+- Fixed the Visited column listing Reviews removed by the retention sweep or Clear local review data, and a row whose Review cannot open leaving the app stuck. #740 #618 #615
 
-- Fixed Review details and the row's Brief tag on Pull requests showing Not run for an Insight that had finished, until Refresh pull requests was pressed. The screen now reads Insight state from local records when it is shown and when a run settles, without asking GitHub. #692
+- Fixed Context and Preview staying unavailable after Clear cache removed a Review's checkout. #616
 
-- Fixed a Visited row whose Review cannot open leaving the app on the workbench with the row selected and unclickable. The screen now returns to Pull requests, keeps the "Could not open the saved review." message, and the row can be clicked again to retry. #615
+- Fixed a local Review keeping its old Refresh error after you reopened it. #549
 
-- Fixed the Visited column still listing Reviews after Clear local review data removed them. The column now reads again when the cleanup finishes. #618
+- Fixed Review activity showing raw phase names such as `Retention_sweep`, and corrected the Insights no-model message for Codex and pi users. #622
 
-- Fixed the inline composer's hint and caption naming the wrong action for ⌘/Ctrl+Enter. On a pull request with no pending review the shortcut starts a review, but the hint said to comment and the caption said the comment publishes to GitHub. The hint now reads "to start a review", the caption says the comment stays pending until you submit the review, and a pending review's hint says "to add it to your pending review". #617
+- Fixed keyboard focus staying on the page body after moving between Pull requests and a Review. #619
 
-- Fixed a merge Patchdesk refuses before sending it, such as one from a Review that no longer matches GitHub, showing Merge not confirmed and holding the next merge until Check GitHub status. It now shows Merge refused with the cause and the next step, such as refreshing before merging, and Merge stays available. The refusal no longer squeezes the merge bar's context line into one character per row. #756
+- Fixed the first-run Set up your workspace screen having no page heading. #779
 
-- Fixed a merge GitHub refuses, such as one using a merge method the repository does not allow, being reported as not confirmed and locking the Review until Check GitHub status. Patchdesk now shows Merge refused with the cause and keeps Merge available, and the method picker offers only the methods the repository allows, defaulting to the first of squash, merge, and rebase. A merge GitHub completed also no longer reads as Merge not confirmed. #691
+- Fixed the Walkthrough moving sections when an arrow key, `j`, or `k` was pressed with a modifier held. #623
 
-- Updated DOMPurify, which sanitizes Mermaid diagrams in PR descriptions, to 3.4.16 for a low security advisory. #335
+- Fixed Finding badges counting Findings you had dismissed or added to a review. #621
 
-- Fixed the packaged app loading the page named by `ELECTRON_RENDERER_URL` into its window and trusting that page for its local API. It now always loads its bundled renderer; only the development app reads the variable. #697
-
-- Changed the packaged app to set Electron fuses: it ignores `NODE_OPTIONS` and `--inspect`, and loads only its own checked `app.asar`. #698
-
-- Updated Electron to 43.7.7 for four high security advisories, and `hono` to 4.13.12 for four moderate ones. #696
-
-- Removed Start here from the Brief; Walkthrough is the reading path. **Open walkthrough** and **Generate walkthrough** moved to the Brief header beside Regenerate, and a local Review's PR description no longer has a Start here section. #716
-
-- Removed Surfaces crossed from Brief Blast radius; the Signals Areas rows replace it. #721
-
-- Added Signals to the top of the Brief: a fixed set of checks computed from the diff, grouped as Areas (Public API, Routes, Stored data, Security boundary, Dependencies, Config or deploy), Tests (weakened, added), and Code (concurrency, files to skim). Every row always shows, tinted with a count and paths when it matched and dimmed at zero. #721
-
-- Changed Brief Shape to take one note for a directory of similar files, such as `cmd/api/testdata/`, instead of a note on every fixture or config file, so large pull requests keep their notes for code. #719
+- Fixed the inline composer hint and caption naming the wrong action for ⌘/Ctrl+Enter. #617
 
 - Fixed Brief Blast radius listing a `Makefile`, a properties file, or a generated mock under No matching test. #720
 
-- Changed Brief Flow to draw one view per behavior instead of one per kind, so two unrelated call paths each get their own call tree, up to five views, with a line saying how many more were left out. When a pull request is mostly a move, the model still draws Flow for what else changed, such as a workflow rule. #717
+- Fixed `patchdesk` saying "has no tool named" when the running app is older than the command. #709
 
-- Added a Moves block to the Brief. When a pull request moves files between directories, it lists each move, such as `job/<name>/ → deploy/<name>/  36 files · unchanged`, from git's rename data, and comes before Flow when moves are most of the change. The Brief model now gets the change counts and moves up front, stops drawing Flow for files that only moved, and skips Shape notes on them. A local Review's Brief also writes Moves into the PR description it copies. Files edited only to follow the move, such as a new import path or a renamed Go package qualifier, count with the move. #713 #715 #718
+- Fixed the packaged app loading the page named by `ELECTRON_RENDERER_URL`. #697
 
-- Added a Patchdesk agent skill for Claude Code, Codex, and other agents that load skills: `npx skills add kwanpham2195/patchdesk --skill patchdesk`. It holds the review loop the MCP server sends, plus setup and common refusals for when the tools are missing. #704
+- Removed Start here from the Brief; Walkthrough is the reading path, and its buttons moved to the Brief header. #716
 
-- Fixed `patchdesk` saying "has no tool named" when the running app is older than the command; it now says to quit and reopen Patchdesk. #709
+- Removed Surfaces crossed from Brief Blast radius, replaced by the Signals Areas rows. #721
+
+- Updated DOMPurify to 3.4.16 for a low security advisory. #335
+
+- Updated Electron to 43.7.7 and `hono` to 4.13.12 for security advisories. #696
 
 ## 0.0.14 - 2026-09-30
 
