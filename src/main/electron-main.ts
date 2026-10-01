@@ -29,7 +29,7 @@ import {
   type DesktopNavigationState,
 } from "./desktop-close-guard";
 import { preloadScriptPath } from "./electron-paths";
-import { rendererOrigin as parseRendererOrigin } from "./renderer-origin";
+import { rendererSource } from "./renderer-origin";
 import {
   installWebContentsSecurity,
   normalizeExternalHosts,
@@ -103,7 +103,8 @@ import {
   type InsightInvoker,
 } from "../services/insight-run-coordinator";
 
-const rendererOrigin = getRendererOrigin();
+const renderer = rendererSource(process.env, app.isPackaged);
+const rendererOrigin = renderer.origin;
 const runtimeModelCatalog = new LocalPiRuntimeModelCatalog();
 let runningLocalApi: LocalApiServer | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -797,11 +798,10 @@ async function createWorkbenchWindow(
   });
 
   try {
-    const rendererUrl = process.env.ELECTRON_RENDERER_URL;
-    if (rendererUrl === undefined) {
+    if (renderer.url === undefined) {
       await window.loadFile(join(__dirname, "../renderer/index.html"));
     } else {
-      await window.loadURL(rendererUrl);
+      await window.loadURL(renderer.url);
     }
     return window;
   } catch (cause: unknown) {
@@ -946,10 +946,6 @@ async function guardDesktopExit(intent: "window" | "quit"): Promise<void> {
   } finally {
     closePromptOpen = false;
   }
-}
-
-function getRendererOrigin(): string {
-  return parseRendererOrigin(process.env.ELECTRON_RENDERER_URL);
 }
 
 function terminateAfterServerStops(): void {
