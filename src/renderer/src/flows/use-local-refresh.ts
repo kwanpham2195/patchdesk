@@ -63,6 +63,15 @@ export function useLocalRefresh({
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
 
+  // A reopen replaces the session object without remounting the workbench, so
+  // an error from the earlier read must not outlive it (#549). A patch keeps the
+  // same session object and keeps the error.
+  const [shownSession, setShownSession] = useState(workbench.session);
+  if (shownSession !== workbench.session) {
+    setShownSession(workbench.session);
+    setError(undefined);
+  }
+
   const reopen = useMemo(
     () =>
       source.kind === "pull_request"
