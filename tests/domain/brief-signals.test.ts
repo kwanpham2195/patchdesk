@@ -152,6 +152,7 @@ describe("briefSignals", () => {
         ["\treturn nil"],
         [
           "\t_ = err",
+          "\trows, _ := db.Query(q)",
           "\tgo func() { s.refresh(ctx) }()",
           '\tquery := "SELECT * FROM role WHERE id = " + id',
           '\tapiKey := "sk_live_abcdefghijklmnop"',
@@ -173,7 +174,7 @@ describe("briefSignals", () => {
         ['const token = "test-token-123456";'],
       ),
     ]);
-    expect(result.row("errors_ignored")?.count).toBe(2);
+    expect(result.row("errors_ignored")?.count).toBe(3);
     expect(result.row("concurrency")?.count).toBe(2);
     expect(result.row("injection_candidates")?.count).toBe(2);
     expect(result.row("secret_like")).toMatchObject({
@@ -190,6 +191,9 @@ describe("briefSignals", () => {
         [
           "\tif err != nil { return err }",
           "\ttype Session struct { token string }",
+          "\tfor _, role := range roles {",
+          "\tname, _ := value.(string)",
+          "\tseen, _ := index[key]",
           '\tlog.Panicf("cannot get profile-postgres-password: %v", err)',
           '\treturn fmt.Sprintf("Bearer %v", token)',
           '\trow := db.QueryRow("SELECT * FROM role WHERE id = $1", id)',

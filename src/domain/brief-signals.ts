@@ -129,9 +129,12 @@ const TEST_CASE = /\b(?:it|test)\(\s*['"`]|\bfunc Test\w*\(|\bdef test_\w*\(/;
 const LEFTOVER =
   /\bconsole\.(?:log|debug)\(|\bdebugger\b|\bfmt\.Print(?:ln|f)?\(|\bspew\.|\bTODO\b|\bFIXME\b/;
 
-/** `_ = err`, `_, _ =`, an empty catch, a swallowing `.catch`, an errcheck suppression, or `except: pass`. */
+/** `_ = err`, `_ = f()`, `x, _ :=`, an empty catch, a swallowing `.catch`, an errcheck suppression, or `except: pass`. */
 const ERROR_IGNORED =
-  /^\s*_\s*=\s*\w*[Ee]rr\w*\b|\b_\s*,\s*_\s*:?=|\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(?:\{\s*\}|undefined|null)\s*\)|nolint:errcheck|\bexcept\b[^:]*:\s*pass\b/;
+  /^\s*_\s*=\s*(?:\w*[Ee]rr\w*\b|[\w.]+\()|\b\w+\s*,\s*_\s*:?=\s*(?!range\b)|\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(?:\{\s*\}|undefined|null)\s*\)|nolint:errcheck|\bexcept\b[^:]*:\s*pass\b/;
+/** Go's comma-ok forms drop a bool, not an error: a type assertion, a map lookup, or a channel receive. */
+const COMMA_OK =
+  /,\s*_\s*:?=\s*(?:<-|[\w.]+\.\([\w.*[\]]+\)|[\w.]+\[[^\]]*\])\s*;?\s*$/;
 /** A goroutine, channel, lock, atomic, `select`, or JavaScript fan-out and timer. */
 const CONCURRENCY =
   /^\s*go\s+(?:func\b|\w+[.(])|\bsync\.\w+|\bchan\b|^\s*select\s*\{|\batomic\.\w+|\bPromise\.(?:all|race|any|allSettled)\(|\bsetInterval\(|\bnew Worker\(/;
@@ -214,7 +217,7 @@ export function briefSignals(
             Math.max(cases, file.status === "added" ? 1 : 0),
           );
         }
-      } else if (bucket === "core") {
+      } else if (bucket === "core" && !isTestDouble(file.path)) {
         const added = countMatches(lines.added, ROUTE_LINE);
         const removed = countMatches(lines.removed, ROUTE_LINE);
         routes.added += added;
@@ -224,7 +227,9 @@ export function briefSignals(
         add(
           "errors_ignored",
           file.path,
-          countMatches(lines.added, ERROR_IGNORED),
+          lines.added.filter(
+            (line) => ERROR_IGNORED.test(line) && !COMMA_OK.test(line),
+          ).length,
         );
         add("concurrency", file.path, countMatches(lines.added, CONCURRENCY));
         add(
@@ -351,6 +356,14 @@ function areas(
   )
     kinds.push("config_or_deploy");
   return kinds;
+}
+
+/** A generated or hand-written mock: its code patterns are the tool's, not the author's. */
+function isTestDouble(path: string): boolean {
+  return path
+    .split("/")
+    .slice(0, -1)
+    .some((segment) => /^(?:mocks?|fakes?|stubs?)$/.test(segment));
 }
 
 function isSnapshot(path: string): boolean {
