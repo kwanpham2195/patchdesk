@@ -28,8 +28,13 @@ type MergeRejectionReason =
   | "invalid_input"
   | "not_found"
   | "stale_head"
+  | "not_fresh"
   | "merge_blocked"
   | "merge_acknowledgement_required"
+  | "merge_method_not_allowed"
+  | "merge_not_mergeable"
+  | "merge_head_changed"
+  | "merge_rate_limited"
   | "merge_forbidden"
   | "merge_failed";
 
@@ -63,12 +68,18 @@ export type MergeOperation = {
 
 export type InvalidMergeOperation = { readonly _tag: "InvalidMergeOperation" };
 
+// Every reason MergeWriteController rejects with; one missing here would leave its operation outcome-unknown and the Review locked.
 const rejectionReasons = [
   "invalid_input",
   "not_found",
   "stale_head",
+  "not_fresh",
   "merge_blocked",
   "merge_acknowledgement_required",
+  "merge_method_not_allowed",
+  "merge_not_mergeable",
+  "merge_head_changed",
+  "merge_rate_limited",
   "merge_forbidden",
   "merge_failed",
 ] as const;

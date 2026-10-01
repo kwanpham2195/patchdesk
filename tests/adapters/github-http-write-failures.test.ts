@@ -5,7 +5,7 @@ import { commandTimeoutMs } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
 import type { GitHubWriteFailure } from "../../src/domain/github-write";
-import { parseGitHubThreadId } from "../../src/domain/ids";
+import { parseGitHubThreadId, parseGitSha } from "../../src/domain/ids";
 import {
   json,
   profile,
@@ -154,6 +154,42 @@ describe("a REST status on a write is the category that status means", () => {
       expect(failure.category).not.toBe("rejected");
     },
   );
+});
+
+/**
+ * A merge treats 405, 409, and 422 as GitHub's refusal (issue #691; the
+ * Review rows live in `merge-write-controller.test.ts`). Nothing else is.
+ */
+describe("a merge GitHub did not refuse stays unavailable", () => {
+  async function mergeWrite(handler: Handler): Promise<GitHubWriteFailure> {
+    server.respondWith(handler);
+    const result = await writeAdapter(server).mergePullRequest({
+      profile,
+      pr,
+      headSha: mustParse(parseGitSha("a".repeat(40))),
+      method: "rebase",
+    });
+    if (result._tag !== "err") throw new Error("Expected a failed merge");
+    return result.error;
+  }
+
+  it.each([404, 500, 502, 503])(
+    "classifies %i as unavailable",
+    async (status) => {
+      const failure = await mergeWrite(
+        json(status, { message: "failure", status: String(status) }),
+      );
+
+      expect(failure).toMatchObject({ category: "unavailable" });
+      expect(failure.refusal).toBeUndefined();
+    },
+  );
+
+  it("classifies a connection reset before any response byte as unavailable", async () => {
+    const failure = await mergeWrite((request) => request.socket.destroy());
+
+    expect(failure.category).toBe("unavailable");
+  });
 });
 
 describe("a GraphQL error on a write is the category its type means", () => {

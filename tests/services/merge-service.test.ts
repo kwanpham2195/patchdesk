@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { CheckSummary } from "../../src/domain/github-context";
+import { definedProps } from "../../src/domain/defined-props";
+import type { MergeOutcome } from "../../src/adapters/github/github-ports";
+import type {
+  CheckSummary,
+  MergeMethod,
+} from "../../src/domain/github-context";
+import type { GitHubWriteFailure } from "../../src/domain/github-write";
 import { mergePullRequest } from "../../src/services/merge-service";
 
 // SAFETY: This literal is a well-formed GitSha fixture for the merge service seam.
@@ -49,7 +55,6 @@ describe("merge service", () => {
           mergePullRequest: merge,
         } as never,
         method: "squash",
-        supportedMethods: ["squash"],
         acknowledgedWarningCodes: [],
       }),
     ).resolves.toMatchObject({
@@ -74,8 +79,15 @@ describe("merge service", () => {
   // diff below, which is what makes the revision `Same`.
   function gateway(
     reviewDecision: "unknown" | "review_required" | "approved",
-    merge: () => Promise<{ readonly _tag: "ok"; readonly value: object }>,
+    merge: () => Promise<
+      | { readonly _tag: "ok"; readonly value: object }
+      | { readonly _tag: "err"; readonly error: GitHubWriteFailure }
+    >,
     checks: CheckSummary = passingChecks,
+    repository: {
+      readonly allowedMergeMethods?: ReadonlyArray<MergeMethod>;
+      readonly outcome?: MergeOutcome;
+    } = {},
   ) {
     // SAFETY: this fake gateway implements the methods exercised by
     // mergePullRequest; the test does not need the wider adapter surface.
@@ -106,8 +118,15 @@ describe("merge service", () => {
           reviewDecision,
           checks,
           complete: true,
+          ...definedProps({
+            allowedMergeMethods: repository.allowedMergeMethods,
+          }),
         },
       }),
+      getMergeOutcome: async () =>
+        repository.outcome === undefined
+          ? { _tag: "err" as const, error: { _tag: "GitHubReadFailed" } }
+          : { _tag: "ok" as const, value: repository.outcome },
       mergePullRequest: merge,
     } as never;
   }
@@ -120,7 +139,6 @@ describe("merge service", () => {
         session,
         gateway: gateway("unknown", merge),
         method: "squash",
-        supportedMethods: ["squash"],
         acknowledgedWarningCodes: [],
       }),
     ).resolves.toMatchObject({
@@ -146,7 +164,6 @@ describe("merge service", () => {
         },
         gateway: gateway("unknown", merge),
         method: "squash",
-        supportedMethods: ["squash"],
         acknowledgedWarningCodes: [],
       }),
     ).resolves.toMatchObject({
@@ -164,7 +181,6 @@ describe("merge service", () => {
         session,
         gateway: gateway("review_required", merge),
         method: "squash",
-        supportedMethods: ["squash"],
         acknowledgedWarningCodes: [],
       }),
     ).resolves.toMatchObject({
@@ -200,7 +216,6 @@ describe("merge service", () => {
           ],
         }),
         method: "squash",
-        supportedMethods: ["squash"],
         acknowledgedWarningCodes: [],
       }),
     ).resolves.toMatchObject({
@@ -209,4 +224,74 @@ describe("merge service", () => {
     });
     expect(merge).toHaveBeenCalledTimes(1);
   });
+
+  it("refuses a method the repository does not allow without asking GitHub to merge", async () => {
+    const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
+    await expect(
+      mergePullRequest({
+        profile,
+        session,
+        gateway: gateway("approved", merge, passingChecks, {
+          allowedMergeMethods: ["rebase"],
+        }),
+        method: "squash",
+        acknowledgedWarningCodes: [],
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "MergeMethodNotAllowed" },
+    });
+    expect(merge).not.toHaveBeenCalled();
+  });
+
+  // ADR 0046: a resent merge whose first delivery landed is refused too, so a
+  // refusal proves nothing merged only while the pull request is still open.
+  it.each([
+    {
+      name: "open",
+      outcome: { state: "open" } as const,
+      expected: { _tag: "GitHubMergeRefused", reason: "not_mergeable" },
+    },
+    {
+      name: "merged",
+      // SAFETY: an ISO literal already satisfies the branded IsoTimestamp's runtime shape.
+      outcome: {
+        state: "merged",
+        mergedAt: "2026-10-01T00:00:00.000Z" as never,
+      } as const,
+      expected: { _tag: "GitHubMergeOutcomeUnknown" },
+    },
+    {
+      name: "unreadable",
+      outcome: undefined,
+      expected: { _tag: "GitHubMergeOutcomeUnknown" },
+    },
+  ])(
+    "reads a refused merge against a pull request that is $name",
+    async ({ outcome, expected }) => {
+      const merge = vi.fn(async () => ({
+        _tag: "err" as const,
+        error: {
+          _tag: "GitHubWriteFailure" as const,
+          category: "rejected" as const,
+          message: "GitHub refused to merge the pull request.",
+          refusal: "not_mergeable" as const,
+        },
+      }));
+      await expect(
+        mergePullRequest({
+          profile,
+          session,
+          gateway: gateway(
+            "approved",
+            merge,
+            passingChecks,
+            outcome === undefined ? {} : { outcome },
+          ),
+          method: "squash",
+          acknowledgedWarningCodes: [],
+        }),
+      ).resolves.toEqual({ _tag: "err", error: expected });
+    },
+  );
 });

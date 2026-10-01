@@ -16,6 +16,7 @@ import {
 import type { MergePolicySnapshot } from "../../src/domain/github-context";
 import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
 import type { MergeOperation } from "../../src/domain/merge-operation";
+import { definedProps } from "../../src/domain/defined-props";
 import { err, ok, type Result } from "../../src/domain/result";
 import type { PullRequestReview } from "../../src/domain/review";
 import {
@@ -30,8 +31,10 @@ import type { StorageFailure } from "../../src/adapters/storage/json-file";
 import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
 import {
   MergeWriteController,
+  mergeReceiptBody,
   type MergeCommand,
 } from "../../src/services/merge-write-controller";
+import { parseMergeReceipt } from "../../src/renderer/src/review-write-receipts";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import type { LogEntryInput } from "../../src/domain/log-entry";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -41,7 +44,17 @@ import {
   createReviewRefreshFixtureValues,
   type ReviewRefreshFixtureValues,
 } from "./review-refresh-fixture";
+import {
+  json,
+  profile as servedProfile,
+  useFixtureServer,
+} from "../adapters/github-http-fixture-server";
+import {
+  pr as servedPullRequest,
+  writeAdapter,
+} from "../adapters/github-write-shape";
 
+const githubServer = useFixtureServer();
 const patch =
   "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
 const unusedStoreRoot = "/tmp/patchdesk-merge-controller-store";
@@ -354,6 +367,7 @@ function fixture(
     readonly confirmOperation?: ConfirmResult;
     readonly rejectOperation?: RejectResult;
     readonly mergeResult?: GatewayMergeResult;
+    readonly mergeOutcome?: FakeGitHubAdapterValues["mergeOutcome"];
     readonly mergeability?: MergePolicySnapshot["mergeability"];
     readonly analysis?: AnalysisFixture;
     readonly analysisMergePolicy?: AnalysisMergePolicy;
@@ -433,13 +447,13 @@ function fixture(
         values,
         options.mergeability ?? "mergeable",
       ),
+      ...definedProps({ mergeOutcome: options.mergeOutcome }),
     },
     options.mergeResult ?? ok({ mergeCommitSha: values.headSha }),
   );
   const coordinator = new ReviewOperationCoordinator();
   const controller = new MergeWriteController(
     gateway,
-    ["squash"],
     () => at,
     operations,
     writeGate,
@@ -555,6 +569,53 @@ describe("MergeWriteController", () => {
     expect(current.notifications).toEqual([]);
   });
 
+  // Issue #691: GitHub answered the merge itself with a refusal status, so
+  // nothing merged and the Review must not wait on a GitHub status check.
+  it.each([
+    {
+      status: 405,
+      message: "Pull Request is not mergeable",
+      reason: "merge_not_mergeable",
+    },
+    {
+      status: 409,
+      message: "Head branch was modified. Review and try the merge again.",
+      reason: "merge_head_changed",
+    },
+    {
+      status: 422,
+      message: "Validation Failed",
+      reason: "merge_not_mergeable",
+    },
+  ])(
+    "records a merge GitHub refused with $status as rejected and leaves the Review unlocked",
+    async ({ status, message, reason }) => {
+      githubServer.respondWith(
+        json(status, { message, status: String(status) }),
+      );
+      const refused = await writeAdapter(githubServer).mergePullRequest({
+        profile: servedProfile,
+        pr: servedPullRequest,
+        headSha: values.headSha,
+        method: "squash",
+      });
+      const current = fixture({
+        mergeResult: refused,
+        mergeOutcome: { state: "open" },
+      });
+
+      await expect(current.controller.merge(request())).resolves.toEqual({
+        _tag: "err",
+        error: { reason },
+      });
+      expect(current.operations.rejected[0]?.state).toEqual({
+        _tag: "Rejected",
+        reason,
+      });
+      expect(current.notifications).toEqual([]);
+    },
+  );
+
   it("records finite rejection but retains no uncertain evidence", async () => {
     const current = fixture({ mergeability: "blocked" });
     await expect(current.controller.merge(request())).resolves.toEqual({
@@ -610,6 +671,19 @@ describe("MergeWriteController", () => {
       },
       headSha: current.headSha,
       method: "squash",
+    });
+  });
+
+  // The renderer's receipt parser is strict; the stored Review on the wire made every confirmed merge read as not confirmed.
+  it("answers a confirmed merge with the receipt the renderer accepts", async () => {
+    const current = fixture();
+
+    const merged = await current.controller.merge(request());
+    if (merged._tag === "err") throw new Error("Expected a confirmed merge");
+
+    expect(parseMergeReceipt(mergeReceiptBody(merged.value))).toEqual({
+      readiness: merged.value.readiness,
+      mergeCommitSha: values.headSha,
     });
   });
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a merge GitHub refuses, such as one using a merge method the repository does not allow, being reported as not confirmed and locking the Review until Check GitHub status. Patchdesk now shows Merge refused with the cause and keeps Merge available, and the method picker offers only the methods the repository allows, defaulting to the first of squash, merge, and rebase. A merge GitHub completed also no longer reads as Merge not confirmed. #691
+
 - Updated DOMPurify, which sanitizes Mermaid diagrams in PR descriptions, to 3.4.16 for a low security advisory. #335
 
 - Fixed the packaged app loading the page named by `ELECTRON_RENDERER_URL` into its window and trusting that page for its local API. It now always loads its bundled renderer; only the development app reads the variable. #697

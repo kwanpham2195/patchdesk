@@ -200,9 +200,25 @@ export type GitHubMergePolicyEvidence = {
     | GitHubOptionalEvidenceUnavailable;
 };
 
+/** A way GitHub can merge a pull request. */
+export type MergeMethod = "squash" | "merge" | "rebase";
+
+/** Every merge method, in the order the picker offers them; the first allowed one is the default. */
+export const mergeMethodOrder: ReadonlyArray<MergeMethod> = [
+  "squash",
+  "merge",
+  "rebase",
+];
+
 /** Fresh, exact-head policy evidence required before Patchdesk may request a merge. */
 export type MergePolicySnapshot = {
   readonly pr: PullRequestRef;
+  /**
+   * The repository's enabled merge methods, in `mergeMethodOrder`. A live read
+   * always carries them; a snapshot stored before Patchdesk read them does not,
+   * and then no method is known to be disallowed.
+   */
+  readonly allowedMergeMethods?: ReadonlyArray<MergeMethod>;
   readonly headSha: GitSha;
   /** Exact base SHA for final merge identity proof; production adapter reads always include it. */
   readonly baseSha?: GitSha;

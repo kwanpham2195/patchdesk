@@ -230,6 +230,76 @@ describe("compact merge command", () => {
     ).toBeTruthy();
   });
 
+  // Issue #691: nothing merged, so the command offers another merge and no GitHub status check.
+  it("lets the maintainer merge again after GitHub refuses the merge", async () => {
+    const user = userEvent.setup();
+    const merge = vi.fn(async () => {
+      throw new PatchdeskApiError(
+        "github_rejected",
+        409,
+        false,
+        "corr-merge-refused",
+        "This action was refused.",
+        { error: "merge_not_mergeable" },
+      );
+    });
+    render(
+      <CompactMergeCommand
+        readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+        context={{
+          repo: "octo-org/patchdesk",
+          prNumber: 42,
+          title: "Protect review writes",
+          base: "sit",
+          head: "feat/review",
+          headSha: "abcdef1234567890",
+        }}
+        methods={["rebase"]}
+        onMerge={merge}
+        onRecoverMerge={async () => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByRole("combobox", { name: "Merge method" }).textContent,
+    ).toContain("rebase");
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Check GitHub status" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+    expect(merge).toHaveBeenCalledTimes(2);
+    expect(merge).toHaveBeenLastCalledWith("rebase", []);
+  });
+
+  it("moves the selection to an allowed method when the allowed methods narrow", async () => {
+    const user = userEvent.setup();
+    const merge = vi.fn(async () => ({ state: "confirmed" as const }));
+    const command = (methods: ReadonlyArray<"squash" | "merge" | "rebase">) => (
+      <CompactMergeCommand
+        readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+        context={{
+          repo: "octo-org/patchdesk",
+          prNumber: 42,
+          title: "Protect review writes",
+          base: "sit",
+          head: "feat/review",
+          headSha: "abcdef1234567890",
+        }}
+        methods={methods}
+        onMerge={merge}
+      />
+    );
+    const { rerender } = render(command(["squash", "merge", "rebase"]));
+
+    rerender(command(["rebase"]));
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+
+    expect(merge).toHaveBeenCalledWith("rebase", []);
+  });
+
   it("reports a non-cancellable merge until GitHub returns a final result", async () => {
     let resolveMerge:
       | ((value: {

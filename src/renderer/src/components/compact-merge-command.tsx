@@ -5,6 +5,7 @@ import type { MergeDisplayReason } from "../../../domain/github-context";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import { PatchdeskApiError } from "../api-client";
+import { mergeRefusalMessage } from "../merge-refusal";
 import { unconfirmedWriteCopy } from "../review-copy";
 import {
   openPullRequestExternalUrl,
@@ -45,6 +46,7 @@ type MergeContext = {
 type MergeOutcome =
   | { readonly state: "idle" }
   | { readonly state: "retryable_error"; readonly message: string }
+  | { readonly state: "refused"; readonly message: string }
   | { readonly state: "recovery_required"; readonly message: string }
   | ({ readonly state: "confirmed" | "confirmed_refresh_required" } & {
       readonly mergeCommitSha?: string;
@@ -56,17 +58,21 @@ export function CompactMergeCommand(props: {
   readonly mergeReasons?: ReadonlyArray<MergeDisplayReason>;
   readonly pullRequest?: PullRequestRef;
   readonly context: MergeContext;
+  /** The methods the repository allows; the first is the default. */
   readonly methods: ReadonlyArray<MergeMethod>;
-  readonly initialMethod?: MergeMethod;
   readonly onMerge: (
     method: MergeMethod,
     warningCodes: ReadonlyArray<string>,
   ) => Promise<MergeCommandResult>;
   readonly onRecoverMerge?: () => Promise<void>;
 }): React.JSX.Element {
-  const [method, setMethod] = useState<MergeMethod>(
-    props.initialMethod ?? props.methods[0] ?? "squash",
+  const [chosenMethod, setMethod] = useState<MergeMethod>(
+    props.methods[0] ?? "squash",
   );
+  // A GitHub check can narrow the allowed methods after mount; a choice the repository no longer allows falls to the first allowed one.
+  const method = props.methods.includes(chosenMethod)
+    ? chosenMethod
+    : (props.methods[0] ?? chosenMethod);
   const [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<MergeOutcome>({ state: "idle" });
@@ -95,13 +101,16 @@ export function CompactMergeCommand(props: {
       );
       setOutcome(confirmedOutcome(result.state, result.mergeCommitSha));
     } catch (cause: unknown) {
+      const refusal = mergeRefusalMessage(cause, method);
       setOutcome(
         cause instanceof PatchdeskApiError && cause.kind === "merge_in_progress"
           ? { state: "retryable_error", message: cause.message }
-          : {
-              state: "recovery_required",
-              message: unconfirmedWriteCopy("merge"),
-            },
+          : refusal !== undefined
+            ? { state: "refused", message: refusal }
+            : {
+                state: "recovery_required",
+                message: unconfirmedWriteCopy("merge"),
+              },
       );
     } finally {
       pendingRef.current = false;
@@ -248,6 +257,12 @@ export function CompactMergeCommand(props: {
         {outcome.state === "retryable_error" ? (
           <Alert variant="destructive" className="w-full min-w-0">
             <AlertTitle>Merge not submitted</AlertTitle>
+            <AlertDescription>{outcome.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        {outcome.state === "refused" ? (
+          <Alert variant="destructive" className="w-full min-w-0">
+            <AlertTitle>Merge refused</AlertTitle>
             <AlertDescription>{outcome.message}</AlertDescription>
           </Alert>
         ) : null}

@@ -347,6 +347,7 @@ function childFailureReason(
       return "timed_out";
     case "CommandForbidden":
     case "CommandUnsupported":
+    case "CommandConflict":
     case "CommandPendingReview":
     case "CommandFailed":
     case "CommandInvalidJson":

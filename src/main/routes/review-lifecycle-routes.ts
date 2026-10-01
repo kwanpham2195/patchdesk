@@ -29,6 +29,7 @@ import {
   type RecentReviewWrite,
 } from "../../domain/recent-review-write";
 import type { LocalApiContainer } from "../local-api-container";
+import { mergeReceiptBody } from "../../services/merge-write-controller";
 import { reviewWorkbenchFailureKinds } from "../../services/review-workbench-controller";
 import { response, serviceResponse } from "./http-status";
 import { jsonBody } from "./json-body";
@@ -245,19 +246,22 @@ export function registerReviewLifecycleRoutes(
       expectedRevision._tag === "err"
     )
       return context.json({ error: "invalid_input" }, 400);
+    const merged = await mergeWrites.merge({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+      sessionId: sessionId.value,
+      expectedHeadSha: expectedHeadSha.value,
+      expectedBaseSha: expectedBaseSha.value,
+      expectedPatchHash: expectedPatchHash.value,
+      expectedRevision: expectedRevision.value,
+      method: body.method,
+      acknowledgedWarnings: body.acknowledgedWarnings,
+    });
     return response(
       context,
-      await mergeWrites.merge({
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        sessionId: sessionId.value,
-        expectedHeadSha: expectedHeadSha.value,
-        expectedBaseSha: expectedBaseSha.value,
-        expectedPatchHash: expectedPatchHash.value,
-        expectedRevision: expectedRevision.value,
-        method: body.method,
-        acknowledgedWarnings: body.acknowledgedWarnings,
-      }),
+      merged._tag === "ok"
+        ? { _tag: "ok", value: mergeReceiptBody(merged.value) }
+        : merged,
     );
   });
 }

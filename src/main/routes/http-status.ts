@@ -101,6 +101,10 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["head_changed", 409],
   ["merge_in_progress", 409],
   ["merge_outcome_unknown", 409],
+  // GitHub refused the merge, or the repository does not allow the method; nothing merged.
+  ["merge_method_not_allowed", 409],
+  ["merge_not_mergeable", 409],
+  ["merge_head_changed", 409],
   ["not_fresh", 409],
   ["revision_conflict", 409],
   ["operation_active", 409],

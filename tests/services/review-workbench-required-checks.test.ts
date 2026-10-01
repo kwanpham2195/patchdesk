@@ -233,7 +233,6 @@ describe("required-check classification from the snapshot merge policy", () => {
         mergePullRequest: merge,
       } as never,
       method: "squash",
-      supportedMethods: ["squash"],
       acknowledgedWarningCodes: [],
     });
     expect(gate).toMatchObject({
@@ -301,7 +300,6 @@ describe("required-check classification from the snapshot merge policy", () => {
         mergePullRequest: merge,
       } as never,
       method: "squash",
-      supportedMethods: ["squash"],
       acknowledgedWarningCodes: [],
     });
     expect(gate).toMatchObject({ _tag: "ok" });
@@ -398,7 +396,6 @@ describe("mergeability classification from the snapshot merge policy", () => {
         mergePullRequest: merge,
       } as never,
       method: "squash",
-      supportedMethods: ["squash"],
       acknowledgedWarningCodes: [],
     });
     expect(gate).toMatchObject({

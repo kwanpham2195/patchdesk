@@ -518,6 +518,43 @@ describe("ReviewRemoteStore", () => {
     expect(saved.value.snapshotHash).not.toBe(hashSnapshot(snapshot));
   });
 
+  it("round-trips the repository's allowed merge methods on the merge policy", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const withMergePolicy: ReviewRemoteSnapshot = {
+      ...snapshot,
+      mergePolicy: {
+        pr: snapshot.pullRequest.ref,
+        allowedMergeMethods: ["rebase"],
+        headSha,
+        isOpen: true,
+        isDraft: false,
+        mergeability: "mergeable",
+        reviewDecision: "approved",
+        checks: { overall: "passing", checks: [] },
+        complete: true,
+      },
+    };
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withMergePolicy,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { mergePolicy: { allowedMergeMethods: ["rebase"] } },
+    });
+  });
+
   it("round-trips applied-ruleset rule parameters", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
     roots.push(root);

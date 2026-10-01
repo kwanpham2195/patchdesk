@@ -888,6 +888,7 @@ const workbenchProjectionSchema = v.strictObject({
   checks: checkSchema,
   mergeReadiness: mergeReadinessSchema,
   mergeReasons: v.optional(v.array(mergeReasonSchema)),
+  mergeMethods: v.optional(v.array(v.picklist(["squash", "merge", "rebase"]))),
   remoteWriteRecovery: v.optional(remoteWriteRecoverySchema),
   localApply: v.optional(
     v.strictObject({

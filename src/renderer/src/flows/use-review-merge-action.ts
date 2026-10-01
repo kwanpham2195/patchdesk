@@ -6,10 +6,12 @@ import {
   parseGitHubRepoName,
   parsePullRequestNumber,
 } from "../../../domain/ids";
+import { mergeMethodOrder } from "../../../domain/github-context";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
+import { mergeRefusalMessage } from "../merge-refusal";
 import {
   parseMergeReceipt,
   parseWorkbenchResponse,
@@ -98,7 +100,8 @@ export function useReviewMergeAction({
             head: workbench.pullRequest?.headBranch ?? "unknown",
             headSha: workbench.revision.reviewedHeadSha,
           },
-          methods: ["squash", "merge", "rebase"] as const,
+          // A snapshot read before Patchdesk recorded the repository's methods restricts none; the merge service checks them again before writing.
+          methods: workbench.mergeMethods ?? mergeMethodOrder,
           onRecoverMerge: (): Promise<void> => {
             if (recoveryInFlightRef.current !== undefined)
               return recoveryInFlightRef.current;
@@ -221,11 +224,13 @@ export function useReviewMergeAction({
                   return confirmation;
                 }
               } catch (cause: unknown) {
+                // A refused merge left nothing on GitHub, so another attempt needs no status check first.
                 if (
                   !(
                     cause instanceof PatchdeskApiError &&
                     cause.kind === "merge_in_progress"
-                  )
+                  ) &&
+                  mergeRefusalMessage(cause, method) === undefined
                 )
                   uncertainRef.current = true;
                 throw cause;

@@ -590,12 +590,12 @@ export async function buildLocalApiContainer(
       ? undefined
       : new MergeWriteController(
           {
+            getMergeOutcome: github.getMergeOutcome.bind(github),
             getMergePolicy: github.getMergePolicy.bind(github),
             getPullRequest: github.getPullRequest.bind(github),
             getPullRequestDiff: github.getPullRequestDiff.bind(github),
             mergePullRequest: merger.mergePullRequest.bind(merger),
           },
-          ["squash", "merge", "rebase"],
           systemNow,
           new MergeOperationStore(paths),
           reviewWriteGate,
