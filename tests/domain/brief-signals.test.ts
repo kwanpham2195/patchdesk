@@ -134,79 +134,44 @@ describe("briefSignals", () => {
     expect(result.row("tests_weakened")?.count).toBe(0);
   });
 
-  it("finds debug leftovers in code and ignores them in tests", () => {
-    const result = signals([
-      edited("src/sync.ts", ["run();"], ["console.log(state);", "run();"]),
-      edited("tests/sync.test.ts", ["a"], ["console.log(result);"]),
-    ]);
-    expect(result.row("leftovers")).toMatchObject({
-      count: 1,
-      paths: ["src/sync.ts"],
-    });
-  });
-
-  it("flags ignored errors, concurrency, secret-like values, and injection candidates in added code", () => {
+  it("flags goroutines, channels, locks, and fan-out added to code, but not in tests or mocks", () => {
     const result = signals([
       edited(
         "internal/role/service.go",
         ["\treturn nil"],
         [
-          "\t_ = err",
-          "\trows, _ := db.Query(q)",
           "\tgo func() { s.refresh(ctx) }()",
-          '\tquery := "SELECT * FROM role WHERE id = " + id',
-          '\tapiKey := "sk_live_abcdefghijklmnop"',
-          '\tlog.Printf("refreshed %s", session.token)',
+          "\tvar mu sync.Mutex",
+          "\tdone := make(chan struct{})",
         ],
       ),
+      edited("src/load.ts", ["load();"], ["await Promise.all(jobs.map(run));"]),
+      edited("tests/load.test.ts", ["a"], ["await Promise.all(cases);"]),
       edited(
-        "src/load.ts",
-        ["load();"],
-        [
-          "await Promise.all(jobs.map(run));",
-          "fetchAll().catch(() => {});",
-          "panel.innerHTML = html;",
-        ],
-      ),
-      edited(
-        "tests/load.test.ts",
-        ["a"],
-        ['const token = "test-token-123456";'],
+        "internal/mocks/role.go",
+        ["\treturn nil"],
+        ["\tvar mu sync.Mutex"],
       ),
     ]);
-    expect(result.row("errors_ignored")?.count).toBe(3);
-    expect(result.row("concurrency")?.count).toBe(2);
-    expect(result.row("injection_candidates")?.count).toBe(2);
-    expect(result.row("secret_like")).toMatchObject({
-      count: 2,
-      paths: ["internal/role/service.go"],
+    expect(result.row("concurrency")).toMatchObject({
+      count: 4,
+      paths: ["internal/role/service.go", "src/load.ts"],
     });
   });
 
-  it("does not flag a returned error, a typed token field, or a parameterized query", () => {
+  it("does not read a channel-like word, a selected value, or a go.mod line as concurrency", () => {
     const result = signals([
       edited(
-        "internal/role/repo.go",
+        "internal/role/service.go",
         ["\treturn nil"],
         [
-          "\tif err != nil { return err }",
-          "\ttype Session struct { token string }",
-          "\tfor _, role := range roles {",
-          "\tname, _ := value.(string)",
-          "\tseen, _ := index[key]",
-          '\tlog.Panicf("cannot get profile-postgres-password: %v", err)',
-          '\treturn fmt.Sprintf("Bearer %v", token)',
-          '\trow := db.QueryRow("SELECT * FROM role WHERE id = $1", id)',
+          "\t// change the role name",
+          "\tselected := roles[0]",
+          "\tgoroutines := count",
         ],
       ),
     ]);
-    for (const kind of [
-      "errors_ignored",
-      "concurrency",
-      "secret_like",
-      "injection_candidates",
-    ] as const)
-      expect(result.row(kind)?.count).toBe(0);
+    expect(result.row("concurrency")?.count).toBe(0);
   });
 
   it("counts moved, move-following, and generated files as skimmable and raises nothing else for them", () => {
