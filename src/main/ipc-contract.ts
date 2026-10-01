@@ -79,6 +79,12 @@ export const DESKTOP_WATCHED_PULL_REQUEST_CHANGE_CHANNEL =
  */
 export const DESKTOP_INSIGHT_SETTLED_CHANNEL = "patchdesk:insight-settled";
 
+/**
+ * Main-to-renderer: the retention sweep removed at least one Review record, so
+ * the Visited pull requests column reads its list again (#740).
+ */
+export const DESKTOP_REVIEWS_REMOVED_CHANNEL = "patchdesk:reviews-removed";
+
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
   readonly path: string;
@@ -147,6 +153,8 @@ export type PatchdeskDesktopApi = {
   ): () => void;
   /** Fires when an Insight run finishes or fails, whichever Review it belongs to. */
   onInsightSettled(listener: () => void): () => void;
+  /** Fires when the retention sweep removed at least one Review, whichever workspace it belonged to. */
+  onReviewsRemoved(listener: () => void): () => void;
   /** Fires with the profile id when a poll finds a change on one of its watched pull requests. */
   onWatchedPullRequestChange(listener: (profileId: string) => void): () => void;
   /**

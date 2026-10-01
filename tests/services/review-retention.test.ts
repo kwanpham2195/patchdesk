@@ -193,7 +193,9 @@ describe("ReviewRetention", () => {
     const harness = await localApplyHarness();
     const { latest } = await refreshedReview(harness, 3);
 
-    value(await harness.retention.sweepProfile(profileId));
+    expect(value(await harness.retention.sweepProfile(profileId))).toEqual({
+      removedReviews: 0,
+    });
 
     expect(localRefs(harness.repositoryPath)).toEqual([
       `refs/patchdesk/local/${profileId}/${latest.session.id}/head`,
@@ -302,7 +304,9 @@ describe("ReviewRetention", () => {
     git(harness.repositoryPath, "checkout", "-q", "main");
     git(harness.repositoryPath, "branch", "-q", "-D", "feature");
 
-    value(await harness.retention.sweepProfile(profileId));
+    expect(value(await harness.retention.sweepProfile(profileId))).toEqual({
+      removedReviews: 1,
+    });
 
     expect(await harness.reviews.load(profileId, first.review.id)).toEqual({
       _tag: "err",

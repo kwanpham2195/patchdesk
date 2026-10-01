@@ -54,7 +54,7 @@ function storageManagement(
 
 /** A local pass with nothing to remove, for scenarios about the retained sweep. */
 const idleReviewRetention: Pick<ReviewRetention, "sweepProfile"> = {
-  sweepProfile: async () => ok(undefined),
+  sweepProfile: async () => ok({ removedReviews: 0 }),
 };
 
 afterEach(() => {
@@ -63,10 +63,38 @@ afterEach(() => {
 });
 
 describe("retention sweep scheduler", () => {
+  it.each([
+    ["the retained pass", 1, 0, 1],
+    ["the local-Review pass", 0, 2, 1],
+    ["both passes", 1, 1, 1],
+    ["neither pass", 0, 0, 0],
+  ])(
+    "reports removed Reviews when %s removes some, and nothing otherwise",
+    async (_case, retainedRemoved, localRemoved, expectedReports) => {
+      vi.useFakeTimers();
+      const reports: string[] = [];
+      const scheduler = startRetentionSweepScheduler({
+        profiles: [{ id: profileId }],
+        storageManagement: storageManagement(async () =>
+          ok({ removedReviews: retainedRemoved }),
+        ),
+        reviewRetention: {
+          sweepProfile: async () => ok({ removedReviews: localRemoved }),
+        },
+        enabled: true,
+        reviewsRemoved: () => reports.push("removed"),
+      });
+
+      await scheduler.stop();
+
+      expect(reports).toHaveLength(expectedReports);
+    },
+  );
+
   it("does not start work when disabled and makes stop safe", async () => {
     vi.useFakeTimers();
     const sweepRetained = vi.fn(async (): Promise<SweepResult> =>
-      ok(undefined),
+      ok({ removedReviews: 0 }),
     );
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
@@ -85,7 +113,7 @@ describe("retention sweep scheduler", () => {
   it("runs one immediate sweep when enabled", async () => {
     vi.useFakeTimers();
     const sweepRetained = vi.fn(async (): Promise<SweepResult> =>
-      ok(undefined),
+      ok({ removedReviews: 0 }),
     );
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
@@ -107,12 +135,12 @@ describe("retention sweep scheduler", () => {
       profiles: [{ id: profileId }],
       storageManagement: storageManagement(async (id) => {
         calls.push(`retained:${id}`);
-        return ok(undefined);
+        return ok({ removedReviews: 0 });
       }),
       reviewRetention: {
         sweepProfile: async (id) => {
           calls.push(`local:${id}`);
-          return ok(undefined);
+          return ok({ removedReviews: 0 });
         },
       },
       enabled: true,
@@ -126,7 +154,7 @@ describe("retention sweep scheduler", () => {
   it("starts one subsequent sweep for an interval tick", async () => {
     vi.useFakeTimers();
     const sweepRetained = vi.fn(async (): Promise<SweepResult> =>
-      ok(undefined),
+      ok({ removedReviews: 0 }),
     );
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
@@ -145,7 +173,7 @@ describe("retention sweep scheduler", () => {
     // oxlint-disable-next-line patchdesk/no-method-spying -- `startRetentionSweepScheduler` calls global `setInterval` with no timer port, and the returned handle is the only way to observe that it was unref'd.
     const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
     const sweepRetained = vi.fn(async (): Promise<SweepResult> =>
-      ok(undefined),
+      ok({ removedReviews: 0 }),
     );
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
@@ -170,7 +198,7 @@ describe("retention sweep scheduler", () => {
         calls += 1;
         return calls === 1
           ? firstSweep.promise
-          : Promise.resolve(ok(undefined));
+          : Promise.resolve(ok({ removedReviews: 0 }));
       },
     );
     const scheduler = startRetentionSweepScheduler({
@@ -183,7 +211,7 @@ describe("retention sweep scheduler", () => {
     await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
     expect(sweepRetained).toHaveBeenCalledTimes(1);
 
-    firstSweep.resolve(ok(undefined));
+    firstSweep.resolve(ok({ removedReviews: 0 }));
     await firstSweep.promise;
     await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
     await scheduler.stop();
@@ -194,7 +222,7 @@ describe("retention sweep scheduler", () => {
   it("clears future ticks when stopped", async () => {
     vi.useFakeTimers();
     const sweepRetained = vi.fn(async (): Promise<SweepResult> =>
-      ok(undefined),
+      ok({ removedReviews: 0 }),
     );
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }],
@@ -228,7 +256,7 @@ describe("retention sweep scheduler", () => {
 
     await Promise.resolve();
     expect(stopped).toBe(false);
-    activeSweep.resolve(ok(undefined));
+    activeSweep.resolve(ok({ removedReviews: 0 }));
     await stopping;
 
     expect(stopped).toBe(true);
@@ -259,7 +287,7 @@ describe("retention sweep scheduler", () => {
 
     expect(firstStopped).toBe(false);
     expect(secondStopped).toBe(false);
-    activeSweep.resolve(ok(undefined));
+    activeSweep.resolve(ok({ removedReviews: 0 }));
 
     await Promise.all([firstStop, secondStop]);
     expect(firstStopped).toBe(true);
@@ -288,7 +316,7 @@ describe("retention sweep scheduler", () => {
     };
     const sweepRetained = vi.fn(
       async (id: WorkspaceProfileId): Promise<SweepResult> =>
-        id === profileId ? err(storageUnavailable) : ok(undefined),
+        id === profileId ? err(storageUnavailable) : ok({ removedReviews: 0 }),
     );
     const scheduler = startRetentionSweepScheduler({
       profiles: [{ id: profileId }, { id: secondProfileId }],

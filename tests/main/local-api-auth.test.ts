@@ -421,7 +421,7 @@ describe("local API current Review capability boundary", () => {
         logsBytes: async () => 0,
         clearCache: record("clearCache"),
         clearLocalData: record("clearLocalData"),
-        sweepRetained: record("sweepRetained"),
+        sweepRetained: async () => ok({ removedReviews: 0 }),
       },
     });
 
@@ -455,7 +455,7 @@ describe("local API current Review capability boundary", () => {
         logsBytes: async () => 2_100,
         clearCache: async () => ok(undefined),
         clearLocalData: async () => ok(undefined),
-        sweepRetained: async () => ok(undefined),
+        sweepRetained: async () => ok({ removedReviews: 0 }),
       },
     });
 

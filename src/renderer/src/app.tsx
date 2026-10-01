@@ -3,6 +3,7 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -289,6 +290,13 @@ function AppContent({
     [navigationState],
   );
   const [visitedReloadKey, setVisitedReloadKey] = useState(0);
+  // The retention sweep runs in the main process and removes Reviews the column lists, so it reads again on the main process's say-so, never on a timer (#740, ADR 0032).
+  useEffect(() => {
+    if (window.patchdesk?.onReviewsRemoved === undefined) return;
+    return window.patchdesk.onReviewsRemoved(() =>
+      setVisitedReloadKey((key) => key + 1),
+    );
+  }, []);
   // The sidebar's "agent" marker follows the open Review's requests and runs, so a change reads the column again.
   const agentMarker =
     workbench?.state === "review" ? agentMarkerInputs(workbench) : "";
