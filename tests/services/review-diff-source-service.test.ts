@@ -956,6 +956,20 @@ describe("ReviewDiffSourceService when the Review worktree is missing (#616)", (
     expect(listed.match(/^worktree /gm)).toHaveLength(2);
   });
 
+  it("rebuilds once when several files of the same Review load together", async () => {
+    const review = await reviewWithWorktree();
+    await rm(review.worktreePath, { recursive: true, force: true });
+
+    const loaded = await Promise.all([
+      review.load(),
+      review.load(),
+      review.load(),
+    ]);
+
+    expect(loaded).toEqual([readyContents, readyContents, readyContents]);
+    expect((await stat(review.worktreePath)).isDirectory()).toBe(true);
+  });
+
   it("reads the same after the rebuild has already happened", async () => {
     const review = await reviewWithWorktree();
     await rm(review.worktreePath, { recursive: true, force: true });

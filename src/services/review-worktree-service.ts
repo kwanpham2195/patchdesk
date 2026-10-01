@@ -26,6 +26,7 @@ import {
 import type { ReviewLocalCheckoutWarning } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { definedProps } from "../domain/defined-props";
+import { KeyedMutex } from "../domain/keyed-mutex";
 import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
 
@@ -127,6 +128,9 @@ const worktreeMetadataSchema = v.strictObject({
 
 /** Owns the only read-only git commands used to prepare a session checkout. */
 export class ReviewWorktreeService {
+  /** One restore per session at a time: the renderer hydrates several files together. */
+  private readonly restores = new KeyedMutex();
+
   constructor(
     private readonly paths: PatchdeskPaths,
     private readonly git: GitReadExecutor,
@@ -513,6 +517,24 @@ export class ReviewWorktreeService {
   }): Promise<Result<void, WorktreeRestoreFailure>> {
     const path = this.paths.worktreeDirectory(input.profileId, input.sessionId);
     if (await pathExists(path)) return ok(undefined);
+    // A concurrent restore that finished first leaves the directory behind, so
+    // the check repeats inside the lock; a second add would delete that checkout.
+    return await this.restores.run(
+      `${input.profileId}:${input.sessionId}`,
+      async () =>
+        (await pathExists(path)) ? ok(undefined) : this.restoreAt(path, input),
+    );
+  }
+
+  private async restoreAt(
+    path: string,
+    input: {
+      readonly profileId: WorkspaceProfileId;
+      readonly sessionId: ReviewSessionId;
+      readonly sourceKind: "pull_request" | "local";
+      readonly localPath: string | undefined;
+    },
+  ): Promise<Result<void, WorktreeRestoreFailure>> {
     const failed = err({ _tag: "WorktreeRestoreFailed" as const });
     if (input.localPath === undefined) return failed;
     let repositoryPath: string;
