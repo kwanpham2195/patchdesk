@@ -5,7 +5,7 @@ import {
 } from "../domain/brief";
 import { briefMoves, renderBriefPatchFacts } from "../domain/brief-moves";
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
-import { countMoveReferenceUpdates } from "../domain/move-reference-updates";
+import { moveReferenceUpdatePaths } from "../domain/move-reference-updates";
 import type { InsightLanguage } from "../domain/insight-provider";
 import { listPatchChangedFiles } from "../domain/patch-changed-files";
 import { err, ok, type Result } from "../domain/result";
@@ -66,7 +66,7 @@ export async function prepareBriefPrompt(input: {
         changedFiles,
         briefMoves(
           changedFiles,
-          countMoveReferenceUpdates(patch.value, changedFiles),
+          moveReferenceUpdatePaths(patch.value, changedFiles).length,
         ),
       ),
       "BRIEF CITATION MANIFEST:",

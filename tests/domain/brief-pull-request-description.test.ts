@@ -252,6 +252,27 @@ describe("renderBriefAsPullRequestDescription", () => {
     );
   });
 
+  it("writes only the Signals rows that matched, with their breakdown and paths", () => {
+    const brief: NormalizedBrief = {
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      signals: [
+        {
+          kind: "routes",
+          count: 2,
+          paths: ["internal/router/router.go"],
+          detail: "2 added",
+        },
+        { kind: "stored_data", count: 0, paths: [] },
+      ],
+    };
+    const description = renderBriefAsPullRequestDescription(brief);
+    expect(description).toContain(
+      "## Signals\n\n- Routes (2, 2 added): `internal/router/router.go`",
+    );
+    expect(description).not.toContain("Stored data");
+  });
+
   it("keeps a Flow title with line breaks on its heading line", () => {
     const brief: NormalizedBrief = {
       snapshot: SNAPSHOT,

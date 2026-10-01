@@ -35,6 +35,7 @@ import { definedProps } from "../../../domain/defined-props";
 import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
 import { MovesBlock } from "./brief-moves-block";
 import { ReachBlock } from "./brief-reach-block";
+import { SignalsBlock } from "./brief-signals-block";
 import { CopyLoadedTextButton } from "./copy-loaded-text-button";
 import { GeneratedMarkdownInline } from "./generated-markdown";
 import { ReviewDiffView } from "./review-diff-view";
@@ -164,6 +165,9 @@ export function BriefReader({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="flex min-w-0 flex-col gap-5">
+        {brief.signals === undefined ? null : (
+          <SignalsBlock signals={brief.signals} />
+        )}
         {brief.moves?.leads === true ? (
           <MovesBlock moves={brief.moves} />
         ) : null}

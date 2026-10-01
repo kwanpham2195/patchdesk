@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { BRIEF_SIGNAL_KINDS } from "../../domain/brief-signals";
 import { classifyChangedPath } from "../../domain/change-scope";
 import { definedProps } from "../../domain/defined-props";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
@@ -43,6 +44,16 @@ const briefOwnershipSchema = v.strictObject({
     }),
   ),
 });
+
+/** The Signals block: the reviewer's quick checks, computed from the patch. */
+const briefSignalsSchema = v.array(
+  v.strictObject({
+    kind: v.picklist(BRIEF_SIGNAL_KINDS),
+    count: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    paths: v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
+    detail: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+  }),
+);
 
 /** The Moves block: directories the patch moved, computed from git's rename pairs. */
 const briefMovesSchema = v.strictObject({
@@ -212,6 +223,8 @@ const briefSchema = v.strictObject({
   ownership: v.optional(briefOwnershipSchema),
   /** Absent on a Brief retained before the Moves block existed, and whenever the patch moved no directory. */
   moves: v.optional(briefMovesSchema),
+  /** Absent on a Brief retained before the Signals block existed. */
+  signals: v.optional(briefSignalsSchema),
   /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
   startHere: v.optional(briefStartHereSchema),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
@@ -248,6 +261,7 @@ export type Brief = v.InferOutput<typeof briefSchema>;
 export type BriefCitation = v.InferOutput<typeof briefCitationSchema>;
 export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
 export type BriefMoves = v.InferOutput<typeof briefMovesSchema>;
+export type BriefSignals = v.InferOutput<typeof briefSignalsSchema>;
 export type BriefReach = v.InferOutput<typeof briefReachSchema>;
 type BriefReachMention = v.InferOutput<typeof briefReachMentionSchema>;
 export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;

@@ -44,29 +44,27 @@ const MODULE_DEFAULT_OR_NAMESPACE =
   /^import\s+(?:type\s+)?(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)/;
 
 /**
- * How many Go or JavaScript-family files this patch edits only to follow a
- * move: the file swaps at least one import for one that points into a
+ * The Go or JavaScript-family files this patch edits only to follow a move: the file swaps at least one import for one that points into a
  * directory a renamed file moved to, and every other changed line matches its
  * removed counterpart, in order, once the package qualifiers those import
  * changes rename are set aside. A file that only adds an import or export, a
  * file in another language, and a file the patch adds, removes, or renames
  * are never counted.
  */
-export function countMoveReferenceUpdates(
+export function moveReferenceUpdatePaths(
   patch: string,
   changedFiles: ReadonlyArray<PatchChangedFile>,
-): number {
+): ReadonlyArray<string> {
   const movedTo = new Set<string>();
   for (const file of changedFiles) {
     if (file.previousPath === undefined) continue;
     const to = directoryOf(file.path);
     if (to !== directoryOf(file.previousPath) && to !== "") movedTo.add(to);
   }
-  if (movedTo.size === 0) return 0;
-  let count = 0;
-  for (const file of editedFiles(patch))
-    if (isReferenceUpdate(file, movedTo)) count += 1;
-  return count;
+  if (movedTo.size === 0) return [];
+  return editedFiles(patch).flatMap((file) =>
+    isReferenceUpdate(file, movedTo) ? [file.path] : [],
+  );
 }
 
 function editedFiles(patch: string): ReadonlyArray<EditedFile> {

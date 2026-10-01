@@ -17,7 +17,8 @@ import {
   type BriefOwnership,
 } from "./brief-ownership";
 import { briefMoves, type BriefMoves } from "./brief-moves";
-import { countMoveReferenceUpdates } from "./move-reference-updates";
+import { briefSignals, type BriefSignal } from "./brief-signals";
+import { moveReferenceUpdatePaths } from "./move-reference-updates";
 import type { BriefReach, BriefReachUnavailableReason } from "./brief-reach";
 import {
   briefStartHereOutputSchema,
@@ -78,6 +79,11 @@ export type NormalizedBrief = {
    * renamed files changed directory.
    */
   readonly moves?: BriefMoves;
+  /**
+   * Every predefined Signals row, computed from the patch. Absent on a Brief
+   * retained before the block existed.
+   */
+  readonly signals?: ReadonlyArray<BriefSignal>;
   /**
    * Where to start reading. Absent on a Brief retained before the block
    * existed, and whenever no path the model proposed is a file this patch
@@ -294,7 +300,7 @@ export function normalizeBrief(
       rejectedCitationCount === 0 ? "verified" : "partially_verified",
     ownership: ownership.value,
     ...definedProps({
-      moves: movesFor(patch),
+      ...changeFacts(patch),
       startHere: startHere.value,
       flow: flow.value,
       citedHunks: Object.keys(citedHunks).length > 0 ? citedHunks : undefined,
@@ -302,12 +308,14 @@ export function normalizeBrief(
   });
 }
 
-function movesFor(patch: string): BriefMoves | undefined {
+/** Moves and Signals, both read from the patch's changed files and the files that follow a move. */
+function changeFacts(patch: string) {
   const changedFiles = listPatchChangedFiles(patch);
-  return briefMoves(
-    changedFiles,
-    countMoveReferenceUpdates(patch, changedFiles),
-  );
+  const followsMove = moveReferenceUpdatePaths(patch, changedFiles);
+  return {
+    moves: briefMoves(changedFiles, followsMove.length),
+    signals: briefSignals(patch, changedFiles, followsMove),
+  };
 }
 
 /**

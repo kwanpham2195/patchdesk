@@ -8,7 +8,7 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
-import { countMoveReferenceUpdates } from "../../src/domain/move-reference-updates";
+import { moveReferenceUpdatePaths } from "../../src/domain/move-reference-updates";
 import { listPatchChangedFiles } from "../../src/domain/patch-changed-files";
 import type { Result } from "../../src/domain/result";
 import { parseStoredBrief } from "../../src/domain/stored-brief";
@@ -41,7 +41,7 @@ function movesOf(...sections: ReadonlyArray<string>) {
   const patch = `${sections.join("\n")}\n`;
   return briefMoves(
     listPatchChangedFiles(patch),
-    countMoveReferenceUpdates(patch, listPatchChangedFiles(patch)),
+    moveReferenceUpdatePaths(patch, listPatchChangedFiles(patch)).length,
   );
 }
 

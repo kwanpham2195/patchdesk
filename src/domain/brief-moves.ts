@@ -32,7 +32,7 @@ export type BriefMoves = {
   readonly movedFiles: number;
   /**
    * Files edited in place only to follow the move, such as a changed import
-   * path or package qualifier (`countMoveReferenceUpdates`). Absent on a Brief
+   * path or package qualifier (`moveReferenceUpdatePaths`). Absent on a Brief
    * retained before they were counted.
    */
   readonly referenceUpdates?: number;

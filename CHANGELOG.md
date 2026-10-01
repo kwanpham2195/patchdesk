@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Signals to the top of the Brief: a fixed set of checks computed from the diff, grouped as Areas (Public API, Routes, Stored data, Security boundary, Dependencies, Config or deploy), Tests (weakened, added), and Code (debug leftovers, files to skim). Every row always shows, lit with a count and paths when it matched and muted at zero. #721
+
 - Changed Brief Shape to take one note for a directory of similar files, such as `cmd/api/testdata/`, instead of a note on every fixture or config file, so large pull requests keep their notes for code. #719
 
 - Fixed Brief Blast radius lighting surfaces from non-code files, such as a `Dockerfile` under `api/` read as a Public API, and listing a `Makefile`, a properties file, or a generated mock under No matching test. #720

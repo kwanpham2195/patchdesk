@@ -1,6 +1,7 @@
 import type { BriefCitation, NormalizedBrief } from "./brief";
 import { briefFlowKindLabel, flowRowLine, flowRows } from "./brief-flow-text";
 import type { BriefFlowTree } from "./brief-flow";
+import { BRIEF_SIGNAL_LABELS, type BriefSignal } from "./brief-signals";
 import {
   displayDirectory,
   moreMovedDirectories,
@@ -14,7 +15,7 @@ import { matchUnifiedHunkHeader } from "./unified-patch";
 
 /**
  * The retained Brief as a pull request description in Markdown (ADR 0050
- * "Handoff"): Moves, Flow, Shape, Blast radius, then Start here, in the order
+ * "Handoff"): Signals, Moves, Flow, Shape, Blast radius, then Start here, in the order
  * the reader draws them, each a `##` section; Moves follows Flow when it does
  * not lead. Every citation is written as
  * `path:line`, a hunk at its new-side start line. Only the citations the
@@ -28,6 +29,7 @@ export function renderBriefAsPullRequestDescription(
   const moves =
     brief.moves === undefined ? undefined : movesSection(brief.moves);
   const sections = [
+    brief.signals === undefined ? undefined : signalsSection(brief.signals),
     brief.moves?.leads === true ? moves : undefined,
     // Each Flow view is a `###` under one `## Flow`, level with the other sections.
     trees.length === 0
@@ -51,6 +53,25 @@ export function renderBriefAsPullRequestDescription(
       : startHereSection(brief.startHere),
   ].filter((section) => section !== undefined);
   return `${sections.join("\n\n")}\n`;
+}
+
+function signalsSection(
+  signals: ReadonlyArray<BriefSignal>,
+): string | undefined {
+  const fired = signals.filter((signal) => signal.count > 0);
+  if (fired.length === 0) return undefined;
+  return [
+    "## Signals",
+    "",
+    ...fired.map((signal) => {
+      const paths =
+        signal.paths.length === 0
+          ? ""
+          : `: ${signal.paths.map((path) => `\`${path}\``).join(", ")}`;
+      const detail = signal.detail === undefined ? "" : `, ${signal.detail}`;
+      return `- ${BRIEF_SIGNAL_LABELS[signal.kind]} (${String(signal.count)}${detail})${paths}`;
+    }),
+  ].join("\n");
 }
 
 function movesSection(moves: BriefMoves): string {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countMoveReferenceUpdates } from "../../src/domain/move-reference-updates";
+import { moveReferenceUpdatePaths } from "../../src/domain/move-reference-updates";
 import { listPatchChangedFiles } from "../../src/domain/patch-changed-files";
 
 function edited(
@@ -34,10 +34,10 @@ function count(...sections: ReadonlyArray<string>): number {
     rename("src/shared/run.ts", "src/core/run.ts"),
     ...sections,
   ].join("\n")}\n`;
-  return countMoveReferenceUpdates(patch, listPatchChangedFiles(patch));
+  return moveReferenceUpdatePaths(patch, listPatchChangedFiles(patch)).length;
 }
 
-describe("countMoveReferenceUpdates", () => {
+describe("moveReferenceUpdatePaths", () => {
   it("counts a Go file whose import moved and whose code follows the renamed qualifier", () => {
     expect(
       count(

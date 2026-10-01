@@ -4,6 +4,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { BRIEF_SIGNAL_KINDS } from "../../src/domain/brief-signals";
 import { changeScopeFromPatch } from "../../src/domain/change-scope";
 import {
   briefCitationChipLabel,
@@ -303,6 +304,35 @@ describe("BriefReader", () => {
     const moves = screen.getByRole("region", { name: "Moves" });
     expect(within(moves).getByText("job/<name>/")).toBeTruthy();
     expect(within(moves).getByText("cmd/<name>/")).toBeTruthy();
+  });
+
+  it("renders every predefined Signals row, matched or not", () => {
+    const base = retained();
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={{
+          ...base,
+          value: {
+            ...briefValue,
+            signals: BRIEF_SIGNAL_KINDS.map((kind) => ({
+              kind,
+              count: kind === "routes" ? 2 : 0,
+              paths: kind === "routes" ? ["internal/router/router.go"] : [],
+            })),
+          },
+        }}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const signals = screen.getByRole("region", { name: "Signals" });
+    expect(within(signals).getAllByRole("listitem")).toHaveLength(
+      BRIEF_SIGNAL_KINDS.length,
+    );
+    expect(
+      within(signals).getByText(/internal\/router\/router\.go/),
+    ).toBeTruthy();
   });
 
   it("renders the Blast radius rows that found something and states how the counts were made", () => {

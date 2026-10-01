@@ -8,6 +8,7 @@ import {
 } from "./brief";
 import type { BriefFlow, BriefFlowNode, BriefFlowTree } from "./brief-flow";
 import type { BriefMoves } from "./brief-moves";
+import { BRIEF_SIGNAL_KINDS, type BriefSignal } from "./brief-signals";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";
@@ -61,6 +62,14 @@ const storedMovesSchema = v.strictObject({
   referenceUpdates: v.optional(storedLineCountSchema),
   leads: v.boolean(),
 });
+const storedSignalsSchema = v.array(
+  v.strictObject({
+    kind: v.picklist(BRIEF_SIGNAL_KINDS),
+    count: storedLineCountSchema,
+    paths: v.array(v.pipe(v.string(), v.minLength(1))),
+    detail: v.optional(v.pipe(v.string(), v.minLength(1))),
+  }),
+);
 const storedStartHereSchema = v.strictObject({
   lead: v.pipe(v.string(), v.minLength(1)),
   order: v.pipe(
@@ -175,6 +184,8 @@ const storedBriefSchema = v.strictObject({
   ownership: v.optional(storedOwnershipSchema),
   /** Absent on a Brief retained before the Moves block existed, and whenever the patch moved no directory. */
   moves: v.optional(storedMovesSchema),
+  /** Absent on a Brief retained before the Signals block existed. */
+  signals: v.optional(storedSignalsSchema),
   /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
   startHere: v.optional(storedStartHereSchema),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
@@ -250,6 +261,7 @@ export function parseStoredBrief(
     ...definedProps({
       ownership: storedOwnership(parsed.output.ownership),
       moves: storedMoves(parsed.output.moves),
+      signals: storedSignals(parsed.output.signals),
       startHere: storedStartHere(parsed.output.startHere),
       reach: storedReach(parsed.output.reach),
       reachUnavailable: parsed.output.reachUnavailable,
@@ -324,6 +336,16 @@ function storedStartHere(
       ...definedProps({ why: entry.why }),
     })),
   };
+}
+
+/** Rebuilds the Signals rows; `undefined` is a Brief retained before they existed. */
+function storedSignals(
+  stored: v.InferOutput<typeof storedSignalsSchema> | undefined,
+): ReadonlyArray<BriefSignal> | undefined {
+  return stored?.map(({ detail, ...signal }) => ({
+    ...signal,
+    ...definedProps({ detail }),
+  }));
 }
 
 /** Rebuilds the Moves block; `referenceUpdates` is absent on a Brief retained before it was counted. */
