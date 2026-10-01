@@ -664,6 +664,10 @@ function parseMergePolicy(
     input.incompleteReason === undefined
       ? {}
       : { incompleteReason: input.incompleteReason };
+  const allowedMergeMethodsField =
+    input.allowedMergeMethods === undefined
+      ? {}
+      : { allowedMergeMethods: input.allowedMergeMethods };
   return ok({
     pr: {
       host: host.value,
@@ -671,6 +675,7 @@ function parseMergePolicy(
       repo: repo.value,
       number: number.value,
     },
+    ...allowedMergeMethodsField,
     headSha: head.value,
     ...baseShaField,
     isOpen: input.isOpen,

@@ -31,6 +31,7 @@ import {
   requestMergeOperation,
   type MergeOperation,
 } from "../domain/merge-operation";
+import { definedProps } from "../domain/defined-props";
 import { markReviewTerminal, type Review } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
 import { parseReviewResult } from "../domain/review-result";
@@ -40,7 +41,8 @@ import {
   type DesktopNotifier,
 } from "./desktop-notifier";
 import type { AppLogService } from "./app-log-service";
-import { mergePullRequest, type MergeMethod } from "./merge-service";
+import type { MergeMethod } from "../domain/github-context";
+import { mergePullRequest, type MergeFailure } from "./merge-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
   ReviewWriteGate,
@@ -71,7 +73,18 @@ export type MergeCommand = {
 type MergeWriteReceipt = {
   readonly readiness: MergeReadiness;
   readonly review: Review;
+  readonly mergeCommitSha?: GitSha;
 };
+
+/** The merge response body: the renderer's strict receipt holds readiness and the merge commit, never the stored Review. */
+export function mergeReceiptBody(receipt: MergeWriteReceipt): {
+  readonly readiness: MergeReadiness;
+  readonly mergeCommitSha?: GitSha;
+} {
+  return receipt.mergeCommitSha === undefined
+    ? { readiness: receipt.readiness }
+    : { readiness: receipt.readiness, mergeCommitSha: receipt.mergeCommitSha };
+}
 
 /** Every reason `MergeWriteController.merge` refuses or cannot confirm a merge. */
 type MergeWriteFailure = {
@@ -89,6 +102,9 @@ type MergeRejectionReason =
   | "merge_acknowledgement_required"
   | "stale_head"
   | "not_fresh"
+  | "merge_method_not_allowed"
+  | "merge_not_mergeable"
+  | "merge_head_changed"
   | "merge_rate_limited"
   | "merge_forbidden"
   | "merge_failed";
@@ -98,10 +114,12 @@ export class MergeWriteController {
   constructor(
     private readonly github: Pick<
       GitHubReader,
-      "getMergePolicy" | "getPullRequest" | "getPullRequestDiff"
+      | "getMergeOutcome"
+      | "getMergePolicy"
+      | "getPullRequest"
+      | "getPullRequestDiff"
     > &
       GitHubMergeWriter,
-    private readonly methods: ReadonlyArray<MergeMethod>,
     private readonly now: () => IsoTimestamp,
     private readonly operations: MergeOperationStore,
     private readonly writeGate: ReviewWriteGate,
@@ -203,7 +221,6 @@ export class MergeWriteController {
         result: { findings: findings.value },
         gateway: this.github,
         method,
-        supportedMethods: this.methods,
         acknowledgedWarningCodes: acknowledgedWarningCodes,
       });
       if (merged._tag === "err") {
@@ -211,17 +228,15 @@ export class MergeWriteController {
           this.notifyNeedsRecovery(requested.value);
           return err({ reason: "merge_outcome_unknown" });
         }
-        const rejected = rejectMergeOperation(
-          unknown.value,
-          mergeReason(merged.error._tag),
-        );
+        const reason = mergeReason(merged.error);
+        const rejected = rejectMergeOperation(unknown.value, reason);
         // An unrecorded rejection leaves this operation outcome-unknown on disk, still locking the Review.
         if (
           rejected._tag === "err" ||
           (await this.operations.reject(rejected.value))._tag === "err"
         )
           this.notifyNeedsRecovery(requested.value);
-        return err({ reason: mergeReason(merged.error._tag) });
+        return err({ reason });
       }
       const confirmed = confirmMergeOperation(
         unknown.value,
@@ -244,7 +259,11 @@ export class MergeWriteController {
         reviewId,
         pullRequest: requested.value.pr,
       });
-      return ok({ readiness: merged.value.readiness, review: terminalReview });
+      return ok({
+        readiness: merged.value.readiness,
+        review: terminalReview,
+        ...definedProps({ mergeCommitSha: merged.value.mergeCommitSha }),
+      });
     } finally {
       this.writeCoordinator.release(key);
     }
@@ -367,19 +386,31 @@ function warningCodesForRevision(
     : undefined;
 }
 
-/** Exported for direct unit testing of the tag-to-wire-reason mapping without module-mocking merge-service.ts. */
-export function mergeReason(tag: string): MergeRejectionReason {
-  return tag === "MergeBlocked"
-    ? "merge_blocked"
-    : tag === "MergeAcknowledgementRequired"
-      ? "merge_acknowledgement_required"
-      : tag === "StaleHeadBlocksMerge" || tag === "RevisionChangedBlocksMerge"
-        ? "stale_head"
-        : tag === "RevisionUnavailableBlocksMerge"
-          ? "not_fresh"
-          : tag === "GitHubMergeRateLimited"
-            ? "merge_rate_limited"
-            : tag === "GitHubMergeForbidden"
-              ? "merge_forbidden"
-              : "merge_failed";
+/** The wire reason for every merge failure that left nothing merged; exported for direct unit testing of the mapping. */
+export function mergeReason(failure: MergeFailure): MergeRejectionReason {
+  switch (failure._tag) {
+    case "MergeBlocked":
+      return "merge_blocked";
+    case "MergeAcknowledgementRequired":
+      return "merge_acknowledgement_required";
+    case "StaleHeadBlocksMerge":
+    case "RevisionChangedBlocksMerge":
+      return "stale_head";
+    case "RevisionUnavailableBlocksMerge":
+      return "not_fresh";
+    case "MergeMethodNotAllowed":
+      return "merge_method_not_allowed";
+    case "GitHubMergeRefused":
+      return failure.reason === "head_changed"
+        ? "merge_head_changed"
+        : "merge_not_mergeable";
+    case "GitHubMergeRateLimited":
+      return "merge_rate_limited";
+    case "GitHubMergeForbidden":
+      return "merge_forbidden";
+    case "GitHubMergeReadFailed":
+    case "GitHubMergeRejected":
+    case "GitHubMergeOutcomeUnknown":
+      return "merge_failed";
+  }
 }

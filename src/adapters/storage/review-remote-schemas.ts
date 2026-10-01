@@ -108,6 +108,10 @@ export const mergePolicySchema = v.strictObject({
     repo: v.string(),
     number: v.number(),
   }),
+  // Absent on a snapshot stored before Patchdesk read the repository's merge methods (#691).
+  allowedMergeMethods: v.optional(
+    v.array(v.picklist(["squash", "merge", "rebase"])),
+  ),
   headSha: v.string(),
   baseSha: v.optional(v.string()),
   isOpen: v.boolean(),

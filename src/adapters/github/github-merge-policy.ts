@@ -37,7 +37,7 @@ import {
   parseOptionalPolicyResponse,
   parseRequiredContexts,
 } from "./github-wire-projections";
-import { invalid, writeFailure } from "./github-write-failures";
+import { invalid, mergeWriteFailure } from "./github-write-failures";
 import type {
   BranchProtectionEvidence,
   RepositoryPermissionEvidence,
@@ -328,7 +328,7 @@ export class GitHubMergePolicyReader {
         merge_method: input.method,
       }),
     });
-    if (response._tag === "err") return err(writeFailure(response.error));
+    if (response._tag === "err") return err(mergeWriteFailure(response.error));
     const merge = v.safeParse(mergeResultSchema, response.value);
     if (!merge.success || !merge.output.merged)
       return err({

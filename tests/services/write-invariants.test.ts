@@ -255,6 +255,7 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
             checks: { overall: "passing" as const, checks: [] },
             complete: true,
           }),
+        getMergeOutcome: async () => ok({ state: "open" as const }),
         mergePullRequest: async () => err(unavailable),
       };
       // SAFETY: the merge controller reads only the deterministic requireFresh result supplied here.
@@ -284,7 +285,6 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
       } as never;
       const controller = new MergeWriteController(
         recorded(trace, gateway),
-        ["squash"],
         now,
         operations,
         mergeWriteGate,

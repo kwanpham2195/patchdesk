@@ -3,6 +3,7 @@ import * as v from "valibot";
 import type {
   CheckRunSummary,
   GitHubMergeStateStatus,
+  MergeMethod,
   MergePolicySnapshot,
 } from "../../domain/github-context";
 import type { GitSha } from "../../domain/ids";
@@ -681,6 +682,10 @@ export const pullRequestReviewersResponseSchema = v.looseObject({
 export const mergePolicyResponseSchema = v.looseObject({
   data: v.looseObject({
     repository: v.looseObject({
+      // GraphQL answers these for any reader; REST's `allow_*_merge` are null without push access.
+      squashMergeAllowed: v.boolean(),
+      mergeCommitAllowed: v.boolean(),
+      rebaseMergeAllowed: v.boolean(),
       pullRequest: v.looseObject({
         state: v.string(),
         isDraft: v.boolean(),
@@ -750,6 +755,7 @@ export const requiredStatusChecksSchema = v.looseObject({
 });
 
 export type MergePolicyPage = {
+  readonly allowedMergeMethods: ReadonlyArray<MergeMethod>;
   readonly headSha: GitSha;
   readonly baseSha: GitSha;
   readonly baseBranch: string;

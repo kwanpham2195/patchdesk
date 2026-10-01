@@ -110,7 +110,6 @@ export function ReviewWorkbenchDialogs({
       {actions.merge === undefined ||
       actions.merge.readiness._tag === "Blocked" ? null : (
         <CompactMergeCommand
-          initialMethod="squash"
           readiness={actions.merge.readiness}
           methods={actions.merge.methods}
           {...(actions.merge.mergeReasons === undefined

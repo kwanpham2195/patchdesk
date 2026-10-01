@@ -404,6 +404,17 @@ consumed, and GitHub answers 404, 405, or 422. `classifyRestStatus` in
 which is the category that keeps the Review locked for ADR 0035
 reconciliation. The reconciling read then reports what the first request did.
 
+**Amended for merges by issue #691 (2026-10-01).** A merge GitHub answers with
+405, 409, or 422 is now `rejected` with a cause (`mergeWriteFailure` in
+`github-write-failures.ts`; 409 is `CommandConflict`), because treating every
+refusal as unknown locked the Review and sent the maintainer to GitHub for a
+merge that never started. The resend case above still holds: before it
+reports a refusal, `mergePullRequest` in `merge-service.ts` reads the pull
+request once, and only an open pull request makes the refusal final. A pull
+request that reads as merged or closed, or a read that fails, keeps the merge
+outcome-unknown for ADR 0035 reconciliation. Every other write still maps
+these statuses to `unavailable`.
+
 **Four labels can leave a duplicate the maintainer sees.** Each of them creates
 something new, so a second delivery creates a second one:
 `POST repos/:owner/:repo/pulls/:n/reviews` from `createDirectSummaryReview`,
@@ -644,7 +655,8 @@ successors anyway.
   parse are never a rejection. `writeFailure` in `github-write-failures.ts`
   mapped `CommandFailed` to `rejected` when this was written, which is exactly
   that bug; issue #288 fixed it before the write cutover, and `rejected` is
-  now produced only by Patchdesk's own "No review content is selected." check.
+  now produced only by Patchdesk's own "No review content is selected." check
+  and, since issue #691, by a merge refusal confirmed by an open pull request.
   `tests/adapters/github-http-write-failures.test.ts` is the table the HTTP
   transport is pinned against, with the gh path's category asserted beside
   each row.

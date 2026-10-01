@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import type { MergeReadiness } from "../../src/domain/merge-readiness";
 import { mergeReason } from "../../src/services/merge-write-controller";
+
+const readiness: MergeReadiness = {
+  _tag: "Blocked",
+  blockers: ["conflicting"],
+  warnings: [],
+};
+// SAFETY: a 40-character hex literal already satisfies the branded GitSha's runtime shape.
+const currentHeadSha = "a".repeat(40) as never;
 
 /**
  * Direct unit test of the MergeFailure tag -> wire-reason mapping, kept in
@@ -9,19 +18,45 @@ import { mergeReason } from "../../src/services/merge-write-controller";
  */
 describe("mergeReason", () => {
   it("maps a forbidden merge write to its own 'merge_forbidden' reason, not the generic 'merge_failed'", () => {
-    expect(mergeReason("GitHubMergeForbidden")).toBe("merge_forbidden");
-    expect(mergeReason("GitHubMergeForbidden")).not.toBe("merge_failed");
+    expect(mergeReason({ _tag: "GitHubMergeForbidden" })).toBe(
+      "merge_forbidden",
+    );
+    expect(mergeReason({ _tag: "GitHubMergeForbidden" })).not.toBe(
+      "merge_failed",
+    );
   });
 
   it("still maps every other known MergeFailure tag exactly as before (no regression)", () => {
-    expect(mergeReason("MergeBlocked")).toBe("merge_blocked");
-    expect(mergeReason("MergeAcknowledgementRequired")).toBe(
-      "merge_acknowledgement_required",
+    expect(mergeReason({ _tag: "MergeBlocked", readiness })).toBe(
+      "merge_blocked",
     );
-    expect(mergeReason("StaleHeadBlocksMerge")).toBe("stale_head");
-    expect(mergeReason("RevisionChangedBlocksMerge")).toBe("stale_head");
-    expect(mergeReason("RevisionUnavailableBlocksMerge")).toBe("not_fresh");
-    expect(mergeReason("GitHubMergeRateLimited")).toBe("merge_rate_limited");
-    expect(mergeReason("GitHubMergeRejected")).toBe("merge_failed");
+    expect(
+      mergeReason({ _tag: "MergeAcknowledgementRequired", readiness }),
+    ).toBe("merge_acknowledgement_required");
+    expect(mergeReason({ _tag: "StaleHeadBlocksMerge", currentHeadSha })).toBe(
+      "stale_head",
+    );
+    expect(mergeReason({ _tag: "RevisionChangedBlocksMerge" })).toBe(
+      "stale_head",
+    );
+    expect(mergeReason({ _tag: "RevisionUnavailableBlocksMerge" })).toBe(
+      "not_fresh",
+    );
+    expect(mergeReason({ _tag: "GitHubMergeRateLimited" })).toBe(
+      "merge_rate_limited",
+    );
+    expect(mergeReason({ _tag: "GitHubMergeRejected" })).toBe("merge_failed");
+  });
+
+  it("names the cause of a merge the repository or GitHub refused", () => {
+    expect(mergeReason({ _tag: "MergeMethodNotAllowed" })).toBe(
+      "merge_method_not_allowed",
+    );
+    expect(
+      mergeReason({ _tag: "GitHubMergeRefused", reason: "head_changed" }),
+    ).toBe("merge_head_changed");
+    expect(
+      mergeReason({ _tag: "GitHubMergeRefused", reason: "not_mergeable" }),
+    ).toBe("merge_not_mergeable");
   });
 });

@@ -20,6 +20,7 @@ import type {
   RequestedReviewer,
   SuggestedPullRequestReviewer,
 } from "../../domain/github-context";
+import { mergeMethodOrder } from "../../domain/github-context";
 import {
   parseGitSha,
   parseGitHubReviewRestId,
@@ -250,7 +251,14 @@ export function parseMergePolicyPage(
     if (summary === undefined) return undefined;
     contexts.push(summary);
   }
+  const repository = raw.data.repository;
+  const allowed = {
+    squash: repository.squashMergeAllowed,
+    merge: repository.mergeCommitAllowed,
+    rebase: repository.rebaseMergeAllowed,
+  };
   const page = {
+    allowedMergeMethods: mergeMethodOrder.filter((method) => allowed[method]),
     headSha: headSha.value,
     baseSha: baseSha.value,
     baseBranch: pullRequest.baseRefName,
@@ -343,6 +351,7 @@ export function completeMergePolicy(
   }
   return {
     pr,
+    allowedMergeMethods: page.allowedMergeMethods,
     headSha: page.headSha,
     baseSha: page.baseSha,
     isOpen: page.isOpen,
@@ -363,6 +372,7 @@ export function incompleteMergePolicy(
 ): MergePolicySnapshot {
   return {
     pr,
+    allowedMergeMethods: page.allowedMergeMethods,
     headSha: page.headSha,
     baseSha: page.baseSha,
     isOpen: page.isOpen,

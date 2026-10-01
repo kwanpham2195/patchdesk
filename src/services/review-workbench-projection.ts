@@ -42,6 +42,7 @@ import type {
   GitHubComment,
   GitHubMergeEvidence,
   MergeDisplayReason,
+  MergeMethod,
   PullRequestCommit,
   PullRequestSummary,
 } from "../domain/github-context";
@@ -189,6 +190,8 @@ export type ReviewWorkbenchProjection = {
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
+  /** The repository's allowed merge methods; absent when the represented snapshot does not record them. */
+  readonly mergeMethods?: ReadonlyArray<MergeMethod>;
   readonly remoteWriteRecovery?: RemoteWriteRecoveryProjection;
   /** An Apply on this local Review whose outcome is not settled; further Applies wait for a check (ADR 0050). */
   readonly localApply?: {
@@ -266,6 +269,7 @@ type ProjectRemoteInput = {
   readonly mergeEvidence?: GitHubMergeEvidence;
   /** `snapshot.mergePolicy?.complete`; absent means no read was attempted. */
   readonly mergePolicyComplete?: boolean;
+  readonly allowedMergeMethods?: ReadonlyArray<MergeMethod>;
 };
 /**
  * Read-side owner of the renderer-safe model for the exact snapshot held by
@@ -329,6 +333,7 @@ export class ReviewWorkbenchProjectionService {
       ...definedProps({
         mergeEvidence: input.snapshot.mergeEvidence,
         mergePolicyComplete: input.snapshot.mergePolicy?.complete,
+        allowedMergeMethods: input.snapshot.mergePolicy?.allowedMergeMethods,
       }),
     };
     return this.project(
@@ -737,6 +742,7 @@ export class ReviewWorkbenchProjectionService {
       mergeReadiness,
       mergeReasons,
       ...definedProps({
+        mergeMethods: remote?.allowedMergeMethods,
         remoteWriteRecovery:
           activeWrite.value === undefined
             ? undefined

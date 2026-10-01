@@ -532,7 +532,6 @@ export const lockRows: ReadonlyArray<LockRow> = [
       const controller = new MergeWriteController(
         // SAFETY: recorded stubs; this row refuses before reaching any of them.
         gateway(track) as never,
-        ["squash"],
         now,
         // SAFETY: this row refuses before the partial operation-store fixture is read.
         {

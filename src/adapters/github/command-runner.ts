@@ -100,6 +100,8 @@ export type CommandFailure =
   | { readonly _tag: "CommandForbidden"; readonly reason: ForbiddenReason }
   | { readonly _tag: "CommandNotFound" }
   | { readonly _tag: "CommandUnsupported" }
+  /** GitHub answered 409: the request conflicts with the resource's current state, such as a merge whose head moved. */
+  | { readonly _tag: "CommandConflict" }
   | { readonly _tag: "CommandPendingReview" }
   | { readonly _tag: "CommandRateLimited" }
   | { readonly _tag: "CommandRuntimeUnavailable" }
@@ -554,6 +556,8 @@ export function classifyRestStatus(
           };
     case 404:
       return { _tag: "CommandNotFound" };
+    case 409:
+      return { _tag: "CommandConflict" };
     case 405:
     case 415:
     case 501:

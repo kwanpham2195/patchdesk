@@ -101,6 +101,31 @@ describe("GitHubAdapter merge policy", () => {
     });
   });
 
+  it("reads the merge methods the repository allows", async () => {
+    const adapter = testAdapter(
+      orderedTransport([
+        jsonAnswer(
+          mergePolicyPayload({
+            squashMergeAllowed: false,
+            mergeCommitAllowed: false,
+          }),
+        ),
+        branchNotProtected,
+      ]),
+    );
+
+    await expect(
+      adapter.getMergePolicy({
+        profile,
+        pr,
+        expectedHeadSha: mustParse(parseGitSha(headSha)),
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { allowedMergeMethods: ["rebase"] },
+    });
+  });
+
   it("accepts no classic required checks on a ruleset-managed branch", async () => {
     const adapter = testAdapter(
       orderedTransport([jsonAnswer(mergePolicyPayload()), branchNotProtected]),
@@ -263,6 +288,8 @@ function mergePolicyPayload(
     };
     // GitHub sends a null rollup for a head commit no CI ever ran against.
     readonly statusCheckRollup?: null;
+    readonly squashMergeAllowed?: boolean;
+    readonly mergeCommitAllowed?: boolean;
   } = {},
 ) {
   // An undefined mergeStateStatus is dropped by JSON.stringify, which is how
@@ -270,6 +297,9 @@ function mergePolicyPayload(
   return {
     data: {
       repository: {
+        squashMergeAllowed: overrides.squashMergeAllowed ?? true,
+        mergeCommitAllowed: overrides.mergeCommitAllowed ?? true,
+        rebaseMergeAllowed: true,
         pullRequest: {
           state: "OPEN",
           isDraft: false,

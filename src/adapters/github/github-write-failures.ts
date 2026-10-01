@@ -54,6 +54,30 @@ export function writeFailure(failure: CommandFailure): GitHubWriteFailure {
 }
 
 /**
+ * A merge GitHub answered with 405, 409, or 422 was refused, so it is
+ * `rejected` with the cause. The merge service still reads the pull request
+ * before trusting it, because a resent merge whose first delivery landed is
+ * refused the same way (ADR 0046). Every other failure is `writeFailure`'s.
+ */
+export function mergeWriteFailure(failure: CommandFailure): GitHubWriteFailure {
+  if (failure._tag === "CommandUnsupported")
+    return {
+      _tag: "GitHubWriteFailure",
+      category: "rejected",
+      message: "GitHub refused to merge the pull request.",
+      refusal: "not_mergeable",
+    };
+  if (failure._tag === "CommandConflict")
+    return {
+      _tag: "GitHubWriteFailure",
+      category: "rejected",
+      message: "GitHub refused the merge because the head branch changed.",
+      refusal: "head_changed",
+    };
+  return writeFailure(failure);
+}
+
+/**
  * Reason-scoped copy for a forbidden write, mirroring
  * `inbox-flow.tsx`'s `forbiddenCopy()` on the read side: names the
  * blocking condition, never implies a retry will help, and never repeats

@@ -1,6 +1,7 @@
 import { DiffWorkbench } from "../components/diff-workbench";
 import { CompactMergeCommand } from "../components/compact-merge-command";
 import { PullRequestDescriptionPreview } from "../components/pull-request-description";
+import { mergeMethodOrder } from "../../../domain/github-context";
 import type { FindingId } from "../../../domain/ids";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
@@ -438,7 +439,7 @@ function renderMergeReadinessFixture(
                 head: data.pullRequest.headBranch,
                 headSha: data.pullRequest.headSha,
               },
-              methods: ["squash", "merge", "rebase"] as const,
+              methods: mergeMethodOrder,
               onRecoverMerge: async () => undefined,
               onMerge: async () => ({ state: "confirmed" as const }),
             },

@@ -22,11 +22,11 @@ afterEach(() => {
   restore = undefined;
 });
 
-function renderMergeAction() {
+function renderMergeAction(overrides: Parameters<typeof projection>[0] = {}) {
   const onWorkbenchReplace = vi.fn();
   const runDirectCommand: RunDirectCommand = async (operation) =>
     await operation();
-  const workbench = projection();
+  const workbench = projection(overrides);
   const rendered = renderHook(() =>
     useReviewMergeAction({
       workbench,
@@ -220,5 +220,30 @@ describe("useReviewMergeAction", () => {
       double.restore();
       restore = undefined;
     }
+  });
+
+  it("offers only the merge methods the repository allows", () => {
+    const { result } = renderMergeAction({ mergeMethods: ["rebase"] });
+
+    expect(result.current.mergeAction?.methods).toEqual(["rebase"]);
+  });
+
+  // Issue #691: a refused merge left nothing on GitHub, so it does not hold the next merge for a status check.
+  it("sends another merge after GitHub refuses one", async () => {
+    const double = installDesktopDouble({
+      [MERGE]: () => failure({ error: "merge_not_mergeable" }, 409),
+    });
+    restore = double.restore;
+    const { result } = renderMergeAction();
+    const merge = result.current.mergeAction?.onMerge;
+    if (merge === undefined) throw new Error("missing merge action");
+
+    await act(async () => {
+      await expect(merge("rebase", [])).rejects.toBeTruthy();
+      await expect(merge("rebase", [])).rejects.toBeTruthy();
+    });
+    expect(
+      double.request.mock.calls.filter(([call]) => callPath(call) === MERGE),
+    ).toHaveLength(2);
   });
 });

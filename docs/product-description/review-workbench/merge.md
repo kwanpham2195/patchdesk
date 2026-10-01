@@ -6,7 +6,7 @@ Merge evaluates the represented pull request's exact revision, required checks, 
 
 ## The simple case
 
-The maintainer opens PR overview from the Checks or Merge status control, reviews readiness, chooses Squash, Merge, or Rebase, acknowledges any warnings tied to the represented revision, and presses Merge once. Patchdesk sends the exact head, base, patch hash, refresh revision, method, and acknowledged warning codes. A typed receipt makes the Review terminal immediately; Patchdesk then reloads GitHub state and shows the merge commit when available.
+The maintainer opens PR overview from the Checks or Merge status control, reviews readiness, chooses one of the merge methods the repository allows, acknowledges any warnings tied to the represented revision, and presses Merge once. Patchdesk sends the exact head, base, patch hash, refresh revision, method, and acknowledged warning codes. A typed receipt makes the Review terminal immediately; Patchdesk then reloads GitHub state and shows the merge commit when available.
 
 ## The task, event by event
 
@@ -20,6 +20,8 @@ stateDiagram-v2
     ready --> merging : press Merge
     merging --> merged : typed receipt and terminal refresh
     merging --> refreshRequired : receipt confirmed, refresh failed
+    merging --> refused : GitHub refused the merge
+    refused --> ready : choose again
     merging --> recovery : outcome not confirmed
     recovery --> evaluating : Check GitHub status
 ```
@@ -39,7 +41,7 @@ Merge readiness lists entries in one order. An outdated head, a closed pull requ
 
 A reason GitHub or a rule confirmed shows in a destructive card with its source, such as Branch protection. A reason Patchdesk could not confirm shows in an informational card captioned "Patchdesk could not confirm this rule" with its source. One case has its own wording: when GitHub requires an approval and Patchdesk cannot see whether one exists, the card says "Requires an approval; check on GitHub." and has no caption.
 
-The merge command names repository and pull-request number, base and head branches, and short represented head SHA. Methods remain the catalogued Squash, Merge, and Rebase choices. GitHub-originated reasons can offer Open on GitHub when the safe external pull-request URL is available. Only the first reason that offers it shows the button, because every reason links to the same pull request.
+The merge command names repository and pull-request number, base and head branches, and short represented head SHA. The method picker offers only the methods the repository allows (squash, merge, rebase, from GitHub's repository settings), in that order, and selects the first one. A Review read before Patchdesk recorded the repository's methods offers all three until its next GitHub check; the merge itself is refused before any GitHub write when the repository does not allow the chosen method. GitHub-originated reasons can offer Open on GitHub when the safe external pull-request URL is available. Only the first reason that offers it shows the button, because every reason links to the same pull request.
 
 ### Leave unchanged
 
@@ -55,7 +57,7 @@ Patchdesk sends profile ID, Review ID, session ID, expected head SHA, expected b
 
 Merge changes to Merging… and the method and acknowledgement controls disable. Same-tick submissions share one in-flight mutation. The operation is not cancellable after GitHub receives it.
 
-If another action already holds the Review write gate, Patchdesk reports that the merge was not submitted before GitHub received it; that outcome is retryable. Any other malformed, lost, or uncertain merge response moves to recovery required and prevents another merge.
+If another action already holds the Review write gate, Patchdesk reports that the merge was not submitted before GitHub received it; that outcome is retryable. If the repository does not allow the chosen method, or GitHub refuses the merge request itself (405 cannot merge, 409 head changed, 422 validation failed) while the pull request is still open, Patchdesk shows Merge refused with a message that names the cause, such as "This repository does not allow squash merges." Nothing merged, so the command stays available and no GitHub status check is offered. A refusal on a pull request that already reads as merged or closed, and any other malformed, lost, timed-out, or 5xx merge response, moves to recovery required and prevents another merge.
 
 ### Settle
 
@@ -111,6 +113,8 @@ If the receipt is confirmed but terminal refresh fails, Patchdesk shows Merged p
 - A failed required check and an unfinished required check remain two separately identified rows.
 - Warnings require explicit acknowledgement and only acknowledged warning codes are sent.
 - A gate-busy response states that GitHub did not receive the merge and can be retried.
+- A merge GitHub refused while the pull request stays open shows Merge refused with its cause, keeps the command available, and locks nothing.
+- A refused merge whose pull request already reads as merged is treated as unconfirmed, because a resent merge whose first delivery landed is refused the same way.
 - Any other unconfirmed outcome is non-retryable until Check GitHub status settles it.
 - A confirmed receipt followed by refresh failure still shows merged terminal UI.
 - A later open projection cannot replace locally committed terminal confirmation.
@@ -121,6 +125,7 @@ If the receipt is confirmed but terminal refresh fails, Patchdesk shows Merged p
 
 - Live checks confirmed PR overview rows and Merge control focus and return. No merge was attempted.
 - Checks also opens PR overview on Merge readiness, not Checks; see [B-12](../bug-triage.md#b-12-the-checks-control-opens-pr-overview-on-merge-readiness).
-- Confirm approval warnings, newer heads, methods, external links, recovery, close or quit during a merge, policy errors, and method choice after reopening.
+- Live check on 2026-10-01 (#691): on a repository that allows only rebase, the picker offered only rebase and the merge succeeded.
+- Confirm approval warnings, newer heads, external links, recovery, close or quit during a merge, policy errors, and method choice after reopening.
 
 Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.
