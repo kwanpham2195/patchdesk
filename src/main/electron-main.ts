@@ -37,6 +37,7 @@ import {
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
 import { sendInsightSettled } from "./desktop-insight-settled-channel";
+import { sendReviewsRemoved } from "./desktop-reviews-removed-channel";
 import { sendNotificationClick } from "./desktop-notification-channel";
 import { createReviewWindow } from "./desktop-review-window";
 import { sendWatchedPullRequestChange } from "./desktop-watched-pull-request-channel";
@@ -293,6 +294,11 @@ const desktopLifecycle = createDesktopLifecycle({
         reviewWindow,
         lifecycleGate,
         retentionSweep: true,
+        reviewsRemovedBySweep() {
+          const window = mainWindow;
+          if (window !== undefined && !window.isDestroyed())
+            sendReviewsRemoved(window.webContents);
+        },
         watchedPullRequestPolling: true,
         watchedPullRequestChanged(profileId) {
           const window = mainWindow;

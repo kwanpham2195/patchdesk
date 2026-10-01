@@ -436,9 +436,12 @@ describe("StorageManagementService", () => {
         review: terminalReview,
         sessions: [oldSession],
       });
-      await expect(
-        value.service.sweepRetained(profileId, at),
-      ).resolves.toMatchObject({ _tag: "ok" });
+      await expect(value.service.sweepRetained(profileId, at)).resolves.toEqual(
+        {
+          _tag: "ok",
+          value: { removedReviews: 1 },
+        },
+      );
       expect(value.deleteReview).toHaveBeenCalledWith(
         profileId,
         createReviewId(session.key),
@@ -452,9 +455,12 @@ describe("StorageManagementService", () => {
         sessions: [oldSession],
         deleteReviewErrors: 1,
       });
-      await expect(
-        value.service.sweepRetained(profileId, at),
-      ).resolves.toMatchObject({ _tag: "ok" });
+      await expect(value.service.sweepRetained(profileId, at)).resolves.toEqual(
+        {
+          _tag: "ok",
+          value: { removedReviews: 0 },
+        },
+      );
       expect(value.deleteReview).toHaveBeenCalledTimes(1);
       expect(value.removeSession).not.toHaveBeenCalled();
     });

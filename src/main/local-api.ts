@@ -124,6 +124,7 @@ export async function startLocalApiServer(
     reviewRetention: container.reviewRetention,
     enabled: configuration.retentionSweep ?? false,
     diagnostics: container.diagnostics,
+    ...definedProps({ reviewsRemoved: configuration.reviewsRemovedBySweep }),
   });
 
   return {

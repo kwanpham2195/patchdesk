@@ -67,6 +67,7 @@ export type DesktopDoubleExtras = Partial<
     | "onNotificationClick"
     | "onWatchedPullRequestChange"
     | "onInsightSettled"
+    | "onReviewsRemoved"
   >
 > & {
   /** Routes for privileged operations, keyed by `operation`. */
@@ -94,6 +95,8 @@ export type DesktopDouble = {
   readonly sendNotificationClick: (click: DesktopNotificationClick) => void;
   /** Fires the listener registered through `onInsightSettled`, as the main process does when an Insight run settles. */
   readonly sendInsightSettled: () => void;
+  /** Fires the listener registered through `onReviewsRemoved`, as the main process does after a retention sweep removed Reviews. */
+  readonly sendReviewsRemoved: () => void;
   /** Fires the listener registered through `onWatchedPullRequestChange`, as a poll that found a change does. */
   readonly sendWatchedPullRequestChange: (profileId: string) => void;
   /**
@@ -148,6 +151,7 @@ export function installDesktopDouble(
     | ((click: DesktopNotificationClick) => void)
     | undefined;
   let insightSettledListener: (() => void) | undefined;
+  let reviewsRemovedListener: (() => void) | undefined;
   let watchedPullRequestChangeListener:
     | ((profileId: string) => void)
     | undefined;
@@ -199,6 +203,12 @@ export function installDesktopDouble(
         insightSettledListener = undefined;
       };
     },
+    onReviewsRemoved: (listener: () => void) => {
+      reviewsRemovedListener = listener;
+      return () => {
+        reviewsRemovedListener = undefined;
+      };
+    },
     onWatchedPullRequestChange: (listener: (profileId: string) => void) => {
       watchedPullRequestChangeListener = listener;
       return () => {
@@ -221,6 +231,7 @@ export function installDesktopDouble(
       windowFullScreenListener?.(fullScreen),
     sendNotificationClick: (click) => notificationClickListener?.(click),
     sendInsightSettled: () => insightSettledListener?.(),
+    sendReviewsRemoved: () => reviewsRemovedListener?.(),
     sendWatchedPullRequestChange: (profileId) =>
       watchedPullRequestChangeListener?.(profileId),
     hasWindowFullScreenListener: () => windowFullScreenListener !== undefined,

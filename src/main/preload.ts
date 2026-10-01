@@ -10,6 +10,7 @@ import {
 } from "./desktop-full-screen-channel";
 import { subscribeToMenuActions } from "./desktop-menu-channel";
 import { subscribeToInsightSettled } from "./desktop-insight-settled-channel";
+import { subscribeToReviewsRemoved } from "./desktop-reviews-removed-channel";
 import { subscribeToNotificationClicks } from "./desktop-notification-channel";
 import { subscribeToWatchedPullRequestChanges } from "./desktop-watched-pull-request-channel";
 import type { Appearance } from "../domain/contracts";
@@ -54,6 +55,9 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
   },
   onInsightSettled(listener: () => void) {
     return subscribeToInsightSettled(ipcRenderer, listener);
+  },
+  onReviewsRemoved(listener: () => void) {
+    return subscribeToReviewsRemoved(ipcRenderer, listener);
   },
   onWatchedPullRequestChange(listener: (profileId: string) => void) {
     return subscribeToWatchedPullRequestChanges(ipcRenderer, listener);

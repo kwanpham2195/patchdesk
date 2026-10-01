@@ -254,9 +254,12 @@ export class StorageManagementService {
   async sweepRetained(
     profileId: WorkspaceProfileId,
     now?: IsoTimestamp,
-  ): Promise<Result<undefined, StorageManagementFailure>> {
+  ): Promise<
+    Result<{ readonly removedReviews: number }, StorageManagementFailure>
+  > {
     const at = now ?? this.deps.now();
     return await this.lifecycleGate.withProfileLock(profileId, async () => {
+      let removedReviews = 0;
       const [scanned, quarantined] = await Promise.all([
         this.deps.sessions.listSessions(profileId),
         this.deps.artifacts.listQuarantined(profileId),
@@ -265,7 +268,9 @@ export class StorageManagementService {
         return err({ _tag: "StorageUnavailable" });
       const [removedSessions, removedQuarantined] = await Promise.all([
         mapSettled(scanned.value, SWEEP_CONCURRENCY, (session) =>
-          this.sweepOneSession(profileId, session, at),
+          this.sweepOneSession(profileId, session, at, () => {
+            removedReviews += 1;
+          }),
         ),
         mapSettled(quarantined.value, SWEEP_CONCURRENCY, (entry) =>
           this.sweepOneQuarantine(profileId, entry, at),
@@ -276,7 +281,7 @@ export class StorageManagementService {
         undefined,
         `sweep complete: ${removedSessions} sessions, ${removedQuarantined} quarantine entries removed`,
       );
-      return ok(undefined);
+      return ok({ removedReviews });
     });
   }
 
@@ -288,6 +293,7 @@ export class StorageManagementService {
     profileId: WorkspaceProfileId,
     session: ReviewSession,
     at: IsoTimestamp,
+    reviewRecordRemoved: () => void,
   ): Promise<boolean> {
     const running = await this.isRunningState(profileId, session);
     if (running._tag === "err") {
@@ -322,6 +328,8 @@ export class StorageManagementService {
       // sweep iterates sessions, so a record outliving its session is never
       // revisited.
       if (!deleted) return false;
+      // The record is gone even if the session removal below fails.
+      reviewRecordRemoved();
     }
     const removed = await this.deps.artifacts.removeSession(
       profileId,

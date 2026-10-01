@@ -105,7 +105,9 @@ export class ReviewRetention {
    */
   async sweepProfile(
     profileId: WorkspaceProfileId,
-  ): Promise<Result<undefined, ReviewRetentionFailure>> {
+  ): Promise<
+    Result<{ readonly removedReviews: number }, ReviewRetentionFailure>
+  > {
     const listed = await this.dependencies.reviews.list(profileId);
     if (listed._tag === "err") return err({ _tag: "StorageUnavailable" });
     // One Review at a time: each one's Git work queues on the profile lock anyway.
@@ -130,7 +132,7 @@ export class ReviewRetention {
     );
     return orphaned === undefined || swept.includes("failed")
       ? err({ _tag: "StorageUnavailable" })
-      : ok(undefined);
+      : ok({ removedReviews: removedReviews.length });
   }
 
   /** Under the Review lock: removes the Review when its source is gone and it was left alone, else prunes it. */
