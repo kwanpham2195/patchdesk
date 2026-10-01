@@ -46,7 +46,6 @@ const REACH: BriefReach = {
       mentionCount: 2,
     },
   ],
-  surfaces: [{ surface: "Public API" }],
   untested: [],
   removedStillReferenced: [
     {
@@ -68,6 +67,25 @@ describe("parseStoredBrief reach", () => {
       reach: REACH,
     };
     expect(parseStoredBrief(structuredClone(brief))).toEqual({
+      _tag: "ok",
+      value: brief,
+    });
+  });
+
+  it("reads a Brief stored with the retired Surfaces crossed row and drops it", () => {
+    const brief = {
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      reach: REACH,
+    };
+    const legacy = {
+      ...brief,
+      reach: {
+        ...REACH,
+        surfaces: [{ surface: "Public API", path: "src/index.ts" }],
+      },
+    };
+    expect(parseStoredBrief(structuredClone(legacy))).toEqual({
       _tag: "ok",
       value: brief,
     });

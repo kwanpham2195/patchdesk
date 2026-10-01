@@ -12,7 +12,6 @@ const HEAD_SHA = "e1126f94".padEnd(40, "0");
 
 const reach = (overrides: Partial<BriefReach>): BriefReach => ({
   symbols: [],
-  surfaces: [{ surface: "Public API" }],
   untested: [],
   removedStillReferenced: [],
   method: "text_match",

@@ -12,15 +12,8 @@ import {
   type BriefReachRow,
 } from "../brief-contracts";
 
-/** The chip classes for a surface the change crosses and one it does not. */
-const LIT_SURFACE =
-  "inline-flex items-center gap-1.5 rounded-md border bg-accent px-2 py-0.5 text-xs";
-const UNLIT_SURFACE =
-  "inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground";
 const FOLD_BUTTON =
   "flex items-center gap-1.5 self-start rounded-sm text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const SURFACES_LABEL = "Surfaces crossed";
 
 /**
  * The Blast radius view: what the change could affect in files it does not
@@ -37,35 +30,7 @@ export function ReachBlock({
 }): React.JSX.Element {
   const view = useMemo(() => briefBlastRadius(reach), [reach]);
   const [emptyExpanded, setEmptyExpanded] = useState(false);
-  const surfacesRow = (
-    <ReachRow
-      key="surfaces"
-      label={SURFACES_LABEL}
-      hint="each flag cites its path"
-    >
-      <div className="flex flex-wrap gap-1.5">
-        {reach.surfaces.map((surface) => (
-          <span
-            key={surface.surface}
-            className={surface.path === undefined ? UNLIT_SURFACE : LIT_SURFACE}
-          >
-            {surface.surface}
-            {surface.path === undefined ? null : (
-              <span className="font-mono text-[10px] text-muted-foreground">
-                {surface.path}
-              </span>
-            )}
-          </span>
-        ))}
-      </div>
-    </ReachRow>
-  );
   const sections = [
-    {
-      label: SURFACES_LABEL,
-      empty: reach.surfaces.every((surface) => surface.path === undefined),
-      node: surfacesRow,
-    },
     {
       label: view.untested.label,
       empty: view.untested.items.length === 0,

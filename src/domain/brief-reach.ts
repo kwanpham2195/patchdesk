@@ -67,13 +67,6 @@ type BriefReachMentions = {
   readonly mentionCount?: number;
 };
 
-/** One surface the changed paths either cross or do not; an unlit surface is still reported. */
-export type BriefReachSurface = {
-  readonly surface: string;
-  /** The first changed path that lit this surface; absent when unlit. */
-  readonly path?: string;
-};
-
 /** One changed file this pull request's own tests never mention. */
 export type BriefReachUntested = {
   readonly path: string;
@@ -92,7 +85,6 @@ export type BriefReachRemoved = {
  */
 export type BriefReach = {
   readonly symbols: ReadonlyArray<BriefReachSymbol>;
-  readonly surfaces: ReadonlyArray<BriefReachSurface>;
   readonly untested: ReadonlyArray<BriefReachUntested>;
   readonly removedStillReferenced: ReadonlyArray<BriefReachRemoved>;
   readonly method: "text_match";
@@ -106,32 +98,7 @@ export type BriefReachUnavailableReason =
   | "search_failed"
   | "timed_out";
 
-/**
- * One path convention a changed path may satisfy to light a surface. Every
- * present field must hold for the condition to match (so `segments: ["pkg"]`
- * plus `segmentPattern: /^v\d+$/` needs both a `pkg` segment and a version
- * segment on the same path); a rule lights when any one of its conditions
- * matches. `segments` and `segmentPattern` read a path's `/`-separated parts,
- * `basenamePrefixes`/`basenameContains` read the file name alone, and
- * `pathPattern`/`pathContains`/`extensions` read the whole path.
- */
-type ReachSurfaceCondition = {
-  readonly pathPattern?: RegExp;
-  readonly extensions?: ReadonlyArray<string>;
-  readonly segments?: ReadonlyArray<string>;
-  readonly segmentPattern?: RegExp;
-  readonly basenamePrefixes?: ReadonlyArray<string>;
-  readonly basenameContains?: ReadonlyArray<string>;
-  readonly pathContains?: ReadonlyArray<string>;
-  /**
-   * The condition also holds for a file that is not source code, such as a
-   * workflow YAML or an OpenAPI document. Without it, a condition matches
-   * source files only, so `api/Dockerfile` is not a Public API.
-   */
-  readonly anyFile?: true;
-};
-
-/** Extensions a surface condition and the No matching test row read as source code. */
+/** Extensions the No matching test row reads as source code. */
 const SOURCE_EXTENSIONS = new Set([
   ".c",
   ".cc",
@@ -179,151 +146,6 @@ function isTestDoublePath(path: string): boolean {
     segments.some((segment) => /^(?:mocks?|fakes?|stubs?)$/.test(segment)) ||
     /^mock_|_mock\.|\.mock\./.test(name)
   );
-}
-
-/**
- * The default surface rules, in the order the reader draws their chips. Each
- * rule is a list of path conventions rather than inline boolean logic, so
- * adding a language's convention is appending a value, not writing new code.
- * The conventions below are best-effort path shapes seen across both a
- * JavaScript/TypeScript repo (`adapters`, `migrations`, `.d.ts`) and a Go one
- * (`internal/adapter`, a `-hdl` handler directory, `pkg/…/v1`); an unusual
- * layout in either language can still miss. Every rule stays path-based --
- * none of them read a hunk's added or removed text.
- */
-const REACH_SURFACE_RULES: ReadonlyArray<{
-  readonly surface: string;
-  readonly conditions: ReadonlyArray<ReachSurfaceCondition>;
-}> = [
-  {
-    surface: "Public API",
-    conditions: [
-      { pathPattern: /^src\/index\.[^/]+$/ },
-      { extensions: [".d.ts"] },
-      { segments: ["api", "proto"] },
-      { basenamePrefixes: ["openapi"], anyFile: true },
-      // pkg/.../v1/... -- a versioned Go package, e.g. pkg/model/crm/v1/route-planning.go.
-      { segments: ["pkg"], segmentPattern: /^v\d+$/ },
-    ],
-  },
-  {
-    surface: "CLI",
-    conditions: [{ segments: ["bin", "cli", "cmd"] }],
-  },
-  {
-    surface: "Stored data",
-    conditions: [
-      { segments: ["migrations", "migration", "prisma"], anyFile: true },
-      // .../<name>-repo/... or .../repository/... -- a Go or Java repository directory.
-      { pathContains: ["repo/", "repository"] },
-      { pathContains: ["store/"] },
-      { basenameContains: ["store"] },
-      { extensions: [".sql"] },
-      { basenamePrefixes: ["schema"], anyFile: true },
-    ],
-  },
-  {
-    surface: "Security boundary",
-    conditions: [
-      { pathPattern: /^\.github\/workflows\//, anyFile: true },
-      {
-        pathContains: [
-          "auth",
-          "permission",
-          "sandbox",
-          "credential",
-          "capability",
-        ],
-      },
-    ],
-  },
-  {
-    surface: "Network write path",
-    conditions: [
-      { segments: ["adapters", "adapter", "grpc", "handler"] },
-      { pathContains: ["http-server"] },
-      // .../<name>-hdl/... -- this repo's handler directory convention.
-      { pathContains: ["-hdl"] },
-      { basenameContains: ["client", "writer", "handler"] },
-    ],
-  },
-];
-
-/** A regular-expression metacharacter escaped so a literal substring can be spliced into a pattern. */
-function escapeRegExpLiteral(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** One pattern that matches when any of `needles` appears; `undefined` when there is nothing to match. */
-function containsAnyPattern(
-  needles: ReadonlyArray<string> | undefined,
-): RegExp | undefined {
-  return needles === undefined
-    ? undefined
-    : new RegExp(needles.map(escapeRegExpLiteral).join("|"));
-}
-
-/**
- * `REACH_SURFACE_RULES`, with each condition's `basenameContains` and
- * `pathContains` word lists compiled to one alternation pattern apiece, so
- * matching a condition is a fixed number of single-pattern tests rather than
- * a loop of substring lookups over a path already run through other loops.
- */
-const COMPILED_REACH_SURFACE_RULES = REACH_SURFACE_RULES.map((rule) => ({
-  surface: rule.surface,
-  conditions: rule.conditions.map((condition) => ({
-    ...condition,
-    basenameContainsPattern: containsAnyPattern(condition.basenameContains),
-    pathContainsPattern: containsAnyPattern(condition.pathContains),
-  })),
-}));
-
-/** True when every field `condition` sets holds for `path`. */
-function matchesSurfaceCondition(
-  path: string,
-  segments: ReadonlyArray<string>,
-  segmentSet: ReadonlySet<string>,
-  name: string,
-  condition: (typeof COMPILED_REACH_SURFACE_RULES)[number]["conditions"][number],
-): boolean {
-  const {
-    pathPattern,
-    extensions,
-    segments: requiredSegments,
-    segmentPattern,
-    basenamePrefixes,
-    basenameContainsPattern,
-    pathContainsPattern,
-  } = condition;
-  if (pathPattern !== undefined && !pathPattern.test(path)) return false;
-  if (
-    extensions !== undefined &&
-    !extensions.some((extension) => path.endsWith(extension))
-  )
-    return false;
-  if (
-    requiredSegments !== undefined &&
-    !requiredSegments.some((segment) => segmentSet.has(segment))
-  )
-    return false;
-  if (
-    segmentPattern !== undefined &&
-    !segments.some((segment) => segmentPattern.test(segment))
-  )
-    return false;
-  if (
-    basenamePrefixes !== undefined &&
-    !basenamePrefixes.some((prefix) => name.startsWith(prefix))
-  )
-    return false;
-  if (
-    basenameContainsPattern !== undefined &&
-    !basenameContainsPattern.test(name)
-  )
-    return false;
-  if (pathContainsPattern !== undefined && !pathContainsPattern.test(path))
-    return false;
-  return true;
 }
 
 /**
@@ -377,40 +199,6 @@ export function newlyDeclaredNames(patch: string): ReadonlySet<string> {
   return new Set(
     declaredNames(patch, "added").filter((name) => !before.has(name)),
   );
-}
-
-/**
- * Which surfaces the changed paths cross, each citing the first path that lit
- * it. A surface no path matched is reported unlit rather than omitted: "this
- * change touches no security boundary" is the half of the answer a reviewer
- * cannot get from a list of what it does touch.
- */
-export function surfacesCrossed(
-  changedPaths: ReadonlyArray<string>,
-): ReadonlyArray<BriefReachSurface> {
-  const paths = changedPaths.map((path) => normalizeReachPath(path));
-  return COMPILED_REACH_SURFACE_RULES.map((rule) => {
-    const path = paths.find((candidate) => {
-      const segments = candidate.split("/");
-      const segmentSet = new Set(segments);
-      const name = basename(candidate);
-      const source = isSourcePath(candidate);
-      return rule.conditions.some(
-        (condition) =>
-          (source || condition.anyFile === true) &&
-          matchesSurfaceCondition(
-            candidate,
-            segments,
-            segmentSet,
-            name,
-            condition,
-          ),
-      );
-    });
-    return path === undefined
-      ? { surface: rule.surface }
-      : { surface: rule.surface, path };
-  });
 }
 
 /**
@@ -555,7 +343,6 @@ export function summarizeReach(input: {
 }): BriefReach {
   return {
     symbols: input.symbols,
-    surfaces: surfacesCrossed(input.files.map((file) => file.path)),
     untested: untestedReach(input.files),
     removedStillReferenced: input.removedStillReferenced,
     method: "text_match",

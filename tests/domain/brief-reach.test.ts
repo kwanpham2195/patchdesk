@@ -6,7 +6,6 @@ import {
   newlyDeclaredNames,
   removedSymbols,
   summarizeReach,
-  surfacesCrossed,
   untestedReach,
 } from "../../src/domain/brief-reach";
 
@@ -335,104 +334,6 @@ describe("newlyDeclaredNames", () => {
   });
 });
 
-describe("surfacesCrossed", () => {
-  it("lights each surface with the first path that matched and leaves the rest unlit", () => {
-    expect(
-      surfacesCrossed([
-        "src/adapters/github/github-thread-writer.ts",
-        "src/index.ts",
-        "migrations/0007-add-threads.sql",
-      ]),
-    ).toEqual([
-      { surface: "Public API", path: "src/index.ts" },
-      { surface: "CLI" },
-      { surface: "Stored data", path: "migrations/0007-add-threads.sql" },
-      { surface: "Security boundary" },
-      {
-        surface: "Network write path",
-        path: "src/adapters/github/github-thread-writer.ts",
-      },
-    ]);
-  });
-
-  it("reads a workflow file and a credential module as the security boundary", () => {
-    expect(surfacesCrossed([".github/workflows/ci.yml"])[3]).toEqual({
-      surface: "Security boundary",
-      path: ".github/workflows/ci.yml",
-    });
-    expect(surfacesCrossed(["src/github-credentials.ts"])[3]).toEqual({
-      surface: "Security boundary",
-      path: "src/github-credentials.ts",
-    });
-  });
-
-  it("reports every surface even when no path matched any of them", () => {
-    expect(surfacesCrossed(["src/renderer/src/app.tsx"])).toEqual([
-      { surface: "Public API" },
-      { surface: "CLI" },
-      { surface: "Stored data" },
-      { surface: "Security boundary" },
-      { surface: "Network write path" },
-    ]);
-  });
-
-  it("lights Public API for a versioned Go package path", () => {
-    expect(surfacesCrossed(["pkg/model/crm/v1/route-planning.go"])[0]).toEqual({
-      surface: "Public API",
-      path: "pkg/model/crm/v1/route-planning.go",
-    });
-  });
-
-  it("lights Network write path for a Go adapter handler path", () => {
-    expect(
-      surfacesCrossed([
-        "internal/adapter/http-server/route-planning-hdl/generate-suggestion.go",
-      ])[4],
-    ).toEqual({
-      surface: "Network write path",
-      path: "internal/adapter/http-server/route-planning-hdl/generate-suggestion.go",
-    });
-  });
-
-  it("lights Stored data for a Go repository path", () => {
-    expect(
-      surfacesCrossed(["internal/core/route-planning-repo/update-plan.go"])[2],
-    ).toEqual({
-      surface: "Stored data",
-      path: "internal/core/route-planning-repo/update-plan.go",
-    });
-  });
-
-  it("reads only source files by their folder, so a Dockerfile under api/ or a YAML under cmd/ lights nothing", () => {
-    expect(
-      surfacesCrossed(["api/Dockerfile", "cmd/api/config.yaml", "api/v1.go"]),
-    ).toEqual([
-      { surface: "Public API", path: "api/v1.go" },
-      { surface: "CLI" },
-      { surface: "Stored data" },
-      { surface: "Security boundary" },
-      { surface: "Network write path" },
-    ]);
-  });
-
-  it("still lights a surface whose rule names a non-code file, such as an OpenAPI document", () => {
-    expect(surfacesCrossed(["docs/openapi.yaml"])[0]).toEqual({
-      surface: "Public API",
-      path: "docs/openapi.yaml",
-    });
-  });
-
-  it("stays unlit on every surface for a plain docs path", () => {
-    expect(surfacesCrossed(["docs/x.md"])).toEqual([
-      { surface: "Public API" },
-      { surface: "CLI" },
-      { surface: "Stored data" },
-      { surface: "Security boundary" },
-      { surface: "Network write path" },
-    ]);
-  });
-});
-
 describe("untestedReach", () => {
   it("clears a changed file a changed test names, and reports one it does not", () => {
     expect(
@@ -598,13 +499,6 @@ describe("summarizeReach", () => {
     expect(summary.removedStillReferenced).toHaveLength(1);
     expect(summary.untested).toEqual([
       { path: "src/adapters/github-thread-writer.ts", reason: "no_test_in_pr" },
-    ]);
-    expect(summary.surfaces.map((surface) => surface.surface)).toEqual([
-      "Public API",
-      "CLI",
-      "Stored data",
-      "Security boundary",
-      "Network write path",
     ]);
   });
 });

@@ -191,10 +191,6 @@ const REACH = {
       insidePR: true,
     },
   ],
-  surfaces: [
-    { surface: "Public API" },
-    { surface: "Network write path", path: "src/adapters/writer.ts" },
-  ],
   untested: [{ path: "src/a.ts", reason: "no_test_in_pr" as const }],
   removedStillReferenced: [
     { name: "updateComment", paths: ["src/main/local-api.ts"] },
@@ -349,9 +345,6 @@ describe("BriefReader", () => {
       screen.getByRole("region", { name: "Changed and mentioned elsewhere" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("region", { name: "Surfaces crossed" }),
-    ).toBeTruthy();
-    expect(
       screen.getByRole("region", { name: "No matching test" }),
     ).toBeTruthy();
     expect(
@@ -373,7 +366,6 @@ describe("BriefReader", () => {
             ...briefValue,
             reach: {
               ...REACH,
-              surfaces: [{ surface: "Public API" }],
               untested: [],
             },
           },
@@ -386,17 +378,11 @@ describe("BriefReader", () => {
       screen.getByRole("region", { name: "Changed and mentioned elsewhere" }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole("region", { name: "Surfaces crossed" }),
-    ).toBeNull();
-    expect(
       screen.queryByRole("region", { name: "No matching test" }),
     ).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /^Nothing found/ }));
 
-    expect(
-      screen.getByRole("region", { name: "Surfaces crossed" }),
-    ).toBeTruthy();
     expect(
       screen.getByRole("region", { name: "No matching test" }),
     ).toBeTruthy();

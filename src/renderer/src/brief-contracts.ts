@@ -119,12 +119,6 @@ const briefReachSchema = v.strictObject({
       ...briefReachMentionFields,
     }),
   ),
-  surfaces: v.array(
-    v.strictObject({
-      surface: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
-      path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
-    }),
-  ),
   untested: v.array(
     v.strictObject({
       path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),

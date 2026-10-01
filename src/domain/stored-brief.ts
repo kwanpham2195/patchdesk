@@ -144,12 +144,8 @@ const storedReachSchema = v.strictObject({
       ...storedReachMentionFields,
     }),
   ),
-  surfaces: v.array(
-    v.strictObject({
-      surface: v.pipe(v.string(), v.minLength(1)),
-      path: v.optional(v.pipe(v.string(), v.minLength(1))),
-    }),
-  ),
+  /** Written by Briefs retained before Signals replaced Surfaces crossed (#721); read and ignored. */
+  surfaces: v.optional(v.unknown()),
   untested: v.array(
     v.strictObject({
       path: v.pipe(v.string(), v.minLength(1)),
@@ -272,17 +268,18 @@ export function parseStoredBrief(
 }
 
 /**
- * Rebuilds the Reach block. `surface.path` is rewritten because valibot infers
+ * Rebuilds the Reach block. Mention sites are rebuilt because valibot infers
  * an optional key as `string | undefined`, which an `exactOptionalPropertyTypes`
- * target reads as a present key holding `undefined`, and mention sites are
- * rebuilt for the same reason; a missing symbol `status` reads as `changed`.
+ * target reads as a present key holding `undefined`; a missing symbol
+ * `status` reads as `changed`, and a legacy `surfaces` key is dropped.
  */
 function storedReach(
   stored: v.InferOutput<typeof storedReachSchema> | undefined,
 ): BriefReach | undefined {
   if (stored === undefined) return undefined;
+  const { surfaces: _legacySurfaces, ...reach } = stored;
   return {
-    ...stored,
+    ...reach,
     symbols: stored.symbols.map((symbol) => ({
       name: symbol.name,
       outsideCallerFiles: symbol.outsideCallerFiles,
@@ -295,10 +292,6 @@ function storedReach(
       name: item.name,
       paths: item.paths,
       ...storedMentions(item),
-    })),
-    surfaces: stored.surfaces.map((entry) => ({
-      surface: entry.surface,
-      ...definedProps({ path: entry.path }),
     })),
   };
 }
@@ -323,7 +316,7 @@ function storedMentions(stored: {
 
 /**
  * Rebuilds the Start here block. Only `why` needs rewriting, for the same
- * `exactOptionalPropertyTypes` reason `storedReach` rewrites `surface.path`.
+ * `exactOptionalPropertyTypes` reason `storedReach` rebuilds mention sites.
  */
 function storedStartHere(
   stored: v.InferOutput<typeof storedStartHereSchema> | undefined,

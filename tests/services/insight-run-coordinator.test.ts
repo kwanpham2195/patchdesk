@@ -298,7 +298,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
                   status: "new",
                 },
               ],
-              surfaces: [{ surface: "Public API" }],
               untested: [],
               removedStillReferenced: [],
               method: "text_match",

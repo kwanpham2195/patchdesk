@@ -189,7 +189,6 @@ describe("renderBriefAsPullRequestDescription", () => {
             status: "new",
           },
         ],
-        surfaces: [],
         untested: [{ path: "src/token.ts", reason: "no_test_in_pr" }],
         removedStillReferenced: [{ name: "legacy", paths: ["src/app.ts"] }],
         method: "text_match",
