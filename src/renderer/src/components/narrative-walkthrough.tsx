@@ -197,6 +197,9 @@ export function NarrativeWalkthrough({
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+        return;
+      }
       const target = event.target;
       if (target instanceof HTMLElement) {
         const tag = target.tagName;

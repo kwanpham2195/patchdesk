@@ -674,6 +674,39 @@ describe("narrative walkthrough takeover", () => {
     editor.remove();
   });
 
+  it.each([
+    { key: "ArrowRight", modifier: { metaKey: true } },
+    { key: "ArrowRight", modifier: { ctrlKey: true } },
+    { key: "ArrowRight", modifier: { altKey: true } },
+    { key: "ArrowRight", modifier: { shiftKey: true } },
+    { key: "ArrowLeft", modifier: { metaKey: true } },
+    { key: "ArrowLeft", modifier: { altKey: true } },
+    { key: "j", modifier: { ctrlKey: true } },
+    { key: "k", modifier: { shiftKey: true } },
+  ])("ignores $key with $modifier held", ({ key, modifier }) => {
+    const onSelectSection = vi.fn();
+    const { container } = render(
+      <NarrativeWalkthrough
+        walkthrough={buildWalkthrough()}
+        reviewedSectionIds={[]}
+        actions={buildActions({ onSelectSection })}
+      />,
+    );
+    // SAFETY: The test query targets the element rendered by this case; this cast narrows the DOM API result before the next property access.
+    const takeover = container.querySelector(
+      "[data-walkthrough-takeover]",
+    ) as HTMLElement;
+    takeover.focus();
+    if (key === "ArrowLeft" || key === "k") {
+      // Start on the last section so a backward move has a target.
+      fireEvent.keyDown(takeover, { key: "ArrowRight" });
+      expect(onSelectSection).toHaveBeenLastCalledWith("section-2");
+      onSelectSection.mockClear();
+    }
+    fireEvent.keyDown(takeover, { key, ...modifier });
+    expect(onSelectSection).not.toHaveBeenCalled();
+  });
+
   it("returns focus to the section heading on Escape", () => {
     const { container } = render(
       <NarrativeWalkthrough

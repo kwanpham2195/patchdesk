@@ -132,14 +132,14 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - Pressing Section reviewed on an open Review unmarks the section and removes its rail badge.
 - `j` moves to the next section and `k` to the previous, so the letters follow Vim while the arrows follow reading direction.
 - The Left and Right arrows move between sections rather than scrolling a wide hunk sideways.
-- Arrow keys, `j`, and `k` do nothing while a text field, select, or combobox has focus.
+- Arrow keys, `j`, and `k` do nothing while a text field, select, or combobox has focus, or while Command, Control, Option, or Shift is held.
 - Escape can focus the current section heading without changing reviewed state.
 - A reviewed marker stays on screen even when its save fails.
 
 ## Open questions and verification
 
 - A live pass confirmed the empty state only. Docked and focused layouts, Regenerate, threads, and keyboard movement still need live checks.
-- Outdated Walkthrough wording changed after [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed), but is not live-verified. Modifier keys may also move sections; see [B-23](../bug-triage.md#b-23-walkthrough-section-keys-ignore-modifier-keys).
+- Outdated Walkthrough wording changed after [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed), but is not live-verified.
 - Confirm layout fade, scroll and focus, section and reviewed state after quit, and highlighting fallback.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified. Notes, comments, and thread replies on cited hunks are revised from source (#598) and not yet live-verified. The pi CLI account provider is revised from source (#551) and not yet live-verified.
