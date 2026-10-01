@@ -211,7 +211,11 @@ export const firstInboxRequest: InboxRequestState = {
  * selected, non-first profile) still self-corrects once the real active
  * profile is confirmed — see the `dashboard?.profile.id` effect below — so
  * getting it wrong here costs one extra refetch, not incorrect data. The
- * repository is deliberately left unset: sending one that turns out not to
+ * saved filters are fitted to GitHub's search length limit as measured against
+ * the repository the main process falls back to (`profiles[0].repos[0]`), so
+ * the first search is not refused; nothing is saved and no notice is shown,
+ * since the launch restore still owns both. The repository is deliberately
+ * left unset: sending one that turns out not to
  * belong to the true active profile's watchlist fails the whole request
  * server-side (`DashboardController.inboxForActiveProfile`), which a wrong
  * page-size guess never does.
@@ -236,7 +240,7 @@ export function firstInboxRequestFor(
   const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
   const authorField = author === undefined ? {} : { author };
   const baseBranchField = baseBranch === undefined ? {} : { baseBranch };
-  return {
+  const measured: InboxRequestState = {
     state,
     pageSize,
     selectedLabels,
@@ -246,7 +250,11 @@ export function firstInboxRequestFor(
     ...authorField,
     ...baseBranchField,
     previousPageTokens: [],
+    ...definedProps({ repository: profiles[0]?.repos?.[0] }),
   };
+  return nextInboxRequest(dropFiltersToFit(measured).request, {
+    repository: undefined,
+  });
 }
 
 /** Filters a repository change drops, in the order it drops them, until the query fits; the label filter is already cleared by then. */
