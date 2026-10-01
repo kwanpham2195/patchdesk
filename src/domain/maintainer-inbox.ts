@@ -247,6 +247,17 @@ export function inboxSearchQueryExcess(
   return Math.max(0, Math.max(...lengths) - INBOX_SEARCH_QUERY_MAX_LENGTH);
 }
 
+/** The single-select filters a menu can disable when choosing one would push the search past the cap. */
+export type InboxFilterChange = {
+  readonly state?: InboxStateFilter;
+  readonly preset?: InboxPreset | undefined;
+  readonly reviewState?: InboxReviewStateFilter | undefined;
+  readonly checkStatus?: InboxCheckStatusFilter | undefined;
+};
+
+/** Why a filter option is disabled, or a typed value refused, when the composed search would pass `INBOX_SEARCH_QUERY_MAX_LENGTH`. */
+export const INBOX_FILTER_FULL_REASON = "Too long alongside the other filters";
+
 /** Presented together in the filter bar and the command palette; one list so the two surfaces cannot drift. */
 export const INBOX_STATE_FILTERS: ReadonlyArray<{
   readonly state: InboxStateFilter;

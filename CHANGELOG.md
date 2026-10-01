@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Open and Merged, Awaiting review from you, Your pull requests, Review state, and Check status being sent to GitHub even when they pushed the search past its 256-character limit, which ended in a generic request error. An option that would not fit is now disabled with `Too long alongside the other filters`, in the filter bar and in the command palette. Choosing another repository is never refused: it clears labels, then drops Author, Base branch, and the other filters until the search fits, and names each one dropped. #620
+
 - Fixed the Visited column still listing Reviews that the daily retention sweep had removed, which led to a failed open when clicked. The column now reads again when a sweep removes Reviews. #740
 
 - Changed links in pull request descriptions and comments to show their destination host in a chip beside the link text when the host is not `github.com` or the Review's GitHub host, so a link whose text names one site and opens another is visible before the click. A link around a single image shows the host on the lightbox's Open link button. #699

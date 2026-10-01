@@ -12,11 +12,13 @@ import {
 import { useId, useState, type ReactNode } from "react";
 
 import {
+  INBOX_FILTER_FULL_REASON,
   INBOX_PRESET_FILTERS,
   INBOX_STATE_FILTERS,
   MAX_INBOX_FILTER_AUTHOR_LENGTH,
   MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   type InboxCheckStatusFilter,
+  type InboxFilterChange,
   type InboxFilterTextFailure,
   type InboxPreset,
   type InboxReviewStateFilter,
@@ -45,6 +47,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -55,10 +58,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+const fitsAnyChange = (): boolean => true;
+const NO_DROPPED_FILTERS: ReadonlyArray<string> = [];
+
 /** Pull-request state, ownership, label, review, and check filter controls. */
 export function InboxFiltersBar({
   state,
   onStateChange,
+  changeFits = fitsAnyChange,
+  droppedFilters = NO_DROPPED_FILTERS,
   labelFilter,
   preset,
   onPresetChange,
@@ -79,6 +87,10 @@ export function InboxFiltersBar({
 }: {
   readonly state: InboxStateFilter;
   readonly onStateChange: (state: InboxStateFilter) => void;
+  /** Whether one more filter choice still fits GitHub's search length limit; an option that does not is disabled with the reason. */
+  readonly changeFits?: (change: InboxFilterChange) => boolean;
+  /** Filters the last repository change dropped to fit the limit, by display name. */
+  readonly droppedFilters?: ReadonlyArray<string>;
   readonly labelFilter?: ReactNode;
   readonly preset?: InboxPreset;
   readonly onPresetChange: (value: InboxPreset | undefined) => void;
@@ -137,10 +149,18 @@ export function InboxFiltersBar({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
+              {INBOX_STATE_FILTERS.some(
+                (option) => !changeFits({ state: option.state }),
+              ) ? (
+                <SelectLabel className="text-xs">
+                  {INBOX_FILTER_FULL_REASON}
+                </SelectLabel>
+              ) : null}
               {INBOX_STATE_FILTERS.map((option) => (
                 <SelectItem
                   key={option.state}
                   value={option.state}
+                  disabled={!changeFits({ state: option.state })}
                   className="text-xs"
                 >
                   {stateFilterShortLabel(option.state)}
@@ -151,24 +171,32 @@ export function InboxFiltersBar({
         </Select>
         {INBOX_PRESET_FILTERS.map((option) => {
           const Icon = PRESET_FILTER_ICONS[option.preset];
+          const fits = changeFits({ preset: option.preset });
           return (
-            <Toggle
+            // The wrapper carries the reason because a disabled button takes no pointer events.
+            <span
               key={option.preset}
-              pressed={preset === option.preset}
-              onPressedChange={(pressed) =>
-                onPresetChange(pressed ? option.preset : undefined)
-              }
-              size="sm"
-              variant="outline"
-              className="h-7 gap-1.5 px-2 text-xs"
+              {...(fits ? {} : { title: INBOX_FILTER_FULL_REASON })}
             >
-              <Icon className="size-3.5" aria-hidden="true" />
-              {option.label}
-            </Toggle>
+              <Toggle
+                pressed={preset === option.preset}
+                disabled={!fits}
+                onPressedChange={(pressed) =>
+                  onPresetChange(pressed ? option.preset : undefined)
+                }
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 px-2 text-xs"
+              >
+                <Icon className="size-3.5" aria-hidden="true" />
+                {option.label}
+              </Toggle>
+            </span>
           );
         })}
         {labelFilter}
         <MoreFiltersPopover
+          changeFits={changeFits}
           {...(reviewState === undefined ? {} : { reviewState })}
           onReviewStateChange={onReviewStateChange}
           {...(checkStatus === undefined ? {} : { checkStatus })}
@@ -179,6 +207,11 @@ export function InboxFiltersBar({
           onBaseBranchChange={onBaseBranchChange}
           onClearInboxMoreFilters={onClearInboxMoreFilters}
         />
+        {droppedFilters.length === 0 ? null : (
+          <p role="status" className="text-xs text-muted-foreground">
+            {`Dropped ${droppedFilters.join(", ")} to fit the new repository's name in GitHub's search.`}
+          </p>
+        )}
       </div>
       <span className="shrink-0 text-[11px] whitespace-nowrap tabular-nums text-muted-foreground">
         {listPending
@@ -313,6 +346,7 @@ function CheckStatusFilterIcon({
 }
 
 function MoreFiltersPopover({
+  changeFits,
   reviewState,
   onReviewStateChange,
   checkStatus,
@@ -323,6 +357,7 @@ function MoreFiltersPopover({
   onBaseBranchChange,
   onClearInboxMoreFilters,
 }: {
+  readonly changeFits: (change: InboxFilterChange) => boolean;
   readonly reviewState?: InboxReviewStateFilter;
   readonly onReviewStateChange: (
     value: InboxReviewStateFilter | undefined,
@@ -417,12 +452,23 @@ function MoreFiltersPopover({
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
+                  {REVIEW_STATE_FILTERS.some(
+                    (option) => !changeFits({ reviewState: option.value }),
+                  ) ? (
+                    <SelectLabel className="text-xs">
+                      {INBOX_FILTER_FULL_REASON}
+                    </SelectLabel>
+                  ) : null}
                   <SelectItem value="any">
                     <ReviewStateFilterIcon value={undefined} />
                     Any
                   </SelectItem>
                   {REVIEW_STATE_FILTERS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={!changeFits({ reviewState: option.value })}
+                    >
                       <ReviewStateFilterIcon value={option.value} />
                       {option.label}
                     </SelectItem>
@@ -459,12 +505,23 @@ function MoreFiltersPopover({
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
+                  {CHECK_STATUS_FILTERS.some(
+                    (option) => !changeFits({ checkStatus: option.value }),
+                  ) ? (
+                    <SelectLabel className="text-xs">
+                      {INBOX_FILTER_FULL_REASON}
+                    </SelectLabel>
+                  ) : null}
                   <SelectItem value="any">
                     <CheckStatusFilterIcon value={undefined} />
                     Any
                   </SelectItem>
                   {CHECK_STATUS_FILTERS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={!changeFits({ checkStatus: option.value })}
+                    >
                       <CheckStatusFilterIcon value={option.value} />
                       {option.label}
                     </SelectItem>
@@ -618,7 +675,7 @@ function MoreFiltersTextField({
       : failure === "too_long"
         ? `At most ${maxLength} characters`
         : failure === "query_too_long"
-          ? "Too long alongside the other filters"
+          ? INBOX_FILTER_FULL_REASON
           : "No spaces or quotes";
 
   return (

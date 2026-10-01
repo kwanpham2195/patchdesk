@@ -4,6 +4,10 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  composeInboxSearchQuery,
+  INBOX_SEARCH_QUERY_MAX_LENGTH,
+} from "../../src/domain/maintainer-inbox";
+import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
 } from "../../src/renderer/src/inbox-view-preferences";
@@ -513,7 +517,9 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     });
     const pathsBefore = paths.length;
 
-    expect(result.current.labelFits(longLabels[3] ?? "")).toBe(false);
+    expect(
+      result.current.inboxFilterBudget.labelFits(longLabels[3] ?? ""),
+    ).toBe(false);
     act(() => {
       result.current.changeInboxLabels(longLabels);
     });
@@ -584,5 +590,154 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     expect(paths.filter((path) => path.includes("owner=owner-a"))).toHaveLength(
       2,
     );
+  });
+
+  describe("search length limit for every filter", () => {
+    /** Two labels that put the repository-A query one character under GitHub's cap, so any filter that adds a qualifier, or a longer state, breaches it. */
+    function labelsOneUnderTheCap(): ReadonlyArray<string> {
+      const base = composeInboxSearchQuery([repositoryA], {
+        state: "open",
+        labels: ["", ""],
+      }).length;
+      const room = INBOX_SEARCH_QUERY_MAX_LENGTH - 1 - base;
+      return [
+        "a".repeat(Math.floor(room / 2)),
+        "b".repeat(Math.ceil(room / 2)),
+      ];
+    }
+
+    async function nearLimitHook(paths: string[]) {
+      desktop = installDesktopDouble({
+        "/v1/profiles": () => success([profileA]),
+        "/v1/logs": () => success({}),
+        "/v1/inbox": (input) => {
+          paths.push(input.path);
+          return success(inbox(profileA));
+        },
+      });
+      const hook = renderHook(() =>
+        useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+      );
+      await act(async () => {
+        await hook.result.current.loadWorkspace();
+      });
+      await waitFor(() =>
+        expect(hook.result.current.dashboard?.profile.id).toBe("a"),
+      );
+      const labels = labelsOneUnderTheCap();
+      act(() => {
+        hook.result.current.updateInboxRequest({
+          ...hook.result.current.inboxRequest,
+          selectedLabels: labels,
+        });
+      });
+      return hook;
+    }
+
+    it("reports State, Preset, Review state, and Check status as not fitting, and sends nothing when called anyway", async () => {
+      const paths: string[] = [];
+      const { result } = await nearLimitHook(paths);
+      const pathsBefore = paths.length;
+      const before = result.current.inboxRequest;
+
+      expect(result.current.inboxFilterBudget.fits({ state: "merged" })).toBe(
+        false,
+      );
+      expect(
+        result.current.inboxFilterBudget.fits({ preset: "awaiting_my_review" }),
+      ).toBe(false);
+      expect(
+        result.current.inboxFilterBudget.fits({ reviewState: "approved" }),
+      ).toBe(false);
+      expect(
+        result.current.inboxFilterBudget.fits({ checkStatus: "success" }),
+      ).toBe(false);
+      // Clearing or keeping a value never lengthens the query.
+      expect(result.current.inboxFilterBudget.fits({ state: "open" })).toBe(
+        true,
+      );
+      expect(result.current.inboxFilterBudget.fits({ preset: undefined })).toBe(
+        true,
+      );
+
+      act(() => {
+        result.current.changeInboxState("merged");
+        result.current.changeInboxPreset("my_pull_requests");
+        result.current.changeInboxReviewState("approved");
+        result.current.changeInboxCheckStatus("success");
+      });
+
+      expect(result.current.inboxRequest).toEqual(before);
+      expect(loadInboxViewPreferences("a").state).toBe("open");
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("preset");
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("reviewState");
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("checkStatus");
+      expect(paths).toHaveLength(pathsBefore);
+    });
+
+    const longRepository: RepositoryFixture = {
+      host: "github.com",
+      owner: "o".repeat(39),
+      repo: "r".repeat(100),
+    };
+
+    async function repositorySwitch(
+      overrides: Partial<WorkspaceInbox["inboxRequest"]>,
+    ) {
+      const paths: string[] = [];
+      const hook = await nearLimitHook(paths);
+      act(() => {
+        hook.result.current.updateInboxRequest({
+          ...hook.result.current.inboxRequest,
+          selectedLabels: [],
+          ...overrides,
+        });
+      });
+      act(() => {
+        hook.result.current.changeInboxRepository(longRepository);
+      });
+      return { ...hook, paths };
+    }
+
+    // The longest repository name GitHub allows: it leaves room for Base branch, or for Author, but not both.
+    it("drops Author first on a repository switch, then stops once the query fits", async () => {
+      const { result, paths } = await repositorySwitch({
+        author: "a".repeat(39),
+        baseBranch: "b".repeat(40),
+        reviewState: "approved",
+      });
+
+      expect(result.current.inboxRequest.repository).toEqual(longRepository);
+      expect(result.current.inboxRequest.author).toBeUndefined();
+      expect(result.current.inboxRequest.baseBranch).toBe("b".repeat(40));
+      expect(result.current.inboxRequest.reviewState).toBe("approved");
+      expect(result.current.inboxFilterBudget.dropped).toEqual(["Author"]);
+      expect(loadInboxViewPreferences("a")).not.toHaveProperty("author");
+      await waitFor(() =>
+        expect(paths.at(-1)).toContain(`owner=${longRepository.owner}`),
+      );
+    });
+
+    it("drops Author, then Base branch, and keeps the rest once the query fits", async () => {
+      const { result } = await repositorySwitch({
+        author: "a".repeat(39),
+        baseBranch: "b".repeat(100),
+        preset: "my_pull_requests",
+        reviewState: "approved",
+        checkStatus: "success",
+      });
+
+      expect(result.current.inboxFilterBudget.dropped).toEqual([
+        "Author",
+        "Base branch",
+      ]);
+      expect(result.current.inboxRequest).toMatchObject({
+        preset: "my_pull_requests",
+        reviewState: "approved",
+        checkStatus: "success",
+      });
+      expect(result.current.inboxRequest.baseBranch).toBeUndefined();
+      expect(result.current.inboxRequest.repository).toEqual(longRepository);
+    });
   });
 });

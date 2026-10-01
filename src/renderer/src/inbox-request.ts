@@ -6,6 +6,7 @@ import {
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxCheckStatusFilter,
+  type InboxFilterChange,
   type InboxPageSize,
   type InboxPreset,
   type InboxReviewStateFilter,
@@ -15,6 +16,21 @@ import {
   sameRepositoryIdentity,
   type RepositoryIdentity,
 } from "../../domain/repository-identity";
+
+/** What the filters need to stay inside GitHub's search length limit: whether one more filter or label choice still fits, and the filters the last repository change dropped to fit, by display name. */
+export type InboxFilterBudget = {
+  readonly fits: (change: InboxFilterChange) => boolean;
+  /** Whether a label may still be selected: a sixth label breaks the label cap, and one long enough breaks the search length limit. A selected label always fits. */
+  readonly labelFits: (name: string) => boolean;
+  readonly dropped: ReadonlyArray<string>;
+};
+
+/** The budget of a screen that shows no limit, such as a fixture. */
+export const UNLIMITED_FILTER_BUDGET: InboxFilterBudget = {
+  fits: () => true,
+  labelFits: () => true,
+  dropped: [],
+};
 
 export type InboxRequestState = {
   /**
