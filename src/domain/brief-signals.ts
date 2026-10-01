@@ -99,10 +99,15 @@ const MANIFESTS = new Set([
 const SECURITY_WORDS =
   /auth|permission|rbac|acl|credential|oauth|jwt|sandbox|secret|password/i;
 const CONFIG_EXTENSIONS = /\.(?:json|ya?ml|toml|ini|env|properties)$/;
+/**
+ * A route registration: a router or server receiver, a path string, then a
+ * handler, such as `r.POST("/roles", h.Create)`; or a protobuf `rpc` line.
+ */
 const ROUTE_LINE =
-  /\.(?:HandleFunc|Handle)\(|\b(?:r|router|mux|e|g|api|group|app|server)\.(?:GET|POST|PUT|PATCH|DELETE|Get|Post|Put|Patch|Delete|get|post|put|patch|delete|route|Route)\(\s*['"`]|^\s*rpc\s+\w+\s*\(/;
+  /\b(?:http|r|router|mux|e|g|group|app|server)\.(?:HandleFunc|Handle|GET|POST|PUT|PATCH|DELETE|Get|Post|Put|Patch|Delete|get|post|put|patch|delete|route|Route)\(\s*['"`][^'"`]*['"`]\s*,|^\s*rpc\s+\w+\s*\(/;
+/** An assertion call or a matcher such as `.toBe(` or `.to.equal(`; `.toString(` is not one. */
 const ASSERTION =
-  /\b(?:expect|assert\w*|require\.\w+|t\.(?:Error|Errorf|Fatal|Fatalf))\s*\(|\.(?:to|should)\.?\w*\(/;
+  /\b(?:expect|assert\w*|require\.\w+|t\.(?:Error|Errorf|Fatal|Fatalf))\s*\(|\.(?:to(?:Be|Equal|StrictEqual|Match|Have|Throw|Contain|Satisfy|Resolve|Reject)\w*|to\.\w+|should\.\w+)/;
 const SKIPPED_TEST =
   /\b(?:it|test|describe)\.(?:skip|todo|only)\(|\b[xf](?:it|test|describe)\(|\bt\.Skip(?:Now|f)?\(|@Disabled|@Ignore|pytest\.mark\.skip/;
 const TEST_CASE = /\b(?:it|test)\(\s*['"`]|\bfunc Test\w*\(|\bdef test_\w*\(/;
@@ -147,13 +152,15 @@ export function briefSignals(
     const bucket = classifyChangedPath(file);
     const name = file.path.split("/").at(-1) ?? "";
     const lines = text.get(file.path) ?? { added: [], removed: [] };
-    if (isSnapshot(file.path)) snapshots.push(file.path);
     if (isUnchangedRename(file)) skim.moved += 1;
     else if (followsMove.has(file.path)) skim.followsMove += 1;
     else if (bucket === "generated" && !LOCKFILES.has(name))
       skim.generated += 1;
     else {
       for (const kind of areas(file.path, name, bucket)) add(kind, file.path);
+      // Only an edited snapshot can hide a weakened test; a new one comes with a new test.
+      if (file.status === "modified" && isSnapshot(file.path))
+        snapshots.push(file.path);
       if (MANIFESTS.has(name)) lockfilesOnly = false;
       if (bucket === "tests") {
         if (file.status === "removed") {
