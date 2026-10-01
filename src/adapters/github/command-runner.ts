@@ -588,13 +588,27 @@ export function classifyRestStatus(
 }
 
 type GraphqlErrorSignal = {
-  /** True when the body's `data` is null, absent, or has only null fields: nothing in the response proves the mutation did anything. */
+  /** True when the body's `data` is null, absent, or holds only null fields (or payload objects with only null fields): nothing in the response proves the mutation did anything. */
   readonly dataEmpty: boolean;
   readonly type?: string;
   readonly code?: string;
   readonly message?: string;
   readonly samlFailure?: boolean;
 };
+
+/**
+ * Whether a response field proves nothing happened: null, or an object whose
+ * every field is itself that (GitHub answers a refused mutation with its
+ * payload object holding only a null `clientMutationId`). Anything else,
+ * including an array, may be evidence the mutation did something.
+ */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- walks a parsed GraphQL `data` value of unknown shape at the I/O boundary.
+function holdsNoValue(field: unknown): boolean {
+  if (field === null) return true;
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a parsed GraphQL `data` value at the I/O boundary.
+  if (typeof field !== "object" || Array.isArray(field)) return false;
+  return Object.values(field).every(holdsNoValue);
+}
 
 /**
  * A GraphQL refusal carries no HTTP status: the signal lives in the body's
@@ -624,7 +638,7 @@ function extractGraphqlErrorSignal(
   const dataEmpty =
     parsed.output.data === undefined ||
     parsed.output.data === null ||
-    Object.values(parsed.output.data).every((field) => field === null);
+    Object.values(parsed.output.data).every(holdsNoValue);
   return {
     dataEmpty,
     ...typeField,

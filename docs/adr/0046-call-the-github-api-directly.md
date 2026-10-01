@@ -517,13 +517,17 @@ landed first delivery could have produced it:
   on a throwaway pull request: adding a label deleted on github.com after the
   picker loaded answered a GraphQL `NOT_FOUND` with `addLabelsToLabelable: null`
   and showed "Patchdesk or GitHub could not find what the label change needs."
-  with nothing locked. A base branch deleted after the picker loaded answered
-  GraphQL `UNPROCESSABLE` ("Proposed base branch was not found") with
-  `updatePullRequest: null`, but the HTTP client did not classify that answer as
-  a refusal, so the write stayed outcome unknown and the Review showed "GitHub
-  writes are paused". Mapping a null root field on a mutation to
-  `CommandUnprocessable` is #768; the base branch refusal reaches the new path
-  once that lands. The service and invariant tests cover the base branch row.
+  with nothing locked. A base branch deleted after the picker loaded answered GraphQL
+  `UNPROCESSABLE` ("Proposed base branch was not found") with
+  `data: { updatePullRequest: { clientMutationId: null } }`: a payload object,
+  not a null root field. `classifyGraphqlSignal` treated that data as non-null
+  and left the write `unavailable`, so the Review locked with no landed-check
+  read. `dataEmpty` now counts a payload object whose every field is null as
+  empty, so the answer is a refusal; an array or any non-null leaf still keeps
+  the write unavailable. Rerun live after that fix: the landed-check
+  `getPullRequest` read followed the write, the route answered 409
+  `github_refused`, and the dialog showed "GitHub could not accept the base
+  branch change as sent." with nothing locked.
 
 **Summary: all five write families are converted.** Merge, the inline
 conversation writes, the published-feedback writes, the pending-review and

@@ -285,6 +285,31 @@ describe("a GraphQL error on a write is the category its type means", () => {
     expect(failure.category).toBe("unavailable");
   });
 
+  it("refuses a base branch change GitHub answers as UNPROCESSABLE with a payload holding only a null clientMutationId", async () => {
+    server.respondWith(
+      json(200, {
+        data: { updatePullRequest: { clientMutationId: null } },
+        errors: [
+          {
+            type: "UNPROCESSABLE",
+            path: ["updatePullRequest"],
+            message: "Proposed base branch 'pd-755-base' was not found",
+          },
+        ],
+      }),
+    );
+    const result = await writeAdapter(server).setPullRequestBaseBranch({
+      profile,
+      pullRequestId: "PR_node",
+      branch: "pd-755-base",
+    });
+
+    expect(result).toMatchObject({
+      _tag: "err",
+      error: { category: "refused", cause: "unprocessable" },
+    });
+  });
+
   it("keeps an error beside non-null data unavailable, because the mutation may have partly landed", async () => {
     const failure = await mutationWrite(
       json(200, {
