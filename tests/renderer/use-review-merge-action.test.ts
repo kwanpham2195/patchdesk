@@ -229,21 +229,31 @@ describe("useReviewMergeAction", () => {
   });
 
   // Issue #691: a refused merge left nothing on GitHub, so it does not hold the next merge for a status check.
-  it("sends another merge after GitHub refuses one", async () => {
-    const double = installDesktopDouble({
-      [MERGE]: () => failure({ error: "merge_not_mergeable" }, 409),
-    });
-    restore = double.restore;
-    const { result } = renderMergeAction();
-    const merge = result.current.mergeAction?.onMerge;
-    if (merge === undefined) throw new Error("missing merge action");
+  it.each([
+    ["merge_not_mergeable", 409],
+    ["stale", 400],
+    ["stale_head", 409],
+    ["not_fresh", 409],
+    ["merge_blocked", 400],
+    ["merge_acknowledgement_required", 400],
+  ])(
+    "sends another merge after a refusal with %s (%i)",
+    async (code, status) => {
+      const double = installDesktopDouble({
+        [MERGE]: () => failure({ error: code }, status),
+      });
+      restore = double.restore;
+      const { result } = renderMergeAction();
+      const merge = result.current.mergeAction?.onMerge;
+      if (merge === undefined) throw new Error("missing merge action");
 
-    await act(async () => {
-      await expect(merge("rebase", [])).rejects.toBeTruthy();
-      await expect(merge("rebase", [])).rejects.toBeTruthy();
-    });
-    expect(
-      double.request.mock.calls.filter(([call]) => callPath(call) === MERGE),
-    ).toHaveLength(2);
-  });
+      await act(async () => {
+        await expect(merge("rebase", [])).rejects.toBeTruthy();
+        await expect(merge("rebase", [])).rejects.toBeTruthy();
+      });
+      expect(
+        double.request.mock.calls.filter(([call]) => callPath(call) === MERGE),
+      ).toHaveLength(2);
+    },
+  );
 });

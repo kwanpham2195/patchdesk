@@ -274,6 +274,57 @@ describe("compact merge command", () => {
     expect(merge).toHaveBeenLastCalledWith("rebase", []);
   });
 
+  // Issue #756: Patchdesk refused these before sending anything, so none of them is an unknown outcome.
+  it.each([
+    ["stale", 400, /Refresh before merging/],
+    ["stale_head", 409, /Refresh before merging/],
+    ["not_fresh", 409, /Refresh before merging/],
+    ["merge_blocked", 400, /block this pull request/],
+    ["merge_acknowledgement_required", 400, /acknowledg/i],
+  ])(
+    "shows %s as a refusal and offers another merge",
+    async (code, status, message) => {
+      const user = userEvent.setup();
+      const merge = vi.fn(async () => {
+        throw new PatchdeskApiError(
+          "invalid_input",
+          status,
+          false,
+          "corr-merge-prewrite",
+          "Patchdesk refused this action.",
+          { error: code },
+        );
+      });
+      render(
+        <CompactMergeCommand
+          readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+          context={{
+            repo: "octo-org/patchdesk",
+            prNumber: 42,
+            title: "Protect review writes",
+            base: "sit",
+            head: "feat/review",
+            headSha: "abcdef1234567890",
+          }}
+          methods={["rebase"]}
+          onMerge={merge}
+          onRecoverMerge={async () => undefined}
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "Merge" }));
+
+      expect(await screen.findByText("Merge refused")).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toMatch(message);
+      expect(screen.queryByText("Merge not confirmed")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Check GitHub status" }),
+      ).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Merge" }));
+      expect(merge).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it("moves the selection to an allowed method when the allowed methods narrow", async () => {
     const user = userEvent.setup();
     const merge = vi.fn(async () => ({ state: "confirmed" as const }));
