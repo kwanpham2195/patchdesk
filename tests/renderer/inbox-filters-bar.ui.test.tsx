@@ -97,9 +97,14 @@ describe("InboxFiltersBar search length limit", () => {
       name: "Awaiting review from you",
     });
     expect(toggle.hasAttribute("disabled")).toBe(true);
-    expect(toggle.parentElement?.getAttribute("title")).toBe(
-      "Too long alongside the other filters",
-    );
+    const reason = screen.getByText("Too long alongside the other filters");
+    expect(reason.id).not.toBe("");
+    expect(toggle.getAttribute("aria-describedby")).toBe(reason.id);
+    expect(
+      screen
+        .getByRole("button", { name: "Your pull requests" })
+        .getAttribute("aria-describedby"),
+    ).toBe(reason.id);
     await user.click(toggle);
     expect(onPresetChange).not.toHaveBeenCalled();
   });
@@ -112,13 +117,22 @@ describe("InboxFiltersBar search length limit", () => {
     await user.click(screen.getByRole("button", { name: "More filters" }));
     await user.click(screen.getByLabelText("Review state"));
 
+    // The preset line beside the toggles and the menu's own line.
     expect(
-      screen.getByText("Too long alongside the other filters"),
-    ).toBeTruthy();
+      screen.getAllByText("Too long alongside the other filters"),
+    ).toHaveLength(2);
     const approved = screen.getByRole("option", { name: "Approved" });
     expect(approved.getAttribute("aria-disabled")).toBe("true");
     await user.click(approved);
     expect(onReviewStateChange).not.toHaveBeenCalled();
+  });
+
+  it("shows no preset reason while every preset fits", () => {
+    renderFiltersBar({});
+
+    expect(
+      screen.queryByText("Too long alongside the other filters"),
+    ).toBeNull();
   });
 
   it("names the filters a repository change dropped", () => {

@@ -117,6 +117,7 @@ export function InboxFiltersBar({
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }): React.JSX.Element {
+  const presetReasonId = useId();
   const inspectorToggleLabel = inspectorOpen
     ? "Hide review details"
     : "Show review details";
@@ -171,29 +172,33 @@ export function InboxFiltersBar({
         </Select>
         {INBOX_PRESET_FILTERS.map((option) => {
           const Icon = PRESET_FILTER_ICONS[option.preset];
-          const fits = changeFits({ preset: option.preset });
           return (
-            // The wrapper carries the reason because a disabled button takes no pointer events.
-            <span
+            <Toggle
               key={option.preset}
-              {...(fits ? {} : { title: INBOX_FILTER_FULL_REASON })}
+              pressed={preset === option.preset}
+              disabled={!changeFits({ preset: option.preset })}
+              {...(changeFits({ preset: option.preset })
+                ? {}
+                : { "aria-describedby": presetReasonId })}
+              onPressedChange={(pressed) =>
+                onPresetChange(pressed ? option.preset : undefined)
+              }
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 px-2 text-xs"
             >
-              <Toggle
-                pressed={preset === option.preset}
-                disabled={!fits}
-                onPressedChange={(pressed) =>
-                  onPresetChange(pressed ? option.preset : undefined)
-                }
-                size="sm"
-                variant="outline"
-                className="h-7 gap-1.5 px-2 text-xs"
-              >
-                <Icon className="size-3.5" aria-hidden="true" />
-                {option.label}
-              </Toggle>
-            </span>
+              <Icon className="size-3.5" aria-hidden="true" />
+              {option.label}
+            </Toggle>
           );
         })}
+        {INBOX_PRESET_FILTERS.some(
+          (option) => !changeFits({ preset: option.preset }),
+        ) ? (
+          <p id={presetReasonId} className="text-xs text-muted-foreground">
+            {INBOX_FILTER_FULL_REASON}
+          </p>
+        ) : null}
         {labelFilter}
         <MoreFiltersPopover
           changeFits={changeFits}
@@ -207,11 +212,15 @@ export function InboxFiltersBar({
           onBaseBranchChange={onBaseBranchChange}
           onClearInboxMoreFilters={onClearInboxMoreFilters}
         />
-        {droppedFilters.length === 0 ? null : (
-          <p role="status" className="text-xs text-muted-foreground">
-            {`Dropped ${droppedFilters.join(", ")} to fit the new repository's name in GitHub's search.`}
-          </p>
-        )}
+        {/* Always mounted so a screen reader announces the text when it appears; empty, it leaves the row. */}
+        <p
+          role="status"
+          className="text-xs text-muted-foreground empty:sr-only"
+        >
+          {droppedFilters.length === 0
+            ? ""
+            : `Dropped ${droppedFilters.join(", ")} to fit the new repository's name in GitHub's search.`}
+        </p>
       </div>
       <span className="shrink-0 text-[11px] whitespace-nowrap tabular-nums text-muted-foreground">
         {listPending
