@@ -2,7 +2,7 @@
 import type { RawJsonValue } from "../../domain/json";
 
 export const generatedPiAiCatalog: RawJsonValue = {
-  piVersion: "0.87.1",
+  piVersion: "0.99.2",
   catalog: [
     {
       provider: "amazon-bedrock",
@@ -145,6 +145,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "anthropic.claude-sonnet-5-5",
+          name: "Claude Sonnet 5.5",
           provider: "amazon-bedrock",
           cost: {
             input: 2,
@@ -575,6 +584,24 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "global.anthropic.claude-sonnet-5-5",
+          name: "Claude Sonnet 5.5 (Global)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "global.moonshotai.kimi-k3",
+          name: "Kimi K3 (Global)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
+        },
+        {
           id: "global.openai.gpt-5.6-luna",
           name: "GPT-5.6 Luna (Global)",
           provider: "amazon-bedrock",
@@ -611,8 +638,35 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "global.openai.gpt-6-luna",
+          name: "GPT-6 Luna (Global)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 0.1,
+            output: 0.5,
+          },
+        },
+        {
+          id: "global.openai.gpt-6-sol",
+          name: "GPT-6 Sol (Global)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
           id: "global.xai.grok-4.6",
           name: "Grok 4.6 (Global)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 6,
+          },
+        },
+        {
+          id: "global.xai.grok-4.7",
+          name: "Grok 4.7 (Global)",
           provider: "amazon-bedrock",
           cost: {
             input: 2,
@@ -1007,6 +1061,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "openai.gpt-6-luna",
+          name: "GPT-6 Luna",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 0.11,
+            output: 0.55,
+          },
+        },
+        {
+          id: "openai.gpt-6-sol",
+          name: "GPT-6 Sol",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 11,
+          },
+        },
+        {
+          id: "openai.gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 11,
+          },
+        },
+        {
           id: "openai.gpt-oss-120b",
           name: "gpt-oss-120b",
           provider: "amazon-bedrock",
@@ -1367,6 +1448,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "us.moonshotai.kimi-k3",
+          name: "Kimi K3 (US)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 3.3,
+            output: 16.5,
+          },
+        },
+        {
           id: "us.openai.gpt-5.6-luna",
           name: "GPT-5.6 Luna (US)",
           provider: "amazon-bedrock",
@@ -1403,6 +1493,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "us.openai.gpt-6-luna",
+          name: "GPT-6 Luna (US)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 0.11,
+            output: 0.55,
+          },
+        },
+        {
+          id: "us.openai.gpt-6-sol",
+          name: "GPT-6 Sol (US)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 11,
+          },
+        },
+        {
+          id: "us.openai.gpt-6.1-sol",
+          name: "GPT-6.1 Sol (US)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 11,
+          },
+        },
+        {
           id: "us.writer.palmyra-x4-v1:0",
           name: "Palmyra X4 (US)",
           provider: "amazon-bedrock",
@@ -1423,6 +1540,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "us.xai.grok-4.6",
           name: "Grok 4.6 (US)",
+          provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 6.6,
+          },
+        },
+        {
+          id: "us.xai.grok-4.7",
+          name: "Grok 4.7 (US)",
           provider: "amazon-bedrock",
           cost: {
             input: 2.2,
@@ -1658,6 +1784,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "claude-sonnet-5",
           name: "Claude Sonnet 5",
+          provider: "anthropic",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "claude-sonnet-5-5",
+          name: "Claude Sonnet 5.5",
           provider: "anthropic",
           cost: {
             input: 2,
@@ -1976,6 +2111,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
+          provider: "azure-openai-responses",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "gpt-daybreak-blue-latest",
+          name: "Daybreak Blue",
+          provider: "azure-openai-responses",
+          cost: {
+            input: 4,
+            output: 20,
+          },
+        },
+        {
+          id: "gpt-daybreak-red-latest",
+          name: "Daybreak Red",
+          provider: "azure-openai-responses",
+          cost: {
+            input: 12.5,
+            output: 75,
+          },
+        },
+        {
           id: "gpt-realtime-2.1",
           name: "GPT-Realtime-2.1",
           provider: "azure-openai-responses",
@@ -2136,6 +2298,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 5,
             output: 25,
+          },
+        },
+        {
+          id: "claude-opus-5.5",
+          name: "Claude Opus 5.5",
+          provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 4,
+            output: 20,
           },
         },
         {
@@ -2334,6 +2505,24 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 10,
             output: 50,
+          },
+        },
+        {
+          id: "gpt-6-luna",
+          name: "GPT-6 Luna",
+          provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.5,
+          },
+        },
+        {
+          id: "gpt-6-sol",
+          name: "GPT-6 Sol",
+          provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 2,
+            output: 10,
           },
         },
         {
@@ -2554,42 +2743,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
       provider: "fireworks",
       models: [
         {
-          id: "accounts/fireworks/models/deepseek-v4-flash-0731",
-          name: "DeepSeek V4 Flash 0731",
-          provider: "fireworks",
-          cost: {
-            input: 0.22,
-            output: 0.66,
-          },
-        },
-        {
-          id: "accounts/fireworks/models/deepseek-v4-flash-vision-exp",
-          name: "DeepSeek V4 Flash Vision Exp",
-          provider: "fireworks",
-          cost: {
-            input: 0.22,
-            output: 0.66,
-          },
-        },
-        {
-          id: "accounts/fireworks/models/deepseek-v4-pro",
-          name: "DeepSeek V4 Pro",
-          provider: "fireworks",
-          cost: {
-            input: 1.2,
-            output: 1.2,
-          },
-        },
-        {
-          id: "accounts/fireworks/models/deepseek-v4-pro-0813",
-          name: "DeepSeek V4 Pro 0813",
-          provider: "fireworks",
-          cost: {
-            input: 1.32,
-            output: 3.96,
-          },
-        },
-        {
           id: "accounts/fireworks/models/deepseek-v4p1-flash",
           name: "DeepSeek V4.1 Flash",
           provider: "fireworks",
@@ -2599,12 +2752,12 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "accounts/fireworks/models/glm-5p2",
-          name: "GLM 5.2",
+          id: "accounts/fireworks/models/ember-1",
+          name: "Ember-1",
           provider: "fireworks",
           cost: {
-            input: 1.4,
-            output: 4.4,
+            input: 3,
+            output: 15,
           },
         },
         {
@@ -2644,24 +2797,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "accounts/fireworks/models/kimi-k2p6",
-          name: "Kimi K2.6",
-          provider: "fireworks",
-          cost: {
-            input: 0.95,
-            output: 4,
-          },
-        },
-        {
-          id: "accounts/fireworks/models/kimi-k2p7-code",
-          name: "Kimi K2.7 Code",
-          provider: "fireworks",
-          cost: {
-            input: 0.95,
-            output: 4,
-          },
-        },
-        {
           id: "accounts/fireworks/models/kimi-k3",
           name: "Kimi K3",
           provider: "fireworks",
@@ -2671,30 +2806,12 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "accounts/fireworks/models/minimax-m2p7",
-          name: "MiniMax-M2.7",
-          provider: "fireworks",
-          cost: {
-            input: 1.2,
-            output: 1.2,
-          },
-        },
-        {
           id: "accounts/fireworks/models/minimax-m3",
           name: "MiniMax-M3",
           provider: "fireworks",
           cost: {
             input: 0.3,
             output: 1.2,
-          },
-        },
-        {
-          id: "accounts/fireworks/models/muse-glimmer-30b",
-          name: "Muse Glimmer 30B",
-          provider: "fireworks",
-          cost: {
-            input: 0.35,
-            output: 1.5,
           },
         },
         {
@@ -2713,15 +2830,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0.05,
             output: 0.2,
-          },
-        },
-        {
-          id: "accounts/fireworks/models/qwen3p7-plus",
-          name: "Qwen 3.7 Plus",
-          provider: "fireworks",
-          cost: {
-            input: 0.4,
-            output: 1.6,
           },
         },
         {
@@ -2749,24 +2857,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0.22,
             output: 0.66,
-          },
-        },
-        {
-          id: "accounts/fireworks/routers/deepseek-pro-latest",
-          name: "DeepSeek Pro Latest",
-          provider: "fireworks",
-          cost: {
-            input: 1.32,
-            output: 3.96,
-          },
-        },
-        {
-          id: "accounts/fireworks/routers/glm-5p2-fast",
-          name: "GLM 5.2 Fast",
-          provider: "fireworks",
-          cost: {
-            input: 2.1,
-            output: 6.6,
           },
         },
         {
@@ -4133,15 +4223,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "magistral-small",
-          name: "Magistral Small",
-          provider: "mistral",
-          cost: {
-            input: 0.5,
-            output: 1.5,
-          },
-        },
-        {
           id: "ministral-3b-latest",
           name: "Ministral 3B (latest)",
           provider: "mistral",
@@ -4918,6 +4999,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
+          provider: "openai",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "gpt-daybreak-blue-latest",
+          name: "Daybreak Blue",
+          provider: "openai",
+          cost: {
+            input: 4,
+            output: 20,
+          },
+        },
+        {
+          id: "gpt-daybreak-red-latest",
+          name: "Daybreak Red",
+          provider: "openai",
+          cost: {
+            input: 12.5,
+            output: 75,
+          },
+        },
+        {
           id: "gpt-realtime-2.1",
           name: "GPT-Realtime-2.1",
           provider: "openai",
@@ -5105,6 +5213,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "claude-sonnet-5",
           name: "Claude Sonnet 5",
+          provider: "opencode",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "claude-sonnet-5-5",
+          name: "Claude Sonnet 5.5",
           provider: "opencode",
           cost: {
             input: 2,
@@ -5454,6 +5571,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
+          provider: "opencode",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
           id: "grok-4.5",
           name: "Grok 4.5",
           provider: "opencode",
@@ -5465,6 +5591,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "grok-4.6",
           name: "Grok 4.6",
+          provider: "opencode",
+          cost: {
+            input: 2,
+            output: 6,
+          },
+        },
+        {
+          id: "grok-4.7",
+          name: "Grok 4.7",
           provider: "opencode",
           cost: {
             input: 2,
@@ -5526,6 +5661,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "longcat-2.5-preview-free",
+          name: "LongCat 2.5 Preview Free",
+          provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
+        },
+        {
           id: "mimo-v2.6-flash-free",
           name: "MiMo-V2.6-Flash Free",
           provider: "opencode",
@@ -5568,15 +5712,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 1.25,
             output: 4.25,
-          },
-        },
-        {
-          id: "muse-spark-1.2-contributor-free",
-          name: "Muse Spark 1.2 Free",
-          provider: "opencode",
-          cost: {
-            input: 0,
-            output: 0,
           },
         },
         {
@@ -5642,6 +5777,24 @@ export const generatedPiAiCatalog: RawJsonValue = {
             output: 0.47,
           },
         },
+        {
+          id: "qwen3.8-max",
+          name: "Qwen3.8 Max",
+          provider: "opencode",
+          cost: {
+            input: 2,
+            output: 6,
+          },
+        },
+        {
+          id: "space-bunny-free",
+          name: "Space Bunny Free",
+          provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
+        },
       ],
     },
     {
@@ -5684,15 +5837,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "glm-5.1",
-          name: "GLM-5.1",
-          provider: "opencode-go",
-          cost: {
-            input: 1.4,
-            output: 4.4,
-          },
-        },
-        {
           id: "glm-5.2",
           name: "GLM-5.2",
           provider: "opencode-go",
@@ -5726,6 +5870,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0.2,
             output: 1.2,
+          },
+        },
+        {
+          id: "gpt-6-luna",
+          name: "GPT-6 Luna",
+          provider: "opencode-go",
+          cost: {
+            input: 0.1,
+            output: 0.5,
           },
         },
         {
@@ -5765,15 +5918,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "kimi-k2.6",
-          name: "Kimi K2.6",
-          provider: "opencode-go",
-          cost: {
-            input: 0.95,
-            output: 4,
-          },
-        },
-        {
           id: "kimi-k2.7-code",
           name: "Kimi K2.7 Code",
           provider: "opencode-go",
@@ -5798,6 +5942,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0.3,
             output: 1.2,
+          },
+        },
+        {
+          id: "longcat-2.5-preview-free",
+          name: "LongCat 2.5 Preview Free",
+          provider: "opencode-go",
+          cost: {
+            input: 0,
+            output: 0,
           },
         },
         {
@@ -5873,24 +6026,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "qwen3.6-plus",
-          name: "Qwen3.6 Plus",
-          provider: "opencode-go",
-          cost: {
-            input: 0.5,
-            output: 3,
-          },
-        },
-        {
-          id: "qwen3.7-max",
-          name: "Qwen3.7 Max",
-          provider: "opencode-go",
-          cost: {
-            input: 2.5,
-            output: 7.5,
-          },
-        },
-        {
           id: "qwen3.7-plus",
           name: "Qwen3.7 Plus",
           provider: "opencode-go",
@@ -5915,6 +6050,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 2,
             output: 6,
+          },
+        },
+        {
+          id: "space-bunny-free",
+          name: "Space Bunny Free",
+          provider: "opencode-go",
+          cost: {
+            input: 0,
+            output: 0,
           },
         },
       ],
@@ -5963,8 +6107,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek Flash Latest",
           provider: "openrouter",
           cost: {
-            input: 0.12,
-            output: 0.48,
+            input: 0.0198,
+            output: 0.396,
           },
         },
         {
@@ -5972,8 +6116,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek Pro Latest",
           provider: "openrouter",
           cost: {
-            input: 0.39996,
-            output: 1.19988,
+            input: 0.123,
+            output: 3.5,
           },
         },
         {
@@ -5981,8 +6125,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V4 Flash Latest",
           provider: "openrouter",
           cost: {
-            input: 0.03,
-            output: 0.8,
+            input: 0.0099,
+            output: 0.13068,
           },
         },
         {
@@ -6008,8 +6152,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "MoonshotAI: Kimi Latest",
           provider: "openrouter",
           cost: {
-            input: 1.4989,
-            output: 10.758,
+            input: 0.1941,
+            output: 7.3625,
           },
         },
         {
@@ -6062,8 +6206,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "xAI: Grok Latest",
           provider: "openrouter",
           cost: {
-            input: 1.6,
-            output: 4.8,
+            input: 2,
+            output: 6,
           },
         },
         {
@@ -6071,8 +6215,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Z.ai: GLM Flash Latest",
           provider: "openrouter",
           cost: {
-            input: 0.075,
-            output: 0.25,
+            input: 0.02,
+            output: 0.2475,
           },
         },
         {
@@ -6080,8 +6224,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Z.ai: GLM Latest",
           provider: "openrouter",
           cost: {
-            input: 0.6538,
-            output: 2.0548,
+            input: 0.13,
+            output: 4,
           },
         },
         {
@@ -6105,6 +6249,24 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "aion-labs/aion-3.0-mini",
           name: "AionLabs: Aion-3.0-Mini",
+          provider: "openrouter",
+          cost: {
+            input: 0.7,
+            output: 1.4,
+          },
+        },
+        {
+          id: "aion-labs/aion-3.5",
+          name: "AionLabs: Aion 3.5",
+          provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 6,
+          },
+        },
+        {
+          id: "aion-labs/aion-3.5-mini",
+          name: "AionLabs: Aion 3.5 Mini",
           provider: "openrouter",
           cost: {
             input: 0.7,
@@ -6154,15 +6316,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0.8,
             output: 3.2,
-          },
-        },
-        {
-          id: "anthropic/claude-3-haiku",
-          name: "Anthropic: Claude 3 Haiku",
-          provider: "openrouter",
-          cost: {
-            input: 0.25,
-            output: 1.25,
           },
         },
         {
@@ -6409,6 +6562,24 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "anthropic/claude-sonnet-5.5",
+          name: "Anthropic: Claude Sonnet 5.5",
+          provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "anthropic/claude-sonnet-5.5:batch",
+          name: "Anthropic: Claude Sonnet 5.5 (batch)",
+          provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 5,
+          },
+        },
+        {
           id: "arcee-ai/trinity-large-thinking",
           name: "Arcee AI: Trinity Large Thinking",
           provider: "openrouter",
@@ -6481,6 +6652,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "cohere/command-a-plus",
+          name: "Cohere: Command A+",
+          provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.5,
+          },
+        },
+        {
           id: "cohere/command-r-08-2024",
           name: "Cohere: Command R (08-2024)",
           provider: "openrouter",
@@ -6512,8 +6692,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V3",
           provider: "openrouter",
           cost: {
-            input: 0.32,
-            output: 0.89,
+            input: 0.2574,
+            output: 1.0287,
           },
         },
         {
@@ -6521,8 +6701,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V3 0324",
           provider: "openrouter",
           cost: {
-            input: 0.25,
-            output: 1,
+            input: 0.29,
+            output: 1.14,
           },
         },
         {
@@ -6557,7 +6737,7 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V3.1 Terminus",
           provider: "openrouter",
           cost: {
-            input: 0.27,
+            input: 0.3,
             output: 1,
           },
         },
@@ -6566,8 +6746,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V3.2",
           provider: "openrouter",
           cost: {
-            input: 0.269,
-            output: 0.4,
+            input: 0.28,
+            output: 0.42,
           },
         },
         {
@@ -6584,8 +6764,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V4 Flash 0423",
           provider: "openrouter",
           cost: {
-            input: 0.049,
-            output: 0.098,
+            input: 0.07854,
+            output: 0.15708,
           },
         },
         {
@@ -6593,8 +6773,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V4 Flash 0731",
           provider: "openrouter",
           cost: {
-            input: 0.04,
-            output: 0.64,
+            input: 0.01,
+            output: 1.28,
           },
         },
         {
@@ -6602,8 +6782,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V4 Flash Vision Exp",
           provider: "openrouter",
           cost: {
-            input: 0.22,
-            output: 0.66,
+            input: 0.2156,
+            output: 0.6468,
           },
         },
         {
@@ -6611,8 +6791,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V4 Pro 0423",
           provider: "openrouter",
           cost: {
-            input: 0.895578,
-            output: 1.791156,
+            input: 0.783,
+            output: 1.566,
           },
         },
         {
@@ -6629,8 +6809,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek: DeepSeek V4.1 Flash",
           provider: "openrouter",
           cost: {
-            input: 0.15,
-            output: 0.6,
+            input: 0.0198,
+            output: 0.396,
           },
         },
         {
@@ -6649,6 +6829,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0,
             output: 0,
+          },
+        },
+        {
+          id: "fireworks/ember-1",
+          name: "Fireworks: Ember-1",
+          provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 15,
           },
         },
         {
@@ -6985,15 +7174,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "inclusionai/ling-3.0-flash-fin:free",
-          name: "inclusionAI: Ling 3.0 Flash Fin (free)",
-          provider: "openrouter",
-          cost: {
-            input: 0,
-            output: 0,
-          },
-        },
-        {
           id: "inclusionai/ling-3.0-flash-sante:free",
           name: "inclusionAI: Ling 3.0 Flash Sante (free)",
           provider: "openrouter",
@@ -7007,17 +7187,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "inclusionAI: Ling 3.0 Flash VL",
           provider: "openrouter",
           cost: {
-            input: 0.06,
-            output: 0.18,
-          },
-        },
-        {
-          id: "inclusionai/ling-3.0-flash-vl:free",
-          name: "inclusionAI: Ling 3.0 Flash VL (free)",
-          provider: "openrouter",
-          cost: {
-            input: 0,
-            output: 0,
+            input: 0.021,
+            output: 0.0616,
           },
         },
         {
@@ -7097,8 +7268,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Meta: Muse Glimmer 30B",
           provider: "openrouter",
           cost: {
-            input: 0.3,
-            output: 1.2,
+            input: 0.35,
+            output: 1.5,
           },
         },
         {
@@ -7160,8 +7331,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "MiniMax: MiniMax M2",
           provider: "openrouter",
           cost: {
-            input: 0.255,
-            output: 1.02,
+            input: 0.3,
+            output: 1.2,
           },
         },
         {
@@ -7187,8 +7358,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "MiniMax: MiniMax M2.7",
           provider: "openrouter",
           cost: {
-            input: 0.3,
-            output: 1.2,
+            input: 0.21,
+            output: 0.84,
           },
         },
         {
@@ -7279,6 +7450,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 2,
             output: 6,
+          },
+        },
+        {
+          id: "mistralai/mistral-large-2512",
+          name: "Mistral: Mistral Large 3 2512",
+          provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 1.5,
           },
         },
         {
@@ -7448,8 +7628,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "MoonshotAI: Kimi K2.6",
           provider: "openrouter",
           cost: {
-            input: 0.95,
-            output: 4,
+            input: 0.65,
+            output: 3.41,
           },
         },
         {
@@ -7457,8 +7637,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "MoonshotAI: Kimi K2.7 Code",
           provider: "openrouter",
           cost: {
-            input: 0.7062,
-            output: 3.3,
+            input: 0.6712,
+            output: 3.35,
           },
         },
         {
@@ -7480,30 +7660,12 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
-          id: "nex-agi/nex-n2.5-mini:free",
-          name: "Nex AGI: Nex-N2.5-Mini (free)",
-          provider: "openrouter",
-          cost: {
-            input: 0,
-            output: 0,
-          },
-        },
-        {
           id: "nex-agi/nex-n2.5-pro",
           name: "Nex AGI: Nex-N2.5-Pro",
           provider: "openrouter",
           cost: {
             input: 0.075,
             output: 0.25,
-          },
-        },
-        {
-          id: "nex-agi/nex-n2.5-pro:free",
-          name: "Nex AGI: Nex-N2.5-Pro (free)",
-          provider: "openrouter",
-          cost: {
-            input: 0,
-            output: 0,
           },
         },
         {
@@ -7565,8 +7727,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "NVIDIA: Nemotron 3.5 Lightning",
           provider: "openrouter",
           cost: {
-            input: 0.07,
-            output: 0.2,
+            input: 0.06,
+            output: 0.16,
           },
         },
         {
@@ -8105,8 +8267,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "OpenAI: GPT-5.6 Sol Pro",
           provider: "openrouter",
           cost: {
-            input: 2,
-            output: 10,
+            input: 4,
+            output: 20,
           },
         },
         {
@@ -8272,6 +8434,42 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "openai/gpt-6.1-sol",
+          name: "OpenAI: GPT-6.1 Sol",
+          provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "openai/gpt-6.1-sol-pro",
+          name: "OpenAI: GPT-6.1 Sol Pro",
+          provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "openai/gpt-6.1-sol-pro:batch",
+          name: "OpenAI: GPT-6.1 Sol Pro (batch)",
+          provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 5,
+          },
+        },
+        {
+          id: "openai/gpt-6.1-sol:batch",
+          name: "OpenAI: GPT-6.1 Sol (batch)",
+          provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 5,
+          },
+        },
+        {
           id: "openai/gpt-audio",
           name: "OpenAI: GPT Audio",
           provider: "openrouter",
@@ -8303,8 +8501,17 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "OpenAI: gpt-oss-120b",
           provider: "openrouter",
           cost: {
-            input: 0.15,
-            output: 0.6,
+            input: 0.037,
+            output: 0.17,
+          },
+        },
+        {
+          id: "openai/gpt-oss-120b:batch",
+          name: "OpenAI: gpt-oss-120b (batch)",
+          provider: "openrouter",
+          cost: {
+            input: 0.0296,
+            output: 0.136,
           },
         },
         {
@@ -8450,6 +8657,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0,
             output: 0,
+          },
+        },
+        {
+          id: "perceptron/perceptron-mk1.5",
+          name: "Perceptron: Perceptron Mk1.5",
+          provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 1.5,
           },
         },
         {
@@ -8682,7 +8898,7 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Qwen: Qwen3 Next 80B A3B Instruct",
           provider: "openrouter",
           cost: {
-            input: 0.09,
+            input: 0.1,
             output: 1.1,
           },
         },
@@ -8718,8 +8934,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Qwen: Qwen3 VL 30B A3B Instruct",
           provider: "openrouter",
           cost: {
-            input: 0.13,
-            output: 0.52,
+            input: 0.15,
+            output: 0.6,
           },
         },
         {
@@ -8781,8 +8997,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Qwen: Qwen3.5-35B-A3B",
           provider: "openrouter",
           cost: {
-            input: 0.3125,
-            output: 1.25,
+            input: 0.1625,
+            output: 1.3,
           },
         },
         {
@@ -8836,7 +9052,7 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
           cost: {
             input: 0.32,
-            output: 2.7,
+            output: 3.2,
           },
         },
         {
@@ -8948,6 +9164,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "qwen/qwen3.8-max-prime",
+          name: "Qwen: Qwen3.8 Max Prime",
+          provider: "openrouter",
+          cost: {
+            input: 4,
+            output: 12,
+          },
+        },
+        {
           id: "qwen/qwen3.8-omni-flash",
           name: "Qwen: Qwen3.8 Omni Flash",
           provider: "openrouter",
@@ -9020,6 +9245,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "stealth/space-bunny-alpha",
+          name: "Space Bunny Alpha",
+          provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
+        },
+        {
           id: "stepfun/step-3.5-flash",
           name: "StepFun: Step 3.5 Flash",
           provider: "openrouter",
@@ -9060,8 +9294,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Tencent: Hy4 preview",
           provider: "openrouter",
           cost: {
-            input: 0.834,
-            output: 2.501,
+            input: 0.7506,
+            output: 2.2509,
           },
         },
         {
@@ -9107,6 +9341,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 2.5,
             output: 7.5,
+          },
+        },
+        {
+          id: "upstage/solar-mini4",
+          name: "Upstage: Solar Mini 4",
+          provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.2,
           },
         },
         {
@@ -9177,8 +9420,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "SpaceXAI: Grok 4.7",
           provider: "openrouter",
           cost: {
-            input: 1.6,
-            output: 4.8,
+            input: 2,
+            output: 6,
           },
         },
         {
@@ -9285,8 +9528,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Z.ai: GLM 4.7",
           provider: "openrouter",
           cost: {
-            input: 0.4,
-            output: 1.75,
+            input: 0.6,
+            output: 2.2,
           },
         },
         {
@@ -9321,8 +9564,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Z.ai: GLM 5.1",
           provider: "openrouter",
           cost: {
-            input: 0.966,
-            output: 3.036,
+            input: 0.9646,
+            output: 3.0316,
           },
         },
         {
@@ -9330,8 +9573,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Z.ai: GLM 5.2",
           provider: "openrouter",
           cost: {
-            input: 0.6496,
-            output: 2.0416,
+            input: 0.432,
+            output: 3.99,
           },
         },
         {
@@ -9339,8 +9582,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Z.ai: GLM 5.3",
           provider: "openrouter",
           cost: {
-            input: 0.6538,
-            output: 2.0548,
+            input: 1.4,
+            output: 4.4,
           },
         },
         {
@@ -9371,12 +9614,21 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "z-ai/glm-5.3-prime",
+          name: "Z.ai: GLM 5.3 Prime",
+          provider: "openrouter",
+          cost: {
+            input: 2.8,
+            output: 8.8,
+          },
+        },
+        {
           id: "z-ai/glm-5.3:batch",
           name: "Z.ai: GLM 5.3 (batch)",
           provider: "openrouter",
           cost: {
-            input: 0.72,
-            output: 2.4,
+            input: 0.45,
+            output: 2,
           },
         },
         {
@@ -9463,24 +9715,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0.3,
             output: 1.2,
-          },
-        },
-        {
-          id: "moonshotai/Kimi-K2.6",
-          name: "Kimi K2.6",
-          provider: "together",
-          cost: {
-            input: 1.2,
-            output: 4.5,
-          },
-        },
-        {
-          id: "moonshotai/Kimi-K2.7-Code",
-          name: "Kimi K2.7 Code",
-          provider: "together",
-          cost: {
-            input: 0.95,
-            output: 4,
           },
         },
         {
@@ -9773,7 +10007,7 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
           cost: {
             input: 0.4,
-            output: 2.5,
+            output: 2.4,
           },
         },
         {
@@ -9864,6 +10098,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 2,
             output: 6,
+          },
+        },
+        {
+          id: "alibaba/qwen3.8-max-prime",
+          name: "Qwen 3.8 Max Prime",
+          provider: "vercel-ai-gateway",
+          cost: {
+            input: 4,
+            output: 12,
           },
         },
         {
@@ -10074,6 +10317,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "anthropic/claude-sonnet-5.5",
+          name: "Claude Sonnet 5.5",
+          provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
           id: "arcee-ai/trinity-large-thinking",
           name: "Trinity Large Thinking",
           provider: "vercel-ai-gateway",
@@ -10186,8 +10438,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "DeepSeek V4 Flash Vision Exp",
           provider: "vercel-ai-gateway",
           cost: {
-            input: 0.22,
-            output: 0.66,
+            input: 0.2156,
+            output: 0.6468,
           },
         },
         {
@@ -10215,6 +10467,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 0.3,
             output: 1.2,
+          },
+        },
+        {
+          id: "fireworks/ember-1",
+          name: "Ember-1",
+          provider: "vercel-ai-gateway",
+          cost: {
+            input: 3,
+            output: 15,
           },
         },
         {
@@ -10375,17 +10636,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Ling 3.0 Flash Fin",
           provider: "vercel-ai-gateway",
           cost: {
-            input: 0,
-            output: 0,
-          },
-        },
-        {
-          id: "inclusionai/ling-3.0-flash-fin-free",
-          name: "Ling 3.0 Flash Fin (Free)",
-          provider: "vercel-ai-gateway",
-          cost: {
-            input: 0,
-            output: 0,
+            input: 0.075,
+            output: 0.22,
           },
         },
         {
@@ -10411,13 +10663,22 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Ling 3.0 Flash VL",
           provider: "vercel-ai-gateway",
           cost: {
+            input: 0.075,
+            output: 0.22,
+          },
+        },
+        {
+          id: "inclusionai/ling-3.1-flash",
+          name: "Ling 3.1 Flash",
+          provider: "vercel-ai-gateway",
+          cost: {
             input: 0,
             output: 0,
           },
         },
         {
-          id: "inclusionai/ling-3.0-flash-vl-free",
-          name: "Ling 3.0 Flash VL (Free)",
+          id: "inclusionai/ling-3.1-flash-free",
+          name: "Ling 3.1 Flash (Free)",
           provider: "vercel-ai-gateway",
           cost: {
             input: 0,
@@ -10431,6 +10692,15 @@ export const generatedPiAiCatalog: RawJsonValue = {
           cost: {
             input: 1.5,
             output: 3.5,
+          },
+        },
+        {
+          id: "meituan/longcat-2.5-preview",
+          name: "LongCat 2.5 Preview",
+          provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
           },
         },
         {
@@ -11271,6 +11541,24 @@ export const generatedPiAiCatalog: RawJsonValue = {
           },
         },
         {
+          id: "openai/gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
+          provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 10,
+          },
+        },
+        {
+          id: "openai/gpt-6.1-sol-fast",
+          name: "GPT-6.1 Sol (Fast)",
+          provider: "vercel-ai-gateway",
+          cost: {
+            input: 4,
+            output: 20,
+          },
+        },
+        {
           id: "openai/gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "vercel-ai-gateway",
@@ -11545,8 +11833,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Grok 4.7",
           provider: "vercel-ai-gateway",
           cost: {
-            input: 1.2,
-            output: 3.6,
+            input: 2,
+            output: 6,
           },
         },
         {
@@ -11608,7 +11896,7 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Inkling Small",
           provider: "vercel-ai-gateway",
           cost: {
-            input: 0.5,
+            input: 0.45,
             output: 1.2,
           },
         },
@@ -11761,8 +12049,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "GLM 5.2 Fast",
           provider: "vercel-ai-gateway",
           cost: {
-            input: 2.1,
-            output: 6.6,
+            input: 2.8,
+            output: 8.8,
           },
         },
         {
@@ -12145,5 +12433,5 @@ export const generatedPiAiCatalog: RawJsonValue = {
       ],
     },
   ],
-  digest: "61faea0902c6487fa1f8aaa2ee8e4ccc78bad3eafa15da0b3fb7317959eaede6",
+  digest: "41a06caf2022540d0ed40c65a6e3d6c501b0f0673a53f3a038f288995cfbd990",
 };

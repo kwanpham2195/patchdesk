@@ -10,7 +10,7 @@ import {
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-const PI_VERSION = "0.87.1";
+const PI_VERSION = "0.99.2";
 const NODE_FLOOR = ">=22.19.0";
 const UNUSED_RUNTIME_PACKAGE_PREFIXES = [
   "typescript@",

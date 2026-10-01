@@ -76,7 +76,7 @@ describe("stageInsightRuntime", () => {
         ),
       ),
     ).toMatchObject({
-      piVersion: "0.87.1",
+      piVersion: "0.99.2",
       catalogDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       nodeFloor: ">=22.19.0",
     });
@@ -164,7 +164,7 @@ async function createFixture() {
   await Promise.all([
     writeFile(
       join(source, "package.json"),
-      '{"dependencies":{"@earendil-works/pi-agent-core":"0.87.1","@earendil-works/pi-ai":"0.87.1"}}\n',
+      '{"dependencies":{"@earendil-works/pi-agent-core":"0.99.2","@earendil-works/pi-ai":"0.99.2"}}\n',
     ),
     writeFile(join(source, "pnpm-lock.yaml"), "lockfileVersion: '6.0'\n"),
     writeFile(join(source, "dist", "patchdesk-insight-runner.js"), ""),

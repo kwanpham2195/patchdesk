@@ -379,7 +379,7 @@ describe("desktop hardening", () => {
       [
         `${packagedRoot}/runtime-manifest.json`,
         JSON.stringify({
-          piVersion: "0.87.1",
+          piVersion: "0.99.2",
           catalogDigest,
           nodeFloor: ">=22.19.0",
           lockDigest: createHash("sha256").update(lock).digest("hex"),
@@ -426,7 +426,7 @@ describe("desktop hardening", () => {
     files.set(
       `${packagedRoot}/runtime-manifest.json`,
       JSON.stringify({
-        piVersion: "0.87.1",
+        piVersion: "0.99.2",
         flueVersion: "0.9.1",
         catalogDigest,
         nodeFloor: ">=22.19.0",
@@ -458,7 +458,7 @@ describe("desktop hardening", () => {
     // one. Only the resolution order keeps the stale runner out of a
     // `pnpm dev` run, which rebuilds `runtime/insight/dist` on every start.
     const manifest = JSON.stringify({
-      piVersion: "0.87.1",
+      piVersion: "0.99.2",
       catalogDigest,
       nodeFloor: ">=22.19.0",
       lockDigest: createHash("sha256").update(lock).digest("hex"),

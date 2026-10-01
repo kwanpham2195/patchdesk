@@ -96,7 +96,7 @@ export function fakePi(options: {
     if (args[0] === "--version") {
       const versionChild = new FakePiProcess(() => undefined);
       void (options.versionReleased ?? Promise.resolve()).then(() => {
-        versionChild.stdout.write(`${options.version ?? "0.87.1"}\n`);
+        versionChild.stdout.write(`${options.version ?? "0.99.2"}\n`);
         setImmediate(() => versionChild.emit("close", 0, null));
       });
       return asChildProcess(versionChild);
