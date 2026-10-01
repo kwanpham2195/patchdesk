@@ -21,7 +21,11 @@ import {
   type LocalReviewSession,
   type ReviewSession,
 } from "../domain/review-session";
-import type { GitReadExecutor } from "./review-worktree-service";
+import { configuredLocalPath } from "./local-checkout";
+import type {
+  GitReadExecutor,
+  ReviewWorktreeService,
+} from "./review-worktree-service";
 import { readObjectField } from "./read-object-field";
 import { ReviewPatchIndex } from "./review-patch-index";
 
@@ -60,6 +64,7 @@ export type ReviewDiffSource =
         | "path_unavailable"
         | "binary"
         | "too_large"
+        | "worktree_missing"
         | "github_read";
     };
 
@@ -81,6 +86,10 @@ export class ReviewDiffSourceService {
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
     private readonly git: GitReadExecutor,
+    private readonly worktrees: Pick<
+      ReviewWorktreeService,
+      "restoreMissingWorktree"
+    >,
     private readonly patchReader: PreparedPatchReader = filesystemPatchReader,
   ) {}
 
@@ -152,6 +161,16 @@ export class ReviewDiffSourceService {
     if (oldPath._tag === "err" || newPath._tag === "err") {
       return ok({ state: "unavailable", reason: "path_unavailable" });
     }
+    // Clear cache deletes worktree directories but keeps the session refs, so
+    // a Review opened afterwards rebuilds its checkout before any read (#616).
+    const restored = await this.worktrees.restoreMissingWorktree({
+      profileId: profileId.value,
+      sessionId: sessionId.value,
+      sourceKind: pullRequest ? "pull_request" : "local",
+      localPath: configuredLocalPath(profile.value, session.value.key),
+    });
+    if (restored._tag === "err")
+      return ok({ state: "unavailable", reason: "worktree_missing" });
     const oldAbsent = /^--- \/dev\/null$/m.test(rawFilePatch);
     const newAbsent = /^\+\+\+ \/dev\/null$/m.test(rawFilePatch);
     const oldRef = oldAbsent

@@ -208,6 +208,10 @@ describe("local API current Review capability boundary", () => {
     });
     const patchPath = paths.patchFile(profileId, sessionId);
     await mkdir(dirname(patchPath), { recursive: true });
+    // The review's checkout is on disk, so opening it rebuilds nothing.
+    await mkdir(paths.worktreeDirectory(profileId, sessionId), {
+      recursive: true,
+    });
     await writeFile(
       patchPath,
       "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",

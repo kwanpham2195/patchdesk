@@ -48,6 +48,7 @@ export type ReviewDiffUnavailableReason =
   | "path_unavailable"
   | "binary"
   | "too_large"
+  | "worktree_missing"
   | "github_read";
 
 type DiffSourceResponse =
@@ -391,6 +392,7 @@ const unavailableReasonSchema = v.picklist([
   "path_unavailable",
   "binary",
   "too_large",
+  "worktree_missing",
   "github_read",
 ]);
 

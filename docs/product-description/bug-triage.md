@@ -13,7 +13,7 @@ The table records each disposition. Open entries need a fix or product decision;
 | B-10 | The Reviewers control never loads on a merged or closed Review                           | medium   | Review workbench / Conversation    | fixed                  | [#186](https://github.com/kwanpham2195/patchdesk/issues/186)                                                               |
 | B-11 | Generate and Regenerate are disabled on a merged or closed Review with no reason         | medium   | Review workbench / Insights        | fixed                  | [#187](https://github.com/kwanpham2195/patchdesk/issues/187)                                                               |
 | B-12 | The Checks control opens PR overview on Merge readiness                                  | medium   | Review workbench / Merge           | fixed                  | [#188](https://github.com/kwanpham2195/patchdesk/issues/188)                                                               |
-| B-13 | Context and Preview stay unavailable when the Review worktree is missing                 | medium   | Review workbench / Diff            | fix (named follow-up)  | —                                                                                                                          |
+| B-13 | Context and Preview stay unavailable when the Review worktree is missing                 | medium   | Review workbench / Diff            | fixed                  | [#616](https://github.com/kwanpham2195/patchdesk/issues/616)                                                               |
 | B-15 | A failed load from a Visited row leaves the destination on the missing Review            | medium   | Visited pull requests column       | fixed                  | [#615](https://github.com/kwanpham2195/patchdesk/issues/615)                                                               |
 | B-17 | The inline composer shortcut starts a review while its hint says comment                 | medium   | Review workbench / Inline comments | fixed                  | [#617](https://github.com/kwanpham2195/patchdesk/issues/617)                                                               |
 | B-25 | Local drafts lose their lines after the coding agent commits                             | medium   | Local Review / coding agent        | fixed                  | [#491](https://github.com/kwanpham2195/patchdesk/issues/491)                                                               |
@@ -105,7 +105,8 @@ The table records each disposition. Open entries need a fix or product decision;
 - **Severity:** `medium`. Two reading features disappear for every affected Review with a misleading reason and no recovery short of a new revision.
 - **Decision needed:** `fix`, named follow-up per the independent review: rebuild the worktree on demand, or add a distinct reason and copy for a missing local checkout.
 - **Raised by:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#open-questions-and-verification), [Persistence and recovery](foundations/persistence-and-recovery.md#open-questions-and-verification), [Data and recovery](settings/data-and-recovery.md#open-questions-and-verification).
-- **Issue:** —
+- **Disposition:** Fixed. Opening a file's source re-creates a missing worktree from the session's pinned refs, pruning the stale registration first; when that fails, the reason is `worktree_missing`, not `github_read`.
+- **Issue:** [#616](https://github.com/kwanpham2195/patchdesk/issues/616), closed
 
 ### B-15: A failed load from a Visited row leaves the destination on the missing Review
 

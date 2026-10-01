@@ -108,7 +108,7 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 - The cleanup buttons are enabled with an active workspace. Confirmations, success, failure, and the no-active-workspace state still need live checks.
 - Confirm focus behavior for both cleanup confirmations and after Settings closes on success.
 - Confirm what the maintainer sees if a protected session becomes active after the confirmation opens.
-- Confirm the Review workbench a maintainer reaches after Clear cache when its represented-review worktree was removed. Reviews with missing worktrees can show Context unavailable and no Preview; see [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
+- Confirm the Review workbench a maintainer reaches after Clear cache when its represented-review worktree was removed. Opening a Review with a missing worktree re-creates it, so Context and Preview work again; they stay unavailable only when it cannot be re-created. See [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
 - When Clear local review data finishes, the Visited pull requests column reads again and drops the removed Reviews. The retention sweep does not yet refresh the column ([#740](https://github.com/kwanpham2195/patchdesk/issues/740)); see [Visited pull requests](../foundations/visited-pull-requests.md#open-questions-and-verification) and [B-16](../bug-triage.md#b-16-the-visited-pull-requests-column-keeps-rows-for-removed-reviews).
 - Confirm whether a failed retention sweep has any visible Settings indication beyond redacted activity.
 
