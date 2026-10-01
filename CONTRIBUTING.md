@@ -8,7 +8,7 @@ used across the codebase.
 
 ## Development environment
 
-- pnpm 8.8.0 and Node >= 22.19.0 (pinned in `package.json`). Electron 43.1.1
+- pnpm 8.8.0 and Node >= 22.19.0 (pinned in `package.json`). Electron 43.7.7
   embeds a compatible Node release.
 - `pnpm install` installs the pre-commit hook automatically (husky).
 - Development runs on macOS; `pnpm package:mac` builds the release package.

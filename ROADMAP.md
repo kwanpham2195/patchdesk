@@ -14,9 +14,10 @@ README must find what to read and what to run.
 
 ## Now
 
-- **Fix the open bugs an outside user would hit.** A merge GitHub refuses
-  locks the Review (#691). A missing Review worktree is blamed on GitHub
-  (#616). Smaller bugs: #549, #550, #615, #617–#623, #692.
+- **Fix the open bugs an outside user would hit.** #741 holds the order. A
+  merge GitHub refuses locks the Review (#691). A missing Review worktree is
+  blamed on GitHub (#616). Smaller bugs: #549, #615, #617–#623, #692, #699,
+  #740.
 - **Keep Electron patched.** #696, #697, #698.
 - **Live-check resolved UX friction.** Most resolved items in
   `docs/product-description/ux-friction.md` say "Not checked live". Check them
