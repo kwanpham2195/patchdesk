@@ -10,8 +10,9 @@ export type RefusalSettlement =
   | { readonly _tag: "OutcomeUnknown" };
 
 /**
- * The one place a GitHub refusal becomes `github_refused` (ADR 0046, issue
- * #755). A refusal is final with no read when `refusalFinality` says a landed
+ * The one place a GitHub refusal is settled (ADR 0046, issue #755). It
+ * returns `Refused` with the cause and each service maps that to its own
+ * reason. A refusal is final with no read when `refusalFinality` says a landed
  * first delivery cannot produce it. Otherwise `isUnchanged` runs the kind's
  * existing read, and the refusal is final only when it shows the state the
  * write would change is still unchanged. A final refusal records the

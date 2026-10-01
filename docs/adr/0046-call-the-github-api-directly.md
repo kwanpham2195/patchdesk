@@ -423,7 +423,7 @@ landed first delivery could have produced it:
   GitHub does not implement the endpoint at all.
 - `settleRefusedWrite` in `src/services/refused-write-settlement.ts` is the one
   helper. When the refusal is final it records the rejection, releases the
-  lock, and the service answers `github_refused` with the cause. When the read
+  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); `github_refused` for the other families arrives in slices 2 to 5. When the read
   fails, is incomplete, or shows the intended state, or when the rejection
   cannot be recorded, the write stays outcome unknown and ADR 0035 recovery
   settles it with the same read.

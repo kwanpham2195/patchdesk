@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fixed a merge that GitHub answered with not found (404) or not implemented (415, 501) being reported as not confirmed and locking the Review. Merge now shows Merge refused with its cause: the pull request could not be found, or GitHub does not offer this merge and it should be done on GitHub. Merge refusals now run on one shared rule that the other GitHub writes will move onto. #755
+- Fixed a merge that GitHub answered with not found (404) being reported as not confirmed and locking the Review. Merge now shows Merge refused: the pull request could not be found. A merge GitHub answers with not implemented (415, 501) now gets its own copy, pointing to merging on GitHub, with no extra read. Merge refusals now run on one shared rule that the other GitHub writes will move onto. #755
 
 - Fixed Review details and the row's Brief tag on Pull requests showing Not run for an Insight that had finished, until Refresh pull requests was pressed. The screen now reads Insight state from local records when it is shown and when a run settles, without asking GitHub. #692
 

@@ -284,7 +284,11 @@ describe("compact merge command", () => {
     // Issue #755: GitHub's refusal names its cause; no raw GitHub text and no status check.
     ["merge_head_changed", 409, /pull request changed on GitHub/],
     ["merge_not_mergeable", 409, /branch rules or settings do not allow/],
-    ["not_found", 404, /could not find what the merge needs/],
+    [
+      "not_found",
+      404,
+      /Patchdesk or GitHub could not find what the merge needs/,
+    ],
     ["merge_unsupported", 409, /does not offer merging .* Merge it on GitHub/],
   ])(
     "shows %s as a refusal and offers another merge",

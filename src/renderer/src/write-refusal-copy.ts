@@ -12,7 +12,7 @@ export function refusalCausePhrase(
 ): string {
   switch (cause) {
     case "not_found":
-      return `GitHub could not find what the ${action} needs. It may have been deleted.`;
+      return `Patchdesk or GitHub could not find what the ${action} needs.`;
     case "conflict":
       return `GitHub refused the ${action} because the pull request changed on GitHub.`;
     case "not_allowed":
