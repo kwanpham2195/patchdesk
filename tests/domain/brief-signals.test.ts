@@ -145,6 +145,66 @@ describe("briefSignals", () => {
     });
   });
 
+  it("flags ignored errors, concurrency, secret-like values, and injection candidates in added code", () => {
+    const result = signals([
+      edited(
+        "internal/role/service.go",
+        ["\treturn nil"],
+        [
+          "\t_ = err",
+          "\tgo func() { s.refresh(ctx) }()",
+          '\tquery := "SELECT * FROM role WHERE id = " + id',
+          '\tapiKey := "sk_live_abcdefghijklmnop"',
+          '\tlog.Printf("refreshed %s", session.token)',
+        ],
+      ),
+      edited(
+        "src/load.ts",
+        ["load();"],
+        [
+          "await Promise.all(jobs.map(run));",
+          "fetchAll().catch(() => {});",
+          "panel.innerHTML = html;",
+        ],
+      ),
+      edited(
+        "tests/load.test.ts",
+        ["a"],
+        ['const token = "test-token-123456";'],
+      ),
+    ]);
+    expect(result.row("errors_ignored")?.count).toBe(2);
+    expect(result.row("concurrency")?.count).toBe(2);
+    expect(result.row("injection_candidates")?.count).toBe(2);
+    expect(result.row("secret_like")).toMatchObject({
+      count: 2,
+      paths: ["internal/role/service.go"],
+    });
+  });
+
+  it("does not flag a returned error, a typed token field, or a parameterized query", () => {
+    const result = signals([
+      edited(
+        "internal/role/repo.go",
+        ["\treturn nil"],
+        [
+          "\tif err != nil { return err }",
+          "\ttype Session struct { token string }",
+          '\tlog.Panicf("cannot get profile-postgres-password: %v", err)',
+          '\treturn fmt.Sprintf("Bearer %v", token)',
+          '\trow := db.QueryRow("SELECT * FROM role WHERE id = $1", id)',
+        ],
+      ),
+    ]);
+    for (const kind of [
+      "errors_ignored",
+      "concurrency",
+      "secret_like",
+      "injection_candidates",
+    ] as const)
+      expect(result.row(kind)?.count).toBe(0);
+  });
+
   it("counts moved, move-following, and generated files as skimmable and raises nothing else for them", () => {
     const result = signals(
       [

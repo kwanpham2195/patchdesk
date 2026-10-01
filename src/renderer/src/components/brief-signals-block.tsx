@@ -31,7 +31,7 @@ export function SignalsBlock({
             <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               {group.title}
             </span>
-            <ul className="flex min-w-0 flex-col gap-1.5">
+            <ul className="flex min-w-0 flex-col gap-0.5">
               {group.kinds.map((kind) => {
                 const signal = byKind.get(kind);
                 return signal === undefined ? null : (
@@ -53,23 +53,27 @@ function SignalRow({
 }): React.JSX.Element {
   const lit = signal.count > 0;
   const warns = briefSignalWarns(signal.kind);
-  const dotClassName = !lit
-    ? "border border-muted-foreground/40"
+  const tone = !lit
+    ? { row: "", dot: "invisible", label: "text-muted-foreground/60" }
     : warns
-      ? "bg-diff-modified-fg"
-      : "bg-diff-added-fg";
+      ? {
+          row: "rounded bg-diff-modified-fg/10",
+          dot: "bg-diff-modified-fg",
+          label: "font-medium",
+        }
+      : { row: "rounded bg-accent", dot: "bg-diff-added-fg", label: "" };
   return (
-    <li className="flex min-w-0 flex-col">
+    <li className={`flex min-w-0 flex-col px-1.5 py-1 ${tone.row}`}>
       <span className="flex min-w-0 items-center gap-2">
         <span
           aria-hidden
-          className={`size-2 shrink-0 rounded-full ${dotClassName}`}
+          className={`size-2 shrink-0 rounded-full ${tone.dot}`}
         />
-        <span className={lit ? "" : "text-muted-foreground"}>
-          {BRIEF_SIGNAL_LABELS[signal.kind]}
-        </span>
-        <span className="ml-auto shrink-0 font-mono tabular-nums text-muted-foreground">
-          {signal.count}
+        <span className={tone.label}>{BRIEF_SIGNAL_LABELS[signal.kind]}</span>
+        <span
+          className={`ml-auto shrink-0 font-mono tabular-nums ${lit ? "font-medium" : "text-muted-foreground/60"}`}
+        >
+          {lit ? signal.count : "–"}
         </span>
       </span>
       {lit && (signal.detail !== undefined || signal.paths.length > 0) ? (

@@ -21,6 +21,10 @@ export const BRIEF_SIGNAL_KINDS = [
   "tests_weakened",
   "tests_added",
   "leftovers",
+  "errors_ignored",
+  "concurrency",
+  "secret_like",
+  "injection_candidates",
   "skimmable",
 ] as const;
 
@@ -45,6 +49,10 @@ export const BRIEF_SIGNAL_LABELS = {
   tests_weakened: "Tests weakened",
   tests_added: "Tests added",
   leftovers: "Debug leftovers",
+  errors_ignored: "Errors ignored",
+  concurrency: "Concurrency",
+  secret_like: "Secret-like values",
+  injection_candidates: "Injection candidates",
   skimmable: "To skim",
 } as const satisfies Record<BriefSignalKind, string>;
 
@@ -65,7 +73,17 @@ export const BRIEF_SIGNAL_GROUPS: ReadonlyArray<{
     ],
   },
   { title: "Tests", kinds: ["tests_weakened", "tests_added"] },
-  { title: "Code", kinds: ["leftovers", "skimmable"] },
+  {
+    title: "Code",
+    kinds: [
+      "leftovers",
+      "errors_ignored",
+      "concurrency",
+      "secret_like",
+      "injection_candidates",
+      "skimmable",
+    ],
+  },
 ];
 
 /** A lit row that asks for a closer look; `tests_added` and `skimmable` only inform. */
@@ -110,6 +128,19 @@ const SKIPPED_TEST =
 const TEST_CASE = /\b(?:it|test)\(\s*['"`]|\bfunc Test\w*\(|\bdef test_\w*\(/;
 const LEFTOVER =
   /\bconsole\.(?:log|debug)\(|\bdebugger\b|\bfmt\.Print(?:ln|f)?\(|\bspew\.|\bTODO\b|\bFIXME\b/;
+
+/** `_ = err`, `_, _ =`, an empty catch, a swallowing `.catch`, an errcheck suppression, or `except: pass`. */
+const ERROR_IGNORED =
+  /^\s*_\s*=\s*\w*[Ee]rr\w*\b|\b_\s*,\s*_\s*:?=|\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(?:\{\s*\}|undefined|null)\s*\)|nolint:errcheck|\bexcept\b[^:]*:\s*pass\b/;
+/** A goroutine, channel, lock, atomic, `select`, or JavaScript fan-out and timer. */
+const CONCURRENCY =
+  /^\s*go\s+(?:func\b|\w+[.(])|\bsync\.\w+|\bchan\b|^\s*select\s*\{|\batomic\.\w+|\bPromise\.(?:all|race|any|allSettled)\(|\bsetInterval\(|\bnew Worker\(/;
+/** A literal that looks like a credential, or a log call passed a credential-named value. */
+const SECRET_LIKE =
+  /AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY|\bgh[pousr]_[A-Za-z0-9]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\b(?:password|passwd|secret|token|api_?key|apikey)\w*\s*(?::=|=|:)\s*['"`][^'"`\s]{8,}['"`]|\b(?:(?:log|logger|slog|console)\w*\.\w+|fmt\.Print\w*)\([^;]*,\s*[\w.]*(?:token|password|authorization|cookie|secret)\w*\s*[,)]/i;
+/** SQL built from strings, a shell command built from strings, or raw HTML. */
+const INJECTION =
+  /\b(?:SELECT|INSERT|UPDATE|DELETE)\b[^;'"`]*['"`]\s*\+|\+\s*['"`][^'"`]*\b(?:WHERE|VALUES|SET|FROM)\b|\bSprintf\(\s*"[^"]*\b(?:SELECT|INSERT|UPDATE|DELETE|WHERE)\b|`[^`]*\b(?:SELECT|INSERT|UPDATE|DELETE)\b[^`]*\$\{|\b(?:exec|execSync|spawn)\([^)]*\+|\bexec\.Command\(\s*"(?:sh|bash)"|\.innerHTML\s*=|dangerouslySetInnerHTML/;
 
 type FileText = {
   readonly added: Array<string>;
@@ -158,6 +189,8 @@ export function briefSignals(
       skim.generated += 1;
     else {
       for (const kind of areas(file.path, name, bucket)) add(kind, file.path);
+      if (bucket !== "tests")
+        add("secret_like", file.path, countMatches(lines.added, SECRET_LIKE));
       if (MANIFESTS.has(name)) lockfilesOnly = false;
       if (bucket === "tests") {
         if (file.status === "removed") {
@@ -188,6 +221,17 @@ export function briefSignals(
         routes.removed += removed;
         add("routes", file.path, added + removed);
         add("leftovers", file.path, countMatches(lines.added, LEFTOVER));
+        add(
+          "errors_ignored",
+          file.path,
+          countMatches(lines.added, ERROR_IGNORED),
+        );
+        add("concurrency", file.path, countMatches(lines.added, CONCURRENCY));
+        add(
+          "injection_candidates",
+          file.path,
+          countMatches(lines.added, INJECTION),
+        );
       }
     }
   }
