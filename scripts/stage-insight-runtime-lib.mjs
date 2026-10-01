@@ -132,6 +132,12 @@ export async function stageInsightRuntime({ projectRoot, runtimeRoot, run }) {
           recursive: true,
           force: true,
         }),
+        // The OpenAI SDK ships its TypeScript sources beside the compiled
+        // entries; at 7.x they put the runtime past its 30 MiB limit.
+        rm(join(virtualStore, entry.name, "node_modules", "openai", "src"), {
+          recursive: true,
+          force: true,
+        }),
       ]),
   ]);
   await Promise.all([

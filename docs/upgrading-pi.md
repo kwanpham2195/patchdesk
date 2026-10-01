@@ -163,6 +163,13 @@ The root `pnpm typecheck` does not include `runtime/insight`, and its Vitest
 suite does not type-check, so the second line is the only check that the
 runner still compiles against the new Pi types.
 
+Package smoke caps `insight-runtime` at 30 MiB, and a vendor SDK bump inside
+Pi can cross it (0.87.1 pruned chord's esbuild; 0.99.2 pruned the OpenAI
+SDK's TypeScript `src/`). Find the growth with `du -sk` over
+`release/mac-arm64/Patchdesk.app/Contents/Resources/insight-runtime/node_modules/.pnpm/*`,
+and prune payload the runner never loads in
+`scripts/stage-insight-runtime-lib.mjs` before raising the limit.
+
 Then launch the app and run one Insight against a newly added model, using a
 low-cost one on a provider the maintainer has a key for (see `AGENTS.md` on
 spending). The run dialog listing the new model proves the catalog; the run
