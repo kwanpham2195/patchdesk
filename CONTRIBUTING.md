@@ -405,14 +405,17 @@ did not run package smoke or release operations either.
 
 ## Release
 
-A release is one tag. You prepare the version locally and push the tag; the
+A release is one tag. You prepare the version on a branch, land the release
+commit through a pull request, and push the tag on the merged commit; the
 `Release` workflow then runs the checks, builds the package, and opens a
 draft GitHub release for you to read before anyone can install it. Nothing
 is published without a person publishing it. The `Pull request gates`
 workflow stays paused (see above); only `Release` runs in CI, since
 2026-09-30.
 
-1. Start on `main` with a clean working tree, up to date with `origin`.
+1. Branch `chore/release-<version>` from `origin/main` with a clean working
+   tree: `git fetch origin && git switch -c chore/release-0.2.0 origin/main`.
+   Every change to `main` goes through a pull request, releases included.
 
 2. Prepare the version:
 
@@ -427,14 +430,23 @@ workflow stays paused (see above); only `Release` runs in CI, since
    step. It never commits, tags, or pushes: the diff is meant to be read
    first.
 
-3. Read the diff, then commit, tag, and push:
+3. Read the diff, commit, push the branch, and land the pull request with a
+   rebase merge. The repository allows only rebase merges, and GitHub's
+   rebase merge rewrites the commit SHA, so the tag goes on the merged
+   commit, not the branch commit:
 
    ```bash
    git add package.json CHANGELOG.md
    git commit -m "chore: release 0.2.0"
+   git push -u origin chore/release-0.2.0
+   gh pr create
+   gh pr merge <number> --rebase --delete-branch
+   git switch main && git pull --ff-only
    git tag v0.2.0
-   git push origin main v0.2.0
+   git push origin v0.2.0
    ```
+
+   Pushing the tag starts the `Release` workflow.
 
 4. The `Release` workflow (`.github/workflows/release.yml`) runs on
    `macos-14` when the tag is pushed. Watch it with `gh run watch`. If it

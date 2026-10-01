@@ -15,8 +15,9 @@ const PACKAGE_VERSION = /^(?<prefix>\s*"version":\s*")[^"]*(?=")/m;
  *
  * This writes two files and nothing else. It does not commit, tag, or push,
  * because a release is worth reading before it is published: the maintainer
- * reviews the diff, then runs the printed commands. Pushing the tag is what
- * starts the `Release` workflow.
+ * reviews the diff, then runs the printed commands. The release commit lands
+ * through a pull request; the tag goes on the merged commit, and pushing the
+ * tag is what starts the `Release` workflow.
  *
  * @param {{
  *   readonly args: ReadonlyArray<string>;
@@ -126,10 +127,14 @@ export async function prepareRelease({
   output.stdout(
     `Prepared ${version}. package.json and CHANGELOG.md are written; nothing is committed, tagged, or pushed.\n` +
       `\nReview the diff, then run:\n\n` +
+      `  git switch -c chore/release-${version}\n` +
       `  git add package.json CHANGELOG.md\n` +
       `  git commit -m "chore: release ${version}"\n` +
+      `  git push -u origin chore/release-${version}\n` +
+      `\nOpen a pull request and land it with a rebase merge. Rebase merging rewrites the commit, so tag the merged commit:\n\n` +
+      `  git switch main && git pull --ff-only\n` +
       `  git tag ${tag}\n` +
-      `  git push origin main ${tag}\n` +
+      `  git push origin ${tag}\n` +
       `\nPushing the tag runs the Release workflow, which builds the macOS package and opens a draft GitHub release for you to publish.\n`,
   );
   return 0;

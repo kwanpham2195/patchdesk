@@ -61,7 +61,10 @@ describe("prepareRelease", () => {
       "## Unreleased\n\n## 0.2.0 - 2026-08-30\n\n- Added a disk image",
     );
     expect(output.stdoutText()).toContain("git tag v0.2.0");
-    expect(output.stdoutText()).toContain("git push origin main v0.2.0");
+    expect(output.stdoutText()).toContain("git push origin v0.2.0");
+    expect(output.stdoutText()).toContain(
+      "git push -u origin chore/release-0.2.0",
+    );
   });
 
   it("refuses a dirty working tree and leaves both files alone", async () => {
