@@ -22,7 +22,7 @@ const mergeRefusals: ReadonlyArray<{
   {
     reason: "not_found",
     cause: "not_found",
-    nextStep: "Refresh to see whether the pull request still exists.",
+    nextStep: "Refresh the Review, then try again.",
   },
 ];
 
