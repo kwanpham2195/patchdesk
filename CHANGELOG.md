@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed the Markdown file Preview in the Diff tab to draw Mermaid diagrams, as pull request descriptions do. #771
+
 ## 0.0.16 - 2026-10-01
 
 - Added Signals to the top of the Brief: fixed checks computed from the diff, grouped as Areas, Tests, and Code, each row shown with a count when it matched. #721

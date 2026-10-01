@@ -2,12 +2,16 @@ import {
   MarkdownContent,
   type MarkdownContentPolicy,
 } from "./markdown-content";
+import { MermaidDiagram } from "./mermaid-diagram";
 import { FileHeaderPath } from "./review-diff-file-header";
 
 const markdownFilePreviewPolicy: MarkdownContentPolicy = {
   renderLink: ({ children, key }) => <span key={key}>{children}</span>,
   renderImage: ({ key }) => <span key={key}>[Image omitted]</span>,
   renderHtml: ({ children, key }) => <span key={key}>{children}</span>,
+  renderMermaid: ({ source, key }) => (
+    <MermaidDiagram key={key} source={source} />
+  ),
 };
 
 /**
