@@ -1,4 +1,8 @@
 import type { PullRequestRef } from "../../domain/pull-request";
+import {
+  isAllowedExternalUrl,
+  normalizeExternalHosts,
+} from "../../main/external-navigation";
 
 /** Builds the immutable GitHub page used as the sole base for review links. */
 export function pullRequestPageUrl(pr: PullRequestRef): URL {
@@ -31,6 +35,23 @@ export function resolvePullRequestExternalUrl(
   pr: PullRequestRef | undefined,
 ): string | undefined {
   return resolveAgainstPullRequest(value, pr)?.toString();
+}
+
+/**
+ * The host a link opens, when that host is outside the GitHub navigation
+ * allowlist, so the reader sees where a click goes before making it. The
+ * allowlist is the main process's own: `github.com` plus the profile's host,
+ * which is the pull request's host.
+ */
+export function externalLinkHost(
+  value: string,
+  pr: PullRequestRef | undefined,
+): string | undefined {
+  const resolved = resolveAgainstPullRequest(value, pr);
+  if (resolved === undefined || pr === undefined) return undefined;
+  const allowedHosts = normalizeExternalHosts(["github.com", pr.host]);
+  if (isAllowedExternalUrl(resolved.toString(), allowedHosts)) return undefined;
+  return resolved.hostname.toLowerCase().replace(/\.$/, "");
 }
 
 /** Applies every guard that does not depend on the URL's host. */

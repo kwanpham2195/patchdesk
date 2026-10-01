@@ -101,8 +101,28 @@ describe("PullRequestDescription", () => {
       "https://github.com/octo-org/patchdesk/wiki",
     );
 
-    await user.click(screen.getByRole("button", { name: "Other" }));
+    await user.click(screen.getByRole("button", { name: "Other example.com" }));
     expect(openExternalHttps).toHaveBeenCalledWith("https://example.com/docs");
+  });
+
+  it("shows the destination host beside a link that leaves GitHub, as part of the control", () => {
+    renderWithImageCache(
+      <PullRequestDescriptionPreview
+        markdown={
+          "[Docs](/octo-org/patchdesk/wiki) [Site](https://github.com/octo-org) [Look](https://Example.com./x) [Same](https://docs.github.com/a)"
+        }
+        pullRequest={pullRequest}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Docs" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Site" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Look example.com" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Same docs.github.com" }),
+    ).toBeTruthy();
   });
 
   it("gives a raw HTML anchor its own words and no empty control beside them", async () => {
@@ -347,7 +367,7 @@ describe("PullRequestDescription", () => {
       ).toBeTruthy();
 
       await user.click(
-        within(dialog).getByRole("button", { name: "Open link" }),
+        within(dialog).getByRole("button", { name: "Open link example.com" }),
       );
       expect(openExternalHttps).toHaveBeenCalledWith(
         "https://example.com/full.png",
