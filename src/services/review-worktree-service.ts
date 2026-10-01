@@ -522,19 +522,16 @@ export class ReviewWorktreeService {
     return await this.restores.run(
       `${input.profileId}:${input.sessionId}`,
       async () =>
-        (await pathExists(path)) ? ok(undefined) : this.restoreAt(path, input),
+        (await pathExists(path)) ? ok(undefined) : this.restoreAt(input),
     );
   }
 
-  private async restoreAt(
-    path: string,
-    input: {
-      readonly profileId: WorkspaceProfileId;
-      readonly sessionId: ReviewSessionId;
-      readonly sourceKind: "pull_request" | "local";
-      readonly localPath: string | undefined;
-    },
-  ): Promise<Result<void, WorktreeRestoreFailure>> {
+  private async restoreAt(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly sessionId: ReviewSessionId;
+    readonly sourceKind: "pull_request" | "local";
+    readonly localPath: string | undefined;
+  }): Promise<Result<void, WorktreeRestoreFailure>> {
     const failed = err({ _tag: "WorktreeRestoreFailed" as const });
     if (input.localPath === undefined) return failed;
     let repositoryPath: string;
