@@ -2,7 +2,7 @@ node_modules/
 dist/
 out/
 out-electron/
-release/
+/release/
 playwright-report/
 test-results/
 .DS_Store

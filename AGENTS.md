@@ -38,7 +38,7 @@ For runtime work, make sure the dev log tails are live in herdr:
 - The maintainer authorizes restarting the dev app and log tail in this workspace's `devapp` and `logs` Herdr tabs. Find their current pane IDs with `herdr tab list --workspace "$HERDR_WORKSPACE_ID"` and `herdr pane list --workspace "$HERDR_WORKSPACE_ID"`; verify the tab, cwd, and pane output before control. Inspect with `herdr pane process-info --pane <id>`. If a process group is present, SIGINT that group before restarting; ctrl+c to the pane does not stop it. Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; `herdr pane wait-output` can match old scrollback. Report restarts. If the tabs are missing or ownership is unclear, ask before stopping or creating a pane. Never kill a process outside those panes.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
-- `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits. The Pull request gates and Release GitHub workflows are paused; follow CONTRIBUTING.md for the local gates and do not assume GitHub status checks will run.
+- `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; follow CONTRIBUTING.md for the local gates. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
 - Run it as `pnpm check > /tmp/check.txt 2>&1; echo "EXIT=$?"` and read the
   file. Piping it into `tail`, `head`, or `grep` reports the pipeline's exit
   status rather than the command's, so a failing gate reads as a passing one.
@@ -241,6 +241,8 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 - `product-description`: a user-visible behaviour change updates its page under `docs/product-description/`; a new page, checklist, or triage entry follows the skill's "Resuming and extending an existing repo" steps. Read that folder's README.md and goal.md before writing.
 - `librarian`: caching or consulting an upstream repository or dependency source.
 - `update-changelog`: before editing a changelog.
+- `release`: cutting or publishing a release, bumping the Homebrew cask, or installing the latest version. Repo skill in `.agents/skills/release/`.
+- `run-program`: batching issues into a tracking issue, or running or resuming one. Repo skill in `.agents/skills/run-program/`.
 
 ## References
 
