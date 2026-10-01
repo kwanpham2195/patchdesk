@@ -40,7 +40,7 @@ describe("InboxFiltersBar More filters text fields", () => {
     renderFiltersBar({ onAuthorChange });
 
     await user.click(screen.getByRole("button", { name: "More filters" }));
-    await user.type(screen.getByLabelText("Author"), "John Smith");
+    await user.type(await screen.findByLabelText("Author"), "John Smith");
     await user.keyboard("{Enter}");
 
     expect(onAuthorChange).toHaveBeenCalledWith("John Smith");
@@ -69,7 +69,7 @@ describe("InboxFiltersBar More filters text fields", () => {
     renderFiltersBar({ onBaseBranchChange });
 
     await user.click(screen.getByRole("button", { name: "More filters" }));
-    await user.type(screen.getByLabelText("Base branch"), "release 1.0");
+    await user.type(await screen.findByLabelText("Base branch"), "release 1.0");
     await user.keyboard("{Enter}");
     expect(screen.getByRole("alert").textContent).toBe("No spaces or quotes");
 
@@ -115,13 +115,13 @@ describe("InboxFiltersBar search length limit", () => {
     renderFiltersBar({ changeFits: fitsOnlyClearing, onReviewStateChange });
 
     await user.click(screen.getByRole("button", { name: "More filters" }));
-    await user.click(screen.getByLabelText("Review state"));
+    await user.click(await screen.findByLabelText("Review state"));
 
+    const approved = await screen.findByRole("option", { name: "Approved" });
     // The preset line beside the toggles and the menu's own line.
     expect(
       screen.getAllByText("Too long alongside the other filters"),
     ).toHaveLength(2);
-    const approved = screen.getByRole("option", { name: "Approved" });
     expect(approved.getAttribute("aria-disabled")).toBe("true");
     await user.click(approved);
     expect(onReviewStateChange).not.toHaveBeenCalled();
