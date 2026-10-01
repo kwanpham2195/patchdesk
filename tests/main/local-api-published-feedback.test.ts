@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 import { err, ok, type Result } from "../../src/domain/result";
 import type { RawJsonValue } from "../../src/domain/json";
 import { registerPublishedFeedbackRoutes } from "../../src/main/routes/published-feedback-routes";
-import type {
-  PublishedFeedbackFailure,
-  PublishedFeedbackReceipt,
-  PublishedFeedbackService,
+import {
+  GitHubRefusedPublishedFeedbackWrite,
+  type PublishedFeedbackFailure,
+  type PublishedFeedbackReceipt,
+  type PublishedFeedbackService,
 } from "../../src/services/published-feedback-service";
 
 const expected = {
@@ -183,4 +184,40 @@ describe("published-feedback local API", () => {
     expect(JSON.stringify(body)).not.toContain("cause");
     expect(JSON.stringify(body)).not.toContain("operation");
   });
+
+  it.each([
+    [
+      "/v1/reviews/published-comments/edit",
+      "edit",
+      { ...common, commentId: "201", body: "edited" },
+    ],
+    [
+      "/v1/reviews/published-comments/delete",
+      "delete",
+      { ...common, commentId: "201", confirmation: true },
+    ],
+    [
+      "/v1/reviews/published-reviews/dismiss",
+      "dismiss",
+      {
+        ...common,
+        publishedReviewId: "101",
+        message: "stale",
+        confirmation: true,
+      },
+    ],
+  ] as const)(
+    "answers a refused %s with 409 and the refusal cause",
+    async (path, key, body) => {
+      const fixture = routeFixture({
+        [key]: err(new GitHubRefusedPublishedFeedbackWrite("unprocessable")),
+      });
+      const response = await fixture.request(path, body);
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: "github_refused",
+        cause: "unprocessable",
+      });
+    },
+  );
 });

@@ -265,6 +265,16 @@ describe("useDirectConversationActions", () => {
     },
   );
 
+  it("reports a refused dismissal without arming recovery", async () => {
+    const rendered = renderActions(() =>
+      failure({ error: "github_refused", cause: "unprocessable" }, 409),
+    );
+    await expect(
+      rendered.result.current.dismissReview("101", "stale"),
+    ).rejects.toMatchObject({ kind: "github_refused", status: 409 });
+    expect(rendered.requireRecovery).not.toHaveBeenCalled();
+  });
+
   it.each(cases)(
     "$name journals only valid evidence and schedules one exact observation",
     async ({ invoke, receipt, evidence }) => {

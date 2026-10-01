@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
+import type { GitHubWriteFailure } from "../../src/domain/github-write";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import { err, ok, type Result } from "../../src/domain/result";
-import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
+import {
+  GitHubRefusedPublishedFeedbackWrite,
+  PublishedFeedbackService,
+} from "../../src/services/published-feedback-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import type { ReviewRefreshFailure } from "../../src/services/review-refresh-service";
 
@@ -73,6 +77,13 @@ const feedback = {
   issueComments: [],
   complete: true,
 };
+type FeedbackFixture = Omit<typeof feedback, "reviews"> & {
+  readonly reviews: ReadonlyArray<
+    Omit<(typeof feedback)["reviews"][number], "event"> & {
+      readonly event: "APPROVED" | "DISMISSED";
+    }
+  >;
+};
 const unavailable = {
   _tag: "GitHubWriteFailure" as const,
   category: "unavailable" as const,
@@ -81,9 +92,9 @@ const unavailable = {
 
 function fixture(
   options: {
-    readonly write?: () => Promise<
-      ReturnType<typeof ok<void>> | ReturnType<typeof err<typeof unavailable>>
-    >;
+    readonly write?: () => Promise<Result<void, GitHubWriteFailure>>;
+    /** Successive published-feedback reads: the first is the pre-write authorization read, the next the landed check. The last answer repeats. */
+    readonly feedbackReads?: ReadonlyArray<FeedbackFixture | "failure">;
     readonly refresh?: () => Promise<Result<undefined, ReviewRefreshFailure>>;
     readonly headSha?: string;
     readonly publishedFeedback?: typeof feedback;
@@ -91,6 +102,7 @@ function fixture(
 ) {
   const trace: string[] = [];
   let operation: ReviewWriteOperation | undefined;
+  let readCount = 0;
   const appendConfirmed = vi.fn(async () => {
     trace.push("journal");
   });
@@ -141,6 +153,15 @@ function fixture(
       if (this.receiver !== "published-feedback-gateway")
         throw new Error("GitHub gateway receiver was lost");
       trace.push("authorization");
+      const reads = options.feedbackReads;
+      if (reads !== undefined) {
+        const next = reads[Math.min(readCount, reads.length - 1)] ?? "failure";
+        readCount += 1;
+        // SAFETY: a failed read is modelled by an opaque error; the service only checks its tag.
+        return next === "failure"
+          ? err({ _tag: "GitHubReadFailed" } as never)
+          : ok(next);
+      }
       return ok(options.publishedFeedback ?? feedback);
     },
     async updateReviewComment(input: UpdateReviewCommentInput) {
@@ -379,6 +400,160 @@ describe("PublishedFeedbackService", () => {
     await built.service.deleteComment(command);
     expect(built.writer).toHaveBeenCalledTimes(2);
     expect(built.operations.reject).toHaveBeenCalledTimes(2);
+  });
+
+  describe("refused writes (issue #755)", () => {
+    const refusal = (cause: "unprocessable" | "not_found" | "unsupported") =>
+      err({
+        _tag: "GitHubWriteFailure" as const,
+        category: "refused" as const,
+        message: "GitHub refused the request.",
+        cause,
+      });
+    const refusedWith = (cause: string) => ({
+      _tag: "err",
+      error: { reason: "github_refused", cause },
+    });
+    const outcomeUnknown = { _tag: "err", error: "outcome_unknown" };
+    const lockedState = {
+      _tag: "OutcomeUnknown",
+      resolution: "check_required",
+    };
+    const withReview = (event: "APPROVED" | "DISMISSED"): FeedbackFixture => ({
+      ...feedback,
+      reviews: feedback.reviews.map((review) => ({ ...review, event })),
+    });
+    const withoutComment = { ...feedback, comments: [] };
+    const incomplete = { ...feedback, complete: false };
+    const edit = { ...input, commentId: "201", body: "edited" };
+    const remove = { ...input, commentId: "201", confirmation: true };
+    const dismiss = {
+      ...input,
+      publishedReviewId: "101",
+      message: "stale",
+      confirmation: true,
+    };
+
+    it("a refused edit is final with no landed-check read and releases the lock", async () => {
+      const built = fixture({ write: async () => refusal("unprocessable") });
+      await expect(built.service.editComment(edit)).resolves.toEqual(
+        refusedWith("unprocessable"),
+      );
+      expect(
+        built.trace.filter((entry) => entry === "authorization"),
+      ).toHaveLength(1);
+      expect(built.operation()).toBeUndefined();
+      expect(built.operations.reject).toHaveBeenCalledOnce();
+      expect(built.appendConfirmed).not.toHaveBeenCalled();
+      await built.service.editComment(edit);
+      expect(built.writer).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the lock when a final refusal cannot be recorded", async () => {
+      const built = fixture({ write: async () => refusal("unprocessable") });
+      built.operations.reject.mockResolvedValueOnce(
+        // SAFETY: the service only checks the result tag of a failed rejection.
+        err({ _tag: "StorageFailure" } as never),
+      );
+      await expect(built.service.editComment(edit)).resolves.toEqual(
+        outcomeUnknown,
+      );
+      expect(built.operation()?.state).toMatchObject(lockedState);
+    });
+
+    it("a refused delete is refused and unlocked while the comment still exists", async () => {
+      const built = fixture({
+        write: async () => refusal("not_found"),
+        feedbackReads: [feedback],
+      });
+      await expect(built.service.deleteComment(remove)).resolves.toEqual(
+        refusedWith("not_found"),
+      );
+      expect(built.operation()).toBeUndefined();
+      await built.service.deleteComment(remove);
+      expect(built.writer).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ["the comment is gone", [feedback, withoutComment]],
+      ["the read after the refusal fails", [feedback, "failure"]],
+      ["the read after the refusal is incomplete", [feedback, incomplete]],
+    ] as const)(
+      "a refused delete stays outcome unknown when %s",
+      async (_name, feedbackReads) => {
+        const built = fixture({
+          write: async () => refusal("not_found"),
+          feedbackReads,
+        });
+        await expect(built.service.deleteComment(remove)).resolves.toEqual(
+          outcomeUnknown,
+        );
+        expect(built.operation()?.state).toMatchObject(lockedState);
+        expect(built.operations.reject).not.toHaveBeenCalled();
+      },
+    );
+
+    it("a refused dismissal is refused and unlocked while the review is not dismissed", async () => {
+      const built = fixture({
+        write: async () => refusal("unprocessable"),
+        feedbackReads: [withReview("APPROVED")],
+      });
+      await expect(built.service.dismissReview(dismiss)).resolves.toEqual(
+        refusedWith("unprocessable"),
+      );
+      expect(built.operation()).toBeUndefined();
+    });
+
+    it.each([
+      [
+        "the review reads dismissed",
+        [withReview("APPROVED"), withReview("DISMISSED")],
+      ],
+      [
+        "the review is missing",
+        [withReview("APPROVED"), { ...feedback, reviews: [] }],
+      ],
+      ["the read after the refusal fails", [withReview("APPROVED"), "failure"]],
+      [
+        "the read after the refusal is incomplete",
+        [withReview("APPROVED"), incomplete],
+      ],
+    ] as const)(
+      "a refused dismissal stays outcome unknown when %s",
+      async (_name, feedbackReads) => {
+        const built = fixture({
+          write: async () => refusal("unprocessable"),
+          feedbackReads,
+        });
+        await expect(built.service.dismissReview(dismiss)).resolves.toEqual(
+          outcomeUnknown,
+        );
+        expect(built.operation()?.state).toMatchObject(lockedState);
+      },
+    );
+
+    it("is final for an unsupported endpoint with no read", async () => {
+      const built = fixture({
+        write: async () => refusal("unsupported"),
+        feedbackReads: [feedback, withoutComment],
+      });
+      await expect(built.service.deleteComment(remove)).resolves.toEqual(
+        refusedWith("unsupported"),
+      );
+      expect(
+        built.trace.filter((entry) => entry === "authorization"),
+      ).toHaveLength(1);
+    });
+
+    it("exposes the refusal as a class the route can recognize", async () => {
+      const built = fixture({
+        write: async () => refusal("conflict" as never),
+      });
+      const result = await built.service.editComment(edit);
+      expect(result._tag === "err" && result.error).toBeInstanceOf(
+        GitHubRefusedPublishedFeedbackWrite,
+      );
+    });
   });
 
   it("returns confirmed success with reconciliation required when refresh fails", async () => {

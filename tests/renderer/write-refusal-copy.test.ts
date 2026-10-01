@@ -7,7 +7,12 @@ import {
   requestJson,
 } from "../../src/renderer/src/api-client";
 import { composerErrorMessage } from "../../src/renderer/src/components/review-diff-authoring-errors";
-import { THREAD_REPLY_MESSAGES } from "../../src/renderer/src/review-copy";
+import {
+  COMMENT_DELETE_MESSAGES,
+  COMMENT_EDIT_MESSAGES,
+  REVIEW_DISMISS_MESSAGES,
+  THREAD_REPLY_MESSAGES,
+} from "../../src/renderer/src/review-copy";
 import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
 import { installDesktopDouble } from "./fake-desktop-response";
 
@@ -63,4 +68,22 @@ describe("a refused conversation write", () => {
     expect(message).not.toContain("Check GitHub");
     expect(message).not.toContain(RAW);
   });
+
+  it.each([
+    ["published comment edit", COMMENT_EDIT_MESSAGES, "edit"],
+    ["published comment deletion", COMMENT_DELETE_MESSAGES, "deletion"],
+    ["review dismissal", REVIEW_DISMISS_MESSAGES, "dismissal"],
+  ] as const)(
+    "words a refused %s with the cause phrase and the action",
+    async (_name, messages, action) => {
+      const message = contextualMessage(
+        await refusalFailure("not_found"),
+        messages,
+      );
+
+      expect(message).toBe(refusalCausePhrase("not_found", action));
+      expect(message).not.toContain("Check GitHub");
+      expect(message).not.toContain(RAW);
+    },
+  );
 });

@@ -14,6 +14,8 @@ import {
 import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
+import { contextualMessage } from "../api-client";
+import { REVIEW_DISMISS_MESSAGES } from "../review-copy";
 import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewVerdictState } from "../../../domain/review-verdicts";
@@ -470,8 +472,10 @@ function ReviewSummaryEntry({
                     try {
                       await onDismiss(review.id, message);
                       setEditingDismissal(false);
-                    } catch {
-                      setError("Patchdesk could not dismiss this review.");
+                    } catch (cause) {
+                      setError(
+                        contextualMessage(cause, REVIEW_DISMISS_MESSAGES),
+                      );
                     } finally {
                       dismissingRef.current = false;
                       setDismissing(false);
