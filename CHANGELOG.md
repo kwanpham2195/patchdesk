@@ -4,6 +4,9 @@
 
 - Fixed a local Review that kept showing its old Refresh error after you reopened it, such as after choosing the moved checkout with Choose checkout in Settings → Workspace. Reopening a Review, or opening another one, now clears the error. #549
 - Fixed Review activity showing underscore phase names raw, such as `Retention_sweep`; it now reads `Retention sweep`. The Insights panel's no-model message no longer sends Codex and pi users to an API key: it names a provider API key exported in your shell profile, or the Codex or pi CLI on the PATH Patchdesk launches with, then relaunching Patchdesk. A model list that fails to load now has its own message. #622
+- Fixed keyboard focus staying on the page body after moving between Pull requests and a Review when the screen re-rendered before the next frame. The page heading now receives focus once per destination change. #619
+
+- Fixed the Walkthrough moving to another section when an arrow key, `j`, or `k` was pressed with Command, Control, Option, or Shift held, such as ⌘+Right. Modified keys now keep their usual meaning. #623
 
 - Fixed the Walkthrough moving to another section when an arrow key, `j`, or `k` was pressed with Command, Control, Option, or Shift held, such as ⌘+Right. Modified keys now keep their usual meaning. #623
 - Fixed Finding badges in Browse and on diff file headers counting Findings you had already dismissed or added to a review. A badge now counts only Findings that still need attention, the same rule as the Analysis headline, so a file you cleared loses its count and tone. The inline Finding card stays, where a dismissal is undone. #621
