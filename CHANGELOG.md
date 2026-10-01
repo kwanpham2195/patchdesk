@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the Visited column still listing Reviews that the daily retention sweep had removed, which led to a failed open when clicked. The column now reads again when a sweep removes Reviews. #740
+
 - Changed links in pull request descriptions and comments to show their destination host in a chip beside the link text when the host is not `github.com` or the Review's GitHub host, so a link whose text names one site and opens another is visible before the click. A link around a single image shows the host on the lightbox's Open link button. #699
 
 - Fixed the first-run Set up your workspace screen having no page heading, so keyboard and screen reader users landed on the page body instead of its title. The title is now the page heading and takes focus on arrival, like every other screen. #779

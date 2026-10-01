@@ -163,6 +163,8 @@ export type LocalApiConfiguration = {
    * Main-process-only; local integration tests keep it off.
    */
   readonly retentionSweep?: boolean;
+  /** Main-process push to the renderer when a sweep removed Reviews; absent tells no one. */
+  readonly reviewsRemovedBySweep?: () => void;
   /** Polls watched pull requests while the app runs (ADR 0045). Main-process-only; tests keep it off. */
   readonly watchedPullRequestPolling?: boolean;
   /** Where the MCP shim's socket listens (ADR 0052); absent starts no listener. */

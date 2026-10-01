@@ -20,7 +20,7 @@ export type VisitedPullRequestRows =
 export function useVisitedPullRequestRows(
   /** Empty while a workspace switch is in flight, which loads nothing. */
   profileId: string,
-  /** Moves on every Review open, so a just-opened pull request appears without a relaunch. */
+  /** Moves on every Review open and when the main process reports removed Reviews, so the column tracks the records without a relaunch. */
   reloadKey: number,
 ): VisitedPullRequestRows {
   const [state, setState] = useState<VisitedPullRequestRows>({ kind: "idle" });

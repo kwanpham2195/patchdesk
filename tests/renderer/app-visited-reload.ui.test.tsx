@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -133,6 +133,29 @@ describe("App Visited column after Clear local review data", () => {
       expect(requestsTo(double, "/v1/sidebar/reviews")).toBeGreaterThan(
         readsBefore,
       ),
+    );
+  });
+});
+
+describe("App Visited column after the retention sweep", () => {
+  it("reads the column again when the main process reports removed Reviews", async () => {
+    let rows = [visitedRow];
+    const double = installApp({
+      "/v1/sidebar/reviews": () => success({ rows, unreadable: 0 }),
+    });
+    await screen.findByRole("button", { name: /Visited pull request/ });
+    const readsBefore = requestsTo(double, "/v1/sidebar/reviews");
+
+    rows = [];
+    act(() => double.sendReviewsRemoved());
+
+    await waitFor(() =>
+      expect(requestsTo(double, "/v1/sidebar/reviews")).toBe(readsBefore + 1),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /Visited pull request/ }),
+      ).toBeNull(),
     );
   });
 });

@@ -17,6 +17,8 @@ export function startRetentionSweepScheduler(input: {
   readonly reviewRetention: Pick<ReviewRetention, "sweepProfile">;
   readonly enabled: boolean;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
+  /** Called after a profile's sweep removed at least one Review record. */
+  readonly reviewsRemoved?: () => void;
 }): RetentionSweepScheduler {
   if (!input.enabled) return { stop: async () => undefined };
 
@@ -54,6 +56,7 @@ async function sweepProfiles(input: {
   readonly storageManagement: Pick<StorageManagementService, "sweepRetained">;
   readonly reviewRetention: Pick<ReviewRetention, "sweepProfile">;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
+  readonly reviewsRemoved?: () => void;
 }): Promise<void> {
   await Promise.all(
     input.profiles.map(async (profile) => {
@@ -61,6 +64,11 @@ async function sweepProfiles(input: {
         const result = await input.storageManagement.sweepRetained(profile.id);
         // Superseded sessions next (#474, #478): the pass above leaves every Open Review's sessions.
         const superseded = await input.reviewRetention.sweepProfile(profile.id);
+        const removedReviews =
+          (result._tag === "ok" ? result.value.removedReviews : 0) +
+          (superseded._tag === "ok" ? superseded.value.removedReviews : 0);
+        // The Visited column lists these records, so the renderer must read again (#740).
+        if (removedReviews > 0) input.reviewsRemoved?.();
         if (result._tag === "err" || superseded._tag === "err")
           await recordSweepFailure(input.diagnostics, profile.id);
       } catch {

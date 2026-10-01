@@ -88,6 +88,9 @@ export async function installTestDesktopBridge(
       onInsightSettled() {
         return () => undefined;
       },
+      onReviewsRemoved() {
+        return () => undefined;
+      },
       onWatchedPullRequestChange() {
         return () => undefined;
       },
