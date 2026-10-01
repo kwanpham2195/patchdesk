@@ -51,9 +51,11 @@ Expect hits in exactly these places, and edit each one to NEW:
   `tests/main/main-desktop-hardening.test.ts` (three, plus one deliberate
   mismatch fixture that must stay a version other than NEW),
   `tests/scripts/stage-insight-runtime.test.ts` (two lines, one of them naming
-  both packages)
+  both packages), and `tests/adapters/pi-rpc-test-support.ts` (one: the
+  default `pi --version` of the fake `pi` CLI; any version above the RPC
+  minimum works, so it follows NEW to keep this search empty)
 
-That is 16 lines in 10 files. `perl -pi -e 's/OLD/NEW/g' <files>` does the
+That is 17 lines in 11 files. `perl -pi -e 's/OLD/NEW/g' <files>` does the
 edit; BSD `sed -i ''` loses its empty suffix under some shell wrappers.
 
 The three script pins are checked only by the release workflow, never on a PR,
@@ -118,6 +120,12 @@ Read the whole report. Three findings need action:
   `tests/adapters/pi-runtime-model-catalog.test.ts` and
   `runtime/insight/tests/generate-model-catalog.test.ts`. Then rerun step 3.
 
+  At 0.99.x three more modules stay out. `meta` and `radius` (since 0.87.1)
+  offer OAuth beside an API key, which the policy above does not settle.
+  `typesafe` (since 0.99.0) is classifier-only: its `TYPESAFE_MODELS` export
+  is empty, and the run dialog runs chat models only. It still ships in the
+  bundled runtime with the rest of `pi-ai`; #753 may call it through Pi.
+
 Pi may also drop a vendor SDK. `tests/scripts/stage-insight-runtime.test.ts`
 asserts the staged lock contains each provider SDK Pi wraps; if that loop fails
 at step 5, check Pi's `dist/api/<provider>-*.js` for the import. A provider
@@ -125,12 +133,20 @@ whose client was rewritten over Pi's own fetch keeps its models and loses only
 the lock entry: remove that one SDK from the list and say so in the commit
 body. A provider whose module is gone is a removal; report it.
 
+Since 0.99.0 a provider's data file in `dist/providers/data/` holds chat,
+image, and classifier entries, and one upstream id can have one entry per type
+(OpenRouter lists `openrouter/auto` as both). The generator imports each
+module's `*_MODELS` export, which Pi filters to chat models; never read the
+JSON data files or the `*_IMAGE_MODELS` and `*_CLASSIFIER_MODELS` exports.
+`runtime/insight/tests/generate-model-catalog.test.ts` fails if an image or
+classifier model reaches the catalog.
+
 Also confirm `openai/gpt-4-turbo` survived;
 `tests/adapters/pi-runtime-model-catalog.test.ts` pins it as a real fixture and
 a retirement reads as a catalog bug rather than a stale test.
 
 Done when: every rename is written down for the changelog, and the provider
-module list minus the seven excluded equals the generator's `CATALOGS`.
+module list minus the ten excluded equals the generator's `CATALOGS`.
 
 ## 5. Gate
 
@@ -139,8 +155,13 @@ passing test suite does not prove the packaged runtime still resolves.
 
 ```bash
 pnpm typecheck && pnpm typecheck:scripts && pnpm lint && pnpm test:all
+pnpm --dir runtime/insight exec tsc --noEmit
 pnpm package:mac && pnpm test:package-smoke
 ```
+
+The root `pnpm typecheck` does not include `runtime/insight`, and its Vitest
+suite does not type-check, so the second line is the only check that the
+runner still compiles against the new Pi types.
 
 Then launch the app and run one Insight against a newly added model, using a
 low-cost one on a provider the maintainer has a key for (see `AGENTS.md` on
