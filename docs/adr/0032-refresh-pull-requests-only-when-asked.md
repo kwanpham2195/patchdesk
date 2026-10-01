@@ -4,6 +4,12 @@
 > pull requests; it posts notifications and a badge dot and replaces no
 > displayed state.
 >
+> **Update 2026-10-01 (issue #692):** a row's Insight state is local, not
+> GitHub's. The screen re-reads it from local Insight records when it is shown
+> and when the main process reports a settled Insight run, with no listing
+> fetch and no timer. Rows, counts, and every GitHub-sourced field change only
+> when the maintainer refreshes.
+>
 > **Status: Accepted. Implemented in `ad02438..HEAD` on `main`** —
 > `InboxRefreshScheduler` and its focus polling, backoff ladder, and rate-limit
 > wait are gone; refresh happens only when the maintainer asks. Companion to

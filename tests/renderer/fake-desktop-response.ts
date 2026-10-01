@@ -66,6 +66,7 @@ export type DesktopDoubleExtras = Partial<
     | "onWindowFullScreen"
     | "onNotificationClick"
     | "onWatchedPullRequestChange"
+    | "onInsightSettled"
   >
 > & {
   /** Routes for privileged operations, keyed by `operation`. */
@@ -91,6 +92,8 @@ export type DesktopDouble = {
   readonly sendWindowFullScreen: (fullScreen: boolean) => void;
   /** Fires the listener registered through `onNotificationClick`, as the main process does after a click. */
   readonly sendNotificationClick: (click: DesktopNotificationClick) => void;
+  /** Fires the listener registered through `onInsightSettled`, as the main process does when an Insight run settles. */
+  readonly sendInsightSettled: () => void;
   /** Fires the listener registered through `onWatchedPullRequestChange`, as a poll that found a change does. */
   readonly sendWatchedPullRequestChange: (profileId: string) => void;
   /**
@@ -144,6 +147,7 @@ export function installDesktopDouble(
   let notificationClickListener:
     | ((click: DesktopNotificationClick) => void)
     | undefined;
+  let insightSettledListener: (() => void) | undefined;
   let watchedPullRequestChangeListener:
     | ((profileId: string) => void)
     | undefined;
@@ -189,6 +193,12 @@ export function installDesktopDouble(
         notificationClickListener = undefined;
       };
     },
+    onInsightSettled: (listener: () => void) => {
+      insightSettledListener = listener;
+      return () => {
+        insightSettledListener = undefined;
+      };
+    },
     onWatchedPullRequestChange: (listener: (profileId: string) => void) => {
       watchedPullRequestChangeListener = listener;
       return () => {
@@ -210,6 +220,7 @@ export function installDesktopDouble(
     sendWindowFullScreen: (fullScreen) =>
       windowFullScreenListener?.(fullScreen),
     sendNotificationClick: (click) => notificationClickListener?.(click),
+    sendInsightSettled: () => insightSettledListener?.(),
     sendWatchedPullRequestChange: (profileId) =>
       watchedPullRequestChangeListener?.(profileId),
     hasWindowFullScreenListener: () => windowFullScreenListener !== undefined,

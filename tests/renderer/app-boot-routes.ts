@@ -10,6 +10,7 @@ export const APP_BOOT_ROUTES = {
   "/v1/settings": () => success({}),
   "/v1/environment": () => success({}),
   "/v1/sidebar/reviews": () => success({ rows: [], unreadable: 0 }),
+  "/v1/inbox/insight-readiness": () => success({ rows: [] }),
   "/v1/watched-pull-requests": () => success({ pullRequests: [] }),
 } satisfies Readonly<Record<string, DesktopRoute>>;
 

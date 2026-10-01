@@ -73,6 +73,12 @@ export type DesktopNotificationClick =
 export const DESKTOP_WATCHED_PULL_REQUEST_CHANGE_CHANNEL =
   "patchdesk:watched-pull-request-change";
 
+/**
+ * Main-to-renderer: an Insight run finished or failed, so the Pull requests
+ * screen re-reads the Insight state of its rows from local records.
+ */
+export const DESKTOP_INSIGHT_SETTLED_CHANNEL = "patchdesk:insight-settled";
+
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
   readonly path: string;
@@ -139,6 +145,8 @@ export type PatchdeskDesktopApi = {
   onNotificationClick(
     listener: (click: DesktopNotificationClick) => void,
   ): () => void;
+  /** Fires when an Insight run finishes or fails, whichever Review it belongs to. */
+  onInsightSettled(listener: () => void): () => void;
   /** Fires with the profile id when a poll finds a change on one of its watched pull requests. */
   onWatchedPullRequestChange(listener: (profileId: string) => void): () => void;
   /**

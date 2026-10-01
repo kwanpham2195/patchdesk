@@ -3,7 +3,7 @@ import type {
   DashboardScreenState,
   Profile,
 } from "./renderer-models";
-import type { InboxResponse } from "./renderer-contracts";
+import type { InboxResponse, InboxRow } from "./renderer-contracts";
 import { record, stringArray } from "./json-guards";
 
 type WorkspaceState = {
@@ -43,6 +43,19 @@ export type WorkspaceAction =
       readonly dashboard: Dashboard;
       readonly screen: DashboardScreenState;
     }
+  | {
+      /**
+       * Each row's Insight state read again from local records. A result lands
+       * only on the row still showing the head it was read for, so a listing
+       * that arrived meanwhile is never overwritten by an older answer.
+       */
+      readonly _tag: "insightReadinessRead";
+      readonly rows: ReadonlyArray<{
+        readonly number: number;
+        readonly headSha: string;
+        readonly insights: InboxRow["insights"];
+      }>;
+    }
   | { readonly _tag: "refreshFailed" }
   | { readonly _tag: "refreshFinished" }
   | { readonly _tag: "cleared" };
@@ -80,6 +93,8 @@ export function workspaceReducer(
         screen: action.screen,
         refreshFailed: false,
       };
+    case "insightReadinessRead":
+      return withInsightReadiness(state, action.rows);
     case "refreshFailed":
       return { ...state, refreshFailed: true };
     case "refreshFinished":
@@ -92,6 +107,38 @@ export function workspaceReducer(
         screen: "loading",
       };
   }
+}
+
+/** Replaces `insights` on the rows whose number and head match; keeps the same state when nothing changed. */
+function withInsightReadiness(
+  state: WorkspaceState,
+  results: ReadonlyArray<{
+    readonly number: number;
+    readonly headSha: string;
+    readonly insights: InboxRow["insights"];
+  }>,
+): WorkspaceState {
+  const loaded = state.inbox;
+  if (loaded === undefined) return state;
+  let changed = false;
+  const rows = loaded.inbox.rows.map((row) => {
+    const result = results.find(
+      (candidate) =>
+        candidate.number === row.identity.number &&
+        candidate.headSha === row.currentHeadSha,
+    );
+    if (result === undefined) return row;
+    if (JSON.stringify(result.insights) === JSON.stringify(row.insights))
+      return row;
+    changed = true;
+    const { insights: _previous, ...rest } = row;
+    return result.insights === undefined
+      ? rest
+      : { ...rest, insights: result.insights };
+  });
+  return changed
+    ? { ...state, inbox: { ...loaded, inbox: { ...loaded.inbox, rows } } }
+    : state;
 }
 
 /**

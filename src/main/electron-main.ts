@@ -37,6 +37,7 @@ import {
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
+import { sendInsightSettled } from "./desktop-insight-settled-channel";
 import { sendNotificationClick } from "./desktop-notification-channel";
 import { createReviewWindow } from "./desktop-review-window";
 import { sendWatchedPullRequestChange } from "./desktop-watched-pull-request-channel";
@@ -44,6 +45,7 @@ import {
   createDesktopNotifier,
   type NotificationDestination,
 } from "./desktop-notifier";
+import type { DesktopNotifier } from "../services/desktop-notifier";
 import type { DesktopMenuAction } from "./ipc-contract";
 import {
   healthCheckLocalApi,
@@ -198,7 +200,7 @@ const githubFetch: GitHubFetch = (url, init) =>
   net.fetch(url, { ...init, cache: "no-store", credentials: "omit" });
 
 /** Clicking a notification raises the window before the renderer routes to its Review. */
-const desktopNotifier = createDesktopNotifier({
+const systemNotifier = createDesktopNotifier({
   windowFocused: () =>
     mainWindow !== undefined &&
     !mainWindow.isDestroyed() &&
@@ -214,6 +216,20 @@ const desktopNotifier = createDesktopNotifier({
   },
   logs,
 });
+/**
+ * The one hook every settled Insight run passes through, whatever the
+ * notification settings say: the same event also tells the window to re-read
+ * the Insight state its Pull requests rows show.
+ */
+const desktopNotifier: DesktopNotifier = {
+  notify(event) {
+    systemNotifier.notify(event);
+    if (event._tag !== "InsightSettled") return;
+    const window = mainWindow;
+    if (window !== undefined && !window.isDestroyed())
+      sendInsightSettled(window.webContents);
+  },
+};
 /** MCP `show_review`: switches the window's screen without raising it, opening one inactive when none is open. */
 const reviewWindow = createReviewWindow({
   navigationState: () => rendererNavigationState,

@@ -229,6 +229,43 @@ export class MaintainerInboxService {
   ) {}
 
   /**
+   * Reads each row's Insight state again from the local Insight records, so a
+   * row listed before an Insight settled stops claiming "Not run" without a
+   * GitHub listing fetch (ADR 0032). The caller names the head each row shows;
+   * this reads no GitHub state.
+   */
+  async insightReadinessForRows(
+    profile: WorkspaceProfileConfig,
+    repository: InboxRepositoryRef,
+    rows: ReadonlyArray<InboxInsightReadinessRequest>,
+  ): Promise<ReadonlyArray<InboxInsightReadinessResult>> {
+    const listed = await this.sessions.listSessions(profile.id);
+    const sessions = (listed._tag === "ok" ? listed.value : []).filter(
+      (session): session is PullRequestReviewSession =>
+        isPullRequestReviewSession(session) &&
+        sameRepositoryIdentity(session.key, repository),
+    );
+    return await Promise.all(
+      rows.map(async ({ number, headSha }) => {
+        const insights = await readInsightReadiness(
+          {
+            ref: {
+              host: repository.host,
+              owner: repository.owner,
+              repo: repository.repo,
+              number,
+            },
+            headSha,
+          },
+          sessions,
+          this.insights,
+        );
+        return { number, ...definedProps({ insights }) };
+      }),
+    );
+  }
+
+  /**
    * Attaches each row's cached author avatar as a `data:` URI: warms the
    * shared per-profile avatar cache and then resolves, in the same request,
    * so the rows returned already carry every avatar the warm pass fetched.
@@ -699,6 +736,21 @@ function decodeInboxPageToken({
 function encodeInboxPageToken(token: InboxPageToken): string {
   return Buffer.from(JSON.stringify(token)).toString("base64url");
 }
+/** The part of a pull request that Insight readiness reads: which Review holds its records, and the head they are compared to. */
+type InsightReadinessSubject = Pick<PullRequestSummary, "ref" | "headSha">;
+
+/** A listed row's pull request and the head it shows, which the renderer sends back so its Insight state can be re-read. */
+export type InboxInsightReadinessRequest = {
+  readonly number: PullRequestSummary["ref"]["number"];
+  readonly headSha: PullRequestSummary["headSha"];
+};
+
+/** One row's Insight state as the local records hold it now; `insights` is absent when no kind has a state. */
+export type InboxInsightReadinessResult = {
+  readonly number: PullRequestSummary["ref"]["number"];
+  readonly insights?: InboxInsightReadiness;
+};
+
 /**
  * Which Insight kinds Patchdesk holds for this row, and whether each is bound
  * to the head the row now shows.
@@ -717,7 +769,7 @@ function encodeInboxPageToken(token: InboxPageToken): string {
  * envelope's revision is all their readiness needs.
  */
 async function readInsightReadiness(
-  summary: PullRequestSummary,
+  summary: InsightReadinessSubject,
   sessions: ReadonlyArray<PullRequestReviewSession>,
   insights: InboxInsightReader | undefined,
 ): Promise<InboxInsightReadiness | undefined> {
@@ -753,7 +805,7 @@ async function readInsightReadiness(
  * `loadTyped` prove the same revision envelope, and only that is read here.
  */
 function rowInsightState(
-  summary: PullRequestSummary,
+  summary: InsightReadinessSubject,
   record: Result<
     InsightRecord<{ readonly revision: InsightRevision }>,
     StorageFailure
@@ -773,7 +825,7 @@ function rowInsightState(
 
 /** Any Review session Patchdesk holds for this row's pull request, at any head. */
 function sessionForRow(
-  summary: PullRequestSummary,
+  summary: Pick<PullRequestSummary, "ref">,
   sessions: ReadonlyArray<PullRequestReviewSession>,
 ): PullRequestReviewSession | undefined {
   return sessions.find(

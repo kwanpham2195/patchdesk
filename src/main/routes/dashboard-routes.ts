@@ -213,6 +213,16 @@ export function registerDashboardRoutes(
       );
     }),
   );
+  // Local records only: the Pull requests screen asks for this when it is
+  // shown and when an Insight settles, so no GitHub listing is fetched (ADR 0032).
+  app.post("/v1/inbox/insight-readiness", async (context) =>
+    response(
+      context,
+      await dashboard.inboxInsightReadinessForActiveProfile(
+        await jsonBody(context),
+      ),
+    ),
+  );
   app.put("/v1/watchlist", async (context) =>
     response(context, await dashboard.updateWatchlist(await jsonBody(context))),
   );

@@ -45,6 +45,7 @@ import {
   type ReviewWorkbenchLoader,
 } from "./hooks/use-review-workbench-route";
 import { useSettingsOverlay } from "./hooks/use-settings-overlay";
+import { useInboxInsightReadiness } from "./hooks/use-inbox-insight-readiness";
 import { useWorkspaceInbox } from "./hooks/use-workspace-inbox";
 import { useProfileSwitch } from "./hooks/use-profile-switch";
 import { WatchedPullRequestsProvider } from "./hooks/use-watched-pull-requests";
@@ -245,6 +246,11 @@ function AppContent({
     inboxRefreshGeneration,
     resetInboxStateOnProfileLoad,
   } = useWorkspaceInbox({ fixtureMode, initialState });
+  useInboxInsightReadiness({
+    shown: !fixtureMode && destination.kind === "dashboard",
+    inbox,
+    dispatchWorkspace,
+  });
   const applyLatestProfileSwitch = useCallback(
     async (id: string): Promise<void> => {
       saveInboxViewPreferences(id, { state: "open" });

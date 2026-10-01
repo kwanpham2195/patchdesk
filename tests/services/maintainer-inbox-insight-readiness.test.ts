@@ -280,4 +280,61 @@ describe("MaintainerInboxService insight readiness", () => {
         .insights,
     ).toEqual({ brief: "ready" });
   });
+
+  it("recomputes a listed row's readiness from local records after an Insight settles, without a GitHub call", async () => {
+    let githubCalls = 0;
+    const countingGithub = {
+      resolveAuthenticatedAccount: async () => {
+        githubCalls += 1;
+        return github.resolveAuthenticatedAccount();
+      },
+      searchMaintainerPullRequests: async () => {
+        githubCalls += 1;
+        return github.searchMaintainerPullRequests();
+      },
+    };
+    // The Analysis record starts empty and settles to a result bound to the row's head.
+    let analysisSettled = false;
+    const insights = {
+      load: async (
+        _profileId: WorkspaceProfileId,
+        _reviewId: ReviewId,
+        kind: InboxInsightKind,
+      ) =>
+        ok(
+          kind === "analysis" && analysisSettled
+            ? { retained: { revision: { headSha }, value: {} } }
+            : {},
+        ),
+      loadTyped: async () => ok({}),
+    };
+    const service = new MaintainerInboxService(
+      countingGithub as never,
+      { listSessions: async () => ok([session]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+      insights as never,
+    );
+    const profile = { id: "acme", ghAccount: "fixture" } as never;
+    const listed = await service.list(profile, repository);
+    if (listed._tag === "err") throw new Error("expected an inbox page");
+    const listedRow = listed.value.rows[0];
+    expect(listedRow?.insights).toBeUndefined();
+    const callsAfterListing = githubCalls;
+
+    analysisSettled = true;
+    const recomputed = await service.insightReadinessForRows(
+      profile,
+      repository,
+      [{ number: 42 as never, headSha: listedRow?.currentHeadSha as never }],
+    );
+
+    expect(recomputed).toEqual([
+      { number: 42, insights: { analysis: "ready" } },
+    ]);
+    expect(githubCalls).toBe(callsAfterListing);
+  });
 });

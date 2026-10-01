@@ -15,6 +15,8 @@ import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
+  parseGitSha,
+  parsePullRequestNumber,
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
 } from "../domain/ids";
@@ -31,6 +33,8 @@ import type {
 import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
 import {
   MaintainerInboxService,
+  type InboxInsightReadinessRequest,
+  type InboxInsightReadinessResult,
   type InboxRepositoryRef,
   type MaintainerInbox,
 } from "./maintainer-inbox-service";
@@ -80,6 +84,16 @@ const watchlistBatchInputSchema = v.object({
 });
 const watchlistProfileInputSchema = v.object({
   profileId: v.unknown(),
+});
+const inboxInsightReadinessInputSchema = v.object({
+  host: v.unknown(),
+  owner: v.unknown(),
+  repo: v.unknown(),
+  // One inbox page is at most 100 rows.
+  rows: v.pipe(
+    v.array(v.object({ number: v.unknown(), headSha: v.unknown() })),
+    v.maxLength(100),
+  ),
 });
 const saveProfileInputSchema = v.object({
   // Absent on a create from the New workspace dialog, which sends a name and
@@ -311,6 +325,45 @@ export class DashboardController {
     const inbox = await this.inboxRefresh.refresh(profile.value, target, input);
     if (inbox._tag === "err") return failure("invalid_input");
     return ok({ profile: profile.value, inbox: inbox.value });
+  }
+
+  /**
+   * Re-reads the Insight state of the listed rows from the local Insight
+   * records; makes no GitHub call. The repository must be on the active
+   * profile's watchlist, as for `inboxForActiveProfile`.
+   */
+  async inboxInsightReadinessForActiveProfile(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /v1/inbox/insight-readiness`; there is no earlier boundary to run it at.
+    input: unknown,
+  ): Promise<
+    Result<
+      { readonly rows: ReadonlyArray<InboxInsightReadinessResult> },
+      DashboardControllerFailure
+    >
+  > {
+    const parsed = v.safeParse(inboxInsightReadinessInputSchema, input);
+    if (!parsed.success) return failure("invalid_input");
+    const repository = repoRef(parsed.output);
+    if (repository._tag === "err") return repository;
+    const rows: InboxInsightReadinessRequest[] = [];
+    for (const raw of parsed.output.rows) {
+      const number = parsePullRequestNumber(raw.number);
+      const headSha = parseGitSha(raw.headSha);
+      if (number._tag === "err" || headSha._tag === "err")
+        return failure("invalid_input");
+      rows.push({ number: number.value, headSha: headSha.value });
+    }
+    const profile = await this.activeProfile();
+    if (profile._tag === "err") return profile;
+    if (!isWatchedRepository(profile.value, repository.value))
+      return failure("invalid_input");
+    return ok({
+      rows: await this.inbox.insightReadinessForRows(
+        profile.value,
+        repository.value,
+        rows,
+      ),
+    });
   }
 
   /**
