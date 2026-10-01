@@ -185,7 +185,20 @@ export function AppShell({
     };
     const frame = window.requestAnimationFrame(() => {
       if (focusHeading()) return;
+      // The control that held focus when the heading was not yet there; a late
+      // heading takes focus only while nothing else has been chosen.
+      const startingElement = document.activeElement;
       observer = new MutationObserver(() => {
+        const active = document.activeElement;
+        if (
+          active !== null &&
+          active !== document.body &&
+          active !== startingElement
+        ) {
+          observer?.disconnect();
+          focusedDestination.current = currentDestinationKey;
+          return;
+        }
         if (focusHeading()) observer?.disconnect();
       });
       observer.observe(main, { childList: true, subtree: true });

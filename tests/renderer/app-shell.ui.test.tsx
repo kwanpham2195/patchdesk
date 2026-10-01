@@ -678,4 +678,57 @@ describe("AppShell heading focus", () => {
     );
     vi.restoreAllMocks();
   });
+
+  it("leaves focus alone when the user focused a control before a late heading appeared", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The heading focus schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+    const shell = (content: React.ReactNode) => (
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "workbench", reviewId: "review-1" }}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={async () => undefined}
+        >
+          {content}
+        </AppShell>
+      </BusyProvider>
+    );
+    const { rerender } = render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={async () => undefined}
+        >
+          <div>Inbox</div>
+        </AppShell>
+      </BusyProvider>,
+    );
+
+    const withSearch = (heading: boolean) => (
+      <>
+        {heading ? <h1>Late heading</h1> : null}
+        <input aria-label="Search" />
+      </>
+    );
+    rerender(shell(withSearch(false)));
+    const input = screen.getByRole("textbox", { name: "Search" });
+    input.focus();
+    rerender(shell(withSearch(true)));
+    await Promise.resolve();
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "Search" }),
+    );
+    vi.restoreAllMocks();
+  });
 });
