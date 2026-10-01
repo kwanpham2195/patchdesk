@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -20,6 +21,7 @@ import {
 import type { GitHubImageRewrites } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
+  externalLinkHost,
   openPullRequestExternalUrl,
   resolvePullRequestExternalUrl,
 } from "@/external-links";
@@ -52,7 +54,40 @@ const InsideLinkContext = createContext(false);
  * lightbox offers the destination, so the screenshot in a before/after table
  * can be enlarged.
  */
-const ImageLinkContext = createContext<(() => void) | undefined>(undefined);
+const ImageLinkContext = createContext<ImageLink | undefined>(undefined);
+
+type ImageLink = {
+  readonly open: () => void;
+  /** Set when the destination is outside the GitHub navigation allowlist. */
+  readonly host: string | undefined;
+};
+
+/** The destination host shown beside a link's text; part of the control, so keyboard and screen reader users get it. */
+function LinkHost({
+  host,
+}: {
+  readonly host: string | undefined;
+}): React.JSX.Element | null {
+  if (host === undefined) return null;
+  return (
+    <span className="rounded border px-1 font-mono text-[0.85em] text-muted-foreground no-underline">
+      {host}
+    </span>
+  );
+}
+
+function ImageLinkProvider({
+  open,
+  host,
+  children,
+}: ImageLink & { readonly children: React.ReactNode }): React.JSX.Element {
+  const link = useMemo(() => ({ open, host }), [open, host]);
+  return (
+    <ImageLinkContext.Provider value={link}>
+      {children}
+    </ImageLinkContext.Provider>
+  );
+}
 
 function renderPullRequestLink(
   href: string,
@@ -65,17 +100,19 @@ function renderPullRequestLink(
     return <span key={key}>{children}</span>;
   const openLink = (): void =>
     void openPullRequestExternalUrl(href, pullRequest);
+  const host = externalLinkHost(href, pullRequest);
   if (imageOnly)
     return (
-      <ImageLinkContext.Provider key={key} value={openLink}>
+      <ImageLinkProvider key={key} open={openLink} host={host}>
         {children}
-      </ImageLinkContext.Provider>
+      </ImageLinkProvider>
     );
   return (
     <Button key={key} variant="link" size="xs" onClick={openLink}>
       <InsideLinkContext.Provider value={true}>
         {children}
       </InsideLinkContext.Provider>
+      <LinkHost host={host} />
     </Button>
   );
 }
@@ -557,8 +594,9 @@ function ClickableImage({
     // With no image to zoom, the link it stood for is the only thing left to click.
     if (openLink === undefined) return <span>[Image: {alt}]</span>;
     return (
-      <Button variant="link" size="xs" onClick={openLink}>
+      <Button variant="link" size="xs" onClick={openLink.open}>
         [Image: {alt}]
+        <LinkHost host={openLink.host} />
       </Button>
     );
   }
@@ -609,10 +647,11 @@ function ClickableImage({
                 size="sm"
                 variant="ghost"
                 className="text-foreground hover:bg-accent"
-                onClick={openLink}
+                onClick={openLink.open}
               >
                 <ExternalLink />
                 Open link
+                <LinkHost host={openLink.host} />
               </Button>
             ),
           )
