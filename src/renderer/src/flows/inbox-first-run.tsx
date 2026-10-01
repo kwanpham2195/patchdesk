@@ -58,9 +58,9 @@ export function WorkspaceFirstRun({
       aria-label="Set up your workspace"
     >
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">
+        <h1 className="text-lg font-semibold tracking-tight">
           Set up your workspace
-        </h2>
+        </h1>
       </div>
       <ReviewingAsCard editor={editor} probe={probe} title="1. Reviewing as" />
       {gitMissing ? (

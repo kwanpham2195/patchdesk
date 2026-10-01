@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AppShell } from "../../src/renderer/src/components/app-shell";
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { Dashboard } from "../../src/renderer/src/renderer-models";
@@ -259,6 +260,57 @@ describe("InboxFlow first run", () => {
     // panel reports the resolved account instead of an unauthenticated one.
     githubAccounts: [{ host: "github.com", login: "fixture", active: true }],
   };
+
+  it("moves focus to the setup screen's page heading when the user arrives from another destination", async () => {
+    stubPatchdesk({ "/v1/environment": READY_ENVIRONMENT });
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The heading focus schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy runs each frame at once.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+    const shell = (
+      destination: React.ComponentProps<typeof AppShell>["destination"],
+      child: React.ReactNode,
+    ) => (
+      <BusyProvider>
+        <AppShell
+          destination={destination}
+          onNavigate={vi.fn()}
+          visitedReloadKey={0}
+          onOpenSettings={vi.fn()}
+          onOpenDiagnostics={vi.fn()}
+          onOpenLocalReview={vi.fn()}
+        >
+          {child}
+        </AppShell>
+      </BusyProvider>
+    );
+    const { rerender } = render(
+      shell({ kind: "workbench", reviewId: "review-1" }, <div>Review</div>),
+    );
+    rerender(
+      shell(
+        { kind: "dashboard" },
+        <InboxFlow
+          destination="dashboard"
+          dashboard={dashboard}
+          // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+          inbox={{ ...inbox, inbox: { ...inbox.inbox, rows: [] } } as never}
+          state="empty"
+          refreshStatus="Current"
+          onRefresh={vi.fn()}
+          onSettings={vi.fn()}
+          onOpenWorkbench={vi.fn()}
+        />,
+      ),
+    );
+    const heading = await screen.findByRole("heading", {
+      level: 1,
+      name: "Set up your workspace",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    vi.restoreAllMocks();
+  });
 
   it("finishes setup in place: the account step, then the repositories step", async () => {
     stubPatchdesk({
