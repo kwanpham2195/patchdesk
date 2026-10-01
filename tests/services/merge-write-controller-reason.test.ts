@@ -52,11 +52,20 @@ describe("mergeReason", () => {
     expect(mergeReason({ _tag: "MergeMethodNotAllowed" })).toBe(
       "merge_method_not_allowed",
     );
-    expect(
-      mergeReason({ _tag: "GitHubMergeRefused", reason: "head_changed" }),
-    ).toBe("merge_head_changed");
-    expect(
-      mergeReason({ _tag: "GitHubMergeRefused", reason: "not_mergeable" }),
-    ).toBe("merge_not_mergeable");
+    const reasons = {
+      conflict: "merge_head_changed",
+      not_allowed: "merge_not_mergeable",
+      unprocessable: "merge_not_mergeable",
+      not_found: "not_found",
+      unsupported: "merge_unsupported",
+    } as const;
+    for (const [cause, reason] of Object.entries(reasons))
+      expect(
+        mergeReason({
+          _tag: "GitHubMergeRefused",
+          // SAFETY: the keys of `reasons` are exactly the RefusalCause values.
+          cause: cause as keyof typeof reasons,
+        }),
+      ).toBe(reason);
   });
 });

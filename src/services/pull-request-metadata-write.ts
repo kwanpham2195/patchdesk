@@ -98,7 +98,9 @@ export function pullRequestRefForSession(
 export function mapGitHubWriteFailure(
   failure: GitHubWriteFailure,
 ): "rate_limited" | "forbidden" | "github_write_failed" | "outcome_unknown" {
-  if (failure.category === "unavailable") return "outcome_unknown";
+  // Slice 5 of #755 settles a refusal; until then it stays outcome unknown.
+  if (failure.category === "unavailable" || failure.category === "refused")
+    return "outcome_unknown";
   if (failure.category === "rate_limited") return "rate_limited";
   if (failure.category === "forbidden") return "forbidden";
   return "github_write_failed";

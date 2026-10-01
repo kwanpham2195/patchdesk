@@ -731,7 +731,11 @@ export class PendingReviewService {
       }
     }
     if (written._tag === "err") {
-      if (written.error.category === "unavailable") {
+      // Slice 4 of #755 settles a refusal; until then it stays outcome unknown.
+      if (
+        written.error.category === "unavailable" ||
+        written.error.category === "refused"
+      ) {
         // Timeout, lost response, or unconfirmable outcome: lock and require
         // read-side reconciliation; never retry automatically.
         return err(

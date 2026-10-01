@@ -5,6 +5,7 @@ import { commandTimeoutMs } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
 import type { GitHubWriteFailure } from "../../src/domain/github-write";
+import type { RefusalCause } from "../../src/domain/github-write-refusal";
 import { parseGitHubThreadId, parseGitSha } from "../../src/domain/ids";
 import {
   json,
@@ -67,6 +68,7 @@ describe("a REST status on a write is the category that status means", () => {
     readonly status: number;
     readonly message: string;
     readonly expected: WriteCategory;
+    readonly cause?: RefusalCause;
   }> = [
     {
       name: "401",
@@ -90,19 +92,43 @@ describe("a REST status on a write is the category that status means", () => {
       name: "404",
       status: 404,
       message: "Not Found",
-      expected: "unavailable",
+      expected: "refused",
+      cause: "not_found",
+    },
+    {
+      name: "405",
+      status: 405,
+      message: "Pull Request is not mergeable",
+      expected: "refused",
+      cause: "not_allowed",
     },
     {
       name: "409",
       status: 409,
       message: "Head branch was modified. Review and try the merge again.",
-      expected: "unavailable",
+      expected: "refused",
+      cause: "conflict",
+    },
+    {
+      name: "415",
+      status: 415,
+      message: "Unsupported Media Type",
+      expected: "refused",
+      cause: "unsupported",
     },
     {
       name: "422 validation",
       status: 422,
       message: "Validation Failed",
-      expected: "unavailable",
+      expected: "refused",
+      cause: "unprocessable",
+    },
+    {
+      name: "501",
+      status: 501,
+      message: "Not Implemented",
+      expected: "refused",
+      cause: "unsupported",
     },
     {
       name: "422 naming the one-pending-review constraint",
@@ -145,22 +171,21 @@ describe("a REST status on a write is the category that status means", () => {
 
   it.each(statuses)(
     "classifies $name as $expected",
-    async ({ status, message, expected }) => {
+    async ({ status, message, expected, cause }) => {
       const failure = await restWrite(
         json(status, { message, status: String(status) }),
       );
 
       expect(failure.category).toBe(expected);
       expect(failure.category).not.toBe("rejected");
+      if (cause !== undefined)
+        expect(failure).toMatchObject({ category: "refused", cause });
     },
   );
 });
 
-/**
- * A merge treats 405, 409, and 422 as GitHub's refusal (issue #691; the
- * Review rows live in `merge-write-controller.test.ts`). Nothing else is.
- */
-describe("a merge GitHub did not refuse stays unavailable", () => {
+/** A merge is classified by the same table as every other write (issue #755). */
+describe("a merge GitHub refused is refused with its cause", () => {
   async function mergeWrite(handler: Handler): Promise<GitHubWriteFailure> {
     server.respondWith(handler);
     const result = await writeAdapter(server).mergePullRequest({
@@ -173,17 +198,27 @@ describe("a merge GitHub did not refuse stays unavailable", () => {
     return result.error;
   }
 
-  it.each([404, 500, 502, 503])(
-    "classifies %i as unavailable",
-    async (status) => {
-      const failure = await mergeWrite(
-        json(status, { message: "failure", status: String(status) }),
-      );
+  it.each([
+    [404, "not_found"],
+    [405, "not_allowed"],
+    [409, "conflict"],
+    [422, "unprocessable"],
+    [501, "unsupported"],
+  ])("classifies %i as refused: %s", async (status, cause) => {
+    const failure = await mergeWrite(
+      json(status, { message: "refused", status: String(status) }),
+    );
 
-      expect(failure).toMatchObject({ category: "unavailable" });
-      expect(failure.refusal).toBeUndefined();
-    },
-  );
+    expect(failure).toMatchObject({ category: "refused", cause });
+  });
+
+  it.each([500, 502, 503])("classifies %i as unavailable", async (status) => {
+    const failure = await mergeWrite(
+      json(status, { message: "failure", status: String(status) }),
+    );
+
+    expect(failure.category).toBe("unavailable");
+  });
 
   it("classifies a connection reset before any response byte as unavailable", async () => {
     const failure = await mergeWrite((request) => request.socket.destroy());
@@ -206,7 +241,7 @@ describe("a GraphQL error on a write is the category its type means", () => {
     {
       type: "NOT_FOUND",
       message: "Could not resolve to a node with the global id of 'PRRT_1'.",
-      expected: "unavailable",
+      expected: "refused",
     },
     {
       type: "UNPROCESSABLE",

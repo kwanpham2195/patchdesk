@@ -198,7 +198,11 @@ export class DirectSummaryReviewService {
         body,
       });
       if (written._tag === "err") {
-        if (written.error.category === "unavailable") {
+        // Slice 4 of #755 settles a refusal; until then it stays outcome unknown.
+        if (
+          written.error.category === "unavailable" ||
+          written.error.category === "refused"
+        ) {
           await this.lockOutcomeUnknown(input.reviewId, fresh.value.session, {
             _tag: "OutcomeUnknown",
             operation,

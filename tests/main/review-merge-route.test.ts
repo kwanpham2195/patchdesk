@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
@@ -8,6 +9,8 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "../../src/main/local-api";
+import { registerReviewLifecycleRoutes } from "../../src/main/routes/review-lifecycle-routes";
+import { parseMergeReceipt } from "../../src/renderer/src/review-write-receipts";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";
@@ -94,5 +97,38 @@ describe("POST /v1/reviews/merge input", () => {
     expect(
       await postMerge(api, { ...validMergeBody, expectedHeadSha: "not-a-sha" }),
     ).toBe(400);
+  });
+});
+
+describe("POST /v1/reviews/merge confirmation", () => {
+  it("answers a confirmed merge with a body the renderer's receipt parser accepts", async () => {
+    const app = new Hono();
+    // SAFETY: the merge route reads only `mergeWrites` from the container.
+    const container = {
+      mergeWrites: {
+        // The controller's receipt carries the stored Review, which the renderer's strict parser refuses.
+        merge: async () => ({
+          _tag: "ok" as const,
+          value: {
+            readiness: { _tag: "Ready" as const, blockers: [], warnings: [] },
+            review: { id: "stored-review", status: "merged" },
+            mergeCommitSha: "d".repeat(40),
+          },
+        }),
+      },
+    } as never;
+    registerReviewLifecycleRoutes(app, container);
+
+    const reply = await app.request("/v1/reviews/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validMergeBody),
+    });
+
+    expect(reply.status).toBe(200);
+    expect(parseMergeReceipt(await reply.json())).toEqual({
+      readiness: { _tag: "Ready", blockers: [], warnings: [] },
+      mergeCommitSha: "d".repeat(40),
+    });
   });
 });

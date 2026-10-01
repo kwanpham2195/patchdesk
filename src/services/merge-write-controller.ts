@@ -42,6 +42,7 @@ import {
 } from "./desktop-notifier";
 import type { AppLogService } from "./app-log-service";
 import type { MergeMethod } from "../domain/github-context";
+import type { RefusalCause } from "../domain/github-write-refusal";
 import { mergePullRequest, type MergeFailure } from "./merge-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
@@ -98,6 +99,7 @@ type MergeWriteFailure = {
 };
 
 type MergeRejectionReason =
+  | "not_found"
   | "merge_blocked"
   | "merge_acknowledgement_required"
   | "stale_head"
@@ -105,6 +107,7 @@ type MergeRejectionReason =
   | "merge_method_not_allowed"
   | "merge_not_mergeable"
   | "merge_head_changed"
+  | "merge_unsupported"
   | "merge_rate_limited"
   | "merge_forbidden"
   | "merge_failed";
@@ -222,6 +225,11 @@ export class MergeWriteController {
         gateway: this.github,
         method,
         acknowledgedWarningCodes: acknowledgedWarningCodes,
+        recordRefusal: (cause) =>
+          this.recordRejection(
+            unknown.value,
+            mergeReason({ _tag: "GitHubMergeRefused", cause }),
+          ),
       });
       if (merged._tag === "err") {
         if (merged.error._tag === "GitHubMergeOutcomeUnknown") {
@@ -229,12 +237,12 @@ export class MergeWriteController {
           return err({ reason: "merge_outcome_unknown" });
         }
         const reason = mergeReason(merged.error);
-        const rejected = rejectMergeOperation(unknown.value, reason);
-        // An unrecorded rejection leaves this operation outcome-unknown on disk, still locking the Review.
+        // A refusal the service already recorded is settled; recording it again would reject a rejected operation.
         if (
-          rejected._tag === "err" ||
-          (await this.operations.reject(rejected.value))._tag === "err"
+          merged.error._tag !== "GitHubMergeRefused" &&
+          !(await this.recordRejection(unknown.value, reason))
         )
+          // An unrecorded rejection leaves this operation outcome-unknown on disk, still locking the Review.
           this.notifyNeedsRecovery(requested.value);
         return err({ reason });
       }
@@ -267,6 +275,18 @@ export class MergeWriteController {
     } finally {
       this.writeCoordinator.release(key);
     }
+  }
+
+  /** Persists a finite rejection; false leaves the operation outcome-unknown on disk. */
+  private async recordRejection(
+    operation: MergeOperation,
+    reason: MergeRejectionReason,
+  ): Promise<boolean> {
+    const rejected = rejectMergeOperation(operation, reason);
+    return (
+      rejected._tag === "ok" &&
+      (await this.operations.reject(rejected.value))._tag === "ok"
+    );
   }
 
   // Only this call's own operation notifies; `MergeOperationExists` is an older lock that already did.
@@ -401,9 +421,7 @@ export function mergeReason(failure: MergeFailure): MergeRejectionReason {
     case "MergeMethodNotAllowed":
       return "merge_method_not_allowed";
     case "GitHubMergeRefused":
-      return failure.reason === "head_changed"
-        ? "merge_head_changed"
-        : "merge_not_mergeable";
+      return refusedMergeReason(failure.cause);
     case "GitHubMergeRateLimited":
       return "merge_rate_limited";
     case "GitHubMergeForbidden":
@@ -412,5 +430,19 @@ export function mergeReason(failure: MergeFailure): MergeRejectionReason {
     case "GitHubMergeRejected":
     case "GitHubMergeOutcomeUnknown":
       return "merge_failed";
+  }
+}
+
+function refusedMergeReason(cause: RefusalCause): MergeRejectionReason {
+  switch (cause) {
+    case "conflict":
+      return "merge_head_changed";
+    case "not_allowed":
+    case "unprocessable":
+      return "merge_not_mergeable";
+    case "not_found":
+      return "not_found";
+    case "unsupported":
+      return "merge_unsupported";
   }
 }

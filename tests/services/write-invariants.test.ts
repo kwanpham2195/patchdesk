@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { GitHubWriteFailure } from "../../src/domain/github-write";
 import { err, ok } from "../../src/domain/result";
 import {
   confirmReviewWrite,
@@ -224,9 +225,9 @@ function recoveryFlows(): ReadonlyArray<WriteFlow> {
   }));
 }
 
-const writeFlows: ReadonlyArray<WriteFlow> = [
-  ...journalingWriteFlows(unavailableWrite),
-  {
+/** The merge write entry point, whose gateway answers `failure` to the merge request. */
+function mergeFlow(failure: GitHubWriteFailure): WriteFlow {
+  return {
     name: "merge",
     run: async () => {
       const trace: Trace = [];
@@ -256,7 +257,7 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
             complete: true,
           }),
         getMergeOutcome: async () => ok({ state: "open" as const }),
-        mergePullRequest: async () => err(unavailable),
+        mergePullRequest: async () => err(failure),
       };
       // SAFETY: the merge controller reads only the deterministic requireFresh result supplied here.
       const mergeWriteGate = {
@@ -319,7 +320,12 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
         writeLock: () => operations.intentTag(),
       };
     },
-  },
+  };
+}
+
+const writeFlows: ReadonlyArray<WriteFlow> = [
+  ...journalingWriteFlows(unavailableWrite),
+  mergeFlow(unavailable),
 ];
 
 function firstIndex(
@@ -397,4 +403,65 @@ describe("a journal failure never blocks a confirmed write", () => {
       ).toMatchObject({ _tag: "ok" });
     });
   }
+});
+
+/** The merge refusal GitHub gives while the pull request is still open: the write never landed. */
+const conflictRefusal: GitHubWriteFailure = {
+  _tag: "GitHubWriteFailure",
+  category: "refused",
+  message: "fixture conflict",
+  cause: "conflict",
+};
+
+/**
+ * Invariant 3 (issue #755): a refusal the kind's landed check confirms ends
+ * `Rejected`, not outcome-unknown, and leaves the Review free to write again.
+ * Merge is converted; every other write still reports a refusal as outcome
+ * unknown and names the slice that converts it.
+ */
+const refusedWriteFlows: ReadonlyArray<WriteFlow> = [
+  mergeFlow(conflictRefusal),
+];
+const unconvertedRefusalRows: ReadonlyArray<string> = [
+  "pending review: start (slice 4)",
+  "pending review: add thread (slice 4)",
+  "pending review: submit (slice 4)",
+  "pending review: discard (slice 4)",
+  "direct summary: submit (slice 4)",
+  "inline comment: create (slice 2)",
+  "inline comment: reply (slice 2)",
+  "inline comment: edit (slice 2)",
+  "inline comment: resolve (slice 2)",
+  "inline comment: delete (slice 2)",
+  "published feedback: edit (slice 3)",
+  "published feedback: delete (slice 3)",
+  "published feedback: dismiss review (slice 3)",
+  "metadata: add labels (slice 5)",
+  "metadata: remove labels (slice 5)",
+  "metadata: add assignees (slice 5)",
+  "metadata: remove assignees (slice 5)",
+  "metadata: request reviewers (slice 5)",
+  "metadata: remove reviewers (slice 5)",
+  "metadata: draft state (slice 5)",
+  "metadata: base branch (slice 5)",
+];
+
+describe("a refused GitHub write is recorded as rejected and releases the Review", () => {
+  for (const flow of refusedWriteFlows) {
+    it(`${flow.name} ends rejected and accepts the next write`, async () => {
+      const run = await flow.run();
+      expect(run.result).toMatchObject({
+        _tag: "err",
+        error: { reason: "merge_head_changed" },
+      });
+      expect(run.writeLock() ?? "<released>").toBe("Rejected");
+      const before = run.trace.length;
+      await run.again();
+      expect(
+        run.trace.slice(before).some((entry) => entry.startsWith("write:")),
+        `${flow.name} stayed locked after a refusal`,
+      ).toBe(true);
+    });
+  }
+  for (const name of unconvertedRefusalRows) it.todo(name);
 });

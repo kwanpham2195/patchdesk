@@ -12,13 +12,14 @@ import {
   type MergeWarningCode,
 } from "../domain/merge-readiness";
 import type { MergeMethod } from "../domain/github-context";
-import type { GitHubMergeRefusal } from "../domain/github-write";
+import type { RefusalCause } from "../domain/github-write-refusal";
 import type { GitSha } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import type { PullRequestReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
+import { settleRefusedWrite } from "./refused-write-settlement";
 
 type MergeGateway = Pick<
   GitHubReader,
@@ -38,7 +39,7 @@ export type MergeFailure =
   | { readonly _tag: "RevisionChangedBlocksMerge" }
   | { readonly _tag: "RevisionUnavailableBlocksMerge" }
   | { readonly _tag: "GitHubMergeRejected" }
-  | { readonly _tag: "GitHubMergeRefused"; readonly reason: GitHubMergeRefusal }
+  | { readonly _tag: "GitHubMergeRefused"; readonly cause: RefusalCause }
   | { readonly _tag: "GitHubMergeRateLimited" }
   | { readonly _tag: "GitHubMergeForbidden" }
   | { readonly _tag: "GitHubMergeOutcomeUnknown" };
@@ -59,6 +60,8 @@ export async function mergePullRequest(input: {
   readonly gateway: MergeGateway;
   readonly method: MergeMethod;
   readonly acknowledgedWarningCodes: ReadonlyArray<MergeWarningCode>;
+  /** Records the rejection for a final GitHub refusal and releases the merge lock; false when it could not be persisted. */
+  readonly recordRefusal: (cause: RefusalCause) => Promise<boolean>;
 }): Promise<
   Result<
     { readonly readiness: MergeReadiness; readonly mergeCommitSha?: GitSha },
@@ -133,16 +136,25 @@ export async function mergePullRequest(input: {
     headSha: input.session.key.headSha,
     method: input.method,
   });
-  if (merged._tag === "err" && merged.error.refusal !== undefined) {
-    // A resent merge whose first delivery landed is refused the same way, so
-    // only a pull request still open proves this refusal merged nothing.
-    const outcome = await input.gateway.getMergeOutcome({
-      profile: input.profile,
-      pr,
+  if (merged._tag === "err" && merged.error.category === "refused") {
+    const { cause } = merged.error;
+    const settled = await settleRefusedWrite({
+      kind: "Merge",
+      cause,
+      // A resent merge whose first delivery landed is refused the same way, so
+      // only a pull request still open proves this refusal merged nothing.
+      isUnchanged: async () => {
+        const outcome = await input.gateway.getMergeOutcome({
+          profile: input.profile,
+          pr,
+        });
+        return outcome._tag === "ok" && outcome.value.state === "open";
+      },
+      recordRejection: () => input.recordRefusal(cause),
     });
     return err(
-      outcome._tag === "ok" && outcome.value.state === "open"
-        ? { _tag: "GitHubMergeRefused", reason: merged.error.refusal }
+      settled._tag === "Refused"
+        ? { _tag: "GitHubMergeRefused", cause }
         : { _tag: "GitHubMergeOutcomeUnknown" },
     );
   }
