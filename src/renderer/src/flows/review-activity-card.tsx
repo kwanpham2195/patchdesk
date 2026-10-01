@@ -136,9 +136,11 @@ export function ReviewActivityCard({
   );
 }
 
+/** A phase name such as `retention_sweep` or `sidebar-listing-unreadable`, read as a sentence: "Retention sweep". */
 function activityLabel(phase: string): string {
-  return phase
-    .split("-")
-    .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
+  const words = phase
+    .split(/[-_]/)
+    .filter((word) => word !== "")
     .join(" ");
+  return `${words[0]?.toUpperCase() ?? ""}${words.slice(1)}`;
 }

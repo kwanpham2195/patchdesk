@@ -421,6 +421,41 @@ describe("InsightsSlot on a merged Review", () => {
     await waitFor(() => expect(generate.getAttribute("disabled")).toBeNull());
     expect(generate.getAttribute("aria-describedby")).toBeNull();
   });
+  it("names every way to get a model when no provider is available", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () =>
+        success(
+          json({
+            ...providerCatalog,
+            providers: providerCatalog.providers.map((provider) => ({
+              ...provider,
+              available: false,
+            })),
+          }),
+        ),
+    });
+    renderInsights();
+
+    expect(
+      await screen.findByText(
+        "No model available. Export a provider API key in your shell profile, or put the Codex or pi CLI on the PATH Patchdesk launches with, then relaunch Patchdesk.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("reports a catalog load failure apart from no model", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => failure({ error: "unavailable" }),
+    });
+    renderInsights();
+
+    expect(
+      await screen.findByText(
+        "Could not load the model list. Reopen the Review to try again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No model available/)).toBeNull();
+  });
 });
 
 describe("InsightsSlot run requests", () => {

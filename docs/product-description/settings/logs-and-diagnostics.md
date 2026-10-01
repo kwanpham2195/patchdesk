@@ -101,13 +101,12 @@ If the app log request fails, Logs shows `Logs unavailable` and keeps any entrie
 - Review activity shows at most 40 recent events, while the Diagnostic store bounds the profile history to 200 events and 256 KB of file data.
 - A malformed activity event is skipped individually; a malformed whole response shows the activity error.
 - Diagnostics loads activity but does not expose the support-bundle export route.
-- A phase name is made readable by capitalising each hyphen-separated word, so an underscore-named phase shows as recorded: the retention sweep appears as `Retention_sweep`.
-- When a Review listing skips unreadable records, Review activity gains a `Sidebar Listing Unreadable` recovery event that gives only the count.
+- A phase name is made readable by splitting it on hyphens and underscores and capitalising the first word: the retention sweep appears as `Retention sweep`.
+- When a Review listing skips unreadable records, Review activity gains a `Sidebar listing unreadable` recovery event that gives only the count.
 
 ## Open questions and verification
 
-- Pause stops future tail polls; Resume restarts them. The live tail has level and process filters. Load activity can show redacted `Retention_sweep` cleanup events.
-- Suspected defect: hyphen-named phases read as title-cased words, but underscore-named phases keep their raw name, such as `Retention_sweep`. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
+- Pause stops future tail polls; Resume restarts them. The live tail has level and process filters. Load activity can show redacted `Retention sweep` cleanup events.
 - The tail does not log its own polls. Confirm this in a live idle session; see [UX-08](../ux-friction.md#ux-08-the-logs-tail-is-filled-by-its-own-polling).
 - Confirm log tail focus and scroll behavior in a real window.
 - Confirm the visible distinction between app logs and Review activity when both contain the same lifecycle failure.
