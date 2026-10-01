@@ -127,7 +127,6 @@ export async function prepareRelease({
   output.stdout(
     `Prepared ${version}. package.json and CHANGELOG.md are written; nothing is committed, tagged, or pushed.\n` +
       `\nReview the diff, then run:\n\n` +
-      `  git switch -c chore/release-${version}\n` +
       `  git add package.json CHANGELOG.md\n` +
       `  git commit -m "chore: release ${version}"\n` +
       `  git push -u origin chore/release-${version}\n` +
