@@ -9,13 +9,12 @@ import {
 } from "./brief-moves";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
-import type { BriefStartHere } from "./brief-start-here";
 import { markdownHeadingText } from "./markdown-heading";
 import { matchUnifiedHunkHeader } from "./unified-patch";
 
 /**
  * The retained Brief as a pull request description in Markdown (ADR 0050
- * "Handoff"): Signals, Moves, Flow, Shape, Blast radius, then Start here, in the order
+ * "Handoff"): Signals, Moves, Flow, Shape, then Blast radius, in the order
  * the reader draws them, each a `##` section; Moves follows Flow when it does
  * not lead. Every citation is written as
  * `path:line`, a hunk at its new-side start line. Only the citations the
@@ -48,9 +47,6 @@ export function renderBriefAsPullRequestDescription(
       ? undefined
       : ownershipSection(brief.ownership),
     brief.reach === undefined ? undefined : blastRadiusSection(brief.reach),
-    brief.startHere === undefined
-      ? undefined
-      : startHereSection(brief.startHere),
   ].filter((section) => section !== undefined);
   return `${sections.join("\n\n")}\n`;
 }
@@ -182,18 +178,4 @@ function blastRadiusSection(reach: BriefReach): string | undefined {
   return ["## Blast radius", "", "Text match, one hop out.", "", ...lines].join(
     "\n",
   );
-}
-
-function startHereSection(startHere: BriefStartHere): string {
-  return [
-    "## Start here",
-    "",
-    startHere.lead,
-    "",
-    ...startHere.order.map((entry, index) =>
-      entry.why === undefined
-        ? `${String(index + 1)}. \`${entry.path}\``
-        : `${String(index + 1)}. \`${entry.path}\`: ${entry.why}`,
-    ),
-  ].join("\n");
 }

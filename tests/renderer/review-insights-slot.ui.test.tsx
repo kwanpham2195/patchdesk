@@ -225,30 +225,16 @@ describe("InsightsSlot on a merged Review", () => {
     { status: "closed", offersRun: false },
     { status: "merged", offersRun: false },
   ] as const)(
-    "offers Try again and Start here's Generate walkthrough on a $status Review: $offersRun",
+    "offers Try again and the Brief's Generate walkthrough on a $status Review: $offersRun",
     async ({ status, offersRun }) => {
       const user = userEvent.setup();
-      const retainedBrief = briefInsight().retained;
-      if (retainedBrief === undefined)
-        throw new Error("Brief fixture lost its retained result");
       renderInsights(
         projection({
           review: { id: "review-42", status },
           insights: {
             analysis: { status: "failed" },
             walkthrough: { status: "not_generated" },
-            brief: briefInsight({
-              retained: {
-                ...retainedBrief,
-                value: {
-                  ...retainedBrief.value,
-                  startHere: {
-                    lead: "Read the writer first.",
-                    order: [{ path: "src/a.ts" }],
-                  },
-                },
-              },
-            }),
+            brief: briefInsight(),
           },
         }),
       );
@@ -262,6 +248,54 @@ describe("InsightsSlot on a merged Review", () => {
       );
     },
   );
+
+  it("opens the Walkthrough run dialog from the Brief header when no Walkthrough is current", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+    });
+    const user = userEvent.setup();
+    renderInsights(
+      projection({
+        insights: {
+          analysis: { status: "not_generated" },
+          walkthrough: { status: "outdated" },
+          brief: briefInsight(),
+        },
+      }),
+    );
+
+    const generate = screen.getByRole("button", {
+      name: "Generate walkthrough",
+    });
+    await waitFor(() => expect(generate.hasAttribute("disabled")).toBe(false));
+    await user.click(generate);
+
+    expect(
+      screen.getByRole("heading", { name: "Run Walkthrough" }),
+    ).toBeTruthy();
+  });
+
+  it("opens the current Walkthrough from the Brief header", async () => {
+    const user = userEvent.setup();
+    renderInsights(
+      projection({
+        review: { id: "review-42", status: "merged" },
+        insights: {
+          analysis: { status: "not_generated" },
+          walkthrough: { status: "current" },
+          brief: briefInsight(),
+        },
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open walkthrough" }));
+
+    expect(
+      screen
+        .getByRole("tab", { name: /^Walkthrough/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+  });
 
   it.each(["open", "closed"] as const)(
     "offers Run for latest revision on an outdated Brief of a %s Review only when open",
@@ -772,106 +806,6 @@ function PatchedInsights({
     />
   );
 }
-
-describe("InsightsSlot Brief Start here links", () => {
-  function workbenchWithStartHere(
-    brief: Partial<NonNullable<WorkbenchResponse["insights"]["brief"]>> = {},
-  ): WorkbenchResponse {
-    const retainedBrief = briefInsight().retained;
-    if (retainedBrief === undefined)
-      throw new Error("Brief fixture lost its retained result");
-    return projection({
-      insights: {
-        analysis: { status: "not_generated" },
-        walkthrough: { status: "not_generated" },
-        brief: briefInsight({
-          retained: {
-            ...retainedBrief,
-            value: {
-              ...retainedBrief.value,
-              startHere: {
-                lead: "Read the writer first.",
-                order: [{ path: "src/a.ts" }, { path: "src/not-in-diff.ts" }],
-              },
-            },
-          },
-          ...brief,
-        }),
-      },
-    });
-  }
-  function renderWithFileNavigation(
-    workbench: WorkbenchResponse,
-    opened: Array<string>,
-  ): void {
-    render(
-      <ReviewWorkbenchFindingNavigationContext.Provider
-        value={{
-          openFindingInDiff: () => undefined,
-          openFileInDiff: (path) => opened.push(path),
-          openScopeBucketInDiff: () => undefined,
-          findingFocusRequest: undefined,
-          lastInsight: undefined,
-          rememberInsight: () => undefined,
-        }}
-      >
-        <InsightsSlot
-          workbench={workbench}
-          onWorkbenchReplace={() => undefined}
-          onWorkbenchPatch={() => undefined}
-          onReprepare={async () => workbench}
-        />
-      </ReviewWorkbenchFindingNavigationContext.Provider>,
-    );
-  }
-
-  it("opens a recommended file the Diff shows, and leaves a file it does not show as text", async () => {
-    const user = userEvent.setup();
-    const opened: Array<string> = [];
-    renderWithFileNavigation(workbenchWithStartHere(), opened);
-
-    await user.click(
-      screen.getByRole("button", { name: "Open src/a.ts in Diff" }),
-    );
-
-    expect(opened).toEqual(["src/a.ts"]);
-    expect(
-      screen.queryByRole("button", { name: "Open src/not-in-diff.ts in Diff" }),
-    ).toBeNull();
-    expect(screen.getByText("not-in-diff.ts")).toBeTruthy();
-  });
-
-  it.each([
-    ["is outdated", { status: "outdated" as const }],
-    ["was generated for another head", { headSha: "c".repeat(40) }],
-  ])(
-    "links no file from a Brief that %s, since the Diff shows the reviewed head",
-    (_, change) => {
-      const workbench = workbenchWithStartHere();
-      const brief = workbench.insights.brief;
-      if (brief?.retained === undefined)
-        throw new Error("Brief fixture lost its retained result");
-      renderWithFileNavigation(
-        {
-          ...workbench,
-          insights: {
-            ...workbench.insights,
-            brief:
-              "status" in change
-                ? { ...brief, ...change }
-                : { ...brief, retained: { ...brief.retained, ...change } },
-          },
-        },
-        [],
-      );
-
-      expect(screen.getByRole("region", { name: "Start here" })).toBeTruthy();
-      expect(
-        screen.queryByRole("button", { name: /^Open .* in Diff$/ }),
-      ).toBeNull();
-    },
-  );
-});
 
 describe("InsightsSlot Agent requests bar (ADR 0052)", () => {
   const awaiting = {

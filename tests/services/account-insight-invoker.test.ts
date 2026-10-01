@@ -292,7 +292,7 @@ describe("AccountInsightInvoker", () => {
 
   it.each([
     ["analysis", "verdict"],
-    ["brief", "startHere"],
+    ["brief", "flow"],
   ] as const)(
     "sends the %s output schema and returns null fields as absent",
     async (type, schemaProperty) => {

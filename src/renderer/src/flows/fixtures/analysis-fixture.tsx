@@ -68,7 +68,6 @@ export function AnalysisFixture(): React.ReactNode {
         walkthroughFocused: false,
         setWalkthroughFocused: () => undefined,
         onRegenerateBrief: () => undefined,
-        onOpenWalkthrough: () => undefined,
         runEnabled: false,
       })}
     </div>

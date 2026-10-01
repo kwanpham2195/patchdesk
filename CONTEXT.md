@@ -135,7 +135,7 @@ A revision-bound aid that helps a maintainer understand or evaluate a pull reque
 _Avoid_: Model feature, alternate review
 
 **Brief**:
-The latest successful short answer to "what is this change for, and where do I start reading it?" for a pinned pull request revision. It has five blocks in one fixed order: Goal with its Assumptions, Description vs diff, Shape, Reach, and Start here. Every model sentence in it carries a Brief citation; it states no verdict and lists no Findings, which stay with the Analysis result.
+The latest successful answer to "what is the structure of this change?" for a pinned pull request revision. Its blocks are Signals, Moves, Flow, Shape, and Reach, beside the Scope gauge (ADR 0040). Flow steps cite diff hunks; it states no verdict and lists no Findings, which stay with the Analysis result. For a reading path through the files, the reviewer opens the Walkthrough.
 _Avoid_: Summary, TL;DR, PR overview, explainer
 
 **Brief citation**:
@@ -157,10 +157,6 @@ _Avoid_: Structure, layout, file inventory, tree view
 **Reach**:
 The Brief block that says what depends on the changed code, one hop out, by text match. The model proposes symbol names only; Patchdesk keeps a name only when the patch itself carries it, then counts it with `git grep` over the represented-review worktree at the pinned head. The counts are file counts, not call counts, and the block is labelled "text match" and never "call graph". It also reports which surfaces the changed paths cross, which changed files no changed test mentions, and which removed declarations are still named elsewhere.
 _Avoid_: Call graph, dependency graph, blast radius, impact analysis
-
-**Start here**:
-The Brief card that gives a reading order: one sentence of advice, then the first three to five changed files in the order to read them. Patchdesk keeps only a path that is a file this patch changed, and drops the card whole when none is. The card also offers the Walkthrough for the same revision.
-_Avoid_: Reading guide, entry point, suggested files, tour
 
 **Scope gauge**:
 The deterministic bar that buckets a pull request's changed files by path, with added and removed lines per bucket. There are five buckets, drawn in the order core, tests, generated, docs, config; a path lands in exactly one. Its colours are categorical and never the status hues, because a large generated or docs share is a fact about the change and not a warning. It needs no model run and is always on where it is shown. When the patch cannot be read the gauge is absent, never all-zero.
