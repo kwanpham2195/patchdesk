@@ -54,6 +54,7 @@ const pullRequestPayload = {
   title: "Add safe GitHub reads",
   state: "open",
   draft: false,
+  labels: [],
   head: { ref: "feat/github-read", sha: headSha },
   base: { ref: "sit" },
   user: { login: "reviewer" },

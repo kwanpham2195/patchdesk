@@ -588,7 +588,7 @@ export function classifyRestStatus(
 }
 
 type GraphqlErrorSignal = {
-  /** True when the body's `data` is null, absent, or holds only null fields (or payload objects with only null fields): nothing in the response proves the mutation did anything. */
+  /** True when the body's `data` is null, absent, or holds only null fields (or payloads with only a null `clientMutationId`): nothing in the response proves the mutation did anything. */
   readonly dataEmpty: boolean;
   readonly type?: string;
   readonly code?: string;
@@ -597,17 +597,23 @@ type GraphqlErrorSignal = {
 };
 
 /**
- * Whether a response field proves nothing happened: null, or an object whose
- * every field is itself that (GitHub answers a refused mutation with its
- * payload object holding only a null `clientMutationId`). Anything else,
- * including an array, may be evidence the mutation did something.
+ * Whether a response field proves nothing happened: null, or a payload object
+ * holding only a null `clientMutationId`, which is how GitHub answers a refused
+ * mutation whose payload selects nothing else. A null child node (`comment`,
+ * `thread`) is not empty: GitHub can fail to resolve a node it just created, so
+ * the mutation may have landed.
  */
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- walks a parsed GraphQL `data` value of unknown shape at the I/O boundary.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- inspects a parsed GraphQL `data` value of unknown shape at the I/O boundary.
 function holdsNoValue(field: unknown): boolean {
   if (field === null) return true;
   // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a parsed GraphQL `data` value at the I/O boundary.
   if (typeof field !== "object" || Array.isArray(field)) return false;
-  return Object.values(field).every(holdsNoValue);
+  const keys = Object.keys(field);
+  return (
+    keys.length === 1 &&
+    keys[0] === "clientMutationId" &&
+    Object.values(field)[0] === null
+  );
 }
 
 /**

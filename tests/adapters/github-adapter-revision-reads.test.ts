@@ -262,6 +262,25 @@ describe("GitHubAdapter revision and commit reads", () => {
     });
   });
 
+  it("fails a pull request read that has no labels field instead of reading it as no labels", async () => {
+    const adapter = testAdapter(
+      orderedTransport([
+        JSON.stringify(
+          Object.fromEntries(
+            Object.entries(pullRequestPayload()).filter(
+              ([key]) => key !== "labels",
+            ),
+          ),
+        ),
+      ]),
+    );
+
+    expect(await adapter.getPullRequest({ profile, pr })).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubResponseInvalid", operation: "get_pr" },
+    });
+  });
+
   it("maps missing local GitHub auth to github_auth", async () => {
     const adapter = testAdapter(
       orderedTransport([{ _tag: "CommandAuthenticationRequired" }]),
