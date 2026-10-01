@@ -817,6 +817,37 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       await waitFor(() => expect(paths.at(-1)).not.toContain("author="));
     });
 
+    it("fits the first request at launch to the repository the main process falls back to", async () => {
+      saveInboxViewPreferences("a", {
+        selectedRepository: repositoryB,
+        author: "a".repeat(39),
+        baseBranch: "b".repeat(100),
+        reviewState: "approved",
+      });
+      const paths: string[] = [];
+      desktop = installDesktopDouble({
+        "/v1/profiles": () =>
+          success([{ ...profileA, repos: [longRepository] }]),
+        "/v1/logs": () => success({}),
+        "/v1/inbox": (input) => {
+          paths.push(input.path);
+          return success(inbox({ ...profileA, repos: [longRepository] }));
+        },
+      });
+      const { result } = renderHook(() =>
+        useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+      );
+      await act(async () => {
+        await result.current.loadWorkspace();
+      });
+      await waitFor(() => expect(paths.length).toBeGreaterThan(0));
+
+      expect(paths[0]).not.toContain("host=");
+      expect(paths[0]).not.toContain("author=");
+      expect(paths[0]).not.toContain("base=");
+      expect(paths[0]).toContain("reviewState=approved");
+    });
+
     it("drops filters in order and names them when the selected repository is removed mid-session and a longer one resolves", async () => {
       let watched: ReadonlyArray<RepositoryFixture> = [repositoryA];
       desktop = installDesktopDouble({
