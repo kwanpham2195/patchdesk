@@ -21,6 +21,8 @@ test("⌘F in All files expands a Viewed file, lands on the match, and marks its
     const viewedCount = page.getByRole("button", { name: /^\d+\/\d+ viewed$/ });
     await viewedCount.click();
     await page.getByRole("menuitem", { name: "Mark all viewed" }).click();
+    // ⌘F is ignored while focus is still inside the closing menu.
+    await expect(page.getByRole("menu")).toHaveCount(0);
 
     await page.keyboard.press("ControlOrMeta+f");
     const field = page.getByRole("textbox", { name: "Find in diff" });
