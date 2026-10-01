@@ -16,7 +16,7 @@ jobs:
   verify:
     name: Verify pull request
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v7

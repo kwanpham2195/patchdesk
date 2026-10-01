@@ -64,6 +64,10 @@ export function registerDashboardRoutes(
   app.put("/v1/profiles", async (context) =>
     response(context, await dashboard.saveProfile(await jsonBody(context))),
   );
+  // TODO: confirm the dashboard needs profile removal before shipping.
+  app.delete("/v1/profiles/select", async (context) =>
+    response(context, await dashboard.selectProfile(undefined)),
+  );
   app.post("/v1/profiles/select", async (context) => {
     const body = await jsonBody(context);
     const id = readObjectField(body, "id");
