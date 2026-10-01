@@ -376,6 +376,7 @@ export function InlineCommentComposer({
       : pendingReview === undefined
         ? "comment"
         : "start";
+  const shortcutCopy = composerShortcutCopy(keyboardAction, writeDisabled);
   return (
     <section
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm"
@@ -383,13 +384,7 @@ export function InlineCommentComposer({
     >
       <p className="text-xs text-muted-foreground">
         {path} · {diffLineRangeLabel(startLine, line)} ·{" "}
-        {note
-          ? "a note for the coding agent"
-          : pendingState === "pending"
-            ? "joins your pending review on GitHub"
-            : pendingState === "none"
-              ? "publishes to GitHub"
-              : "GitHub write is paused"}
+        {note ? "a note for the coding agent" : shortcutCopy.caption}
       </p>
       <Field
         className="mt-2"
@@ -501,9 +496,41 @@ export function InlineCommentComposer({
         </Button>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Press ⌘/Ctrl+Enter to {note ? "add the note" : "comment"}. Escape
-        cancels.
+        {writeDisabled
+          ? ""
+          : `Press ⌘/Ctrl+Enter to ${note ? "add the note" : shortcutCopy.hint}. `}
+        Escape cancels.
       </p>
     </section>
   );
+}
+
+type ComposerShortcutCopy = {
+  readonly caption: string;
+  readonly hint: string;
+};
+
+/** The caption and hint name the action ⌘/Ctrl+Enter runs, so they cannot drift from `keyboardAction`. */
+function composerShortcutCopy(
+  action: "comment" | "start" | "add" | "comment-now",
+  writeDisabled: boolean,
+): ComposerShortcutCopy {
+  if (writeDisabled)
+    return { caption: "GitHub write is paused", hint: "comment" };
+  switch (action) {
+    case "add":
+      return {
+        caption: "joins your pending review on GitHub",
+        hint: "add it to your pending review",
+      };
+    case "start":
+      return {
+        caption:
+          "⌘/Ctrl+Enter starts a review; the comment stays pending until you submit it",
+        hint: "start a review",
+      };
+    case "comment":
+    case "comment-now":
+      return { caption: "publishes to GitHub", hint: "comment" };
+  }
 }

@@ -15,7 +15,7 @@ The table records each disposition. Open entries need a fix or product decision;
 | B-12 | The Checks control opens PR overview on Merge readiness                                  | medium   | Review workbench / Merge           | fixed                  | [#188](https://github.com/kwanpham2195/patchdesk/issues/188) |
 | B-13 | Context and Preview stay unavailable when the Review worktree is missing                 | medium   | Review workbench / Diff            | fix (named follow-up)  | —                                                            |
 | B-15 | A failed load from a Visited row leaves the destination on the missing Review            | medium   | Visited pull requests column       | fix                    | —                                                            |
-| B-17 | The inline composer shortcut starts a review while its hint says comment                 | medium   | Review workbench / Inline comments | fix                    | —                                                            |
+| B-17 | The inline composer shortcut starts a review while its hint says comment                 | medium   | Review workbench / Inline comments | fixed                  | [#617](https://github.com/kwanpham2195/patchdesk/issues/617) |
 | B-25 | Local drafts lose their lines after the coding agent commits                             | medium   | Local Review / coding agent        | fixed                  | [#491](https://github.com/kwanpham2195/patchdesk/issues/491) |
 | B-02 | Scalar profile validation falls through to a generic request error                       | medium   | Settings / Workspace               | fixed                  | —                                                            |
 | B-03 | Open Review recommendation preempts ready-to-merge action                                | medium   | Pull requests                      | fixed, superseded      | —                                                            |
@@ -120,14 +120,8 @@ The table records each disposition. Open entries need a fix or product decision;
 
 ### B-17: The inline composer shortcut starts a review while its hint says comment
 
-- **Where the user meets it:** The inline comment composer on an open Review with no GitHub pending review.
-- **What happens / what was expected:** The composer's caption says the comment "publishes to GitHub" and its hint says "Press ⌘/Ctrl+Enter to comment. Escape cancels." Pressing ⌘/Ctrl+Enter runs Start a review, which creates a GitHub pending review holding the comment, so nobody else sees it until the review is finished. Expected: the shortcut matches the hint and caption, or the hint names Start a review.
-- **Reproduce:** On a disposable open Review with no pending review, select a changed line, type a comment, and press ⌘+Enter. Check GitHub for a published comment and for a pending review.
-- **Why (from the code):** `src/renderer/src/components/review-diff-authoring.tsx:328-333` sets the keyboard action to `start` whenever pending-review support is present and no pending review exists; `:365-371` runs `startOrAdd`, which calls `onStartReview` at `:307-317`. The caption at `:339-346` reads "publishes to GitHub" in that state and the hint at `:449` says "to comment".
-- **Severity:** `medium`. A GitHub write of a different kind than the screen promised; the comment stays invisible to others.
-- **Decision needed:** `fix`. Map the shortcut to Comment now in that state, or change the hint and caption to say it starts a review.
-- **Raised by:** [Inline conversations](review-workbench/inline-conversations.md#open-questions-and-verification).
-- **Issue:** —
+- **Disposition:** Fixed. The composer's caption and hint name the action ⌘/Ctrl+Enter runs; see [Inline conversations](review-workbench/inline-conversations.md#begin-an-action).
+- **Issue:** [#617](https://github.com/kwanpham2195/patchdesk/issues/617)
 
 ### B-25: Local drafts lose their lines after the coding agent commits
 

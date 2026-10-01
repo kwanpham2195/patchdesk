@@ -164,4 +164,53 @@ describe("InlineCommentComposer", () => {
       throw new Error("expected inline comment textarea");
     expect(editor.value).toBe("Keyboard draft");
   });
+
+  it.each([
+    {
+      name: "no pending review starts a review",
+      pendingReview: {
+        state: { state: "none" } as const,
+        busy: false,
+        onStartReview: vi.fn(async () => undefined),
+        onAddReviewComment: vi.fn(async () => undefined),
+      },
+      hint: /to start a review\./,
+      caption: /Ctrl\+Enter starts a review/,
+    },
+    {
+      name: "a pending review adds to it",
+      pendingReview: {
+        state: { state: "pending", nodeId: "PRR_1" } as const,
+        busy: false,
+        onStartReview: vi.fn(async () => undefined),
+        onAddReviewComment: vi.fn(async () => undefined),
+      },
+      hint: /to add it to your pending review\./,
+      caption: /joins your pending review/,
+    },
+    {
+      name: "no pending review support comments directly",
+      pendingReview: undefined,
+      hint: /to comment\./,
+      caption: /publishes to GitHub/,
+    },
+  ])(
+    "names the action Ctrl+Enter runs: $name",
+    ({ pendingReview, hint, caption }) => {
+      render(
+        <InlineCommentComposer
+          path="src/a.ts"
+          startLine={3}
+          line={3}
+          side="new"
+          onCancel={vi.fn()}
+          onSave={vi.fn(async () => undefined)}
+          {...(pendingReview === undefined ? {} : { pendingReview })}
+        />,
+      );
+
+      expect(screen.getByText(hint)).toBeTruthy();
+      expect(screen.getByText(caption)).toBeTruthy();
+    },
+  );
 });

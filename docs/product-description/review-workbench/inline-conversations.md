@@ -37,7 +37,7 @@ Selecting a line records nothing. Cancel or Escape closes an empty composer at o
 
 ### Begin an action
 
-The composer names the location, such as `path · Line 12` or `path · Lines 12–14`, and what submitting does: "publishes to GitHub", "joins your pending review on GitHub", or "GitHub write is paused". It fingerprints the represented session, head SHA, patch hash, path, side, and line. The hint beneath it reads "Press ⌘/Ctrl+Enter to comment. Escape cancels." Either ⌘+Enter or Ctrl+Enter submits through the same guarded path as the buttons.
+The composer names the location, such as `path · Line 12` or `path · Lines 12–14`, and what submitting does: "publishes to GitHub" when the Review has no pending-review support, "joins your pending review on GitHub", "⌘/Ctrl+Enter starts a review; the comment stays pending until you submit it" when the Review has no pending review (Comment now is the other button there), or "GitHub write is paused". It fingerprints the represented session, head SHA, patch hash, path, side, and line. The hint beneath it names the action the shortcut runs: "Press ⌘/Ctrl+Enter to comment.", "to add it to your pending review.", or "to start a review." When the write is paused the hint reads only "Escape cancels." Either ⌘+Enter or Ctrl+Enter submits through the same guarded path as the buttons.
 
 When no pending review exists, the maintainer can Comment now or Start a review. When a pending review already exists, Add review comment appends the comment to it. When pending-review actions are not available for the Review, the composer offers only Comment, which publishes directly. The selected action is fixed for that submission; switching buttons does not create two writes.
 
@@ -131,7 +131,6 @@ A pending-review command settles only from its returned pending-review projectio
 ## Open questions and verification
 
 - Live checks confirmed composer labels, shortcut hint, blank-submit disabling, and cancelling an empty composer. Replies, thread states, images, links, and failed GitHub writes were not checked live.
-- The shortcut hint says ⌘/Ctrl+Enter comments, but without a pending review it starts one instead; see [B-17](../bug-triage.md#b-17-the-inline-composer-shortcut-starts-a-review-while-its-hint-says-comment).
 - Confirm line selection, placement, focus, card transitions, Escape in plain-text diff, dirty navigation, and unknown-outcome recovery.
 
 Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.
