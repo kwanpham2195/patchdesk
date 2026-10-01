@@ -85,6 +85,7 @@ export function InboxFlow({
   onWorkspaceReload = async () => undefined,
   onBootRestoreMissing,
   onStoredReviewRefused,
+  onStoredReviewOpenFailed,
   reviewOpening,
 }: {
   readonly destination: "dashboard" | "workbench";
@@ -156,6 +157,8 @@ export function InboxFlow({
   readonly onBootRestoreMissing?: () => void;
   /** Leaves the workbench route when its stored shared Review is refused for a branch switch. */
   readonly onStoredReviewRefused?: () => void;
+  /** Leaves the workbench route when a Review opened in this session, such as from a Visited row, fails to load; its error stays on Pull requests. */
+  readonly onStoredReviewOpenFailed?: () => void;
   readonly reviewOpening: InboxReviewOpeningControls;
 }): React.JSX.Element {
   const {
@@ -206,6 +209,7 @@ export function InboxFlow({
       () => active,
       onBootRestoreMissing,
       onStoredReviewRefused,
+      onStoredReviewOpenFailed,
     );
     return () => {
       active = false;
@@ -215,6 +219,7 @@ export function InboxFlow({
     destination,
     onBootRestoreMissing,
     onStoredReviewRefused,
+    onStoredReviewOpenFailed,
     openStoredReviewById,
     reviewId,
   ]);

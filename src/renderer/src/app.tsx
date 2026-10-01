@@ -458,6 +458,8 @@ function AppContent({
         confirmLeaveReview={confirmLeaveReview}
         onCleanupSuccess={(action) => {
           if (action === "local") performNavigation({ kind: "dashboard" });
+          // The cleanup removed Reviews the column still lists (#618).
+          setVisitedReloadKey((key) => key + 1);
         }}
         preferenceError={preferenceError}
         onRetryPreferences={retryPreferences}
@@ -645,7 +647,7 @@ function AppContent({
     destination.kind === "workbench" ? { reviewId: destination.reviewId } : {};
   const bootRestoreMissingField = bootRestoredDestination
     ? { onBootRestoreMissing: returnToDashboard }
-    : {};
+    : { onStoredReviewOpenFailed: returnToDashboard };
   const dashboardField = dashboard === undefined ? {} : { dashboard };
   const inboxField = inbox === undefined ? {} : { inbox };
   const remoteField =

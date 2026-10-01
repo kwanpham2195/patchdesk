@@ -63,6 +63,8 @@ export type InboxReviewOpeningControls = {
     onMissingRecord?: () => void,
     /** Called after the refusal of a shared Review whose checkout is on another branch, so the route is left. */
     onBranchMismatch?: () => void,
+    /** Called after any other failed open, once its error is saved, so the route is left. Not passed by the boot restore. */
+    onOpenFailed?: () => void,
   ) => Promise<void>;
   /** Opens a local Review on the Selected repository; rejects with the sentence the source picker shows. */
   readonly openLocalReview: (
@@ -209,6 +211,7 @@ export function useInboxReviewOpening({
       isActive: () => boolean,
       onMissingRecord?: () => void,
       onBranchMismatch?: () => void,
+      onOpenFailed?: () => void,
     ): Promise<void> => {
       const githubHost = dashboard?.profile.githubHost ?? "github.com";
       if (dashboardProfileIdRef.current !== profileId) return;
@@ -276,6 +279,8 @@ export function useInboxReviewOpening({
         });
         // Only the checkout can fix a branch switch, so the route is left and the next launch does not retry it.
         if (branchMismatch !== undefined) onBranchMismatch?.();
+        // A failed open the maintainer started, such as a Visited row, leaves the route too, so the row is not left selected and inert (#615).
+        else onOpenFailed?.();
       } finally {
         if (operationsRef.current.get(operationKey) === operation) {
           storedReviewWaitersRef.current.delete(operationKey);
