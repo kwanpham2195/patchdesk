@@ -126,7 +126,8 @@ export function AppShell({
     loadVisitedPullRequestsCollapsed,
   );
   const [initialDestinationKey] = useState(() => destinationKey(destination));
-  const focusedDestination = useRef(initialDestinationKey);
+  const lastSeenDestination = useRef(initialDestinationKey);
+  const focusedDestination = useRef<string | null>(initialDestinationKey);
   const windowFullScreen = useWindowFullScreen();
   const [visitedExpandCount, setVisitedExpandCount] = useState(0);
   // Loaded even while the column is collapsed, because the palette searches the
@@ -154,19 +155,46 @@ export function AppShell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigationBlocked]);
 
+  const currentDestinationKey = destinationKey(destination);
+  const currentDestinationTitle = destinationTitle(destination);
   useEffect(() => {
-    document.title = `${destinationTitle(destination)} · Patchdesk`;
-    const nextKey = destinationKey(destination);
-    if (focusedDestination.current === nextKey) return;
-    focusedDestination.current = nextKey;
-    const frame = window.requestAnimationFrame(() => {
-      const heading = mainRef.current?.querySelector<HTMLElement>("h1");
-      if (heading === undefined || heading === null) return;
+    document.title = `${currentDestinationTitle} · Patchdesk`;
+  }, [currentDestinationTitle]);
+
+  // Keyed on the destination string: the app passes a fresh destination object
+  // on every render, and a re-render before the frame must not cancel the focus.
+  // A lazy screen may not have painted its heading by the next frame, so the
+  // focus waits for the heading to appear.
+  useEffect(() => {
+    // A change back to a destination whose heading never took focus still needs it.
+    if (lastSeenDestination.current !== currentDestinationKey) {
+      lastSeenDestination.current = currentDestinationKey;
+      focusedDestination.current = null;
+    }
+    if (focusedDestination.current === currentDestinationKey) return;
+    const main = mainRef.current;
+    if (main === null) return;
+    let observer: MutationObserver | undefined;
+    const focusHeading = (): boolean => {
+      const heading = main.querySelector<HTMLElement>("h1");
+      if (heading === null) return false;
       heading.tabIndex = -1;
       heading.focus();
+      focusedDestination.current = currentDestinationKey;
+      return true;
+    };
+    const frame = window.requestAnimationFrame(() => {
+      if (focusHeading()) return;
+      observer = new MutationObserver(() => {
+        if (focusHeading()) observer?.disconnect();
+      });
+      observer.observe(main, { childList: true, subtree: true });
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [destination]);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [currentDestinationKey]);
 
   useCompactDensity();
 

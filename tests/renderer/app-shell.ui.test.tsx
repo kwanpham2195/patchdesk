@@ -552,3 +552,130 @@ describe("AppShell Review commands", () => {
     expect(screen.queryByRole("group", { name: "Review" })).toBeNull();
   });
 });
+
+describe("AppShell heading focus", () => {
+  it("focuses the page heading even when a re-render lands before the next frame", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 1;
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The heading focus schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      const id = nextFrame++;
+      frames.set(id, callback);
+      return id;
+    });
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The heading focus schedules through `window.cancelAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    const shell = (
+      destination: React.ComponentProps<typeof AppShell>["destination"],
+    ) => (
+      <BusyProvider>
+        <AppShell
+          destination={destination}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={async () => undefined}
+        >
+          <h1>Page heading</h1>
+        </AppShell>
+      </BusyProvider>
+    );
+    const { rerender } = render(shell({ kind: "dashboard" }));
+
+    // The app passes a fresh but equal destination object on every render.
+    rerender(shell({ kind: "workbench", reviewId: "review-1" }));
+    rerender(shell({ kind: "workbench", reviewId: "review-1" }));
+    for (const callback of [...frames.values()]) callback(0);
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Page heading" }),
+    );
+    vi.restoreAllMocks();
+  });
+
+  it("focuses the heading of a screen that paints it after the next frame", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The heading focus schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+    const shell = (heading: boolean) => (
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "workbench", reviewId: "review-1" }}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={async () => undefined}
+        >
+          {heading ? <h1>Late heading</h1> : <div>Loading</div>}
+        </AppShell>
+      </BusyProvider>
+    );
+    const { rerender } = render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={async () => undefined}
+        >
+          <div>Inbox</div>
+        </AppShell>
+      </BusyProvider>,
+    );
+
+    rerender(shell(false));
+    rerender(shell(true));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("heading", { name: "Late heading" }),
+      ),
+    );
+    vi.restoreAllMocks();
+  });
+
+  it("focuses the heading after returning to a destination that never took focus", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The heading focus schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+    const shell = (
+      destination: React.ComponentProps<typeof AppShell>["destination"],
+      content: React.ReactNode,
+    ) => (
+      <BusyProvider>
+        <AppShell
+          destination={destination}
+          onNavigate={() => undefined}
+          visitedReloadKey={0}
+          onOpenSettings={() => undefined}
+          onOpenDiagnostics={() => undefined}
+          onOpenLocalReview={async () => undefined}
+        >
+          {content}
+        </AppShell>
+      </BusyProvider>
+    );
+    const { rerender } = render(
+      shell({ kind: "dashboard" }, <h1>Pull requests</h1>),
+    );
+
+    // The Review screen has not painted a heading when the user goes back.
+    rerender(shell({ kind: "workbench", reviewId: "review-1" }, <div />));
+    rerender(shell({ kind: "dashboard" }, <h1>Pull requests</h1>));
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Pull requests" }),
+    );
+    vi.restoreAllMocks();
+  });
+});
