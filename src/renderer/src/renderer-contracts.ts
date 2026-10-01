@@ -194,6 +194,26 @@ export function parseInboxResponse(input: unknown): InboxResponse | undefined {
   return parsed.success ? parsed.output : undefined;
 }
 
+const inboxInsightReadinessResponseSchema = v.strictObject({
+  rows: v.array(
+    v.strictObject({
+      number: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      insights: v.optional(inboxInsightReadinessSchema),
+    }),
+  ),
+});
+export type InboxInsightReadinessResponse = v.InferOutput<
+  typeof inboxInsightReadinessResponseSchema
+>;
+
+/** Parses the answer to `POST /v1/inbox/insight-readiness`: each row's Insight state read from local records. */
+export function parseInboxInsightReadinessResponse(
+  input: unknown,
+): InboxInsightReadinessResponse | undefined {
+  const parsed = v.safeParse(inboxInsightReadinessResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
 /** Stable renderer key for selection, preferences, and list navigation. */
 export function inboxIdentityKey(row: InboxRow): string {
   return pullRequestIdentityKey(row.identity);

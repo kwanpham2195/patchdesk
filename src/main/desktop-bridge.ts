@@ -63,6 +63,7 @@ const allowedRoutes = new Set([
   "PATCH /v1/settings",
   "GET /v1/inbox",
   "GET /v1/inbox/labels",
+  "POST /v1/inbox/insight-readiness",
   "PUT /v1/watchlist",
   "PUT /v1/watchlist/checkout",
   "GET /v1/watched-pull-requests",

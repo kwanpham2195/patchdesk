@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Review details and the row's Brief tag on Pull requests showing Not run for an Insight that had finished, until Refresh pull requests was pressed. The screen now reads Insight state from local records when it is shown and when a run settles, without asking GitHub. #692
+
 - Fixed a Visited row whose Review cannot open leaving the app on the workbench with the row selected and unclickable. The screen now returns to Pull requests, keeps the "Could not open the saved review." message, and the row can be clicked again to retry. #615
 
 - Fixed the Visited column still listing Reviews after Clear local review data removed them. The column now reads again when the cleanup finishes. #618
