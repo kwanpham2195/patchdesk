@@ -31,7 +31,7 @@ The table records each disposition. Open entries need a fix or product decision;
 | B-20 | Some Pull requests filters are not measured against the search length limit              | low      | Pull requests / Filters            | fix                    | —                                                                                                                          |
 | B-21 | Dismissed Findings still add to Finding badges                                           | low      | Review workbench / Diff            | fix                    | —                                                                                                                          |
 | B-22 | Small copy and rendering slips                                                           | low      | Insights / Settings                | fix                    | —                                                                                                                          |
-| B-23 | Walkthrough section keys ignore modifier keys                                            | low      | Review workbench / Walkthrough     | fix                    | —                                                                                                                          |
+| B-23 | Walkthrough section keys ignore modifier keys                                            | low      | Review workbench / Walkthrough     | fixed                  | [#623](https://github.com/kwanpham2195/patchdesk/issues/623)                                                               |
 | B-24 | Repository-marked generated files do not reach the Scope gauge                           | low      | Review workbench / Insights        | product call           | —                                                                                                                          |
 
 ## High
@@ -192,14 +192,8 @@ The table records each disposition. Open entries need a fix or product decision;
 
 ### B-23: Walkthrough section keys ignore modifier keys
 
-- **Where the user meets it:** A retained Walkthrough with focus inside the reader.
-- **What happens / what was expected:** The Left and Right arrows, `j`, and `k` move sections without checking Command, Control, Option, or Shift, so a combination such as ⌘+Left may move sections instead of doing what the system expects. Unconfirmed live. Expected: section movement ignores modified keys, as the Diff's keyboard commands do.
-- **Reproduce:** Open a Walkthrough with at least three sections, focus the reader, and press ⌘+Right and Shift+`k`.
-- **Why (from the code):** `src/renderer/src/components/narrative-walkthrough.tsx:208-235` checks only the focused element's tag and role before handling `ArrowLeft`, `j`, `ArrowRight`, and `k`.
-- **Severity:** `low`. Unconfirmed, and only a modified key reaches it.
-- **Decision needed:** `fix`. Return early when a modifier is held.
-- **Raised by:** [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification).
-- **Issue:** —
+- **Disposition:** Fixed. Section movement skips a key pressed with Command, Control, Option, or Shift held; see [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification).
+- **Issue:** [#623](https://github.com/kwanpham2195/patchdesk/issues/623)
 
 ### B-24: Repository-marked generated files do not reach the Scope gauge
 
