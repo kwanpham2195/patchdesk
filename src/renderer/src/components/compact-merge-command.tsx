@@ -46,7 +46,12 @@ type MergeContext = {
 type MergeOutcome =
   | { readonly state: "idle" }
   | { readonly state: "retryable_error"; readonly message: string }
-  | { readonly state: "refused"; readonly message: string }
+  | {
+      readonly state: "refused";
+      readonly message: string;
+      /** The head the refused merge named; a Refresh that moves the head retires the refusal. */
+      readonly headSha: string;
+    }
   | { readonly state: "recovery_required"; readonly message: string }
   | ({ readonly state: "confirmed" | "confirmed_refresh_required" } & {
       readonly mergeCommitSha?: string;
@@ -106,7 +111,11 @@ export function CompactMergeCommand(props: {
         cause instanceof PatchdeskApiError && cause.kind === "merge_in_progress"
           ? { state: "retryable_error", message: cause.message }
           : refusal !== undefined
-            ? { state: "refused", message: refusal }
+            ? {
+                state: "refused",
+                message: refusal,
+                headSha: props.context.headSha,
+              }
             : {
                 state: "recovery_required",
                 message: unconfirmedWriteCopy("merge"),
@@ -248,20 +257,27 @@ export function CompactMergeCommand(props: {
       aria-label="Merge command"
       className="@container/merge-command rounded-lg border bg-muted p-3"
     >
-      <div className="flex min-w-0 flex-col gap-3 @2xl/merge-command:flex-row @2xl/merge-command:items-center @2xl/merge-command:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 @2xl/merge-command:flex-row @2xl/merge-command:flex-wrap @2xl/merge-command:items-center @2xl/merge-command:justify-between">
         <p className="w-full min-w-0 break-words text-xs text-muted-foreground @2xl/merge-command:flex-1">
           {props.context.repo}#{props.context.prNumber} · {props.context.base} ←{" "}
           {props.context.head} ·{" "}
           <code>{props.context.headSha.slice(0, 8)}</code>
         </p>
         {outcome.state === "retryable_error" ? (
-          <Alert variant="destructive" className="w-full min-w-0">
+          <Alert
+            variant="destructive"
+            className="w-full min-w-0 @2xl/merge-command:order-last @2xl/merge-command:basis-full"
+          >
             <AlertTitle>Merge not submitted</AlertTitle>
             <AlertDescription>{outcome.message}</AlertDescription>
           </Alert>
         ) : null}
-        {outcome.state === "refused" ? (
-          <Alert variant="destructive" className="w-full min-w-0">
+        {outcome.state === "refused" &&
+        outcome.headSha === props.context.headSha ? (
+          <Alert
+            variant="destructive"
+            className="w-full min-w-0 @2xl/merge-command:order-last @2xl/merge-command:basis-full"
+          >
             <AlertTitle>Merge refused</AlertTitle>
             <AlertDescription>{outcome.message}</AlertDescription>
           </Alert>
