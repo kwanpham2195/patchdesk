@@ -222,7 +222,14 @@ export function publishedFeedbackFlows(
                 })),
               });
             case "comment_gone":
-              return ok({ ...feedback, comments: [] });
+              // Another comment remains: only this comment's id proves the refusal.
+              return ok({
+                ...feedback,
+                comments: feedback.comments.map((comment) => ({
+                  ...comment,
+                  id: "comment-2",
+                })),
+              });
             case "read_failed":
               return err({ _tag: "GitHubReadFailed" as const });
           }
