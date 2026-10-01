@@ -423,7 +423,7 @@ landed first delivery could have produced it:
   GitHub does not implement the endpoint at all.
 - `settleRefusedWrite` in `src/services/refused-write-settlement.ts` is the one
   helper. When the refusal is final it records the rejection, releases the
-  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); the conversation writes (slice 2) return `github_refused` with the cause, and the other families arrive in slices 3 to 5. When the read
+  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); the conversation writes (slice 2) return `github_refused` with the cause, and published feedback (slice 3) does the same; the other families arrive in slices 4 and 5. When the read
   fails, is incomplete, or shows the intended state, or when the rejection
   cannot be recorded, the write stays outcome unknown and ADR 0035 recovery
   settles it with the same read.
@@ -447,6 +447,23 @@ landed first delivery could have produced it:
   `{ error: "github_refused", cause }` with status 409 and the renderer words
   with `refusalCausePhrase` and the action ("comment", "reply", "thread
   update"). Everything else stays outcome unknown.
+- **Published feedback (slice 3).** `PublishedFeedbackService` settles a
+  refusal through `settleRefusedWrite` with the write kind of its intent.
+  `updateReviewComment` is final with no read. `deleteReviewComment` and
+  `dismissReview` re-run `getPullRequestPublishedFeedback`: the refusal is final
+  only when that read is complete and shows the state unchanged, which for a
+  delete is the comment still present and for a dismissal is the review found
+  and not `DISMISSED`. A missing comment or review, a failed or incomplete
+  read, or a review already `DISMISSED` keeps the write outcome unknown. The
+  check does not go through `classifyPublishedFeedbackIntent`, which answers
+  `CheckRequired` for a missing review and so cannot prove "unchanged". A final
+  refusal answers `github_refused` with the cause (409), and the renderer words
+  it with the action ("edit", "deletion", "dismissal"). Live on 2026-10-01: a
+  review comment edit with a 400,000-character body got REST 422 "body is too
+  long" and showed as refused with the next edit succeeding, and dismissing a
+  `COMMENTED` review got 422 and showed as refused. The delete refusal has no
+  live trigger, since Patchdesk reads the comment before it sends the delete; the
+  service tests cover it.
 - **GraphQL `UNPROCESSABLE` (slice 2).** `classifyGraphqlSignal` maps it to
   `CommandUnprocessable`, and so to the cause `unprocessable`, only when the
   response's `data` is null, absent, or has only null fields. An error beside
@@ -455,8 +472,8 @@ landed first delivery could have produced it:
   query it keeps meaning not found beside partial data, which reads rely on.
   No live GraphQL error of this type could be produced on 2026-10-01 (oversized, blank, and malformed reply bodies, a repeated resolve, and a reply on a closed or locked pull request were all accepted or answered `comment: null` with no `errors`), so the mapping rests on GitHub's documented error type and the adapter tests. Live, the REST 422 came from a file whose diff GitHub calls too large ("diff is too large"); a review comment body has no practical size limit.
 - Every other write sends `refused` down the outcome-unknown path until its
-  slice of issue #755 lands (published feedback, pending review and direct
-  summary, then metadata writes). `unavailable` and `refused` behave the same
+  slice of issue #755 lands (pending review and direct summary, then metadata
+  writes). `unavailable` and `refused` behave the same
   there today.
 
 **Accepted risk: rate limits.** 401, 403, and 403 or 429 rate limits are final

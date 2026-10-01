@@ -16,10 +16,11 @@ import {
   parseWorkspaceProfileId,
 } from "../../domain/ids";
 import { err, type Result } from "../../domain/result";
-import type {
-  PublishedFeedbackFailure,
-  PublishedFeedbackReceipt,
-  PublishedFeedbackService,
+import {
+  GitHubRefusedPublishedFeedbackWrite,
+  type PublishedFeedbackFailure,
+  type PublishedFeedbackReceipt,
+  type PublishedFeedbackService,
 } from "../../services/published-feedback-service";
 import type { ReviewWriteExpectation } from "../../services/review-write-gate";
 import type { LocalApiContainer } from "../local-api-container";
@@ -99,11 +100,15 @@ async function publishedFeedbackResponse(
         ? await parsePublishedDelete(service, body)
         : await parsePublishedDismiss(service, body);
   if (result._tag === "err") {
-    if (result.error === "invalid_input")
-      return context.json({ error: result.error }, 400);
+    const failure = result.error;
+    if (failure === "invalid_input")
+      return context.json({ error: failure }, 400);
+    // A refusal GitHub gave and the service settled: the cause lets the renderer say why; 409 matches the other conflicts with GitHub's state.
+    if (failure instanceof GitHubRefusedPublishedFeedbackWrite)
+      return context.json({ error: failure.reason, cause: failure.cause }, 409);
     return context.json(
-      { error: result.error },
-      mapReviewWriteFailureStatus(result.error, {
+      { error: failure },
+      mapReviewWriteFailureStatus(failure, {
         not_fresh: 409,
         confirmation_required: 409,
       }),

@@ -1,4 +1,4 @@
-import { ok } from "../../src/domain/result";
+import { err, ok } from "../../src/domain/result";
 import { InlineConversationService } from "../../src/services/inline-conversation-service";
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -121,9 +121,17 @@ function inlineConversationFlows(
   }));
 }
 
+/** What the published-feedback read answers after a refused write: the landed check's evidence. */
+export type PublishedFeedbackLandedCheck =
+  | "unchanged"
+  | "review_dismissed"
+  | "comment_gone"
+  | "read_failed";
+
 /** The three published-feedback writes retain unavailable outcomes without replay. */
-function publishedFeedbackFlows(
+export function publishedFeedbackFlows(
   fixture: WriteFlowFixture,
+  landedCheck: PublishedFeedbackLandedCheck = "unchanged",
 ): ReadonlyArray<WriteFlow> {
   const feedback = {
     reviews: [
@@ -194,10 +202,31 @@ function publishedFeedbackFlows(
     run: async () => {
       const trace: Trace = [];
       const operations = recordingWriteOperations(trace);
+      let reads = 0;
       const gateway = {
         getPullRequest: async () => ok(values.snapshot.pullRequest),
         getPullRequestComments: async () => ok(values.snapshot.comments),
-        getPullRequestPublishedFeedback: async () => ok(feedback),
+        // The first read authorizes the write; every later read is the landed check after a refusal.
+        getPullRequestPublishedFeedback: async () => {
+          reads += 1;
+          if (reads === 1) return ok(feedback);
+          switch (landedCheck) {
+            case "unchanged":
+              return ok(feedback);
+            case "review_dismissed":
+              return ok({
+                ...feedback,
+                reviews: feedback.reviews.map((review) => ({
+                  ...review,
+                  event: "DISMISSED" as const,
+                })),
+              });
+            case "comment_gone":
+              return ok({ ...feedback, comments: [] });
+            case "read_failed":
+              return err({ _tag: "GitHubReadFailed" as const });
+          }
+        },
         updateReviewComment: gatewayWrite(fixture, undefined),
         deleteReviewComment: gatewayWrite(fixture, undefined),
         dismissReview: gatewayWrite(fixture, undefined),

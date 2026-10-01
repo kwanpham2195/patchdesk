@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
 import { Conversation } from "../../src/renderer/src/components/conversation";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 
@@ -555,5 +557,57 @@ describe("published review dismissal", () => {
     await user.click(screen.getByRole("button", { name: "Dismiss review" }));
     expect(confirmed).toHaveBeenCalledWith("102", "obsolete");
     expect(screen.getByText("Dismissed")).toBeTruthy();
+  });
+
+  it("words a refused dismissal by its cause and keeps the reason editable", async () => {
+    const dismissReview = vi.fn(async () => {
+      throw new PatchdeskApiError(
+        "github_refused",
+        409,
+        false,
+        "refused",
+        "raw provider refusal",
+        { error: "github_refused", cause: "unprocessable" },
+      );
+    });
+    render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [
+            {
+              _tag: "ReviewSummary",
+              review: {
+                id: "101",
+                author: "reviewer",
+                body: "",
+                event: "APPROVED",
+                submittedAt: "2026-08-01T00:00:00.000Z",
+                canDismiss: true,
+              },
+            },
+          ],
+        }}
+        conversationActions={{ dismissReview }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Dismiss review" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Dismissal reason" }),
+      "obsolete",
+    );
+    await user.click(screen.getByRole("button", { name: "Dismiss review" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      refusalCausePhrase("unprocessable", "dismissal"),
+    );
+    expect(alert.textContent).not.toContain("Check GitHub");
+    expect(
+      screen
+        .getByRole("button", { name: "Dismiss review" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-jou
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import type { GitHubPublishedFeedback } from "../domain/github-context";
+import type { RefusalCause } from "../domain/github-write-refusal";
 import {
   parseGitHubReviewCommentId,
   parseGitHubReviewRestId,
@@ -25,6 +26,7 @@ import {
 } from "../domain/review-write-operation";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import { settleRefusedWrite } from "./refused-write-settlement";
 import type { ReviewRefreshFailure } from "./review-refresh-service";
 import {
   requireCurrentHead,
@@ -44,7 +46,14 @@ export type PublishedFeedbackFailure =
   | "github_write_failed"
   | "outcome_unknown"
   | "rate_limited"
-  | "review_write_in_progress";
+  | "review_write_in_progress"
+  | GitHubRefusedPublishedFeedbackWrite;
+
+/** GitHub refused the write and the refusal is final: nothing was written and the Review is unlocked. */
+export class GitHubRefusedPublishedFeedbackWrite {
+  readonly reason = "github_refused";
+  constructor(readonly cause: RefusalCause) {}
+}
 
 export type PublishedFeedbackReceipt =
   | {
@@ -199,6 +208,14 @@ export class PublishedFeedbackService {
               commentId: allowed.value.id,
               nodeId: allowed.value.nodeId,
             },
+        // A resent delete whose first delivery landed is refused the same way, so only a complete read that still finds the comment proves the refusal.
+        async () => {
+          const current = await this.readComplete(prepared.value);
+          return (
+            current !== undefined &&
+            current.comments.some((comment) => comment.id === allowed.value.id)
+          );
+        },
       );
     });
   }
@@ -243,6 +260,15 @@ export class PublishedFeedbackService {
         {
           _tag: "PublishedReviewDismissed",
           publishedReviewId: input.publishedReviewId,
+        },
+        undefined,
+        // A resent dismissal whose first delivery landed is refused the same way, so only a complete read that finds the review and not dismissed proves the refusal.
+        async () => {
+          const current = await this.readComplete(prepared.value);
+          const review = current?.reviews.find(
+            (candidate) => candidate.id === input.publishedReviewId,
+          );
+          return review !== undefined && review.event !== "DISMISSED";
         },
       );
     });
@@ -378,6 +404,8 @@ export class PublishedFeedbackService {
     write: () => Promise<Result<void, GitHubWriteFailure>>,
     receipt: ConfirmedReceipt,
     journalEntry?: RecentReviewWrite,
+    /** The write kind's landed-check read (ADR 0046); omitted for an edit, whose refusal is final with no read. True only when the read proves the write did not land. */
+    isUnchanged: () => Promise<boolean> = async () => false,
   ): Promise<Result<ConfirmedReceipt, PublishedFeedbackFailure>> {
     const operation: ReviewWriteOperation = {
       schemaVersion: 1,
@@ -403,11 +431,26 @@ export class PublishedFeedbackService {
       return err("outcome_unknown");
     }
     if (result._tag === "err") {
-      // Slice 3 of #755 settles a refusal; until then it stays outcome unknown.
-      if (
-        result.error.category === "unavailable" ||
-        result.error.category === "refused"
-      )
+      if (result.error.category === "refused") {
+        const { cause } = result.error;
+        const settled = await settleRefusedWrite({
+          kind: intent._tag,
+          cause,
+          isUnchanged: async () => {
+            try {
+              return await isUnchanged();
+            } catch {
+              return false;
+            }
+          },
+          recordRejection: async () =>
+            (await this.operations.reject(operation))._tag === "ok",
+        });
+        return settled._tag === "Refused"
+          ? err(new GitHubRefusedPublishedFeedbackWrite(cause))
+          : err("outcome_unknown");
+      }
+      if (result.error.category === "unavailable")
         return err("outcome_unknown");
       const rejected = await this.operations.reject(operation);
       if (rejected._tag === "err") return err("outcome_unknown");
@@ -429,6 +472,21 @@ export class PublishedFeedbackService {
       input.reviewId,
     );
     return removed._tag === "err" ? err("outcome_unknown") : ok(receipt);
+  }
+
+  /** A fresh published-feedback read for a landed check: undefined unless it succeeded and is complete. */
+  private async readComplete(prepared: {
+    readonly fresh: FreshReview;
+  }): Promise<GitHubPublishedFeedback | undefined> {
+    const read = this.github.getPullRequestPublishedFeedback?.bind(this.github);
+    if (read === undefined) return undefined;
+    const feedback = await read({
+      profile: prepared.fresh.profile,
+      pr: sessionPr(prepared.fresh.session),
+    });
+    return feedback._tag === "ok" && feedback.value.complete === true
+      ? feedback.value
+      : undefined;
   }
 
   private async refreshAfterWrite(

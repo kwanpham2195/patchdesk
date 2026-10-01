@@ -195,6 +195,19 @@ export const COMMENT_DELETE_MESSAGES: ContextualMessages = {
   forbidden: forbiddenWriteCopy("deletion"),
 };
 
+const UNCONFIRMED_REVIEW_DISMISSAL = unconfirmedWriteCopy("dismissal");
+
+/** Dismissing a published review from its Conversation row. */
+export const REVIEW_DISMISS_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not dismiss this review.",
+  refusalAction: "dismissal",
+  outcome_unknown: UNCONFIRMED_REVIEW_DISMISSAL,
+  ambiguous_write: UNCONFIRMED_REVIEW_DISMISSAL,
+  timeout: UNCONFIRMED_REVIEW_DISMISSAL,
+  rate_limited: rateLimitedWriteCopy("dismissal"),
+  forbidden: forbiddenWriteCopy("dismissal"),
+};
+
 const UNCONFIRMED_THREAD_REPLY = unconfirmedWriteCopy("reply");
 
 /** Publishing a reply from a conversation thread card. */
