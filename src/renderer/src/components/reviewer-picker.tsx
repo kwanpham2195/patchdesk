@@ -155,6 +155,7 @@ export function ReviewerPicker({
     keyOf,
     projectReady,
     describeWriteFailure,
+    refusalAction: "review request",
   });
   const { readState, permission } = picker;
 

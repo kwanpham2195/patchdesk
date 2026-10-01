@@ -228,6 +228,7 @@ const UNCONFIRMED_DRAFT_STATE = unconfirmedWriteCopy("draft change");
 /** The author's draft toggle in the PR overview sheet. */
 export const DRAFT_STATE_MESSAGES: ContextualMessages = {
   fallback: "Patchdesk could not change this pull request's draft state.",
+  refusalAction: "draft change",
   outcome_unknown: UNCONFIRMED_DRAFT_STATE,
   ambiguous_write: UNCONFIRMED_DRAFT_STATE,
   timeout: UNCONFIRMED_DRAFT_STATE,
@@ -242,6 +243,7 @@ const UNCONFIRMED_BASE_BRANCH = unconfirmedWriteCopy("base branch change");
 /** The base-branch change in the PR overview sheet. */
 export const BASE_BRANCH_MESSAGES: ContextualMessages = {
   fallback: "Patchdesk could not change this pull request's base branch.",
+  refusalAction: "base branch change",
   outcome_unknown: UNCONFIRMED_BASE_BRANCH,
   ambiguous_write: UNCONFIRMED_BASE_BRANCH,
   timeout: UNCONFIRMED_BASE_BRANCH,
@@ -258,6 +260,7 @@ const UNCONFIRMED_REVIEW_REQUEST = unconfirmedWriteCopy("review request");
 /** Re-requesting a review from the metadata rail's Reviewers section. */
 export const RE_REQUEST_REVIEW_MESSAGES: ContextualMessages = {
   fallback: "Patchdesk could not request this review again.",
+  refusalAction: "review request",
   outcome_unknown: UNCONFIRMED_REVIEW_REQUEST,
   ambiguous_write: UNCONFIRMED_REVIEW_REQUEST,
   timeout: UNCONFIRMED_REVIEW_REQUEST,

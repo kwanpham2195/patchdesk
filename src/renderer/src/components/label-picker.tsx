@@ -128,6 +128,7 @@ export function LabelPicker({
     keyOf,
     projectReady,
     describeWriteFailure,
+    refusalAction: "label change",
   });
   const { readState, permission } = picker;
 

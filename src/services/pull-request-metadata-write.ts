@@ -6,7 +6,9 @@ import type {
 import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import type { PullRequestSummary } from "../domain/github-context";
 import type { GitHubWriteFailure } from "../domain/github-write";
+import type { RefusalCause } from "../domain/github-write-refusal";
 import type {
   IsoTimestamp,
   ReviewId,
@@ -23,12 +25,13 @@ import {
   type ReviewWriteIntent,
   type ReviewWriteOperation,
 } from "../domain/review-write-operation";
-import { err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import {
   postDesktopNotification,
   type DesktopNotifier,
 } from "./desktop-notifier";
+import { settleRefusedWrite } from "./refused-write-settlement";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewWriteGateFailure } from "./review-write-gate";
 
@@ -52,11 +55,23 @@ import type { ReviewWriteGateFailure } from "./review-write-gate";
  */
 
 /**
- * The failure vocabulary the three metadata writes share. Each service's own
+ * GitHub refused a metadata write. As a write's own result it is only the
+ * refusal; `runGuardedMetadataWrite` settles it with a pull request read and
+ * returns it to the caller only when the refusal is final (nothing was
+ * written and the Review is unlocked), otherwise `outcome_unknown`.
+ */
+export class GitHubRefusedMetadataWrite {
+  readonly reason = "github_refused";
+  constructor(readonly cause: RefusalCause) {}
+}
+
+/**
+ * The failure vocabulary the metadata writes share. Each service's own
  * failure type is this union, optionally widened by a reason only that write
  * can produce (`assignee_cap_exceeded`).
  */
 export type PullRequestMetadataWriteFailure =
+  | GitHubRefusedMetadataWrite
   | "invalid_input"
   | "not_found"
   | "permission_denied"
@@ -94,13 +109,18 @@ export function pullRequestRefForSession(
   };
 }
 
-/** Keeps a refused or rate-limited write distinguishable from a generic one. */
+/** Keeps a refused or rate-limited write distinguishable from a generic one. A refusal is settled by `runGuardedMetadataWrite`. */
 export function mapGitHubWriteFailure(
   failure: GitHubWriteFailure,
-): "rate_limited" | "forbidden" | "github_write_failed" | "outcome_unknown" {
-  // Slice 5 of #755 settles a refusal; until then it stays outcome unknown.
-  if (failure.category === "unavailable" || failure.category === "refused")
-    return "outcome_unknown";
+):
+  | GitHubRefusedMetadataWrite
+  | "rate_limited"
+  | "forbidden"
+  | "github_write_failed"
+  | "outcome_unknown" {
+  if (failure.category === "refused")
+    return new GitHubRefusedMetadataWrite(failure.cause);
+  if (failure.category === "unavailable") return "outcome_unknown";
   if (failure.category === "rate_limited") return "rate_limited";
   if (failure.category === "forbidden") return "forbidden";
   return "github_write_failed";
@@ -187,14 +207,17 @@ export async function resolvePullRequestWritePermission<Permission>(input: {
 /** Deterministic metadata preflight result captured before durable admission. */
 export type PreparedMetadataWrite<Receipt, Failure> = {
   readonly sessionId: ReviewSessionId;
+  readonly profile: WorkspaceProfileConfig;
   readonly pullRequest: PullRequestRef;
+  /** The pull request as the write's own preparation read it; the landed check compares against it. */
+  readonly before: PullRequestSummary;
   readonly intent: ReviewWriteIntent;
   readonly write: () => Promise<Result<Receipt, Failure>>;
 };
 
 export async function runGuardedMetadataWrite<
   Receipt,
-  Failure extends string,
+  Failure extends string | GitHubRefusedMetadataWrite,
 >(input: {
   readonly profileId: WorkspaceProfileId;
   readonly reviewId: ReviewId;
@@ -204,6 +227,8 @@ export async function runGuardedMetadataWrite<
     "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
   >;
   readonly recentWrites: ConfirmedWriteJournal;
+  /** The one read a refused write's landed check makes. */
+  readonly github: Pick<GitHubReader, "getPullRequest">;
   readonly now: () => IsoTimestamp;
   readonly validate: () => Result<void, Failure>;
   readonly prepare: () => Promise<
@@ -250,6 +275,37 @@ export async function runGuardedMetadataWrite<
     }
     if (result._tag === "err") {
       if (result.error === "outcome_unknown") return result;
+      if (result.error instanceof GitHubRefusedMetadataWrite) {
+        const { cause } = result.error;
+        const settled = await settleRefusedWrite({
+          kind: prepared.value.intent._tag,
+          cause,
+          isUnchanged: async () => {
+            try {
+              const current = await input.github.getPullRequest({
+                profile: prepared.value.profile,
+                pr: prepared.value.pullRequest,
+              });
+              return (
+                current._tag === "ok" &&
+                metadataWriteUnchanged(
+                  prepared.value.intent,
+                  current.value,
+                  prepared.value.before,
+                )
+              );
+            } catch {
+              return false;
+            }
+          },
+          recordRejection: async () =>
+            (await input.operations.reject(operation))._tag === "ok",
+        });
+        // A refusal that cannot be proven final keeps the lock for ADR 0035 recovery.
+        if (settled._tag === "OutcomeUnknown") return err("outcome_unknown");
+        leftLocked = undefined;
+        return result;
+      }
       const rejected = await input.operations.reject(operation);
       if (rejected._tag === "err") return err("outcome_unknown");
       leftLocked = undefined;
@@ -282,4 +338,79 @@ export async function runGuardedMetadataWrite<
         pullRequest: leftLocked,
       });
   }
+}
+
+/**
+ * Whether a pull request read proves a refused metadata write did not land:
+ * the exact field the write changes still holds the state it had before the
+ * write, on the same pull request. Never inferred from the recovery
+ * classifier answering "check required", which also covers an incomplete read.
+ *
+ * An add is unchanged only while every intended label, assignee, or reviewer
+ * is still missing; a remove only while every one is still present. A read
+ * without assignees or requested reviewers, or one whose label list is
+ * truncated when the label would have to be missing, proves nothing.
+ */
+function metadataWriteUnchanged(
+  intent: ReviewWriteIntent,
+  current: PullRequestSummary,
+  before: PullRequestSummary,
+): boolean {
+  switch (intent._tag) {
+    case "AddLabels":
+    case "RemoveLabels": {
+      const names = new Set(current.labels.map((label) => label.name));
+      if (intent._tag === "RemoveLabels")
+        return intent.names.every((name) => names.has(name));
+      const truncated =
+        current.labelCount !== undefined &&
+        current.labelCount > current.labels.length;
+      return !truncated && intent.names.every((name) => !names.has(name));
+    }
+    case "AddAssignees":
+    case "RemoveAssignees":
+      return membershipUnchanged(
+        intent.logins,
+        current.assignees,
+        intent._tag === "RemoveAssignees",
+      );
+    case "RequestReviewers":
+    case "RemoveReviewers":
+      return membershipUnchanged(
+        intent.logins,
+        current.requestedReviewers,
+        intent._tag === "RemoveReviewers",
+      );
+    case "SetDraftState":
+      return (
+        current.isDraft === before.isDraft && current.isDraft !== intent.draft
+      );
+    case "SetBaseBranch":
+      return (
+        current.baseBranch === before.baseBranch &&
+        current.baseBranch !== intent.branch
+      );
+    // Conversation and published-feedback writes have their own landed checks.
+    case "CreateComment":
+    case "Reply":
+    case "SetThreadState":
+    case "EditComment":
+    case "DeleteComment":
+    case "EditPublishedComment":
+    case "DeletePublishedComment":
+    case "DismissPublishedReview":
+      return false;
+    default:
+      return casesHandled(intent);
+  }
+}
+
+function membershipUnchanged(
+  logins: ReadonlyArray<string>,
+  current: ReadonlyArray<string> | undefined,
+  expectPresent: boolean,
+): boolean {
+  if (current === undefined) return false;
+  const members = new Set(current);
+  return logins.every((login) => members.has(login) === expectPresent);
 }

@@ -238,6 +238,22 @@ describe("useReviewMetadataActions", () => {
     );
   });
 
+  for (const row of cases) {
+    it(`${row.name} does not enter recovery when GitHub refused it with not_found`, async () => {
+      const rendered = renderActions(
+        row.path,
+        failure({ error: "github_refused", cause: "not_found" }, 409),
+      );
+      await act(async () => {
+        await expect(row.invoke(rendered.result.current)).rejects.toMatchObject(
+          { kind: "github_refused" },
+        );
+      });
+      expect(rendered.requireRecovery).not.toHaveBeenCalled();
+      expect(rendered.appendRecentWrites).not.toHaveBeenCalled();
+    });
+  }
+
   it("does not let observation failure reject durable confirmation", async () => {
     const observe = vi.fn(async () => {
       throw new Error("read failed");

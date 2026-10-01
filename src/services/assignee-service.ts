@@ -150,6 +150,7 @@ export class AssigneeService {
         coordinator: this.writeCoordinator,
         operations: this.operations,
         recentWrites: this.recentWrites,
+        github: this.github,
         now: this.now,
         validate: () => validateLocalCommand(input.command),
         prepare: () => this.prepareWrite(input),
@@ -388,7 +389,9 @@ export class AssigneeService {
       const writer = this.github.addAssigneesToAssignable.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
+        profile: current.value.profile,
         pullRequest: pr,
+        before: pullRequest.value,
         intent: {
           _tag: "AddAssignees" as const,
           logins: nonEmptyAssigneeLogins.value,
@@ -412,7 +415,9 @@ export class AssigneeService {
     const writer = this.github.removeAssigneesFromAssignable.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      profile: current.value.profile,
       pullRequest: pr,
+      before: pullRequest.value,
       intent: {
         _tag: "RemoveAssignees" as const,
         logins: nonEmptyAssigneeLogins.value,

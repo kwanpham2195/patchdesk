@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { RepositoryLabelPermission } from "../../../domain/github-context";
-import { PatchdeskApiError } from "../api-client";
+import { PatchdeskApiError, refusedWriteMessage } from "../api-client";
 import {
   projectReadState,
   type GithubListReadState,
@@ -83,6 +83,7 @@ export function useGithubItemPicker<
   keyOf,
   projectReady,
   describeWriteFailure,
+  refusalAction,
 }: {
   /** The keys GitHub says are attached right now — logins, or label names. */
   readonly attached: ReadonlyArray<string>;
@@ -93,6 +94,8 @@ export function useGithubItemPicker<
   readonly projectReady: (response: TResponse) => TReady;
   /** This picker's sentence for a rejected write, ending in a full stop; a `PatchdeskApiError`'s own message is appended to it. */
   readonly describeWriteFailure: (item: TItem, nextAttached: boolean) => string;
+  /** The picker's action name ("label change"); a GitHub refusal reads as the cause phrase for it instead of `describeWriteFailure`. */
+  readonly refusalAction: string;
 }): GithubItemPicker<TItem, TReady> {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -192,7 +195,10 @@ export function useGithubItemPicker<
         // what the picker believes about this account's standing.
         const reason =
           cause instanceof PatchdeskApiError ? ` ${cause.message}` : "";
-        setWriteError(`${describeWriteFailure(item, nextAttached)}${reason}`);
+        setWriteError(
+          refusedWriteMessage(cause, refusalAction) ??
+            `${describeWriteFailure(item, nextAttached)}${reason}`,
+        );
       })
       .finally(() => {
         admittedKeysRef.current.delete(key);

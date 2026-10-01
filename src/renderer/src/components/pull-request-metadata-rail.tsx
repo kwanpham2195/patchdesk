@@ -7,7 +7,11 @@ import type {
 } from "../../../domain/github-context";
 import { definedProps } from "../../../domain/defined-props";
 import { REVIEW_VERDICT_LABELS } from "../review-verdict-labels";
-import { PatchdeskApiError, contextualMessage } from "../api-client";
+import {
+  PatchdeskApiError,
+  contextualMessage,
+  refusedWriteMessage,
+} from "../api-client";
 import {
   forbiddenCopy,
   rateLimitedCopy,
@@ -536,7 +540,8 @@ function AssigneesSection({
         const reason =
           cause instanceof PatchdeskApiError ? ` ${cause.message}` : "";
         setSelfAssignError(
-          `Patchdesk could not assign you to this pull request.${reason}`,
+          refusedWriteMessage(cause, "assignee change") ??
+            `Patchdesk could not assign you to this pull request.${reason}`,
         );
       })
       .finally(() => {

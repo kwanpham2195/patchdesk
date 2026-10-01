@@ -150,6 +150,7 @@ export class ReviewerService {
         coordinator: this.writeCoordinator,
         operations: this.operations,
         recentWrites: this.recentWrites,
+        github: this.github,
         now: this.now,
         validate: () => validateLocalCommand(input.command),
         prepare: () => this.prepareWrite(input),
@@ -355,7 +356,9 @@ export class ReviewerService {
       const writer = this.github.requestReviews.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
+        profile: current.value.profile,
         pullRequest: pr,
+        before: pullRequest.value,
         intent: {
           _tag: "RequestReviewers" as const,
           logins: nonEmptyReviewerLogins.value,
@@ -379,7 +382,9 @@ export class ReviewerService {
     const writer = this.github.removeRequestedReviewers.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      profile: current.value.profile,
       pullRequest: pr,
+      before: pullRequest.value,
       intent: {
         _tag: "RemoveReviewers" as const,
         logins: nonEmptyReviewerLogins.value,

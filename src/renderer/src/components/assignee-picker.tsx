@@ -134,6 +134,7 @@ export function AssigneePicker({
     keyOf,
     projectReady,
     describeWriteFailure,
+    refusalAction: "assignee change",
   });
   const { readState, permission } = picker;
 
