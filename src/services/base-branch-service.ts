@@ -106,6 +106,7 @@ export class BaseBranchService {
       coordinator: this.writeCoordinator,
       operations: this.operations,
       recentWrites: this.recentWrites,
+      github: this.github,
       now: this.now,
       validate: () =>
         input.command.branch.trim().length === 0
@@ -203,7 +204,9 @@ export class BaseBranchService {
     const writer = this.github.setPullRequestBaseBranch.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      profile: current.value.profile,
       pullRequest: pr,
+      before: pullRequest.value,
       intent: { _tag: "SetBaseBranch" as const, branch },
       write: async (): Promise<
         Result<BaseBranchReceipt, BaseBranchWriteFailure>

@@ -35,6 +35,7 @@ import {
   type InlineConversationService,
 } from "../../services/inline-conversation-service";
 import type { LabelCommand, LabelService } from "../../services/label-service";
+import { GitHubRefusedMetadataWrite } from "../../services/pull-request-metadata-write";
 import type { ReviewWriteRecoveryFailure } from "../../services/review-write-recovery-service";
 import type {
   BaseBranchCommand,
@@ -453,11 +454,8 @@ async function labelResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
-  // `LabelWriteFailure` is exactly the shared eight, so no overrides.
-  return context.json(
-    { error: result.error },
-    mapReviewWriteFailureStatus(result.error, {}),
-  );
+  // `LabelWriteFailure` is the shared reasons, so no overrides.
+  return metadataFailureResponse(context, result.error, {});
 }
 
 async function assigneeResponse(
@@ -478,12 +476,11 @@ async function assigneeResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
-  return context.json(
-    { error: result.error },
-    // "assignee_cap_exceeded" joins "invalid_input" at 400: another rule the
-    // service enforces locally, not a GitHub-reported conflict.
-    mapReviewWriteFailureStatus(result.error, { assignee_cap_exceeded: 400 }),
-  );
+  // "assignee_cap_exceeded" joins "invalid_input" at 400: another rule the
+  // service enforces locally, not a GitHub-reported conflict.
+  return metadataFailureResponse(context, result.error, {
+    assignee_cap_exceeded: 400,
+  });
 }
 
 async function reviewerResponse(
@@ -504,12 +501,9 @@ async function reviewerResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
-  // `ReviewerWriteFailure` is exactly the shared eight: no reviewer cap
+  // `ReviewerWriteFailure` is the shared reasons: no reviewer cap
   // exists to enforce, so unlike assignees there is nothing to override.
-  return context.json(
-    { error: result.error },
-    mapReviewWriteFailureStatus(result.error, {}),
-  );
+  return metadataFailureResponse(context, result.error, {});
 }
 
 async function draftStateResponse(
@@ -530,12 +524,9 @@ async function draftStateResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
-  // `DraftStateWriteFailure` is exactly the shared eight; the no-op refusal
+  // `DraftStateWriteFailure` is the shared reasons; the no-op refusal
   // reuses `invalid_input`, which already answers 400.
-  return context.json(
-    { error: result.error },
-    mapReviewWriteFailureStatus(result.error, {}),
-  );
+  return metadataFailureResponse(context, result.error, {});
 }
 
 async function baseBranchResponse(
@@ -556,8 +547,25 @@ async function baseBranchResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
+  return metadataFailureResponse(context, result.error, {});
+}
+
+/**
+ * A metadata write's failure answer. A refusal GitHub gave and the service
+ * settled carries its cause so the renderer can say why; 409 matches the other
+ * conflicts with GitHub's state.
+ */
+function metadataFailureResponse<Extra extends string = never>(
+  context: Context,
+  failure:
+    | GitHubRefusedMetadataWrite
+    | Parameters<typeof mapReviewWriteFailureStatus<Extra>>[0],
+  overrides: Readonly<Record<Extra, 400>>,
+): Response {
+  if (failure instanceof GitHubRefusedMetadataWrite)
+    return context.json({ error: failure.reason, cause: failure.cause }, 409);
   return context.json(
-    { error: result.error },
-    mapReviewWriteFailureStatus(result.error, {}),
+    { error: failure },
+    mapReviewWriteFailureStatus(failure, overrides),
   );
 }

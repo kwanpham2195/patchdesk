@@ -84,6 +84,7 @@ export class DraftStateService {
       coordinator: this.writeCoordinator,
       operations: this.operations,
       recentWrites: this.recentWrites,
+      github: this.github,
       now: this.now,
       // A boolean carries no local rule to break; the only rejection this
       // write has (the already-in-that-state no-op) needs the GitHub read
@@ -148,7 +149,9 @@ export class DraftStateService {
     const writer = this.github.setPullRequestDraftState.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      profile: current.value.profile,
       pullRequest: pr,
+      before: pullRequest.value,
       intent: { _tag: "SetDraftState" as const, draft },
       write: async (): Promise<
         Result<DraftStateReceipt, DraftStateWriteFailure>

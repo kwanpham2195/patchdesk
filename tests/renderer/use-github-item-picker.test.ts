@@ -3,6 +3,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
 import type { GithubListResponse } from "../../src/renderer/src/github-read-failure-copy";
 import {
   useGithubItemPicker,
@@ -89,6 +90,7 @@ async function renderOpened(
         keyOf,
         projectReady,
         describeWriteFailure,
+        refusalAction: "assignee change",
       }),
     { initialProps: { attached } },
   );
@@ -118,6 +120,7 @@ describe("useGithubItemPicker", () => {
         keyOf,
         projectReady,
         describeWriteFailure,
+        refusalAction: "assignee change",
       }),
     );
     expect(actions.fetchList).not.toHaveBeenCalled();
@@ -329,6 +332,31 @@ describe("useGithubItemPicker", () => {
     expect(rendered.result.current.permission).toBe("permitted");
   });
 
+  it("words a refused write with the cause phrase for its action and no GitHub status step", async () => {
+    const actions = actionsFixture({
+      add: vi.fn(async () => {
+        throw new PatchdeskApiError(
+          "github_refused",
+          409,
+          false,
+          "corr-refused",
+          "GitHub refused this action. Nothing was changed.",
+          { error: "github_refused", cause: "not_found" },
+        );
+      }),
+    });
+    const rendered = await renderOpened(actions);
+    act(() => rendered.result.current.toggle(hubot, true));
+    await waitFor(() =>
+      expect(rendered.result.current.writeError).toBe(
+        refusalCausePhrase("not_found", "assignee change"),
+      ),
+    );
+    expect(rendered.result.current.writeError).not.toContain("Check GitHub");
+    // The refused add is reverted like any other failed write.
+    expect(rendered.result.current.isAttached(hubot)).toBe(false);
+  });
+
   it("clears the last failure when the next toggle starts", async () => {
     const add = vi
       .fn<(item: Item) => Promise<void>>()
@@ -411,6 +439,7 @@ describe("useGithubItemPicker", () => {
         keyOf,
         projectReady,
         describeWriteFailure,
+        refusalAction: "assignee change",
       }),
     );
     act(() => rendered.result.current.setOpen(true));
@@ -454,6 +483,7 @@ describe("useGithubItemPicker", () => {
         keyOf,
         projectReady,
         describeWriteFailure,
+        refusalAction: "assignee change",
       }),
     );
     await act(async () => {
@@ -487,6 +517,7 @@ describe("useGithubItemPicker", () => {
         keyOf,
         projectReady,
         describeWriteFailure,
+        refusalAction: "assignee change",
       }),
     );
     act(() => rendered.result.current.setOpen(true));

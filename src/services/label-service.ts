@@ -120,6 +120,7 @@ export class LabelService {
       coordinator: this.writeCoordinator,
       operations: this.operations,
       recentWrites: this.recentWrites,
+      github: this.github,
       now: this.now,
       validate: () => validateLocalCommand(input.command),
       prepare: () => this.prepareWrite(input),
@@ -230,7 +231,9 @@ export class LabelService {
       const writer = this.github.addLabelsToLabelable.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
+        profile: current.value.profile,
         pullRequest: pr,
+        before: pullRequest.value,
         intent: { _tag: "AddLabels" as const, names: nonEmptyLabelNames.value },
         write: async (): Promise<Result<LabelReceipt, LabelWriteFailure>> => {
           const written = await writer({
@@ -249,7 +252,9 @@ export class LabelService {
     const writer = this.github.removeLabelsFromLabelable.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      profile: current.value.profile,
       pullRequest: pr,
+      before: pullRequest.value,
       intent: {
         _tag: "RemoveLabels" as const,
         names: nonEmptyLabelNames.value,

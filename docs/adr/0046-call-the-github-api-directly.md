@@ -423,7 +423,7 @@ landed first delivery could have produced it:
   GitHub does not implement the endpoint at all.
 - `settleRefusedWrite` in `src/services/refused-write-settlement.ts` is the one
   helper. When the refusal is final it records the rejection, releases the
-  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); the conversation writes (slice 2) return `github_refused` with the cause, published feedback (slice 3) and the pending-review and direct-summary writes (slice 4) do the same; the metadata writes arrive in slice 5. When the read
+  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); the conversation writes (slice 2) return `github_refused` with the cause, published feedback (slice 3), the pending-review and direct-summary writes (slice 4), and the metadata writes (slice 5) do the same. When the read
   fails, is incomplete, or shows the intended state, or when the rejection
   cannot be recorded, the write stays outcome unknown and ADR 0035 recovery
   settles it with the same read.
@@ -492,9 +492,46 @@ landed first delivery could have produced it:
   `unavailable`. A GraphQL `NOT_FOUND` on a mutation follows the same rule; on a
   query it keeps meaning not found beside partial data, which reads rely on.
   No live GraphQL error of this type could be produced on 2026-10-01 (oversized, blank, and malformed reply bodies, a repeated resolve, and a reply on a closed or locked pull request were all accepted or answered `comment: null` with no `errors`), so the mapping rests on GitHub's documented error type and the adapter tests. Live, the REST 422 came from a file whose diff GitHub calls too large ("diff is too large"); a review comment body has no practical size limit.
-- Every other write sends `refused` down the outcome-unknown path until its
-  slice of issue #755 lands (the metadata writes). `unavailable` and `refused`
-  behave the same there today.
+- **Metadata writes (slice 5).** `runGuardedMetadataWrite` settles a refusal of
+  all eight metadata writes (labels add and remove, assignees add and remove,
+  review requests add and remove, draft state, base branch) through
+  `settleRefusedWrite`, with the write kind of the intent. Each kind is a landed
+  check: one `getPullRequest` read, compared field by field with
+  `metadataWriteUnchanged` against the pull request as the write's own
+  preparation read saw it. The refusal is final only while the intended state is
+  absent: an add while every named label, assignee, or reviewer is still
+  missing, a remove while every one is still present, a draft change while
+  `isDraft` still holds the old value, and a base change while `baseBranch`
+  still equals the base read before the write. A different value present (a
+  third base branch, a label that is not the one added) is judged on the named
+  field alone: another label beside a missing one leaves an add unchanged, but a
+  base that moved to a third branch is not the old base and stays locked. A
+  read that fails, an assignee or requested-reviewer list the read lacks, or a
+  label list truncated when the add needs the label to be missing, keeps the
+  write outcome unknown. The classifier `classifyMetadataIntent` is not used for
+  this: it answers "check required" for incomplete reads too, which is not
+  evidence of "unchanged". A final refusal records the rejection, releases the
+  lock, and answers `github_refused` with the cause (409). The renderer words it
+  with the action ("label change", "assignee change", "review request", "draft
+  change", "base branch change") and no Check GitHub step. Live on 2026-10-01
+  on a throwaway pull request: adding a label deleted on github.com after the
+  picker loaded answered a GraphQL `NOT_FOUND` with `addLabelsToLabelable: null`
+  and showed "Patchdesk or GitHub could not find what the label change needs."
+  with nothing locked. A base branch deleted after the picker loaded answered
+  GraphQL `UNPROCESSABLE` ("Proposed base branch was not found") with
+  `updatePullRequest: null`, but the HTTP client did not classify that answer as
+  a refusal, so the write stayed outcome unknown and the Review showed "GitHub
+  writes are paused". Mapping a null root field on a mutation to
+  `CommandUnprocessable` is #768; the base branch refusal reaches the new path
+  once that lands. The service and invariant tests cover the base branch row.
+
+**Summary: all five write families are converted.** Merge, the inline
+conversation writes, the published-feedback writes, the pending-review and
+direct-summary writes, and the metadata writes all settle a refusal through the
+one classifier and `settleRefusedWrite`. No write sends `refused` down the
+outcome-unknown path by default; a write stays outcome unknown only when its
+landed check cannot prove the state unchanged, or on 5xx, timeouts, network
+errors, and unclassified failures.
 
 **Accepted risk: rate limits.** 401, 403, and 403 or 429 rate limits are final
 in every write runner without a read. A resend carries the same token moments

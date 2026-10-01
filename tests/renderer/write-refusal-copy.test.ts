@@ -8,11 +8,14 @@ import {
 } from "../../src/renderer/src/api-client";
 import { composerErrorMessage } from "../../src/renderer/src/components/review-diff-authoring-errors";
 import {
+  BASE_BRANCH_MESSAGES,
   COMMENT_DELETE_MESSAGES,
   COMMENT_EDIT_MESSAGES,
   DIRECT_SUMMARY_MESSAGES,
+  DRAFT_STATE_MESSAGES,
   FINDING_ACTION_MESSAGES,
   FINISH_REVIEW_MESSAGES,
+  RE_REQUEST_REVIEW_MESSAGES,
   REVIEW_DISMISS_MESSAGES,
   THREAD_REPLY_MESSAGES,
 } from "../../src/renderer/src/review-copy";
@@ -79,6 +82,9 @@ describe("a refused conversation write", () => {
     ["Finish review submission", FINISH_REVIEW_MESSAGES, "submission"],
     ["review summary", DIRECT_SUMMARY_MESSAGES, "review summary"],
     ["Finding added to the review", FINDING_ACTION_MESSAGES, "review comment"],
+    ["draft change", DRAFT_STATE_MESSAGES, "draft change"],
+    ["base branch change", BASE_BRANCH_MESSAGES, "base branch change"],
+    ["review request", RE_REQUEST_REVIEW_MESSAGES, "review request"],
   ] as const)(
     "words a refused %s with the cause phrase and the action",
     async (_name, messages, action) => {
