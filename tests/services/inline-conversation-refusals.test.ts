@@ -218,7 +218,10 @@ describe("InlineConversationService refused writes (issue #755)", () => {
       threadId: "PRRT_thread",
       state: "resolved",
     };
-    const comments = (state: "open" | "resolved", complete = true) =>
+    const comments = (
+      state: "open" | "resolved" | "outdated",
+      complete = true,
+    ) =>
       vi.fn(async () =>
         ok({
           threads: [{ id: "PRRT_thread", state, comments: [] }],
@@ -274,6 +277,34 @@ describe("InlineConversationService refused writes (issue #755)", () => {
           setReviewThreadState: refusedResolve(),
           getPullRequestComments: vi.fn(async () =>
             err({ _tag: "GitHubReadFailed" } as never),
+          ),
+        },
+        resolve,
+      );
+
+      await expect(service.execute(input)).resolves.toEqual(outcomeUnknown);
+      expect(operations.current()?.state).toEqual(lockedState);
+    });
+
+    it("stays outcome unknown for an Unresolve when the thread reads outdated", async () => {
+      const { operations, service, input } = setup(
+        {
+          setReviewThreadState: refusedResolve(),
+          getPullRequestComments: comments("outdated"),
+        },
+        { ...resolve, state: "open" },
+      );
+
+      await expect(service.execute(input)).resolves.toEqual(outcomeUnknown);
+      expect(operations.current()?.state).toEqual(lockedState);
+    });
+
+    it("stays outcome unknown when the thread is missing from a complete read", async () => {
+      const { operations, service, input } = setup(
+        {
+          setReviewThreadState: refusedResolve(),
+          getPullRequestComments: vi.fn(async () =>
+            ok({ threads: [], complete: true } as never),
           ),
         },
         resolve,

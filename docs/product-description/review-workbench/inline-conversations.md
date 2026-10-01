@@ -64,7 +64,7 @@ A composer that fails keeps its text and shows a message for the cause:
 - The pull request changed: "This pull request has changed. Refresh and try again."
 - GitHub already holds an unfinished review: "GitHub already holds an unfinished review on this pull request. Refresh, then add this comment to that review."
 - The write was refused without GitHub being the one to refuse it — the Review's own write gate, a missing confirmation, or a pending review that changed: "This comment was refused. Refresh to see the current state, then try again."
-- GitHub refused the comment (it could not find what the comment needs, the comment failed validation such as a body over 65,536 characters, or the endpoint is not supported): a sentence naming that cause and the comment, such as "GitHub could not accept the comment as sent." It repeats none of GitHub's own text and does not send the maintainer to check GitHub; the comment never posted, and the Review stays unlocked for the next write.
+- GitHub refused the comment (it could not find what the comment needs, the comment failed validation, such as one on a file whose diff GitHub says is too large, or the endpoint is not supported): a sentence naming that cause and the comment, such as "GitHub could not accept the comment as sent." It repeats none of GitHub's own text and does not send the maintainer to check GitHub; the comment never posted, and the Review stays unlocked for the next write.
 - The location no longer fits the diff: "This comment cannot be published against the current diff."
 - GitHub could not confirm the write: "GitHub did not confirm the write. Check GitHub before retrying."
 - The pending review changed or is locked: "The pending review changed. Refresh to see its current state."

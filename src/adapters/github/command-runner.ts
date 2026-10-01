@@ -508,9 +508,12 @@ function classifyExecution(
  */
 export function classifyGraphqlErrorBody(
   body: string,
+  isMutation: boolean,
 ): CommandFailure | undefined {
   const signal = extractGraphqlErrorSignal(body);
-  return signal === undefined ? undefined : classifyGraphqlSignal(signal);
+  return signal === undefined
+    ? undefined
+    : classifyGraphqlSignal(signal, isMutation);
 }
 
 /**
@@ -654,8 +657,11 @@ function extractGraphqlErrorSignal(
  */
 function classifyGraphqlSignal(
   signal: GraphqlErrorSignal,
+  isMutation: boolean,
 ): CommandFailure | undefined {
-  if (signal.type === "NOT_FOUND") return { _tag: "CommandNotFound" };
+  // A mutation error beside non-null data may mean it partly landed, so it is no refusal. Reads rely on NOT_FOUND beside partial data.
+  if (signal.type === "NOT_FOUND" && (!isMutation || signal.dataEmpty))
+    return { _tag: "CommandNotFound" };
   if (signal.type === "UNPROCESSABLE" && signal.dataEmpty)
     return { _tag: "CommandUnprocessable" };
   if (signal.type === "RATE_LIMITED") return { _tag: "CommandRateLimited" };

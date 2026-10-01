@@ -29,6 +29,18 @@ import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
+/** The failure the renderer builds from the route's refusal answer. */
+function refusal(): PatchdeskApiError {
+  return new PatchdeskApiError(
+    "github_refused",
+    409,
+    false,
+    "refused",
+    "raw provider refusal",
+    { error: "github_refused", cause: "unprocessable" },
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -575,6 +587,42 @@ describe("ConversationThreadCard", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe(
       contextualMessage(cause, COMMENT_EDIT_MESSAGES),
+    );
+  });
+
+  it("words a refused edit by its cause", async () => {
+    const user = userEvent.setup();
+    const onEditComment = vi.fn(async () => {
+      throw refusal();
+    });
+    render(<ConversationThreadCard thread={thread({ onEditComment })} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Edit comment" }),
+      " Edited",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(refusalCausePhrase("unprocessable", "edit"));
+  });
+
+  it("words a refused deletion by its cause", async () => {
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    const onDeleteComment = vi.fn(async () => {
+      throw refusal();
+    });
+    render(<ConversationThreadCard thread={thread({ onDeleteComment })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      refusalCausePhrase("unprocessable", "deletion"),
     );
   });
 

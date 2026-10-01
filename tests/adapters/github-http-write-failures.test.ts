@@ -274,6 +274,17 @@ describe("a GraphQL error on a write is the category its type means", () => {
     },
   );
 
+  it("keeps a NOT_FOUND beside non-null data unavailable, because the mutation may have partly landed", async () => {
+    const failure = await mutationWrite(
+      json(200, {
+        data: { resolveReviewThread: { thread: { id: "PRRT_1" } } },
+        errors: [{ type: "NOT_FOUND", message: "Could not resolve" }],
+      }),
+    );
+
+    expect(failure.category).toBe("unavailable");
+  });
+
   it("keeps an error beside non-null data unavailable, because the mutation may have partly landed", async () => {
     const failure = await mutationWrite(
       json(200, {
