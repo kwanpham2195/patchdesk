@@ -44,8 +44,8 @@ import {
   type FindingFocusRequest,
 } from "./review-workbench-finding-navigation";
 import {
-  countFindingsByPath,
   type FileFindingCount,
+  useFindingCountsByPath,
 } from "../review-finding-counts";
 import type { LocalPatchViewSelection } from "../flows/use-local-patch-view";
 import type { LocalDraftControls } from "../flows/use-local-drafts";
@@ -310,9 +310,10 @@ export function ReviewWorkbench({
         : [],
     [analysisIsCurrent, retainedAnalysis],
   );
-  const findingCountsByPath = useMemo(
-    () => countFindingsByPath(findings),
-    [findings],
+  const findingCountsByPath = useFindingCountsByPath(
+    analysisIsCurrent ? retainedAnalysis.value : undefined,
+    model.analysisReviewActions?.findings,
+    localDrafts?.draftedFindingIds,
   );
   const [findingFocusRequest, setFindingFocusRequest] = useState<
     FindingFocusRequest | undefined
