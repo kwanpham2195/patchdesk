@@ -171,9 +171,11 @@ function InsightAvailabilityErrors({
     <>
       {unavailable ? (
         <InlineError className="py-2">
-          {catalogError || !hasAvailableProvider
-            ? "No model configured. Add a provider API key, then reload."
-            : "No API-key model configured. Open a run and pick Codex CLI account or pi CLI account."}
+          {catalogError
+            ? "Could not load the model list. Reopen the Review to try again."
+            : !hasAvailableProvider
+              ? "No model available. Export a provider API key in your shell profile, or put the Codex or pi CLI on the PATH Patchdesk launches with, then relaunch Patchdesk."
+              : "No API-key model configured. Open a run and pick Codex CLI account or pi CLI account."}
         </InlineError>
       ) : null}
       {requestFailureMessage === undefined ? null : (

@@ -156,6 +156,32 @@ describe("DiagnosticsModal Review activity", () => {
     ).toBeNull();
   });
 
+  it("reads an underscore phase name as words", async () => {
+    installModalApi({
+      activity: {
+        events: [
+          {
+            at: "2026-09-30T10:00:00.000Z",
+            category: "retention",
+            phase: "retention_sweep",
+            retryable: false,
+          },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+    renderModal("acme");
+    await user.click(screen.getByRole("tab", { name: "Review activity" }));
+    const activityCard = screen.getByTestId("review-activity-card");
+    await user.click(
+      within(activityCard).getByRole("button", { name: "Load activity" }),
+    );
+
+    expect(
+      await within(activityCard).findByText("Retention sweep"),
+    ).toBeTruthy();
+  });
+
   it("keeps a failed Review activity load distinct from a successful empty result", async () => {
     installModalApi({ activityFails: true });
     const user = userEvent.setup();

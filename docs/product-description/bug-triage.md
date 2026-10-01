@@ -30,7 +30,7 @@ The table records each disposition. Open entries need a fix or product decision;
 | B-19 | Try again and related run controls stay enabled on a merged or closed Review             | low      | Review workbench / Insights        | fixed (#348)           | —                                                                                                                          |
 | B-20 | Some Pull requests filters are not measured against the search length limit              | low      | Pull requests / Filters            | fix                    | —                                                                                                                          |
 | B-21 | Dismissed Findings still add to Finding badges                                           | low      | Review workbench / Diff            | fixed                  | [#621](https://github.com/kwanpham2195/patchdesk/issues/621)                                                               |
-| B-22 | Small copy and rendering slips                                                           | low      | Insights / Settings                | fix                    | —                                                                                                                          |
+| B-22 | Small copy and rendering slips                                                           | low      | Insights / Settings                | fixed                  | [#622](https://github.com/kwanpham2195/patchdesk/issues/622)                                                               |
 | B-23 | Walkthrough section keys ignore modifier keys                                            | low      | Review workbench / Walkthrough     | fixed                  | [#623](https://github.com/kwanpham2195/patchdesk/issues/623)                                                               |
 | B-24 | Repository-marked generated files do not reach the Scope gauge                           | low      | Review workbench / Insights        | product call           | —                                                                                                                          |
 
@@ -172,17 +172,8 @@ The table records each disposition. Open entries need a fix or product decision;
 
 ### B-22: Small copy and rendering slips
 
-- **Where the user meets it:** Four places, each a copy or formatting slip.
-- **What happens / what was expected:**
-  - The running Insight state now shows a relative time and omits the partial-results sentence.
-  - The Walkthrough no longer refers to a Back to files control it does not have.
-  - Review activity title-cases hyphenated phase names but shows underscore names raw, such as `Retention_sweep`. Cause: `activityLabel` at `src/renderer/src/flows/settings-flow.tsx:860-865` splits on `-` only.
-  - The no-model guidance no longer names the Electron process; it now says "Add a provider API key, then reload." It still says reload, while a key added to the login shell after launch needs a relaunch. Cause: `src/renderer/src/components/review-insights-slot.tsx`.
-- **Reproduce:** Start an Insight run and read the running state; open a retained Walkthrough; open Settings → Data & recovery and Load activity after a retention sweep; open Insights with no eligible model.
-- **Severity:** `low`. Cosmetic or misleading copy with no state at risk.
-- **Decision needed:** `fix`, for the two that remain. Split phase names on `_` as well, and reword the no-model guidance to say relaunch Patchdesk.
-- **Raised by:** [Brief](review-workbench/brief.md#open-questions-and-verification), [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification), [Logs and diagnostics](settings/logs-and-diagnostics.md#open-questions-and-verification).
-- **Issue:** —
+- **Disposition:** Fixed. Review activity splits phase names on hyphens and underscores (`Retention sweep`), and the Insights panel's no-model message names a shell-profile API key or the Codex or pi CLI on the launch PATH, then a relaunch, with a separate message when the model list fails to load; see [Logs and diagnostics](settings/logs-and-diagnostics.md#open-questions-and-verification) and [Brief](review-workbench/brief.md).
+- **Issue:** [#622](https://github.com/kwanpham2195/patchdesk/issues/622)
 
 ### B-23: Walkthrough section keys ignore modifier keys
 
