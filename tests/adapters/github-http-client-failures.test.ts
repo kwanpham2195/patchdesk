@@ -52,10 +52,10 @@ describe("GitHubHttpClient status classification", () => {
       expected: { _tag: "CommandNotFound" },
     },
     {
-      name: "405 is unsupported",
+      name: "405 is a method GitHub does not allow",
       status: 405,
       message: "Method not allowed",
-      expected: { _tag: "CommandUnsupported" },
+      expected: { _tag: "CommandMethodNotAllowed" },
     },
     {
       name: "415 is unsupported",
@@ -70,10 +70,10 @@ describe("GitHubHttpClient status classification", () => {
       expected: { _tag: "CommandPendingReview" },
     },
     {
-      name: "422 for any other validation failure is unsupported",
+      name: "422 for any other validation failure is unprocessable",
       status: 422,
       message: "Validation Failed",
-      expected: { _tag: "CommandUnsupported" },
+      expected: { _tag: "CommandUnprocessable" },
     },
     {
       name: "429 is rate limited",

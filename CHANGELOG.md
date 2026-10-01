@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed a merge that GitHub answered with not found (404) or not implemented (415, 501) being reported as not confirmed and locking the Review. Merge now shows Merge refused with its cause: the pull request could not be found, or GitHub does not offer this merge and it should be done on GitHub. Merge refusals now run on one shared rule that the other GitHub writes will move onto. #755
+
 - Fixed Review details and the row's Brief tag on Pull requests showing Not run for an Insight that had finished, until Refresh pull requests was pressed. The screen now reads Insight state from local records when it is shown and when a run settles, without asking GitHub. #692
 
 - Fixed a Visited row whose Review cannot open leaving the app on the workbench with the row selected and unclickable. The screen now returns to Pull requests, keeps the "Could not open the saved review." message, and the row can be clicked again to retry. #615

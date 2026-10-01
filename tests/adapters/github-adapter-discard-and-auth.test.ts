@@ -49,7 +49,7 @@ describe("GitHubAdapter pending-review discard", () => {
     ]);
   });
 
-  it("classifies a not-found discard as unavailable (conservative, never a confirmed absence)", async () => {
+  it("classifies a not-found discard as refused with its cause; the pending-review service still treats it as outcome unknown", async () => {
     const transport = orderedTransport([{ _tag: "CommandNotFound" }]);
     const adapter = testAdapter(transport);
     await expect(
@@ -60,7 +60,11 @@ describe("GitHubAdapter pending-review discard", () => {
       }),
     ).resolves.toMatchObject({
       _tag: "err",
-      error: { _tag: "GitHubWriteFailure", category: "unavailable" },
+      error: {
+        _tag: "GitHubWriteFailure",
+        category: "refused",
+        cause: "not_found",
+      },
     });
   });
 

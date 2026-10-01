@@ -231,6 +231,9 @@ describe("useReviewMergeAction", () => {
   // Issue #691: a refused merge left nothing on GitHub, so it does not hold the next merge for a status check.
   it.each([
     ["merge_not_mergeable", 409],
+    ["merge_head_changed", 409],
+    ["merge_unsupported", 409],
+    ["not_found", 404],
     ["stale", 400],
     ["stale_head", 409],
     ["not_fresh", 409],

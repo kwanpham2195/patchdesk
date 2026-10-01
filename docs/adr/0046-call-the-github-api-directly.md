@@ -397,23 +397,55 @@ it was over `gh`.
 connection without processing the request, so the resend is the only delivery
 and there is no duplicate. When the first request did land, a resent submit,
 dismiss, merge, discard, or delete acts on something the first one already
-consumed, and GitHub answers 404, 405, or 422. `classifyRestStatus` in
-`src/adapters/github/command-runner.ts` maps those to `CommandNotFound` and
-`CommandUnsupported`; `writeFailure` in
-`src/adapters/github/github-write-failures.ts` maps both to `unavailable`,
-which is the category that keeps the Review locked for ADR 0035
-reconciliation. The reconciling read then reports what the first request did.
+consumed, and GitHub answers 404, 405, 409, or 422.
 
-**Amended for merges by issue #691 (2026-10-01).** A merge GitHub answers with
-405, 409, or 422 is now `rejected` with a cause (`mergeWriteFailure` in
-`github-write-failures.ts`; 409 is `CommandConflict`), because treating every
-refusal as unknown locked the Review and sent the maintainer to GitHub for a
-merge that never started. The resend case above still holds: before it
-reports a refusal, `mergePullRequest` in `merge-service.ts` reads the pull
-request once, and only an open pull request makes the refusal final. A pull
-request that reads as merged or closed, or a read that fails, keeps the merge
-outcome-unknown for ADR 0035 reconciliation. Every other write still maps
-these statuses to `unavailable`.
+**The general rule (issue #755, 2026-10-01; slice 1 and merge from issue
+#691).** Reporting every one of those answers as outcome unknown locked the
+Review and sent the maintainer to GitHub for a write that never happened. A
+refusal is now its own category, and whether it is final depends on whether a
+landed first delivery could have produced it:
+
+- `classifyRestStatus` gives 404 `CommandNotFound`, 405
+  `CommandMethodNotAllowed`, 409 `CommandConflict`, and a 422 that is not the
+  one-pending-review constraint `CommandUnprocessable`. 415 and 501 stay
+  `CommandUnsupported`. A GraphQL `NOT_FOUND` is `CommandNotFound`.
+- `writeFailure` in `src/adapters/github/github-write-failures.ts` maps each of
+  these to the category `refused` with a required cause: `not_found`,
+  `conflict`, `not_allowed`, `unprocessable`, or `unsupported`. 5xx, timeouts,
+  network errors, aborts, unclassified failures, invalid JSON, and a malformed
+  success body stay `unavailable`.
+- `refusalFinality` in `src/domain/github-write-refusal.ts` is the one table,
+  keyed by write kind. `final`: no read is needed, because the write creates
+  something new or can be repeated safely. `landed_check`: a resent write whose
+  first delivery landed could get the same refusal, so the refusal is final
+  only after the kind's existing read shows the state the write would change is
+  still unchanged. `unsupported` (415 and 501) is final for every kind, because
+  GitHub does not implement the endpoint at all.
+- `settleRefusedWrite` in `src/services/refused-write-settlement.ts` is the one
+  helper. When the refusal is final it records the rejection, releases the
+  lock, and the service answers `github_refused` with the cause. When the read
+  fails, is incomplete, or shows the intended state, or when the rejection
+  cannot be recorded, the write stays outcome unknown and ADR 0035 recovery
+  settles it with the same read.
+- Merge is the first write on this path. Its landed check is the pull request
+  read in `mergePullRequest` (`merge-service.ts`): only an open pull request
+  makes the refusal final. The causes map to the stored merge reasons:
+  `conflict` to `merge_head_changed`, `not_allowed` and `unprocessable` to
+  `merge_not_mergeable`, `not_found` to `not_found`, and `unsupported` to
+  `merge_unsupported`. `mergeWriteFailure` and `GitHubMergeRefusal` no longer
+  exist.
+- Every other write sends `refused` down the outcome-unknown path until its
+  slice of issue #755 lands (conversation writes, published feedback, pending
+  review and direct summary, then metadata writes). `unavailable` and
+  `refused` behave the same there today.
+
+**Accepted risk: rate limits.** 401, 403, and 403 or 429 rate limits are final
+in every write runner without a read. A resend carries the same token moments
+later, and a landed check under a rate limit would usually fail too, which
+would lock the Review on every real rate limit. A resent merge whose first
+delivery landed could therefore be answered with a rate limit and recorded as
+`merge_rate_limited`, a rejection of a merge that happened. The Review then
+reads as open until the next refresh shows it merged. This trade is accepted.
 
 **Four labels can leave a duplicate the maintainer sees.** Each of them creates
 something new, so a second delivery creates a second one:
@@ -655,8 +687,10 @@ successors anyway.
   parse are never a rejection. `writeFailure` in `github-write-failures.ts`
   mapped `CommandFailed` to `rejected` when this was written, which is exactly
   that bug; issue #288 fixed it before the write cutover, and `rejected` is
-  now produced only by Patchdesk's own "No review content is selected." check
-  and, since issue #691, by a merge refusal confirmed by an open pull request.
+  now produced only by Patchdesk's own "No review content is selected." check.
+  A GitHub refusal is the separate category `refused`, which a write service
+  turns into a recorded rejection only when `refusalFinality` and the kind's
+  landed check allow it (issue #755).
   `tests/adapters/github-http-write-failures.test.ts` is the table the HTTP
   transport is pinned against, with the gh path's category asserted beside
   each row.

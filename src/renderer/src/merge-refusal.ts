@@ -1,5 +1,30 @@
 import type { MergeMethod } from "../../domain/github-context";
+import type { RefusalCause } from "../../domain/github-write-refusal";
 import { isApiErrorCode } from "./api-client";
+import { refusalCausePhrase } from "./write-refusal-copy";
+
+/** The cause and the next step for each stored merge reason GitHub's refusal produces. */
+const mergeRefusals: ReadonlyArray<{
+  readonly reason: string;
+  readonly cause: RefusalCause;
+  readonly nextStep: string;
+}> = [
+  {
+    reason: "merge_head_changed",
+    cause: "conflict",
+    nextStep: "Refresh, then merge again.",
+  },
+  {
+    reason: "merge_not_mergeable",
+    cause: "not_allowed",
+    nextStep: "Check its branch rules and merge settings, then try again.",
+  },
+  {
+    reason: "not_found",
+    cause: "not_found",
+    nextStep: "Refresh to see whether the pull request still exists.",
+  },
+];
 
 /**
  * The copy for a merge that Patchdesk or GitHub refused before anything
@@ -13,10 +38,11 @@ export function mergeRefusalMessage(
 ): string | undefined {
   if (isApiErrorCode(cause, "merge_method_not_allowed"))
     return `This repository does not allow ${method} merges. Nothing was merged. Refresh, then choose a method the repository allows.`;
-  if (isApiErrorCode(cause, "merge_head_changed"))
-    return "GitHub refused the merge because the head branch changed. Nothing was merged. Refresh, then merge again.";
-  if (isApiErrorCode(cause, "merge_not_mergeable"))
-    return "GitHub refused to merge this pull request. Nothing was merged. Its branch rules or merge settings do not allow the merge right now.";
+  for (const refusal of mergeRefusals)
+    if (isApiErrorCode(cause, refusal.reason))
+      return `${refusalCausePhrase(refusal.cause, "merge")} Nothing was merged. ${refusal.nextStep}`;
+  if (isApiErrorCode(cause, "merge_unsupported"))
+    return "GitHub does not offer merging this pull request through its API. Nothing was merged. Merge it on GitHub instead.";
   if (
     isApiErrorCode(cause, "stale") ||
     isApiErrorCode(cause, "stale_head") ||

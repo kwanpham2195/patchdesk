@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { CommandFailure } from "../../src/adapters/github/command-runner";
-import { writeFailure } from "../../src/adapters/github/github-write-failures";
+import {
+  optionalPolicyUnavailableReason,
+  writeFailure,
+} from "../../src/adapters/github/github-write-failures";
 import type { ForbiddenReason } from "../../src/domain/github-forbidden-reason";
 
 const forbiddenReasons: ReadonlyArray<ForbiddenReason> = [
@@ -30,12 +33,27 @@ const otherFailures = [
   {
     label: "a missing endpoint",
     failure: { _tag: "CommandNotFound" },
-    category: "unavailable",
+    category: "refused",
   },
   {
     label: "an unsupported endpoint",
     failure: { _tag: "CommandUnsupported" },
-    category: "unavailable",
+    category: "refused",
+  },
+  {
+    label: "a method GitHub does not allow",
+    failure: { _tag: "CommandMethodNotAllowed" },
+    category: "refused",
+  },
+  {
+    label: "a request GitHub could not process",
+    failure: { _tag: "CommandUnprocessable" },
+    category: "refused",
+  },
+  {
+    label: "a conflicting request",
+    failure: { _tag: "CommandConflict" },
+    category: "refused",
   },
   {
     label: "an unavailable command runtime",
@@ -109,5 +127,16 @@ describe("writeFailure for other command failures", () => {
 
     expect(failure.category).toBe("unavailable");
     expect(failure.message).not.toContain(rawStderr);
+  });
+});
+
+describe("optionalPolicyUnavailableReason", () => {
+  // Reads keep one "unsupported" answer for every status that used to share the tag.
+  it.each([
+    "CommandUnsupported",
+    "CommandMethodNotAllowed",
+    "CommandUnprocessable",
+  ] as const)("reads %s as unsupported", (_tag) => {
+    expect(optionalPolicyUnavailableReason({ _tag })).toBe("unsupported");
   });
 });

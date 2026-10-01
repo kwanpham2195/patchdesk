@@ -571,7 +571,13 @@ describe("MergeWriteController", () => {
 
   // Issue #691: GitHub answered the merge itself with a refusal status, so
   // nothing merged and the Review must not wait on a GitHub status check.
+  // Issue #755: the shared classifier maps each refusal to a stored reason.
   it.each([
+    {
+      status: 404,
+      message: "Not Found",
+      reason: "not_found",
+    },
     {
       status: 405,
       message: "Pull Request is not mergeable",
@@ -586,6 +592,11 @@ describe("MergeWriteController", () => {
       status: 422,
       message: "Validation Failed",
       reason: "merge_not_mergeable",
+    },
+    {
+      status: 501,
+      message: "Not Implemented",
+      reason: "merge_unsupported",
     },
   ])(
     "records a merge GitHub refused with $status as rejected and leaves the Review unlocked",

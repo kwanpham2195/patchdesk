@@ -230,7 +230,7 @@ describe("a failed compare read", () => {
   it("reports a rejected comparison the way gh reported it", async () => {
     await expect(
       tagFor(422, { message: "No common ancestor between the two commits." }),
-    ).resolves.toEqual({ _tag: "CommandUnsupported" });
+    ).resolves.toEqual({ _tag: "CommandUnprocessable" });
   });
 
   it("reports a server error as unavailable rather than a rejection", async () => {

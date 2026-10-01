@@ -439,7 +439,11 @@ export class InlineConversationService {
         return err("outcome_unknown");
       }
       if (result._tag === "err") {
-        if (result.error.category === "unavailable")
+        // Slice 2 of #755 settles a refusal; until then it stays outcome unknown.
+        if (
+          result.error.category === "unavailable" ||
+          result.error.category === "refused"
+        )
           return err("outcome_unknown");
         const rejected = await this.operations.reject(operation);
         if (rejected._tag === "err") return err("outcome_unknown");
@@ -598,6 +602,7 @@ function mapWriteFailure(
     case "rejected":
       return "github_write_failed";
     case "unavailable":
+    case "refused":
       return "outcome_unknown";
   }
 }

@@ -7,6 +7,7 @@ import type {
   MergeMethod,
 } from "../../src/domain/github-context";
 import type { GitHubWriteFailure } from "../../src/domain/github-write";
+import type { RefusalCause } from "../../src/domain/github-write-refusal";
 import { mergePullRequest } from "../../src/services/merge-service";
 
 // SAFETY: This literal is a well-formed GitSha fixture for the merge service seam.
@@ -56,6 +57,7 @@ describe("merge service", () => {
         } as never,
         method: "squash",
         acknowledgedWarningCodes: [],
+        recordRefusal: async () => true,
       }),
     ).resolves.toMatchObject({
       _tag: "err",
@@ -87,6 +89,7 @@ describe("merge service", () => {
     repository: {
       readonly allowedMergeMethods?: ReadonlyArray<MergeMethod>;
       readonly outcome?: MergeOutcome;
+      readonly onOutcomeRead?: () => void;
     } = {},
   ) {
     // SAFETY: this fake gateway implements the methods exercised by
@@ -123,10 +126,12 @@ describe("merge service", () => {
           }),
         },
       }),
-      getMergeOutcome: async () =>
-        repository.outcome === undefined
+      getMergeOutcome: async () => {
+        repository.onOutcomeRead?.();
+        return repository.outcome === undefined
           ? { _tag: "err" as const, error: { _tag: "GitHubReadFailed" } }
-          : { _tag: "ok" as const, value: repository.outcome },
+          : { _tag: "ok" as const, value: repository.outcome };
+      },
       mergePullRequest: merge,
     } as never;
   }
@@ -140,6 +145,7 @@ describe("merge service", () => {
         gateway: gateway("unknown", merge),
         method: "squash",
         acknowledgedWarningCodes: [],
+        recordRefusal: async () => true,
       }),
     ).resolves.toMatchObject({
       _tag: "ok",
@@ -165,6 +171,7 @@ describe("merge service", () => {
         gateway: gateway("unknown", merge),
         method: "squash",
         acknowledgedWarningCodes: [],
+        recordRefusal: async () => true,
       }),
     ).resolves.toMatchObject({
       _tag: "ok",
@@ -182,6 +189,7 @@ describe("merge service", () => {
         gateway: gateway("review_required", merge),
         method: "squash",
         acknowledgedWarningCodes: [],
+        recordRefusal: async () => true,
       }),
     ).resolves.toMatchObject({
       _tag: "err",
@@ -217,6 +225,7 @@ describe("merge service", () => {
         }),
         method: "squash",
         acknowledgedWarningCodes: [],
+        recordRefusal: async () => true,
       }),
     ).resolves.toMatchObject({
       _tag: "ok",
@@ -236,6 +245,7 @@ describe("merge service", () => {
         }),
         method: "squash",
         acknowledgedWarningCodes: [],
+        recordRefusal: async () => true,
       }),
     ).resolves.toEqual({
       _tag: "err",
@@ -246,52 +256,129 @@ describe("merge service", () => {
 
   // ADR 0046: a resent merge whose first delivery landed is refused too, so a
   // refusal proves nothing merged only while the pull request is still open.
-  it.each([
-    {
-      name: "open",
-      outcome: { state: "open" } as const,
-      expected: { _tag: "GitHubMergeRefused", reason: "not_mergeable" },
-    },
-    {
-      name: "merged",
+  describe("a refused merge", () => {
+    const refusal = (cause: RefusalCause) => ({
+      _tag: "err" as const,
+      error: {
+        _tag: "GitHubWriteFailure" as const,
+        category: "refused" as const,
+        message: "GitHub refused the request.",
+        cause,
+      },
+    });
+    const merged = {
+      state: "merged",
       // SAFETY: an ISO literal already satisfies the branded IsoTimestamp's runtime shape.
-      outcome: {
-        state: "merged",
-        mergedAt: "2026-10-01T00:00:00.000Z" as never,
-      } as const,
-      expected: { _tag: "GitHubMergeOutcomeUnknown" },
-    },
-    {
-      name: "unreadable",
-      outcome: undefined,
-      expected: { _tag: "GitHubMergeOutcomeUnknown" },
-    },
-  ])(
-    "reads a refused merge against a pull request that is $name",
-    async ({ outcome, expected }) => {
-      const merge = vi.fn(async () => ({
-        _tag: "err" as const,
-        error: {
-          _tag: "GitHubWriteFailure" as const,
-          category: "rejected" as const,
-          message: "GitHub refused to merge the pull request.",
-          refusal: "not_mergeable" as const,
-        },
-      }));
-      await expect(
-        mergePullRequest({
-          profile,
-          session,
-          gateway: gateway(
-            "approved",
-            merge,
-            passingChecks,
-            outcome === undefined ? {} : { outcome },
-          ),
-          method: "squash",
-          acknowledgedWarningCodes: [],
+      mergedAt: "2026-10-01T00:00:00.000Z" as never,
+    } as const;
+
+    async function refused(input: {
+      readonly cause: RefusalCause;
+      readonly outcome?: MergeOutcome | undefined;
+      readonly recorded?: boolean;
+    }) {
+      const getMergeOutcome = vi.fn();
+      const recordRefusal = vi.fn(async () => input.recorded ?? true);
+      const merge = vi.fn(async () => refusal(input.cause));
+      const result = await mergePullRequest({
+        profile,
+        session,
+        gateway: gateway("approved", merge, passingChecks, {
+          onOutcomeRead: getMergeOutcome,
+          ...definedProps({ outcome: input.outcome }),
         }),
-      ).resolves.toEqual({ _tag: "err", error: expected });
-    },
-  );
+        method: "squash",
+        acknowledgedWarningCodes: [],
+        recordRefusal,
+      });
+      return { result, getMergeOutcome, recordRefusal };
+    }
+
+    it.each(["not_found", "conflict", "not_allowed", "unprocessable"] as const)(
+      "is final for %s while the pull request is open",
+      async (cause) => {
+        const { result, recordRefusal } = await refused({
+          cause,
+          outcome: { state: "open" },
+        });
+        expect(result).toEqual({
+          _tag: "err",
+          error: { _tag: "GitHubMergeRefused", cause },
+        });
+        expect(recordRefusal).toHaveBeenCalledWith(cause);
+      },
+    );
+
+    it.each([
+      { name: "merged", outcome: merged },
+      { name: "unreadable", outcome: undefined },
+    ])(
+      "stays outcome unknown when the pull request is $name",
+      async ({ outcome }) => {
+        const { result, recordRefusal } = await refused({
+          cause: "conflict",
+          ...definedProps({ outcome }),
+        });
+        expect(result).toEqual({
+          _tag: "err",
+          error: { _tag: "GitHubMergeOutcomeUnknown" },
+        });
+        expect(recordRefusal).not.toHaveBeenCalled();
+      },
+    );
+
+    it("stays outcome unknown when the rejection cannot be recorded", async () => {
+      const { result } = await refused({
+        cause: "not_found",
+        outcome: { state: "open" },
+        recorded: false,
+      });
+      expect(result).toEqual({
+        _tag: "err",
+        error: { _tag: "GitHubMergeOutcomeUnknown" },
+      });
+    });
+
+    it("is final for an unsupported endpoint without reading the pull request", async () => {
+      const { result, getMergeOutcome } = await refused({
+        cause: "unsupported",
+      });
+      expect(result).toEqual({
+        _tag: "err",
+        error: { _tag: "GitHubMergeRefused", cause: "unsupported" },
+      });
+      expect(getMergeOutcome).not.toHaveBeenCalled();
+    });
+  });
+
+  // ADR 0046 accepts the rate-limit case: a read under the same limit would
+  // usually fail too and would lock every real rate limit.
+  it("is final for a rate limit without reading the pull request", async () => {
+    const getMergeOutcome = vi.fn();
+    const merge = async () => ({
+      _tag: "err" as const,
+      error: {
+        _tag: "GitHubWriteFailure" as const,
+        category: "rate_limited" as const,
+        message: "GitHub rate-limited this request.",
+      },
+    });
+    await expect(
+      mergePullRequest({
+        profile,
+        session,
+        gateway: gateway("approved", merge, passingChecks, {
+          outcome: { state: "open" },
+          onOutcomeRead: getMergeOutcome,
+        }),
+        method: "squash",
+        acknowledgedWarningCodes: [],
+        recordRefusal: async () => true,
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubMergeRateLimited" },
+    });
+    expect(getMergeOutcome).not.toHaveBeenCalled();
+  });
 });

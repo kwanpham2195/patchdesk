@@ -234,6 +234,7 @@ describe("required-check classification from the snapshot merge policy", () => {
       } as never,
       method: "squash",
       acknowledgedWarningCodes: [],
+      recordRefusal: async () => true,
     });
     expect(gate).toMatchObject({
       _tag: "err",
@@ -301,6 +302,7 @@ describe("required-check classification from the snapshot merge policy", () => {
       } as never,
       method: "squash",
       acknowledgedWarningCodes: [],
+      recordRefusal: async () => true,
     });
     expect(gate).toMatchObject({ _tag: "ok" });
     expect(merge).toHaveBeenCalledTimes(1);
@@ -397,6 +399,7 @@ describe("mergeability classification from the snapshot merge policy", () => {
       } as never,
       method: "squash",
       acknowledgedWarningCodes: [],
+      recordRefusal: async () => true,
     });
     expect(gate).toMatchObject({
       _tag: "err",

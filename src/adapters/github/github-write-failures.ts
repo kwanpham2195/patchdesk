@@ -1,6 +1,7 @@
 import type { CommandFailure } from "./command-runner";
 import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
 import type { GitHubWriteFailure } from "../../domain/github-write";
+import type { RefusalCause } from "../../domain/github-write-refusal";
 import { err, type Result } from "../../domain/result";
 import type { GitHubReadFailure, GitHubReadOperation } from "./github-adapter";
 
@@ -9,15 +10,22 @@ export function optionalPolicyUnavailableReason(
 ): "forbidden" | "not_found" | "unsupported" | undefined {
   if (failure._tag === "CommandForbidden") return "forbidden";
   if (failure._tag === "CommandNotFound") return "not_found";
-  if (failure._tag === "CommandUnsupported") return "unsupported";
+  if (
+    failure._tag === "CommandUnsupported" ||
+    failure._tag === "CommandMethodNotAllowed" ||
+    failure._tag === "CommandUnprocessable"
+  )
+    return "unsupported";
   return undefined;
 }
 
 /**
- * Only a status that means refusal earns a category that removes the write
- * intent; everything else keeps the Review locked for reconciliation, because
- * the mutation may already have landed (ADR 0035, issue #288). `CommandFailed`
- * carries no status, so it is never a refusal here.
+ * A status that means refusal earns the `refused` category with its cause; the
+ * write service decides whether that refusal is final for its write
+ * (`refusalFinality`, issue #755). Everything else keeps the Review locked for
+ * reconciliation, because the mutation may already have landed (ADR 0035,
+ * issue #288). `CommandFailed` carries no status, so it is never a refusal
+ * here.
  */
 export function writeFailure(failure: CommandFailure): GitHubWriteFailure {
   if (failure._tag === "CommandAuthenticationRequired")
@@ -46,6 +54,14 @@ export function writeFailure(failure: CommandFailure): GitHubWriteFailure {
       category: "rate_limited",
       message: "GitHub rate-limited this request.",
     };
+  const cause = refusalCause(failure);
+  if (cause !== undefined)
+    return {
+      _tag: "GitHubWriteFailure",
+      category: "refused",
+      message: "GitHub refused the request.",
+      cause,
+    };
   return {
     _tag: "GitHubWriteFailure",
     category: "unavailable",
@@ -53,28 +69,22 @@ export function writeFailure(failure: CommandFailure): GitHubWriteFailure {
   };
 }
 
-/**
- * A merge GitHub answered with 405, 409, or 422 was refused, so it is
- * `rejected` with the cause. The merge service still reads the pull request
- * before trusting it, because a resent merge whose first delivery landed is
- * refused the same way (ADR 0046). Every other failure is `writeFailure`'s.
- */
-export function mergeWriteFailure(failure: CommandFailure): GitHubWriteFailure {
-  if (failure._tag === "CommandUnsupported")
-    return {
-      _tag: "GitHubWriteFailure",
-      category: "rejected",
-      message: "GitHub refused to merge the pull request.",
-      refusal: "not_mergeable",
-    };
-  if (failure._tag === "CommandConflict")
-    return {
-      _tag: "GitHubWriteFailure",
-      category: "rejected",
-      message: "GitHub refused the merge because the head branch changed.",
-      refusal: "head_changed",
-    };
-  return writeFailure(failure);
+/** The cause of a status GitHub answers with a definite refusal; undefined for every failure that may have landed. */
+function refusalCause(failure: CommandFailure): RefusalCause | undefined {
+  switch (failure._tag) {
+    case "CommandNotFound":
+      return "not_found";
+    case "CommandConflict":
+      return "conflict";
+    case "CommandMethodNotAllowed":
+      return "not_allowed";
+    case "CommandUnprocessable":
+      return "unprocessable";
+    case "CommandUnsupported":
+      return "unsupported";
+    default:
+      return undefined;
+  }
 }
 
 /**

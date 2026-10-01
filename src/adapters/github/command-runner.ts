@@ -99,7 +99,12 @@ export type CommandFailure =
   | { readonly _tag: "CommandAuthenticationRequired" }
   | { readonly _tag: "CommandForbidden"; readonly reason: ForbiddenReason }
   | { readonly _tag: "CommandNotFound" }
+  /** GitHub answered 415 or 501: it does not implement the request. */
   | { readonly _tag: "CommandUnsupported" }
+  /** GitHub answered 405: the request is not allowed in the resource's current state. */
+  | { readonly _tag: "CommandMethodNotAllowed" }
+  /** GitHub answered 422 for any reason other than the one-pending-review constraint. */
+  | { readonly _tag: "CommandUnprocessable" }
   /** GitHub answered 409: the request conflicts with the resource's current state, such as a merge whose head moved. */
   | { readonly _tag: "CommandConflict" }
   | { readonly _tag: "CommandPendingReview" }
@@ -559,13 +564,14 @@ export function classifyRestStatus(
     case 409:
       return { _tag: "CommandConflict" };
     case 405:
+      return { _tag: "CommandMethodNotAllowed" };
     case 415:
     case 501:
       return { _tag: "CommandUnsupported" };
     case 422:
       return isPendingReviewFailure(message)
         ? { _tag: "CommandPendingReview" }
-        : { _tag: "CommandUnsupported" };
+        : { _tag: "CommandUnprocessable" };
     case 429:
       return { _tag: "CommandRateLimited" };
     default:

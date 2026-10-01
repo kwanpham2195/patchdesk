@@ -34,6 +34,7 @@ type MergeRejectionReason =
   | "merge_method_not_allowed"
   | "merge_not_mergeable"
   | "merge_head_changed"
+  | "merge_unsupported"
   | "merge_rate_limited"
   | "merge_forbidden"
   | "merge_failed";
@@ -79,6 +80,7 @@ const rejectionReasons = [
   "merge_method_not_allowed",
   "merge_not_mergeable",
   "merge_head_changed",
+  "merge_unsupported",
   "merge_rate_limited",
   "merge_forbidden",
   "merge_failed",
