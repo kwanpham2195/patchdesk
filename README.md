@@ -19,6 +19,9 @@
   <a href="docs/user-guide.md">Read the guide</a>
 </p>
 <p align="center">
+  <sub>Setting this up as a coding agent? Start at <a href="#for-coding-agents">For coding agents</a>.</sub>
+</p>
+<p align="center">
   <a href="https://github.com/kwanpham2195/patchdesk/releases"><img src="https://img.shields.io/github/v/release/kwanpham2195/patchdesk" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-111111" alt="macOS on Apple Silicon">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="MIT license"></a>
@@ -27,24 +30,6 @@
 ![Patchdesk Insights with Brief, Walkthrough, and Analysis](docs/assets/insights.png)
 
 <p align="center"><em>Start with the shape of the change, follow its implementation, then review the evidence.</em></p>
-
-## For coding agents
-
-If you are a coding agent installing or using Patchdesk for your user, read
-these in order:
-
-1. [Install Patchdesk](#install-patchdesk) for the prerequisites and install
-   steps. [Finish setup](#finish-setup) lists the steps only your user can do,
-   such as `gh auth login`.
-2. [Connect a coding agent](#connect-a-coding-agent) to register
-   `patchdesk mcp`, check the connection, and learn when to call Patchdesk.
-3. [Patchdesk MCP server](docs/mcp.md) for each tool, the review loop, what
-   the tools cannot do, and [Troubleshooting](docs/mcp.md#troubleshooting)
-   for error codes.
-
-Insight providers are chosen in the app, not over MCP.
-[Insights](docs/user-guide.md#insights) lists the options to tell your user
-about. [llms.txt](llms.txt) indexes these docs with one line each.
 
 ## Watch the tour
 
@@ -282,6 +267,24 @@ resolve your notes, or reach GitHub. To set it up, see
 Patchdesk runs on your Mac and connects to GitHub through your authenticated
 GitHub CLI account. Insight runs use prepared review context from the current
 revision, and you decide which findings become part of the review.
+
+## For coding agents
+
+If you are a coding agent installing or using Patchdesk for your user, read
+these in order:
+
+1. [Install Patchdesk](#install-patchdesk) for the prerequisites and install
+   steps. [Finish setup](#finish-setup) lists the steps only your user can do,
+   such as `gh auth login`.
+2. [Connect a coding agent](#connect-a-coding-agent) to register
+   `patchdesk mcp`, check the connection, and learn when to call Patchdesk.
+3. [Patchdesk MCP server](docs/mcp.md) for each tool, the review loop, what
+   the tools cannot do, and [Troubleshooting](docs/mcp.md#troubleshooting)
+   for error codes.
+
+Insight providers are chosen in the app, not over MCP.
+[Insights](docs/user-guide.md#insights) lists the options to tell your user
+about. [llms.txt](llms.txt) indexes these docs with one line each.
 
 ## Connect a coding agent
 
