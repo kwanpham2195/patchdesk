@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the packaged app loading the page named by `ELECTRON_RENDERER_URL` into its window and trusting that page for its local API. It now always loads its bundled renderer; only the development app reads the variable. #697
+
 - Changed the packaged app to set Electron fuses: it ignores `NODE_OPTIONS` and `--inspect`, and loads only its own checked `app.asar`. #698
 
 - Updated Electron to 43.7.7 for four high security advisories, and `hono` to 4.13.12 for four moderate ones. #696
