@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed a Visited row whose Review cannot open leaving the app on the workbench with the row selected and unclickable. The screen now returns to Pull requests, keeps the "Could not open the saved review." message, and the row can be clicked again to retry. #615
+
+- Fixed the Visited column still listing Reviews after Clear local review data removed them. The column now reads again when the cleanup finishes. #618
+
 - Fixed the inline composer's hint and caption naming the wrong action for ⌘/Ctrl+Enter. On a pull request with no pending review the shortcut starts a review, but the hint said to comment and the caption said the comment publishes to GitHub. The hint now reads "to start a review", the caption says the comment stays pending until you submit the review, and a pending review's hint says "to add it to your pending review". #617
 
 - Fixed a merge Patchdesk refuses before sending it, such as one from a Review that no longer matches GitHub, showing Merge not confirmed and holding the next merge until Check GitHub status. It now shows Merge refused with the cause and the next step, such as refreshing before merging, and Merge stays available. The refusal no longer squeezes the merge bar's context line into one character per row. #756
