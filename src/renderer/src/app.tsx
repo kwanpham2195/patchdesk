@@ -233,7 +233,7 @@ function AppContent({
     changeInboxState,
     changeInboxPageSize,
     changeInboxLabels,
-    labelFits,
+    inboxFilterBudget,
     changeInboxPreset,
     changeInboxReviewState,
     changeInboxCheckStatus,
@@ -424,6 +424,7 @@ function AppContent({
           {...definedProps({ selectedRepository: inboxRequest.repository })}
           onInboxStateChange={changeInboxState}
           onInboxPresetChange={changeInboxPreset}
+          inboxChangeFits={inboxFilterBudget.fits}
           {...(parsedProfileHost._tag === "ok"
             ? {
                 pullRequestDefaultHost: parsedProfileHost.value,
@@ -694,7 +695,7 @@ function AppContent({
         onInboxPageSizeChange={changeInboxPageSize}
         selectedLabels={inboxRequest.selectedLabels}
         onInboxLabelsChange={changeInboxLabels}
-        labelFits={labelFits}
+        filterBudget={inboxFilterBudget}
         {...(inboxRequest.preset === undefined
           ? {}
           : { preset: inboxRequest.preset })}

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { InboxFilterChange } from "../../src/domain/maintainer-inbox";
 import { InboxFiltersBar } from "../../src/renderer/src/components/inbox-filters-bar";
 
 afterEach(() => {
@@ -80,5 +81,51 @@ describe("InboxFiltersBar More filters text fields", () => {
     expect(
       (screen.getByLabelText("Base branch") as HTMLInputElement).value,
     ).toBe("");
+  });
+});
+
+describe("InboxFiltersBar search length limit", () => {
+  const fitsOnlyClearing = (change: InboxFilterChange): boolean =>
+    Object.values(change).every((value) => value === undefined);
+
+  it("disables a preset toggle that would not fit and gives the reason", async () => {
+    const user = userEvent.setup();
+    const onPresetChange = vi.fn();
+    renderFiltersBar({ changeFits: fitsOnlyClearing, onPresetChange });
+
+    const toggle = screen.getByRole("button", {
+      name: "Awaiting review from you",
+    });
+    expect(toggle.hasAttribute("disabled")).toBe(true);
+    expect(toggle.parentElement?.getAttribute("title")).toBe(
+      "Too long alongside the other filters",
+    );
+    await user.click(toggle);
+    expect(onPresetChange).not.toHaveBeenCalled();
+  });
+
+  it("disables Review state and Check status options that would not fit and gives the reason", async () => {
+    const user = userEvent.setup();
+    const onReviewStateChange = vi.fn();
+    renderFiltersBar({ changeFits: fitsOnlyClearing, onReviewStateChange });
+
+    await user.click(screen.getByRole("button", { name: "More filters" }));
+    await user.click(screen.getByLabelText("Review state"));
+
+    expect(
+      screen.getByText("Too long alongside the other filters"),
+    ).toBeTruthy();
+    const approved = screen.getByRole("option", { name: "Approved" });
+    expect(approved.getAttribute("aria-disabled")).toBe("true");
+    await user.click(approved);
+    expect(onReviewStateChange).not.toHaveBeenCalled();
+  });
+
+  it("names the filters a repository change dropped", () => {
+    renderFiltersBar({ droppedFilters: ["Author", "Base branch"] });
+
+    expect(screen.getByRole("status").textContent).toContain(
+      "Dropped Author, Base branch",
+    );
   });
 });

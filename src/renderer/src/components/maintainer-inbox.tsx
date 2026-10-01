@@ -1,4 +1,8 @@
 import { type KeyboardEvent } from "react";
+import {
+  UNLIMITED_FILTER_BUDGET,
+  type InboxFilterBudget,
+} from "../inbox-request";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
@@ -106,8 +110,8 @@ type MaintainerInboxProps = {
    * local, in-page filter (ADR 0031/0032). App owns the request transition. */
   readonly selectedLabels?: ReadonlyArray<string>;
   readonly onLabelsChange?: (labels: ReadonlyArray<string>) => void;
-  /** Whether a label may still be selected; App owns the budget this answers. */
-  readonly labelFits?: (name: string) => boolean;
+  /** The search length limit the filters answer to; App owns the budget. */
+  readonly filterBudget?: InboxFilterBudget;
   /** Re-reads GitHub. Refresh stays explicit under ADR 0032 — this is the
    * in-screen affordance for it, beside the View menu's Refresh command. */
   readonly onRefresh?: () => void;
@@ -182,7 +186,7 @@ export function MaintainerInbox({
   onRefresh = () => undefined,
   selectedLabels = NO_LABELS,
   onLabelsChange = () => undefined,
-  labelFits = () => true,
+  filterBudget = UNLIMITED_FILTER_BUDGET,
   preset,
   onPresetChange = () => undefined,
   reviewState,
@@ -254,13 +258,15 @@ export function MaintainerInbox({
       <InboxFiltersBar
         state={state}
         onStateChange={onStateChange}
+        changeFits={filterBudget.fits}
+        droppedFilters={filterBudget.dropped}
         labelFilter={
           labelActions === undefined ? null : (
             <LabelFilterPopover
               fetchLabels={labelActions.fetchLabels}
               selectedLabels={selectedLabels}
               onLabelChange={onLabelsChange}
-              labelFits={labelFits}
+              labelFits={filterBudget.labelFits}
             />
           )
         }

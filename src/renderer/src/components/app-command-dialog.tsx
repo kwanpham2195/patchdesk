@@ -10,8 +10,10 @@ import {
 } from "lucide-react";
 
 import {
+  INBOX_FILTER_FULL_REASON,
   INBOX_PRESET_FILTERS,
   INBOX_STATE_FILTERS,
+  type InboxFilterChange,
   type InboxPreset,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
@@ -65,6 +67,7 @@ export function AppCommandDialog({
   onOpenDiagnostics,
   onInboxStateChange,
   onInboxPresetChange,
+  inboxChangeFits = () => true,
   onOpenPullRequest,
   selectedRepository,
   visitedRows,
@@ -85,6 +88,8 @@ export function AppCommandDialog({
   /** Sets the one-click preset rather than toggling it, the way the state
    * commands set the state; the filter bar's toggles are the off switch. */
   readonly onInboxPresetChange?: (preset: InboxPreset) => void;
+  /** Whether one more filter choice still fits GitHub's search length limit; a command that does not is disabled with the reason. */
+  readonly inboxChangeFits?: (change: InboxFilterChange) => boolean;
   readonly onOpenPullRequest?: (ref: PullRequestRef) => void;
   /** Where a bare `345` or `#345` opens; without one a bare number offers nothing. */
   readonly selectedRepository?: RepositoryIdentity;
@@ -280,20 +285,28 @@ export function AppCommandDialog({
               <CommandItem
                 key={option.state}
                 value={option.label}
+                disabled={!inboxChangeFits({ state: option.state })}
                 onSelect={() => chooseInboxState(option.state)}
               >
                 <GitPullRequest />
                 {option.label}
+                {inboxChangeFits({ state: option.state }) ? null : (
+                  <FilterFullReason />
+                )}
               </CommandItem>
             ))}
             {INBOX_PRESET_FILTERS.map((option) => (
               <CommandItem
                 key={option.preset}
                 value={option.label}
+                disabled={!inboxChangeFits({ preset: option.preset })}
                 onSelect={() => chooseInboxPreset(option.preset)}
               >
                 <GitPullRequest />
                 {option.label}
+                {inboxChangeFits({ preset: option.preset }) ? null : (
+                  <FilterFullReason />
+                )}
               </CommandItem>
             ))}
             <CommandItem
@@ -320,6 +333,14 @@ export function AppCommandDialog({
         </CommandList>
       </Command>
     </CommandDialog>
+  );
+}
+
+function FilterFullReason(): React.JSX.Element {
+  return (
+    <span className="ml-auto text-xs text-muted-foreground">
+      {INBOX_FILTER_FULL_REASON}
+    </span>
   );
 }
 

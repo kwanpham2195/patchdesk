@@ -3,6 +3,7 @@ import {
   useEffect,
   useReducer,
   useRef,
+  useMemo,
   useState,
   type Dispatch,
   type RefObject,
@@ -17,6 +18,7 @@ import {
   firstInboxRequest,
   firstInboxRequestFor,
   inboxRequestPath,
+  type InboxFilterBudget,
   nextInboxRequest,
   reconcileInboxRepository,
   resolveInboxRepository,
@@ -39,12 +41,14 @@ import {
   type WorkspaceAction,
 } from "../workspace-state";
 import {
+  INBOX_PRESET_FILTERS,
   inboxSearchQueryExcess,
   MAX_INBOX_FILTER_LABELS,
   parseInboxAuthorFilter,
   parseInboxBaseBranchFilter,
   type InboxCheckStatusFilter,
   type InboxFilter,
+  type InboxFilterChange,
   type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxPreset,
@@ -90,8 +94,8 @@ export type WorkspaceInbox = {
   readonly changeInboxState: (nextState: InboxRequestState["state"]) => void;
   readonly changeInboxPageSize: (pageSize: InboxPageSize) => void;
   readonly changeInboxLabels: (selectedLabels: ReadonlyArray<string>) => void;
-  /** Whether selecting this label would still leave a query GitHub accepts, so the menu can refuse the row that would breach rather than the read that follows it. Deselecting always fits. */
-  readonly labelFits: (name: string) => boolean;
+  /** Whether one more filter choice would still leave a query GitHub accepts, so a menu can disable the option that would breach rather than refuse the read that follows, and the filters the last repository change dropped to fit the new repository's name; `dropped` is empty once the request changes again. Clearing a filter or keeping its value always fits. */
+  readonly inboxFilterBudget: InboxFilterBudget;
   readonly changeInboxPreset: (preset: InboxPreset | undefined) => void;
   readonly changeInboxReviewState: (
     reviewState: InboxReviewStateFilter | undefined,
@@ -114,6 +118,45 @@ export type WorkspaceInbox = {
   readonly inboxRefreshGeneration: RefObject<number>;
   readonly resetInboxStateOnProfileLoad: RefObject<boolean>;
 };
+
+const CHANGEABLE_FILTER_KEYS = [
+  "state",
+  "preset",
+  "reviewState",
+  "checkStatus",
+] as const satisfies ReadonlyArray<keyof InboxFilterChange>;
+
+/** Filters a repository change drops, in the order it drops them, until the query fits; the label filter is already cleared by then. */
+const DROP_ORDER = [
+  { key: "author", name: () => "Author" },
+  { key: "baseBranch", name: () => "Base branch" },
+  {
+    key: "preset",
+    name: (request: InboxRequestState) =>
+      INBOX_PRESET_FILTERS.find((option) => option.preset === request.preset)
+        ?.label ?? "Preset",
+  },
+  { key: "reviewState", name: () => "Review state" },
+  { key: "checkStatus", name: () => "Check status" },
+] as const;
+
+/** Drops filters from the request, Author first, then Base branch, then the rest, until its query fits; returns the request and the name of each filter dropped. */
+type FittedRequest = {
+  readonly request: InboxRequestState;
+  readonly dropped: ReadonlyArray<string>;
+};
+
+function dropFiltersToFit(request: InboxRequestState): FittedRequest {
+  let fitted = request;
+  const dropped: string[] = [];
+  for (const entry of DROP_ORDER) {
+    if (requestFitsQueryBudget(fitted)) break;
+    if (fitted[entry.key] === undefined) continue;
+    dropped.push(entry.name(fitted));
+    fitted = nextInboxRequest(fitted, { [entry.key]: undefined });
+  }
+  return { request: fitted, dropped };
+}
 
 /** Resolves a free-text More filter to the value to send: an empty one clears the filter, while any other broken rule refuses the commit so the field can report it. */
 function commitFilterText(
@@ -186,6 +229,11 @@ export function useWorkspaceInbox({
   const resetInboxStateOnProfileLoad = useRef(false);
   const workspaceGeneration = useRef(0);
   const inboxRefreshGeneration = useRef(0);
+  /** The filters dropped to produce one request, kept with that request so they stop showing once any later request replaces it. */
+  const [droppedNotice, setDroppedNotice] = useState<{
+    readonly request: InboxRequestState;
+    readonly names: ReadonlyArray<string>;
+  }>();
   const updateInboxRequest = useCallback((next: InboxRequestState): void => {
     inboxRequestRef.current = next;
     setInboxRequest(next);
@@ -390,6 +438,7 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         state: nextState,
       });
+      if (!requestFitsQueryBudget(request)) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { state: nextState });
@@ -446,6 +495,16 @@ export function useWorkspaceInbox({
       }),
     );
   }, []);
+  /** Whether this one filter change leaves a query GitHub accepts; a value that clears a filter or keeps the current one never lengthens it. */
+  const inboxChangeFits = useCallback((change: InboxFilterChange): boolean => {
+    const current = inboxRequestRef.current;
+    const lengthens = CHANGEABLE_FILTER_KEYS.some(
+      (key) => change[key] !== undefined && change[key] !== current[key],
+    );
+    return (
+      !lengthens || requestFitsQueryBudget(nextInboxRequest(current, change))
+    );
+  }, []);
   /**
    * Selects the one-click preset (ADR 0031), or clears it with `undefined`.
    * Its qualifier composes with the state and label filters rather than
@@ -457,6 +516,7 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         preset,
       });
+      if (!requestFitsQueryBudget(request)) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { preset });
@@ -471,6 +531,7 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         reviewState,
       });
+      if (!requestFitsQueryBudget(request)) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { reviewState });
@@ -485,6 +546,7 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         checkStatus,
       });
+      if (!requestFitsQueryBudget(request)) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { checkStatus });
@@ -546,7 +608,9 @@ export function useWorkspaceInbox({
    * is the screen's root state, so changing it resets the page cursor — a
    * cursor minted for the previous repository is rejected as `invalid_page`
    * — and clears the label filter, which is repository-scoped and may name a
-   * label the new repository does not have.
+   * label the new repository does not have. A repository change is never
+   * refused: filters the new repository's name leaves no room for are dropped,
+   * Author first, then Base branch, then the rest, and named in `droppedFilters`.
    */
   const changeInboxRepository = useCallback(
     (repository: Repo): void => {
@@ -554,17 +618,24 @@ export function useWorkspaceInbox({
         sameRepositoryIdentity(repository, inboxRequestRef.current.repository)
       )
         return;
+      const labelsCleared = nextInboxRequest(inboxRequestRef.current, {
+        repository,
+        selectedLabels: [],
+      });
+      const { request, dropped } = dropFiltersToFit(labelsCleared);
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, {
           selectedRepository: repository,
           selectedLabels: [],
+          ...Object.fromEntries(
+            DROP_ORDER.filter((entry) => request[entry.key] === undefined).map(
+              (entry) => [entry.key, undefined],
+            ),
+          ),
         });
-      const request = nextInboxRequest(inboxRequestRef.current, {
-        repository,
-        selectedLabels: [],
-      });
       updateInboxRequest(request);
+      setDroppedNotice({ request, names: dropped });
       void refreshInbox(request);
     },
     [refreshInbox, updateInboxRequest],
@@ -598,6 +669,15 @@ export function useWorkspaceInbox({
   // the row list must not present those stale rows as the new request's
   // answer — so InboxFlow gets this boolean and holds the list in a loading
   // state until the two agree.
+  const inboxFilterBudget = useMemo(
+    (): InboxFilterBudget => ({
+      fits: inboxChangeFits,
+      labelFits,
+      dropped:
+        droppedNotice?.request === inboxRequest ? droppedNotice.names : [],
+    }),
+    [inboxChangeFits, labelFits, droppedNotice, inboxRequest],
+  );
   const inboxListPending =
     inbox !== undefined &&
     (confirmedInboxRequest === undefined ||
@@ -619,7 +699,7 @@ export function useWorkspaceInbox({
     changeInboxState,
     changeInboxPageSize,
     changeInboxLabels,
-    labelFits,
+    inboxFilterBudget,
     changeInboxPreset,
     changeInboxReviewState,
     changeInboxCheckStatus,

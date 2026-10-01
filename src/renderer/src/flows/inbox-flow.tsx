@@ -1,4 +1,8 @@
 import { CircleAlert, CircleCheck, X } from "lucide-react";
+import {
+  UNLIMITED_FILTER_BUDGET,
+  type InboxFilterBudget,
+} from "../inbox-request";
 import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
@@ -65,7 +69,7 @@ export function InboxFlow({
   onInboxPageSizeChange = () => undefined,
   selectedLabels = [],
   onInboxLabelsChange = () => undefined,
-  labelFits = () => true,
+  filterBudget = UNLIMITED_FILTER_BUDGET,
   preset,
   onInboxPresetChange = () => undefined,
   reviewState,
@@ -117,8 +121,8 @@ export function InboxFlow({
    * local, in-page filter. Only App owns its request transition. */
   readonly selectedLabels?: ReadonlyArray<string>;
   readonly onInboxLabelsChange?: (labels: ReadonlyArray<string>) => void;
-  /** Whether a label may still be selected under the search-query budget; only App owns it. */
-  readonly labelFits?: (name: string) => boolean;
+  /** The search length limit the filters answer to; only App owns it. */
+  readonly filterBudget?: InboxFilterBudget;
   /** The one-click preset (ADR 0031), sent to GitHub as its own qualifier.
    * Only App owns its request transition. */
   readonly preset?: InboxPreset;
@@ -312,7 +316,7 @@ export function InboxFlow({
       onInboxPageSizeChange={onInboxPageSizeChange}
       selectedLabels={selectedLabels}
       onInboxLabelsChange={onInboxLabelsChange}
-      labelFits={labelFits}
+      filterBudget={filterBudget}
       {...(preset === undefined ? {} : { preset })}
       onInboxPresetChange={onInboxPresetChange}
       {...(reviewState === undefined ? {} : { reviewState })}
@@ -360,7 +364,7 @@ function InboxScreen({
   onInboxPageSizeChange,
   selectedLabels,
   onInboxLabelsChange,
-  labelFits,
+  filterBudget,
   preset,
   onInboxPresetChange,
   reviewState,
@@ -404,7 +408,7 @@ function InboxScreen({
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
-  readonly labelFits: (name: string) => boolean;
+  readonly filterBudget: InboxFilterBudget;
   readonly preset?: InboxPreset;
   readonly onInboxPresetChange: (value: InboxPreset | undefined) => void;
   readonly reviewState?: InboxReviewStateFilter;
@@ -493,7 +497,7 @@ function InboxScreen({
           onRefresh={onRefresh}
           selectedLabels={selectedLabels}
           onLabelsChange={onInboxLabelsChange}
-          labelFits={labelFits}
+          filterBudget={filterBudget}
           {...(preset === undefined ? {} : { preset })}
           onPresetChange={onInboxPresetChange}
           {...(reviewState === undefined ? {} : { reviewState })}

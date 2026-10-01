@@ -11,6 +11,7 @@ import {
 import type { AppDestination } from "@/routes";
 import { destinationKey, destinationTitle } from "@/routes";
 import type {
+  InboxFilterChange,
   InboxPreset,
   InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
@@ -80,6 +81,7 @@ export function AppShell({
   onProfileSwitch,
   onInboxStateChange,
   onInboxPresetChange,
+  inboxChangeFits,
   pullRequestDefaultHost,
   onOpenPullRequest,
   selectedRepository,
@@ -107,6 +109,7 @@ export function AppShell({
   readonly onInboxStateChange?: (state: InboxStateFilter) => void;
   /** Sets the Pull requests screen's one-click preset from the palette; absent for the same reason `onInboxStateChange` is. */
   readonly onInboxPresetChange?: (preset: InboxPreset) => void;
+  readonly inboxChangeFits?: (change: InboxFilterChange) => boolean;
   /** Parses compact references against the active profile's GitHub host. */
   readonly pullRequestDefaultHost?: GitHubHost;
   /** Opens a parsed pull request through the root Review-opening owner. */
@@ -355,6 +358,7 @@ export function AppShell({
         onOpenDiagnostics={onOpenDiagnostics}
         {...(onInboxStateChange === undefined ? {} : { onInboxStateChange })}
         {...(onInboxPresetChange === undefined ? {} : { onInboxPresetChange })}
+        {...(inboxChangeFits === undefined ? {} : { inboxChangeFits })}
         {...(onOpenPullRequest === undefined ? {} : { onOpenPullRequest })}
         {...definedProps({ selectedRepository })}
         reviewCommands={reviewCommands.source}
