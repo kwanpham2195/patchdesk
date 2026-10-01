@@ -309,6 +309,8 @@ export class GitHubPendingReviews {
     const thread = added.success
       ? added.output.data.addPullRequestReviewThread.thread
       : undefined;
+    if (thread === null)
+      return err(writeFailure({ _tag: "CommandUnprocessable" }));
     if (thread === undefined || thread.comments.nodes[0] === undefined) {
       return err({
         _tag: "GitHubWriteFailure",

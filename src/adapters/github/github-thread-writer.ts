@@ -23,6 +23,7 @@ import {
 import {
   addedThreadReplySchema,
   createdInlineCommentSchema,
+  nullMutationNodeSchema,
   threadResponseSchema,
 } from "./github-wire-schemas";
 import { writeFailure } from "./github-write-failures";
@@ -192,6 +193,8 @@ export class GitHubThreadWriter {
     const comment = replied.success
       ? replied.output.data.addPullRequestReviewThreadReply.comment
       : undefined;
+    if (comment === null)
+      return err(writeFailure({ _tag: "CommandUnprocessable" }));
     if (comment === undefined || comment.id.length === 0)
       return err({
         _tag: "GitHubWriteFailure",
@@ -220,8 +223,9 @@ export class GitHubThreadWriter {
       document: reviewThreadStateMutation(input.state),
       variables: [{ kind: "typed", name: "threadId", value: input.threadId }],
     });
-    return response._tag === "err"
-      ? err(writeFailure(response.error))
+    if (response._tag === "err") return err(writeFailure(response.error));
+    return v.is(nullMutationNodeSchema("thread"), response.value)
+      ? err(writeFailure({ _tag: "CommandUnprocessable" }))
       : ok(undefined);
   }
 
@@ -239,8 +243,12 @@ export class GitHubThreadWriter {
         { kind: "string", name: "body", value: input.body },
       ],
     });
-    return response._tag === "err"
-      ? err(writeFailure(response.error))
+    if (response._tag === "err") return err(writeFailure(response.error));
+    return v.is(
+      nullMutationNodeSchema("pullRequestReviewComment"),
+      response.value,
+    )
+      ? err(writeFailure({ _tag: "CommandUnprocessable" }))
       : ok(undefined);
   }
 

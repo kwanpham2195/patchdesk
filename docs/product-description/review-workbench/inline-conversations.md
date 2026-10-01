@@ -127,7 +127,7 @@ A pending-review command settles only from its returned pending-review projectio
 - A response from an older patch generation cannot attach to the current diff.
 - Analysis Findings outside the represented diff cannot offer Add to review.
 - Resolve and Unresolve do not preflight permission. A forbidden response retains the thread and gives the access sentence above; other errors use the generic sentence.
-- A comment or reply GitHub refuses with a definite answer (404, 405, 409, or 422, or a GraphQL not found or unprocessable error with no data beside it) never posted, so it records a rejection with no read. A resolve GitHub refuses is a rejection only after a read shows the thread is still in its earlier state; if the read shows the change, fails, or is incomplete, the write stays outcome unknown and recovery settles it (ADR 0046).
+- A comment or reply GitHub refuses with a definite answer (404, 405, 409, or 422, or a GraphQL not found or unprocessable error with no data beside it, or a GraphQL mutation answered with no error and a null comment, thread, or root field) never posted, so it records a rejection with no read. A resolve GitHub refuses is a rejection only after a read shows the thread is still in its earlier state; if the read shows the change, fails, or is incomplete, the write stays outcome unknown and recovery settles it (ADR 0046).
 - A draft of only whitespace counts as empty.
 
 ## Open questions and verification

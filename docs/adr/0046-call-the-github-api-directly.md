@@ -191,7 +191,7 @@ exited nonzero whenever the response held a non-empty `errors` array, partial
 failure. The client classifies the same body through the same
 `classifyGraphqlErrorBody`, which now maps `RATE_LIMITED` structurally: gh
 reached `CommandRateLimited` through the rate-limit phrase in its own stderr,
-and the HTTP transport has no stderr to read.
+and the HTTP transport has no stderr to read. A mutation answered with no `errors` and a null `data`, a null root field, or a null node it created or changed is a refusal with cause `unprocessable`, not a malformed success; a query answered the same way is unchanged.
 
 Why no shadow window reached the nine labels T4 moved. Two are REST reads
 nothing outside the gateway port calls:
