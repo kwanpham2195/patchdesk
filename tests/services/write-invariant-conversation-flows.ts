@@ -82,6 +82,8 @@ function inlineConversationFlows(
       const operations = recordingWriteOperations(trace);
       const gateway = {
         getPullRequest: async () => ok(values.snapshot.pullRequest),
+        // The landed check for resolve: a complete read with no thread shows the state unchanged.
+        getPullRequestComments: async () => ok({ threads: [], complete: true }),
         getReviewThreadTarget: async () => ok({ found: true }),
         getReviewCommentTarget: async () =>
           ok({ found: true, viewerDidAuthor: true }),

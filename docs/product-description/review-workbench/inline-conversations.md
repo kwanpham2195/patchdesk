@@ -64,13 +64,14 @@ A composer that fails keeps its text and shows a message for the cause:
 - The pull request changed: "This pull request has changed. Refresh and try again."
 - GitHub already holds an unfinished review: "GitHub already holds an unfinished review on this pull request. Refresh, then add this comment to that review."
 - The write was refused without GitHub being the one to refuse it — the Review's own write gate, a missing confirmation, or a pending review that changed: "This comment was refused. Refresh to see the current state, then try again."
+- GitHub refused the comment (it could not find what the comment needs, the comment failed validation such as a body over 65,536 characters, or the endpoint is not supported): a sentence naming that cause and the comment, such as "GitHub could not accept the comment as sent." It repeats none of GitHub's own text and does not send the maintainer to check GitHub; the comment never posted, and the Review stays unlocked for the next write.
 - The location no longer fits the diff: "This comment cannot be published against the current diff."
 - GitHub could not confirm the write: "GitHub did not confirm the write. Check GitHub before retrying."
 - The pending review changed or is locked: "The pending review changed. Refresh to see its current state."
 - Access is forbidden: "GitHub blocked this comment: the repository restricts access. Check its access settings."
 - Any other failure: "Patchdesk could not publish this comment (`<kind>`). Try refreshing."
 
-A pending-review command settles only from its returned pending-review projection. Newly created thread IDs enter the recent-write journal. A forbidden Resolve or Unresolve keeps the thread visible and says "GitHub denied this thread update. Use an authorized account with repository write access."; Patchdesk does not assume permission through a preflight check. Other thread-state errors say "Patchdesk could not update this thread." A failed reply, edit, or delete shows one fixed sentence each: "Patchdesk could not publish this reply.", "Patchdesk could not edit this comment.", or "Patchdesk could not delete this comment." Malformed success or unknown outcome locks pending-review mutation until explicit recovery reloads the Review or reports that manual resolution is required.
+A pending-review command settles only from its returned pending-review projection. Newly created thread IDs enter the recent-write journal. A forbidden Resolve or Unresolve keeps the thread visible and says "GitHub denied this thread update. Use an authorized account with repository write access."; Patchdesk does not assume permission through a preflight check. A resolve GitHub refuses, when a read shows the thread is still in its earlier state, says "GitHub could not accept the thread update as sent." or the sentence for the cause it names, and locks nothing. A reply GitHub refuses says the same with "reply", such as "GitHub could not accept the reply as sent." Other thread-state errors say "Patchdesk could not update this thread." A failed reply, edit, or delete shows one fixed sentence each: "Patchdesk could not publish this reply.", "Patchdesk could not edit this comment.", or "Patchdesk could not delete this comment." Malformed success or unknown outcome locks pending-review mutation until explicit recovery reloads the Review or reports that manual resolution is required.
 
 ## Variants
 
@@ -126,6 +127,7 @@ A pending-review command settles only from its returned pending-review projectio
 - A response from an older patch generation cannot attach to the current diff.
 - Analysis Findings outside the represented diff cannot offer Add to review.
 - Resolve and Unresolve do not preflight permission. A forbidden response retains the thread and gives the access sentence above; other errors use the generic sentence.
+- A comment or reply GitHub refuses with a definite answer (404, 405, 409, or 422, or a GraphQL not found or unprocessable error with no data beside it) never posted, so it records a rejection with no read. A resolve GitHub refuses is a rejection only after a read shows the thread is still in its earlier state; if the read shows the change, fails, or is incomplete, the write stays outcome unknown and recovery settles it (ADR 0046).
 - A draft of only whitespace counts as empty.
 
 ## Open questions and verification

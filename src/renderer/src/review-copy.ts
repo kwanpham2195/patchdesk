@@ -198,6 +198,7 @@ const UNCONFIRMED_THREAD_REPLY = unconfirmedWriteCopy("reply");
 /** Publishing a reply from a conversation thread card. */
 export const THREAD_REPLY_MESSAGES: ContextualMessages = {
   fallback: "Patchdesk could not publish this reply.",
+  refusalAction: "reply",
   outcome_unknown: UNCONFIRMED_THREAD_REPLY,
   ambiguous_write: UNCONFIRMED_THREAD_REPLY,
   timeout: UNCONFIRMED_THREAD_REPLY,

@@ -1,9 +1,11 @@
-import { PatchdeskApiError } from "../api-client";
+import { PatchdeskApiError, refusedWriteMessage } from "../api-client";
 import { forbiddenWriteCopy, unconfirmedWriteCopy } from "../review-copy";
 
 /** Bounded copy for a failed inline write; shared by the composer and pending-write cards. */
 export function composerErrorMessage(cause: unknown): string {
   if (cause instanceof PatchdeskApiError) {
+    const refused = refusedWriteMessage(cause, "comment");
+    if (refused !== undefined) return refused;
     if (cause.kind === "stale_head")
       return "This pull request has changed. Refresh and try again.";
     if (cause.kind === "github_rejected")

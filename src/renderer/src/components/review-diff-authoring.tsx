@@ -23,6 +23,7 @@ export function PendingConversationCard({
   localId,
   status,
   body,
+  message,
   onDismiss,
   bodyContext,
 }: NonNullable<ReviewInlineAnnotation["pendingConversation"]> & {
@@ -48,8 +49,8 @@ export function PendingConversationCard({
       {status === "failed" ? (
         <div className="mt-2">
           <InlineError>
-            Patchdesk could not publish this comment. Refresh GitHub state
-            before composing it again.
+            {message ??
+              "Patchdesk could not publish this comment. Refresh GitHub state before composing it again."}
           </InlineError>
           <Button
             size="sm"

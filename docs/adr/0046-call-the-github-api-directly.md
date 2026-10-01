@@ -27,16 +27,16 @@ time, and 5.8 s of wall time**, and it touches **14 distinct GitHub
 resources**. Fifteen of the 29 spawns — 52 percent — re-fetch something the
 same cycle already holds:
 
-| endpoint | spawns |
-| --- | --- |
-| `pulls/:n` | 6 |
-| `GET user` | 3 |
-| `branches/:branch/protection` | 3 |
-| `pulls/:n/reviews` | 3 |
-| `pulls/:n/comments` | 2 |
-| `issues/:n/comments` | 2 |
-| `graphql PullRequestThreads` | 2 |
-| `collaborators/:user/permission` | 2 |
+| endpoint                         | spawns |
+| -------------------------------- | ------ |
+| `pulls/:n`                       | 6      |
+| `GET user`                       | 3      |
+| `branches/:branch/protection`    | 3      |
+| `pulls/:n/reviews`               | 3      |
+| `pulls/:n/comments`              | 2      |
+| `issues/:n/comments`             | 2      |
+| `graphql PullRequestThreads`     | 2      |
+| `collaborators/:user/permission` | 2      |
 
 Mean cost per spawn is 807 ms, so the ~330 ms of transport overhead is about
 41 percent of every call. Opening a Review is 45 spawns and 40 s of subprocess
@@ -294,38 +294,38 @@ application/vnd.github+json`, and only those with a body carry a
 `Content-Type`. The two bodyless DELETEs are also the two writes whose answer
 the call site reads as text rather than JSON.
 
-| label | call site | body |
-| --- | --- | --- |
-| `POST repos/:owner/:repo/pulls/:n/reviews` | `createPendingReview`, `startPendingReviewWithThread`, `createDirectSummaryReview` | `commit_id`, and `body`/`comments`/`event` per caller |
-| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events` | `submitPendingReview` | `event`, `body` |
-| `PUT repos/:owner/:repo/pulls/:n/reviews/:n/dismissals` | `dismissReview` | `message` |
-| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n` | `discardPendingReview` | none |
-| `PUT repos/:owner/:repo/pulls/:n/merge` | `mergePullRequest` | `sha`, `merge_method` |
-| `POST repos/:owner/:repo/pulls/:n/comments` | `createInlineComment` | `body`, `commit_id`, the anchor coordinates |
-| `PATCH repos/:owner/:repo/pulls/comments/:n` | `updateReviewComment` | `body` |
-| `DELETE repos/:owner/:repo/pulls/comments/:n` | `deleteReviewComment` | none |
-| `DELETE repos/:owner/:repo/pulls/:n/requested_reviewers` | `removeRequestedReviewers` | `reviewers` |
+| label                                                    | call site                                                                          | body                                                  |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `POST repos/:owner/:repo/pulls/:n/reviews`               | `createPendingReview`, `startPendingReviewWithThread`, `createDirectSummaryReview` | `commit_id`, and `body`/`comments`/`event` per caller |
+| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events`     | `submitPendingReview`                                                              | `event`, `body`                                       |
+| `PUT repos/:owner/:repo/pulls/:n/reviews/:n/dismissals`  | `dismissReview`                                                                    | `message`                                             |
+| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n`          | `discardPendingReview`                                                             | none                                                  |
+| `PUT repos/:owner/:repo/pulls/:n/merge`                  | `mergePullRequest`                                                                 | `sha`, `merge_method`                                 |
+| `POST repos/:owner/:repo/pulls/:n/comments`              | `createInlineComment`                                                              | `body`, `commit_id`, the anchor coordinates           |
+| `PATCH repos/:owner/:repo/pulls/comments/:n`             | `updateReviewComment`                                                              | `body`                                                |
+| `DELETE repos/:owner/:repo/pulls/comments/:n`            | `deleteReviewComment`                                                              | none                                                  |
+| `DELETE repos/:owner/:repo/pulls/:n/requested_reviewers` | `removeRequestedReviewers`                                                         | `reviewers`                                           |
 
 Fourteen mutations. The kind column is the flag gh sent each variable with:
 `-F` inferred a type from the text, `-f` always sent a String, and `name[]=`
 repeated per element is a real GraphQL list.
 
-| label | variables |
-| --- | --- |
-| `addLabelsToLabelable` | `labelableId` -F, `labelIds` list |
-| `removeLabelsFromLabelable` | `labelableId` -F, `labelIds` list |
-| `addAssigneesToAssignable` | `assignableId` -F, `assigneeIds` list |
-| `removeAssigneesFromAssignable` | `assignableId` -F, `assigneeIds` list |
-| `requestReviews` | `pullRequestId` -F, `userIds` list |
-| `updatePullRequest` | `pullRequestId` -F, `baseRefName` -f |
-| `markPullRequestReadyForReview` | `pullRequestId` -F |
-| `convertPullRequestToDraft` | `pullRequestId` -F |
-| `addPullRequestReviewThread` | `reviewId` -F, `path` -F, `line` -F, `body` -f |
-| `addPullRequestReviewThreadReply` | `threadId` -F, `body` -f |
-| `resolveReviewThread` | `threadId` -F |
-| `unresolveReviewThread` | `threadId` -F |
-| `updatePullRequestReviewComment` | `commentId` -F, `body` -f |
-| `deletePullRequestReviewComment` | `commentId` -F |
+| label                             | variables                                      |
+| --------------------------------- | ---------------------------------------------- |
+| `addLabelsToLabelable`            | `labelableId` -F, `labelIds` list              |
+| `removeLabelsFromLabelable`       | `labelableId` -F, `labelIds` list              |
+| `addAssigneesToAssignable`        | `assignableId` -F, `assigneeIds` list          |
+| `removeAssigneesFromAssignable`   | `assignableId` -F, `assigneeIds` list          |
+| `requestReviews`                  | `pullRequestId` -F, `userIds` list             |
+| `updatePullRequest`               | `pullRequestId` -F, `baseRefName` -f           |
+| `markPullRequestReadyForReview`   | `pullRequestId` -F                             |
+| `convertPullRequestToDraft`       | `pullRequestId` -F                             |
+| `addPullRequestReviewThread`      | `reviewId` -F, `path` -F, `line` -F, `body` -f |
+| `addPullRequestReviewThreadReply` | `threadId` -F, `body` -f                       |
+| `resolveReviewThread`             | `threadId` -F                                  |
+| `unresolveReviewThread`           | `threadId` -F                                  |
+| `updatePullRequestReviewComment`  | `commentId` -F, `body` -f                      |
+| `deletePullRequestReviewComment`  | `commentId` -F                                 |
 
 Resolve and unresolve, ready-for-review and convert-to-draft, and the two
 diff sides of `addPullRequestReviewThread` each pick a GraphQL field or an
@@ -340,11 +340,11 @@ passed on 2026-09-19 and T4 deleted the variable with both allowlists.
 
 **Three things the client had to be taught, found by writing the shape tests.**
 
-- *A body with no method is a POST.* `restMethodFor` in `github-request.ts` is
+- _A body with no method is a POST._ `restMethodFor` in `github-request.ts` is
   the one place that rule lives, read by the client's `method`. No current call
   site relies on it — every write names its method — but a request that did
   would have been sent as a GET.
-- *The response body mode belongs to the caller, not to the media type.*
+- _The response body mode belongs to the caller, not to the media type._
   `ghText` and `ghJson` are what `runText` and `runJson` were, so the client
   gained `restText`, which hands over the response bytes unparsed, while
   `rest` always parses. The media type no longer decides. This is what
@@ -354,7 +354,7 @@ passed on 2026-09-19 and T4 deleted the variable with both allowlists.
   caller then failed on. It also restores `CommandInvalidJson` for a JSON
   caller handed an empty 204 or a non-JSON 200, which is what `runJson` did
   with the same stdout.
-- *`X-GitHub-Api-Version`.* The client sends `2022-11-28` on every REST call.
+- _`X-GitHub-Api-Version`._ The client sends `2022-11-28` on every REST call.
   gh 2.100.0 carries the same header name and the same value in its own
   binary, so this matches rather than adds.
 
@@ -423,7 +423,7 @@ landed first delivery could have produced it:
   GitHub does not implement the endpoint at all.
 - `settleRefusedWrite` in `src/services/refused-write-settlement.ts` is the one
   helper. When the refusal is final it records the rejection, releases the
-  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); `github_refused` for the other families arrives in slices 2 to 5. When the read
+  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); the conversation writes (slice 2) return `github_refused` with the cause, and the other families arrive in slices 3 to 5. When the read
   fails, is incomplete, or shows the intended state, or when the rejection
   cannot be recorded, the write stays outcome unknown and ADR 0035 recovery
   settles it with the same read.
@@ -434,10 +434,27 @@ landed first delivery could have produced it:
   `merge_not_mergeable`, `not_found` to `not_found`, and `unsupported` to
   `merge_unsupported`. `mergeWriteFailure` and `GitHubMergeRefusal` no longer
   exist.
+- **Conversation writes (slice 2).** `InlineConversationService` settles a
+  refusal through `settleRefusedWrite` with the write kind of its intent.
+  `createInlineComment`, `createThreadReply`, and `updateThreadComment` are
+  final with no read. `setReviewThreadState` runs `getPullRequestComments` and
+  `classifyConversationIntent`: the refusal is final only when the read is
+  complete and the thread is not in the intended state. `deleteThreadComment`
+  runs `getReviewCommentTarget`: final only while the comment is still found.
+  A final refusal records the rejection, releases the lock, and answers
+  `github_refused` with the cause, which the route sends to the renderer as
+  `{ error: "github_refused", cause }` with status 409 and the renderer words
+  with `refusalCausePhrase` and the action ("comment", "reply", "thread
+  update"). Everything else stays outcome unknown.
+- **GraphQL `UNPROCESSABLE` (slice 2).** `classifyGraphqlSignal` maps it to
+  `CommandUnprocessable`, and so to the cause `unprocessable`, only when the
+  response's `data` is null, absent, or has only null fields. An error beside
+  non-null data may mean the mutation partly landed, so it stays
+  `unavailable`. No live GraphQL error of this type could be produced on 2026-10-01 (oversized, blank, and malformed reply bodies, a repeated resolve, and a reply on a closed or locked pull request were all accepted or answered `comment: null` with no `errors`), so the mapping rests on GitHub's documented error type and the adapter tests. Live, the REST 422 came from a file whose diff GitHub calls too large ("diff is too large"); a review comment body has no practical size limit.
 - Every other write sends `refused` down the outcome-unknown path until its
-  slice of issue #755 lands (conversation writes, published feedback, pending
-  review and direct summary, then metadata writes). `unavailable` and
-  `refused` behave the same there today.
+  slice of issue #755 lands (published feedback, pending review and direct
+  summary, then metadata writes). `unavailable` and `refused` behave the same
+  there today.
 
 **Accepted risk: rate limits.** 401, 403, and 403 or 429 rate limits are final
 in every write runner without a read. A resend carries the same token moments
@@ -535,24 +552,24 @@ recovery banner appeared. No write went through `gh api`.
 
 `github-http` entries per label:
 
-| label | entries |
-| --- | --- |
-| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n` | 1 |
-| `DELETE repos/:owner/:repo/pulls/comments/:n` | 1 |
-| `PATCH repos/:owner/:repo/pulls/comments/:n` | 1 |
-| `POST repos/:owner/:repo/pulls/:n/comments` | 2 |
-| `POST repos/:owner/:repo/pulls/:n/reviews` | 3 |
-| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events` | 1 |
-| `addAssigneesToAssignable` | 1 |
-| `addLabelsToLabelable` | 1 |
-| `addPullRequestReviewThread` | 1 |
-| `addPullRequestReviewThreadReply` | 1 |
-| `convertPullRequestToDraft` | 1 |
-| `markPullRequestReadyForReview` | 1 |
-| `removeAssigneesFromAssignable` | 1 |
-| `removeLabelsFromLabelable` | 1 |
-| `resolveReviewThread` | 1 |
-| `unresolveReviewThread` | 1 |
+| label                                                | entries |
+| ---------------------------------------------------- | ------- |
+| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n`      | 1       |
+| `DELETE repos/:owner/:repo/pulls/comments/:n`        | 1       |
+| `PATCH repos/:owner/:repo/pulls/comments/:n`         | 1       |
+| `POST repos/:owner/:repo/pulls/:n/comments`          | 2       |
+| `POST repos/:owner/:repo/pulls/:n/reviews`           | 3       |
+| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events` | 1       |
+| `addAssigneesToAssignable`                           | 1       |
+| `addLabelsToLabelable`                               | 1       |
+| `addPullRequestReviewThread`                         | 1       |
+| `addPullRequestReviewThreadReply`                    | 1       |
+| `convertPullRequestToDraft`                          | 1       |
+| `markPullRequestReadyForReview`                      | 1       |
+| `removeAssigneesFromAssignable`                      | 1       |
+| `removeLabelsFromLabelable`                          | 1       |
+| `resolveReviewThread`                                | 1       |
+| `unresolveReviewThread`                              | 1       |
 
 Step 8's reviewer request was skipped because it emails a real collaborator, so
 `requestReviews` and `DELETE repos/:owner/:repo/pulls/:n/requested_reviewers`
@@ -662,6 +679,7 @@ successors anyway.
   earlier response. Chromium's `AbortSignal` support, `Link` and rate-limit
   header reads, streamed body reads, and redirect following were checked in the
   same run and behave as the Node path does.
+
 - **Rate-limit headers become readable.** `X-RateLimit-Remaining`,
   `X-RateLimit-Reset`, and `Retry-After` arrive on every response. ADR 0023
   deferred reading them for exactly one reason — gh exposed them only by

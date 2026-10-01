@@ -36,6 +36,7 @@ import {
   recordedWriteFlowRun,
   recordingSessions,
   recordingWriteOperations,
+  refusedWrite,
   sessionIntentTag,
   sessionWriteLock,
   unavailable,
@@ -419,8 +420,30 @@ const conflictRefusal: GitHubWriteFailure = {
  * Merge is converted; every other write still reports a refusal as outcome
  * unknown and names the slice that converts it.
  */
-const refusedWriteFlows: ReadonlyArray<WriteFlow> = [
-  mergeFlow(conflictRefusal),
+type RefusedWriteRow = {
+  readonly flow: WriteFlow;
+  /** The error the refused command answers with. */
+  readonly error: object;
+  /** The durable lock left behind: merge keeps a `Rejected` operation, the others delete theirs. */
+  readonly lock: string;
+};
+const refusedConversation = {
+  reason: "github_refused",
+  cause: "unprocessable",
+} as const;
+const refusedWriteFlows: ReadonlyArray<RefusedWriteRow> = [
+  {
+    flow: mergeFlow(conflictRefusal),
+    error: { reason: "merge_head_changed" },
+    lock: "Rejected",
+  },
+  ...conversationFlows(refusedWrite)
+    .filter((flow) => flow.name.startsWith("inline conversation: "))
+    .map((flow) => ({
+      flow,
+      error: refusedConversation,
+      lock: "<released>",
+    })),
 ];
 const unconvertedRefusalRows: ReadonlyArray<string> = [
   "pending review: start (slice 4)",
@@ -428,11 +451,6 @@ const unconvertedRefusalRows: ReadonlyArray<string> = [
   "pending review: submit (slice 4)",
   "pending review: discard (slice 4)",
   "direct summary: submit (slice 4)",
-  "inline comment: create (slice 2)",
-  "inline comment: reply (slice 2)",
-  "inline comment: edit (slice 2)",
-  "inline comment: resolve (slice 2)",
-  "inline comment: delete (slice 2)",
   "published feedback: edit (slice 3)",
   "published feedback: delete (slice 3)",
   "published feedback: dismiss review (slice 3)",
@@ -447,14 +465,11 @@ const unconvertedRefusalRows: ReadonlyArray<string> = [
 ];
 
 describe("a refused GitHub write is recorded as rejected and releases the Review", () => {
-  for (const flow of refusedWriteFlows) {
+  for (const { flow, error, lock } of refusedWriteFlows) {
     it(`${flow.name} ends rejected and accepts the next write`, async () => {
       const run = await flow.run();
-      expect(run.result).toMatchObject({
-        _tag: "err",
-        error: { reason: "merge_head_changed" },
-      });
-      expect(run.writeLock() ?? "<released>").toBe("Rejected");
+      expect(run.result).toMatchObject({ _tag: "err", error });
+      expect(run.writeLock() ?? "<released>").toBe(lock);
       const before = run.trace.length;
       await run.again();
       expect(

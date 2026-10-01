@@ -160,6 +160,35 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
     expected: { _tag: "CommandRateLimited" },
   },
   {
+    name: "an unprocessable error with null data is an unprocessable refusal",
+    body: {
+      data: null,
+      errors: [
+        {
+          type: "UNPROCESSABLE",
+          message: "Body is too long (maximum is 65536 characters)",
+        },
+      ],
+    },
+    expected: { _tag: "CommandUnprocessable" },
+  },
+  {
+    name: "an unprocessable error with every data field null is an unprocessable refusal",
+    body: {
+      data: { node: null, repository: null },
+      errors: [{ type: "UNPROCESSABLE", message: "Validation failed" }],
+    },
+    expected: { _tag: "CommandUnprocessable" },
+  },
+  {
+    name: "an unprocessable error beside non-null data may have partly landed and stays a plain failure",
+    body: {
+      data: { rateLimit: { remaining: 4999 }, repository: null },
+      errors: [{ type: "UNPROCESSABLE", message: "Validation failed" }],
+    },
+    expected: { _tag: "CommandFailed" },
+  },
+  {
     name: "a schema-validation error has no mapped type and stays a plain failure",
     body: {
       data: { repository: null },

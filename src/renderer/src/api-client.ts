@@ -1,11 +1,13 @@
 import type { LocalApiDesktopRequest } from "../../main/ipc-contract";
 import type { RawJsonValue } from "../../domain/json";
+import { REFUSAL_CAUSES } from "../../domain/github-write-refusal";
 import { appLog } from "./lib/logger";
 import {
   forbiddenWriteCopy,
   rateLimitedWriteCopy,
   unconfirmedWriteCopy,
 } from "./review-copy";
+import { refusalCausePhrase } from "./write-refusal-copy";
 
 export type ApiFailureKind =
   | "invalid_input"
@@ -18,6 +20,7 @@ export type ApiFailureKind =
   | "stale_head"
   | "revision_conflict"
   | "github_rejected"
+  | "github_refused"
   | "pending_review"
   | "ambiguous_write"
   | "outcome_unknown"
@@ -222,6 +225,8 @@ export async function selectDirectory(
  */
 export type ContextualMessages = Partial<Record<ApiFailureKind, string>> & {
   readonly fallback: string;
+  /** The screen's own action name ("reply"); a GitHub refusal reads as the cause phrase for it. */
+  readonly refusalAction?: string;
   readonly precondition?: Partial<Record<ReviewPreconditionReason, string>>;
 };
 
@@ -248,7 +253,29 @@ export function contextualMessage(
       preconditionMessage(cause.reason)
     );
   if (!(cause instanceof PatchdeskApiError)) return overrides.fallback;
+  if (overrides.refusalAction !== undefined) {
+    const refused = refusedWriteMessage(cause, overrides.refusalAction);
+    if (refused !== undefined) return refused;
+  }
   return overrides[cause.kind] ?? safeMessage(cause.kind);
+}
+
+/**
+ * The copy for a write GitHub refused and Patchdesk settled as not done: the
+ * cause phrase for the surface's `action`, never GitHub's own message, and no
+ * step to check GitHub. Undefined for any other failure.
+ */
+export function refusedWriteMessage(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a `catch` binding is `unknown` by construction; recognising a PatchdeskApiError is what this function is for.
+  cause: unknown,
+  action: string,
+): string | undefined {
+  if (!(cause instanceof PatchdeskApiError) || cause.kind !== "github_refused")
+    return undefined;
+  const refusal = refusalCause(cause.responseBody);
+  return refusal === undefined
+    ? undefined
+    : refusalCausePhrase(refusal, action);
 }
 
 /**
@@ -277,11 +304,20 @@ function errorCode(value: unknown): string | undefined {
   return typeof value.error === "string" ? value.error : undefined;
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- narrows a raw JSON error body (already the local API's own response payload) at this exact I/O boundary; no earlier parser exists for this shape.
+function refusalCause(value: unknown) {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.
+  if (typeof value !== "object" || value === null || !("cause" in value))
+    return undefined;
+  return REFUSAL_CAUSES.find((known) => known === value.cause);
+}
+
 function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code === "timeout" || status === 408 || status === 504) return "timeout";
   if (code === "assignee_cap_exceeded") return "assignee_cap_exceeded";
   if (code?.includes("rate_limited") === true) return "rate_limited";
   if (code === "outcome_unknown") return "outcome_unknown";
+  if (code === "github_refused") return "github_refused";
   if (code === "review_write_in_progress") return "review_write_in_progress";
   if (code === "merge_in_progress") return "merge_in_progress";
   if (code === "self_approval_not_allowed") return "self_approval_not_allowed";
@@ -333,6 +369,8 @@ function safeMessage(kind: ApiFailureKind): string {
       return "This draft changed elsewhere. Reload it before continuing.";
     case "github_rejected":
       return "This action was refused. Refresh to see the current state, then try again.";
+    case "github_refused":
+      return "GitHub refused this action. Nothing was changed.";
     case "pending_review":
       return "You have an unfinished review on this pull request on GitHub. Submit or discard it there, then comment again.";
     case "ambiguous_write":

@@ -25,6 +25,7 @@ import {
 } from "../../src/renderer/src/review-copy";
 import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
+import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
@@ -368,6 +369,32 @@ describe("ConversationThreadCard", () => {
     expect(
       screen.getByRole("article", { name: "open conversation thread" }),
     ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Resolve" }).hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
+  it("words a refused Resolve by its cause, with no Check GitHub step", async () => {
+    const user = userEvent.setup();
+    const onSetState = vi.fn(async () => {
+      throw new PatchdeskApiError(
+        "github_refused",
+        409,
+        false,
+        "refused",
+        "raw provider refusal",
+        { error: "github_refused", cause: "not_found" },
+      );
+    });
+    render(<ConversationThreadCard thread={thread({ onSetState })} />);
+
+    await user.click(screen.getByRole("button", { name: "Resolve" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      refusalCausePhrase("not_found", "thread update"),
+    );
+    expect(alert.textContent).not.toContain("Check GitHub");
     expect(
       screen.getByRole("button", { name: "Resolve" }).hasAttribute("disabled"),
     ).toBe(false);

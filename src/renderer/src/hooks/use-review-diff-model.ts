@@ -225,7 +225,7 @@ export function useReviewDiffModel({
                 ]),
             annotation.pendingConversation === undefined
               ? ""
-              : `${annotation.pendingConversation.status}\u0000${annotation.pendingConversation.body}`,
+              : `${annotation.pendingConversation.status}\u0000${annotation.pendingConversation.body}\u0000${annotation.pendingConversation.message ?? ""}`,
             annotation.pendingReviewWrite === undefined
               ? ""
               : `${annotation.pendingReviewWrite.status}\u0000${annotation.pendingReviewWrite.action}\u0000${annotation.pendingReviewWrite.body}\u0000${annotation.pendingReviewWrite.message ?? ""}`,

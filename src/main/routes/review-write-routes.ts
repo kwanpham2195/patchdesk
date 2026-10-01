@@ -29,9 +29,10 @@ import type {
   AssigneeCommand,
   AssigneeService,
 } from "../../services/assignee-service";
-import type {
-  DirectConversationCommand,
-  InlineConversationService,
+import {
+  GitHubRefusedConversationWrite,
+  type DirectConversationCommand,
+  type InlineConversationService,
 } from "../../services/inline-conversation-service";
 import type { LabelCommand, LabelService } from "../../services/label-service";
 import type { ReviewWriteRecoveryFailure } from "../../services/review-write-recovery-service";
@@ -287,11 +288,15 @@ async function inlineConversationResponse(
     return context.json({ error: "invalid_input" }, 400);
   const result = await service.execute(parsed);
   if (result._tag === "ok") return context.json(result.value);
+  const failure = result.error;
+  // A refusal GitHub gave and the service settled: the cause lets the renderer say why; 409 matches the other conflicts with GitHub's state.
+  if (failure instanceof GitHubRefusedConversationWrite)
+    return context.json({ error: failure.reason, cause: failure.cause }, 409);
   return context.json(
-    { error: result.error },
+    { error: failure },
     // The three conversation-only reasons are all conflicts with the state
     // the client wrote against.
-    mapReviewWriteFailureStatus(result.error, {
+    mapReviewWriteFailureStatus(failure, {
       not_fresh: 409,
       pending_review: 409,
       confirmation_required: 409,
