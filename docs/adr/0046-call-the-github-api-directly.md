@@ -522,9 +522,10 @@ landed first delivery could have produced it:
   `data: { updatePullRequest: { clientMutationId: null } }`: a payload object,
   not a null root field. `classifyGraphqlSignal` treated that data as non-null
   and left the write `unavailable`, so the Review locked with no landed-check
-  read. `dataEmpty` now counts a payload object whose every field is null as
-  empty, so the answer is a refusal; an array or any non-null leaf still keeps
-  the write unavailable. Rerun live after that fix: the landed-check
+  read. `dataEmpty` now counts a payload holding only a null `clientMutationId` as
+  empty, so the answer is a refusal. A null child node (`comment`, `thread`),
+  an array, or any other field keeps the write unavailable, because GitHub can
+  fail to resolve a node the mutation just created. Rerun live after that fix: the landed-check
   `getPullRequest` read followed the write, the route answered 409
   `github_refused`, and the dialog showed "GitHub could not accept the base
   branch change as sent." with nothing locked.

@@ -6,7 +6,12 @@ import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
 import type { GitHubWriteFailure } from "../../src/domain/github-write";
 import type { RefusalCause } from "../../src/domain/github-write-refusal";
-import { parseGitHubThreadId, parseGitSha } from "../../src/domain/ids";
+import {
+  parseGitHubReviewNodeId,
+  parseGitHubThreadId,
+  parseRepoRelativePath,
+  parseGitSha,
+} from "../../src/domain/ids";
 import {
   json,
   profile,
@@ -283,6 +288,63 @@ describe("a GraphQL error on a write is the category its type means", () => {
     );
 
     expect(failure.category).toBe("unavailable");
+  });
+
+  it("keeps a reply unavailable when the answer has a null comment beside a NOT_FOUND on it, because the reply may have been created", async () => {
+    server.respondWith(
+      json(200, {
+        data: { addPullRequestReviewThreadReply: { comment: null } },
+        errors: [
+          {
+            type: "NOT_FOUND",
+            path: ["addPullRequestReviewThreadReply", "comment"],
+            message: "Could not resolve to a node",
+          },
+        ],
+      }),
+    );
+    const result = await writeAdapter(server).createThreadReply({
+      profile,
+      threadId,
+      body: "reply",
+    });
+
+    expect(result).toMatchObject({
+      _tag: "err",
+      error: { category: "unavailable" },
+    });
+  });
+
+  it("keeps an added pending-review thread unavailable when the answer has a null thread beside a NOT_FOUND on it", async () => {
+    server.respondWith(
+      json(200, {
+        data: { addPullRequestReviewThread: { thread: null } },
+        errors: [
+          {
+            type: "NOT_FOUND",
+            path: ["addPullRequestReviewThread", "thread"],
+            message: "Could not resolve to a node",
+          },
+        ],
+      }),
+    );
+    const result = await writeAdapter(server).addPendingReviewThread({
+      profile,
+      pr,
+      reviewId: mustParse(parseGitHubReviewNodeId("PRR_kwDOabc123")),
+      anchor: {
+        path: mustParse(parseRepoRelativePath("src/a.ts")),
+        startLine: 3,
+        line: 3,
+        side: "new",
+      },
+      body: "note",
+    });
+
+    expect(result).toMatchObject({
+      _tag: "err",
+      error: { category: "unavailable" },
+    });
   });
 
   it("refuses a base branch change GitHub answers as UNPROCESSABLE with a payload holding only a null clientMutationId", async () => {

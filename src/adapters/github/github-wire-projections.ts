@@ -459,7 +459,7 @@ export function parsePullRequest(
     isOpen: parsed.output.state === "open",
     reviewState: "unknown",
     mergeability: mapMergeability(parsed.output.mergeable_state),
-    labels: (parsed.output.labels ?? []).map((label) => ({
+    labels: parsed.output.labels.map((label) => ({
       name: label.name,
       color: label.color,
     })),

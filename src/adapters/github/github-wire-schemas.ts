@@ -256,9 +256,7 @@ export const pullRequestSchema = v.looseObject({
   user: v.looseObject({ login: v.string() }),
   updated_at: v.string(),
   mergeable_state: v.optional(v.string()),
-  labels: v.optional(
-    v.array(v.looseObject({ name: v.string(), color: v.string() })),
-  ),
+  labels: v.array(v.looseObject({ name: v.string(), color: v.string() })),
   requested_reviewers: v.optional(
     v.array(v.looseObject({ login: v.string() })),
   ),
