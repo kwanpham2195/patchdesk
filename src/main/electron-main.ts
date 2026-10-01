@@ -32,7 +32,6 @@ import { preloadScriptPath } from "./electron-paths";
 import { rendererSource } from "./renderer-origin";
 import {
   installWebContentsSecurity,
-  normalizeExternalHosts,
   openUserActivatedExternalUrl,
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
@@ -68,6 +67,7 @@ import {
   type Appearance,
   type NotificationSettings,
 } from "../domain/contracts";
+import { normalizeExternalHosts } from "../domain/external-hosts";
 import { parseGitSha } from "../domain/ids";
 import type {
   AccountInsightProvider,

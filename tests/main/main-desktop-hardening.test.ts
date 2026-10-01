@@ -2,14 +2,16 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  isAllowedExternalUrl,
+  normalizeExternalHosts,
+} from "../../src/domain/external-hosts";
 import { createDesktopMenuTemplate } from "../../src/main/desktop-menu";
 import { resolveDesktopClose } from "../../src/main/desktop-close-guard";
 import {
   contentSecurityPolicy,
   installWebContentsSecurity,
-  isAllowedExternalUrl,
   isUserActivatedExternalUrl,
-  normalizeExternalHosts,
   openAllowedExternalUrl,
   openUserActivatedExternalUrl,
 } from "../../src/main/external-navigation";
