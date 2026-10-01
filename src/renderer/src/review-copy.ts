@@ -174,6 +174,7 @@ const UNCONFIRMED_COMMENT_EDIT = unconfirmedWriteCopy("edit");
 /** Saving an edit to a published comment from its row controls. */
 export const COMMENT_EDIT_MESSAGES: ContextualMessages = {
   fallback: "Patchdesk could not edit this comment.",
+  refusalAction: "edit",
   outcome_unknown: UNCONFIRMED_COMMENT_EDIT,
   ambiguous_write: UNCONFIRMED_COMMENT_EDIT,
   timeout: UNCONFIRMED_COMMENT_EDIT,
@@ -186,6 +187,7 @@ const UNCONFIRMED_COMMENT_DELETE = unconfirmedWriteCopy("deletion");
 /** Deleting a published comment from its row controls. */
 export const COMMENT_DELETE_MESSAGES: ContextualMessages = {
   fallback: "Patchdesk could not delete this comment.",
+  refusalAction: "deletion",
   outcome_unknown: UNCONFIRMED_COMMENT_DELETE,
   ambiguous_write: UNCONFIRMED_COMMENT_DELETE,
   timeout: UNCONFIRMED_COMMENT_DELETE,

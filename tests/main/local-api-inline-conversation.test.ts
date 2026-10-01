@@ -1,11 +1,15 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { LogEntryInput } from "../../src/domain/log-entry";
+import { err } from "../../src/domain/result";
+import { registerReviewWriteRoutes } from "../../src/main/routes/review-write-routes";
+import { GitHubRefusedConversationWrite } from "../../src/services/inline-conversation-service";
 import {
   startLocalApiServer,
   type LocalApiServer,
@@ -136,5 +140,50 @@ describe("POST /v1/reviews/inline-conversations/command parse failures", () => {
     });
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe("POST /v1/reviews/inline-conversations/command refusals", () => {
+  it("answers a refused write with 409 and the refusal cause", async () => {
+    const app = new Hono();
+    const container = {
+      logs: { write: () => undefined },
+      inlineConversations: {
+        execute: async () =>
+          err(new GitHubRefusedConversationWrite("unprocessable")),
+      },
+    };
+    // SAFETY: the inline conversation route reaches only the logs and inlineConversations seams supplied here.
+    registerReviewWriteRoutes(app, container as never);
+
+    const response = await app.request(
+      "/v1/reviews/inline-conversations/command",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileId: "profile",
+          reviewId:
+            "github.com__octo-org__patchdesk__pr-42__review-abcdef123456",
+          command: {
+            _tag: "CreateComment",
+            expected: {
+              sessionId:
+                "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__abcdef123456",
+              headSha: "a".repeat(40),
+              patchHash: "c".repeat(64),
+            },
+            anchor: { path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+            body: "comment",
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "github_refused",
+      cause: "unprocessable",
+    });
   });
 });

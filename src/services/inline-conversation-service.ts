@@ -36,7 +36,6 @@ import {
   type DesktopNotifier,
 } from "./desktop-notifier";
 import { settleRefusedWrite } from "./refused-write-settlement";
-import { classifyConversationIntent } from "./review-write-recovery-service";
 
 export type DirectConversationCommand =
   | {
@@ -345,17 +344,20 @@ export class InlineConversationService {
             threadId: command.threadId,
             state: command.state,
           }),
-          // A resent resolve whose first delivery landed is refused the same way, so only a complete comments read that does not show the intended state proves the refusal.
-          async (operation) => {
+          // A resent resolve whose first delivery landed is refused the same way, so only a complete comments read that finds the thread in the state opposite to the intended one proves the refusal. A missing thread, or an outdated one an Unresolve may have reopened, is not proof.
+          async () => {
             const comments = await this.github.getPullRequestComments({
               profile: fresh.value.profile,
               pr,
             });
+            if (comments._tag !== "ok" || comments.value.complete !== true)
+              return false;
+            const thread = comments.value.threads.find(
+              (entry) => entry.id === threadId.value,
+            );
             return (
-              comments._tag === "ok" &&
-              comments.value.complete === true &&
-              classifyConversationIntent(operation, comments.value)._tag !==
-                "Confirmed"
+              thread !== undefined &&
+              (thread.state === "resolved") === (command.state === "open")
             );
           },
         );

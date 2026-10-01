@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fixed a comment, reply, or resolve that GitHub refuses (not found, failed validation such as a body over 65,536 characters, or not allowed) being reported as not confirmed and locking the Review until Check GitHub status. The comment, reply, or thread update now shows a sentence naming the cause, the next write is not blocked, and no GitHub status check is offered. A resolve is treated as refused only after a read shows the thread unchanged; otherwise it stays unconfirmed. Editing and deleting a published comment move to the same rule separately. #755
+- Fixed a comment, reply, edit, resolve, or delete that GitHub refuses (not found, failed validation such as a comment on a file whose diff GitHub says is too large, or not allowed) being reported as not confirmed and locking the Review until Check GitHub status. The comment, reply, edit, deletion, or thread update now shows a sentence naming the cause, the next write is not blocked, and no GitHub status check is offered. A comment, reply, or edit is refused with no read; a resolve is treated as refused only after a read shows the thread unchanged, and a delete only while the comment still exists; otherwise it stays unconfirmed. Edit and delete copy is wired for every comment row; published-comment edits and deletes reach it when they move to the same rule separately. #755
 
 - Fixed a merge that GitHub answered with not found (404) being reported as not confirmed and locking the Review. Merge now shows Merge refused: the pull request could not be found. A merge GitHub answers with not implemented (415, 501) now gets its own copy, pointing to merging on GitHub, with no extra read. Merge refusals now run on one shared rule that the other GitHub writes will move onto. #755
 

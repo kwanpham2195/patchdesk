@@ -160,6 +160,20 @@ const cases: ReadonlyArray<GraphQlErrorCase> = [
     expected: { _tag: "CommandRateLimited" },
   },
   {
+    name: "a not-found error on a query beside non-null data is still not found, which reads rely on",
+    body: {
+      data: { rateLimit: { remaining: 4999 }, repository: null },
+      errors: [
+        {
+          type: "NOT_FOUND",
+          path: ["repository"],
+          message: "Could not resolve",
+        },
+      ],
+    },
+    expected: { _tag: "CommandNotFound" },
+  },
+  {
     name: "an unprocessable error with null data is an unprocessable refusal",
     body: {
       data: null,

@@ -437,9 +437,10 @@ landed first delivery could have produced it:
 - **Conversation writes (slice 2).** `InlineConversationService` settles a
   refusal through `settleRefusedWrite` with the write kind of its intent.
   `createInlineComment`, `createThreadReply`, and `updateThreadComment` are
-  final with no read. `setReviewThreadState` runs `getPullRequestComments` and
-  `classifyConversationIntent`: the refusal is final only when the read is
-  complete and the thread is not in the intended state. `deleteThreadComment`
+  final with no read. `setReviewThreadState` runs `getPullRequestComments`: the refusal is final
+  only when the read is complete and finds the thread in the state opposite to
+  the intended one. A missing thread, or an `outdated` one that an Unresolve
+  may have reopened, is not proof. `deleteThreadComment`
   runs `getReviewCommentTarget`: final only while the comment is still found.
   A final refusal records the rejection, releases the lock, and answers
   `github_refused` with the cause, which the route sends to the renderer as
@@ -450,7 +451,9 @@ landed first delivery could have produced it:
   `CommandUnprocessable`, and so to the cause `unprocessable`, only when the
   response's `data` is null, absent, or has only null fields. An error beside
   non-null data may mean the mutation partly landed, so it stays
-  `unavailable`. No live GraphQL error of this type could be produced on 2026-10-01 (oversized, blank, and malformed reply bodies, a repeated resolve, and a reply on a closed or locked pull request were all accepted or answered `comment: null` with no `errors`), so the mapping rests on GitHub's documented error type and the adapter tests. Live, the REST 422 came from a file whose diff GitHub calls too large ("diff is too large"); a review comment body has no practical size limit.
+  `unavailable`. A GraphQL `NOT_FOUND` on a mutation follows the same rule; on a
+  query it keeps meaning not found beside partial data, which reads rely on.
+  No live GraphQL error of this type could be produced on 2026-10-01 (oversized, blank, and malformed reply bodies, a repeated resolve, and a reply on a closed or locked pull request were all accepted or answered `comment: null` with no `errors`), so the mapping rests on GitHub's documented error type and the adapter tests. Live, the REST 422 came from a file whose diff GitHub calls too large ("diff is too large"); a review comment body has no practical size limit.
 - Every other write sends `refused` down the outcome-unknown path until its
   slice of issue #755 lands (published feedback, pending review and direct
   summary, then metadata writes). `unavailable` and `refused` behave the same

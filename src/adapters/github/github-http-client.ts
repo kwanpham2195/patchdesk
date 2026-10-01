@@ -325,7 +325,10 @@ export class GitHubHttpClient {
       )
         return ok(parsed.value);
       return err(
-        classifyGraphqlErrorBody(body.value) ?? {
+        classifyGraphqlErrorBody(
+          body.value,
+          /^\s*mutation\b/.test(request.document),
+        ) ?? {
           _tag: "CommandFailed",
           stderr: body.value.slice(0, 1024),
         },
