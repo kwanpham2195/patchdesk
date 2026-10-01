@@ -29,7 +29,7 @@ The table records each disposition. Open entries need a fix or product decision;
 | B-18 | A Markdown-syntax image never opens the full-size view                                   | low      | Review workbench / Conversation    | fixed (#348)           | —                                                                                                                          |
 | B-19 | Try again and related run controls stay enabled on a merged or closed Review             | low      | Review workbench / Insights        | fixed (#348)           | —                                                                                                                          |
 | B-20 | Some Pull requests filters are not measured against the search length limit              | low      | Pull requests / Filters            | fix                    | —                                                                                                                          |
-| B-21 | Dismissed Findings still add to Finding badges                                           | low      | Review workbench / Diff            | fix                    | —                                                                                                                          |
+| B-21 | Dismissed Findings still add to Finding badges                                           | low      | Review workbench / Diff            | fixed                  | [#621](https://github.com/kwanpham2195/patchdesk/issues/621)                                                               |
 | B-22 | Small copy and rendering slips                                                           | low      | Insights / Settings                | fix                    | —                                                                                                                          |
 | B-23 | Walkthrough section keys ignore modifier keys                                            | low      | Review workbench / Walkthrough     | fixed                  | [#623](https://github.com/kwanpham2195/patchdesk/issues/623)                                                               |
 | B-24 | Repository-marked generated files do not reach the Scope gauge                           | low      | Review workbench / Insights        | product call           | —                                                                                                                          |
@@ -167,14 +167,8 @@ The table records each disposition. Open entries need a fix or product decision;
 
 ### B-21: Dismissed Findings still add to Finding badges
 
-- **Where the user meets it:** The Diff tab's Browse rows and file headers, and the Finding cards in the diff, after the maintainer dismisses a mapped Finding.
-- **What happens / what was expected:** The Finding badge counts every mapped Finding of the current Analysis, including dismissed ones, so a file keeps its count and tone after its Finding was dismissed, and the Finding may keep its card. Expected: a dismissed Finding no longer counts, matching the needs-attention rule the Analysis uses.
-- **Reproduce:** Use a Review with a current Analysis and one mapped Finding on a file; dismiss it in Analysis; open Diff and inspect that file's Finding badge and line.
-- **Why (from the code):** `src/renderer/src/components/review-workbench.tsx:492-503` keeps every Finding whose `mappingStatus` is `mapped` and passes them to `countFindingsByPath` at `src/renderer/src/review-finding-counts.ts:24-44`, which never reads `disposition`; dismissals are recorded as `disposition: "dismissed"` by `src/domain/analysis-merge-findings.ts:33-47`.
-- **Severity:** `low`. The badge overstates remaining concerns on a reading surface.
-- **Decision needed:** `fix`. Exclude dismissed Findings from badges and decide whether their cards stay.
-- **Raised by:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#open-questions-and-verification).
-- **Issue:** —
+- **Disposition:** Fixed. Finding badges count only Findings that still need attention, by the rule the Analysis headline uses; see [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md). The inline cards stay for every mapped Finding.
+- **Issue:** [#621](https://github.com/kwanpham2195/patchdesk/issues/621)
 
 ### B-22: Small copy and rendering slips
 

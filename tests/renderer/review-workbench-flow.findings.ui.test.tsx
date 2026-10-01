@@ -194,6 +194,50 @@ describe("ReviewWorkbenchFlow finding actions", () => {
   });
 });
 
+describe("ReviewWorkbenchFlow finding badges", () => {
+  async function openDiff(workbench: WorkbenchResponse) {
+    // Pierre's CodeView mounts only with `replaceSync`; jsdom lacks it.
+    const styleSheet = window.CSSStyleSheet?.prototype;
+    if (styleSheet !== undefined && styleSheet.replaceSync === undefined) {
+      styleSheet.replaceSync = () => undefined;
+    }
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      throw new Error(input.path);
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={workbench}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Diff" }));
+  }
+
+  it("counts a Finding that still needs attention on its file", async () => {
+    await openDiff(withAnalysis("actionable"));
+    await screen.findByRole("region", { name: "Review diff" });
+    expect(
+      screen.queryAllByLabelText("1 finding, highest P1").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("leaves a Finding already added to the review out of the file badge, and keeps its inline card", async () => {
+    await openDiff(withAnalysis("pending_review"));
+    await screen.findByRole("region", { name: "Review diff" });
+    expect(screen.queryAllByLabelText("1 finding, highest P1")).toHaveLength(0);
+    expect(
+      await screen.findByRole("article", {
+        name: "P1 finding: Missing boundary check",
+      }),
+    ).toBeTruthy();
+  });
+});
+
 describe("ReviewWorkbenchFlow keyboard commands", () => {
   it("switches tabs with ⌘1 to ⌘3 and opens an Insight reader from its Review command", async () => {
     bridge(async (input) => {
