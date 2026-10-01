@@ -424,6 +424,24 @@ describe("PublishedFeedbackService", () => {
       reviews: feedback.reviews.map((review) => ({ ...review, event })),
     });
     const withoutComment = { ...feedback, comments: [] };
+    // Another comment is still there: the landed check must match this comment's id, not any comment.
+    const withOtherComment = {
+      ...feedback,
+      comments: feedback.comments.map((comment) => ({
+        ...comment,
+        id: "202",
+        nodeId: "PRRC_202",
+      })),
+    };
+    // Another review that is not dismissed: the check must match this review's id.
+    const withOtherReview: FeedbackFixture = {
+      ...feedback,
+      reviews: feedback.reviews.map((review) => ({
+        ...review,
+        id: "102",
+        event: "APPROVED" as const,
+      })),
+    };
     const incomplete = { ...feedback, complete: false };
     const edit = { ...input, commentId: "201", body: "edited" };
     const remove = { ...input, commentId: "201", confirmation: true };
@@ -476,6 +494,7 @@ describe("PublishedFeedbackService", () => {
 
     it.each([
       ["the comment is gone", [feedback, withoutComment]],
+      ["only a different comment remains", [feedback, withOtherComment]],
       ["the read after the refusal fails", [feedback, "failure"]],
       ["the read after the refusal is incomplete", [feedback, incomplete]],
     ] as const)(
@@ -512,6 +531,10 @@ describe("PublishedFeedbackService", () => {
       [
         "the review is missing",
         [withReview("APPROVED"), { ...feedback, reviews: [] }],
+      ],
+      [
+        "only a different review remains",
+        [withReview("APPROVED"), withOtherReview],
       ],
       ["the read after the refusal fails", [withReview("APPROVED"), "failure"]],
       [
