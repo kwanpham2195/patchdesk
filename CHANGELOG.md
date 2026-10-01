@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed Start here from the Brief; Walkthrough is the reading path. **Open walkthrough** and **Generate walkthrough** moved to the Brief header beside Regenerate, and a local Review's PR description no longer has a Start here section. #716
+
 - Removed Surfaces crossed from Brief Blast radius; the Signals Areas rows replace it. #721
 
 - Added Signals to the top of the Brief: a fixed set of checks computed from the diff, grouped as Areas (Public API, Routes, Stored data, Security boundary, Dependencies, Config or deploy), Tests (weakened, added), and Code (concurrency, files to skim). Every row always shows, tinted with a count and paths when it matched and dimmed at zero. #721

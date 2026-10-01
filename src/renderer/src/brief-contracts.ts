@@ -73,21 +73,6 @@ const briefMovesSchema = v.strictObject({
 });
 
 /**
- * The Start here block. The main process already cut this order down to files
- * the patch changes, so the reader draws it as given; the numbering is honest
- * here because the order is the information.
- */
-const briefStartHereSchema = v.strictObject({
-  lead: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-  order: v.array(
-    v.strictObject({
-      path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
-      why: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
-    }),
-  ),
-});
-
-/**
  * The Reach block. Every number here was produced by a `git grep` in the main
  * process, never by the model, and `method`/`hop` travel with the counts so the
  * reader's footer can state how they were made.
@@ -219,8 +204,6 @@ const briefSchema = v.strictObject({
   moves: v.optional(briefMovesSchema),
   /** Absent on a Brief retained before the Signals block existed. */
   signals: v.optional(briefSignalsSchema),
-  /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
-  startHere: v.optional(briefStartHereSchema),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
   reach: v.optional(briefReachSchema),
   reachUnavailable: v.optional(
@@ -258,7 +241,6 @@ export type BriefMoves = v.InferOutput<typeof briefMovesSchema>;
 export type BriefSignals = v.InferOutput<typeof briefSignalsSchema>;
 export type BriefReach = v.InferOutput<typeof briefReachSchema>;
 type BriefReachMention = v.InferOutput<typeof briefReachMentionSchema>;
-export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;
 export type BriefFlow = v.InferOutput<typeof briefFlowSchema>;
 export type BriefFlowNode = v.InferOutput<typeof briefFlowNodeSchema>;
 
@@ -762,7 +744,7 @@ export function briefOwnershipTree(
  * States the Brief's citation status alone (ADR 0040). A surviving citation
  * only proves its hunk exists in the diff, not that the step it supports is
  * right, so the line claims no more than "found". A partial status also counts
- * rejected Ownership and Start here paths, so it cannot blame hunks alone.
+ * rejected Ownership paths, so it cannot blame hunks alone.
  */
 export function briefCitationStatusLine(brief: Brief): string {
   if (brief.citationStatus === "partially_verified")

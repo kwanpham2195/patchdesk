@@ -144,13 +144,11 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Run Insights dialog.** The dialog that Run Insights… beside the Insight tab strip opens. It has one row per Insight, each with a checkbox and its own Provider, Model, Reasoning, and Language, and Start runs starts every checked row as its own run.
 
-**Brief.** The latest successful answer to the structure of a change — its flow, ownership, and where to start reading. Its blocks are Flow, Shape, Start here, and Reach, with a Provenance card beside them.
+**Brief.** The latest successful answer to the structure of a change — its flow, ownership, and reach. Its blocks are Flow, Shape, and Reach, with a Provenance card beside them. For a reading path through the files, it links to the Walkthrough.
 
 **Flow.** The Brief block of up to three diff-styled views, one per kind: call tree, control flow, and component tree. Each marks steps added, removed, or unchanged, and a changed step can cite the hunk that supports it.
 
 **Shape.** The Brief block that groups the changed files by directory, collapsing a directory past twelve files into a counted remainder.
-
-**Start here.** The Brief card with a lead sentence and an ordered list of files to read first, ending in Open walkthrough or Generate walkthrough.
 
 **Reach.** The Brief block of four rows stating what the change may reach and how each count was produced.
 

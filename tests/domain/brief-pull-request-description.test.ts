@@ -56,10 +56,6 @@ describe("renderBriefAsPullRequestDescription", () => {
           ownership: {
             notes: [{ path: "src/recovery.ts", note: "Owns recovery." }],
           },
-          startHere: {
-            lead: "Read the recovery path first.",
-            order: [{ path: "src/recovery.ts", why: "The entry point." }],
-          },
           flow: [
             {
               kind: "call_tree",
@@ -111,12 +107,6 @@ describe("renderBriefAsPullRequestDescription", () => {
         "## Shape",
         "",
         "- `src/recovery.ts` (modified, +2 -0): Owns recovery.",
-        "",
-        "## Start here",
-        "",
-        "Read the recovery path first.",
-        "",
-        "1. `src/recovery.ts`: The entry point.",
         "",
       ].join("\n"),
     );

@@ -20,11 +20,6 @@ import { briefMoves, type BriefMoves } from "./brief-moves";
 import { briefSignals, type BriefSignal } from "./brief-signals";
 import { moveReferenceUpdatePaths } from "./move-reference-updates";
 import type { BriefReach, BriefReachUnavailableReason } from "./brief-reach";
-import {
-  briefStartHereOutputSchema,
-  normalizeBriefStartHere,
-  type BriefStartHere,
-} from "./brief-start-here";
 import { definedProps } from "./defined-props";
 import {
   filterNarrativePatchToHunks,
@@ -52,8 +47,8 @@ export { BRIEF_ALIAS_SYNTAX, type BriefCitation, type BriefManifest };
 
 /**
  * A normalized, snapshot-bound Brief ready for storage and renderer
- * projection. Brief is structure-first (ADR 0040): Ownership, Start here,
- * Flow, and Reach, plus the Scope gauge computed elsewhere. There is no
+ * projection. Brief is structure-first (ADR 0040): Ownership, Flow, and
+ * Reach, plus the Scope gauge computed elsewhere. There is no
  * prose block left to grade a citation against, so `citationStatus` is the
  * whole verification story -- see its own doc comment below.
  */
@@ -84,12 +79,6 @@ export type NormalizedBrief = {
    * retained before the block existed.
    */
   readonly signals?: ReadonlyArray<BriefSignal>;
-  /**
-   * Where to start reading. Absent on a Brief retained before the block
-   * existed, and whenever no path the model proposed is a file this patch
-   * changed.
-   */
-  readonly startHere?: BriefStartHere;
   /**
    * The counted Reach block. `normalizeBrief` never produces one: counting
    * needs a `git grep` over the represented worktree, so the completion path
@@ -149,13 +138,12 @@ export const MAX_CITED_HUNKS_TOTAL_LENGTH = 256_000;
  * counts them with `git grep`, so the model never writes the number.
  *
  * Brief is structure-first (ADR 0040): there is no Goal, Assumptions, or
- * description-vs-diff key left to accept. `ownership`, `startHere`, and
- * `flow` are each optional -- a Brief that proposes none of them is still
- * complete, unconditionally combined rather than gated on a surviving Goal.
+ * description-vs-diff key left to accept. `ownership` and `flow` are each
+ * optional -- a Brief that proposes neither is still complete,
+ * unconditionally combined rather than gated on a surviving Goal.
  */
 export const briefOutputSchema = v.strictObject({
   ownership: briefOwnershipOutputSchema,
-  startHere: briefStartHereOutputSchema,
   flow: briefFlowOutputSchema,
   reachSymbols: v.optional(
     v.pipe(
@@ -176,11 +164,11 @@ export const briefOutputSchema = v.strictObject({
 
 /**
  * The JSON contract every Brief child is given, stated once for both
- * providers. Brief is structure-first (ADR 0040): four blocks, no prose.
+ * providers. Brief is structure-first (ADR 0040): three blocks, no prose.
  *
  * `ownership` is Patchdesk's own skeleton with the model's per-file notes.
- * `startHere` is the reading order. `flow` is optional, like `ownership` and
- * `startHere`: a Brief with no flow proposed is still a complete Brief.
+ * `flow` is optional, like `ownership`: a Brief with no flow proposed is
+ * still a complete Brief.
  * Every tree carries a `kind`: `call_tree` is real function or method names
  * with parameter names as written in the patch, `control_flow` is short
  * pseudocode lines, `component` is a `<ComponentName>` tree, `state` is
@@ -193,7 +181,7 @@ export const briefOutputSchema = v.strictObject({
  * counted Reach block; the model never writes the count itself.
  */
 export const BRIEF_RESULT_CONTRACT =
-  '{"ownership":{"notes":[{"path":string,"note":string}]},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component"|"state"|"contract","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"reachSymbols":[string]}';
+  '{"ownership":{"notes":[{"path":string,"note":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component"|"state"|"contract","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };
@@ -252,11 +240,11 @@ export function renderBriefManifest(manifest: BriefManifest): string {
  * already applies its own rule while it walks each proposed tree (see
  * `normalizeBriefFlow` in `brief-flow.ts`) -- an `added`/`removed` step with
  * no surviving hunk citation is kept and marked, never dropped or demoted to
- * a lower-confidence block. Ownership and Start here take no citations at
- * all. An uncited claim is kept, muted, and counted toward `rejected`; this
- * function never rejects a Brief for lacking one, so a Brief with no Flow at
- * all -- a rename, a docs change, a pure refactor -- is still a complete,
- * valid Brief with Ownership, Start here, and Reach.
+ * a lower-confidence block. Ownership takes no citations at all. An uncited
+ * claim is kept, muted, and counted toward `rejected`; this function never
+ * rejects a Brief for lacking one, so a Brief with no Flow at all -- a
+ * rename, a docs change, a pure refactor -- is still a complete, valid Brief
+ * with Ownership and Reach.
  *
  * The patch is passed beside the manifest because the Ownership block's
  * skeleton is cut from the patch itself, never asked of the model.
@@ -276,15 +264,6 @@ export function normalizeBrief(
   const ownership = normalizeBriefOwnership(parsed.output.ownership, patch);
   rejectedCitationCount += ownership.rejected;
 
-  // The Ownership skeleton is already the patch's changed, non-generated file
-  // list, so the reading order is checked against it rather than re-walking
-  // the patch.
-  const startHere = normalizeBriefStartHere(
-    parsed.output.startHere,
-    ownership.value.files,
-  );
-  rejectedCitationCount += startHere.rejected;
-
   const flow = normalizeBriefFlow(
     parsed.output.flow,
     byAlias,
@@ -301,7 +280,6 @@ export function normalizeBrief(
     ownership: ownership.value,
     ...definedProps({
       ...changeFacts(patch),
-      startHere: startHere.value,
       flow: flow.value,
       citedHunks: Object.keys(citedHunks).length > 0 ? citedHunks : undefined,
     }),

@@ -36,8 +36,7 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  * counted as an unverified claim, not a dropped one). Every other cap below
  * (the per-tree node cap, the depth cut, a whitespace-only label, an
  * all-unchanged tree) is silent, and a surviving tree past `MAX_FLOW_TREES`
- * is counted in `omittedTrees` rather than in `rejected`, the same way `normalizeBriefStartHere`'s
- * five-file cap and an unmatched Start here path are silent.
+ * is counted in `omittedTrees` rather than in `rejected`.
  *
  * Patchdesk does not reshape a tree the model proposes -- a step nested
  * under itself, or repeated, is drawn as proposed; the guidance, not the
@@ -400,15 +399,13 @@ function normalizeFlowTitle(rawTitle: string): string {
  * repeated, or -- for a changed step -- resolved to a non-hunk kind), and an
  * `added`/`removed` node left with zero surviving hunk citations. A
  * `contract` tree cites on its root only: citations below a root move up to
- * it, and a changed row counts as cited when its root is. Every
- * other cap here is silent, the same way `normalizeBriefStartHere`'s
- * five-file cap and an unmatched Start here path are silent: the per-tree
- * node cap, the `MAX_FLOW_DEPTH` cut (the schema accepts deeper input up to
- * six levels), a whitespace-only label, a tree with no surviving
- * changed node, a repeat of a kept tree's kind and title, and a `component`
- * tree dropped for touching no UI file in
- * `changedPaths` (see `patchTouchesUiComponents`). A surviving tree past
- * `MAX_FLOW_TREES` is counted in `omittedTrees`.
+ * it, and a changed row counts as cited when its root is. Every other cap
+ * here is silent: the per-tree node cap, the `MAX_FLOW_DEPTH` cut (the schema
+ * accepts deeper input up to six levels), a whitespace-only label, a tree
+ * with no surviving changed node, a repeat of a kept tree's kind and title,
+ * and a `component` tree dropped for touching no UI file in `changedPaths`
+ * (see `patchTouchesUiComponents`). A surviving tree past `MAX_FLOW_TREES` is
+ * counted in `omittedTrees`.
  */
 export function normalizeBriefFlow(
   raw: BriefFlowOutput,

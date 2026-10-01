@@ -44,8 +44,6 @@ type InsightReaderBuilderInput = {
   readonly setWalkthroughFocused: (focused: boolean) => void;
   /** Opens the run dialog from the Brief's own Provenance card. */
   readonly onRegenerateBrief: () => void;
-  /** Drives the Brief "Start here" card's Walkthrough link: open the one that exists, or run one. */
-  readonly onOpenWalkthrough?: () => void;
   readonly runEnabled: boolean;
   /** Opens the Diff tab at a mapped finding's lines; absent outside the workbench. */
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
@@ -128,7 +126,6 @@ export function buildInsightReaders({
   walkthroughFocused,
   setWalkthroughFocused,
   onRegenerateBrief,
-  onOpenWalkthrough,
   runEnabled,
 }: InsightReaderBuilderInput): React.ReactNode {
   const analysisSummaryScope = {
@@ -284,20 +281,6 @@ export function buildInsightReaders({
       />
     ) : null;
   const briefRetained = workbench.insights.brief?.retained;
-  // The Diff tab shows the reviewed head, so only a Brief of that same revision can point into it.
-  const briefDiffPaths =
-    onOpenFileInDiff !== undefined &&
-    workbench.insights.brief?.status === "current" &&
-    briefRetained?.headSha === workbench.revision.reviewedHeadSha &&
-    workbench.fullPatch !== undefined
-      ? new Map(
-          // New paths go last so a rename chain cannot map one file's name onto another file.
-          [
-            ...patchFiles.map((file) => [file.oldPath, file.newPath] as const),
-            ...patchFiles.map((file) => [file.newPath, file.newPath] as const),
-          ],
-        )
-      : undefined;
   const briefRunId = briefRetained?.runId;
   const retainedBrief =
     selectedInsight === "brief" && briefRetained !== undefined ? (
@@ -308,9 +291,7 @@ export function buildInsightReaders({
           ? { onRegenerate: onRegenerateBrief }
           : {})}
         regenerateDisabled={!runEnabled}
-        walkthroughStatus={workbench.insights.walkthrough.status}
         {...definedProps({
-          onOpenWalkthrough,
           // The card shows the current revision's Scope, so an outdated Brief still filters the Diff.
           onScopeBucketSelect: onOpenScopeBucketInDiff,
         })}
@@ -328,16 +309,6 @@ export function buildInsightReaders({
                     runId: briefRunId,
                   }),
         })}
-        {...(briefDiffPaths === undefined || onOpenFileInDiff === undefined
-          ? {}
-          : {
-              diffOpenerFor: (path: string) => {
-                const diffPath = briefDiffPaths.get(path);
-                return diffPath === undefined
-                  ? undefined
-                  : () => onOpenFileInDiff(diffPath);
-              },
-            })}
       />
     ) : null;
   return retainedAnalysis ?? retainedWalkthrough ?? retainedBrief;

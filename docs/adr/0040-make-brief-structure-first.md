@@ -151,3 +151,18 @@ note budget on moved fixtures and config files (#713, #715).
   Moves rows, and Flow guidance says a moved file needs no root.
 - `normalizeBriefOwnership` drops a note on a renamed file with no line change
   without counting it against the citation status.
+
+## Amendment: Start here removed (2026-10-01)
+
+Start here listed three to five files to read first. Walkthrough answers the
+same question in full, so the Brief offered two reading orders that could
+disagree, and Start here was one more model-written block that could
+contradict Flow (#716).
+
+- Brief no longer asks the model for `startHere`. The output schema, prompt
+  section, normalization, reader card, and the PR description's Start here
+  section are gone.
+- Open walkthrough and Generate walkthrough move from the Start here card to
+  the Brief header, beside Regenerate.
+- A Brief retained with `startHere` still loads; the stored key is tolerated
+  and ignored.

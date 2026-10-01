@@ -2,7 +2,7 @@
 
 ## Summary
 
-Walkthrough is a generated, guided reading sequence for one represented Review revision. It groups chapters and sections, pairs prose with representative diff hunks, counts hunks it does not explain, and records local section-reviewed markers. The maintainer reaches it from the Walkthrough tab or card in Insights, or from Open walkthrough on the Brief's Start here card. It opens in a docked layout beside the ordinary Insights chrome; Focus section switches to a focused layout that hides that chrome. It is a reader inside the Review, not a GitHub review action.
+Walkthrough is a generated, guided reading sequence for one represented Review revision. It groups chapters and sections, pairs prose with representative diff hunks, counts hunks it does not explain, and records local section-reviewed markers. The maintainer reaches it from the Walkthrough tab or card in Insights, or from Open walkthrough in the Brief header. It opens in a docked layout beside the ordinary Insights chrome; Focus section switches to a focused layout that hides that chrome. It is a reader inside the Review, not a GitHub review action.
 
 ## The simple case
 

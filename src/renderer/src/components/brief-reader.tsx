@@ -25,7 +25,6 @@ import {
   type BriefInsight,
   type BriefOwnership,
   type BriefOwnershipRow,
-  type BriefStartHere,
 } from "../brief-contracts";
 import type {
   ChangeScope,
@@ -37,7 +36,6 @@ import { MovesBlock } from "./brief-moves-block";
 import { ReachBlock } from "./brief-reach-block";
 import { SignalsBlock } from "./brief-signals-block";
 import { CopyLoadedTextButton } from "./copy-loaded-text-button";
-import { GeneratedMarkdownInline } from "./generated-markdown";
 import { ReviewDiffView } from "./review-diff-view";
 import { ScopeGauge } from "./scope-gauge";
 import { Button } from "./ui/button";
@@ -129,18 +127,15 @@ const generatedAtFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 /**
- * The read side of one retained Brief: the change's structure -- Flow, Shape,
- * Start here, and Blast radius -- rather than prose about it (ADR 0040). It states
- * no verdict and no finding; those stay in Analysis.
+ * The read side of one retained Brief: the change's structure -- Signals,
+ * Moves, Flow, Shape, and Blast radius -- rather than prose about it (ADR
+ * 0040). It states no verdict and no finding; those stay in Analysis.
  */
 export function BriefReader({
   retained,
   scope,
   onRegenerate,
   regenerateDisabled = false,
-  walkthroughStatus,
-  onOpenWalkthrough,
-  diffOpenerFor,
   onScopeBucketSelect,
   loadPullRequestDescription,
 }: {
@@ -150,12 +145,6 @@ export function BriefReader({
   /** Absent on a merged or closed Review, where no run can start. */
   readonly onRegenerate?: () => void;
   readonly regenerateDisabled?: boolean;
-  /** The workbench's Walkthrough status; decides whether the card offers to open one or to generate one. */
-  readonly walkthroughStatus: BriefInsight["status"];
-  /** Absent on a merged or closed Review with no current Walkthrough, where the only offer would be a run the service refuses. */
-  readonly onOpenWalkthrough?: () => void;
-  /** Returns how to open a path in the Diff tab, or undefined when that Diff does not show it; absent when the Diff shows another revision. */
-  readonly diffOpenerFor?: (path: string) => (() => void) | undefined;
   /** Opens the Diff filtered to one Scope bucket; absent outside the workbench. */
   readonly onScopeBucketSelect?: (bucket: ChangeScopeBucket) => void;
   /** Asks the main process for this Brief as a PR description; offered on a local Review's current Brief. */
@@ -192,13 +181,6 @@ export function BriefReader({
         )}
       </div>
       <div className="flex flex-col gap-3">
-        {brief.startHere === undefined ? null : (
-          <StartHereCard
-            startHere={brief.startHere}
-            walkthroughStatus={walkthroughStatus}
-            {...definedProps({ onOpenWalkthrough, diffOpenerFor })}
-          />
-        )}
         {scope === undefined ? null : (
           <ScopeGauge
             scope={scope}
@@ -249,85 +231,6 @@ export function BriefReader({
         </section>
       </div>
     </div>
-  );
-}
-
-/**
- * Where to start reading. The list is an `<ol>` because the order is the whole
- * point of the card, and the walkthrough sits under it: the Brief says where to
- * begin, the Walkthrough is the long way through.
- */
-function StartHereCard({
-  startHere,
-  walkthroughStatus,
-  onOpenWalkthrough,
-  diffOpenerFor,
-}: {
-  readonly startHere: BriefStartHere;
-  readonly walkthroughStatus: BriefInsight["status"];
-  readonly onOpenWalkthrough?: () => void;
-  readonly diffOpenerFor?: (path: string) => (() => void) | undefined;
-}): React.JSX.Element {
-  return (
-    <section
-      aria-label="Start here"
-      className="flex flex-col gap-3 rounded-md border border-primary/40 p-3"
-    >
-      <h3 className="text-sm font-medium">Start here</h3>
-      <p className="text-xs">
-        <GeneratedMarkdownInline markdown={startHere.lead} />
-      </p>
-      <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-xs text-muted-foreground">
-        {startHere.order.map((entry) => {
-          const open = diffOpenerFor?.(entry.path);
-          // Each segment wraps as one box, so a line breaks after a separator and file names stay whole where they fit.
-          // Text decoration does not reach into inline-block boxes, so each segment draws its own link underline.
-          const segments = entry.path.split("/").map((segment, index, all) => (
-            <span
-              key={index}
-              className={`inline-block max-w-full break-words ${open === undefined ? "" : "underline decoration-muted-foreground/50 underline-offset-2 group-hover:decoration-foreground"}`}
-            >
-              {index === all.length - 1 ? segment : `${segment}/`}
-            </span>
-          ));
-          return (
-            <li key={entry.path} className="min-w-0">
-              {open === undefined ? (
-                <span className="font-mono text-foreground">{segments}</span>
-              ) : (
-                <button
-                  type="button"
-                  aria-label={`Open ${entry.path} in Diff`}
-                  title="Open in Diff"
-                  className="group text-left align-top font-mono text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={open}
-                >
-                  {segments}
-                </button>
-              )}
-              {entry.why === undefined ? null : (
-                <>
-                  {" "}
-                  — <GeneratedMarkdownInline markdown={entry.why} />
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-      {onOpenWalkthrough === undefined ? null : (
-        <Button
-          size="sm"
-          variant="outline"
-          className="self-start"
-          onClick={onOpenWalkthrough}
-        >
-          {walkthroughStatus === "current"
-            ? "Open walkthrough"
-            : "Generate walkthrough"}
-        </Button>
-      )}
-    </section>
   );
 }
 

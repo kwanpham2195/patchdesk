@@ -212,25 +212,6 @@ const retainedWithoutReach = () => {
   };
 };
 
-const START_HERE = {
-  lead: "Read the writer first; the services only consume its return type.",
-  order: [
-    { path: "src/a.ts", why: "owns the read-back" },
-    { path: "src/b.ts" },
-  ],
-};
-
-const retainedWithStartHere = () => {
-  const base = retained();
-  return { ...base, value: { ...briefValue, startHere: START_HERE } };
-};
-
-/** The Walkthrough link's props: required, and only one test is about them. */
-const walkthroughLink = {
-  walkthroughStatus: "not_generated" as const,
-  onOpenWalkthrough: () => undefined,
-};
-
 afterEach(() => cleanup());
 
 describe("BriefReader", () => {
@@ -239,7 +220,6 @@ describe("BriefReader", () => {
     const user = userEvent.setup();
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retained()}
         scope={changeScopeFromPatch(
           "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
@@ -259,7 +239,6 @@ describe("BriefReader", () => {
   it("renders the Shape tree", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithOwnership()}
         onRegenerate={() => undefined}
       />,
@@ -272,7 +251,6 @@ describe("BriefReader", () => {
     const base = retained();
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={{
           ...base,
           value: {
@@ -306,7 +284,6 @@ describe("BriefReader", () => {
     const base = retained();
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={{
           ...base,
           value: {
@@ -334,7 +311,6 @@ describe("BriefReader", () => {
   it("renders the Blast radius rows that found something and states how the counts were made", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithReach()}
         onRegenerate={() => undefined}
       />,
@@ -359,7 +335,6 @@ describe("BriefReader", () => {
     const base = retained();
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={{
           ...base,
           value: {
@@ -391,7 +366,6 @@ describe("BriefReader", () => {
   it("omits the Blast radius view and says why when the search could not answer", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithoutReach()}
         onRegenerate={() => undefined}
       />,
@@ -403,83 +377,17 @@ describe("BriefReader", () => {
 
   it("omits the Blast radius view silently on a Brief retained before it existed", () => {
     render(
-      <BriefReader
-        {...walkthroughLink}
-        retained={retained()}
-        onRegenerate={() => undefined}
-      />,
+      <BriefReader retained={retained()} onRegenerate={() => undefined} />,
     );
 
     expect(screen.queryByRole("region", { name: "Blast radius" })).toBeNull();
     expect(screen.queryByText(/Blast radius was not counted/)).toBeNull();
   });
 
-  it("renders the Start here card with its reading order", () => {
-    render(
-      <BriefReader
-        {...walkthroughLink}
-        retained={retainedWithStartHere()}
-        onRegenerate={() => undefined}
-      />,
-    );
-
-    const card = screen.getByRole("region", { name: "Start here" });
-    expect(
-      [...card.querySelectorAll("li")].map((item) => item.textContent),
-    ).toEqual(["src/a.ts — owns the read-back", "src/b.ts"]);
-  });
-
-  it("omits the Start here card on a Brief retained before it existed", () => {
-    render(
-      <BriefReader
-        {...walkthroughLink}
-        retained={retained()}
-        onRegenerate={() => undefined}
-      />,
-    );
-
-    expect(screen.queryByRole("region", { name: "Start here" })).toBeNull();
-  });
-
-  it("opens the walkthrough that already stands for this revision", async () => {
-    const onOpenWalkthrough = vi.fn();
-    const user = userEvent.setup();
-    render(
-      <BriefReader
-        retained={retainedWithStartHere()}
-        onRegenerate={() => undefined}
-        walkthroughStatus="current"
-        onOpenWalkthrough={onOpenWalkthrough}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "Open walkthrough" }));
-    expect(onOpenWalkthrough).toHaveBeenCalledTimes(1);
-  });
-
-  it("offers to generate a walkthrough when none stands for this revision", async () => {
-    const onOpenWalkthrough = vi.fn();
-    const user = userEvent.setup();
-    render(
-      <BriefReader
-        retained={retainedWithStartHere()}
-        onRegenerate={() => undefined}
-        walkthroughStatus="outdated"
-        onOpenWalkthrough={onOpenWalkthrough}
-      />,
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: "Generate walkthrough" }),
-    );
-    expect(onOpenWalkthrough).toHaveBeenCalledTimes(1);
-  });
-
   it("opens a hunk preview from a cited chip", async () => {
     const user = userEvent.setup();
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithCitedHunk()}
         onRegenerate={() => undefined}
       />,
@@ -501,11 +409,7 @@ describe("BriefReader", () => {
 
   it("renders a plain chip when the hunk has no preview", () => {
     render(
-      <BriefReader
-        {...walkthroughLink}
-        retained={retained()}
-        onRegenerate={() => undefined}
-      />,
+      <BriefReader retained={retained()} onRegenerate={() => undefined} />,
     );
 
     expect(
@@ -517,7 +421,6 @@ describe("BriefReader", () => {
   it("renders one Flow view per tree with a kind badge and title", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithFlow()}
         onRegenerate={() => undefined}
       />,
@@ -540,7 +443,6 @@ describe("BriefReader", () => {
   it("marks an added row with + and its chip, a removed row with −, and leaves a citing unchanged row bare", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithFlow()}
         onRegenerate={() => undefined}
       />,
@@ -576,7 +478,6 @@ describe("BriefReader", () => {
     const base = retained();
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={{
           ...base,
           value: {
@@ -610,7 +511,6 @@ describe("BriefReader", () => {
   it("keeps an uncited added row visible with a muted marker, no chip, and a title explaining why", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithFlow()}
         onRegenerate={() => undefined}
       />,
@@ -674,7 +574,6 @@ describe("BriefReader", () => {
     const base = retained();
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={{
           ...base,
           value: {
@@ -708,7 +607,6 @@ describe("BriefReader", () => {
   it("draws a root flush-left and its children's guides nested within its subtree", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithFlow()}
         onRegenerate={() => undefined}
       />,
@@ -736,7 +634,6 @@ describe("BriefReader", () => {
   it("omits the Flow section when the Brief has no flow", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithoutFlow()}
         onRegenerate={() => undefined}
       />,
@@ -753,7 +650,6 @@ describe("BriefReader", () => {
       .mockResolvedValue(undefined);
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithFlow()}
         onRegenerate={() => undefined}
       />,
@@ -778,7 +674,6 @@ describe("BriefReader", () => {
       .mockRejectedValue(new Error("denied"));
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithFlow()}
         onRegenerate={() => undefined}
       />,
@@ -799,7 +694,6 @@ describe("BriefReader", () => {
       .mockResolvedValue(undefined);
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retainedWithTwoFlowViews()}
         onRegenerate={() => undefined}
       />,
@@ -828,7 +722,6 @@ describe("BriefReader", () => {
   it("disables regeneration when no run may start", () => {
     render(
       <BriefReader
-        {...walkthroughLink}
         retained={retained()}
         onRegenerate={() => undefined}
         regenerateDisabled

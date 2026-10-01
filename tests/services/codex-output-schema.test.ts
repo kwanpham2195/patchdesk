@@ -49,10 +49,6 @@ describe("Codex output schemas", () => {
   it("accepts a Brief that Codex returned with null optional fields once the nulls are mapped back", () => {
     const codexResult = {
       ownership: null,
-      startHere: {
-        lead: "Read a.ts first.",
-        order: [{ path: "a.ts", why: null }],
-      },
       flow: [
         {
           kind: "call_tree",
@@ -76,7 +72,6 @@ describe("Codex output schemas", () => {
     expect(parsed).toMatchObject({
       _tag: "ok",
       value: {
-        startHere: { order: [{ path: "a.ts" }] },
         flow: [{ nodes: [{ label: "run()", citations: ["h1"] }] }],
       },
     });

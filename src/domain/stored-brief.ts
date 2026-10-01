@@ -11,7 +11,6 @@ import type { BriefMoves } from "./brief-moves";
 import { BRIEF_SIGNAL_KINDS, type BriefSignal } from "./brief-signals";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
-import type { BriefStartHere } from "./brief-start-here";
 import { definedProps } from "./defined-props";
 import {
   parseContentHash,
@@ -70,18 +69,6 @@ const storedSignalsSchema = v.array(
     detail: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
 );
-const storedStartHereSchema = v.strictObject({
-  lead: v.pipe(v.string(), v.minLength(1)),
-  order: v.pipe(
-    v.array(
-      v.strictObject({
-        path: v.pipe(v.string(), v.minLength(1)),
-        why: v.optional(v.pipe(v.string(), v.minLength(1))),
-      }),
-    ),
-    v.minLength(1),
-  ),
-});
 /**
  * Builds one level of the stored Flow node schema, the same way
  * `flowNodeSchema` in `brief-flow.ts` does: `childSchema` validates one level
@@ -182,8 +169,8 @@ const storedBriefSchema = v.strictObject({
   moves: v.optional(storedMovesSchema),
   /** Absent on a Brief retained before the Signals block existed. */
   signals: v.optional(storedSignalsSchema),
-  /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
-  startHere: v.optional(storedStartHereSchema),
+  /** Written by Briefs retained before Start here was removed (#716); read and ignored. */
+  startHere: v.optional(v.unknown()),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
   reach: v.optional(storedReachSchema),
   reachUnavailable: v.optional(
@@ -258,7 +245,6 @@ export function parseStoredBrief(
       ownership: storedOwnership(parsed.output.ownership),
       moves: storedMoves(parsed.output.moves),
       signals: storedSignals(parsed.output.signals),
-      startHere: storedStartHere(parsed.output.startHere),
       reach: storedReach(parsed.output.reach),
       reachUnavailable: parsed.output.reachUnavailable,
       citedHunks: parsed.output.citedHunks,
@@ -312,23 +298,6 @@ function storedMentions(stored: {
     })),
     mentionCount: stored.mentionCount,
   });
-}
-
-/**
- * Rebuilds the Start here block. Only `why` needs rewriting, for the same
- * `exactOptionalPropertyTypes` reason `storedReach` rebuilds mention sites.
- */
-function storedStartHere(
-  stored: v.InferOutput<typeof storedStartHereSchema> | undefined,
-): BriefStartHere | undefined {
-  if (stored === undefined) return undefined;
-  return {
-    lead: stored.lead,
-    order: stored.order.map((entry) => ({
-      path: entry.path,
-      ...definedProps({ why: entry.why }),
-    })),
-  };
 }
 
 /** Rebuilds the Signals rows; `undefined` is a Brief retained before they existed. */

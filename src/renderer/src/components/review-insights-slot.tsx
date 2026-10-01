@@ -207,10 +207,7 @@ function retainedInsightDescription(
     return workbench.insights.analysis.retained?.value.summary;
   if (selectedInsight === "walkthrough")
     return workbench.insights.walkthrough.retained?.value.focus;
-  return (
-    brief.retained?.value.flow?.trees[0]?.title ??
-    brief.retained?.value.startHere?.lead
-  );
+  return brief.retained?.value.flow?.trees[0]?.title;
 }
 
 export function InsightsSlot({
@@ -311,6 +308,8 @@ export function InsightsSlot({
     selectedProjectionStatus: selectedProjection?.status,
   });
   const selectedRunning = runs[selectedInsight];
+  const selectedBusy =
+    selectedRunning?.busy === true || selectedProjection?.status === "running";
   const retainedDescription = retainedInsightDescription(
     workbench,
     brief,
@@ -334,13 +333,6 @@ export function InsightsSlot({
       onOpenFindingInDiff: openFindingInDiff,
       onOpenFileInDiff: openFileInDiff,
       onOpenScopeBucketInDiff: openScopeBucketInDiff,
-      // The Brief points at the Walkthrough rather than duplicating it: read the current one, or start one while the Review is open.
-      onOpenWalkthrough:
-        workbench.insights.walkthrough.status === "current"
-          ? () => setSelectedInsight("walkthrough")
-          : reviewOpen
-            ? () => openRunDialog("run", "walkthrough")
-            : undefined,
     }),
     dismissFinding,
     restoreFinding,
@@ -408,6 +400,14 @@ export function InsightsSlot({
                   workbench={workbench}
                   patchView={patchView}
                 />
+                {selectedInsight === "brief" && !selectedBusy ? (
+                  <BriefWalkthroughAction
+                    workbench={workbench}
+                    runEnabled={runEnabled}
+                    onOpen={() => setSelectedInsight("walkthrough")}
+                    onGenerate={() => openRunDialog("run", "walkthrough")}
+                  />
+                ) : null}
                 <InsightHeaderAction
                   running={selectedRunning}
                   projectionRunning={selectedProjection?.status === "running"}
@@ -448,8 +448,7 @@ export function InsightsSlot({
             data-review-insight-content
             className={`flex min-h-0 flex-col gap-4 ${selectedInsight === "walkthrough" ? "flex-1 overflow-hidden" : ""}`}
           >
-            {selectedRunning?.busy ||
-            selectedProjection?.status === "running" ? (
+            {selectedBusy ? (
               <InsightRunning
                 type={selectedInsight}
                 projection={selectedProjection}
@@ -632,6 +631,42 @@ function InsightRunControls({
       runsOnCombined={runsOnCombined}
       {...definedProps({ errorMessage: runErrorMessage })}
     />
+  );
+}
+
+/**
+ * The Brief points at the Walkthrough rather than repeating a reading order:
+ * a retained Brief opens the current one, or starts one while the Review is
+ * open.
+ */
+function BriefWalkthroughAction({
+  workbench,
+  runEnabled,
+  onOpen,
+  onGenerate,
+}: {
+  readonly workbench: WorkbenchResponse;
+  readonly runEnabled: boolean;
+  readonly onOpen: () => void;
+  readonly onGenerate: () => void;
+}): React.JSX.Element | null {
+  if (workbench.insights.brief?.retained === undefined) return null;
+  if (workbench.insights.walkthrough.status === "current")
+    return (
+      <Button size="sm" variant="outline" onClick={onOpen}>
+        Open walkthrough
+      </Button>
+    );
+  if (workbench.review.status !== "open") return null;
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={onGenerate}
+      disabled={!runEnabled}
+    >
+      Generate walkthrough
+    </Button>
   );
 }
 

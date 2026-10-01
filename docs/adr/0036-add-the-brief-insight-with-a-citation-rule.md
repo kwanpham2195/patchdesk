@@ -1,8 +1,9 @@
 # Add the Brief Insight with a citation rule
 
 > **Status: Accepted.** Superseded in part by ADR 0040 (Goal, Assumptions,
-> Description vs diff, and the uncited-rejection rule); the citation
-> manifest and the hunk-alias rule remain. Adds a third Insight type beside
+> Description vs diff, and the uncited-rejection rule; Start here since its
+> 2026-10-01 amendment); the citation manifest and the hunk-alias rule
+> remain. Adds a third Insight type beside
 > Analysis and Walkthrough. It inherits ADR 0012 (each Insight type runs on
 > its own, and an outdated result stays readable), ADR 0013 (a model run is
 > bounded and never authoritative), and ADR 0018 (one throwaway Flue child

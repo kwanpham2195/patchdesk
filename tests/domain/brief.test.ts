@@ -6,7 +6,6 @@ import {
   renderBriefManifest,
   MAX_CITED_HUNKS_TOTAL_LENGTH,
   type BriefError,
-  type BriefOutput,
   type BriefSnapshot,
   type NormalizedBrief,
 } from "../../src/domain/brief";
@@ -45,6 +44,14 @@ const PATCH = [
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("test fixture failed");
   return result.value;
+}
+
+/** Writes the Brief as JSON, as the store does, and reads it back; JSON drops `undefined` keys. */
+function readBackFromStore(
+  brief: Omit<NormalizedBrief, "ownership">,
+): ReturnType<typeof parseStoredBrief> {
+  // react-doctor-disable-next-line react-doctor/no-json-parse-stringify-clone -- a JSON round trip is the contract under test, not a clone: the Brief store persists JSON
+  return parseStoredBrief(JSON.parse(JSON.stringify(brief)));
 }
 
 const SNAPSHOT: BriefSnapshot = {
@@ -102,14 +109,13 @@ describe("briefManifest", () => {
 
 describe("normalizeBrief", () => {
   it("returns ok with citationStatus verified when the model proposes nothing at all", () => {
-    // A rename, a docs change, or a pure refactor proposes no Flow, Start
-    // here, or Reach candidate. That is still a complete, valid Brief
+    // A rename, a docs change, or a pure refactor proposes no Flow or Reach
+    // candidate. That is still a complete, valid Brief
     // (ADR 0040): normalizeBrief never rejects a Brief for lacking one.
     const normalized = normalizeBrief({}, MANIFEST, PATCH, SNAPSHOT);
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.citationStatus).toBe("verified");
     expect(normalized.value.flow).toBeUndefined();
-    expect(normalized.value.startHere).toBeUndefined();
     expect(normalized.value.ownership).toBeDefined();
     expect(normalized.value.snapshot).toEqual(SNAPSHOT);
   });
@@ -138,9 +144,10 @@ describe("normalizeBrief", () => {
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.ownership?.files).toHaveLength(1);
-    expect(
-      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
-    ).toEqual({ _tag: "ok", value: normalized.value });
+    expect(readBackFromStore(normalized.value)).toEqual({
+      _tag: "ok",
+      value: normalized.value,
+    });
   });
 
   it("keeps the count of left-out Flow trees through storage", () => {
@@ -164,8 +171,7 @@ describe("normalizeBrief", () => {
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.flow?.omittedTrees).toBe(1);
-    const stored: unknown = JSON.parse(JSON.stringify(normalized.value));
-    expect(parseStoredBrief(stored)).toEqual({
+    expect(readBackFromStore(normalized.value)).toEqual({
       _tag: "ok",
       value: normalized.value,
     });
@@ -176,9 +182,7 @@ describe("normalizeBrief", () => {
     if (normalized._tag === "err") throw new Error("expected a Brief");
     const { ownership, ...withoutOwnership } = normalized.value;
     expect(ownership).toBeDefined();
-    expect(
-      parseStoredBrief(JSON.parse(JSON.stringify(withoutOwnership))),
-    ).toEqual({
+    expect(readBackFromStore(withoutOwnership)).toEqual({
       _tag: "ok",
       value: withoutOwnership,
     });
@@ -226,6 +230,22 @@ describe("normalizeBrief", () => {
     expect(Object.hasOwn(parsed.value, "assumptions")).toBe(false);
     expect(Object.hasOwn(parsed.value, "descriptionDrift")).toBe(false);
   });
+
+  it("still parses a stored Brief carrying a Start here block, and returns none of it", () => {
+    const parsed = parseStoredBrief({
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      startHere: {
+        lead: "Read the guard first.",
+        order: [{ path: "src/recovery.ts", why: "owns the guard" }],
+      },
+    });
+    if (parsed._tag === "err") throw new Error("expected a Brief");
+    expect(parsed.value).toEqual({
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+    });
+  });
 });
 
 describe("insightOutputGuidance", () => {
@@ -253,7 +273,7 @@ describe("insightOutputGuidance", () => {
   );
   it("gives the Brief its own framing and leaves the Walkthrough unchanged", () => {
     expect(insightOutputGuidance("brief", "en")).toContain(
-      "Write a Brief: the structure of this change -- its flow, ownership, and where to start reading.",
+      "Write a Brief: the structure of this change -- its flow and ownership.",
     );
     expect(insightOutputGuidance("brief", "en")).toContain(
       "Never invent motivation, intent, trade-offs, or product impact.",
@@ -332,7 +352,6 @@ describe("insightOutputGuidance", () => {
     for (const heading of [
       "WHAT A BRIEF IS",
       "OWNERSHIP NOTES",
-      "START HERE",
       "WHEN TO GIVE A FLOW TREE",
       "CALL_TREE",
       "CONTROL_FLOW",
@@ -366,95 +385,6 @@ describe("insightOutputGuidance", () => {
       `Keep each label within ${MAX_FLOW_LABEL_LENGTH} characters.`,
     );
     expect(guidance).not.toContain("three levels deep and fifteen steps");
-  });
-});
-
-describe("normalizeBrief start here", () => {
-  /** One hunk per file, so `briefOwnershipFiles` keeps each of them. */
-  function patchOf(paths: ReadonlyArray<string>): string {
-    return paths
-      .flatMap((path) => [
-        `diff --git a/${path} b/${path}`,
-        `--- a/${path}`,
-        `+++ b/${path}`,
-        "@@ -1 +1,2 @@",
-        " const before = true;",
-        "+const after = true;",
-      ])
-      .concat("")
-      .join("\n");
-  }
-
-  function startHere(
-    raw: BriefOutput["startHere"],
-    patch = PATCH,
-  ): NormalizedBrief {
-    const normalized = normalizeBrief(
-      { startHere: raw },
-      briefManifest({ patch }),
-      patch,
-      SNAPSHOT,
-    );
-    if (normalized._tag === "err") throw new Error("expected a Brief");
-    return normalized.value;
-  }
-
-  it("keeps only the proposed paths the patch changes, in the proposed order", () => {
-    const normalized = startHere({
-      lead: "  Read the guard first.  ",
-      order: [
-        { path: "src/nowhere.ts", why: "not in this patch" },
-        { path: "src/recovery.ts", why: "  owns the guard  " },
-        { path: "src/recovery.ts", why: "the same file again" },
-      ],
-    });
-    expect(normalized.startHere).toEqual({
-      lead: "Read the guard first.",
-      order: [{ path: "src/recovery.ts", why: "owns the guard" }],
-    });
-    expect(parseStoredBrief(JSON.parse(JSON.stringify(normalized)))).toEqual({
-      _tag: "ok",
-      value: normalized,
-    });
-  });
-
-  it("keeps a file the model gave no reason for", () => {
-    expect(
-      startHere({
-        lead: "Start at the guard.",
-        order: [{ path: "src/recovery.ts" }],
-      }).startHere?.order,
-    ).toEqual([{ path: "src/recovery.ts" }]);
-  });
-
-  it("drops the block and counts it when no proposed path is a changed file", () => {
-    const normalized = startHere({
-      lead: "Read the router first.",
-      order: [{ path: "src/router.ts", why: "it is not in this patch" }],
-    });
-    expect(normalized.startHere).toBeUndefined();
-    expect(normalized.citationStatus).toBe("partially_verified");
-  });
-
-  it("caps the reading order at five files", () => {
-    const paths = Array.from({ length: 7 }, (_, index) => `src/f${index}.ts`);
-    const normalized = startHere(
-      {
-        lead: "Read them in this order.",
-        order: paths.map((path) => ({ path })),
-      },
-      patchOf(paths),
-    );
-    expect(normalized.startHere?.order.map((entry) => entry.path)).toEqual(
-      paths.slice(0, 5),
-    );
-    expect(normalized.citationStatus).toBe("verified");
-  });
-
-  it("leaves the block absent, and the Brief verified, when the model omits it", () => {
-    const normalized = startHere(undefined);
-    expect(normalized.startHere).toBeUndefined();
-    expect(normalized.citationStatus).toBe("verified");
   });
 });
 
@@ -560,18 +490,20 @@ describe("normalizeBrief flow", () => {
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.flow).toBeDefined();
-    expect(
-      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
-    ).toEqual({ _tag: "ok", value: normalized.value });
+    expect(readBackFromStore(normalized.value)).toEqual({
+      _tag: "ok",
+      value: normalized.value,
+    });
   });
 
   it("still reads a stored Brief with no flow", () => {
     const normalized = normalizeBrief({}, MANIFEST, PATCH, SNAPSHOT);
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.flow).toBeUndefined();
-    expect(
-      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
-    ).toEqual({ _tag: "ok", value: normalized.value });
+    expect(readBackFromStore(normalized.value)).toEqual({
+      _tag: "ok",
+      value: normalized.value,
+    });
   });
 
   it("rejects nothing and stays verified for three fully cited trees of three kinds", () => {
@@ -693,9 +625,10 @@ describe("normalizeBrief flow", () => {
       "state",
       "contract",
     ]);
-    expect(
-      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
-    ).toEqual({ _tag: "ok", value: normalized.value });
+    expect(readBackFromStore(normalized.value)).toEqual({
+      _tag: "ok",
+      value: normalized.value,
+    });
   });
 
   it("does not throw when flow proposes 2000 levels of nesting, and rejects the whole Brief as malformed", () => {
@@ -933,9 +866,10 @@ describe("normalizeBrief cited hunks", () => {
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.citedHunks?.h1).toBeDefined();
-    expect(
-      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
-    ).toEqual({ _tag: "ok", value: normalized.value });
+    expect(readBackFromStore(normalized.value)).toEqual({
+      _tag: "ok",
+      value: normalized.value,
+    });
   });
 
   it("still reads a stored Brief with no citedHunks when Flow proposes only unchanged steps", () => {
@@ -956,8 +890,9 @@ describe("normalizeBrief cited hunks", () => {
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.flow).toBeUndefined();
     expect(Object.hasOwn(normalized.value, "citedHunks")).toBe(false);
-    expect(
-      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
-    ).toEqual({ _tag: "ok", value: normalized.value });
+    expect(readBackFromStore(normalized.value)).toEqual({
+      _tag: "ok",
+      value: normalized.value,
+    });
   });
 });
