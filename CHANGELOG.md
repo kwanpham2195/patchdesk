@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Pull requests sending one search over GitHub's limit at launch when saved filters did not fit the first repository, which could flash a failed state. #793
+
 - Changed the Markdown file Preview in the Diff tab to draw Mermaid diagrams, as pull request descriptions do. #771
 
 ## 0.0.16 - 2026-10-01
