@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-## 0.0.15 - 2026-10-01
-
 - Added Signals to the top of the Brief: fixed checks computed from the diff, grouped as Areas, Tests, and Code, each row shown with a count when it matched. #721
 
 - Added a Moves block to the Brief that lists files moved between directories, and stops Flow and Shape notes from covering files that only moved. #713 #715 #718
