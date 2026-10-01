@@ -41,7 +41,6 @@ import {
   type GitHubReadFailure,
   type GitHubReadOperation,
   type MergeOutcome,
-  type PendingReviewComment,
 } from "./github-adapter";
 import {
   invalid,
@@ -786,22 +785,6 @@ type GitHubReviewCommentPayload = {
   readonly start_line?: number;
   readonly start_side?: "RIGHT" | "LEFT";
 };
-
-export function toGitHubReviewComment(
-  comment: PendingReviewComment,
-): GitHubReviewCommentPayload {
-  const side =
-    comment.diffSide === "new" ? ("RIGHT" as const) : ("LEFT" as const);
-  const payload = {
-    path: comment.path,
-    line: comment.lineEnd ?? comment.line,
-    side,
-    body: comment.body,
-  };
-  return comment.lineEnd === undefined
-    ? payload
-    : { ...payload, start_line: comment.line, start_side: side };
-}
 
 /** REST create-review comment shape for one pending-review start. */
 export function pendingReviewComment(

@@ -121,6 +121,25 @@ const reviewable = projection({
 });
 
 describe("useDirectSummaryActions submit", () => {
+  it("words a refused summary with the refusal cause and leaves the form unlocked", async () => {
+    installSummaryDouble({
+      submitFailure: () =>
+        failure({ error: "github_refused", cause: "unprocessable" }, 409),
+    });
+    const { result } = renderDirectSummary(reviewable);
+
+    await act(async () => {
+      await expect(
+        panelOf(result).onSubmit("REQUEST_CHANGES", "Summary"),
+      ).rejects.toMatchObject({ kind: "github_refused" });
+    });
+
+    expect(panelOf(result).error).toBe(
+      "GitHub could not accept the review summary as sent.",
+    );
+    expect(panelOf(result).state).toBe("idle");
+  });
+
   it("submits through runDirectCommand with the represented revision", async () => {
     const request = installSummaryDouble({ submit: () => confirmed });
     const { result, insideDirectCommand } = renderDirectSummary(reviewable);

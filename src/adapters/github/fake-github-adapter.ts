@@ -47,7 +47,6 @@ import {
   type GitHubReviewWriter,
   type GitHubThreadTarget,
   type MergeOutcome,
-  type PendingReviewComment,
   type PullRequestDiffSource,
   type RepositoryBranchListing,
   type RepositoryPermissionEvidence,
@@ -621,28 +620,6 @@ export class FakeGitHubAdapter
     return this.values.authenticatedAccount === undefined
       ? missing("auth_status")
       : ok(this.values.authenticatedAccount);
-  }
-
-  async createPendingReview(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly headSha: GitSha;
-    readonly summaryBody: string;
-    readonly comments: ReadonlyArray<PendingReviewComment>;
-  }): Promise<
-    Result<
-      { readonly reviewId: string; readonly state: "PENDING" },
-      GitHubWriteFailure
-    >
-  > {
-    void input;
-    return this.values.pendingReview === undefined
-      ? err({
-          _tag: "GitHubWriteFailure",
-          category: "unavailable",
-          message: "Missing pending review fixture.",
-        })
-      : ok(this.values.pendingReview);
   }
 
   async submitPendingReview(

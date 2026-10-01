@@ -73,12 +73,7 @@ import {
   authenticatedUserSchema,
   reviewReceiptSchema,
 } from "./github-wire-schemas";
-import {
-  isManagedFetchedRef,
-  parsePendingReview,
-  parseReviewId,
-  toGitHubReviewComment,
-} from "./github-wire-projections";
+import { isManagedFetchedRef, parseReviewId } from "./github-wire-projections";
 import { writeFailure } from "./github-write-failures";
 import type {
   DirectSummaryPublishedReview,
@@ -91,7 +86,6 @@ import type {
   GitHubReviewWriter,
   GitHubThreadTarget,
   MergeOutcome,
-  PendingReviewComment,
   RepositoryBranchListing,
   WatchedPullRequestRead,
 } from "./github-ports";
@@ -108,7 +102,6 @@ export type {
   GitHubReviewWriter,
   GitHubThreadTarget,
   MergeOutcome,
-  PendingReviewComment,
   RepositoryBranchListing,
   WatchedPullRequestRead,
 } from "./github-ports";
@@ -513,49 +506,6 @@ export class GitHubAdapter
     }
     this.credentials.recordVerifiedAccount(profile, profile.ghAccount);
     return ok({ host: profile.githubHost, account: profile.ghAccount });
-  }
-
-  async createPendingReview(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-    readonly headSha: GitSha;
-    readonly summaryBody: string;
-    readonly comments: ReadonlyArray<PendingReviewComment>;
-  }): Promise<
-    Result<
-      { readonly reviewId: string; readonly state: "PENDING" },
-      GitHubWriteFailure
-    >
-  > {
-    if (input.comments.length === 0 && input.summaryBody.trim().length === 0)
-      return err({
-        _tag: "GitHubWriteFailure",
-        category: "rejected",
-        message: "No review content is selected.",
-      });
-    const response = await this.ghJson(input.profile, {
-      kind: "rest",
-      host: input.profile.githubHost,
-      method: "POST",
-      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
-      jsonBody: JSON.stringify({
-        commit_id: input.headSha,
-        body: input.summaryBody,
-        comments: input.comments.map(toGitHubReviewComment),
-      }),
-    });
-    if (response._tag === "err") return err(writeFailure(response.error));
-    const receipt = v.safeParse(reviewReceiptSchema, response.value);
-    const pending = receipt.success
-      ? parsePendingReview(receipt.output)
-      : undefined;
-    return pending === undefined
-      ? err({
-          _tag: "GitHubWriteFailure",
-          category: "unavailable",
-          message: "GitHub did not return a PENDING review.",
-        })
-      : ok(pending);
   }
 
   async submitPendingReview(input: {

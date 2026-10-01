@@ -294,17 +294,17 @@ application/vnd.github+json`, and only those with a body carry a
 `Content-Type`. The two bodyless DELETEs are also the two writes whose answer
 the call site reads as text rather than JSON.
 
-| label                                                    | call site                                                                          | body                                                  |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `POST repos/:owner/:repo/pulls/:n/reviews`               | `createPendingReview`, `startPendingReviewWithThread`, `createDirectSummaryReview` | `commit_id`, and `body`/`comments`/`event` per caller |
-| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events`     | `submitPendingReview`                                                              | `event`, `body`                                       |
-| `PUT repos/:owner/:repo/pulls/:n/reviews/:n/dismissals`  | `dismissReview`                                                                    | `message`                                             |
-| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n`          | `discardPendingReview`                                                             | none                                                  |
-| `PUT repos/:owner/:repo/pulls/:n/merge`                  | `mergePullRequest`                                                                 | `sha`, `merge_method`                                 |
-| `POST repos/:owner/:repo/pulls/:n/comments`              | `createInlineComment`                                                              | `body`, `commit_id`, the anchor coordinates           |
-| `PATCH repos/:owner/:repo/pulls/comments/:n`             | `updateReviewComment`                                                              | `body`                                                |
-| `DELETE repos/:owner/:repo/pulls/comments/:n`            | `deleteReviewComment`                                                              | none                                                  |
-| `DELETE repos/:owner/:repo/pulls/:n/requested_reviewers` | `removeRequestedReviewers`                                                         | `reviewers`                                           |
+| label                                                    | call site                                                   | body                                                  |
+| -------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- |
+| `POST repos/:owner/:repo/pulls/:n/reviews`               | `startPendingReviewWithThread`, `createDirectSummaryReview` | `commit_id`, and `body`/`comments`/`event` per caller |
+| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events`     | `submitPendingReview`                                       | `event`, `body`                                       |
+| `PUT repos/:owner/:repo/pulls/:n/reviews/:n/dismissals`  | `dismissReview`                                             | `message`                                             |
+| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n`          | `discardPendingReview`                                      | none                                                  |
+| `PUT repos/:owner/:repo/pulls/:n/merge`                  | `mergePullRequest`                                          | `sha`, `merge_method`                                 |
+| `POST repos/:owner/:repo/pulls/:n/comments`              | `createInlineComment`                                       | `body`, `commit_id`, the anchor coordinates           |
+| `PATCH repos/:owner/:repo/pulls/comments/:n`             | `updateReviewComment`                                       | `body`                                                |
+| `DELETE repos/:owner/:repo/pulls/comments/:n`            | `deleteReviewComment`                                       | none                                                  |
+| `DELETE repos/:owner/:repo/pulls/:n/requested_reviewers` | `removeRequestedReviewers`                                  | `reviewers`                                           |
 
 Fourteen mutations. The kind column is the flag gh sent each variable with:
 `-F` inferred a type from the text, `-f` always sent a String, and `name[]=`
@@ -423,7 +423,7 @@ landed first delivery could have produced it:
   GitHub does not implement the endpoint at all.
 - `settleRefusedWrite` in `src/services/refused-write-settlement.ts` is the one
   helper. When the refusal is final it records the rejection, releases the
-  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); the conversation writes (slice 2) return `github_refused` with the cause, and published feedback (slice 3) does the same; the other families arrive in slices 4 and 5. When the read
+  lock, and the helper returns `Refused` with the cause. Each service maps that to its own reason (merge to its stored merge reasons); the conversation writes (slice 2) return `github_refused` with the cause, published feedback (slice 3) and the pending-review and direct-summary writes (slice 4) do the same; the metadata writes arrive in slice 5. When the read
   fails, is incomplete, or shows the intended state, or when the rejection
   cannot be recorded, the write stays outcome unknown and ADR 0035 recovery
   settles it with the same read.
@@ -464,6 +464,27 @@ landed first delivery could have produced it:
   `COMMENTED` review got 422 and showed as refused. The delete refusal has no
   live trigger, since Patchdesk reads the comment before it sends the delete; the
   service tests cover it.
+- **Pending review and direct summary (slice 4).** `PendingReviewService` and
+  `DirectSummaryReviewService` settle a refusal through `settleRefusedWrite`
+  with the write kind of the operation. `startPendingReviewWithThread`
+  (refusals other than the pending-review 422, which #319's read still
+  resolves), `addPendingReviewThread`, and `createDirectSummaryReview` are final
+  with no read. `submitPendingReview` and `discardPendingReview` re-run
+  `getViewerPendingReview`: the refusal is final only when that read returns a
+  Pending review whose REST id equals the id the write targeted. None, a
+  different pending review, or a failed read keeps the write outcome unknown and
+  the Review locked for ADR 0035 recovery. A final refusal restores the stored
+  state (the pending review stays Pending; a refused start stays None), clears the
+  direct-summary intent, and answers `github_refused` with the cause (409). The
+  renderer words it with the action ("comment", "submission", "discard", "review
+  summary"); Finish review stays open with the draft so the sentence is visible.
+  `createPendingReview` had no caller and is deleted with its fixtures. Live on
+  2026-10-01: a Request changes summary on the maintainer's own pull request got
+  422 and showed as refused with Submit review still enabled, and finishing a
+  pending review with Request changes got 422 and showed as refused with the
+  pending review still on GitHub. A refused start has no live trigger: GitHub
+  accepted a 400,000-character pending-review comment, so the start and
+  add-thread refusals rest on the service and invariant tests.
 - **GraphQL `UNPROCESSABLE` (slice 2).** `classifyGraphqlSignal` maps it to
   `CommandUnprocessable`, and so to the cause `unprocessable`, only when the
   response's `data` is null, absent, or has only null fields. An error beside
@@ -472,9 +493,8 @@ landed first delivery could have produced it:
   query it keeps meaning not found beside partial data, which reads rely on.
   No live GraphQL error of this type could be produced on 2026-10-01 (oversized, blank, and malformed reply bodies, a repeated resolve, and a reply on a closed or locked pull request were all accepted or answered `comment: null` with no `errors`), so the mapping rests on GitHub's documented error type and the adapter tests. Live, the REST 422 came from a file whose diff GitHub calls too large ("diff is too large"); a review comment body has no practical size limit.
 - Every other write sends `refused` down the outcome-unknown path until its
-  slice of issue #755 lands (pending review and direct summary, then metadata
-  writes). `unavailable` and `refused` behave the same
-  there today.
+  slice of issue #755 lands (the metadata writes). `unavailable` and `refused`
+  behave the same there today.
 
 **Accepted risk: rate limits.** 401, 403, and 403 or 429 rate limits are final
 in every write runner without a read. A resend carries the same token moments

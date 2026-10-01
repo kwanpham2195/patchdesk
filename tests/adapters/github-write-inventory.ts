@@ -22,10 +22,10 @@ import type { GitHubRequest } from "../../src/adapters/github/github-request";
  * transport under the label named here, and the request-shape suites drive the
  * real adapter methods that produce these.
  *
- * Three call sites share the `POST .../pulls/:n/reviews` row —
- * `createPendingReview`, `startPendingReviewWithThread`, and
- * `createDirectSummaryReview` — because one label covers all three. The bodies
- * differ, and each is asserted in its own request-shape test.
+ * Two call sites share the `POST .../pulls/:n/reviews` row —
+ * `startPendingReviewWithThread` and `createDirectSummaryReview` — because
+ * one label covers both. The bodies differ, and each is asserted in its own
+ * request-shape test.
  */
 export type WriteInventoryEntry = {
   readonly name: string;

@@ -41,7 +41,7 @@ const cases: ReadonlyArray<{
     argv: ["gh", "api", "--hostname", "github.com", "user"],
   },
   {
-    name: "createPendingReview",
+    name: "createReview",
     request: {
       kind: "rest",
       host: "github.com",

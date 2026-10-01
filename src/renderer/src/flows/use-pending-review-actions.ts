@@ -8,6 +8,7 @@ import {
   type GitHubThreadId,
 } from "../../../domain/ids";
 import {
+  PatchdeskApiError,
   ReviewPreconditionError,
   contextualMessage,
   isApiErrorCode,
@@ -456,6 +457,12 @@ export function usePendingReviewActions({
         setKeptFinishDraft(undefined);
         setFinishDialogOpen(false);
       } catch (cause) {
+        // GitHub refused the submission and nothing was sent: the dialog stays open with its draft and names the refusal.
+        if (
+          cause instanceof PatchdeskApiError &&
+          cause.kind === "github_refused"
+        )
+          throw cause;
         // Whatever GitHub answered, the summary was not confirmed as sent.
         keepFinishDraft({ summary: summaryBody, event });
         setFinishDialogOpen(false);
@@ -480,12 +487,17 @@ export function usePendingReviewActions({
     onDiscard: async (): Promise<void> => {
       // Confirm discard drops the summary with the review, even if GitHub refuses the discard.
       setKeptFinishDraft(undefined);
+      let refused = false;
       try {
         await runPendingReviewCommand({ _tag: "Discard", confirmation: true });
       } catch (cause) {
+        // A refused discard changed nothing: the dialog stays open and names the refusal.
+        refused =
+          cause instanceof PatchdeskApiError && cause.kind === "github_refused";
+        if (refused) throw cause;
         setFinishDialogError(contextualMessage(cause, FINISH_REVIEW_MESSAGES));
       } finally {
-        setFinishDialogOpen(false);
+        if (!refused) setFinishDialogOpen(false);
       }
     },
     onCheckGitHubAgain: checkGitHubAgain,

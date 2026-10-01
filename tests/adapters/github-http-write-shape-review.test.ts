@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import type { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { addPendingReviewThreadMutation } from "../../src/adapters/github/github-graphql-queries";
-import type { GitHubRestRequest } from "../../src/adapters/github/github-request";
 import {
   parseGitHubReviewNodeId,
   parseGitHubReviewRestId,
@@ -42,48 +41,6 @@ function adapter(): GitHubAdapter {
 const reviewsPath = "repos/octo-org/patchdesk/pulls/42/reviews";
 
 describe("creating a review over HTTP", () => {
-  it("posts the summary and its comments as gh's --input did", async () => {
-    await adapter().createPendingReview({
-      profile,
-      pr,
-      headSha,
-      summaryBody: "summary",
-      comments: [
-        { body: "note", path: "src/a.ts", line: 12, diffSide: "new" },
-        {
-          body: "range",
-          path: "src/b.ts",
-          line: 3,
-          lineEnd: 7,
-          diffSide: "old",
-        },
-      ],
-    });
-
-    const expected: GitHubRestRequest = {
-      kind: "rest",
-      host: "github.com",
-      method: "POST",
-      path: reviewsPath,
-      jsonBody: JSON.stringify({
-        commit_id: headSha,
-        body: "summary",
-        comments: [
-          { path: "src/a.ts", line: 12, side: "RIGHT", body: "note" },
-          {
-            path: "src/b.ts",
-            line: 7,
-            side: "LEFT",
-            body: "range",
-            start_line: 3,
-            start_side: "LEFT",
-          },
-        ],
-      }),
-    };
-    expectSameRequestAsGh(server.requests()[0], expected);
-  });
-
   it("posts a direct summary review with its event", async () => {
     await adapter().createDirectSummaryReview({
       profile,
