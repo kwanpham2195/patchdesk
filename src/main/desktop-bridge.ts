@@ -52,6 +52,11 @@ const requestSchema = union([
     operation: literal("openExternalHttps"),
     url: pipe(string(), minLength(1), maxLength(2_048)),
   }),
+  strictObject({
+    operation: literal("dismissAppUpdate"),
+    notice: picklist(["available", "launch"]),
+  }),
+  strictObject({ operation: literal("installAppUpdate") }),
 ]);
 
 const allowedRoutes = new Set([
@@ -199,6 +204,8 @@ export function installDesktopRequestBridge(
       destination: NotificationDestination,
     ) => void;
     readonly openExternalHttps: (url: string) => Promise<boolean>;
+    readonly dismissAppUpdate: (notice: "available" | "launch") => void;
+    readonly installAppUpdate: () => void;
   },
 ): void {
   ipc.removeHandler(DESKTOP_REQUEST_CHANNEL);
@@ -220,10 +227,19 @@ export function installDesktopRequestBridge(
                 }
               : parsed.output.operation === "openExternalHttps"
                 ? { operation: parsed.output.operation, url: parsed.output.url }
-                : {
-                    operation: parsed.output.operation,
-                    ...definedProps({ defaultPath: parsed.output.defaultPath }),
-                  }
+                : parsed.output.operation === "dismissAppUpdate"
+                  ? {
+                      operation: parsed.output.operation,
+                      notice: parsed.output.notice,
+                    }
+                  : parsed.output.operation === "installAppUpdate"
+                    ? { operation: parsed.output.operation }
+                    : {
+                        operation: parsed.output.operation,
+                        ...definedProps({
+                          defaultPath: parsed.output.defaultPath,
+                        }),
+                      }
           : {
               path: parsed.output.path,
               ...definedProps({
@@ -255,6 +271,14 @@ export function installDesktopRequestBridge(
               correlationId,
             };
           operations.setNavigationDestination(destination);
+          return { ok: true, status: 200, body: {}, correlationId };
+        }
+        if (request.operation === "dismissAppUpdate") {
+          operations.dismissAppUpdate(request.notice);
+          return { ok: true, status: 200, body: {}, correlationId };
+        }
+        if (request.operation === "installAppUpdate") {
+          operations.installAppUpdate();
           return { ok: true, status: 200, body: {}, correlationId };
         }
         if (request.operation === "openExternalHttps") {

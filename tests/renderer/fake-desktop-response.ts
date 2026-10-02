@@ -1,5 +1,6 @@
 import { onTestFinished, vi, type Mock } from "vitest";
 
+import type { AppUpdateState } from "../../src/domain/app-update";
 import type { RawJsonValue } from "../../src/domain/json";
 import type {
   DesktopMenuAction,
@@ -68,6 +69,7 @@ export type DesktopDoubleExtras = Partial<
     | "onWatchedPullRequestChange"
     | "onInsightSettled"
     | "onReviewsRemoved"
+    | "onAppUpdate"
   >
 > & {
   /** Routes for privileged operations, keyed by `operation`. */
@@ -97,6 +99,8 @@ export type DesktopDouble = {
   readonly sendInsightSettled: () => void;
   /** Fires the listener registered through `onReviewsRemoved`, as the main process does after a retention sweep removed Reviews. */
   readonly sendReviewsRemoved: () => void;
+  /** Fires the listener registered through `onAppUpdate`, as the main process does when the update state changes. */
+  readonly sendAppUpdate: (state: AppUpdateState) => void;
   /** Fires the listener registered through `onWatchedPullRequestChange`, as a poll that found a change does. */
   readonly sendWatchedPullRequestChange: (profileId: string) => void;
   /**
@@ -155,6 +159,7 @@ export function installDesktopDouble(
   let watchedPullRequestChangeListener:
     | ((profileId: string) => void)
     | undefined;
+  let appUpdateListener: ((state: AppUpdateState) => void) | undefined;
   const unrouted: string[] = [];
   const refuse = (description: string, remedy: string): never => {
     unrouted.push(description);
@@ -215,6 +220,13 @@ export function installDesktopDouble(
         watchedPullRequestChangeListener = undefined;
       };
     },
+    onAppUpdate: (listener: (state: AppUpdateState) => void) => {
+      appUpdateListener = listener;
+      return () => {
+        appUpdateListener = undefined;
+      };
+    },
+    appUpdateAtLoad: extras.appUpdateAtLoad ?? {},
     windowFullScreenAtLoad: extras.windowFullScreenAtLoad ?? false,
     appearanceAtLoad: extras.appearanceAtLoad ?? "system",
     setWindowAppearance: extras.setWindowAppearance ?? (() => undefined),
@@ -234,6 +246,7 @@ export function installDesktopDouble(
     sendReviewsRemoved: () => reviewsRemovedListener?.(),
     sendWatchedPullRequestChange: (profileId) =>
       watchedPullRequestChangeListener?.(profileId),
+    sendAppUpdate: (state) => appUpdateListener?.(state),
     hasWindowFullScreenListener: () => windowFullScreenListener !== undefined,
     takeUnroutedCalls: () => unrouted.splice(0),
     restore: () => {

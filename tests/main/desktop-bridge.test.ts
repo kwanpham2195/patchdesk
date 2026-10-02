@@ -41,6 +41,8 @@ describe("desktop request bridge", () => {
           setNavigationState: () => undefined,
           setNavigationDestination: () => undefined,
           openExternalHttps: async () => false,
+          dismissAppUpdate: () => undefined,
+          installAppUpdate: () => undefined,
         },
       );
       if (handler === undefined)
@@ -84,6 +86,8 @@ describe("setNavigationDestination request", () => {
         setNavigationDestination: (destination) =>
           destinations.push(destination),
         openExternalHttps: async () => false,
+        dismissAppUpdate: () => undefined,
+        installAppUpdate: () => undefined,
       },
     );
     if (handler === undefined)

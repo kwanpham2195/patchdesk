@@ -62,6 +62,16 @@ export class PatchdeskPaths {
     return join(this.logsDirectory(), "patchdesk.jsonl");
   }
 
+  /** The Homebrew update helper's output, replaced by each update attempt (#800). */
+  appUpdateLogFile(): string {
+    return join(this.logsDirectory(), "update.log");
+  }
+
+  /** The last launched version, the dismissed release, and a pending update attempt (#800). */
+  appUpdateStateFile(): string {
+    return join(this.configDirectory(), "app-update.json");
+  }
+
   /** The MCP shim's Unix socket (ADR 0052); `PATCHDESK_MCP_SOCKET` overrides it. */
   mcpSocketFile(): string {
     return join(this.dataDirectory(), "mcp", "patchdesk.sock");
