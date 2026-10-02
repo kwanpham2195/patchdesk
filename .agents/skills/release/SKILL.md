@@ -35,13 +35,13 @@ Run every outward write here (tag push, `gh release edit`, the tap push) from th
 
 8. Bump the cask (CONTRIBUTING.md Release step 6). The tap clone is `/opt/homebrew/Homebrew/Library/Taps/kwanpham2195/homebrew-patchdesk`; run `git -C <tap> pull --ff-only` first. `pnpm release:cask` hashes `release/Patchdesk-<version>-arm64.dmg`, which a CI release does not leave locally, so download the published asset first: `gh release download v<version> --pattern 'Patchdesk-<version>-arm64.dmg' --dir release --clobber`. Then commit and push in the tap with the commands it prints.
 
-9. Install locally: `brew update && brew audit --cask kwanpham2195/patchdesk/patchdesk && brew upgrade --cask patchdesk`. Verify with `defaults read /Applications/Patchdesk.app/Contents/Info CFBundleShortVersionString`. The maintainer asks for this after every release, so do it without asking.
+9. Install locally: `brew update && brew audit --cask kwanpham2195/patchdesk/patchdesk && brew upgrade --cask patchdesk`, then `xattr -dr com.apple.quarantine /Applications/Patchdesk.app`, because Homebrew quarantines every upgrade and macOS then refuses to open the app ("Apple could not verify"). Verify with `defaults read /Applications/Patchdesk.app/Contents/Info CFBundleShortVersionString`. The maintainer asks for this after every release, so do it without asking.
 
 ## Homebrew gotchas
 
 - `brew audit --cask` rejects `url ..., verified:` and the string form `depends_on macos: ">= :monterey"`. Keep the bare `url` and `depends_on macos: :monterey`.
 - The cask keeps the `binary "#{appdir}/Patchdesk.app/Contents/Resources/bin/patchdesk"` line across bumps (ADR 0052). `release:cask` edits only `version` and `sha256`; do not touch other lines.
-- `--no-quarantine` no longer exists. The app is ad-hoc signed, so a fresh install needs `xattr -dr com.apple.quarantine /Applications/Patchdesk.app`; the cask caveat says so.
+- `--no-quarantine` no longer exists. The app is ad-hoc signed, so every install and upgrade needs `xattr -dr com.apple.quarantine /Applications/Patchdesk.app`; the cask caveat says so. After 0.0.16 the upgrade skipped it and the app would not open.
 - Homebrew 7 trusts a fully qualified cask on install. `brew trust --tap` was a Homebrew 6 step; skip it.
 - Homebrew fetches the `.dmg` from the published release URL, so the cask cannot point at a draft.
 
