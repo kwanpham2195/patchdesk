@@ -30,6 +30,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { useApiProbe } from "../hooks/use-api-probe";
 import { NotificationsCard } from "./settings-notifications-card";
+import { UpdatesCard } from "./settings-updates-card";
 import {
   Select,
   SelectContent,
@@ -435,6 +436,7 @@ function GeneralSection({
         </CardContent>
       </Card>
       <NotificationsCard />
+      <UpdatesCard />
     </div>
   );
 }

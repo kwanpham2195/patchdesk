@@ -20,6 +20,7 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
 import { definedProps } from "../../../domain/defined-props";
 import { AppCommandDialog } from "@/components/app-command-dialog";
+import { AppUpdateControl } from "@/components/app-update-control";
 import { BrandMark } from "@/components/brand-mark";
 import { BusyIndicator } from "@/components/busy-indicator";
 import { Button } from "@/components/ui/button";
@@ -269,6 +270,7 @@ export function AppShell({
               onProfileSwitch={onProfileSwitch}
             />
           ) : null}
+          <AppUpdateControl />
           <Tooltip>
             <TooltipTrigger
               render={
