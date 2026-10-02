@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ReviewCommitService } from "../../src/services/review-commit-service";
 import { createReview } from "../../src/domain/review";
 import {
@@ -132,6 +133,7 @@ describe("ReviewCommitService", () => {
         },
       },
       profiles,
+      PatchdeskPaths.forTest("/unused"),
     );
     await expect(
       service.diff({ profileId, reviewId: review.id, commitSha }),
@@ -180,6 +182,7 @@ describe("ReviewCommitService", () => {
         },
       },
       profiles,
+      PatchdeskPaths.forTest("/unused"),
     );
 
     await expect(
@@ -212,6 +215,7 @@ describe("ReviewCommitService", () => {
         },
       },
       profiles,
+      PatchdeskPaths.forTest("/unused"),
     );
     await expect(
       service.diff({ profileId, reviewId: review.id, commitSha: headSha }),
@@ -257,6 +261,7 @@ describe("ReviewCommitService", () => {
           },
         },
         profiles,
+        PatchdeskPaths.forTest("/unused"),
       );
       await expect(
         service.diff({ profileId, reviewId: review.id, commitSha }),
@@ -331,6 +336,7 @@ async function diffSinceReview(
       },
     },
     profiles,
+    PatchdeskPaths.forTest("/unused"),
   );
   const result = await service.diffSinceReview({
     profileId,

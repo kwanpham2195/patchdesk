@@ -58,6 +58,8 @@ describe("dev:copy-profile", () => {
   it("refuses an existing dev config without --force, and replaces it with --force", async () => {
     await mkdir(development(), { recursive: true });
     await writeFile(join(development(), "config.json"), '{"from":"dev"}');
+    await mkdir(join(development(), "profiles"), { recursive: true });
+    await writeFile(join(development(), "profiles", "dev-only.json"), "{}");
 
     const refused = await run([]);
     expect(refused.status).toBe(1);
@@ -67,6 +69,9 @@ describe("dev:copy-profile", () => {
     );
 
     expect((await run(["--force"])).status).toBe(0);
+    expect(await readdir(join(development(), "profiles"))).toEqual([
+      "work.json",
+    ]);
     expect(await readFile(join(development(), "config.json"), "utf8")).toBe(
       '{"from":"installed"}',
     );

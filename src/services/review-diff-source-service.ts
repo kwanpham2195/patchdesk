@@ -88,7 +88,7 @@ export class ReviewDiffSourceService {
     private readonly git: GitReadExecutor,
     private readonly worktrees: Pick<
       ReviewWorktreeService,
-      "restoreMissingWorktree"
+      "restoreMissingWorktree" | "pullRequestSessionRef"
     >,
     private readonly patchReader: PreparedPatchReader = filesystemPatchReader,
   ) {}
@@ -183,7 +183,11 @@ export class ReviewDiffSourceService {
     }
     const headRef =
       localTrees === undefined
-        ? `refs/patchdesk/reviews/${session.value.key.profileId}/${session.value.id}/head`
+        ? this.worktrees.pullRequestSessionRef(
+            session.value.key.profileId,
+            session.value.id,
+            "head",
+          )
         : localTrees.newSha;
     const [oldResult, newResult] = await Promise.all([
       oldRef === undefined
@@ -264,8 +268,16 @@ export class ReviewDiffSourceService {
   private async resolveMergeBase(
     session: ReviewSession,
   ): Promise<Result<GitSha, { readonly reason: "github_read" }>> {
-    const baseRef = `refs/patchdesk/reviews/${session.key.profileId}/${session.id}/base`;
-    const headRef = `refs/patchdesk/reviews/${session.key.profileId}/${session.id}/head`;
+    const baseRef = this.worktrees.pullRequestSessionRef(
+      session.key.profileId,
+      session.id,
+      "base",
+    );
+    const headRef = this.worktrees.pullRequestSessionRef(
+      session.key.profileId,
+      session.id,
+      "head",
+    );
     const mergeBase = await this.git.run([
       "git",
       "-C",

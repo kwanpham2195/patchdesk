@@ -295,6 +295,42 @@ describe("ReviewRetention", () => {
     ).toBe(`refs/patchdesk/local/${profileId}/${latest.session.id}/head`);
   });
 
+  it.each([
+    {
+      sweeping: "installed",
+      own: "refs/patchdesk",
+      other: "refs/patchdesk-dev",
+    },
+    { sweeping: "dev", own: "refs/patchdesk-dev", other: "refs/patchdesk" },
+  ])(
+    "the $sweeping roots' sweep deletes its own orphaned refs and leaves the other app's alone",
+    async ({ sweeping, own, other }) => {
+      const harness = await localApplyHarness(undefined, {
+        development: sweeping === "dev",
+      });
+      const gone =
+        "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab";
+      const ownRef = `${own}/reviews/${profileId}/${gone}/head`;
+      const otherRef = `${other}/reviews/${profileId}/${gone}/head`;
+      git(harness.repositoryPath, "update-ref", ownRef, "HEAD");
+      git(harness.repositoryPath, "update-ref", otherRef, "HEAD");
+
+      value(await harness.retention.sweepProfile(profileId));
+
+      expect(
+        git(
+          harness.repositoryPath,
+          "for-each-ref",
+          "--format=%(refname)",
+          "refs/",
+        )
+          .trim()
+          .split("\n")
+          .filter((ref) => ref.startsWith("refs/patchdesk")),
+      ).toEqual([otherRef]);
+    },
+  );
+
   it("removes a local Review whose branch was deleted and that was left alone for 14 days", async () => {
     const harness = await localApplyHarness(undefined, {
       retentionNow: () => fifteenDaysLater,
