@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.19 - 2026-10-02
+
 - Changed `pnpm dev` to keep its own settings and Review data, so it no longer changes the installed app. `pnpm dev:copy-profile` copies your workspaces into it. #804
 
 ## 0.0.18 - 2026-10-02
