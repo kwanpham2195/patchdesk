@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import { fetchLatestPatchdeskRelease } from "../../src/adapters/github/github-latest-release";
+import type {
+  AppInstallation,
+  AppUpdater,
+} from "../../src/adapters/process/app-update-helper";
 import type { AppUpdateRecord } from "../../src/adapters/storage/app-update-state-store";
 import type { AppUpdateState } from "../../src/domain/app-update";
 import { AppUpdateService } from "../../src/services/app-update-service";
 
 const logPath = "/Users/someone/.local/share/patchdesk/logs/update.log";
+const brewUpdater: AppUpdater = {
+  kind: "homebrew",
+  brewPath: "/opt/homebrew/bin/brew",
+};
+const installerUpdater: AppUpdater = {
+  kind: "installer",
+  installerPath:
+    "/Applications/Patchdesk.app/Contents/Resources/install-release.sh",
+};
 
 function releaseResponse(tag: string): Response {
   return Response.json({
@@ -22,14 +35,14 @@ function launch(input: {
   readonly record: { current: AppUpdateRecord };
   readonly respond?: () => Response;
   readonly checkEnabled?: boolean;
-  readonly homebrew?: boolean;
+  readonly installation?: AppInstallation;
   readonly executablePath?: string | undefined;
   readonly helperStarts?: boolean;
 }) {
   const requests: string[] = [];
   const published: AppUpdateState[] = [];
   const warnings: string[] = [];
-  const helperStarts: string[] = [];
+  const helperStarts: AppUpdater[] = [];
   const service = new AppUpdateService({
     runningVersion: input.runningVersion,
     store: {
@@ -45,14 +58,16 @@ function launch(input: {
         requests.push(url);
         return (input.respond ?? (() => releaseResponse("v0.0.1")))();
       }),
-    homebrewBrewPath:
-      input.homebrew === false ? undefined : "/opt/homebrew/bin/brew",
+    installation: input.installation ?? {
+      installedBy: "homebrew",
+      updater: brewUpdater,
+    },
     executablePath:
       input.executablePath ??
       "/Applications/Patchdesk.app/Contents/MacOS/Patchdesk",
     logPath,
-    startHelper: async (brewPath) => {
-      helperStarts.push(brewPath);
+    startHelper: async (updater) => {
+      helperStarts.push(updater);
       return input.helperStarts ?? true;
     },
     publish: (state) => published.push(state),
@@ -82,7 +97,8 @@ describe("AppUpdateService", () => {
       version: "0.0.18",
       releaseUrl:
         "https://github.com/kwanpham2195/patchdesk/releases/tag/v0.0.18",
-      install: "homebrew",
+      installedBy: "homebrew",
+      canInstall: true,
     });
 
     await first.service.dismissAvailable();
@@ -130,54 +146,82 @@ describe("AppUpdateService", () => {
     expect(app.service.state().available).toBeUndefined();
   });
 
-  it("starts the helper only for an install the close guard let through", async () => {
-    const record = { current: {} };
-    const app = launch({
-      runningVersion: "0.0.17",
-      record,
-      respond: () => releaseResponse("v0.0.18"),
-    });
-    await app.service.recordLaunch();
-    await app.service.check();
+  it.each([
+    {
+      name: "the cask's brew",
+      installation: { installedBy: "homebrew", updater: brewUpdater },
+    },
+    {
+      name: "the bundled installer",
+      installation: { installedBy: "installer", updater: installerUpdater },
+    },
+  ] as const)(
+    "starts $name only for an install the close guard let through",
+    async ({ installation }) => {
+      const record = { current: {} };
+      const app = launch({
+        runningVersion: "0.0.17",
+        record,
+        respond: () => releaseResponse("v0.0.18"),
+        installation,
+      });
+      await app.service.recordLaunch();
+      await app.service.check();
+      expect(app.latest()?.available).toMatchObject({
+        installedBy: installation.installedBy,
+        canInstall: true,
+      });
 
-    expect(app.service.prepareInstall()).toBe(true);
-    expect(app.latest()?.available?.installing).toBe(true);
-    app.service.cancelInstall();
-    expect(app.latest()?.available?.installing).toBe(false);
-    await app.service.startInstallBeforeExit();
-    expect(app.helperStarts).toEqual([]);
+      expect(app.service.prepareInstall()).toBe(true);
+      expect(app.latest()?.available?.installing).toBe(true);
+      app.service.cancelInstall();
+      expect(app.latest()?.available?.installing).toBe(false);
+      await app.service.startInstallBeforeExit();
+      expect(app.helperStarts).toEqual([]);
 
-    app.service.prepareInstall();
-    await app.service.startInstallBeforeExit();
-    expect(app.helperStarts).toEqual(["/opt/homebrew/bin/brew"]);
-    expect(record.current).toMatchObject({ updateAttemptedFrom: "0.0.17" });
-  });
+      app.service.prepareInstall();
+      await app.service.startInstallBeforeExit();
+      expect(app.helperStarts).toEqual([installation.updater]);
+      expect(record.current).toMatchObject({ updateAttemptedFrom: "0.0.17" });
+    },
+  );
 
   it.each([
     {
-      name: "without the Homebrew cask",
-      homebrew: false,
+      name: "for a cask install without brew",
+      installation: { installedBy: "homebrew", updater: undefined },
+      executablePath: undefined,
+    },
+    {
+      name: "for an install only an administrator can replace",
+      installation: { installedBy: "installer", updater: undefined },
       executablePath: undefined,
     },
     {
       name: "for a copy outside /Applications",
-      homebrew: true,
+      installation: { installedBy: "installer", updater: installerUpdater },
       executablePath:
         "/Volumes/Patchdesk/Patchdesk.app/Contents/MacOS/Patchdesk",
     },
-  ])("offers no install $name", async ({ homebrew, executablePath }) => {
-    const app = launch({
-      runningVersion: "0.0.17",
-      record: { current: {} },
-      respond: () => releaseResponse("v0.0.18"),
-      homebrew,
-      executablePath,
-    });
-    await app.service.check();
+  ] as const)(
+    "offers no install $name",
+    async ({ installation, executablePath }) => {
+      const app = launch({
+        runningVersion: "0.0.17",
+        record: { current: {} },
+        respond: () => releaseResponse("v0.0.18"),
+        installation,
+        executablePath,
+      });
+      await app.service.check();
 
-    expect(app.latest()?.available?.install).toBe("manual");
-    expect(app.service.prepareInstall()).toBe(false);
-  });
+      expect(app.latest()?.available).toMatchObject({
+        installedBy: installation.installedBy,
+        canInstall: false,
+      });
+      expect(app.service.prepareInstall()).toBe(false);
+    },
+  );
 
   it("records no attempt when the helper does not start", async () => {
     const record = { current: {} };
@@ -193,7 +237,7 @@ describe("AppUpdateService", () => {
     app.service.prepareInstall();
     await app.service.startInstallBeforeExit();
 
-    expect(app.helperStarts).toEqual(["/opt/homebrew/bin/brew"]);
+    expect(app.helperStarts).toEqual([brewUpdater]);
     expect(record.current).not.toHaveProperty("updateAttemptedFrom");
   });
 
@@ -208,7 +252,7 @@ describe("AppUpdateService", () => {
       name: "a failed update when an attempt left the version unchanged",
       record: { lastLaunchedVersion: "0.0.17", updateAttemptedFrom: "0.0.17" },
       runningVersion: "0.0.17",
-      want: { kind: "updateFailed", logPath },
+      want: { kind: "updateFailed", logPath, installedBy: "homebrew" },
     },
     {
       name: "nothing on an ordinary launch",
