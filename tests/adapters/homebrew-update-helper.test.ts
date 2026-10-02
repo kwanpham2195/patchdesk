@@ -1,17 +1,15 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   findHomebrewInstall,
   homebrewUpdateHelperCommand,
+  startHomebrewUpdateHelper,
 } from "../../src/adapters/process/homebrew-update-helper";
-
-const run = promisify(execFile);
 
 describe("findHomebrewInstall", () => {
   it.each([
@@ -41,7 +39,7 @@ describe("findHomebrewInstall", () => {
 });
 
 describe("homebrewUpdateHelperCommand", () => {
-  it("runs a fixed /bin/sh script whose only inputs are the PID, the log path and fixed executables", () => {
+  it("runs a fixed /bin/sh script whose only inputs are the PID, the log path and fixed paths", () => {
     const first = homebrewUpdateHelperCommand({
       brewPath: "/opt/homebrew/bin/brew",
       appPid: 4242,
@@ -64,12 +62,13 @@ describe("homebrewUpdateHelperCommand", () => {
       "/opt/homebrew/bin/brew",
       "/usr/bin/xattr",
       "/usr/bin/open",
+      "/usr/bin/defaults",
       "/Applications/Patchdesk.app",
     ]);
   });
 });
 
-describe("the update helper script", () => {
+describe("the update helper", () => {
   let root: string;
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "patchdesk-update-helper-"));
@@ -78,60 +77,109 @@ describe("the update helper script", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  /** A stand-in executable that records its name, its arguments and whether the app was still running. */
-  async function recorder(name: string, exitCode: number): Promise<string> {
+  /** A stand-in executable that records its name, its arguments, whether the app still ran, and whether a provider key reached it. */
+  async function fake(name: string, appPid: number, body: string) {
     const path = join(root, name);
     await writeFile(
       path,
-      `#!/bin/sh\nif kill -0 "$APP_PID" 2>/dev/null; then state=running; else state=gone; fi\necho "${name} $* app=$state" >> "${join(root, "calls")}"\nexit ${exitCode}\n`,
+      `#!/bin/sh\nif kill -0 ${appPid} 2>/dev/null; then state=running; else state=gone; fi\necho "${name} $* app=$state key=\${OPENAI_API_KEY:-unset}" >> "${join(root, "calls")}"\n${body}\n`,
     );
     await chmod(path, 0o755);
     return path;
   }
 
-  async function runHelper(brewExitCode: number) {
+  async function runHelper(brew: {
+    readonly updateExit: number;
+    readonly upgradeExit: number;
+    readonly upgradeInstalls: boolean;
+  }) {
     const app = spawn("/bin/sleep", ["0.5"]);
     const appPid = app.pid ?? 0;
-    const logPath = join(root, "update.log");
+    const version = join(root, "version");
+    await writeFile(version, "0.0.17\n");
+    // The logs folder does not exist yet; the helper must create it.
+    const logPath = join(root, "missing", "logs", "update.log");
     const command = homebrewUpdateHelperCommand({
       brewPath: "/opt/homebrew/bin/brew",
       appPid,
       logPath,
     });
+    const brewBody = `if [ "$1" = update ]; then exit ${brew.updateExit}; fi\n${brew.upgradeInstalls ? `echo 0.0.18 > "${version}"\n` : ""}exit ${brew.upgradeExit}`;
     const fakes = new Map([
-      ["/opt/homebrew/bin/brew", await recorder("brew", brewExitCode)],
-      ["/usr/bin/xattr", await recorder("xattr", 0)],
-      ["/usr/bin/open", await recorder("open", 0)],
+      ["/opt/homebrew/bin/brew", await fake("brew", appPid, brewBody)],
+      ["/usr/bin/xattr", await fake("xattr", appPid, "exit 0")],
+      ["/usr/bin/open", await fake("open", appPid, "exit 0")],
+      ["/usr/bin/defaults", join(root, "defaults")],
     ]);
-    await run(
-      command.file,
-      command.args.map((arg) => fakes.get(arg) ?? arg),
-      { env: { ...process.env, APP_PID: String(appPid) } },
+    await writeFile(join(root, "defaults"), `#!/bin/sh\ncat "${version}"\n`);
+    await chmod(join(root, "defaults"), 0o755);
+
+    await startHomebrewUpdateHelper(
+      { ...command, args: command.args.map((arg) => fakes.get(arg) ?? arg) },
+      { HOME: root, OPENAI_API_KEY: "sk-secret" },
     );
-    return {
-      calls: (await readFile(join(root, "calls"), "utf8")).trim().split("\n"),
-      log: await readFile(logPath, "utf8"),
-    };
+    const calls = await waitForReopen(join(root, "calls"));
+    return { calls, log: await readFile(logPath, "utf8") };
   }
 
-  it("waits for the app to quit, then upgrades, clears quarantine and reopens", async () => {
-    const { calls, log } = await runHelper(0);
+  it("waits for the app to quit, refreshes taps, upgrades, clears quarantine and reopens the installed app", async () => {
+    const { calls, log } = await runHelper({
+      updateExit: 0,
+      upgradeExit: 0,
+      upgradeInstalls: true,
+    });
 
     expect(calls).toEqual([
-      "brew upgrade --cask patchdesk app=gone",
-      "xattr -dr com.apple.quarantine /Applications/Patchdesk.app app=gone",
-      "open -a Patchdesk app=gone",
+      "brew update --quiet app=gone key=unset",
+      "brew upgrade --cask patchdesk app=gone key=unset",
+      "xattr -dr com.apple.quarantine /Applications/Patchdesk.app app=gone key=unset",
+      "open /Applications/Patchdesk.app app=gone key=unset",
     ]);
-    expect(log).toContain("finished");
+    expect(log).toContain("finished, 0.0.17 to 0.0.18");
   });
 
-  it("reopens the app without clearing quarantine and logs the exit code when brew fails", async () => {
-    const { calls, log } = await runHelper(3);
+  it("still upgrades after a failed brew update, and says so when the upgrade changed nothing", async () => {
+    const { calls, log } = await runHelper({
+      updateExit: 1,
+      upgradeExit: 0,
+      upgradeInstalls: false,
+    });
 
     expect(calls).toEqual([
-      "brew upgrade --cask patchdesk app=gone",
-      "open -a Patchdesk app=gone",
+      "brew update --quiet app=gone key=unset",
+      "brew upgrade --cask patchdesk app=gone key=unset",
+      "open /Applications/Patchdesk.app app=gone key=unset",
+    ]);
+    expect(log).toContain("brew update failed with exit code 1");
+    expect(log).toContain("brew upgraded nothing");
+    expect(log).not.toContain("finished");
+  });
+
+  it("reopens the app without clearing quarantine and logs the exit code when brew upgrade fails", async () => {
+    const { calls, log } = await runHelper({
+      updateExit: 0,
+      upgradeExit: 3,
+      upgradeInstalls: false,
+    });
+
+    expect(calls).toEqual([
+      "brew update --quiet app=gone key=unset",
+      "brew upgrade --cask patchdesk app=gone key=unset",
+      "open /Applications/Patchdesk.app app=gone key=unset",
     ]);
     expect(log).toContain("exit code 3");
   });
 });
+
+/** The helper is detached, so the test waits for its last step, the reopen. */
+async function waitForReopen(callsPath: string): Promise<string[]> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const calls = await readFile(callsPath, "utf8").catch(() => "");
+    const lines = calls.trim().split("\n");
+    if (lines.some((line) => line.startsWith("open "))) return lines;
+    if (Date.now() > deadline)
+      throw new Error(`helper did not reopen: ${calls}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}

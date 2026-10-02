@@ -23,6 +23,8 @@ function launch(input: {
   readonly respond?: () => Response;
   readonly checkEnabled?: boolean;
   readonly homebrew?: boolean;
+  readonly executablePath?: string | undefined;
+  readonly helperStarts?: boolean;
 }) {
   const requests: string[] = [];
   const published: AppUpdateState[] = [];
@@ -45,9 +47,13 @@ function launch(input: {
       }),
     homebrewBrewPath:
       input.homebrew === false ? undefined : "/opt/homebrew/bin/brew",
+    executablePath:
+      input.executablePath ??
+      "/Applications/Patchdesk.app/Contents/MacOS/Patchdesk",
     logPath,
     startHelper: async (brewPath) => {
       helperStarts.push(brewPath);
+      return input.helperStarts ?? true;
     },
     publish: (state) => published.push(state),
     warn: (failure) => warnings.push(failure.reason),
@@ -147,17 +153,48 @@ describe("AppUpdateService", () => {
     expect(record.current).toMatchObject({ updateAttemptedFrom: "0.0.17" });
   });
 
-  it("offers no install without the Homebrew cask", async () => {
+  it.each([
+    {
+      name: "without the Homebrew cask",
+      homebrew: false,
+      executablePath: undefined,
+    },
+    {
+      name: "for a copy outside /Applications",
+      homebrew: true,
+      executablePath:
+        "/Volumes/Patchdesk/Patchdesk.app/Contents/MacOS/Patchdesk",
+    },
+  ])("offers no install $name", async ({ homebrew, executablePath }) => {
     const app = launch({
       runningVersion: "0.0.17",
       record: { current: {} },
       respond: () => releaseResponse("v0.0.18"),
-      homebrew: false,
+      homebrew,
+      executablePath,
     });
     await app.service.check();
 
     expect(app.latest()?.available?.install).toBe("manual");
     expect(app.service.prepareInstall()).toBe(false);
+  });
+
+  it("records no attempt when the helper does not start", async () => {
+    const record = { current: {} };
+    const app = launch({
+      runningVersion: "0.0.17",
+      record,
+      respond: () => releaseResponse("v0.0.18"),
+      helperStarts: false,
+    });
+    await app.service.recordLaunch();
+    await app.service.check();
+
+    app.service.prepareInstall();
+    await app.service.startInstallBeforeExit();
+
+    expect(app.helperStarts).toEqual(["/opt/homebrew/bin/brew"]);
+    expect(record.current).not.toHaveProperty("updateAttemptedFrom");
   });
 
   it.each([

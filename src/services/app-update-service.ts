@@ -5,6 +5,7 @@ import type {
 import type { HomebrewBrewPath } from "../adapters/process/homebrew-update-helper";
 import type { AppUpdateRecord } from "../adapters/storage/app-update-state-store";
 import {
+  INSTALLED_APP_PATH,
   newerReleaseVersion,
   type AppUpdateLaunchNotice,
   type AvailableAppUpdate,
@@ -27,9 +28,12 @@ type AppUpdateDependencies = {
   >;
   /** The cask's `brew`, or `undefined` when Patchdesk was not installed through Homebrew. */
   readonly homebrewBrewPath: HomebrewBrewPath | undefined;
+  /** `process.execPath`; only the copy in `INSTALLED_APP_PATH` is the one Homebrew upgrades. */
+  readonly executablePath: string;
   /** Where the helper writes; a failed update's notice names it. */
   readonly logPath: string;
-  readonly startHelper: (brewPath: HomebrewBrewPath) => Promise<void>;
+  /** Answers whether the helper process started. */
+  readonly startHelper: (brewPath: HomebrewBrewPath) => Promise<boolean>;
   /** Pushes every state change to the title bar. */
   readonly publish: (state: AppUpdateState) => void;
   /** Called for the first failed check of a launch only. */
@@ -102,7 +106,7 @@ export class AppUpdateService {
 
   state(): AppUpdateState {
     const install: AvailableAppUpdate["install"] =
-      this.dependencies.homebrewBrewPath === undefined ? "manual" : "homebrew";
+      this.homebrewBrewPath() === undefined ? "manual" : "homebrew";
     return definedProps({
       available:
         this.available === undefined
@@ -128,10 +132,7 @@ export class AppUpdateService {
 
   /** Marks an install to run when the app quits; the caller then asks to quit. */
   prepareInstall(): boolean {
-    if (
-      this.available === undefined ||
-      this.dependencies.homebrewBrewPath === undefined
-    )
+    if (this.available === undefined || this.homebrewBrewPath() === undefined)
       return false;
     this.installing = true;
     this.publish();
@@ -146,19 +147,27 @@ export class AppUpdateService {
   }
 
   /**
-   * Called on the way out, after the close guard: records the attempt for the
-   * next launch, then starts the helper, which waits for this process to exit.
+   * Called on the way out, after the close guard: starts the helper, which
+   * waits for this process to exit, then records the attempt for the next
+   * launch. A helper that never started records nothing.
    */
   async startInstallBeforeExit(): Promise<void> {
-    const brewPath = this.dependencies.homebrewBrewPath;
+    const brewPath = this.homebrewBrewPath();
     if (!this.installing || brewPath === undefined) return;
     this.installing = false;
+    if (!(await this.dependencies.startHelper(brewPath))) return;
     this.record = {
       ...this.record,
       updateAttemptedFrom: this.dependencies.runningVersion,
     };
     await this.dependencies.store.save(this.record);
-    await this.dependencies.startHelper(brewPath);
+  }
+
+  /** A copy outside `/Applications`, such as a disk image or a local build, gets the manual command. */
+  private homebrewBrewPath(): HomebrewBrewPath | undefined {
+    return this.dependencies.executablePath.startsWith(`${INSTALLED_APP_PATH}/`)
+      ? this.dependencies.homebrewBrewPath
+      : undefined;
   }
 
   private publish(): void {

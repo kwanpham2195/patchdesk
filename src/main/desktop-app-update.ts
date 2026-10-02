@@ -55,6 +55,7 @@ export function createDesktopAppUpdate(input: {
     },
     fetchLatestRelease: () => fetchLatestPatchdeskRelease(input.githubFetch),
     homebrewBrewPath: findHomebrewInstall(existsSync),
+    executablePath: process.execPath,
     logPath,
     async startHelper(brewPath) {
       try {
@@ -64,6 +65,7 @@ export function createDesktopAppUpdate(input: {
             appPid: process.pid,
             logPath,
           }),
+          process.env,
         );
         input.logs.write({
           process: "main",
@@ -72,6 +74,7 @@ export function createDesktopAppUpdate(input: {
           message: "update helper started",
           meta: { brewPath, logPath },
         });
+        return true;
       } catch (cause: unknown) {
         input.logs.write({
           process: "main",
@@ -80,6 +83,7 @@ export function createDesktopAppUpdate(input: {
           message: "update helper could not start",
           meta: { error: loggableMetaValue(cause) },
         });
+        return false;
       }
     },
     publish(state) {
