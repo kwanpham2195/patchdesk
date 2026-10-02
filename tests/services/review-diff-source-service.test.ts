@@ -111,6 +111,9 @@ class SourceGit implements GitReadExecutor {
 /** Stands in for the worktree owner in tests whose fake git never needs a checkout on disk. */
 const restoredWorktrees = {
   restoreMissingWorktree: async () => ok(undefined),
+  pullRequestSessionRef: (
+    ...ref: Parameters<PatchdeskPaths["pullRequestSessionRef"]>
+  ) => PatchdeskPaths.forTest("/unused").pullRequestSessionRef(...ref),
 };
 
 async function saveSession(input: {

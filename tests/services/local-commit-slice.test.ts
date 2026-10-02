@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -70,6 +71,7 @@ function commitService(harness: LocalApplyHarness) {
       },
     },
     new ProfileStore(harness.paths),
+    PatchdeskPaths.forTest("/unused"),
   );
   return { service, calls };
 }
@@ -223,6 +225,7 @@ describe("a shared Review's commits (#557)", () => {
               : realGit.run(argv, environment),
         },
         new ProfileStore(harness.paths),
+        PatchdeskPaths.forTest("/unused"),
       );
 
       expect(

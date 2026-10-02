@@ -163,6 +163,8 @@ export async function localApplyHarness(
     readonly afterPrepare?: () => Promise<void>;
     /** Intercepts preparation's own git reads, such as the session's commit listing; the snapshot and patches still run real git. */
     readonly preparationGit?: GitInterceptor;
+    /** Run over the dev roots, which own `refs/patchdesk-dev` instead of `refs/patchdesk`. */
+    readonly development?: boolean;
   } = {},
 ): Promise<LocalApplyHarness> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-local-apply-"));
@@ -172,7 +174,9 @@ export async function localApplyHarness(
   await writeFile(join(repositoryPath, "tracked.txt"), "one\n");
   git(repositoryPath, "add", "tracked.txt");
   git(repositoryPath, "commit", "-q", "-m", "root");
-  const paths = PatchdeskPaths.forTest(join(root, "app"));
+  const paths = PatchdeskPaths.forTest(join(root, "app"), {
+    development: seams.development === true,
+  });
   const profiles = new ProfileStore(paths);
   await profiles.save(
     value(

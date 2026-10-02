@@ -1,5 +1,6 @@
 import { parseUnifiedPatch } from "../domain/patch";
 import { canonicalPatchFlags } from "../adapters/process/git-patch-flags";
+import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type {
   ReviewRemoteSnapshot,
@@ -70,6 +71,7 @@ export class ReviewCommitService {
     private readonly sessions: Pick<ReviewSessionStore, "load">,
     private readonly git: GitReadExecutor,
     private readonly profiles: Pick<ProfileStore, "load">,
+    private readonly paths: PatchdeskPaths,
   ) {}
 
   async diff(input: {
@@ -235,7 +237,11 @@ export class ReviewCommitService {
       return err({ reason: "stale_head" });
     const session = await this.loadCurrentSession(review);
     if (session._tag === "err") return session;
-    const managedHeadRef = `refs/patchdesk/reviews/${input.profileId}/${session.value.id}/head`;
+    const managedHeadRef = this.paths.pullRequestSessionRef(
+      input.profileId,
+      session.value.id,
+      "head",
+    );
     return ok({
       snapshot: snapshot.value,
       session: session.value,

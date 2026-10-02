@@ -491,6 +491,7 @@ export async function buildLocalApiContainer(
     sessions,
     readOnlyGit,
     profiles,
+    paths,
   );
   const sidebarListing = new SidebarListingService({
     reviews,

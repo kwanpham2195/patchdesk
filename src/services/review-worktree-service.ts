@@ -156,12 +156,12 @@ export class ReviewWorktreeService {
         warning: "local_checkout_unavailable",
       });
     }
-    const baseRef = pullRequestSessionRef(
+    const baseRef = this.paths.pullRequestSessionRef(
       input.profileId,
       input.sessionId,
       "base",
     );
-    const headRef = pullRequestSessionRef(
+    const headRef = this.paths.pullRequestSessionRef(
       input.profileId,
       input.sessionId,
       "head",
@@ -237,7 +237,10 @@ export class ReviewWorktreeService {
     } catch {
       return err({ _tag: "GitWorktreeFailed" });
     }
-    const headRef = localSessionHeadRef(input.profileId, input.sessionId);
+    const headRef = this.paths.localSessionHeadRef(
+      input.profileId,
+      input.sessionId,
+    );
     const pinned = await this.git.run([
       "git",
       "-C",
@@ -435,6 +438,15 @@ export class ReviewWorktreeService {
     ]);
   }
 
+  /** The managed ref a pull request session's fetch writes, in this app's ref namespace. */
+  pullRequestSessionRef(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    side: "base" | "head",
+  ): string {
+    return this.paths.pullRequestSessionRef(profileId, sessionId, side);
+  }
+
   /**
    * The profile's managed refs in one repository, each with the session it
    * names. Undefined when the repository cannot be read.
@@ -451,8 +463,8 @@ export class ReviewWorktreeService {
       repositoryPath,
       "for-each-ref",
       "--format=%(objectname) %(refname)",
-      `refs/patchdesk/local/${profileId}/`,
-      `refs/patchdesk/reviews/${profileId}/`,
+      `${this.paths.managedRefPrefix()}/local/${profileId}/`,
+      `${this.paths.managedRefPrefix()}/reviews/${profileId}/`,
     ]);
     if (listed._tag === "err") return undefined;
     return listed.value.stdout.split("\n").flatMap((line) => {
@@ -460,9 +472,9 @@ export class ReviewWorktreeService {
       const sessionId = parseReviewSessionId(ref.split("/")[4]);
       if (sessionId._tag === "err") return [];
       const owned = [
-        pullRequestSessionRef(profileId, sessionId.value, "base"),
-        pullRequestSessionRef(profileId, sessionId.value, "head"),
-        localSessionHeadRef(profileId, sessionId.value),
+        this.paths.pullRequestSessionRef(profileId, sessionId.value, "base"),
+        this.paths.pullRequestSessionRef(profileId, sessionId.value, "head"),
+        this.paths.localSessionHeadRef(profileId, sessionId.value),
       ];
       return owned.includes(ref)
         ? [{ ref, sha, sessionId: sessionId.value }]
@@ -542,13 +554,17 @@ export class ReviewWorktreeService {
     }
     const headRef =
       input.sourceKind === "local"
-        ? localSessionHeadRef(input.profileId, input.sessionId)
-        : pullRequestSessionRef(input.profileId, input.sessionId, "head");
+        ? this.paths.localSessionHeadRef(input.profileId, input.sessionId)
+        : this.paths.pullRequestSessionRef(
+            input.profileId,
+            input.sessionId,
+            "head",
+          );
     const markerRefs =
       input.sourceKind === "local"
         ? { headRef }
         : {
-            baseRef: pullRequestSessionRef(
+            baseRef: this.paths.pullRequestSessionRef(
               input.profileId,
               input.sessionId,
               "base",
@@ -689,9 +705,9 @@ export class ReviewWorktreeService {
       )
         return undefined;
       const owned = new Set([
-        pullRequestSessionRef(profileId, sessionId, "base"),
-        pullRequestSessionRef(profileId, sessionId, "head"),
-        localSessionHeadRef(profileId, sessionId),
+        this.paths.pullRequestSessionRef(profileId, sessionId, "base"),
+        this.paths.pullRequestSessionRef(profileId, sessionId, "head"),
+        this.paths.localSessionHeadRef(profileId, sessionId),
       ]);
       const { baseRef, headRef } = parsed.output;
       return definedProps({
@@ -704,23 +720,6 @@ export class ReviewWorktreeService {
       return undefined;
     }
   }
-}
-
-/** The managed refs a pull request session's fetch writes. */
-function pullRequestSessionRef(
-  profileId: WorkspaceProfileId,
-  sessionId: ReviewSessionId,
-  side: "base" | "head",
-): string {
-  return `refs/patchdesk/reviews/${profileId}/${sessionId}/${side}`;
-}
-
-/** The managed ref a local session's head is pinned under (ADR 0050 "The Local snapshot"). */
-function localSessionHeadRef(
-  profileId: WorkspaceProfileId,
-  sessionId: ReviewSessionId,
-): string {
-  return `refs/patchdesk/local/${profileId}/${sessionId}/head`;
 }
 
 function pathExists(path: string): Promise<boolean> {

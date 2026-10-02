@@ -29,6 +29,8 @@ const PATCHDESK_ROOTS_ENVIRONMENT = {
 const DEV_SHARED_ENVIRONMENT = "PATCHDESK_DEV_SHARED";
 
 const INSTALLED_MCP_SOCKET = "patchdesk.sock";
+const INSTALLED_REF_NAMESPACE = "refs/patchdesk";
+const DEV_REF_NAMESPACE = "refs/patchdesk-dev";
 const SHARED_DEV_MCP_SOCKET = "patchdesk-dev.sock";
 
 /** Builds every app-owned local path without performing filesystem I/O. */
@@ -36,6 +38,7 @@ export class PatchdeskPaths {
   private constructor(
     private readonly roots: PatchdeskPathRoots,
     private readonly mcpSocketName: string,
+    private readonly refNamespace: string,
   ) {}
 
   /**
@@ -51,7 +54,11 @@ export class PatchdeskPaths {
     if (input.packaged) return PatchdeskPaths.installedRoots();
     if (input.environment[DEV_SHARED_ENVIRONMENT] === "1")
       return PatchdeskPaths.installedRoots(SHARED_DEV_MCP_SOCKET);
-    return PatchdeskPaths.rootsNamed("patchdesk-dev", INSTALLED_MCP_SOCKET);
+    return PatchdeskPaths.rootsNamed(
+      "patchdesk-dev",
+      INSTALLED_MCP_SOCKET,
+      DEV_REF_NAMESPACE,
+    );
   }
 
   /** The roots a parent app process passed down, else the installed ones. */
@@ -70,19 +77,25 @@ export class PatchdeskPaths {
     return new PatchdeskPaths(
       { configDirectory, dataDirectory, cacheDirectory },
       INSTALLED_MCP_SOCKET,
+      INSTALLED_REF_NAMESPACE,
     );
   }
 
   private static installedRoots(
     mcpSocketName = INSTALLED_MCP_SOCKET,
   ): PatchdeskPaths {
-    return PatchdeskPaths.rootsNamed("patchdesk", mcpSocketName);
+    return PatchdeskPaths.rootsNamed(
+      "patchdesk",
+      mcpSocketName,
+      INSTALLED_REF_NAMESPACE,
+    );
   }
 
   /** Standard XDG-style locations under one app directory name. */
   private static rootsNamed(
     appDirectoryName: string,
     mcpSocketName: string,
+    refNamespace: string,
   ): PatchdeskPaths {
     const home = homedir();
     return new PatchdeskPaths(
@@ -92,11 +105,15 @@ export class PatchdeskPaths {
         cacheDirectory: join(home, ".cache", appDirectoryName),
       },
       mcpSocketName,
+      refNamespace,
     );
   }
 
   /** Isolate tests beneath one caller-owned temporary directory. */
-  static forTest(rootDirectory: string): PatchdeskPaths {
+  static forTest(
+    rootDirectory: string,
+    options: { readonly development?: boolean } = {},
+  ): PatchdeskPaths {
     return new PatchdeskPaths(
       {
         configDirectory: join(rootDirectory, "config", "patchdesk"),
@@ -104,7 +121,36 @@ export class PatchdeskPaths {
         cacheDirectory: join(rootDirectory, "cache", "patchdesk"),
       },
       INSTALLED_MCP_SOCKET,
+      options.development === true
+        ? DEV_REF_NAMESPACE
+        : INSTALLED_REF_NAMESPACE,
     );
+  }
+
+  /**
+   * The git ref prefix for refs Patchdesk writes into watched checkouts. Each
+   * set of roots owns one, so one app's retention sweep never deletes the
+   * refs of the other app that shares the same checkouts (#804).
+   */
+  managedRefPrefix(): string {
+    return this.refNamespace;
+  }
+
+  /** The managed refs a pull request session's fetch writes. */
+  pullRequestSessionRef(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    side: "base" | "head",
+  ): string {
+    return `${this.refNamespace}/reviews/${profileId}/${sessionId}/${side}`;
+  }
+
+  /** The managed ref a local session's head is pinned under (ADR 0050 "The Local snapshot"). */
+  localSessionHeadRef(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return `${this.refNamespace}/local/${profileId}/${sessionId}/head`;
   }
 
   /** The environment that makes a child process resolve these same roots through `fromEnvironment`. */

@@ -1,4 +1,4 @@
-import { access, cp, mkdir } from "node:fs/promises";
+import { access, cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 /**
@@ -73,6 +73,8 @@ export async function copyInstalledProfileToDev({
   }
 
   await mkdir(development, { recursive: true });
+  // --force replaces the dev profiles outright, so a profile only the dev app had does not linger.
+  await rm(join(development, "profiles"), { recursive: true, force: true });
   await cp(join(installed, "config.json"), join(development, "config.json"));
   if (await exists(join(installed, "profiles")))
     await cp(join(installed, "profiles"), join(development, "profiles"), {
