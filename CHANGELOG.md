@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.18 - 2026-10-02
+
 - Added update notices: the title bar shows a newer release beside Settings, and Update now upgrades a Homebrew install and reopens Patchdesk. Settings > General > Check for updates turns the daily check off. #800
 
 ## 0.0.17 - 2026-10-02
