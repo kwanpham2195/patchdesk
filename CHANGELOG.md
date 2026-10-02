@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Update now for apps installed with the shell installer or from the disk image: Patchdesk quits, installs the new release, and reopens. `install-release.sh --update` updates such an install by hand. Version 0.0.19 and earlier still show the Homebrew command for these installs, so update them once with `curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update` after quitting Patchdesk. #808
+
 ## 0.0.19 - 2026-10-02
 
 - Changed `pnpm dev` to keep its own settings and Review data, so it no longer changes the installed app. `pnpm dev:copy-profile` copies your workspaces into it. #804
