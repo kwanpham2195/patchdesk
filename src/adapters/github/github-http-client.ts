@@ -33,6 +33,15 @@ const userAgent = "Patchdesk";
 const defaultAccept = "application/vnd.github+json";
 const restApiVersion = "2022-11-28";
 
+/** The headers every REST call carries; an authenticated call adds its bearer token. */
+export function gitHubRestHeaders(accept: string = defaultAccept): Headers {
+  return new Headers({
+    Accept: accept,
+    "User-Agent": userAgent,
+    "X-GitHub-Api-Version": restApiVersion,
+  });
+}
+
 /**
  * How a request reaches the network. Node's `fetch` is the default; the main
  * process injects Electron's `net.fetch`, which uses Chromium's stack and so
@@ -248,12 +257,8 @@ export class GitHubHttpClient {
     signal: AbortSignal,
     responseBody: ResponseBodyMode,
   ): Promise<Result<unknown, CommandFailure>> {
-    const headers = new Headers({
-      Authorization: `Bearer ${token}`,
-      Accept: request.accept ?? defaultAccept,
-      "User-Agent": userAgent,
-      "X-GitHub-Api-Version": restApiVersion,
-    });
+    const headers = gitHubRestHeaders(request.accept);
+    headers.set("Authorization", `Bearer ${token}`);
     if (request.jsonBody !== undefined)
       headers.set("Content-Type", "application/json");
     const init: RequestInit = {

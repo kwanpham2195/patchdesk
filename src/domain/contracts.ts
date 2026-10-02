@@ -14,6 +14,8 @@ export type PatchdeskConfigFile = {
   readonly appearance?: Appearance;
   readonly diffTheme?: DiffTheme;
   readonly notifications?: NotificationSettings;
+  /** Settings → Check for updates; absent means on (#800). */
+  readonly checkForUpdates?: boolean;
 };
 
 /** How often watched pull requests are polled, in minutes (ADR 0045). */
@@ -57,6 +59,7 @@ export type PatchdeskSettingsPatch = {
   readonly appearance?: Appearance;
   readonly diffTheme?: DiffTheme;
   readonly notifications?: NotificationSettings;
+  readonly checkForUpdates?: boolean;
 };
 
 // Strict like the rest of the file rather than ADR 0022's per-field fallback: config.json already fails closed as a whole.
@@ -84,6 +87,7 @@ const patchdeskConfigSchema = v.strictObject({
     }),
   ),
   notifications: v.optional(storedNotificationSettingsSchema),
+  checkForUpdates: v.optional(v.boolean()),
 });
 
 /** Valibot schema for the mutable, file-backed settings exposed by the desktop API. */
@@ -96,6 +100,7 @@ const patchdeskSettingsPatchSchema = v.strictObject({
     }),
   ),
   notifications: v.optional(notificationSettingsSchema),
+  checkForUpdates: v.optional(v.boolean()),
 });
 
 /** Parse the global config boundary into profile IDs that core code can trust. */
@@ -117,7 +122,8 @@ export function parsePatchdeskSettingsPatch(
     !parsed.success ||
     (parsed.output.appearance === undefined &&
       parsed.output.diffTheme === undefined &&
-      parsed.output.notifications === undefined)
+      parsed.output.notifications === undefined &&
+      parsed.output.checkForUpdates === undefined)
   ) {
     return invalid("config");
   }
@@ -127,6 +133,7 @@ export function parsePatchdeskSettingsPatch(
       appearance: parsed.output.appearance,
       diffTheme: parsed.output.diffTheme,
       notifications: parsed.output.notifications,
+      checkForUpdates: parsed.output.checkForUpdates,
     }),
   );
 }
@@ -136,6 +143,7 @@ function parsePatchdeskConfigFields(input: {
   readonly appearance?: Appearance | undefined;
   readonly diffTheme?: DiffTheme | undefined;
   readonly notifications?: NotificationSettings | undefined;
+  readonly checkForUpdates?: boolean | undefined;
 }): Result<PatchdeskConfigFile, InvalidDomainContract> {
   if (input.lastSelectedProfileId === undefined) {
     return ok(
@@ -143,6 +151,7 @@ function parsePatchdeskConfigFields(input: {
         appearance: input.appearance,
         diffTheme: input.diffTheme,
         notifications: input.notifications,
+        checkForUpdates: input.checkForUpdates,
       }),
     );
   }
@@ -155,6 +164,7 @@ function parsePatchdeskConfigFields(input: {
       appearance: input.appearance,
       diffTheme: input.diffTheme,
       notifications: input.notifications,
+      checkForUpdates: input.checkForUpdates,
     }),
   });
 }

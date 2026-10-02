@@ -106,6 +106,11 @@ export async function installTestDesktopBridge(
       setWindowAppearance() {
         return undefined;
       },
+      // A browser page has no main process checking for releases.
+      onAppUpdate() {
+        return () => undefined;
+      },
+      appUpdateAtLoad: {},
       qaScrollDiagnosticsEnabled: false,
     };
     Object.defineProperty(window, "patchdesk", { value: bridge });

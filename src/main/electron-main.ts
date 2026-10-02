@@ -35,6 +35,13 @@ import {
   openUserActivatedExternalUrl,
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
+import { answerAppUpdateReads } from "./desktop-app-update-channel";
+import { createDesktopAppUpdate } from "./desktop-app-update";
+import {
+  loadAllowedExternalHosts,
+  loadNotificationSettings,
+  loadStoredAppearance,
+} from "./desktop-config-reads";
 import { sendMenuAction } from "./desktop-menu-channel";
 import { sendInsightSettled } from "./desktop-insight-settled-channel";
 import { sendReviewsRemoved } from "./desktop-reviews-removed-channel";
@@ -63,19 +70,14 @@ import type { GitHubReader } from "../adapters/github/github-adapter";
 import type { GitHubFetch } from "../adapters/github/github-http-client";
 import { ReviewContextPackService } from "../services/review-context-pack-service";
 import { ReviewContextService } from "../services/review-context-service";
-import {
-  notificationSettingsOf,
-  type Appearance,
-  type NotificationSettings,
-} from "../domain/contracts";
-import { normalizeExternalHosts } from "../domain/external-hosts";
+import type { Appearance } from "../domain/contracts";
 import { parseGitSha } from "../domain/ids";
 import type {
   AccountInsightProvider,
   InsightProvider,
 } from "../domain/insight-provider";
 import { loggableMetaValue } from "../domain/log-entry";
-import { err, ok, type Result } from "../domain/result";
+import { err } from "../domain/result";
 import {
   PiInsightChildInvoker,
   unavailablePiInsightInvoker,
@@ -199,6 +201,16 @@ const diagnostics = new ReviewDiagnosticService(
  */
 const githubFetch: GitHubFetch = (url, init) =>
   net.fetch(url, { ...init, cache: "no-store", credentials: "omit" });
+const appUpdate = createDesktopAppUpdate({
+  paths: PatchdeskPaths.default(),
+  runningVersion: app.getVersion(),
+  packaged: app.isPackaged,
+  githubFetch,
+  logs,
+  renderer: () =>
+    mainWindow?.isDestroyed() === false ? mainWindow.webContents : undefined,
+  quit: () => app.quit(),
+});
 
 /** Clicking a notification raises the window before the renderer routes to its Review. */
 const systemNotifier = createDesktopNotifier({
@@ -586,6 +598,7 @@ function registerDesktopEvents(): void {
       );
       app.exit(1);
     }
+    appUpdate.start();
     await imported;
   });
 
@@ -724,6 +737,7 @@ async function createWorkbenchWindow(
           await shell.openExternal(candidate);
         });
       },
+      ...appUpdate.bridgeOperations,
       async selectDirectory(input) {
         const defaultPathField =
           input.defaultPath === undefined
@@ -742,6 +756,9 @@ async function createWorkbenchWindow(
   // cannot see that state for itself, so the main process tells it.
   answerWindowFullScreenReads(ipcMain, window.webContents.id, () =>
     window.isFullScreen(),
+  );
+  answerAppUpdateReads(ipcMain, window.webContents.id, () =>
+    appUpdate.service.state(),
   );
   const paintWindowBackground = (): void => {
     if (window.isDestroyed()) return;
@@ -851,35 +868,6 @@ async function offerRendererRecovery(
   else app.quit();
 }
 
-/** The stored appearance, or "system" when no config file names one yet. */
-async function loadStoredAppearance(): Promise<Appearance> {
-  const config = await new ProfileStore(PatchdeskPaths.default()).loadConfig();
-  return config._tag === "ok"
-    ? (config.value.appearance ?? "system")
-    : "system";
-}
-
-/** The stored notification toggles; a missing config file is a first run with the defaults. */
-async function loadNotificationSettings(): Promise<
-  Result<NotificationSettings, "config_unreadable">
-> {
-  const config = await new ProfileStore(PatchdeskPaths.default()).loadConfig();
-  if (config._tag === "ok") return ok(notificationSettingsOf(config.value));
-  return config.error.reason === "not_found"
-    ? ok(notificationSettingsOf({}))
-    : err("config_unreadable");
-}
-
-async function loadAllowedExternalHosts(): Promise<ReadonlySet<string>> {
-  const profiles = await new ProfileStore(PatchdeskPaths.default()).list();
-  return normalizeExternalHosts([
-    "github.com",
-    ...(profiles._tag === "ok"
-      ? profiles.value.map((profile) => profile.githubHost)
-      : []),
-  ]);
-}
-
 async function focusOrRecreateWorkbench(): Promise<void> {
   if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
     focusWindow(mainWindow);
@@ -947,6 +935,7 @@ async function guardDesktopExit(intent: "window" | "quit"): Promise<void> {
       },
     );
     if (decision === "prevent") {
+      appUpdate.service.cancelInstall();
       if (rendererNavigationState === "write_pending") {
         await dialog.showMessageBox(window, {
           type: "info",
@@ -985,6 +974,7 @@ function terminateAfterServerStops(): void {
       });
     })
     .finally(async () => {
+      await appUpdate.service.startInstallBeforeExit();
       await logs.flush();
       app.exit();
     });

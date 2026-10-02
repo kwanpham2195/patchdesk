@@ -1,3 +1,4 @@
+import type { AppUpdateState } from "../domain/app-update";
 import type { Appearance } from "../domain/contracts";
 import type { RawJsonValue } from "../domain/json";
 
@@ -85,6 +86,13 @@ export const DESKTOP_INSIGHT_SETTLED_CHANNEL = "patchdesk:insight-settled";
  */
 export const DESKTOP_REVIEWS_REMOVED_CHANNEL = "patchdesk:reviews-removed";
 
+/**
+ * The in-app update state (#800), both directions on one channel:
+ * `desktop-app-update-channel.ts` holds main's push and preload's
+ * synchronous read.
+ */
+export const DESKTOP_APP_UPDATE_CHANNEL = "patchdesk:app-update";
+
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
   readonly path: string;
@@ -120,13 +128,26 @@ type OpenExternalHttpsDesktopRequest = {
   readonly url: string;
 };
 
+/** Hides the offered release, or this launch's "Updated to" or failure notice. */
+type DismissAppUpdateDesktopRequest = {
+  readonly operation: "dismissAppUpdate";
+  readonly notice: "available" | "launch";
+};
+
+/** Quits through the close guard and, if it lets the quit through, upgrades with Homebrew. */
+type InstallAppUpdateDesktopRequest = {
+  readonly operation: "installAppUpdate";
+};
+
 /** Closed renderer-to-main request union. */
 export type DesktopRequest =
   | LocalApiDesktopRequest
   | SelectDirectoryDesktopRequest
   | SetNavigationStateDesktopRequest
   | SetNavigationDestinationDesktopRequest
-  | OpenExternalHttpsDesktopRequest;
+  | OpenExternalHttpsDesktopRequest
+  | DismissAppUpdateDesktopRequest
+  | InstallAppUpdateDesktopRequest;
 
 export type DesktopResponse = {
   readonly ok: boolean;
@@ -182,6 +203,10 @@ export type PatchdeskDesktopApi = {
    * window's native background colour follows a change made in Settings.
    */
   setWindowAppearance(appearance: Appearance): void;
+  /** Fires whenever the in-app update state changes (#800). */
+  onAppUpdate(listener: (state: AppUpdateState) => void): () => void;
+  /** The update state as this renderer loaded, read synchronously in preload. */
+  readonly appUpdateAtLoad: AppUpdateState;
   /** QA-only structural diagnostics are enabled by a main-process argument. */
   readonly qaScrollDiagnosticsEnabled: boolean;
 };

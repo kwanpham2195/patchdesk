@@ -8,11 +8,16 @@ import {
   readWindowFullScreen,
   subscribeToWindowFullScreen,
 } from "./desktop-full-screen-channel";
+import {
+  readAppUpdate,
+  subscribeToAppUpdate,
+} from "./desktop-app-update-channel";
 import { subscribeToMenuActions } from "./desktop-menu-channel";
 import { subscribeToInsightSettled } from "./desktop-insight-settled-channel";
 import { subscribeToReviewsRemoved } from "./desktop-reviews-removed-channel";
 import { subscribeToNotificationClicks } from "./desktop-notification-channel";
 import { subscribeToWatchedPullRequestChanges } from "./desktop-watched-pull-request-channel";
+import type { AppUpdateState } from "../domain/app-update";
 import type { Appearance } from "../domain/contracts";
 import {
   DESKTOP_REQUEST_CHANNEL,
@@ -74,6 +79,10 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
   setWindowAppearance(appearance: Appearance) {
     sendWindowAppearance(ipcRenderer, appearance);
   },
+  onAppUpdate(listener: (state: AppUpdateState) => void) {
+    return subscribeToAppUpdate(ipcRenderer, listener);
+  },
+  appUpdateAtLoad: readAppUpdate(ipcRenderer),
   qaScrollDiagnosticsEnabled,
 });
 
