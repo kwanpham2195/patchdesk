@@ -193,8 +193,8 @@ fi
 if [ "$mode" = update ]; then
   # The new app is in place, so a failed removal leaves a stray copy rather than undoing the update.
   removing_path=$previous_path
-  previous_path=
   app_installed=0
+  previous_path=
   run_in_dir "$install_dir" rm -rf "$removing_path" \
     || say "Could not remove the previous Patchdesk at $removing_path."
   say "Updated Patchdesk from $installed_version to $version at $app_path."
