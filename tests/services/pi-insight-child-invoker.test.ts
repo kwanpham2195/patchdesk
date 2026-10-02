@@ -150,6 +150,38 @@ describe("PiInsightChildInvoker", () => {
     ]);
   });
 
+  it("hands the child the app's path roots so both check request paths against the same directories", async () => {
+    const executor = new RecordingExecutor({
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, value: walkthrough }),
+      stderr: "",
+    });
+    const invoker = new PiInsightChildInvoker(
+      new CommandRunner(executor),
+      "/workspace/patchdesk",
+      "/runtime/node",
+      "/runtime/child.mjs",
+      fixtureEnvironment,
+      { PATCHDESK_DATA_DIRECTORY: "/home/me/.local/share/patchdesk-dev" },
+    );
+    await invoker.invokeWalkthrough(
+      {
+        profileId: "profile",
+        sessionId,
+        contextPath: "/app/context",
+        patchPath: "/app/patch",
+        model: "deepseek/deepseek-v4-flash",
+        reasoning: "low",
+        language: "en",
+      },
+      60_000,
+    );
+    expect(executor.requests[0]?.environment).toMatchObject({
+      PATCHDESK_DATA_DIRECTORY: "/home/me/.local/share/patchdesk-dev",
+    });
+  });
+
   // The Codex invoker's own test pins the same constant on its side
   // (`account-insight-invoker.test.ts`). This is the Pi half: without it the
   // shared bound is only observed through one of the two invokers that

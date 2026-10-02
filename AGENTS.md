@@ -33,7 +33,7 @@ See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the
 
 For runtime work, make sure the dev log tails are live in herdr:
 
-- Log tail tab: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk/logs/patchdesk.jsonl`).
+- Log tail tab: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk-dev/logs/patchdesk.jsonl` for `pnpm dev`).
 - Dev tab: the `pnpm dev` console (renderer/api log lines and HMR output).
 - The maintainer authorizes restarting the dev app and log tail in this workspace's `devapp` and `logs` Herdr tabs. Find their current pane IDs with `herdr tab list --workspace "$HERDR_WORKSPACE_ID"` and `herdr pane list --workspace "$HERDR_WORKSPACE_ID"`; verify the tab, cwd, and pane output before control. Inspect with `herdr pane process-info --pane <id>`. If a process group is present, SIGINT that group before restarting; ctrl+c to the pane does not stop it. Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; `herdr pane wait-output` can match old scrollback. Report restarts. If the tabs are missing or ownership is unclear, ask before stopping or creating a pane. Never kill a process outside those panes.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
@@ -152,15 +152,15 @@ Lessons from past sessions and commits that code cannot enforce. Each one cost a
 
 Dev app and live checks:
 
-- A running Patchdesk holds `app.requestSingleInstanceLock()`; a second instance opens CDP and quits with no error. When 9233 "never comes up", look for the older process first. `pnpm dev` uses its own Electron profile (`~/Library/Application Support/Patchdesk Dev`), so an installed Patchdesk does not hold its lock; both still share `~/.local/share/patchdesk`.
-- App data is `~/.local/share/patchdesk` for every instance; a separate `--user-data-dir` does not give a separate workspace or review store.
+- A running Patchdesk holds `app.requestSingleInstanceLock()`; a second instance opens CDP and quits with no error. When 9233 "never comes up", look for the older process first. `pnpm dev` uses its own Electron profile (`~/Library/Application Support/Patchdesk Dev`), so an installed Patchdesk does not hold its lock.
+- An unpackaged `pnpm dev` keeps its own config, data and cache in `~/.config/patchdesk-dev`, `~/.local/share/patchdesk-dev` and `~/.cache/patchdesk-dev`; the installed app keeps `~/.config/patchdesk` and the like. A fresh dev profile is empty: run `pnpm dev:copy-profile` to copy the installed `config.json` and profiles (it refuses over an existing dev config without `--force`). `PATCHDESK_DEV_SHARED=1 pnpm dev` runs against the installed roots, for a check that needs the real store; it uses `patchdesk-dev.sock` so both apps can listen. A separate `--user-data-dir` does not change these roots.
 - After a renderer `.ts` -> `.tsx` rename, restart `pnpm dev`. Vite's transform cache keeps the old import path in every importer, the lazy route fails on MIME, and `agent-browser reload` does not clear it.
 - When several sessions drive CDP 9233 at once, each passes its own `agent-browser --namespace <name> --cdp 9233`; without it they rebind the shared daemon and clicks land on another session's target (2026-09-27). A namespace is not a named session.
 - `agent-browser` must use the default session: named sessions call `Target.createTarget`, which Electron's CDP does not implement. After `tab_gone`, run `agent-browser --namespace <name> --cdp 9233 tab list --json`, find the `http://localhost:5173/` target's `targetId`, then run `agent-browser --namespace <name> --cdp 9233 tab <targetId>` to rebind. Do not use `tab new` on Electron. Base UI `Select` opens with focus then Enter, not a click. Fixture hashes route only on a full load, so `agent-browser reload` after changing the hash. If a pointer-level browser command stalls, use `eval` to scroll the relevant element.
 - Before a live check, `agent-browser eval 'document.visibilityState'` must say `visible`. A covered or off-screen window drops CDP input while `agent-browser click` still prints Done, and Base UI dialogs never finish closing; bring it forward with `aerospace focus --window-id <id>` (`aerospace list-windows --all | grep Patchdesk`).
 - Inline finding cards on the Diff tab are slotted into `<diffs-container>` only while their row is in the render window; scroll `.review-diff-viewport`, not the card.
 - Behaviour that needs a second GitHub actor (someone else's last comment, a push while away) cannot be self-verified live. Say so and name the state a reviewer should check. CDP 9233 serves the main checkout, so a worker in a worktree cannot verify that worktree's renderer change there; name the screen and state for a reviewer to verify instead.
-- In the dev app, macOS may list desktop notifications under Electron. Check `~/.local/share/patchdesk/logs/patchdesk.jsonl` for a `shown` event before diagnosing a missing banner as an app defect.
+- In the dev app, macOS may list desktop notifications under Electron. Check the dev log (`~/.local/share/patchdesk-dev/logs/patchdesk.jsonl`) for a `shown` event before diagnosing a missing banner as an app defect.
 - In agent shells, `cp` may be interactive. Use `command cp -f` when restoring over an existing file, then verify the diff.
 
 Main process and GitHub:

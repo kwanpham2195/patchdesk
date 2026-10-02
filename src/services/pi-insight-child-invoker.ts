@@ -97,6 +97,8 @@ export class PiInsightChildInvoker implements InsightInvoker {
     private readonly environment: (name: string) => string | undefined = (
       name,
     ) => process.env[name],
+    /** The app's path roots (`PatchdeskPaths.rootsEnvironment()`), so the child checks request paths against the same directories. */
+    private readonly rootsEnvironment: Readonly<Record<string, string>> = {},
   ) {}
 
   /**
@@ -224,7 +226,11 @@ export class PiInsightChildInvoker implements InsightInvoker {
     // environment, which the login shell may still be filling in (ADR 0038,
     // amended 2026-09-19).
     await whenLoginShellEnvironmentImported();
-    const environment = productionChildEnvironment(body, this.environment);
+    const environment = productionChildEnvironment(
+      body,
+      this.environment,
+      this.rootsEnvironment,
+    );
     if (environment === undefined)
       return err({ reason: "runtime_unavailable" });
     const output = await this.commands.runJson({
@@ -274,6 +280,7 @@ function childResponseReason(reason: string): PiInsightChildFailure["reason"] {
 function productionChildEnvironment(
   body: unknown,
   environment: (name: string) => string | undefined,
+  rootsEnvironment: Readonly<Record<string, string>>,
 ): Readonly<Record<string, string>> | undefined {
   if (typeof body !== "object" || body === null || Array.isArray(body))
     return undefined;
@@ -288,6 +295,7 @@ function productionChildEnvironment(
   const names = providerEnvironmentNames(provider);
   if (names.length === 0) return undefined;
   const childEnvironment: Record<string, string> = {};
+  Object.assign(childEnvironment, rootsEnvironment);
   childEnvironment.ELECTRON_RUN_AS_NODE = "1";
   childEnvironment.PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
   childEnvironment.LANG = "C";

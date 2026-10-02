@@ -253,7 +253,7 @@ covers other MCP hosts, each tool, and troubleshooting.
 - Cache: `~/.cache/patchdesk`
 - Logs: `~/.local/share/patchdesk/logs/patchdesk.jsonl`
 
-Patchdesk does not use `~/Library`.
+Patchdesk does not use `~/Library`. A development build (`pnpm dev`) keeps its own copies under the same names with a `-dev` suffix, such as `~/.config/patchdesk-dev`.
 
 ## How Patchdesk stays safe
 

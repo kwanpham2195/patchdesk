@@ -543,8 +543,8 @@ async function readBoundedStdin(
  * Runs one invocation that arrived over the production protocol: it carries
  * paths and identity only, and the prompt is built here. `providers` and
  * `paths` are in-process seams like `runPatchdeskChild`'s: the stdin protocol
- * can name neither, so a packaged child always uses the built-in provider
- * catalog and the installed app's own directories.
+ * can name neither, so a child always uses the built-in provider catalog and
+ * the directories the app passed in its environment (`PatchdeskPaths.fromEnvironment`).
  */
 export async function runProductionChild(
   invocation: ProductionChildInvocation,
@@ -642,7 +642,7 @@ export { resolvePatchdeskReviewSkillPath };
 
 export function canonicalizeProductionInvocation(
   invocation: ProductionChildInvocation,
-  paths: PatchdeskPaths = PatchdeskPaths.default(),
+  paths: PatchdeskPaths = PatchdeskPaths.fromEnvironment(process.env),
 ):
   | (ProductionChildInvocation & {
       readonly debugPath?: string;

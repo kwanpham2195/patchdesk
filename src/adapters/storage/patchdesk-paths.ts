@@ -18,27 +18,102 @@ export type PatchdeskPathRoots = {
   readonly cacheDirectory: string;
 };
 
+/** The roots the app passes to a child process so both sides name the same directories. */
+const PATCHDESK_ROOTS_ENVIRONMENT = {
+  config: "PATCHDESK_CONFIG_DIRECTORY",
+  data: "PATCHDESK_DATA_DIRECTORY",
+  cache: "PATCHDESK_CACHE_DIRECTORY",
+} as const;
+
+/** Set to `1` to run an unpackaged build against the installed app's roots. */
+const DEV_SHARED_ENVIRONMENT = "PATCHDESK_DEV_SHARED";
+
+const INSTALLED_MCP_SOCKET = "patchdesk.sock";
+const SHARED_DEV_MCP_SOCKET = "patchdesk-dev.sock";
+
 /** Builds every app-owned local path without performing filesystem I/O. */
 export class PatchdeskPaths {
-  private constructor(private readonly roots: PatchdeskPathRoots) {}
+  private constructor(
+    private readonly roots: PatchdeskPathRoots,
+    private readonly mcpSocketName: string,
+  ) {}
 
-  /** Use the standard XDG-style locations for the installed desktop app. */
-  static default(): PatchdeskPaths {
+  /**
+   * The roots one app process uses: the installed app's when packaged, the
+   * `-dev` roots when not, so `pnpm dev` never touches the installed app's
+   * settings or Reviews. `PATCHDESK_DEV_SHARED=1` sends an unpackaged build
+   * back to the installed roots, with its own MCP socket so both apps can listen.
+   */
+  static forBuild(input: {
+    readonly packaged: boolean;
+    readonly environment: Readonly<Record<string, string | undefined>>;
+  }): PatchdeskPaths {
+    if (input.packaged) return PatchdeskPaths.installedRoots();
+    if (input.environment[DEV_SHARED_ENVIRONMENT] === "1")
+      return PatchdeskPaths.installedRoots(SHARED_DEV_MCP_SOCKET);
+    return PatchdeskPaths.rootsNamed("patchdesk-dev", INSTALLED_MCP_SOCKET);
+  }
+
+  /** The roots a parent app process passed down, else the installed ones. */
+  static fromEnvironment(
+    environment: Readonly<Record<string, string | undefined>>,
+  ): PatchdeskPaths {
+    const configDirectory = environment[PATCHDESK_ROOTS_ENVIRONMENT.config];
+    const dataDirectory = environment[PATCHDESK_ROOTS_ENVIRONMENT.data];
+    const cacheDirectory = environment[PATCHDESK_ROOTS_ENVIRONMENT.cache];
+    if (
+      configDirectory === undefined ||
+      dataDirectory === undefined ||
+      cacheDirectory === undefined
+    )
+      return PatchdeskPaths.installedRoots();
+    return new PatchdeskPaths(
+      { configDirectory, dataDirectory, cacheDirectory },
+      INSTALLED_MCP_SOCKET,
+    );
+  }
+
+  private static installedRoots(
+    mcpSocketName = INSTALLED_MCP_SOCKET,
+  ): PatchdeskPaths {
+    return PatchdeskPaths.rootsNamed("patchdesk", mcpSocketName);
+  }
+
+  /** Standard XDG-style locations under one app directory name. */
+  private static rootsNamed(
+    appDirectoryName: string,
+    mcpSocketName: string,
+  ): PatchdeskPaths {
     const home = homedir();
-    return new PatchdeskPaths({
-      configDirectory: join(home, ".config", "patchdesk"),
-      dataDirectory: join(home, ".local", "share", "patchdesk"),
-      cacheDirectory: join(home, ".cache", "patchdesk"),
-    });
+    return new PatchdeskPaths(
+      {
+        configDirectory: join(home, ".config", appDirectoryName),
+        dataDirectory: join(home, ".local", "share", appDirectoryName),
+        cacheDirectory: join(home, ".cache", appDirectoryName),
+      },
+      mcpSocketName,
+    );
   }
 
   /** Isolate tests beneath one caller-owned temporary directory. */
   static forTest(rootDirectory: string): PatchdeskPaths {
-    return new PatchdeskPaths({
-      configDirectory: join(rootDirectory, "config", "patchdesk"),
-      dataDirectory: join(rootDirectory, "data", "patchdesk"),
-      cacheDirectory: join(rootDirectory, "cache", "patchdesk"),
-    });
+    return new PatchdeskPaths(
+      {
+        configDirectory: join(rootDirectory, "config", "patchdesk"),
+        dataDirectory: join(rootDirectory, "data", "patchdesk"),
+        cacheDirectory: join(rootDirectory, "cache", "patchdesk"),
+      },
+      INSTALLED_MCP_SOCKET,
+    );
+  }
+
+  /** The environment that makes a child process resolve these same roots through `fromEnvironment`. */
+  rootsEnvironment() {
+    return {
+      [PATCHDESK_ROOTS_ENVIRONMENT.config]: this.configDirectory(),
+      [PATCHDESK_ROOTS_ENVIRONMENT.data]: this.dataDirectory(),
+      [PATCHDESK_ROOTS_ENVIRONMENT.cache]: this.cacheDirectory(),
+    };
   }
 
   configDirectory(): string {
@@ -74,7 +149,7 @@ export class PatchdeskPaths {
 
   /** The MCP shim's Unix socket (ADR 0052); `PATCHDESK_MCP_SOCKET` overrides it. */
   mcpSocketFile(): string {
-    return join(this.dataDirectory(), "mcp", "patchdesk.sock");
+    return join(this.dataDirectory(), "mcp", this.mcpSocketName);
   }
 
   configFile(): string {

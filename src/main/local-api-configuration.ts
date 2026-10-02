@@ -111,7 +111,7 @@ export type LocalApiConfiguration = {
   readonly storageManagement?: StorageManagementSeam;
   /** Test-only merge seam. Production gets this capability from the main-process adapter. */
   readonly mergeWriter?: GitHubMergeWriter;
-  readonly paths?: PatchdeskPaths;
+  readonly paths: PatchdeskPaths;
   /** Main-process-only source of currently enabled Pi models. */
   readonly modelCatalog?: PiRuntimeModelCatalog;
   /** Main-process-only provider catalog; account-provider activation is explicit and authenticated. */

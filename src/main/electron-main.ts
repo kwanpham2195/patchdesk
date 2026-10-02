@@ -129,7 +129,12 @@ const rendererListening = new WeakMap<BrowserWindow, Promise<void>>();
 let storedAppearance: Appearance = "system";
 const lifecycleGate = new ReviewLifecycleGate();
 const reviewOperations = new ReviewOperationCoordinator();
-const logs = new AppLogService(PatchdeskPaths.default(), {
+/** Every app-owned path this process uses; unpackaged builds keep `-dev` roots of their own (#804). */
+const paths = PatchdeskPaths.forBuild({
+  packaged: app.isPackaged,
+  environment: process.env,
+});
+const logs = new AppLogService(paths, {
   stdoutMirror:
     !app.isPackaged || process.argv.includes("--patchdesk-tail-logs"),
 });
@@ -151,7 +156,7 @@ function logUnclassifiedCommandFailure(stderr: string): void {
 }
 
 const diagnostics = new ReviewDiagnosticService(
-  PatchdeskPaths.default(),
+  paths,
   () => new Date().toISOString(),
   undefined,
   {
@@ -202,7 +207,7 @@ const diagnostics = new ReviewDiagnosticService(
 const githubFetch: GitHubFetch = (url, init) =>
   net.fetch(url, { ...init, cache: "no-store", credentials: "omit" });
 const appUpdate = createDesktopAppUpdate({
-  paths: PatchdeskPaths.default(),
+  paths,
   runningVersion: app.getVersion(),
   packaged: app.isPackaged,
   githubFetch,
@@ -219,7 +224,7 @@ const systemNotifier = createDesktopNotifier({
     !mainWindow.isDestroyed() &&
     mainWindow.isFocused(),
   destination: () => rendererDestination,
-  settings: loadNotificationSettings,
+  settings: () => loadNotificationSettings(paths),
   createNotification: (options) => new Notification(options),
   onClick(click) {
     const window = mainWindow;
@@ -302,7 +307,8 @@ const desktopLifecycle = createDesktopLifecycle({
           ),
         insightProviders,
         githubFetch,
-        mcpSocketPath: () => desktopMcpSocketPath(PatchdeskPaths.default()),
+        paths,
+        mcpSocketPath: () => desktopMcpSocketPath(paths),
         reviewWindow,
         lifecycleGate,
         retentionSweep: true,
@@ -381,7 +387,6 @@ function createInsightCoordinator(
   operations: ReviewOperationCoordinator,
   github: GitHubReader,
 ): InsightRunCoordinator {
-  const paths = PatchdeskPaths.default();
   const runtime = resolveInsightRuntime(
     app.getAppPath(),
     process.cwd(),
@@ -444,6 +449,8 @@ function createInsightCoordinator(
             runtime.root,
             process.execPath,
             runtime.runnerPath,
+            undefined,
+            paths.rootsEnvironment(),
           ),
     "codex-cli-account": accountInvoker(
       "codex-cli-account",
@@ -528,9 +535,16 @@ function importLoginShellEnvironmentOnce(): Promise<void> {
 }
 
 app.setName("Patchdesk");
-// Electron keys the single-instance lock on userData, so a separate dev profile lets an installed Patchdesk run beside `pnpm dev`; PatchdeskPaths stay shared.
+// Electron keys the single-instance lock on userData, so a separate dev profile lets an installed Patchdesk run beside `pnpm dev`. PatchdeskPaths split the same way (`-dev` roots), unless PATCHDESK_DEV_SHARED=1 (#804).
 if (!app.isPackaged && !app.commandLine.hasSwitch("user-data-dir"))
   app.setPath("userData", join(app.getPath("appData"), "Patchdesk Dev"));
+logs.write({
+  process: "main",
+  level: "info",
+  topic: "paths",
+  message: "app roots in use",
+  meta: { packaged: app.isPackaged, ...paths.rootsEnvironment() },
+});
 process.on("uncaughtException", (cause: unknown) => {
   logs.write({
     process: "main",
@@ -654,9 +668,10 @@ async function createWorkbenchWindow(
 ): Promise<BrowserWindow> {
   const [restoredBounds, appearance] = await Promise.all([
     loadWindowBounds(
+      paths,
       screen.getAllDisplays().map((display) => display.workArea),
     ),
-    loadStoredAppearance(),
+    loadStoredAppearance(paths),
   ]);
   storedAppearance = appearance;
   const window = new BrowserWindow({
@@ -703,12 +718,13 @@ async function createWorkbenchWindow(
     if (boundsSaveTimer !== undefined) clearTimeout(boundsSaveTimer);
     boundsSaveTimer = setTimeout(() => {
       boundsSaveTimer = undefined;
-      if (!window.isDestroyed()) void saveWindowBounds(window.getBounds());
+      if (!window.isDestroyed())
+        void saveWindowBounds(paths, window.getBounds());
     }, 250);
   };
   window.on("resize", persistCurrentBounds);
   window.on("move", persistCurrentBounds);
-  const allowedHosts = await loadAllowedExternalHosts();
+  const allowedHosts = await loadAllowedExternalHosts(paths);
   let markRendererListening = (): void => undefined;
   rendererListening.set(
     window,

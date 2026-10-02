@@ -6,7 +6,7 @@ import {
   type ParsedLocalApiConfiguration,
   type StorageManagementSeam,
 } from "./local-api-configuration";
-import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
@@ -193,7 +193,7 @@ export async function buildLocalApiStores(
     return { _tag: "invalid-configuration" };
   }
 
-  const paths = configuration.paths ?? PatchdeskPaths.default();
+  const paths = configuration.paths;
   const logs = configuration.logs ?? new AppLogService(paths);
   const commands = configuration.commands ?? createLoggedCommandRunner(logs);
   const credentials =

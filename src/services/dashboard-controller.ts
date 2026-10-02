@@ -6,7 +6,7 @@ import { systemNow } from "../adapters/process/system-clock";
 import { InsightStore } from "../adapters/storage/insight-store";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import { MaintainerInboxCacheStore } from "../adapters/storage/maintainer-inbox-cache-store";
-import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import {
@@ -129,7 +129,7 @@ export class DashboardController {
     github: GitHubReader,
     /** Reads the folder a maintainer chooses as a watched repository's checkout. */
     private readonly git: GitReadExecutor,
-    paths: PatchdeskPaths = PatchdeskPaths.default(),
+    paths: PatchdeskPaths,
     private readonly commands: CommandRunner = new CommandRunner(),
     /** Optional: without it inbox rows carry no author avatar and fall back to initials. */
     avatars?: AvatarRailDependencies,
