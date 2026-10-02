@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added update notices: the title bar shows a newer release beside Settings, and Update now upgrades a Homebrew install and reopens Patchdesk. Settings > General > Check for updates turns the daily check off. #800
+
 ## 0.0.17 - 2026-10-02
 
 - Added newer models for API key Insight runs, among them Claude Sonnet 5.5, GPT-6.1 Sol, and Grok 4.7 on more providers. Providers retired some, among them Fireworks DeepSeek V4 and Kimi K2 on Together; a saved model no longer listed needs picking again in the run dialog. #748

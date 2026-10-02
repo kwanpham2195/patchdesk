@@ -27,6 +27,8 @@ Appearance is in place before Patchdesk draws anything. At launch Patchdesk read
 
 Diff theme offers separate Light appearance and Dark appearance selectors from the installed theme catalog. Each General setting is one row with its label on the left and its selector on the right, and every selector on General, including the watched pull request interval, has the same width. The default pair is `pierre-light` and `pierre-dark`. The selected appearance determines which member of the pair a Review diff uses.
 
+The Updates card below Notifications holds **Check for updates**, on by default. While it is on, Patchdesk asks GitHub for the latest release at launch and once a day and announces a newer one in the titlebar ([Navigation and overlays](../foundations/navigation-and-overlays.md)). Off sends no request. A failed save keeps the previous choice and says so under the switch.
+
 ### Leave unchanged
 
 Opening and closing Settings without changing a selector has no effect. Changing Settings sections does not apply a new value. Reading a selector does not write GitHub, alter a Review session, or start an Insight.

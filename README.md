@@ -111,6 +111,8 @@ notarized, so clear the quarantine flag before the first launch:
 xattr -dr com.apple.quarantine /Applications/Patchdesk.app
 ```
 
+After that, Patchdesk announces each new release in its title bar and can install it through Homebrew for you.
+
 ### Install from the disk image
 
 1. Download the `.dmg` from the
