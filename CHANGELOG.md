@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.17 - 2026-10-02
+
 - Added newer models for API key Insight runs, among them Claude Sonnet 5.5, GPT-6.1 Sol, and Grok 4.7 on more providers. Providers retired some, among them Fireworks DeepSeek V4 and Kimi K2 on Together; a saved model no longer listed needs picking again in the run dialog. #748
 
 - Fixed Pull requests sending one search over GitHub's limit at launch when saved filters did not fit the first repository, which could flash a failed state. #793
