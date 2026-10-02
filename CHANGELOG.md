@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed `pnpm dev` to keep its own settings and Review data, so it no longer changes the installed app. `pnpm dev:copy-profile` copies your workspaces into it. #804
+
 ## 0.0.18 - 2026-10-02
 
 - Added update notices: the title bar shows a newer release beside Settings, and Update now upgrades a Homebrew install and reopens Patchdesk. Settings > General > Check for updates turns the daily check off. #800
