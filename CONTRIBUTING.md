@@ -50,11 +50,23 @@ pnpm --dir runtime/insight install
 pnpm --dir runtime/insight build
 ```
 
-**The MCP shim.** `pnpm dev` points the app's MCP socket at
-`~/.local/share/patchdesk/mcp/patchdesk-dev.sock`, so the dev app and an
-installed Patchdesk can listen side by side (ADR 0052). `pnpm -s mcp:shim`
+**Dev profile.** `pnpm dev` keeps its config, data and cache apart from the
+installed app: `~/.config/patchdesk-dev`, `~/.local/share/patchdesk-dev` and
+`~/.cache/patchdesk-dev`, so a setting changed in the dev app never reaches an
+installed Patchdesk and the two never write the same Review records. The dev
+profile starts empty. `pnpm dev:copy-profile` copies `config.json` and the
+profiles from `~/.config/patchdesk` so the dev app starts with the same
+workspaces and watchlists; it copies no data or cache, and refuses when the dev
+config exists unless you pass `--force`. `PATCHDESK_DEV_SHARED=1 pnpm dev` runs
+the dev app against the installed roots for a check that needs the real store;
+the app logs which roots it uses at startup (topic `paths`).
+
+**The MCP shim.** The dev app listens on
+`~/.local/share/patchdesk-dev/mcp/patchdesk.sock`, so it and an installed
+Patchdesk can listen side by side (ADR 0052). `pnpm -s mcp:shim`
 runs the shim the dev app's main build writes to `out/main/mcp-shim.js`
-against that socket; `pnpm -s mcp:shim --check` calls `list_repositories` and
+against that socket (with `PATCHDESK_DEV_SHARED=1` the app listens on
+`~/.local/share/patchdesk/mcp/patchdesk-dev.sock`; set `PATCHDESK_MCP_SOCKET` to it); `pnpm -s mcp:shim --check` calls `list_repositories` and
 prints the result. Keep `-s`: without it pnpm prints its banner to stdout,
 which is the MCP channel. To register it with a client, give the client the
 command `pnpm -s mcp:shim` with this checkout as its working directory.

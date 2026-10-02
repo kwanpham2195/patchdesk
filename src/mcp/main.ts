@@ -23,9 +23,10 @@ const usage = `Usage: patchdesk mcp [--check]
   patchdesk setup set-checkout  Use the checkout at --cwd for the repository it belongs to, as after a move.
 `;
 
+// The shim runs from the installed launcher or from `pnpm mcp:shim`; only the latter names the dev app's socket, through PATCHDESK_MCP_SOCKET.
 const socketPath = resolveMcpSocketPath(
   process.env[MCP_SOCKET_ENV],
-  PatchdeskPaths.default(),
+  PatchdeskPaths.forBuild({ packaged: true, environment: {} }),
 );
 const report = (line: string): void => {
   process.stderr.write(`${line}\n`);

@@ -11,7 +11,10 @@ import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
 import { hasMatchingAppCapability } from "./app-capability";
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import { buildLocalApiContainer, type LogWriter } from "./local-api-container";
-import type { LocalApiConfiguration } from "./local-api-configuration";
+import type {
+  LocalApiConfiguration,
+  ParsedLocalApiConfiguration,
+} from "./local-api-configuration";
 import {
   createMcpRefusalRecorder,
   createMcpToolTable,
@@ -173,7 +176,7 @@ function logLocalApiRequests(logs: LogWriter): MiddlewareHandler {
 }
 
 function corsForRenderer(
-  configuration: LocalApiConfiguration,
+  configuration: ParsedLocalApiConfiguration,
 ): MiddlewareHandler {
   return async (context, next) => {
     const origin = context.req.header("Origin");
@@ -211,7 +214,7 @@ export async function healthCheckLocalApi(
 }
 
 function requireLocalApiAccess(
-  configuration: LocalApiConfiguration,
+  configuration: ParsedLocalApiConfiguration,
 ): MiddlewareHandler {
   return async (context, next) => {
     const capability = context.req.header(APP_CAPABILITY_HEADER);
@@ -235,7 +238,7 @@ function requireLocalApiAccess(
 }
 
 function isAllowedOrigin(
-  configuration: LocalApiConfiguration,
+  configuration: ParsedLocalApiConfiguration,
   origin: string | undefined,
 ): boolean {
   return (

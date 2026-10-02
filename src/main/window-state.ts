@@ -3,7 +3,7 @@ import { join } from "node:path";
 import * as v from "valibot";
 
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
-import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 
 export type WindowBounds = {
   readonly x: number;
@@ -25,9 +25,10 @@ const windowBoundsSchema = v.object({
 });
 
 export async function loadWindowBounds(
+  paths: PatchdeskPaths,
   workAreas: ReadonlyArray<WindowBounds>,
 ): Promise<WindowBounds> {
-  const stored = await readJsonFile(windowStatePath());
+  const stored = await readJsonFile(windowStatePath(paths));
   const parsed =
     stored._tag === "ok"
       ? v.safeParse(windowBoundsSchema, stored.value)
@@ -38,8 +39,11 @@ export async function loadWindowBounds(
   );
 }
 
-export async function saveWindowBounds(bounds: WindowBounds): Promise<void> {
-  await writeAtomicJson(windowStatePath(), bounds);
+export async function saveWindowBounds(
+  paths: PatchdeskPaths,
+  bounds: WindowBounds,
+): Promise<void> {
+  await writeAtomicJson(windowStatePath(paths), bounds);
 }
 
 /** Keep restored windows usable when displays disappear or change resolution. */
@@ -72,8 +76,8 @@ export function clampWindowBounds(
   };
 }
 
-function windowStatePath(): string {
-  return join(PatchdeskPaths.default().configDirectory(), "window-state.json");
+function windowStatePath(paths: PatchdeskPaths): string {
+  return join(paths.configDirectory(), "window-state.json");
 }
 
 function intersectionArea(left: WindowBounds, right: WindowBounds): number {
