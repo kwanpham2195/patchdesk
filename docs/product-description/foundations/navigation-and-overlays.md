@@ -10,6 +10,10 @@ The app opens on the last saved destination. The maintainer selects a pull reque
 
 Settings opens from the titlebar, Navigate, ⌘,, or the native application menu. It defaults to General unless the caller targets a section. Closing it reveals the same destination and returns focus to the control that opened it.
 
+When a newer Patchdesk release is published, the titlebar shows `<version> available` beside Settings. Patchdesk checks at launch and once a day while **Check for updates** is on; a failed or rate-limited check shows nothing, and development builds never check. The control opens `Patchdesk <version> is available` with a link to the release notes and Dismiss, which hides that version only; a later release shows the control again. For a Homebrew cask install, **Update now** quits through the usual close guard, so an unsaved Review draft or a pending GitHub write can still stop the quit, and stopping it cancels the update. Once Patchdesk has quit, Homebrew upgrades the app and the `patchdesk` command, clears the quarantine flag, and opens Patchdesk again. Other installs get the Homebrew command to copy instead. The first launch after an update shows `Updated to <version>`; if the version did not change, it shows `Update did not finish` with the path of the update log and the command to run by hand.
+
+> Technical note: the upgrade runs in a helper the main process starts just before it exits. The helper waits for the app to quit, because the upgrade replaces the app bundle, and writes its output to `~/.local/share/patchdesk/logs/update.log`.
+
 Within a Review workbench, Patchdesk saves the active top-level tab, navigator section, and selected file for that Review. Reloading or relaunching restores valid saved values without applying one Review's position to another.
 
 ## The task, event by event
