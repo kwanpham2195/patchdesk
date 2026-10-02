@@ -1,6 +1,9 @@
 /** `major.minor.patch` with an optional leading `v`; a prerelease or build suffix does not match. */
 const releaseVersionPattern = /^v?(\d+)\.(\d+)\.(\d+)$/;
 
+/** The one app copy the in-app update upgrades, clears and reopens. */
+export const INSTALLED_APP_PATH = "/Applications/Patchdesk.app";
+
 /** The command a Homebrew install runs by hand; the in-app update runs the same two steps (#800). */
 export const MANUAL_UPDATE_COMMAND =
   "brew upgrade --cask patchdesk && xattr -dr com.apple.quarantine /Applications/Patchdesk.app";

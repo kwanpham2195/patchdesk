@@ -951,6 +951,7 @@ async function guardDesktopExit(intent: "window" | "quit"): Promise<void> {
     rendererNavigationState = "clear";
     if (intent === "quit") app.quit();
     else {
+      appUpdate.service.cancelInstall();
       allowWindowClose = true;
       window.close();
     }
