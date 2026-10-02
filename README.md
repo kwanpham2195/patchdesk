@@ -83,8 +83,6 @@ Patchdesk runs on macOS with Apple Silicon. You need `git` and the GitHub CLI
 
 ### Install with one command
 
-For a fresh install, run:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh
 ```
@@ -93,9 +91,19 @@ curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts
 the latest published Apple Silicon ZIP, checks its SHA-256 digest against the
 GitHub release, installs Patchdesk in `/Applications`, and links `patchdesk`
 in `/usr/local/bin`. It may request an administrator password for those
-folders. It stops if the app or command already exists, so you can choose how
-to update or replace it. The current release is not notarized, so the installer
-clears the download quarantine flag if macOS added it.
+folders. The current release is not notarized, so the installer clears the
+download quarantine flag if macOS added it.
+
+If the app or the command already exists, the installer stops and changes
+nothing. To update an app you installed this way or from the disk image, quit
+Patchdesk and run the installer with `--update`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update
+```
+
+The update checks the download the same way, replaces the app, and puts the
+previous app back if any step fails. It leaves the `patchdesk` command as it is.
 
 ### Install with Homebrew
 
@@ -111,7 +119,12 @@ notarized, so clear the quarantine flag before the first launch:
 xattr -dr com.apple.quarantine /Applications/Patchdesk.app
 ```
 
-After that, Patchdesk announces each new release in its title bar and can install it through Homebrew for you.
+Patchdesk announces each new release in its title bar, however you installed
+it. **Update now** upgrades a Homebrew install through Homebrew, and updates an
+app the installer or the disk image put in `/Applications` through the
+installer's `--update` mode. If Patchdesk cannot replace the app itself, for
+example because `/Applications` needs an administrator password, the title bar
+shows the command to run instead.
 
 ### Install from the disk image
 
@@ -163,7 +176,7 @@ to review and give it this task:
 > 1. Check the prerequisites in [Finish setup](#finish-setup): `uname -m`
 >    prints `arm64`, and `git --version` and `gh --version` work.
 > 2. If `command -v patchdesk` finds nothing, install Patchdesk
->    [with Homebrew](#install-with-homebrew). If
+>    [with one command](#install-with-one-command). If
 >    `/Applications/Patchdesk.app` already exists,
 >    [link the command](docs/mcp.md#install-the-command) instead.
 > 3. Run `patchdesk setup status`. If it answers `app_not_running`, run

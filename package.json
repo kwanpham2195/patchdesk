@@ -124,6 +124,10 @@
         "to": "bin/patchdesk"
       },
       {
+        "from": "scripts/install-release.sh",
+        "to": "install-release.sh"
+      },
+      {
         "from": "out/workflow-runtime",
         "to": "insight-runtime",
         "filter": [

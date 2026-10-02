@@ -2,7 +2,10 @@ import type {
   LatestReleaseFailure,
   PatchdeskRelease,
 } from "../adapters/github/github-latest-release";
-import type { HomebrewBrewPath } from "../adapters/process/homebrew-update-helper";
+import type {
+  AppInstallation,
+  AppUpdater,
+} from "../adapters/process/app-update-helper";
 import type { AppUpdateRecord } from "../adapters/storage/app-update-state-store";
 import {
   INSTALLED_APP_PATH,
@@ -26,14 +29,14 @@ type AppUpdateDependencies = {
   readonly fetchLatestRelease: () => Promise<
     Result<PatchdeskRelease | undefined, LatestReleaseFailure>
   >;
-  /** The cask's `brew`, or `undefined` when Patchdesk was not installed through Homebrew. */
-  readonly homebrewBrewPath: HomebrewBrewPath | undefined;
-  /** `process.execPath`; only the copy in `INSTALLED_APP_PATH` is the one Homebrew upgrades. */
+  /** Who manages `INSTALLED_APP_PATH`, and what Update now runs for it. */
+  readonly installation: AppInstallation;
+  /** `process.execPath`; only the copy in `INSTALLED_APP_PATH` is the one an update replaces. */
   readonly executablePath: string;
   /** Where the helper writes; a failed update's notice names it. */
   readonly logPath: string;
   /** Answers whether the helper process started. */
-  readonly startHelper: (brewPath: HomebrewBrewPath) => Promise<boolean>;
+  readonly startHelper: (updater: AppUpdater) => Promise<boolean>;
   /** Pushes every state change to the title bar. */
   readonly publish: (state: AppUpdateState) => void;
   /** Called for the first failed check of a launch only. */
@@ -69,7 +72,11 @@ export class AppUpdateService {
       record.lastLaunchedVersion !== runningVersion
         ? { kind: "updated", version: runningVersion }
         : record.updateAttemptedFrom === runningVersion
-          ? { kind: "updateFailed", logPath: this.dependencies.logPath }
+          ? {
+              kind: "updateFailed",
+              logPath: this.dependencies.logPath,
+              installedBy: this.dependencies.installation.installedBy,
+            }
           : undefined;
     const { updateAttemptedFrom: _consumed, ...kept } = record;
     this.record = { ...kept, lastLaunchedVersion: runningVersion };
@@ -105,13 +112,17 @@ export class AppUpdateService {
   }
 
   state(): AppUpdateState {
-    const install: AvailableAppUpdate["install"] =
-      this.homebrewBrewPath() === undefined ? "manual" : "homebrew";
+    const available: AvailableAppUpdate | undefined =
+      this.available === undefined
+        ? undefined
+        : {
+            ...this.available,
+            installedBy: this.dependencies.installation.installedBy,
+            canInstall: this.updater() !== undefined,
+            installing: this.installing,
+          };
     return definedProps({
-      available:
-        this.available === undefined
-          ? undefined
-          : { ...this.available, install, installing: this.installing },
+      available,
       launchNotice: this.launchNotice,
     });
   }
@@ -132,7 +143,7 @@ export class AppUpdateService {
 
   /** Marks an install to run when the app quits; the caller then asks to quit. */
   prepareInstall(): boolean {
-    if (this.available === undefined || this.homebrewBrewPath() === undefined)
+    if (this.available === undefined || this.updater() === undefined)
       return false;
     this.installing = true;
     this.publish();
@@ -152,10 +163,10 @@ export class AppUpdateService {
    * launch. A helper that never started records nothing.
    */
   async startInstallBeforeExit(): Promise<void> {
-    const brewPath = this.homebrewBrewPath();
-    if (!this.installing || brewPath === undefined) return;
+    const updater = this.updater();
+    if (!this.installing || updater === undefined) return;
     this.installing = false;
-    if (!(await this.dependencies.startHelper(brewPath))) return;
+    if (!(await this.dependencies.startHelper(updater))) return;
     this.record = {
       ...this.record,
       updateAttemptedFrom: this.dependencies.runningVersion,
@@ -164,9 +175,9 @@ export class AppUpdateService {
   }
 
   /** A copy outside `/Applications`, such as a disk image or a local build, gets the manual command. */
-  private homebrewBrewPath(): HomebrewBrewPath | undefined {
+  private updater(): AppUpdater | undefined {
     return this.dependencies.executablePath.startsWith(`${INSTALLED_APP_PATH}/`)
-      ? this.dependencies.homebrewBrewPath
+      ? this.dependencies.installation.updater
       : undefined;
   }
 

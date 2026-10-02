@@ -76,7 +76,8 @@ const available: AppUpdateState = {
     version: "0.0.18",
     releaseUrl:
       "https://github.com/kwanpham2195/patchdesk/releases/tag/v0.0.18",
-    install: "homebrew",
+    installedBy: "homebrew",
+    canInstall: true,
     installing: false,
   },
 };

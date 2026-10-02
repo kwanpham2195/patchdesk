@@ -23,7 +23,7 @@ ships inside the app and runs on Electron's own Node.
 
 ## Install
 
-For a fresh install without Homebrew, run the shell installer:
+Install with the shell installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh
@@ -32,9 +32,20 @@ curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts
 You can [read the installer](../scripts/install-release.sh) before running it.
 It checks the latest release ZIP against the release's SHA-256 digest, installs
 Patchdesk in `/Applications`, and links `patchdesk` in `/usr/local/bin`. It may
-request an administrator password. It refuses to replace an existing app or
-command. If the downloaded app has a quarantine flag, it clears that flag
-because the current release is not notarized.
+request an administrator password. If the downloaded app has a quarantine
+flag, it clears that flag because the current release is not notarized.
+
+The installer refuses to replace an existing app or command. To update an app
+you installed with it or from the `.dmg`, quit Patchdesk and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update
+```
+
+The update checks the download the same way, replaces the app in
+`/Applications`, and puts the previous app back if any step fails. It exits
+without a download when the latest release is already installed, and leaves
+the `patchdesk` command as it is.
 
 You can also install through Homebrew or download the `.dmg` by hand.
 
@@ -61,6 +72,14 @@ brew install --cask kwanpham2195/patchdesk/patchdesk
 Installing by the fully qualified cask name trusts only this cask. Before the
 first launch, run the same `xattr` command shown above. Later
 versions install with `brew upgrade --cask patchdesk`.
+
+**Updating from the app:** Patchdesk shows each new release in the title bar.
+**Update now** quits Patchdesk, updates it, and opens it again. A Homebrew
+install updates through Homebrew; any other app in `/Applications` updates
+through the installer's `--update` mode. When Patchdesk cannot replace the app
+itself, for example because `/Applications` needs an administrator password or
+the app runs from somewhere else, the title bar shows the command to run in
+Terminal instead.
 
 Opening Patchdesk a second time while it is already running quits the new
 copy right away; the existing window comes to the front instead.

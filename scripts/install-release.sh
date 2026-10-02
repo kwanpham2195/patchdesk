@@ -21,8 +21,24 @@ run_in_dir() (
   fi
 )
 
+# Waits briefly before refusing, because an app that just quit can stay
+# registered with Launch Services for a moment.
+patchdesk_running() {
+  checks=0
+  while [ -n "$(lsappinfo find bundleid=io.github.kwanpham2195.patchdesk)" ]; do
+    checks=$((checks + 1))
+    [ "$checks" -lt 10 ] || return 0
+    sleep 0.2
+  done
+  return 1
+}
+
 main() {
-[ "$#" -eq 0 ] || fail 'This installer takes no arguments.'
+case "$#:${1:-}" in
+  0:) mode=install ;;
+  1:--update) mode=update ;;
+  *) fail 'Usage: install-release.sh [--update]' ;;
+esac
 [ "$(uname -s)" = Darwin ] || fail 'macOS is required.'
 [ "$(uname -m)" = arm64 ] || fail 'An Apple Silicon Mac is required.'
 for tool in curl plutil shasum ditto mktemp xattr; do
@@ -37,21 +53,36 @@ case "$bin_dir" in /*) ;; *) fail 'PATCHDESK_BIN_DIR must be an absolute path.' 
 
 app_path=$install_dir/Patchdesk.app
 bin_path=$bin_dir/patchdesk
-if [ -e "$app_path" ] || [ -L "$app_path" ]; then
-  fail "Patchdesk is already installed at $app_path. Choose how to update that installation."
-fi
-if [ -e "$bin_path" ] || [ -L "$bin_path" ]; then
-  fail "Command path already exists: $bin_path"
-fi
-
-if [ ! -w "$install_dir" ] || { [ -d "$bin_dir" ] && [ ! -w "$bin_dir" ]; }; then
-  command -v sudo >/dev/null 2>&1 || fail 'sudo is required to write to the install folders.'
+if [ "$mode" = update ]; then
+  if [ ! -d "$app_path" ] || [ -L "$app_path" ]; then
+    fail "Patchdesk is not installed at $app_path. Run the installer without --update to install it."
+  fi
+  installed_version=$(plutil -extract CFBundleShortVersionString raw -o - "$app_path/Contents/Info.plist" 2>/dev/null) \
+    || fail "Could not read the installed Patchdesk version from $app_path."
+  command -v lsappinfo >/dev/null 2>&1 || fail 'lsappinfo is required.'
+  if patchdesk_running; then
+    fail 'Patchdesk is running. Quit Patchdesk, then run the update again.'
+  fi
+  [ -w "$install_dir" ] || command -v sudo >/dev/null 2>&1 \
+    || fail 'sudo is required to write to the install folder.'
+else
+  if [ -e "$app_path" ] || [ -L "$app_path" ]; then
+    fail "Patchdesk is already installed at $app_path. To update it, run the installer with --update."
+  fi
+  if [ -e "$bin_path" ] || [ -L "$bin_path" ]; then
+    fail "Command path already exists: $bin_path"
+  fi
+  if [ ! -w "$install_dir" ] || { [ -d "$bin_dir" ] && [ ! -w "$bin_dir" ]; }; then
+    command -v sudo >/dev/null 2>&1 || fail 'sudo is required to write to the install folders.'
+  fi
 fi
 
 temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/patchdesk-install.XXXXXX")
 staging_path=
 app_installed=0
 bin_linked=0
+# Set while the previous app waits beside the new one; a failure puts it back.
+previous_path=
 cleanup() {
   result=$?
   trap - EXIT HUP INT TERM
@@ -61,6 +92,11 @@ cleanup() {
     fi
     if [ "$app_installed" -eq 1 ]; then
       run_in_dir "$install_dir" rm -rf "$app_path" || :
+    fi
+    if [ -n "$previous_path" ] && [ -e "$previous_path" ]; then
+      if [ -e "$app_path" ] || ! run_in_dir "$install_dir" mv "$previous_path" "$app_path"; then
+        say "Could not restore the previous Patchdesk; it is at $previous_path."
+      fi
     fi
   fi
   if [ -n "$staging_path" ] && [ -e "$staging_path" ]; then
@@ -81,6 +117,10 @@ tag=$(plutil -extract tag_name raw -o - "$release_json") \
 printf '%s\n' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' \
   || fail "Unexpected release tag: $tag"
 version=${tag#v}
+if [ "$mode" = update ] && [ "$installed_version" = "$version" ]; then
+  say "Patchdesk $version is already installed at $app_path."
+  exit 0
+fi
 asset_name=Patchdesk-$version-arm64-mac.zip
 
 index=0
@@ -116,7 +156,7 @@ source_app=$unpacked/Patchdesk.app
 [ -f "$source_app/Contents/Resources/bin/patchdesk" ] \
   || fail 'The download does not contain the patchdesk command.'
 
-if [ ! -d "$bin_dir" ]; then
+if [ "$mode" = install ] && [ ! -d "$bin_dir" ]; then
   bin_parent=${bin_dir%/*}
   if [ -d "$bin_parent" ]; then
     run_in_dir "$bin_parent" mkdir "$bin_dir" || fail "Could not create $bin_dir."
@@ -131,6 +171,13 @@ candidate_staging_path=$install_dir/.Patchdesk.app.installing.$$
 staging_path=$candidate_staging_path
 run_in_dir "$install_dir" ditto "$source_app" "$staging_path" \
   || fail 'Could not copy Patchdesk into Applications.'
+if [ "$mode" = update ]; then
+  candidate_previous_path=$install_dir/.Patchdesk.app.previous.$$
+  [ ! -e "$candidate_previous_path" ] || fail "Update path already exists: $candidate_previous_path"
+  previous_path=$candidate_previous_path
+  run_in_dir "$install_dir" mv "$app_path" "$previous_path" \
+    || fail 'Could not move the installed Patchdesk aside.'
+fi
 run_in_dir "$install_dir" mv -n "$staging_path" "$app_path" \
   || fail 'Could not finish installing Patchdesk.'
 [ ! -e "$staging_path" ] || fail "Another Patchdesk app appeared at $app_path."
@@ -141,6 +188,17 @@ if xattr -p com.apple.quarantine "$app_path" >/dev/null 2>&1; then
   say 'Clearing the download quarantine flag because this release is not notarized.'
   run_in_dir "$install_dir" xattr -dr com.apple.quarantine "$app_path" \
     || fail 'Could not clear the download quarantine flag.'
+fi
+
+if [ "$mode" = update ]; then
+  # The new app is in place, so a failed removal leaves a stray copy rather than undoing the update.
+  removing_path=$previous_path
+  previous_path=
+  app_installed=0
+  run_in_dir "$install_dir" rm -rf "$removing_path" \
+    || say "Could not remove the previous Patchdesk at $removing_path."
+  say "Updated Patchdesk from $installed_version to $version at $app_path."
+  exit 0
 fi
 
 run_in_dir "$bin_dir" ln -s "$app_path/Contents/Resources/bin/patchdesk" "$bin_path" \

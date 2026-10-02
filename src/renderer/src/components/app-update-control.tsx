@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { CircleArrowUp, CircleCheck, TriangleAlert } from "lucide-react";
 
 import {
-  MANUAL_UPDATE_COMMAND,
+  manualUpdateCommand,
+  type AppInstallSource,
   type AppUpdateState,
 } from "../../../domain/app-update";
 import { CopyLoadedTextButton } from "@/components/copy-loaded-text-button";
@@ -53,7 +54,7 @@ export function AppUpdateControl(): React.JSX.Element | null {
             Updated to Patchdesk {launchNotice.version}
           </PopoverTitle>
           <PopoverDescription>
-            Homebrew upgraded the app and the <code>patchdesk</code> command.
+            A linked <code>patchdesk</code> command runs the new version too.
           </PopoverDescription>
         </PopoverHeader>
         <AppUpdateActions notice="launch" />
@@ -67,13 +68,16 @@ export function AppUpdateControl(): React.JSX.Element | null {
       >
         <PopoverHeader>
           <PopoverTitle>The update did not finish</PopoverTitle>
-          <PopoverDescription>Homebrew's output is in:</PopoverDescription>
+          <PopoverDescription>The update's output is in:</PopoverDescription>
         </PopoverHeader>
         <code className="font-mono text-xs break-all text-muted-foreground">
           {launchNotice.logPath}
         </code>
-        <ManualUpdateCommand />
-        <AppUpdateActions notice="launch" copyCommand />
+        <ManualUpdateCommand installedBy={launchNotice.installedBy} />
+        <AppUpdateActions
+          notice="launch"
+          commandFor={launchNotice.installedBy}
+        />
       </AppUpdatePopover>
     );
   if (available === undefined) return null;
@@ -95,10 +99,12 @@ export function AppUpdateControl(): React.JSX.Element | null {
           </Button>
         </PopoverDescription>
       </PopoverHeader>
-      {available.install === "homebrew" ? (
+      {available.canInstall ? (
         <>
           <p className="text-muted-foreground">
-            Patchdesk quits, upgrades with Homebrew, and opens again.
+            {available.installedBy === "homebrew"
+              ? "Patchdesk quits, upgrades with Homebrew, and opens again."
+              : "Patchdesk quits, installs the new version, and opens again."}
           </p>
           <AppUpdateActions notice="available" disabled={available.installing}>
             <Button
@@ -114,8 +120,11 @@ export function AppUpdateControl(): React.JSX.Element | null {
         </>
       ) : (
         <>
-          <ManualUpdateCommand />
-          <AppUpdateActions notice="available" copyCommand />
+          <ManualUpdateCommand installedBy={available.installedBy} />
+          <AppUpdateActions
+            notice="available"
+            commandFor={available.installedBy}
+          />
         </>
       )}
     </AppUpdatePopover>
@@ -144,40 +153,44 @@ function AppUpdatePopover({
   );
 }
 
-function ManualUpdateCommand(): React.JSX.Element {
+function ManualUpdateCommand({
+  installedBy,
+}: {
+  readonly installedBy: AppInstallSource;
+}): React.JSX.Element {
   return (
     <>
       <p className="text-muted-foreground">
         To update by hand, run this in Terminal:
       </p>
       <pre className="rounded-md bg-muted p-2 font-mono text-xs break-all whitespace-pre-wrap">
-        {MANUAL_UPDATE_COMMAND}
+        {manualUpdateCommand(installedBy)}
       </pre>
     </>
   );
 }
 
-/** The popover's footer: Copy command on the left when offered, then Dismiss and the primary action. */
+/** The popover's footer: Copy command for `commandFor`'s install on the left when offered, then Dismiss and the primary action. */
 function AppUpdateActions({
   notice,
-  copyCommand = false,
+  commandFor,
   disabled = false,
   children,
 }: {
   readonly notice: "available" | "launch";
-  readonly copyCommand?: boolean;
+  readonly commandFor?: AppInstallSource;
   readonly disabled?: boolean;
   readonly children?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className="flex items-start gap-2">
-      {copyCommand ? (
+      {commandFor === undefined ? null : (
         <CopyLoadedTextButton
           label="Copy command"
-          load={async () => MANUAL_UPDATE_COMMAND}
+          load={async () => manualUpdateCommand(commandFor)}
           failure="The command could not be copied."
         />
-      ) : null}
+      )}
       <div className="ml-auto flex gap-2">
         <Button
           variant="ghost"

@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   writeFileSync,
@@ -94,8 +95,14 @@ esac
 `,
     { mode: 0o755 },
   );
-  const run = () =>
-    spawnSync("/bin/sh", [installer], {
+  // Launch Services answers for the real Mac otherwise, where Patchdesk may be running.
+  writeFileSync(
+    join(fakeBin, "lsappinfo"),
+    `#!/bin/sh\nif [ -n "\${PATCHDESK_FIXTURE_RUNNING:-}" ]; then echo 'ASN:0x0-0x1-"Patchdesk":'; fi\n`,
+    { mode: 0o755 },
+  );
+  const run = (args: readonly string[] = [], env: NodeJS.ProcessEnv = {}) =>
+    spawnSync("/bin/sh", [installer, ...args], {
       encoding: "utf8",
       env: {
         ...process.env,
@@ -104,9 +111,32 @@ esac
         PATCHDESK_BIN_DIR: binDir,
         PATCHDESK_FIXTURE_RELEASE: release,
         PATCHDESK_FIXTURE_ARCHIVE: archive,
+        ...env,
       },
     });
-  return { root, installDir, binDir, fakeBin, release, run, writeRelease };
+  /** An installed app at `installedVersion`, with a marker file the release does not ship. */
+  const installApp = (installedVersion: string) => {
+    const app = join(installDir, "Patchdesk.app");
+    mkdirSync(join(app, "Contents"), { recursive: true });
+    writeFileSync(
+      join(app, "Contents", "Info.plist"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>${installedVersion}</string></dict></plist>
+`,
+    );
+    writeFileSync(join(app, "previous.txt"), "previous installation");
+    return app;
+  };
+  return {
+    root,
+    installDir,
+    binDir,
+    fakeBin,
+    release,
+    run,
+    writeRelease,
+    installApp,
+  };
 }
 
 describe("release installer", () => {
@@ -179,5 +209,88 @@ describe("release installer", () => {
     expect(result.stderr).toContain("Could not link the patchdesk command");
     expect(existsSync(join(installDir, "Patchdesk.app"))).toBe(false);
     expect(existsSync(join(binDir, "patchdesk"))).toBe(false);
+  });
+});
+
+describe("release installer --update", () => {
+  it("replaces the installed app with the verified release and leaves no command link", () => {
+    const { installDir, binDir, run, installApp } = fixture();
+    const app = installApp("0.0.11");
+
+    const result = run(["--update"]);
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(app, "Contents/MacOS/Patchdesk"), "utf8")).toBe(
+      "app binary",
+    );
+    expect(existsSync(join(app, "previous.txt"))).toBe(false);
+    expect(readdirSync(installDir)).toEqual(["Patchdesk.app"]);
+    expect(existsSync(join(binDir, "patchdesk"))).toBe(false);
+    expect(result.stderr).toContain(
+      `Updated Patchdesk from 0.0.11 to ${version}`,
+    );
+  });
+
+  it("downloads nothing when the installed app is already the latest release", () => {
+    const { run, installApp, writeRelease } = fixture();
+    const app = installApp(version);
+    // A download would fail this checksum, so a zero exit proves none ran.
+    writeRelease({ digest: `sha256:${"0".repeat(64)}` });
+
+    const result = run(["--update"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(
+      `Patchdesk ${version} is already installed`,
+    );
+    expect(readFileSync(join(app, "previous.txt"), "utf8")).toBe(
+      "previous installation",
+    );
+  });
+
+  it("puts the previous app back when the update fails after the swap", () => {
+    const { installDir, fakeBin, run, installApp } = fixture();
+    const app = installApp("0.0.11");
+    // Reports a quarantine flag, then fails to clear it, after the new app is in place.
+    writeFileSync(
+      join(fakeBin, "xattr"),
+      '#!/bin/sh\nif [ "$1" = -p ]; then exit 0; fi\nexit 1\n',
+      { mode: 0o755 },
+    );
+
+    const result = run(["--update"]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "Could not clear the download quarantine flag",
+    );
+    expect(readFileSync(join(app, "previous.txt"), "utf8")).toBe(
+      "previous installation",
+    );
+    expect(existsSync(join(app, "Contents/MacOS/Patchdesk"))).toBe(false);
+    expect(readdirSync(installDir)).toEqual(["Patchdesk.app"]);
+  });
+
+  it("refuses when no app is installed", () => {
+    const { installDir, run } = fixture();
+
+    const result = run(["--update"]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Patchdesk is not installed");
+    expect(readdirSync(installDir)).toEqual([]);
+  });
+
+  it("refuses while Patchdesk is running", () => {
+    const { run, installApp } = fixture();
+    const app = installApp("0.0.11");
+
+    const result = run(["--update"], { PATCHDESK_FIXTURE_RUNNING: "1" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Patchdesk is running");
+    expect(readFileSync(join(app, "previous.txt"), "utf8")).toBe(
+      "previous installation",
+    );
   });
 });

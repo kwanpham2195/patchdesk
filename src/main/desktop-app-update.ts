@@ -1,12 +1,13 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
+import { join } from "node:path";
 
 import { fetchLatestPatchdeskRelease } from "../adapters/github/github-latest-release";
 import type { GitHubFetch } from "../adapters/github/github-http-client";
 import {
-  findHomebrewInstall,
-  homebrewUpdateHelperCommand,
-  startHomebrewUpdateHelper,
-} from "../adapters/process/homebrew-update-helper";
+  appUpdateHelperCommand,
+  findAppInstallation,
+  startAppUpdateHelper,
+} from "../adapters/process/app-update-helper";
 import { AppUpdateStateStore } from "../adapters/storage/app-update-state-store";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
@@ -54,17 +55,25 @@ export function createDesktopAppUpdate(input: {
       return config.error.reason === "not_found";
     },
     fetchLatestRelease: () => fetchLatestPatchdeskRelease(input.githubFetch),
-    homebrewBrewPath: findHomebrewInstall(existsSync),
+    installation: findAppInstallation({
+      exists: existsSync,
+      writable(path) {
+        try {
+          accessSync(path, constants.W_OK);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      // Packaged by `build.extraResources`, so it matches the running version.
+      installerPath: join(process.resourcesPath, "install-release.sh"),
+    }),
     executablePath: process.execPath,
     logPath,
-    async startHelper(brewPath) {
+    async startHelper(updater) {
       try {
-        await startHomebrewUpdateHelper(
-          homebrewUpdateHelperCommand({
-            brewPath,
-            appPid: process.pid,
-            logPath,
-          }),
+        await startAppUpdateHelper(
+          appUpdateHelperCommand({ updater, appPid: process.pid, logPath }),
           process.env,
         );
         input.logs.write({
@@ -72,7 +81,7 @@ export function createDesktopAppUpdate(input: {
           level: "info",
           topic: "app-update",
           message: "update helper started",
-          meta: { brewPath, logPath },
+          meta: { ...updater, logPath },
         });
         return true;
       } catch (cause: unknown) {

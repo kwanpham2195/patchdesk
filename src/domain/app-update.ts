@@ -4,9 +4,23 @@ const releaseVersionPattern = /^v?(\d+)\.(\d+)\.(\d+)$/;
 /** The one app copy the in-app update upgrades, clears and reopens. */
 export const INSTALLED_APP_PATH = "/Applications/Patchdesk.app";
 
+/** Who manages the copy in `INSTALLED_APP_PATH`, which decides the command that updates it. */
+export type AppInstallSource = "homebrew" | "installer";
+
 /** The command a Homebrew install runs by hand; the in-app update runs the same two steps (#800). */
-export const MANUAL_UPDATE_COMMAND =
+const HOMEBREW_UPDATE_COMMAND =
   "brew upgrade --cask patchdesk && xattr -dr com.apple.quarantine /Applications/Patchdesk.app";
+
+/** The release installer's update mode, for an app installed by the installer or from the disk image. */
+const INSTALLER_UPDATE_COMMAND =
+  "curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update";
+
+/** The command to run in Terminal to update an install from `source`. */
+export function manualUpdateCommand(source: AppInstallSource): string {
+  return source === "homebrew"
+    ? HOMEBREW_UPDATE_COMMAND
+    : INSTALLER_UPDATE_COMMAND;
+}
 
 /**
  * The latest release's version without its `v`, when that tag is a stable
@@ -37,8 +51,9 @@ export type AvailableAppUpdate = {
   readonly version: string;
   /** The release page on github.com, checked before it is offered. */
   readonly releaseUrl: string;
-  /** `homebrew` offers Update now; `manual` offers `MANUAL_UPDATE_COMMAND` to copy. */
-  readonly install: "homebrew" | "manual";
+  readonly installedBy: AppInstallSource;
+  /** True when Update now can run the update; otherwise the title bar offers `manualUpdateCommand(installedBy)` to copy. */
+  readonly canInstall: boolean;
   /** True between Update now and the quit; the close guard can still cancel it. */
   readonly installing: boolean;
 };
@@ -46,7 +61,11 @@ export type AvailableAppUpdate = {
 /** What the first launch after an update attempt reports, once. */
 export type AppUpdateLaunchNotice =
   | { readonly kind: "updated"; readonly version: string }
-  | { readonly kind: "updateFailed"; readonly logPath: string };
+  | {
+      readonly kind: "updateFailed";
+      readonly logPath: string;
+      readonly installedBy: AppInstallSource;
+    };
 
 /** The update state the main process pushes to the title bar. */
 export type AppUpdateState = {

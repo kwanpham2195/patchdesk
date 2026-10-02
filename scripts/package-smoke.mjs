@@ -69,6 +69,8 @@ if (
 )
   throw new Error("Packaged metadata has no CFBundleIconFile");
 await access(join(bundle, "Contents/Resources", metadata.CFBundleIconFile));
+// The in-app update runs this copy for apps Homebrew does not manage.
+await access(join(bundle, "Contents/Resources/install-release.sh"));
 const { stdout: executableKind } = await execute("file", [executable]);
 if (!executableKind.includes(process.arch))
   throw new Error(
