@@ -95,8 +95,13 @@ describe("AppUpdateControl", () => {
       command:
         "curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update",
     },
+    {
+      installedBy: "notInstalled",
+      command:
+        "curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh",
+    },
   ] as const)(
-    "copies the $installedBy update command instead of offering Update now when the app cannot update itself",
+    "copies the $installedBy command instead of offering Update now when the app cannot update itself",
     async ({ installedBy, command }) => {
       const user = userEvent.setup();
       desktop = installDesktopDouble(

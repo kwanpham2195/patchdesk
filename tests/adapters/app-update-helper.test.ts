@@ -50,7 +50,7 @@ describe("findAppInstallation", () => {
     },
     {
       name: "a writable install brew does not manage",
-      present: ["/opt/homebrew/bin/brew"],
+      present: ["/opt/homebrew/bin/brew", "/Applications/Patchdesk.app"],
       writable: ["/Applications", "/Applications/Patchdesk.app"],
       want: {
         installedBy: "installer",
@@ -59,15 +59,21 @@ describe("findAppInstallation", () => {
     },
     {
       name: "an Applications folder only an administrator can write",
-      present: [],
+      present: ["/Applications/Patchdesk.app"],
       writable: ["/Applications/Patchdesk.app"],
       want: { installedBy: "installer", updater: undefined },
     },
     {
       name: "an app only an administrator can replace",
-      present: [],
+      present: ["/Applications/Patchdesk.app"],
       writable: ["/Applications"],
       want: { installedBy: "installer", updater: undefined },
+    },
+    {
+      name: "a copy running elsewhere with nothing in /Applications",
+      present: ["/opt/homebrew/bin/brew"],
+      writable: ["/Applications"],
+      want: { installedBy: "notInstalled", updater: undefined },
     },
   ])("answers $name", ({ present, writable, want }) => {
     expect(

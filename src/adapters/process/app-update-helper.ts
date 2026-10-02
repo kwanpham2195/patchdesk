@@ -112,6 +112,8 @@ export function findAppInstallation(input: {
         brewPath === undefined ? undefined : { kind: "homebrew", brewPath },
     };
   }
+  if (!input.exists(INSTALLED_APP_PATH))
+    return { installedBy: "notInstalled", updater: undefined };
   const replaceable =
     input.writable(dirname(INSTALLED_APP_PATH)) &&
     input.writable(INSTALLED_APP_PATH);

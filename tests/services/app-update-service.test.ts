@@ -6,7 +6,10 @@ import type {
   AppUpdater,
 } from "../../src/adapters/process/app-update-helper";
 import type { AppUpdateRecord } from "../../src/adapters/storage/app-update-state-store";
-import type { AppUpdateState } from "../../src/domain/app-update";
+import type {
+  AppUpdateLaunchNotice,
+  AppUpdateState,
+} from "../../src/domain/app-update";
 import { AppUpdateService } from "../../src/services/app-update-service";
 
 const logPath = "/Users/someone/.local/share/patchdesk/logs/update.log";
@@ -35,7 +38,7 @@ function launch(input: {
   readonly record: { current: AppUpdateRecord };
   readonly respond?: () => Response;
   readonly checkEnabled?: boolean;
-  readonly installation?: AppInstallation;
+  readonly installation?: AppInstallation | undefined;
   readonly executablePath?: string | undefined;
   readonly helperStarts?: boolean;
 }) {
@@ -241,7 +244,13 @@ describe("AppUpdateService", () => {
     expect(record.current).not.toHaveProperty("updateAttemptedFrom");
   });
 
-  it.each([
+  it.each<{
+    readonly name: string;
+    readonly installation?: AppInstallation;
+    readonly record: AppUpdateRecord;
+    readonly runningVersion: string;
+    readonly want: AppUpdateLaunchNotice | undefined;
+  }>([
     {
       name: "Updated to the new version after the version changed",
       record: { lastLaunchedVersion: "0.0.17", updateAttemptedFrom: "0.0.17" },
@@ -249,10 +258,17 @@ describe("AppUpdateService", () => {
       want: { kind: "updated", version: "0.0.18" },
     },
     {
-      name: "a failed update when an attempt left the version unchanged",
+      name: "a failed Homebrew update when an attempt left the version unchanged",
       record: { lastLaunchedVersion: "0.0.17", updateAttemptedFrom: "0.0.17" },
       runningVersion: "0.0.17",
       want: { kind: "updateFailed", logPath, installedBy: "homebrew" },
+    },
+    {
+      name: "a failed installer update, naming the installer so its command is offered",
+      installation: { installedBy: "installer", updater: installerUpdater },
+      record: { lastLaunchedVersion: "0.0.17", updateAttemptedFrom: "0.0.17" },
+      runningVersion: "0.0.17",
+      want: { kind: "updateFailed", logPath, installedBy: "installer" },
     },
     {
       name: "nothing on an ordinary launch",
@@ -260,14 +276,17 @@ describe("AppUpdateService", () => {
       runningVersion: "0.0.17",
       want: undefined,
     },
-  ])("reports $name, once", async ({ record, runningVersion, want }) => {
-    const shared = { current: record };
-    const first = launch({ runningVersion, record: shared });
-    await first.service.recordLaunch();
-    expect(first.service.state().launchNotice).toEqual(want);
+  ])(
+    "reports $name, once",
+    async ({ installation, record, runningVersion, want }) => {
+      const shared = { current: record };
+      const first = launch({ runningVersion, record: shared, installation });
+      await first.service.recordLaunch();
+      expect(first.service.state().launchNotice).toEqual(want);
 
-    const second = launch({ runningVersion, record: shared });
-    await second.service.recordLaunch();
-    expect(second.service.state().launchNotice).toBeUndefined();
-  });
+      const second = launch({ runningVersion, record: shared, installation });
+      await second.service.recordLaunch();
+      expect(second.service.state().launchNotice).toBeUndefined();
+    },
+  );
 });
