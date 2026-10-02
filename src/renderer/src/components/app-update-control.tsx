@@ -4,7 +4,6 @@ import { CircleArrowUp, CircleCheck, TriangleAlert } from "lucide-react";
 import {
   MANUAL_UPDATE_COMMAND,
   type AppUpdateState,
-  type AvailableAppUpdate,
 } from "../../../domain/app-update";
 import { CopyLoadedTextButton } from "@/components/copy-loaded-text-button";
 import { Button } from "@/components/ui/button";
@@ -53,8 +52,11 @@ export function AppUpdateControl(): React.JSX.Element | null {
           <PopoverTitle>
             Updated to Patchdesk {launchNotice.version}
           </PopoverTitle>
+          <PopoverDescription>
+            Homebrew upgraded the app and the <code>patchdesk</code> command.
+          </PopoverDescription>
         </PopoverHeader>
-        <DismissButton notice="launch" />
+        <AppUpdateActions notice="launch" />
       </AppUpdatePopover>
     );
   if (launchNotice?.kind === "updateFailed")
@@ -65,14 +67,13 @@ export function AppUpdateControl(): React.JSX.Element | null {
       >
         <PopoverHeader>
           <PopoverTitle>The update did not finish</PopoverTitle>
-          <PopoverDescription>
-            Homebrew's output is in{" "}
-            <code className="break-all">{launchNotice.logPath}</code>. To update
-            by hand, run this in Terminal:
-          </PopoverDescription>
+          <PopoverDescription>Homebrew's output is in:</PopoverDescription>
         </PopoverHeader>
+        <code className="font-mono text-xs break-all text-muted-foreground">
+          {launchNotice.logPath}
+        </code>
         <ManualUpdateCommand />
-        <DismissButton notice="launch" />
+        <AppUpdateActions notice="launch" copyCommand />
       </AppUpdatePopover>
     );
   if (available === undefined) return null;
@@ -94,8 +95,29 @@ export function AppUpdateControl(): React.JSX.Element | null {
           </Button>
         </PopoverDescription>
       </PopoverHeader>
-      <AvailableUpdateAction available={available} />
-      <DismissButton notice="available" disabled={available.installing} />
+      {available.install === "homebrew" ? (
+        <>
+          <p className="text-muted-foreground">
+            Patchdesk quits, upgrades with Homebrew, and opens again.
+          </p>
+          <AppUpdateActions notice="available" disabled={available.installing}>
+            <Button
+              size="sm"
+              disabled={available.installing}
+              onClick={() =>
+                void window.patchdesk.request({ operation: "installAppUpdate" })
+              }
+            >
+              {available.installing ? "Quitting to update…" : "Update now"}
+            </Button>
+          </AppUpdateActions>
+        </>
+      ) : (
+        <>
+          <ManualUpdateCommand />
+          <AppUpdateActions notice="available" copyCommand />
+        </>
+      )}
     </AppUpdatePopover>
   );
 }
@@ -122,70 +144,51 @@ function AppUpdatePopover({
   );
 }
 
-function AvailableUpdateAction({
-  available,
-}: {
-  readonly available: AvailableAppUpdate;
-}): React.JSX.Element {
-  if (available.install === "manual")
-    return (
-      <>
-        <p className="text-muted-foreground">
-          To update a Homebrew install, run this in Terminal:
-        </p>
-        <ManualUpdateCommand />
-      </>
-    );
-  return (
-    <>
-      <p className="text-muted-foreground">
-        Patchdesk quits, upgrades with Homebrew, and opens again.
-      </p>
-      <Button
-        size="sm"
-        className="self-start"
-        disabled={available.installing}
-        onClick={() =>
-          void window.patchdesk.request({ operation: "installAppUpdate" })
-        }
-      >
-        {available.installing ? "Quitting to update…" : "Update now"}
-      </Button>
-    </>
-  );
-}
-
 function ManualUpdateCommand(): React.JSX.Element {
   return (
     <>
+      <p className="text-muted-foreground">
+        To update by hand, run this in Terminal:
+      </p>
       <pre className="rounded-md bg-muted p-2 font-mono text-xs break-all whitespace-pre-wrap">
         {MANUAL_UPDATE_COMMAND}
       </pre>
-      <CopyLoadedTextButton
-        label="Copy command"
-        load={async () => MANUAL_UPDATE_COMMAND}
-        failure="The command could not be copied."
-      />
     </>
   );
 }
 
-function DismissButton({
+/** The popover's footer: Copy command on the left when offered, then Dismiss and the primary action. */
+function AppUpdateActions({
   notice,
+  copyCommand = false,
   disabled = false,
+  children,
 }: {
   readonly notice: "available" | "launch";
+  readonly copyCommand?: boolean;
   readonly disabled?: boolean;
+  readonly children?: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="self-end"
-      disabled={disabled}
-      onClick={() => dismiss(notice)}
-    >
-      Dismiss
-    </Button>
+    <div className="flex items-start gap-2">
+      {copyCommand ? (
+        <CopyLoadedTextButton
+          label="Copy command"
+          load={async () => MANUAL_UPDATE_COMMAND}
+          failure="The command could not be copied."
+        />
+      ) : null}
+      <div className="ml-auto flex gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={() => dismiss(notice)}
+        >
+          Dismiss
+        </Button>
+        {children}
+      </div>
+    </div>
   );
 }
