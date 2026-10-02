@@ -1,3 +1,5 @@
+import { configure } from "@testing-library/react";
+
 if (globalThis.HTMLElement !== undefined) {
   if (HTMLElement.prototype.hasPointerCapture === undefined) {
     HTMLElement.prototype.hasPointerCapture = () => false;
@@ -59,7 +61,6 @@ if (globalThis.ResizeObserver === undefined) {
 }
 
 if (globalThis.window !== undefined) {
-  const { configure } = await import("@testing-library/react");
   // The 1 s default is shorter than an App boot on a loaded CI runner (Release run 36947687480).
   configure({ asyncUtilTimeout: 5000 });
 }
