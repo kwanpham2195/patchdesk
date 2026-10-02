@@ -4,22 +4,43 @@ const releaseVersionPattern = /^v?(\d+)\.(\d+)\.(\d+)$/;
 /** The one app copy the in-app update upgrades, clears and reopens. */
 export const INSTALLED_APP_PATH = "/Applications/Patchdesk.app";
 
-/** Who manages the copy in `INSTALLED_APP_PATH`, which decides the command that updates it. */
-export type AppInstallSource = "homebrew" | "installer";
+/**
+ * Who manages the copy in `INSTALLED_APP_PATH`, which decides the command
+ * that updates it; `notInstalled` is a copy running elsewhere, such as from
+ * the disk image, with nothing in `/Applications`.
+ */
+export type AppInstallSource = "homebrew" | "installer" | "notInstalled";
 
-/** The command a Homebrew install runs by hand; the in-app update runs the same two steps (#800). */
-const HOMEBREW_UPDATE_COMMAND =
-  "brew upgrade --cask patchdesk && xattr -dr com.apple.quarantine /Applications/Patchdesk.app";
+const INSTALLER_URL =
+  "https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh";
 
-/** The release installer's update mode, for an app installed by the installer or from the disk image. */
-const INSTALLER_UPDATE_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update";
+/** What the title bar tells the maintainer to run by hand, and the line before it. */
+type ManualAppUpdate = {
+  readonly instruction: string;
+  readonly command: string;
+};
 
-/** The command to run in Terminal to update an install from `source`. */
-export function manualUpdateCommand(source: AppInstallSource): string {
-  return source === "homebrew"
-    ? HOMEBREW_UPDATE_COMMAND
-    : INSTALLER_UPDATE_COMMAND;
+/** The installer's `--update` refuses while Patchdesk runs, so its instruction says to quit first. */
+const manualAppUpdates = {
+  homebrew: {
+    instruction: "To update by hand, run this in Terminal:",
+    // The in-app update runs the same two steps (#800).
+    command:
+      "brew upgrade --cask patchdesk && xattr -dr com.apple.quarantine /Applications/Patchdesk.app",
+  },
+  installer: {
+    instruction: "Quit Patchdesk, then run this in Terminal:",
+    command: `curl -fsSL ${INSTALLER_URL} | sh -s -- --update`,
+  },
+  notInstalled: {
+    instruction: "To install Patchdesk in Applications, run this in Terminal:",
+    command: `curl -fsSL ${INSTALLER_URL} | sh`,
+  },
+} as const satisfies Readonly<Record<AppInstallSource, ManualAppUpdate>>;
+
+/** The manual update for an install from `source`. */
+export function manualAppUpdate(source: AppInstallSource): ManualAppUpdate {
+  return manualAppUpdates[source];
 }
 
 /**

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CircleArrowUp, CircleCheck, TriangleAlert } from "lucide-react";
 
 import {
-  manualUpdateCommand,
+  manualAppUpdate,
   type AppInstallSource,
   type AppUpdateState,
 } from "../../../domain/app-update";
@@ -158,13 +158,12 @@ function ManualUpdateCommand({
 }: {
   readonly installedBy: AppInstallSource;
 }): React.JSX.Element {
+  const { instruction, command } = manualAppUpdate(installedBy);
   return (
     <>
-      <p className="text-muted-foreground">
-        To update by hand, run this in Terminal:
-      </p>
+      <p className="text-muted-foreground">{instruction}</p>
       <pre className="rounded-md bg-muted p-2 font-mono text-xs break-all whitespace-pre-wrap">
-        {manualUpdateCommand(installedBy)}
+        {command}
       </pre>
     </>
   );
@@ -187,7 +186,7 @@ function AppUpdateActions({
       {commandFor === undefined ? null : (
         <CopyLoadedTextButton
           label="Copy command"
-          load={async () => manualUpdateCommand(commandFor)}
+          load={async () => manualAppUpdate(commandFor).command}
           failure="The command could not be copied."
         />
       )}
