@@ -2,13 +2,13 @@
 
 ## Summary
 
-Patchdesk separates readable evidence from permission to change GitHub. A Pull request or Review can remain visible when its remote evidence is stale, changed, terminal, or unavailable, but a GitHub write needs current Fresh evidence, the exact represented revision, the required permission, and the action's own preconditions. This rule is shared by metadata, conversations, pending reviews, and merge actions.
+Patchdesk separates readable evidence from permission to change GitHub. Every GitHub write needs a current, non-terminal Review session, the required permission, recovery clearance, and the action's own preconditions. Review-content writes also need Fresh evidence and a current-head check. Pull-request metadata writes use the current-session gate, so a newer commit does not itself block a label, assignee, reviewer, base-branch, or draft-state change.
 
 ## The simple case
 
-The maintainer reads a Review and chooses a GitHub action. Patchdesk checks the stored Review session, current head and base, canonical patch identity, remote state, and the narrow permission needed for that action. If the evidence is still current, the write is admitted and the screen shows a pending state.
+The maintainer reads a Review and chooses a GitHub action. Patchdesk checks the stored Review session, required permission, and that action's evidence. A comment, pending-review command, or merge also checks Fresh state and the represented head. A metadata change uses the current session even when the represented revision has changed. An admitted write shows a pending state.
 
-If the pull request changed, closed, became terminal, lost permission, or cannot be read, Patchdesk refuses the write and keeps the readable evidence. If GitHub may have received the request but the result cannot be proved, Patchdesk enters recovery and locks related writes until an explicit check settles the outcome.
+A terminal Review, missing permission, or blocked recovery refuses the write and keeps the readable evidence. Changed or unavailable revision evidence also blocks review-content writes. If GitHub may have received the request but the result cannot be proved, Patchdesk enters recovery and locks related writes until an explicit check settles the outcome.
 
 ## The task, event by event
 
@@ -28,7 +28,7 @@ stateDiagram-v2
 
 The screen labels remote evidence as Fresh, Revision changed, Remote state unavailable, or Terminal where the owner can determine it. Freshness describes what Patchdesk can prove about the represented revision; it does not itself grant write authority.
 
-The Review workbench keeps one immutable represented revision. Its [session and revision rules](../foundations/review-session-and-revision.md) own how head, base, and canonical patch evidence are established. A stale or terminal Review remains readable, but write controls are absent or disabled.
+The Review workbench keeps one immutable represented revision. Its [session and revision rules](../foundations/review-session-and-revision.md) own how head, base, and canonical patch evidence are established. Changed or unavailable revision evidence blocks review-content controls; a terminal Review blocks all GitHub writes. Metadata controls follow their [own admission rules](../review-workbench/conversation-and-metadata.md#interactions-with-other-systems).
 
 ### Leave unchanged
 
@@ -36,7 +36,7 @@ Reading a diff, conversation, pending-review ledger, metadata, or merge readines
 
 ### Begin an action
 
-The write owner checks the active profile, Review identity, represented session, current remote state, exact revision, permission, and action-specific payload. A direct comment needs its location and patch hash; a pending-review command needs its pending node and cumulative projection; merge needs current readiness and acknowledgement of required warnings.
+The write owner checks the active profile, Review identity, current session, permission, recovery state, and action-specific payload. Review-content commands also check the represented revision and current head. A direct comment needs its location and patch hash; a pending-review command needs its pending node and cumulative projection; merge needs current readiness and acknowledgement of required warnings.
 
 The check happens before GitHub receives the request. When admitted, Patchdesk records the write intent, acquires the relevant Review or lifecycle lock, and exposes a write-pending state. The maintainer cannot use another conflicting writer until the outcome is settled.
 
@@ -114,3 +114,5 @@ The [pending-review and Finish review flow](../review-workbench/pending-review-a
 - Confirm the boundary between a confirmed GitHub rejection and an unavailable remote read in each workbench surface.
 
 Verified against Patchdesk application source commit `3100615`.
+
+The write-gate description was checked against source commit `65a6608e`. This clarification has no new live verification.

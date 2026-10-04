@@ -2,7 +2,7 @@
 
 This document describes Patchdesk's process boundaries, code layers, and write rules.
 
-For the vocabulary of the domain, read [CONTEXT.md](../CONTEXT.md) first.
+For the vocabulary of the domain, read [the product glossary](product-description/glossary.md) first.
 It defines the exact meaning of Review, Review session, Insight, Finding, and every other domain term used here.
 For the history of architectural decisions, read the records in [docs/adr](adr/).
 For how agents should explore this repository, read [docs/agents/domain.md](agents/domain.md).

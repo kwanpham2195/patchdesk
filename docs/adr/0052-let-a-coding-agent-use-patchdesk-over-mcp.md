@@ -9,7 +9,7 @@
 > authority, and the Insight runtime still installs no MCP client (that rule
 > is about the model child, not this server). Every section records
 > decisions made in chat on 2026-09-25 and 2026-09-26. Terms in bold
-> are defined in `CONTEXT.md`.
+> are defined in [the product glossary](../product-description/glossary.md).
 
 ADR 0051 made local review a loop between a maintainer and a coding agent:
 the agent edits the working tree, the maintainer reads the diff with the
@@ -691,7 +691,7 @@ codex mcp add patchdesk -- patchdesk mcp
    notification, the Agent requests bar, the sidebar marker, the local
    settled notification (#496). Live pass with both clients.
 5. **Docs.** `docs/product-description/pull-requests/coding-agent-over-mcp.md`,
-   the user guide, `CONTEXT.md` (agent run request, prepared session),
+   the user guide, [the product glossary](../product-description/glossary.md) (agent run request, prepared session),
    `docs/architecture.md` (`src/main/mcp/`, the shim), CHANGELOG.
 
 The pinned base (#491) and the intent prompt sentence follow as their own

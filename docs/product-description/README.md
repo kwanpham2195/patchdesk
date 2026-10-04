@@ -186,4 +186,4 @@ The source of truth is Patchdesk at the repository root. Each feature page names
 - [`src/services/`](../../src/services/): preparation, refresh, observation, Insights, GitHub writes, recovery, storage management, and listing orchestration.
 - [`src/main/routes/`](../../src/main/routes/): local API actions requested by the renderer.
 - [`tests/renderer/`](../../tests/renderer/), [`tests/services/`](../../tests/services/), and [`tests/browser/`](../../tests/browser/): executable behavior evidence at the UI, orchestration, and built-app boundaries.
-- [`CONTEXT.md`](../../CONTEXT.md): canonical product vocabulary and words to avoid.
+- [Glossary](glossary.md): canonical product vocabulary and words to avoid.

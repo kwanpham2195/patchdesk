@@ -55,7 +55,7 @@ The foundation pages own these rules. Link to them instead of copying their full
 
 - The app has two destinations: Pull requests and one Review workbench. Settings is an overlay.
 - A Review spans pull-request revisions. Each Review session represents one exact revision.
-- GitHub writes need current Fresh evidence. Patchdesk never retries an uncertain write automatically; related writes stay locked until reconciliation.
+- GitHub writes need a current, non-terminal Review session and the action's permission and recovery checks. Review-content writes also need Fresh evidence and a current-head check; metadata writes use the current-session gate. Patchdesk never retries an uncertain write automatically; related writes stay locked until reconciliation.
 - GitHub's pending review is the authoritative editable Review draft.
 - Insights stay tied to their represented revision and do not write to GitHub on completion.
 - Workspace controls save individually. Rejected values do not replace saved values.

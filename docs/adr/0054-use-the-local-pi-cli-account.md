@@ -2,7 +2,7 @@
 
 > **Status: Accepted** (2026-09-30, maintainer on #551). Extends ADR 0016 to a
 > third Insight provider. ADR 0043's activity trace stays Codex-only. Terms in
-> bold are defined in `CONTEXT.md`.
+> bold are defined in [the product glossary](../product-description/glossary.md).
 
 Many reviewers pay for a model subscription and have no API key. The **Codex
 CLI account provider** covers a ChatGPT subscription only. The `pi` coding
