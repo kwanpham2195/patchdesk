@@ -1,7 +1,6 @@
 # Architecture
 
-This document describes the high-level architecture of Patchdesk.
-If you want to become familiar with the code base, you are in the right place.
+This document describes Patchdesk's process boundaries, code layers, and write rules.
 
 For the vocabulary of the domain, read [CONTEXT.md](../CONTEXT.md) first.
 It defines the exact meaning of Review, Review session, Insight, Finding, and every other domain term used here.
@@ -14,7 +13,7 @@ The architecture has three layers of authority:
 2. The Electron main process owns all local authority: writes, model runs, and storage.
 3. The renderer is a sandboxed view. It requests actions and renders confirmed results.
 
-## Bird's Eye View
+## Process overview
 
 ```mermaid
 flowchart TB
@@ -43,6 +42,7 @@ flowchart TB
     API --> Services
     Services --> Domain
     Services --> Adapters
+    Services -- "artifact and checkout I/O" --> Files
     Adapters -- "read and write" --> GitHub
     Adapters --> Files
     Services -- "bounded stdin, strict result" --> Insight
@@ -53,12 +53,12 @@ flowchart TB
 Patchdesk is a local-first workbench for pull-request review.
 A maintainer opens a Review for an open pull request, inspects the represented revision, and decides what to publish or merge.
 
-On the highest level, Patchdesk accepts two kinds of input:
+Patchdesk accepts two kinds of input:
 
 - Remote state from GitHub: the pull request, its diff, comments, review threads, checks, and merge policy.
 - Actions from the maintainer: open a review, refresh, run an Analysis, Walkthrough, or Brief, comment, resolve a thread, submit a review, merge.
 
-The ground state is local:
+Patchdesk stores:
 
 - JSON files that describe each Review, Review session, and Insight run.
 - Immutable prepared artifacts for each session: the canonical patch and the represented-review worktree. The model context pack is built on the first Insight run rather than at prepare, and is rebuilt whenever it does not describe the session's patch.
@@ -89,11 +89,9 @@ Its MCP client spawns `patchdesk mcp`, a stdio process that runs on the app's ow
 The listener starts beside the local API once the login-shell import settles, because `PATCHDESK_MCP_SOCKET` may come from it.
 The socket is outside the renderer's path, so no capability or origin applies: it sits in a `0700` folder only the maintainer's macOS user can open.
 
-## Code Map
+## Code map
 
-This section describes the important directories and data structures.
-Pay attention to the **Architecture Invariant** sections.
-They often describe things which are deliberately absent.
+This section describes the directories and the invariants each layer must preserve.
 
 ### `src/main/`
 
@@ -134,7 +132,7 @@ No validation, decision, or result shaping lives in `mcp/` or `src/mcp/` that a 
 
 ### `src/domain/`
 
-The types and invariants of the system. This is the **API Boundary** every other layer builds on.
+Domain types, parsers, and state transitions used by the other layers.
 
 - `ids.ts` defines branded primitive types (`ReviewId`, `GitSha`, `FindingId`, ...) and the parsers that produce them. A branded value cannot be created from a raw string by accident.
 - `result.ts` defines `Result<T, E>`. Errors are typed values, never thrown exceptions.
@@ -150,7 +148,7 @@ The types and invariants of the system. This is the **API Boundary** every other
 
 **Architecture Invariant:** the domain layer is pure.
 It does no I/O, knows nothing about Electron or HTTP, and never touches GitHub.
-Every value that crosses a boundary is parsed here first.
+Boundary handlers validate raw input and use the domain parsers to create domain values.
 
 ### `src/services/`
 
@@ -186,12 +184,14 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `sidebar-listing-service.ts` lists the pull requests visited in one workspace profile, plus one row per repository for its local Reviews (#479), newest first and capped at 20 rows, from `ReviewStore.list` alone. It makes no GitHub call, and a terminal row carries the instant Patchdesk observed the state rather than a live one (ADR 0042).
 - `watched-pull-request-service.ts` owns each profile's watched pull requests: the watch and unwatch commands, and the poll that reads them all in one query, saves the new snapshots, and raises one notification event per change (ADR 0045). `desktop-notifier.ts` is the port those and every other notification are posted through (ADR 0044).
 
-**Architecture Invariant:** services receive parsed domain values.
-They never parse raw input themselves and never trust the renderer's claims.
+**Architecture Invariant:** services validate untrusted claims before acting on them.
+Most receive input parsed by a route or MCP adapter.
+`DashboardController` and `ReviewDiffSourceService` own raw-input parsing for the routes described above.
 
 ### `src/adapters/`
 
-The I/O layer. This is the only place that touches GitHub, files, and processes.
+Shared I/O implementations for GitHub transport, JSON stores, and process clients.
+Services use these adapters and also perform filesystem operations for artifacts and local checkout workflows.
 
 - `github/github-adapter.ts` is the GitHub boundary. It issues bounded REST and GraphQL queries and maps every outcome to a typed result. `FakeGitHubAdapter` provides the same surface for tests.
 - `github/github-http-client.ts` is the transport every one of those requests goes over: HTTPS from the main process, with the profile account's token as a bearer header (ADR 0046, issue #276). There is no second transport and no fallback; a failure is classified from the response status. `gh` keeps only `auth token`, `auth status`, `--version`, and the git credential helper.
@@ -212,8 +212,10 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 - `codex/` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials. `codex-app-server-client.ts` is the app-server connection, accepts command requests whose working directory resolves inside the represented-review worktree, and declines network, stdin-write, file-change, permission, and outside-worktree requests. `codex-brief-prompt.ts` composes the Brief turn, and `codex-activity.ts` maps the account's notifications to the bounded activity events the run poll projects (ADR 0043).
 - `pi-cli/` drives the maintainer's local `pi` coding agent in RPC mode (ADR 0054) without reading its login. `pi-rpc-channel.ts` owns the JSONL framing and answers extension dialogs as cancelled; `pi-rpc-client.ts` checks the installed version, lists models, and runs one prompt with pi's read-only built-in tools, no extensions, and no project trust.
 
-**Architecture Invariant:** adapters are the only layer that performs I/O.
-Nothing else reads a file, spawns a process, or talks to GitHub.
+**Architecture Invariant:** the domain and sandboxed renderer perform no direct GitHub, filesystem, or process I/O.
+GitHub transport, durable JSON stores, and reusable process clients live in adapters.
+Service filesystem operations include artifact hashing in `review-artifact-hash.ts`, retained-artifact reads in `retained-insight-reader.ts`, and the local checkout workflows described above.
+[Issue #809](https://github.com/kwanpham2195/patchdesk/issues/809) tracks the remaining import-policy decisions and enforcement.
 
 **Architecture Invariant:** storage never persists sensitive values.
 A read that would expose a sensitive value fails closed, and corrupt files go to quarantine instead of being loaded.
@@ -224,7 +226,7 @@ The React view layer.
 
 - `flows/` implements the three surfaces: `inbox-flow.tsx`, `review-workbench-flow.tsx`, and `settings-flow.tsx`.
 - `api-client.ts` wraps `window.patchdesk.request` and maps HTTP failures to typed `PatchdeskApiError` values.
-- `renderer-contracts.ts` re-validates every projection with strict Valibot schemas before React renders it.
+- `renderer-contracts.ts` validates local API responses before React renders them. Workbench projections use strict Valibot schemas; parsers that select only part of a response, such as environment checks and created profile ids, use `v.object`.
 - `components/` and `hooks/` implement the workbench UI on Base UI with shadcn-style components.
 
 **Architecture Invariant:** the renderer is the view in the MVC sense.
@@ -235,7 +237,9 @@ It re-validates every projection: a 200 response from the API does not mean the 
 
 The isolated model runtime (ADR 0041, superseding the runtime choice in ADR 0018).
 Each Analysis run, Walkthrough, or Brief runs in one dedicated one-shot child that builds a single `@earendil-works/pi-agent-core` agent and drives its loop once.
-The Brief child is the narrowest of the three: it mounts only the result-submission tool, and its evidence — the patch — is supplied on the invocation rather than fetched, so the child reads nothing for itself.
+The Brief model has only the result-submission tool.
+The trusted child runtime reads the bounded patch artifact at the invocation's `patchPath` through `prepareBriefPrompt` and includes it in the prompt.
+The model has no repository inspector or generic file-reading tool.
 
 The parent sends one bounded, strictly parsed invocation through stdin.
 The child runs the agent loop under a 24-turn ceiling, submits one strict result through its own tool, and exits.
@@ -251,9 +255,12 @@ The shipped child is an exact locked package, staged at package time and validat
 The `patchdesk mcp` shim a coding agent spawns (ADR 0052), built by a nested build in `electron.vite.config.ts` into one file, `out/main/mcp-shim.js`, with the MCP SDK bundled.
 `package.json` `extraResources` stages it outside the asar as `Contents/Resources/mcp-shim/index.js`, beside the launcher `resources/bin/patchdesk`, staged as `Contents/Resources/bin/patchdesk`.
 The launcher is a POSIX shell script: it follows the symlink a user or the cask puts on PATH back to the bundle and runs `ELECTRON_RUN_AS_NODE=1 Contents/MacOS/Patchdesk Contents/Resources/mcp-shim/index.js "$@"`, so the shim runs on the app's own Node.
-`main.ts` accepts `mcp` and `mcp --check` and prints usage otherwise; stdout carries the MCP protocol, so every diagnostic goes to stderr.
+`main.ts` accepts `mcp`, `mcp --check`, and `setup status`, `setup add-repo`, or `setup set-checkout`. It prints usage for an empty or unsupported command.
+Setup commands accept `--json`. `add-repo` and `set-checkout` also accept `--cwd`, which defaults to the current directory; `status` refuses that flag.
+In `mcp` mode stdout carries the protocol and diagnostics go to stderr. Check and setup commands print their results to stdout.
+The setup commands send separate socket requests to the main process and are not MCP tools, as recorded in ADR 0052's setup amendment.
 It serves the tools in `tool-manifest.ts` over stdio with `serveStdio`, which answers both the 2025 handshake and the 2026-07-28 revision, and forwards each call to the app's socket through `socket-client.ts`; `socket-protocol.ts` holds the path, the line shapes, and the bounds both sides share.
-The shim sits outside the three layers: it imports only these modules, `PatchdeskPaths`, and the package version, and none of `src/main/`, `src/services/`, or the renderer.
+The shim's runtime dependencies include its CLI and protocol modules, `PatchdeskPaths`, and the package version. They exclude `src/main/`, `src/services/`, and the renderer. Setup response types use type-only imports from services.
 The dev app listens on `patchdesk-dev/mcp/patchdesk.sock` under its own data root, and `pnpm -s mcp:shim` runs the dev build against it (CONTRIBUTING.md); package smoke runs the packaged launcher's `mcp --check`.
 
 **Architecture Invariant:** the shim holds no state and no authority. Every call connects afresh to the running app, which validates it again; an unreachable app is the tool error `app_not_running`, and the shim never starts the app.
@@ -274,9 +281,7 @@ the pull-request lifecycle, GitHub pending reviews as the one authoritative draf
 Test suites that mirror the production boundaries.
 See [Testing](#testing) below.
 
-## Cross-Cutting Concerns
-
-This section describes the things which are everywhere and nowhere in particular.
+## Shared rules
 
 ### Safety and write authority
 
@@ -291,7 +296,7 @@ The design concentrates authority in the main process and removes it from everyw
 - If Patchdesk cannot confirm a write outcome, it locks further writes for explicit GitHub reconciliation. It never retries automatically.
 - A coding agent's MCP tools write only Patchdesk's own state: the Local snapshot's git objects, a `refs/patchdesk/local/` ref, a cache worktree, and the Review record. They never Apply, edit Local drafts, or start an Insight run; a run an agent asks for starts only from the maintainer's Run.
 - The one write to the maintainer's checkout is Apply on a shared local Review: `git apply` without `--index`, gated by `requireFreshLocal`, with file pre- and post-image hashes recorded before the write.
-- Model children never touch GitHub, the maintainer's checkout, or the network.
+- Insight model children have no GitHub access or write access to the maintainer's checkout. Their provider clients communicate with the configured model provider; this transport does not give the model an arbitrary network tool.
 
 **Architecture Invariant:** the app must never start with the renderer holding authority.
 Startup fails closed when the local API cannot prove its own health.
@@ -315,7 +320,9 @@ GitHub state changes between reads.
 Patchdesk records revision evidence with every remote snapshot: head SHA, base SHA, and the canonical patch hash.
 
 A Review is `Fresh`, `RevisionChanged`, or `Unavailable` (`ReviewFreshness` in `src/domain/review.ts`).
-A write requires `Fresh`: the represented snapshot must still match the current head.
+Review-content writes require `Fresh` and a current-head check before the GitHub mutation.
+Pull-request metadata writes use `requireCurrentSession`, so a new commit does not prevent a label, assignee, reviewer, base-branch, or draft-state change. ADR 0025 explains this distinction.
+Local Apply uses `requireFreshLocal` to recompute checkout evidence before writing. Local draft edits name the displayed session but require no freshness gate.
 `RevisionChanged` is intentionally evidence-complete; an incomplete comparison stays `Unavailable` instead of guessing.
 
 **Architecture Invariant:** GitHub wins.
@@ -329,14 +336,21 @@ Services see only the `DesktopNotifier` port in `src/services/desktop-notifier.t
 The main-process implementation owns the toggles, Electron's `Notification`, and the click.
 An event about the Review the focused window is showing posts nothing, and a watched pull request open in the workbench stays silent whether the window is focused or not.
 
-Watched pull requests are the one thing Patchdesk polls GitHub for (ADR 0045, superseding part of ADR 0032, which had left the app with no timer at all).
+The watched-pull-request scheduler polls only pull requests the maintainer explicitly watches, as specified in ADR 0045.
 A profile watches at most 20 pull requests, and one tick is one aliased GraphQL query over all of them.
 The poll compares each answer with the stored snapshot, saves the new snapshots, and only then posts one notification per change, so a restart never repeats a notification.
 The polling is notification-only: it replaces no row, no Review session, no diff, and no other displayed state, which is why a timer is allowed here at all.
 The only thing the renderer sees from it is a dot on the Pull requests freshness badge, pushed over the watched-pull-request channel until the next refresh.
 
-**Architecture Invariant:** no timer moves state under the reader.
-A poll may raise a notification and light a badge; refreshing what is on screen stays an explicit maintainer action.
+The open workbench has a separate detector in `use-review-observation.ts`.
+It checks on mount, every 90 seconds while visible, and after a debounced focus or visibility change.
+For a pull request Review, a successful same-revision observation can update bounded PR metadata, Conversation, merge readiness, and pending-review state under ADR 0017.
+For a local Review, detection reports a prepared session and updates agent run requests, replies, and explanations.
+
+**Architecture Invariant:** background observation never adopts a changed revision.
+For an open pull request Review, only explicit Refresh adopts that revision and replaces its revision-bound artifacts.
+Local detection also leaves a prepared session for the maintainer's Refresh; the local open and Apply workflows can move a Review as described above.
+The watched-pull-request poll remains notification-only, and the Pull requests listing refreshes only on the triggers in ADR 0032.
 
 ### Cancellation
 
@@ -355,7 +369,13 @@ Cancelling only a local wait is never sufficient.
 
 The code base uses `Result<T, E>` from `src/domain/result.ts` at every boundary.
 Failures are typed values with a reason; they are not exceptions.
-Valibot schemas validate every value that crosses a boundary, with `strictObject` schemas rejecting unknown fields.
+Valibot schemas validate untrusted boundary data using the policy in ADR 0022:
+
+- External payloads use `looseObject`, so additional GitHub fields do not fail a read.
+- App-owned durable records use `strictObject` and fail the whole read on structural corruption.
+- User-editable preferences recover invalid fields with `fallback` and validate array entries separately.
+
+Response parsers that select a subset of fields can use `object`, as the renderer's environment and profile-id parsers do.
 
 Storage is defensive:
 

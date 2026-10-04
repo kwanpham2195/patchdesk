@@ -661,7 +661,11 @@ shim uses the Node the app ships. The cask adds
 `binary "#{appdir}/Patchdesk.app/Contents/Resources/bin/patchdesk"`, which
 links into `$(brew --prefix)/bin` (docs.brew.sh/Cask-Cookbook, `binary`); a
 `.dmg` install documents the same `ln -s`. `patchdesk` alone prints usage;
-`mcp` and `mcp --check` are the only subcommands. Package smoke runs
+`mcp` and `mcp --check` were the original subcommands. The 2026-09-30 setup
+amendment adds `setup status`, `setup add-repo`, and `setup set-checkout`.
+All setup commands accept `--json`; `add-repo` and `set-checkout` also accept
+`--cwd`, which defaults to the current directory. These are terminal commands
+over the app socket, separate from the MCP tool manifest. Package smoke runs
 `patchdesk mcp --check`. In development, `pnpm mcp:shim` runs
 `node out/main/mcp-shim.js` with the dev socket. The user guide shows:
 
