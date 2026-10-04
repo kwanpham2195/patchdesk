@@ -55,9 +55,10 @@ export type ReviewerVerdictRow = {
 
 /**
  * Derives each reviewer's Revision-bound review verdict against one
- * represented pull request — see CONTEXT.md, "Revision-bound review
- * verdict" — from the raw reviewer data one `PullRequestReviewerListing`
- * read carries. Pure: no I/O, no rendering, so it is testable on its own
+ * represented pull request from the raw reviewer data in one
+ * `PullRequestReviewerListing` read. See the term in
+ * docs/product-description/glossary.md. Pure: no I/O or rendering,
+ * so it is testable on its own
  * (`tests/domain/review-verdicts.test.ts`).
  *
  * Rules:

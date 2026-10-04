@@ -1,14 +1,14 @@
 # Glossary
 
-The vocabulary used across these documents. When a document uses one of these words, it means exactly this.
+The vocabulary for Patchdesk product and engineering documents. Use these terms consistently; feature pages and ADRs own detailed behavior and decisions. The words-to-avoid notes below guard against misleading synonyms.
 
 ## The desktop surface
 
 **Patchdesk.** The local macOS desktop app that helps a maintainer find and review GitHub pull requests. It runs beside local checkouts and has no Patchdesk server between the app and GitHub.
 
-**Pull requests screen.** The screen where a maintainer chooses a *Selected repository* and finds the pull request to review. It is read-only: it opens *Reviews* but performs no GitHub write.
+**Pull requests screen.** The screen where a maintainer chooses a _Selected repository_ and finds the pull request to review. It is read-only: it opens _Reviews_ but performs no GitHub write.
 
-**Review workbench.** The persistent screen where a maintainer conducts a *Review*. It shows represented GitHub state, the pull-request diff and conversation, review controls, and optional *Insights*.
+**Review workbench.** The persistent screen where a maintainer conducts a _Review_. It shows the represented diff, review controls, and optional _Insights_. A pull request Review also shows GitHub state and Conversation; a local Review shows feedback for the coding agent.
 
 **Visited pull requests column.** The persistent column left of the main content on the Pull requests screen, on every Review workbench, and beside workspace setup. It lists up to 20 pull requests and local Reviews the maintainer has opened in the active workspace, most recently opened first, read from local Review records with no GitHub request. Each entry is a Visited row: a click, Enter, or Space opens that Review workbench with no select step, and the row of the Review already on screen is highlighted and does nothing. The titlebar's first control collapses and expands the column; that choice is one setting on this machine, shared by every workspace.
 
@@ -20,9 +20,9 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 ## Workspace and identity
 
-**Workspace profile.** The saved local configuration that selects a GitHub host and account, rule paths, and watched repositories with their checkouts. Switching profiles returns the app to the Pull requests screen and reloads that profile's state. This is the internal name; the app calls it a *Workspace*.
+**Workspace profile.** The saved local configuration that selects a GitHub host and account, rule paths, and watched repositories with their checkouts. Switching profiles returns the app to the Pull requests screen and reloads that profile's state. This is the internal name; the app calls it a _Workspace_.
 
-**Workspace.** What the app calls a *workspace profile* everywhere the maintainer can see it: the Settings section, its Name and Active workspace controls, and the New workspace dialog. A workspace's stored identifier is derived from its name and is never shown.
+**Workspace.** What the app calls a _workspace profile_ everywhere the maintainer can see it: the Settings section, its Name and Active workspace controls, and the New workspace dialog. A workspace's stored identifier is derived from its name and is never shown.
 
 **Active profile.** The workspace profile currently applied to the app. A workspace created in Settings is not active until its creation and selection both succeed.
 
@@ -44,7 +44,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Repository listing.** The Pull requests screen's list of GitHub pull requests in the Selected repository. GitHub decides membership, order, count, and pagination; Patchdesk adds local Review indicators but does not re-sort or re-count the returned rows.
 
-**Pull request filter.** The maintainer's constraints on the Repository listing, expressed in GitHub search terms. The built surface includes state, labels, the Awaiting review from you preset, Review state, Check status, author, and base branch.
+**Pull request filter.** The maintainer's constraints on the Repository listing, sent as GitHub search terms. The built surface includes state, labels, Review state, Check status, author, base branch, and the mutually exclusive Awaiting review from you and Your pull requests presets. See [filters and pagination](pull-requests/filters-pagination-and-refresh.md).
 
 **Review state filter.** The More filters choice that limits pull requests by GitHub review state. Its choices are Any, Not reviewed, Review required, Approved, and Changes requested; Any removes this qualifier.
 
@@ -58,17 +58,23 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Review indicator.** A signal on a Repository listing row that Patchdesk derives from local Review sessions. The current indicators are Updated since review and Ready to merge.
 
+**Updated since review.** A Review indicator when a pull request's current head moved beyond the session's pinned revision.
+
+**Ready to merge.** A Review indicator shown only when a session matches the current head, checks pass, and fresh GitHub evidence reports the pull request mergeable.
+
 **Recommended action.** The single primary command shown on a Repository listing row. Patchdesk chooses it from the row's Review indicators and Review session state.
 
-**Review.** A maintainer's end-to-end evaluation of one open pull request. It continues across new pull-request revisions and ends when GitHub reports the pull request merged or closed.
+**Review.** A maintainer's evaluation of a pull request or local source. A pull request Review continues across revisions and ends when GitHub reports it merged or closed. A local Review collects feedback for the coding agent and does not hand off to a pull request Review. See [the local Review decision](../adr/0051-review-local-changes-for-the-coding-agent.md).
 
-**Review session.** The local work for a Review, anchored to one pinned pull-request revision. A later revision creates or moves the Review to a different session rather than changing what the earlier session represented.
+**Review session.** The local work for a Review, anchored to one pinned revision of its source: a pull request head and base, or a local head and base. A later revision moves the Review to another session without changing the earlier one. See [review session and revision](foundations/review-session-and-revision.md).
 
-**Review source.** What a Review's patch is computed from: a pull request, a *shared Review*'s branch against its base branch, or one commit against its parent. Every source but a pull request makes a *local Review*. Working-tree and branch sources from before the shared Review remain only in stored Reviews.
+**Review source.** What a Review's patch is computed from: a pull request, a _shared Review_'s branch against its base branch, or one commit against its parent. Every source but a pull request makes a _local Review_. Working-tree and branch sources from before the shared Review remain only in stored Reviews.
+
+**Checkout.** A working copy of a watched repository used by a local Review: its Configured checkout or a linked Git worktree. Each checkout keys its own Review. See [opening a local Review](pull-requests/opening-a-local-review.md).
 
 **Shared Review.** The one local Review of a checkout's current branch against a base branch: the branch's commits and the checkout's staged, unstaged, and untracked changes in one diff, from the merge base to the Local snapshot. Its notes stay on their lines after the coding agent commits. Patchdesk preselects the nearest other local branch as the base, and the maintainer may pick another; another branch or base is another shared Review.
 
-**Patch view.** One of a *shared Review*'s three diffs of the same session: Combined, from the merge base to the Local snapshot; Committed, from the merge base to the checkout's `HEAD`; and Uncommitted, from `HEAD` to the Local snapshot. Switching views moves neither the Review nor its session. Notes keep their state across views, Viewed marks belong to one view, and Insights run on Combined.
+**Patch view.** One of a _shared Review_'s three diffs of the same session: Combined, from the merge base to the Local snapshot; Committed, from the merge base to the checkout's `HEAD`; and Uncommitted, from `HEAD` to the Local snapshot. Switching views moves neither the Review nor its session. Notes keep their state across views, Viewed marks belong to one view, and Insights run on Combined.
 
 **Local Review.** A Review of a branch or commit in a local checkout the workspace profile lists, opened before any pull request exists. It has no Conversation, checks, merge, or pending review.
 
@@ -80,7 +86,15 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Coding agent.** A terminal agent, such as Claude Code or Codex, that edits a checkout and reaches Patchdesk through the `patchdesk mcp` command. It can open and refresh a local Review, ask for Insights, and read results and Local drafts; its tools cannot run an Insight, Apply, or change the maintainer's notes.
 
-**Agent run request.** A coding agent's request for one Insight on a local Review's current session. It spends nothing by itself: it waits on the Agent requests bar until the maintainer presses Run, which opens the ordinary Insight run dialog, or Decline, which is final for that session.
+**Agent reply.** The coding agent's latest plain-text answer to a Local draft, stored beside the draft. It can say addressed, skipped with a reason, or ask a question. It never enters an Insight or agent prompt.
+
+**Resolved draft.** A Local draft the maintainer marked done. It stays listed but leaves the agent prompt and open feedback until the maintainer reopens it.
+
+**Agent explanation.** The coding agent's explanation on lines of a local Review's Combined diff. It is shown inline, separate from Local drafts, and does not enter feedback, prompts, hand-off, or Insights.
+
+**Feedback hand-off.** The maintainer's mark that Local drafts are ready for the coding agent, made with Ready for agent or Copy as agent prompt. A newer mark replaces it; moving to a new session clears it. See [coding agent over MCP](pull-requests/coding-agent-over-mcp.md).
+
+**Agent run request.** A coding agent's request for one Insight on a local Review's current or Prepared session. It waits on the Agent requests bar for the maintainer to Run or Decline it and spends nothing by itself. A request for the Prepared session appears after the maintainer refreshes to it. See [coding agent over MCP](pull-requests/coding-agent-over-mcp.md).
 
 **Prepared session.** A session a coding agent's refresh prepared for newer content in the checkout while the local Review stays on the session the maintainer reads. The header shows Updates available, and the maintainer's Refresh moves the Review to it.
 
@@ -88,15 +102,17 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Represented-review worktree.** Patchdesk's immutable checkout for a Review session's represented revision. It is separate from the maintainer's checkout and is available only to bounded, read-only review inspection.
 
-**Fresh.** A Review state in which the represented revision still matches GitHub's current revision. GitHub writes require Fresh evidence. The workbench shows it as Up to date with GitHub.
+**Fresh.** A Review freshness state in which the represented revision matches current GitHub evidence. Review-content writes require it; pull-request metadata writes have a separate current-session gate. The workbench shows Up to date with GitHub. See [review session and revision](foundations/review-session-and-revision.md).
 
 **Revision changed.** A Review state in which current GitHub evidence proves that the pull request moved beyond the represented revision. Existing content stays readable, but revision-bound writes and actions stop until the Review refreshes to a new session. The workbench shows it as Newer revision on GitHub.
 
-**Remote state unavailable.** A Review state in which Patchdesk cannot prove current GitHub state. It can show last-known read-only content but cannot authorize a GitHub write. The workbench shows it as Could not reach GitHub.
+**Remote state unavailable.** A Review freshness state in which Patchdesk cannot prove the represented revision still matches GitHub. It can show last-known content but cannot authorize a revision-bound review-content write. The workbench shows Could not reach GitHub. See [review session and revision](foundations/review-session-and-revision.md).
 
 **Terminal remote state.** A Review state in which GitHub reports the pull request merged or closed. Patchdesk keeps the Review readable and stops further Review and merge writes.
 
 ## Reading the Review workbench
+
+**Workbench theme inheritance.** Embedded Review surfaces use Patchdesk's active light or dark theme; they have no separate theme setting.
 
 **PR overview.** The drawer on the right of the Review workbench, titled "PR overview", that both the Checks and Merge status controls in the Review header open. Its collapsible rows are Revision, Checks, Review status, and Merge readiness, and Merge readiness holds the merge command. Closing it returns focus to the control that opened it.
 
@@ -114,17 +130,41 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 ## Review content and GitHub writes
 
+**Analysis review summary.** The high-level part of a current Analysis that may prefill Finish review after a Finding command established the viewer's pending review. The maintainer edits and submits it.
+
 **Conversation.** The chronological PR description, issue comments, review summaries, and general conversation threads that GitHub shows for the pull request. It is GitHub-owned and separate from the viewer's pending review.
 
 **Conversation thread.** A group of GitHub review comments with open, resolved, or outdated state. Inline threads belong to a diff location; general threads appear in the Conversation screen.
 
 **Mapped conversation thread.** An open or resolved inline thread whose anchor Patchdesk can place unambiguously on the represented diff. Only mapped threads appear as diff annotations and in the Threads section.
 
-**Pull request metadata rail.** The Conversation screen's controls for Reviewers, Assignees, and Labels. These values reflect the latest successful refresh and are edited through explicit GitHub writes.
+**Conversation entry.** A PR description, issue comment, review summary, or general thread in the Conversation timeline.
+
+**Partial conversation thread.** A thread shown with only a bounded subset of its GitHub replies and identified as incomplete.
+
+**Revision-bound review verdict.** A reviewer's latest submitted verdict reported against its commit; it is outdated when that commit differs from the represented head.
+
+**Reviewer request.** A pending ask for someone to review a pull request, distinct from a submitted verdict.
+
+**Thread state change.** An explicit Resolve or Unresolve action on a mapped Conversation thread.
+
+**Direct conversation comment.** An inline GitHub comment or reply submitted directly from the diff; Comment now publishes immediately when no viewer pending review is confirmed.
+
+**Threads section.** The pull request Diff navigator section for threads the represented diff can place. Thread actions remain on each thread.
+
+**Notes section.** The local Review Diff navigator section for Local drafts. A row that cannot appear inline explains why.
+
+**Pull request metadata rail.** The Conversation screen's controls for Reviewers, Assignees, and Labels. These values reflect the latest successful GitHub observation and are edited through explicit GitHub writes. See [conversation and metadata](review-workbench/conversation-and-metadata.md).
 
 **GitHub write.** An explicit maintainer action that changes GitHub, such as adding a comment, changing metadata, resolving a thread, submitting a review, or merging. Patchdesk never performs one merely because an Insight completed.
 
 **GitHub pending review.** The authenticated viewer's remote `PENDING` review for the represented pull request. It is the one authoritative editable Review draft; Patchdesk does not keep a second editable local copy.
+
+**GitHub review.** An approval, comment, or request for changes the maintainer explicitly submits to GitHub.
+
+**Pending-review reconciliation.** The same-revision read that adopts GitHub's authoritative pending review after its state differs from Patchdesk's record. It does not merge drafts.
+
+**Merge command.** The maintainer's explicit choice of a GitHub merge method, gated by current state and any required warning acknowledgement.
 
 **Review body.** The shared Markdown message submitted with a GitHub review. The maintainer supplies or edits it in the Finish review dialog.
 
@@ -134,9 +174,13 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 ## Insights
 
-**Insight.** A revision-bound aid that helps a maintainer understand or evaluate a pull-request change. Brief, Analysis, and Walkthrough are Insight types; none can publish to GitHub on completion.
+**Insight.** A revision-bound aid that helps a maintainer understand or evaluate a represented change. Brief, Analysis, and Walkthrough are Insight types on both pull request and local Reviews; none can publish to GitHub on completion.
 
-**Insight provider.** The configured execution source for an Insight run. Patchdesk offers the API key provider — the `pi` id internally — and the Codex CLI account provider when their required local credentials or executable are available.
+**Insight provider.** The execution source selected for an Insight run: API key (`pi` internally), Codex CLI account, or pi CLI account. See [Brief](review-workbench/brief.md#begin-an-action) for the run controls.
+
+**Codex CLI account provider.** The Insight provider that uses the maintainer's local Codex CLI account without Patchdesk storing its credentials. It inspects only the represented-review worktree with bounded read-only tools.
+
+**pi CLI account provider.** The Insight provider that runs the maintainer's installed `pi` agent with its own login, read-only built-in tools, and project trust and extensions disabled. Its internal id is `pi-cli-account`.
 
 **Insight run.** One queued, running, completed, failed, cancelled, or superseded attempt to produce an Insight for a represented revision.
 
@@ -144,13 +188,19 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Run Insights dialog.** The dialog that Run Insights… beside the Insight tab strip opens. It has one row per Insight, each with a checkbox and its own Provider, Model, Reasoning, and Language, and Start runs starts every checked row as its own run.
 
-**Brief.** The latest successful answer to the structure of a change — its flow, ownership, and reach. Its blocks are Flow, Shape, and Reach, with a Provenance card beside them. For a reading path through the files, it links to the Walkthrough.
+**Brief.** The latest successful view of a represented change's structure. It presents Signals, optional Moves, Flow, Shape, and Blast radius, with Scope and Provenance beside them. It gives no review verdict or Findings. See [Brief](review-workbench/brief.md).
 
-**Flow.** The Brief block of up to three diff-styled views, one per kind: call tree, control flow, and component tree. Each marks steps added, removed, or unchanged, and a changed step can cite the hunk that supports it.
+**Signals.** Deterministic Brief rows computed from the patch to orient the reviewer before the structural views.
 
-**Shape.** The Brief block that groups the changed files by directory, collapsing a directory past twelve files into a counted remainder.
+**Moves.** The Brief's deterministic grouping of files renamed across directories, including reference-only edits that follow the move. It appears when at least two renamed files change directory.
 
-**Reach.** The Brief block of four rows stating what the change may reach and how each count was produced.
+**Brief citation.** An alias from a Brief's evidence manifest. New runs provide diff-hunk aliases (`h*`) for changed Flow steps; older retained Briefs can also contain description and commit citations. Patchdesk checks whether a cited hunk exists in the represented patch, which does not verify the step's claim. See [the citation decision](../adr/0040-make-brief-structure-first.md#citation-status).
+
+**Flow.** Up to five diff-styled Brief views, one per behavior, using call tree, control flow, component, state, or contract form. A changed step may cite a diff hunk; a changed step without a surviving citation stays visible but muted.
+
+**Shape.** The Brief tree of changed files grouped by directory, with short model notes about ownership. A directory past twelve files has a counted remainder.
+
+**Blast radius.** The Brief view of mentions of changed names outside changed files, grouped by name and site. These are text matches to inspect, not proof of a runtime call. It also identifies changed source files with no matching changed test. See [Brief](review-workbench/brief.md#settle).
 
 **Provenance card.** The Brief side-column card naming the Revision, when the Brief was Generated, the Provider and model, and whether all Citations were verified. It ends with a Regenerate button.
 
@@ -166,13 +216,46 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Support.** The Walkthrough's retained set of changed hunks that no section cites. The reader counts these hunks as not explained in the reading path and links to the full Diff; it does not list or mark them reviewed in the Walkthrough.
 
+**Analysis run.** One optional model execution that can produce an Analysis for a represented Review session.
+
 **Analysis.** The latest successful review body and evidence-backed Findings produced for a represented revision. The maintainer can dismiss Findings or use current mapped Findings to create GitHub pending-review comments.
+
+**Mapped finding.** A current Finding whose evidence identifies one unambiguous location in the represented diff.
+
+**Finding evidence hunk.** The containing diff hunk for a mapped Finding, with its anchored lines highlighted in Analysis.
+
+**Finding review command.** The maintainer's explicit action that publishes one current mapped Finding into the viewer's GitHub pending review. A failed or uncertain write follows the ordinary GitHub write rules.
+
+**Finding suggestion.** An exact replacement for a mapped Finding's new-side lines, verified against the represented patch before it can be published as a GitHub suggestion.
+
+**Finding review receipt.** The record connecting one Analysis Finding on one represented revision to a GitHub thread. It can be Pending, Published, or Historical.
+
+**Pending-review Finding.** A current mapped Finding already identified by a pending receipt in the viewer's GitHub pending review.
+
+**Finding-backed pending review.** The viewer's GitHub pending review when it contains a current Finding review receipt.
+
+**Dismissed finding.** A Finding the maintainer excluded with a recorded reason.
 
 **Finding.** A concern or observation in an Analysis, supported by evidence from the represented revision. A Mapped Finding identifies one unambiguous location in the current diff.
 
 **Walkthrough.** The latest successful guided explanation of a represented revision. It orders narrative chapters and cited diff hunks without changing GitHub.
 
 **Scope gauge.** The deterministic bar that groups changed files into Scope buckets, with added and removed line counts. It needs no model and is absent when the patch cannot be read. The pull-request list and the workbench header show it; the Brief's side column shows it as the Scope card, whose rows filter the Diff.
+
+## Words to avoid
+
+- Use **Repository listing** instead of inbox, feed, or queue.
+- Use **Review** and **Review session** instead of model review or prepared review.
+- Use **Local draft** instead of local comment or queued Finding.
+- Use **GitHub pending review** instead of local review batch or Review draft.
+- Use **Blast radius** instead of call graph or impact analysis; its matches do not prove calls.
+- Use **Brief citation** for a manifest hunk alias, not a generic reference, source, or link.
+- Use **Agent reply** for an answer to a Local draft and **Agent explanation** for an explanation on diff lines. Avoid agent note or agent comment for either.
+- Use **Resolved draft** for feedback the maintainer marked done. Avoid dismissed draft, which confuses it with a Dismissed finding.
+- Use **Change intent** for the local change's stated goal. Avoid prompt or PR description for this field.
+- Use **Agent run request** for an Insight awaiting the maintainer's approval. Avoid auto-run or queued run.
+
+Historical names in ADRs remain historical.
 
 ## Task state
 

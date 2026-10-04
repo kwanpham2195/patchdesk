@@ -3,8 +3,8 @@
 Patchdesk is a local-first Electron workbench for preparing, inspecting, and
 explicitly running pull-request reviews. See `README.md` for what Patchdesk
 is and how to install the packaged app; this file covers building it from
-source and contributing changes. Read `CONTEXT.md` for the domain language
-used across the codebase.
+source and contributing changes. Read `docs/product-description/glossary.md`
+for the domain language used across the codebase.
 
 ## Development environment
 

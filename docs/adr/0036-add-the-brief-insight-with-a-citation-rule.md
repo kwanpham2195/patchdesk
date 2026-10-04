@@ -7,8 +7,8 @@
 > Analysis and Walkthrough. It inherits ADR 0012 (each Insight type runs on
 > its own, and an outdated result stays readable), ADR 0013 (a model run is
 > bounded and never authoritative), and ADR 0018 (one throwaway Flue child
-> per run, no new model-visible capability). Terms in bold are defined in
-> `CONTEXT.md`.
+> per run, no new model-visible capability). For current vocabulary, see
+> [the product glossary](../product-description/glossary.md).
 >
 > The child no longer runs on Flue (ADR 0041). Every "Flue child" below means
 > one throwaway Pi agent child per run; `createBriefAgent` and the Analysis

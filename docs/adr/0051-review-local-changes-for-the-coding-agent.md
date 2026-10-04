@@ -3,7 +3,7 @@
 > **Status: Accepted** (2026-09-25, maintainer in chat). Supersedes the ship
 > half of ADR 0050: Commit, Push, Open PR, and the handoff to a pull request
 > Review. ADR 0050's sources, identity, Local snapshot, freshness rule, Apply,
-> and Local drafts stand. Terms in bold are defined in `CONTEXT.md`.
+> and Local drafts stand. Terms in bold are defined in [the product glossary](../product-description/glossary.md).
 
 ADR 0050 made Patchdesk the place a maintainer ships from: review the working
 tree, commit, push, open the pull request with the Brief as its body, and hand

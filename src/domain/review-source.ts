@@ -75,7 +75,7 @@ export type LocalReviewSource =
   | LocalBranchReviewSource
   | CommitReviewSource;
 
-/** What a Review's patch is computed from (ADR 0050, CONTEXT.md "Review source"). */
+/** What a Review's patch is computed from (ADR 0050, docs/product-description/glossary.md "Review source"). */
 export type ReviewSource = PullRequestReviewSource | LocalReviewSource;
 
 /**

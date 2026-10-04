@@ -104,7 +104,7 @@ After an interrupted refresh, the previous represented snapshot remains the last
 
 **Local persistence and recovery.** Review, session, remote snapshot, prepared artifacts, and preparation journal are separate durable records. A corrupt stored session is quarantined before preparation retries it.
 
-**GitHub permissions and write authority.** Readable evidence does not grant write authority. The write gate requires the Review and current session to match and the Review to be Fresh.
+**GitHub permissions and write authority.** Readable evidence does not grant write authority. Every GitHub write requires a current, non-terminal Review session and the action's permission and recovery checks. Review-content writes also require Fresh evidence and a current-head check. Pull-request metadata writes use the current-session gate without requiring Fresh. See [conversation and metadata](../review-workbench/conversation-and-metadata.md#interactions-with-other-systems).
 
 **Network, local tools, and Insight providers.** GitHub comparison rendering owns canonical revision proof. A local worktree supplies bounded inspection but cannot replace GitHub's canonical identity. Insights consume a session; they do not establish it.
 
@@ -135,3 +135,5 @@ After an interrupted refresh, the previous represented snapshot remains the last
 - Confirm the visible boundary between same-revision remote reconciliation and new-revision preparation.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.
+
+The write-gate description was checked against source commit `65a6608e`. This clarification has no new live verification.

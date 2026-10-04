@@ -250,6 +250,7 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 
 ## Memory
 
+- `docs/product-description/glossary.md` owns Patchdesk vocabulary and words to avoid. Read and update it instead of creating a root `CONTEXT.md`.
 - Put durable project rules and preferences here so every agent harness can use them. Other harnesses do not load Claude Code project memory. Keep dated project status and scoped authorizations in the workspace context or tracker; check current state before relying on historical permissions.
 - The issue tracker is GitHub Issues on this repository. Use the `issue` skill. For repository-authored specs, state the problem, then use `Why it matters`, `Scope`, and `Verification`; add `Open questions` and `Confidence` only when a real decision is pending.
 - Read the summaries in `docs/product-description/` and `bug-triage.md` before feature inventory or roadmap work. They describe shipped behavior and known gaps. `ROADMAP.md` records direction and order; check its Not planned section before proposing features, and update it when an issue moves between sections or a direction decision changes. Local Review is for reviewing agent changes, not for committing, pushing, or opening pull requests; read ADR 0051 before proposing changes to that workflow.

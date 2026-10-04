@@ -4,7 +4,7 @@
 > repository scoping, the state and label filters, the opaque page token, the
 > repository-wide match count, and the "Awaiting review from you" preset.
 > Companion to ADR 0032, which removes this screen's polling and makes
-> refresh explicit. Terms in bold are defined in `CONTEXT.md`.
+> refresh explicit. For current vocabulary, see [the product glossary](../product-description/glossary.md).
 >
 > **Historical implementation note (superseded by the progress update below):**
 > At acceptance, this ADR recorded state, label, and the

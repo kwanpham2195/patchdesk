@@ -12,7 +12,7 @@
 > list only because no GitHub pending review can exist for it yet. ADR 0002's
 > carry-forward rule, superseded for pull requests, is reused for that list.
 > ADR 0012, 0013, and 0041 are unchanged: Insight runs still consume a patch,
-> a worktree, and a hash. Terms in bold are defined in `CONTEXT.md`.
+> a worktree, and a hash. Terms in bold are defined in [the product glossary](../product-description/glossary.md).
 
 Today a Review starts only after a pull request exists. `ReviewSession.pr` is
 required, and `createReviewId` and `createReviewSessionId` in

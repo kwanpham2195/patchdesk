@@ -14,7 +14,7 @@
 > `InboxRefreshScheduler` and its focus polling, backoff ladder, and rate-limit
 > wait are gone; refresh happens only when the maintainer asks. Companion to
 > ADR 0031, which scopes the screen to one repository. Terms in bold are
-> defined in `CONTEXT.md`.
+> defined in [the product glossary](../product-description/glossary.md).
 >
 > **The freshness badge is the in-app refresh target.** This was left
 > unsettled when the polling was removed, leaving refresh reachable only from
