@@ -36,22 +36,12 @@ import type { ReviewOperationCoordinator } from "./review-operation-coordinator"
 import type { ReviewWriteGateFailure } from "./review-write-gate";
 
 /**
- * What every pull request metadata write — labels, assignees, review
- * requests — shares, per ADR "The conversation rail owns pull request
- * metadata writes": the same guard around the write, the same translation
- * of a GitHub failure, and the same three-state permission resolution.
- *
- * What is deliberately *not* here is each write's own field validation and
- * its own GitHub call. Those are the parts that genuinely differ, and they
- * stay in `label-service.ts`, `assignee-service.ts` and
- * `reviewer-service.ts`.
- *
- * Permission in particular stays resolved per write type. That ADR rejects
- * collapsing label permission into pull-request-write permission — it would
- * show an enabled reviewer picker to a triage-only account — so
- * `resolvePullRequestWritePermission` shares only the *evidence gathering*
- * and takes the projection as an argument, leaving each caller to name the
- * capability it actually needs.
+ * Metadata writes share admission, durable intent and failure handling; each
+ * caller validates its field and performs its GitHub mutation (ADR 0029).
+ * `resolvePullRequestWritePermission` shares evidence gathering; each caller
+ * projects its capability as `permitted`, `denied` or `unknown`. Labels allow
+ * triage permission; reviewers require pull-request write, so sharing the
+ * label projection would enable a reviewer picker for a triage-only account.
  */
 
 /**

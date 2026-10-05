@@ -10,15 +10,12 @@ export type RefusalSettlement =
   | { readonly _tag: "OutcomeUnknown" };
 
 /**
- * The one place a GitHub refusal is settled (ADR 0046, issue #755). It
- * returns `Refused` with the cause and each service maps that to its own
- * reason. A refusal is final with no read when `refusalFinality` says a landed
- * first delivery cannot produce it. Otherwise `isUnchanged` runs the kind's
- * existing read, and the refusal is final only when it shows the state the
- * write would change is still unchanged. A final refusal records the
- * rejection and releases the lock through `recordRejection`; a read that
- * fails or shows the change, or a rejection that cannot be recorded, leaves the
- * write on today's outcome-unknown path for ADR 0035 recovery.
+ * Settles a GitHub refusal (ADR 0046, issue #755). No read is needed when
+ * `refusalFinality` proves a landed first delivery could not cause it;
+ * otherwise `isUnchanged` must prove the target unchanged. Only a durable
+ * rejection releases the write lock. Failed reads, changed targets and failed
+ * rejection saves retain the lock for ADR 0035 recovery. Callers map a final
+ * `Refused` cause to their reason.
  */
 export async function settleRefusedWrite(input: {
   readonly kind: WriteKind;

@@ -1,18 +1,13 @@
 /**
- * Serializes asynchronous operations per key.
+ * Runs operations in order per key, releasing even if one throws or rejects.
+ * Different keys do not wait. Enqueuing before the first `await` orders
+ * same-tick calls.
  *
- * Every `run` for one key waits for the run queued before it, then executes,
- * then releases — including when the operation throws or rejects. Different
- * keys never wait for each other. The queue entry is published synchronously,
- * before the first `await`, so two callers in the same tick still queue.
- *
- * This mutex is deliberately NOT reentrant: `run(key, () => run(key, fn))`
- * waits forever. Patchdesk holds these locks across `await`s and pins one
- * global lock order (Review lock outer, profile lock inner) precisely because
- * a nested take is a bug. A reentrant mutex would let such a nested take
- * proceed and corrupt the state the outer lock was protecting instead of
- * hanging where a test can see it. `tests/services/review-lock-order.test.ts`
- * pins the order; `tests/domain/keyed-mutex.test.ts` pins this primitive.
+ * This mutex is not reentrant: nesting the same key waits forever. Locks span
+ * `await`s, so callers take the Review lock before the profile lock; allowing
+ * a nested take would corrupt state protected by the outer lock.
+ * `tests/services/review-lock-order.test.ts` and
+ * `tests/domain/keyed-mutex.test.ts` pin these contracts.
  */
 export class KeyedMutex {
   /** The tail of each key's queue: resolves when that last run releases. */
