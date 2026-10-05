@@ -31,7 +31,7 @@ import {
   type PullRequestMetadataWriteFailure,
 } from "./pull-request-metadata-write";
 
-/** One label to add or remove; `name` travels alongside `id` purely so a confirmed write can journal a human-legible own-write fingerprint without a second lookup. */
+/** One label to add or remove; `name` accompanies `id` so a confirmed write can journal a readable own-write fingerprint without another lookup. */
 type LabelRef = {
   readonly id: string;
   readonly name: string;

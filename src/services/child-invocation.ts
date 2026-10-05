@@ -7,12 +7,9 @@ import {
 /**
  * How long a one-shot Insight child may run an Analysis, for every provider.
  *
- * Analysis reads a whole prepared bundle whose size the caller has already
- * bounded, so the bound is flat rather than scaled the way the walkthrough's
- * is. Both `PiInsightChildInvoker` and
- * `AccountInsightInvoker` spend it, and it is one constant so the two cannot
- * drift: before this it was a named constant on the Codex side and a bare
- * `10 * 60_000` on the insight-runtime side, kept in step only by a comment.
+ * The caller bounds the prepared bundle before Analysis reads it, so Analysis
+ * uses a fixed timeout rather than the walkthrough's size-scaled timeout.
+ * Both `PiInsightChildInvoker` and `AccountInsightInvoker` use this constant.
  */
 export const ANALYSIS_RUN_TIMEOUT_MS = 10 * 60_000;
 

@@ -181,9 +181,8 @@ export class ReviewerService {
     if (current._tag === "err")
       return err(mapMetadataGateFailure(current.error));
     const pr = pullRequestRefForSession(current.value.session.key);
-    // The represented revision's own head — not a fresh GitHub read of the
-    // pull request's current head — is what a Revision-bound review verdict
-    // is judged against; see `deriveReviewVerdicts`.
+    // Judge Revision-bound verdicts against the session's represented head,
+    // not the pull request's latest GitHub head; see `deriveReviewVerdicts`.
     const representedHeadSha = current.value.session.key.headSha;
     const candidatesInput = {
       profile: current.value.profile,
