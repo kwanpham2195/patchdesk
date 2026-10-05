@@ -86,13 +86,10 @@ export type GitHubRateLimitObservation = {
 };
 
 /**
- * One settled HTTP request, as the request logger sees it. It carries the
- * normalized endpoint label and nothing else the URL held, so no query string,
- * header, or token can reach the log (ADR 0046). `status` is 0 when no
- * response arrived at all.
- *
- * A read served here no longer spawns a child, so this is what keeps it
- * countable in `scripts/gh-spawn-report.mjs` beside the spawns.
+ * Request log record with a normalized endpoint label, never the URL, query,
+ * headers, or token (ADR 0046). `status` is 0 when no response arrives. This
+ * keeps HTTP-served reads countable beside child spawns in
+ * `scripts/gh-spawn-report.mjs`.
  */
 export type GitHubHttpRequestRecord = {
   readonly label: string;
@@ -196,11 +193,10 @@ export class GitHubHttpClient {
   }
 
   /**
-   * Run a REST request whose answer the caller reads as the response bytes,
-   * the way `gh api`'s stdout reached `CommandRunner.runText`. The body is
-   * never parsed here whatever its media type: the diff read wants the bytes,
-   * and the two DELETE writes treat any success as their receipt, one of which
-   * (`discardPendingReview`) GitHub answers with JSON.
+   * Return the response body as text, matching `CommandRunner.runText`'s `gh api`
+   * stdout contract. Do not parse by media type: diff reads need the raw text,
+   * and both DELETE callers treat any success as their receipt, including JSON
+   * from `discardPendingReview`.
    */
   async restText(
     profile: WorkspaceProfileConfig,

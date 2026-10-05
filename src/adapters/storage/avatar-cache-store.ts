@@ -96,13 +96,10 @@ export async function avatarDataUri(
 }
 
 /**
- * Resolves many avatar URLs to their cached `data:` URIs in one call, each
- * distinct URL read from disk at most once — the same per-call memo
- * `resolveAvatars` in `review-workbench-projection.ts` uses, shared here
- * since `AssigneeService.list` and `ReviewerService.list` both need the
- * identical resolve-many-urls-once behaviour. A URL with no cached bytes is
- * simply absent from the returned map; callers fall back to the initials
- * badge for it, never a broken image.
+ * Read each distinct avatar URL from disk at most once per call and return its
+ * cached `data:` URI. `AssigneeService.list` and `ReviewerService.list` share
+ * this lookup; missing cached bytes are omitted so callers can show initials
+ * instead of a broken image.
  */
 export async function resolveAvatarDataUris(
   paths: PatchdeskPaths,

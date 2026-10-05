@@ -105,12 +105,10 @@ export function mergeLoginShellEnvironment(
 }
 
 /**
- * Runs the maintainer's login shell once and returns the environment it
- * prints. `env -0` separates records with NUL so a multi-line value survives.
- * `-i` loads `~/.zshrc`, where a key export usually lives, and `-l` loads the
- * login files. The command is a fixed string with nothing interpolated into
- * it, stdin and stderr go nowhere, and any failure, timeout, or malformed
- * output yields no variables at all.
+ * Run the fixed `env -0` command in the maintainer's interactive login shell.
+ * NUL separators preserve multiline values; stdin and stderr are ignored.
+ * Spawn errors, nonzero exit, timeout or oversized output return no variables;
+ * malformed records are skipped individually.
  */
 export async function readLoginShellEnvironment(
   options: LoginShellEnvironmentOptions = {},
