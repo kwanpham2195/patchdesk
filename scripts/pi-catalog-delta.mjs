@@ -121,11 +121,9 @@ function normalizeKey(key) {
 /**
  * Compare two generated catalogs by their model id sets.
  *
- * `git diff` on the generated file is thousands of lines; the review that
- * matters is which ids appeared, which vanished, and which vanished only to
- * come back under a new id scheme. That last case is the dangerous one: a
- * saved `defaultModel` or `enabledModels` entry naming the old id silently
- * stops matching.
+ * Review added, removed and likely renamed model IDs without reading thousands
+ * of generated diff lines. Saved `defaultModel` and `enabledModels` entries
+ * using an old ID silently stop matching after an ID change.
  *
  * @param {string} oldText Source of the catalog being replaced.
  * @param {string} newText Source of the regenerated catalog.

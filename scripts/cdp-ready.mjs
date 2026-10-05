@@ -57,11 +57,9 @@ export function cdpPort(env) {
 /**
  * Whether the dev app is reachable over CDP, as an exit code.
  *
- * Live verification of the running app starts here. `pnpm dev` dies quietly,
- * and an agent that never asks goes on describing an app that is not there --
- * or dispatches a live-verification subagent against a dead port and gets
- * "blocked" back twenty minutes later. One request settles it, so the failure
- * message is the remedy rather than a diagnosis.
+ * Check CDP before live verification or delegation so a silently stopped dev
+ * app cannot produce false runtime claims. One readiness request reports how
+ * to restart on failure.
  *
  * @param {{
  *   readonly port: number;
