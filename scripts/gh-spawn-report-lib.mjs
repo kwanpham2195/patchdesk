@@ -293,19 +293,12 @@ export function summarizeHttpRequests(contents, window = {}) {
 }
 
 /**
- * Attribute each spawn and each served HTTP request to the request it ran
- * inside, and report one cycle per request of `route`. `ambiguous` counts
- * spawns only, so it keeps comparing with the program's earlier windows.
- *
- * A spawn belongs to a request when its start falls between that request's
- * start and end. Requests of one route can overlap, so a spawn matching more
- * than one is attributed to the latest-starting match and counted in
- * `ambiguous`; a nonzero count means the app served concurrent requests and
- * the per-cycle split is an attribution, not a measurement.
- *
- * `--since`/`--until` bound which requests are reported, by their start. A
- * cycle is reported whole or not at all, so the window never cuts a cycle in
- * half and leaves a partial count that reads like a real one.
+ * Report one cycle per request of `route`, attributing spawns and served HTTP
+ * requests whose starts fall between that request's start and end. Overlapping
+ * requests assign a sample to the latest-starting match. `ambiguous` counts
+ * overlapping spawns only, preserving comparison with earlier report windows;
+ * a nonzero count means the split is attribution, not measurement.
+ * `--since`/`--until` select requests by start, including each cycle whole.
  *
  * @param {string} contents
  * @param {string} route

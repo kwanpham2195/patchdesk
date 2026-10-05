@@ -755,18 +755,10 @@ test("long workbench content keeps full values accessible without viewport overf
 });
 
 /**
- * The header control that opens the PR overview drawer.
- *
- * No button is named "PR overview" any more: `f6237d5` deleted the dedicated
- * one and made the two header status chips ("Checks · ..." and "Merge · ...")
- * open the drawer instead. Both carry an `aria-label` beginning "Open PR
- * overview: ", so a bare `{ name: "PR overview" }` matches two genuinely
- * different controls and raises a strict-mode violation -- the labels are not
- * duplicated, the old name simply names nothing.
- *
- * This takes the Checks chip by the state-independent prefix of its label
- * ("Open PR overview: checks failing" / "... checks passing"), so the handle
- * does not move when a fixture's check state does.
+ * Return the Checks chip that opens the PR overview drawer. The former
+ * dedicated button was removed (`f6237d5`); both Checks and Merge chips now
+ * open it with labels beginning "Open PR overview: ". Match the Checks prefix
+ * to avoid an ambiguous broad locator regardless of pass/fail state.
  */
 function prOverviewTrigger(page: Page): Locator {
   return page.getByRole("button", { name: "Open PR overview: checks" });

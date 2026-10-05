@@ -4,44 +4,25 @@ import type { BriefCitation } from "./brief-citation";
 import { resolveBriefCitations } from "./brief-citation-resolution";
 
 /*
- * The Brief reader draws this block as "Flow": a before/after tree of a
- * runtime sequence. Every tree carries a `kind` -- call_tree, control_flow,
- * component, state, or contract -- that sets how the tree is drawn. The Brief
- * keeps one tree per behavior the model names, of any kind, and at most
- * `MAX_FLOW_TREES` trees in all, counting the rest in `omittedTrees` (#717).
+ * Flow draws before/after runtime trees of kind `call_tree`, `control_flow`,
+ * `component`, `state`, or `contract`, one per proposed behavior. Only the
+ * first `MAX_FLOW_TREES` surviving trees remain in model order; later ones
+ * count in `omittedTrees` (#717). Component trees require a UI file among the
+ * changed paths, determined by `patchTouchesUiComponents`, not model claims.
  *
- * A component view is a claim about a user-interface tree; a patch with no
- * UI file cannot support one, so it is dropped regardless of what the model
- * proposed. Patchdesk decides this deterministically, from the patch's
- * changed paths, rather than trusting the model's own judgment about whether
- * its patch touched UI code (see `patchTouchesUiComponents`).
+ * Added and removed steps remain even without a hunk citation, but each such
+ * step with no surviving hunk citation counts once in `rejected`. Every
+ * discarded alias also counts, including unknown, repeated, description, or
+ * commit aliases paired with a valid hunk. Unchanged steps connect changed
+ * ones without requiring citations; any aliases they do carry follow the
+ * same hunk-only rule. These failures leave the tree intact but mark the
+ * Brief partially verified.
  *
- * Citations are best effort: an added or removed step keeps its place with
- * or without a hunk citation; a discarded alias or an uncited changed step
- * counts toward `rejected` so the Brief reads as partially verified, but the
- * tree is never cut for it. Only the diff can prove a step changed, so
- * description and commit aliases are still discarded, no matter how they are
- * paired with a real hunk. An `unchanged` step is the spine connecting the
- * changed ones: it needs no citation at all, but anything it does cite is
- * resolved by the same hunk-only rule, and a non-hunk or unknown alias is
- * discarded and counted exactly like one on a changed step.
- *
- * A tree left with no surviving changed step at any depth says nothing
- * changed, so the whole tree is dropped; of the survivors, only the first
- * `MAX_FLOW_TREES` are kept, in the order the model proposed them, and the
- * rest are counted so the reader can say a Flow was left out.
- *
- * `rejected` counts citation failures only -- a discarded alias, and an
- * `added`/`removed` node left with zero surviving hunk citations (kept, but
- * counted as an unverified claim, not a dropped one). Every other cap below
- * (the per-tree node cap, the depth cut, a whitespace-only label, an
- * all-unchanged tree) is silent, and a surviving tree past `MAX_FLOW_TREES`
- * is counted in `omittedTrees` rather than in `rejected`.
- *
- * Patchdesk does not reshape a tree the model proposes -- a step nested
- * under itself, or repeated, is drawn as proposed; the guidance, not the
- * code, asks for a sensible graph -- because a real recursion or a call from
- * two places must stay visible.
+ * Depth and node caps, whitespace-only labels, and trees with no surviving
+ * changed step at any depth are dropped silently, not counted in `rejected`;
+ * only surviving trees past the tree cap count in `omittedTrees`. Proposed
+ * nesting and repetition remain intact so recursion and shared calls remain
+ * visible rather than being reshaped by the validator.
  */
 
 /** Whether one Flow step is new, gone, or the spine connecting the changed ones. */

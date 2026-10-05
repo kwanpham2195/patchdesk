@@ -6,15 +6,12 @@ import {
   serverOrigin,
 } from "./renderer-server";
 
-// This suite proves the focus discipline behind `,`/`.` file navigation and
-// `[`/`]` hunk navigation -- the actual point of these slices, per
-// review-diff-keyboard-nav.ts. Unit tests already cover
-// `shouldIgnoreReviewNavKey`, `adjacentFilePath`, and `adjacentHunkAnchor`
-// in isolation (tests/renderer/review-diff-keyboard-nav.test.ts); what only
-// a real browser can prove is that the global listeners, wired into the
-// real diff surface, actually defer to a real text field and a real
-// dialog, and that a jump's real scroll geometry doesn't retrigger the
-// stale-recompute trap documented in review-diff-view.tsx.
+// Browser coverage for `,`/`.` file and `[`/`]` hunk navigation in
+// review-diff-keyboard-nav.ts. Unit tests in
+// tests/renderer/review-diff-keyboard-nav.test.ts cover key filtering and
+// adjacent-target selection; here the real diff listeners must defer to text
+// fields and dialogs, and jump scroll geometry must avoid the stale-recompute
+// trap documented in review-diff-view.tsx.
 
 test("`.` and `,` jump between files, stopping (not wrapping) at either end", async ({
   page,
