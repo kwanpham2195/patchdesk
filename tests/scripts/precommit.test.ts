@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decideReactDoctor } from "../../scripts/precommit.mjs";
+import { decideReactDoctor } from "#scripts/precommit.mjs";
 
 describe("decideReactDoctor", () => {
   it("runs the scan when package.json agrees between index and worktree", () => {

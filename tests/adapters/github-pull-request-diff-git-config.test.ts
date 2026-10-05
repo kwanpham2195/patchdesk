@@ -5,9 +5,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { createFetchedDiffRefs } from "../../src/adapters/github/github-adapter";
-import { parseAbsolutePath, parseGitSha } from "../../src/domain/ids";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { createFetchedDiffRefs } from "#src/adapters/github/github-adapter";
+import { parseAbsolutePath, parseGitSha } from "#src/domain/ids";
 import { orderedTransport } from "./github-transport-doubles";
 import {
   mustParse,

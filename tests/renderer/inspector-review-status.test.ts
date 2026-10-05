@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { inspectorReviewStatus } from "../../src/renderer/src/inspector-review-status";
-import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+import { inspectorReviewStatus } from "#src/renderer/src/inspector-review-status";
+import type { InboxRow } from "#src/renderer/src/renderer-contracts";
 
 const row: InboxRow = {
   remoteState: "open",

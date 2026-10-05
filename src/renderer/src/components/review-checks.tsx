@@ -10,11 +10,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type {
-  CheckRunSummary,
-  CheckSummary,
-} from "../../../domain/github-context";
-import type { PullRequestRef } from "../../../domain/pull-request";
+import type { CheckRunSummary, CheckSummary } from "#src/domain/github-context";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   openPullRequestExternalUrl,
   resolvePullRequestExternalUrl,

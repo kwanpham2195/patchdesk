@@ -1,4 +1,4 @@
-import type { GitHubLabel } from "../../../domain/github-context";
+import type { GitHubLabel } from "#src/domain/github-context";
 import { Badge } from "./ui/badge";
 
 /** One GitHub label as a neutral outlined pill: the label's real color rides

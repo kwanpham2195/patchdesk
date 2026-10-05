@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 
-import { requestJson } from "../api-client";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
+import { requestJson } from "#src/renderer/src/api-client";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import { useLatestCommitted } from "./use-latest-committed";
 
 type WalkthroughProgress = NonNullable<

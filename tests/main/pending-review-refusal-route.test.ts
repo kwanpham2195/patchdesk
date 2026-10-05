@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { err, type Result } from "../../src/domain/result";
-import { registerPendingReviewRoutes } from "../../src/main/routes/pending-review-routes";
-import { GitHubRefusedDirectSummaryReview } from "../../src/services/direct-summary-review-service";
-import { GitHubRefusedPendingReviewWrite } from "../../src/services/pending-review-service";
+import type { RawJsonValue } from "#src/domain/json";
+import { err, type Result } from "#src/domain/result";
+import { registerPendingReviewRoutes } from "#src/main/routes/pending-review-routes";
+import { GitHubRefusedDirectSummaryReview } from "#src/services/direct-summary-review-service";
+import { GitHubRefusedPendingReviewWrite } from "#src/services/pending-review-service";
 
 const reviewId = "acme__octo-org__patchdesk__pr-42__review-abcdef123456";
 const expected = {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseWorkspaceProfileId } from "../../src/domain/ids";
-import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
+import { parseWorkspaceProfileId } from "#src/domain/ids";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
 
 describe("ReviewLifecycleGate", () => {
   it("serializes profile mutations while allowing other profiles to proceed", async () => {

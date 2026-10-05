@@ -7,7 +7,7 @@ import {
   parseAgentExplanationId,
   parseRepoRelativePath,
   parseReviewSessionId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   cleanupLocalApplyRoots,
   localApplyHarness,

@@ -4,15 +4,15 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
-import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import { ReviewRecoveryService } from "#src/services/review-recovery-service";
 import {
   createReview,
   type PullRequestReviewIdentity,
-} from "../../src/domain/review";
+} from "#src/domain/review";
 import {
   createReviewId,
   createReviewSessionId,
@@ -23,8 +23,8 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok, err, type Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { ok, err, type Result } from "#src/domain/result";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("Invalid fixture");

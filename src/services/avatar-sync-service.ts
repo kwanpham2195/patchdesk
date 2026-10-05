@@ -4,10 +4,10 @@ import {
   hasAvatar,
   hashAvatarUrl,
   writeAvatar,
-} from "../adapters/storage/avatar-cache-store";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
-import type { WorkspaceProfileId } from "../domain/ids";
+} from "#src/adapters/storage/avatar-cache-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ReviewRemoteSnapshot } from "#src/adapters/storage/review-remote-store";
+import type { WorkspaceProfileId } from "#src/domain/ids";
 import type { AppLogService } from "./app-log-service";
 
 /**

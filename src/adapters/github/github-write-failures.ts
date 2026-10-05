@@ -1,8 +1,8 @@
 import type { CommandFailure } from "./command-runner";
-import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
-import type { GitHubWriteFailure } from "../../domain/github-write";
-import type { RefusalCause } from "../../domain/github-write-refusal";
-import { err, type Result } from "../../domain/result";
+import type { ForbiddenReason } from "#src/domain/github-forbidden-reason";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
+import { err, type Result } from "#src/domain/result";
 import type { GitHubReadFailure, GitHubReadOperation } from "./github-adapter";
 
 export function optionalPolicyUnavailableReason(

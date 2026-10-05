@@ -17,15 +17,15 @@ import {
   parseTurnJson,
   type CodexAppServerFailure,
   type CodexRpcMessage,
-} from "../../src/adapters/codex/codex-app-server-client";
+} from "#src/adapters/codex/codex-app-server-client";
 import type {
   InsightActivityEvent,
   InsightActivitySink,
-} from "../../src/adapters/codex/codex-activity";
-import type { Result } from "../../src/domain/result";
-import type { RepresentedReviewWorktree } from "../../src/domain/represented-review-worktree";
-import { InsightActivityBuffer } from "../../src/services/insight-activity-buffer";
-import { composeReviewPrompt } from "../../src/services/review-rubric";
+} from "#src/adapters/codex/codex-activity";
+import type { Result } from "#src/domain/result";
+import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
+import { InsightActivityBuffer } from "#src/services/insight-activity-buffer";
+import { composeReviewPrompt } from "#src/services/review-rubric";
 
 type FakeCodexProcessOptions = {
   readonly approvalCwd: string;

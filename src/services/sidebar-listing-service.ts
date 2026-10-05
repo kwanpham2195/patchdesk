@@ -1,7 +1,7 @@
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { AgentRunRequest } from "../domain/agent-run-request";
-import { definedProps } from "../domain/defined-props";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { AgentRunRequest } from "#src/domain/agent-run-request";
+import { definedProps } from "#src/domain/defined-props";
 import {
   checkoutFolderName,
   type AbsolutePath,
@@ -12,10 +12,10 @@ import {
   type PullRequestNumber,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import { isLocalReview, type Review } from "../domain/review";
-import type { LocalReviewSource } from "../domain/review-source";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview, type Review } from "#src/domain/review";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 /** How many rows the sidebar shows; a repository's local row counts once. */

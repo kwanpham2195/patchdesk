@@ -7,11 +7,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   NarrativeWalkthrough,
   type NarrativeWalkthroughActions,
-} from "../../src/renderer/src/components/narrative-walkthrough";
+} from "#src/renderer/src/components/narrative-walkthrough";
 import type {
   NarrativeWalkthrough as NarrativeWalkthroughModel,
   NarrativeSnapshot,
-} from "../../src/domain/narrative-walkthrough";
+} from "#src/domain/narrative-walkthrough";
 
 afterEach(() => {
   cleanup();

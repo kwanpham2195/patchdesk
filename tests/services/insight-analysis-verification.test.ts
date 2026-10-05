@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { markReviewTerminal } from "../../src/domain/review";
-import { ok } from "../../src/domain/result";
-import type { InsightRunCoordinator } from "../../src/services/insight-run-coordinator";
+import { markReviewTerminal } from "#src/domain/review";
+import { ok } from "#src/domain/result";
+import type { InsightRunCoordinator } from "#src/services/insight-run-coordinator";
 import {
   analysisResult,
   cleanupRoots,

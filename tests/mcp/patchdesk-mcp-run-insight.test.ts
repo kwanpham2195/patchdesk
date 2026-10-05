@@ -4,25 +4,25 @@ import { join } from "node:path";
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { InsightStore } from "../../src/adapters/storage/insight-store";
+import { InsightStore } from "#src/adapters/storage/insight-store";
 import {
   parseContentHash,
   parseGitSha,
   parseReviewId,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import { parseWorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+} from "#src/domain/ids";
+import { parseWorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
+} from "#tests/main/mcp-app-fixture";
 import {
   closeMcpTestClients,
   connectLegacyClient,
   mcpProtocolEras,
 } from "./mcp-test-clients";
-import { beginRun, value } from "../services/local-apply-fixture";
+import { beginRun, value } from "#tests/services/local-apply-fixture";
 import { call, openRoute, type Workbench } from "./mcp-read-tools-fixture";
 
 let app: McpAppFixture | undefined;

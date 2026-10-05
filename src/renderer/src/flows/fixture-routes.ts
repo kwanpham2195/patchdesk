@@ -1,4 +1,4 @@
-import type { AppDestination } from "../routes";
+import type { AppDestination } from "#src/renderer/src/routes";
 
 const fixtureHashes = new Set([
   "#mermaid-fixture",

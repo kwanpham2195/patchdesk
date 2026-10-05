@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import * as v from "valibot";
 
-import { ok } from "../../src/domain/result";
+import { ok } from "#src/domain/result";
 import {
   cleanupRoots,
   fixture,

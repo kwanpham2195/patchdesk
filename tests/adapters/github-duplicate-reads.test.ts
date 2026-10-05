@@ -7,7 +7,7 @@ import {
   type CannedAnswer,
   type HttpTransportDouble,
 } from "./github-transport-doubles";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import { StubCredentials } from "./stub-github-credentials";
 import {
   parseGitHubHost,
@@ -16,9 +16,9 @@ import {
   parseGitHubRepoName,
   parseGitSha,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import { type PullRequestRef } from "../../src/domain/pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import { type PullRequestRef } from "#src/domain/pull-request";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 const headSha = "abcdef1234567890abcdef1234567890abcdef12";
 

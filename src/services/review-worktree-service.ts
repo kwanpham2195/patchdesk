@@ -10,9 +10,9 @@ import {
 import { dirname, resolve } from "node:path";
 import * as v from "valibot";
 
-import type { GitHubCredentials } from "../adapters/github/github-credentials";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { isPathContained } from "../adapters/storage/path-containment";
+import type { GitHubCredentials } from "#src/adapters/github/github-credentials";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { isPathContained } from "#src/adapters/storage/path-containment";
 import {
   parseReviewSessionId,
   type GitSha,
@@ -22,13 +22,13 @@ import {
   type PullRequestNumber,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import type { ReviewLocalCheckoutWarning } from "../domain/review-session";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import { definedProps } from "../domain/defined-props";
-import { KeyedMutex } from "../domain/keyed-mutex";
-import { mapConcurrent } from "../domain/map-concurrent";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import type { ReviewLocalCheckoutWarning } from "#src/domain/review-session";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { definedProps } from "#src/domain/defined-props";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
 
 export type GitReadExecutor = {
   readonly run: (

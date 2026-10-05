@@ -1,8 +1,8 @@
 import * as v from "valibot";
 
-import { BRIEF_SIGNAL_KINDS } from "../../domain/brief-signals";
-import { classifyChangedPath } from "../../domain/change-scope";
-import { definedProps } from "../../domain/defined-props";
+import { BRIEF_SIGNAL_KINDS } from "#src/domain/brief-signals";
+import { classifyChangedPath } from "#src/domain/change-scope";
+import { definedProps } from "#src/domain/defined-props";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
 
 /** Mirrors `BRIEF_ALIAS_SYNTAX` in `src/domain/brief.ts`. */

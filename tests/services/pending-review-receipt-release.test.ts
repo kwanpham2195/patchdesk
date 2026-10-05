@@ -4,12 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/fake-github-adapter";
-import type { GitHubReadFailure } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { projectAnalysisReviewActions } from "../../src/domain/analysis-review-actions";
-import type { GitHubComments } from "../../src/domain/github-context";
+import { FakeGitHubAdapter } from "#src/adapters/github/fake-github-adapter";
+import type { GitHubReadFailure } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { projectAnalysisReviewActions } from "#src/domain/analysis-review-actions";
+import type { GitHubComments } from "#src/domain/github-context";
 import {
   createPendingReviewRequestId,
   parseContentHash,
@@ -22,24 +22,24 @@ import {
   parseInsightRunId,
   parseIsoTimestamp,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import type { LogEntryInput } from "../../src/domain/log-entry";
+} from "#src/domain/ids";
+import type { LogEntryInput } from "#src/domain/log-entry";
 import type {
   FindingReviewReceipt,
   PendingReviewRead,
   PendingReviewState,
   ViewerPendingReview,
-} from "../../src/domain/pending-review";
-import { ok, type Result } from "../../src/domain/result";
+} from "#src/domain/pending-review";
+import { ok, type Result } from "#src/domain/result";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
-} from "../../src/domain/review-session";
+} from "#src/domain/review-session";
 import {
   PendingReviewService,
   projectPendingReview,
-} from "../../src/services/pending-review-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/services/pending-review-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import {
   createReviewRefreshFixture,
   createReviewRefreshFixtureValues,

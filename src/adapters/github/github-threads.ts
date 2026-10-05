@@ -11,11 +11,11 @@ import type {
   GitHubComment,
   GitHubComments,
   GitHubConversationThread,
-} from "../../domain/github-context";
-import { type GitHubThreadId, parseGitHubThreadId } from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+} from "#src/domain/github-context";
+import { type GitHubThreadId, parseGitHubThreadId } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   maxReviewCommentPages,
   maxReviewComments,

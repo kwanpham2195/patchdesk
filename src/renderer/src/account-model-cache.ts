@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-import type { AccountInsightProvider } from "../../domain/insight-provider";
+import type { AccountInsightProvider } from "#src/domain/insight-provider";
 import { definePreference } from "./lib/local-preference";
 import {
   insightProviderModelSchema,

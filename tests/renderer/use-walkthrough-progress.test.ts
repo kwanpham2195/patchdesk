@@ -2,9 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { DesktopResponse } from "../../src/main/ipc-contract";
-import { useWalkthroughProgress } from "../../src/renderer/src/hooks/use-walkthrough-progress";
-import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
+import type { DesktopResponse } from "#src/main/ipc-contract";
+import { useWalkthroughProgress } from "#src/renderer/src/hooks/use-walkthrough-progress";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import {
   installDesktopDouble,
   success,

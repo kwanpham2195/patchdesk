@@ -11,13 +11,13 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok, err, type Result } from "../../src/domain/result";
-import { ReviewRetention } from "../../src/services/review-retention";
-import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
-import { ReviewSessionPreparation } from "../../src/services/review-session-preparation";
+} from "#src/domain/ids";
+import { ok, err, type Result } from "#src/domain/result";
+import { ReviewRetention } from "#src/services/review-retention";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ReviewRecoveryService } from "#src/services/review-recovery-service";
+import { ReviewSessionPreparation } from "#src/services/review-session-preparation";
 
 /**
  * This suite pins the one global lock order this codebase keeps:

@@ -1,12 +1,12 @@
-import { InlineConversationService } from "../../src/services/inline-conversation-service";
-import type { InsightRunCoordinator } from "../../src/services/insight-run-coordinator";
-import { LabelService } from "../../src/services/label-service";
-import { AssigneeService } from "../../src/services/assignee-service";
-import { ReviewerService } from "../../src/services/reviewer-service";
-import { MergeWriteController } from "../../src/services/merge-write-controller";
-import { ReviewViewedFilesService } from "../../src/services/review-viewed-files-service";
-import type { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ok, type Result } from "../../src/domain/result";
+import { InlineConversationService } from "#src/services/inline-conversation-service";
+import type { InsightRunCoordinator } from "#src/services/insight-run-coordinator";
+import { LabelService } from "#src/services/label-service";
+import { AssigneeService } from "#src/services/assignee-service";
+import { ReviewerService } from "#src/services/reviewer-service";
+import { MergeWriteController } from "#src/services/merge-write-controller";
+import { ReviewViewedFilesService } from "#src/services/review-viewed-files-service";
+import type { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ok, type Result } from "#src/domain/result";
 import {
   anchor,
   at,

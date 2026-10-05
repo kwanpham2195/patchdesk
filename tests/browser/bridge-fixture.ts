@@ -1,5 +1,5 @@
 import type { Page } from "playwright/test";
-import type { PatchdeskDesktopApi } from "../../src/main/ipc-contract";
+import type { PatchdeskDesktopApi } from "#src/main/ipc-contract";
 
 /**
  * How the stub answers `request`: by proxying the loopback API a spec started,

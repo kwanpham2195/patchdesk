@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   createReviewSessionId,
   parseGitHubHost,
@@ -13,10 +13,10 @@ import {
   parseLocalBaseRef,
   parseLocalBranchName,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
-import { ReviewPreparationJournal } from "../../src/services/review-preparation-journal";
-import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
+} from "#src/domain/ids";
+import { ok, type Result } from "#src/domain/result";
+import { ReviewPreparationJournal } from "#src/services/review-preparation-journal";
+import { ReviewWorktreeService } from "#src/services/review-worktree-service";
 
 const roots: string[] = [];
 

@@ -9,7 +9,7 @@ import {
   type CommandExecutor,
   type CommandFailure,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
+} from "#src/adapters/github/command-runner";
 
 /**
  * Fixture-driven classifier tests (plan 007). Each file under

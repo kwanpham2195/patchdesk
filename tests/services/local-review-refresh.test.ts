@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseFindingId, parseRepoRelativePath } from "../../src/domain/ids";
+import { parseFindingId, parseRepoRelativePath } from "#src/domain/ids";
 import {
   applyRequest,
   cleanupLocalApplyRoots,

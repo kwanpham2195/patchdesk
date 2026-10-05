@@ -7,12 +7,12 @@ import {
   type GitHubThreadId,
   type GitSha,
   parseGitHubThreadId,
-} from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
-import type { GitHubWriteFailure } from "../../domain/github-write";
-import type { GitHubReviewCoordinates } from "../../domain/patch";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { GitHubReviewCoordinates } from "#src/domain/patch";
 import {
   addThreadReplyMutation,
   confirmCreatedCommentThreadQuery,

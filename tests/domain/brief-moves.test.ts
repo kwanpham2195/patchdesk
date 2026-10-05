@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeBrief, type BriefSnapshot } from "../../src/domain/brief";
-import { briefMoves } from "../../src/domain/brief-moves";
+import { normalizeBrief, type BriefSnapshot } from "#src/domain/brief";
+import { briefMoves } from "#src/domain/brief-moves";
 import {
   parseContentHash,
   parseGitSha,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { moveReferenceUpdatePaths } from "../../src/domain/move-reference-updates";
-import { listPatchChangedFiles } from "../../src/domain/patch-changed-files";
-import type { Result } from "../../src/domain/result";
-import { parseStoredBrief } from "../../src/domain/stored-brief";
+} from "#src/domain/ids";
+import { moveReferenceUpdatePaths } from "#src/domain/move-reference-updates";
+import { listPatchChangedFiles } from "#src/domain/patch-changed-files";
+import type { Result } from "#src/domain/result";
+import { parseStoredBrief } from "#src/domain/stored-brief";
 
 /** One rename section; `edited` adds a one-line hunk so the file also changed. */
 function rename(from: string, to: string, edited = false): string {

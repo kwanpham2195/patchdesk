@@ -1,9 +1,9 @@
-import type { NotificationSettings } from "../domain/contracts";
-import type { LogEntryInput } from "../domain/log-entry";
-import type { Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
-import type { WatchedPullRequestService } from "../services/watched-pull-request-service";
+import type { NotificationSettings } from "#src/domain/contracts";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import type { Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { WatchedPullRequestService } from "#src/services/watched-pull-request-service";
 
 export type WatchedPullRequestScheduler = {
   /** Restarts the wait from now when the interval changed; a tick in flight still finishes once. */

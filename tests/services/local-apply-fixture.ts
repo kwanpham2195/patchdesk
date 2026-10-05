@@ -3,18 +3,18 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { InsightStore } from "../../src/adapters/storage/insight-store";
-import { LocalApplyOperationStore } from "../../src/adapters/storage/local-apply-operation-store";
-import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { RefreshOperationStore } from "../../src/adapters/storage/refresh-operation-store";
-import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
-import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { LocalApplyOperationStore } from "#src/adapters/storage/local-apply-operation-store";
+import { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { RefreshOperationStore } from "#src/adapters/storage/refresh-operation-store";
+import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import {
   createAgentRunRequestId,
   createAgentExplanationId,
@@ -33,37 +33,37 @@ import {
   type FindingId,
   type InsightRunId,
   type IsoTimestamp,
-} from "../../src/domain/ids";
-import { definedProps } from "../../src/domain/defined-props";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
 import {
   beginInsightRun,
   completeInsightRun,
   type InsightType,
-} from "../../src/domain/insight-record";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { ok, type Result } from "../../src/domain/result";
-import type { ReviewResult } from "../../src/domain/review-result";
-import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { AgentExplanationService } from "../../src/services/agent-explanation-service";
-import { AgentRunRequestService } from "../../src/services/agent-run-request-service";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
-import { LocalApplyService } from "../../src/services/local-apply-service";
-import { LocalApplySettlement } from "../../src/services/local-apply-settlement";
-import { LocalDraftService } from "../../src/services/local-draft-service";
-import { LocalReviewOpening } from "../../src/services/local-review-opening";
-import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
-import { ReviewRetention } from "../../src/services/review-retention";
-import { LocalReviewRevisionService } from "../../src/services/local-review-revision-service";
-import { LocalReviewSessionPreparation } from "../../src/services/local-review-session-preparation";
-import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
-import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
-import { ReviewWriteGate } from "../../src/services/review-write-gate";
-import type { GitReadExecutor } from "../../src/services/review-worktree-service";
-import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
+} from "#src/domain/insight-record";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { ok, type Result } from "#src/domain/result";
+import type { ReviewResult } from "#src/domain/review-result";
+import type { LocalReviewSourceRequest } from "#src/domain/review-source";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { AgentExplanationService } from "#src/services/agent-explanation-service";
+import { AgentRunRequestService } from "#src/services/agent-run-request-service";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import { LocalApplyService } from "#src/services/local-apply-service";
+import { LocalApplySettlement } from "#src/services/local-apply-settlement";
+import { LocalDraftService } from "#src/services/local-draft-service";
+import { LocalReviewOpening } from "#src/services/local-review-opening";
+import { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
+import { ReviewRetention } from "#src/services/review-retention";
+import { LocalReviewRevisionService } from "#src/services/local-review-revision-service";
+import { LocalReviewSessionPreparation } from "#src/services/local-review-session-preparation";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { ReviewWorkbenchProjection } from "#src/services/review-workbench-projection";
+import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
+import { ReviewWriteGate } from "#src/services/review-write-gate";
+import type { GitReadExecutor } from "#src/services/review-worktree-service";
+import { ReviewWorktreeService } from "#src/services/review-worktree-service";
 
 const roots: string[] = [];
 export const now = value(parseIsoTimestamp("2026-09-25T00:00:00.000Z"));

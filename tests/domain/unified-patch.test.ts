@@ -1,17 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { fingerprintPatchAnchor } from "../../src/domain/diff-anchor";
-import {
-  parseRepoRelativePath,
-  type RepoRelativePath,
-} from "../../src/domain/ids";
-import { narrativeHunkManifest } from "../../src/domain/narrative-walkthrough";
-import { mapFindingLocation, parseUnifiedPatch } from "../../src/domain/patch";
-import { ReviewPatchIndex } from "../../src/services/review-patch-index";
+import { fingerprintPatchAnchor } from "#src/domain/diff-anchor";
+import { parseRepoRelativePath, type RepoRelativePath } from "#src/domain/ids";
+import { narrativeHunkManifest } from "#src/domain/narrative-walkthrough";
+import { mapFindingLocation, parseUnifiedPatch } from "#src/domain/patch";
+import { ReviewPatchIndex } from "#src/services/review-patch-index";
 import {
   filterUnifiedPatchFiles,
   matchUnifiedFileHeader,
   tokenizeUnifiedPatch,
-} from "../../src/domain/unified-patch";
+} from "#src/domain/unified-patch";
 
 function repoPath(value: string): RepoRelativePath {
   const parsed = parseRepoRelativePath(value);

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ok } from "../../src/domain/result";
+import { ok } from "#src/domain/result";
 import {
   cleanupRoots,
   fixture,

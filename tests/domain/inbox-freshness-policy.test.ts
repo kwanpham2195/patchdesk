@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isInboxCacheDegraded,
   isInboxCacheStale,
-} from "../../src/domain/inbox-freshness-policy";
+} from "#src/domain/inbox-freshness-policy";
 
 // The thresholds are written out here rather than imported from the module
 // under test, so the test pins the policy instead of restating whatever the

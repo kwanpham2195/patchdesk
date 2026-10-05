@@ -14,14 +14,11 @@ import {
   unknown,
 } from "valibot";
 
-import {
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-} from "../../domain/ids";
-import { rawJsonValueSchema } from "../../domain/json";
-import { ok } from "../../domain/result";
-import type { LogEntryInput } from "../../domain/log-entry";
-import type { LocalApiContainer } from "../local-api-container";
+import { parseReviewSessionId, parseWorkspaceProfileId } from "#src/domain/ids";
+import { rawJsonValueSchema } from "#src/domain/json";
+import { ok } from "#src/domain/result";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { jsonBody } from "./json-body";
 
 /** Local data cleanup, the renderer log stream and the diagnostics bundle. */

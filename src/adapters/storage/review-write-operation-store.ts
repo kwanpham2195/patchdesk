@@ -1,12 +1,12 @@
 import { rm } from "node:fs/promises";
 
-import type { ReviewId, WorkspaceProfileId } from "../../domain/ids";
+import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
 import {
   parseReviewWriteOperation,
   type PersistedReviewWriteOperation,
   type ReviewWriteOperation,
-} from "../../domain/review-write-operation";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/review-write-operation";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isNotFound,
   readJsonFile,

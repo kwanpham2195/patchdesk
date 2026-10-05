@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   invokeWalkthroughWithResolvedTimeout,
   resolveWalkthroughTimeoutMs,
-} from "../../src/services/child-invocation";
-import type { WalkthroughInput } from "../../src/services/walkthrough-operation";
+} from "#src/services/child-invocation";
+import type { WalkthroughInput } from "#src/services/walkthrough-operation";
 
 const roots: Array<string> = [];
 afterEach(async () => {

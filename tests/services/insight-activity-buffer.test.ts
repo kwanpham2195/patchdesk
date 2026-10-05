@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { InsightActivityEvent } from "../../src/adapters/codex/codex-activity";
+import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
 import {
   InsightActivityBuffer,
   type InsightActivitySnapshot,
-} from "../../src/services/insight-activity-buffer";
+} from "#src/services/insight-activity-buffer";
 
 function bufferWith(
   events: ReadonlyArray<InsightActivityEvent>,

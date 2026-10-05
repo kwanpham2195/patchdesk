@@ -8,11 +8,11 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import type { ReviewWorkbenchInitialState } from "../components/review-workbench";
-import type { ReviewWorkbenchFlowProps } from "../flows/review-workbench-flow";
-import { loadWorkbenchUiState } from "../lib/screen-restore";
-import type { WorkbenchPayload } from "../renderer-models";
-import type { AppDestination } from "../routes";
+import type { ReviewWorkbenchInitialState } from "#src/renderer/src/components/review-workbench";
+import type { ReviewWorkbenchFlowProps } from "#src/renderer/src/flows/review-workbench-flow";
+import { loadWorkbenchUiState } from "#src/renderer/src/lib/screen-restore";
+import type { WorkbenchPayload } from "#src/renderer/src/renderer-models";
+import type { AppDestination } from "#src/renderer/src/routes";
 
 type ReviewWorkbenchFlowComponent =
   React.ComponentType<ReviewWorkbenchFlowProps>;

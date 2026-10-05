@@ -1,21 +1,21 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ReviewStore } from "../../src/adapters/storage/review-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   createAgentRunRequestId,
   parseLocalBranchName,
   type AgentRunRequestId,
-} from "../../src/domain/ids";
-import type { InsightType } from "../../src/domain/insight-record";
-import { err, ok } from "../../src/domain/result";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { registerInsightRoutes } from "../../src/main/routes/insight-routes";
-import { AgentRunRequestService } from "../../src/services/agent-run-request-service";
+} from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
+import { err, ok } from "#src/domain/result";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { registerInsightRoutes } from "#src/main/routes/insight-routes";
+import { AgentRunRequestService } from "#src/services/agent-run-request-service";
 import type {
   InsightInvoker,
   InsightRunCoordinator,
-} from "../../src/services/insight-run-coordinator";
+} from "#src/services/insight-run-coordinator";
 import {
   cleanupRoots,
   fixture,

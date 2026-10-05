@@ -17,7 +17,8 @@
     "knip": "knip",
     "knip:ratchet": "node scripts/check-knip-ratchet.mjs",
     "check:error-ui": "node scripts/check-renderer-error-surfaces.mjs",
-    "check": "pnpm typecheck && pnpm typecheck:scripts && pnpm check:error-ui && pnpm test:all && pnpm lint:staged && pnpm lint:changed -- origin/main && pnpm knip:ratchet",
+    "check:imports": "node scripts/check-parent-imports.mjs",
+    "check": "pnpm typecheck && pnpm typecheck:scripts && pnpm check:error-ui && pnpm check:imports && pnpm test:all && pnpm lint:staged && pnpm lint:changed -- origin/main && pnpm knip:ratchet",
     "typecheck": "tsc --noEmit",
     "typecheck:scripts": "node scripts/check-scripts-types.mjs",
     "test": "vitest",
@@ -191,5 +192,13 @@
   },
   "engines": {
     "node": ">=22.19.0"
+  },
+  "imports": {
+    "#src/*": "./src/*",
+    "#tests/*": "./tests/*",
+    "#scripts/*": "./scripts/*",
+    "#tools/*": "./tools/*",
+    "#package": "./package.json",
+    "#resources/*": "./resources/*"
   }
 }

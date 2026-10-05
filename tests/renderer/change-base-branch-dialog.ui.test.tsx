@@ -3,9 +3,9 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ChangeBaseBranchDialog } from "../../src/renderer/src/components/change-base-branch-dialog";
-import type { BaseBranchChangeOutcome } from "../../src/renderer/src/flows/use-review-metadata-actions";
-import type { BaseBranchReadState } from "../../src/renderer/src/hooks/use-base-branch-candidates";
+import { ChangeBaseBranchDialog } from "#src/renderer/src/components/change-base-branch-dialog";
+import type { BaseBranchChangeOutcome } from "#src/renderer/src/flows/use-review-metadata-actions";
+import type { BaseBranchReadState } from "#src/renderer/src/hooks/use-base-branch-candidates";
 
 afterEach(cleanup);
 

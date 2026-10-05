@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GeneratedMarkdown } from "../../src/renderer/src/components/generated-markdown";
+import { GeneratedMarkdown } from "#src/renderer/src/components/generated-markdown";
 
 afterEach(cleanup);
 

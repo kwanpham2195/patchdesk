@@ -6,9 +6,9 @@ import { afterEach, expect, it } from "vitest";
 import {
   FakeGitHubAdapter,
   type GitHubReader,
-} from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { buildLocalApiContainer } from "../../src/main/local-api-container";
+} from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { buildLocalApiContainer } from "#src/main/local-api-container";
 
 // The Insight context pack reads a pull request's comments and checks. Until
 // issue #311 it read them through a GitHub adapter the desktop entry point

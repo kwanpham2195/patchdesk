@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   countLines,
   isImportSpecifierOnlyGrowth,
-} from "../../scripts/file-growth-lib.mjs";
+} from "#scripts/file-growth-lib.mjs";
 
 /**
  * A file whose imports sit above a multi-line object literal, then nothing

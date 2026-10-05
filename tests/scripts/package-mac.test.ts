@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveMacSigningEnvironment } from "../../scripts/package-mac-lib.mjs";
+import { resolveMacSigningEnvironment } from "#scripts/package-mac-lib.mjs";
 
 describe("resolveMacSigningEnvironment", () => {
   it("turns signing off when there is no certificate", () => {

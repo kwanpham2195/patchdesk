@@ -2,13 +2,13 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
-import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
-import type { GithubListResponse } from "../../src/renderer/src/github-read-failure-copy";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
+import { refusalCausePhrase } from "#src/renderer/src/write-refusal-copy";
+import type { GithubListResponse } from "#src/renderer/src/github-read-failure-copy";
 import {
   useGithubItemPicker,
   type GithubItemPickerActions,
-} from "../../src/renderer/src/hooks/use-github-item-picker";
+} from "#src/renderer/src/hooks/use-github-item-picker";
 
 /**
  * The state machine the three rail pickers share. Each `it` names one

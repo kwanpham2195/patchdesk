@@ -16,14 +16,14 @@ import {
   type InboxFilterChange,
   type InboxPreset,
   type InboxStateFilter,
-} from "../../../domain/maintainer-inbox";
-import type { GitHubHost } from "../../../domain/ids";
+} from "#src/domain/maintainer-inbox";
+import type { GitHubHost } from "#src/domain/ids";
 import {
   parsePullRequestInput,
   parsePullRequestRef,
   type PullRequestRef,
-} from "../../../domain/pull-request";
-import type { RepositoryIdentity } from "../../../domain/repository-identity";
+} from "#src/domain/pull-request";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
 import {
   isSidebarLocalRepositoryRow,
   type SidebarReviewRow,
@@ -45,7 +45,7 @@ import {
   useWatchedPullRequests,
   type WatchToggleFailure,
 } from "@/hooks/use-watched-pull-requests";
-import type { ReviewCommandSource } from "../review-commands";
+import type { ReviewCommandSource } from "#src/renderer/src/review-commands";
 import { WatchToggleFailureMessage } from "./watch-pull-request-button";
 
 const icons = {

@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState } from "react";
 
-import { requestJson } from "../api-client";
+import { requestJson } from "#src/renderer/src/api-client";
 import {
   parseWorkbenchResponse,
   type RemoteWriteRecovery,
   type WorkbenchResponse,
-} from "../renderer-contracts";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
+} from "#src/renderer/src/renderer-contracts";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
 
 type ReviewWriteRecoveryError = "check_failed" | "invalid_response";
 

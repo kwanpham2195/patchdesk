@@ -6,21 +6,21 @@ import {
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
-} from "../domain/ids";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
+} from "#src/domain/ids";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import type {
   PatchdeskConfigFile,
   PatchdeskSettingsPatch,
-} from "../domain/contracts";
-import type { StorageFailure } from "../adapters/storage/json-file";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { CommandRunner } from "../adapters/github/command-runner";
-import { listAuthenticatedGitHubAccounts } from "../adapters/github/github-auth-accounts";
+} from "#src/domain/contracts";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { CommandRunner } from "#src/adapters/github/command-runner";
+import { listAuthenticatedGitHubAccounts } from "#src/adapters/github/github-auth-accounts";
 import type {
   WatchedRepoConfig,
   WorkspaceProfileConfig,
-} from "../domain/workspace-profile";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/workspace-profile";
+import { err, ok, type Result } from "#src/domain/result";
 
 /** One watched repository as the main process holds it: branded, because
  * this is the side that parses GitHub identifiers. Structurally the same as

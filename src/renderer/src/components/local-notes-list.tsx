@@ -1,13 +1,13 @@
-import type { LocalDraftControls } from "../flows/use-local-drafts";
-import { localDraftKey } from "../flows/use-local-drafts";
-import type { LocalDraftEntry } from "../local-draft-contracts";
+import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-drafts";
+import { localDraftKey } from "#src/renderer/src/flows/use-local-drafts";
+import type { LocalDraftEntry } from "#src/renderer/src/local-draft-contracts";
 import {
   placeLocalDraft,
   type InlineLocalDraftPlacement,
   type LocalDraftPlacementContext,
   type LocalDraftPlacementReason,
-} from "../local-draft-placement";
-import { localPatchViewLabels } from "../review-source";
+} from "#src/renderer/src/local-draft-placement";
+import { localPatchViewLabels } from "#src/renderer/src/review-source";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { CopyLoadedTextButton } from "./copy-loaded-text-button";

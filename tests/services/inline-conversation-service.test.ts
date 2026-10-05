@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   InlineConversationService,
   type DirectConversationCommand,
-} from "../../src/services/inline-conversation-service";
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
+} from "#src/services/inline-conversation-service";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -14,11 +14,11 @@ import {
   parsePullRequestNumber,
   parseReviewId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { ReviewWriteOperation } from "#src/domain/review-write-operation";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 const must = <T>(result: Result<T, unknown>): T => {

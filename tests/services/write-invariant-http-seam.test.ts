@@ -7,20 +7,20 @@ import {
   type CommandExecutor,
   type CommandFailure,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import type { GitHubServedTransport } from "../../src/adapters/github/gh-request-runner";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+} from "#src/adapters/github/command-runner";
+import type { GitHubServedTransport } from "#src/adapters/github/gh-request-runner";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import {
   ghInvocationFor,
   type GitHubGraphQlRequest,
   type GitHubRequest,
   type GitHubRestRequest,
-} from "../../src/adapters/github/github-request";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { PendingReviewService } from "../../src/services/pending-review-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { StubCredentials } from "../adapters/stub-github-credentials";
+} from "#src/adapters/github/github-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { PendingReviewService } from "#src/services/pending-review-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { StubCredentials } from "#tests/adapters/stub-github-credentials";
 import {
   anchor,
   expected,

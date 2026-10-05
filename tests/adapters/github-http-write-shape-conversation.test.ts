@@ -5,8 +5,8 @@ import {
   deleteThreadCommentMutation,
   reviewThreadStateMutation,
   updateThreadCommentMutation,
-} from "../../src/adapters/github/github-graphql-queries";
-import { parseGitHubThreadId, parseGitSha } from "../../src/domain/ids";
+} from "#src/adapters/github/github-graphql-queries";
+import { parseGitHubThreadId, parseGitSha } from "#src/domain/ids";
 import { profile, useFixtureServer } from "./github-http-fixture-server";
 import {
   expectSameMutationAsGh,

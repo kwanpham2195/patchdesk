@@ -2,9 +2,9 @@ import type {
   GitHubPendingReviewGateway,
   GitHubReader,
   GitHubReviewWriter,
-} from "../adapters/github/github-adapter";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+} from "#src/adapters/github/github-adapter";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   adoptObservedPendingReview,
   beginPendingReviewWrite,
@@ -22,19 +22,19 @@ import {
   type PendingReviewThreadWrite,
   type PendingReviewRead,
   type ViewerPendingReview,
-} from "../domain/pending-review";
+} from "#src/domain/pending-review";
 import {
   createPendingReviewRequestId,
   parseGitHubLogin,
   type ReviewId,
   type WorkspaceProfileId,
   type IsoTimestamp,
-} from "../domain/ids";
-import type { PullRequestReviewSession } from "../domain/review-session";
-import type { GitHubWriteFailure } from "../domain/github-write";
-import type { RefusalCause } from "../domain/github-write-refusal";
-import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/ids";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   requireCurrentHead,
   type ReviewWriteExpectation,
@@ -46,11 +46,11 @@ import {
   postDesktopNotification,
   type DesktopNotifier,
 } from "./desktop-notifier";
-import type { PullRequestRef } from "../domain/pull-request";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import type {
   GitHubComments,
   GitHubPublishedFeedback,
-} from "../domain/github-context";
+} from "#src/domain/github-context";
 import { journalEntriesFor } from "./pending-review-journal";
 import {
   hasFindingReceipt,

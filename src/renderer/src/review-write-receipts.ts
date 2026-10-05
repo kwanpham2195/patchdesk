@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
-import { GITHUB_LOGIN_MAX_LENGTH, parseGitHubLogin } from "../../domain/ids";
-import { REVIEW_WRITE_INTENT_TAGS } from "../../domain/review-write-operation";
+import { GITHUB_LOGIN_MAX_LENGTH, parseGitHubLogin } from "#src/domain/ids";
+import { REVIEW_WRITE_INTENT_TAGS } from "#src/domain/review-write-operation";
 
 // The findings warning carries the ids it counts so the readiness card can
 // lead to them; the union mirrors the domain's `MergeWarning`.

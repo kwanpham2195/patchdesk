@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGitHubThreadId } from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
-import type { ReviewInlineAnnotation } from "../../src/renderer/src/components/review-diff-view";
+import { parseGitHubThreadId } from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
+import type { ReviewInlineAnnotation } from "#src/renderer/src/components/review-diff-view";
 import {
   deriveConversationThreadEntries,
   projectConversationThreadRows,
-} from "../../src/renderer/src/conversation-thread-entries";
+} from "#src/renderer/src/conversation-thread-entries";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCodexBriefPrompt } from "../../src/adapters/codex/codex-brief-prompt";
+import { buildCodexBriefPrompt } from "#src/adapters/codex/codex-brief-prompt";
 
 describe("buildCodexBriefPrompt", () => {
   const briefPrompt = [

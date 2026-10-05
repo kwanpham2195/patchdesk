@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compareTreePaths } from "../../src/renderer/src/review-diff-order";
+import { compareTreePaths } from "#src/renderer/src/review-diff-order";
 
 describe("compareTreePaths", () => {
   it("keeps the all-files surface in the file tree's folder-first order", () => {

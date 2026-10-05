@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   enclosingDeclaration,
   mentionKind,
-} from "../../src/domain/brief-reach-mentions";
+} from "#src/domain/brief-reach-mentions";
 
 describe("mentionKind", () => {
   it.each([

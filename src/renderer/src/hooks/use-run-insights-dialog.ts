@@ -1,24 +1,24 @@
 import { useState } from "react";
 
-import { definedProps } from "../../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   AccountInsightProvider,
   InsightLanguage,
   InsightProvider,
   InsightReasoning,
-} from "../../../domain/insight-provider";
-import { approveAgentRunRequests } from "../agent-run-requests";
-import type { InsightProviderCatalog } from "../insight-catalog-contracts";
+} from "#src/domain/insight-provider";
+import { approveAgentRunRequests } from "#src/renderer/src/agent-run-requests";
+import type { InsightProviderCatalog } from "#src/renderer/src/insight-catalog-contracts";
 import {
   insightRunOptionsForModel,
   insightRunOptionsForProvider,
   seedInsightRunOptions,
   type InsightRunOptions,
-} from "../insight-run-options";
-import type { InsightRunPreference } from "../insight-run-preferences";
-import type { InsightStatus } from "../insight-status";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/insight-run-options";
+import type { InsightRunPreference } from "#src/renderer/src/insight-run-preferences";
+import type { InsightStatus } from "#src/renderer/src/insight-status";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { InsightRunController, InsightRunType } from "./use-insight-run";
 
 /** The dialog's rows in reading order, as the Insight tab strip lists them. */

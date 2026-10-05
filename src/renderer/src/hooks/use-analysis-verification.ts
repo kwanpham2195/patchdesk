@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import * as v from "valibot";
 
-import { requestJson } from "../api-client";
-import { analysisVerificationSchema } from "../insight-contracts";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
+import { requestJson } from "#src/renderer/src/api-client";
+import { analysisVerificationSchema } from "#src/renderer/src/insight-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import { useLatestCommitted } from "./use-latest-committed";
 
 /** The Verification checklist state one Analysis reader renders and edits. */

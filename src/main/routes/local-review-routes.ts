@@ -17,9 +17,9 @@ import {
   type SafeParseResult,
 } from "valibot";
 
-import { parseChangeIntent } from "../../domain/change-intent";
-import { definedProps } from "../../domain/defined-props";
-import { feedbackHandoffVerdicts } from "../../domain/feedback-handoff";
+import { parseChangeIntent } from "#src/domain/change-intent";
+import { definedProps } from "#src/domain/defined-props";
+import { feedbackHandoffVerdicts } from "#src/domain/feedback-handoff";
 import {
   parseAbsolutePath,
   parseAgentExplanationId,
@@ -34,29 +34,29 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type FindingId,
-} from "../../domain/ids";
-import { MAX_MAINTAINER_NOTE_LENGTH } from "../../domain/local-draft";
+} from "#src/domain/ids";
+import { MAX_MAINTAINER_NOTE_LENGTH } from "#src/domain/local-draft";
 import {
   localDraftReplySchema,
   parseLocalDraftTarget,
-} from "../../domain/local-draft-reply";
-import { localPatchViews } from "../../domain/local-patch-view";
-import { ok } from "../../domain/result";
-import { reviewRequestSchema } from "../../domain/review";
-import { parseLocalReviewSourceRequest } from "../../domain/review-source";
+} from "#src/domain/local-draft-reply";
+import { localPatchViews } from "#src/domain/local-patch-view";
+import { ok } from "#src/domain/result";
+import { reviewRequestSchema } from "#src/domain/review";
+import { parseLocalReviewSourceRequest } from "#src/domain/review-source";
 import {
   changeIntentFailureKinds,
   changeIntentRequestSchema,
-} from "../../services/local-change-intent-service";
-import { agentExplanationFailureKinds } from "../../services/agent-explanation-service";
-import { describeRepositoryCheckout } from "../../services/local-checkout";
-import { localDraftFailureKinds } from "../../services/local-draft-service";
-import { localPatchViewFailureKinds } from "../../services/local-patch-view-service";
+} from "#src/services/local-change-intent-service";
+import { agentExplanationFailureKinds } from "#src/services/agent-explanation-service";
+import { describeRepositoryCheckout } from "#src/services/local-checkout";
+import { localDraftFailureKinds } from "#src/services/local-draft-service";
+import { localPatchViewFailureKinds } from "#src/services/local-patch-view-service";
 import {
   localReviewFailureKinds,
   localReviewOpenRequestSchema,
-} from "../../services/local-review-opening";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/services/local-review-opening";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { response, serviceResponse } from "./http-status";
 import { jsonBody } from "./json-body";
 import {

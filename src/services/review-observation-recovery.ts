@@ -2,20 +2,20 @@ import {
   reconcileReviewRemoteState,
   type Review,
   type RevisionUnavailableReason,
-} from "../domain/review";
-import type { PendingReviewState } from "../domain/pending-review";
+} from "#src/domain/review";
+import type { PendingReviewState } from "#src/domain/pending-review";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
-} from "../domain/review-session";
+} from "#src/domain/review-session";
 import type {
   ContentHash,
   IsoTimestamp,
   ReviewId,
   WorkspaceProfileId,
-} from "../domain/ids";
-import type { StorageFailure } from "../adapters/storage/json-file";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   ReviewObservation,
   ReviewObservationDependencies,

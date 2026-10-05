@@ -5,7 +5,7 @@ import {
   INSIGHT_PROVIDERS,
   type InsightLanguage,
   type InsightProvider,
-} from "../../domain/insight-provider";
+} from "#src/domain/insight-provider";
 
 /** What each provider is called wherever a retained Insight states its provenance. */
 export const INSIGHT_PROVIDER_LABELS = {

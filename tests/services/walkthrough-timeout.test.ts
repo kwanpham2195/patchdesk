@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   readWalkthroughArtifactSizes,
   walkthroughTimeoutMs,
-} from "../../src/services/walkthrough-timeout";
+} from "#src/services/walkthrough-timeout";
 
 const roots: string[] = [];
 afterEach(async () =>

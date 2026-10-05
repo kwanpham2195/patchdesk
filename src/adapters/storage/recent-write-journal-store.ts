@@ -7,14 +7,14 @@ import {
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
-import type { LogEntryInput } from "../../domain/log-entry";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/ids";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   appendRecentWriteReceipts,
   parseRecentReviewWrite,
   type RecentReviewWrite,
-} from "../../domain/recent-review-write";
+} from "#src/domain/recent-review-write";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
   isNotFound,

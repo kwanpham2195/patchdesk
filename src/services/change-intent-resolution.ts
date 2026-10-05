@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 
-import { containsSensitiveData } from "../adapters/storage/json-file";
+import { containsSensitiveData } from "#src/adapters/storage/json-file";
 import {
   MAX_CHANGE_INTENT_BYTES,
   type ChangeIntent,
   type ResolvedChangeIntent,
-} from "../domain/change-intent";
-import { parseContentHash } from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import type { ReviewSession } from "../domain/review-session";
+} from "#src/domain/change-intent";
+import { parseContentHash } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { ReviewSession } from "#src/domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { GitReadExecutor } from "./review-worktree-service";

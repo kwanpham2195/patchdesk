@@ -3,14 +3,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import type { AccountInsightProvider } from "../../src/domain/insight-provider";
-import { err, ok } from "../../src/domain/result";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { AccountInsightProvider } from "#src/domain/insight-provider";
+import { err, ok } from "#src/domain/result";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 
 const capability = "cap";
 const origin = "http://patchdesk.test";

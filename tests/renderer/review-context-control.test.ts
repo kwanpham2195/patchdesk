@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   renderedContextOf,
   reviewContextControl,
-} from "../../src/renderer/src/review-context-control";
+} from "#src/renderer/src/review-context-control";
 
 function hydrated(
   patch: string,

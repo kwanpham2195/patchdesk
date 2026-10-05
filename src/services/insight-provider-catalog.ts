@@ -1,26 +1,26 @@
-import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
-import { definedProps } from "../domain/defined-props";
+import { discoverPathOnlyExecutable } from "#src/adapters/process/executable-discovery";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   AccountInsightProvider,
   InsightProvider,
   InsightReasoning,
   InsightSelection,
-} from "../domain/insight-provider";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+} from "#src/domain/insight-provider";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import type {
   CodexAppServerClient,
   CodexAppServerFailure,
   CodexModel,
-} from "../adapters/codex/codex-app-server-client";
+} from "#src/adapters/codex/codex-app-server-client";
 import type {
   ModelListPrice,
   PiRuntimeModelCatalog,
-} from "../adapters/pi/pi-runtime-model-catalog";
+} from "#src/adapters/pi/pi-runtime-model-catalog";
 import type {
   PiCliModel,
   PiRpcClient,
   PiRpcFailure,
-} from "../adapters/pi-cli/pi-rpc-client";
+} from "#src/adapters/pi-cli/pi-rpc-client";
 
 /** Renderer-safe provider availability. It never contains a path or account detail. */
 type InsightProviderStatus = {

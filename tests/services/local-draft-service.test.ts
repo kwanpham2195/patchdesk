@@ -7,13 +7,13 @@ import {
   parseFindingId,
   parseLocalNoteId,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import { dismissInsightFinding } from "../../src/domain/insight-record";
-import { ok } from "../../src/domain/result";
-import { isLocalReview } from "../../src/domain/review";
-import { markLocalDraftsApplied } from "../../src/domain/review-local-drafts";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewInsightReader } from "../../src/services/review-insight-reading";
+} from "#src/domain/ids";
+import { dismissInsightFinding } from "#src/domain/insight-record";
+import { ok } from "#src/domain/result";
+import { isLocalReview } from "#src/domain/review";
+import { markLocalDraftsApplied } from "#src/domain/review-local-drafts";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewInsightReader } from "#src/services/review-insight-reading";
 import {
   cleanupLocalApplyRoots,
   git,

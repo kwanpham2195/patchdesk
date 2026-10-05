@@ -1,23 +1,23 @@
 import type {
   GitHubMergeWriter,
   GitHubReader,
-} from "../adapters/github/github-adapter";
+} from "#src/adapters/github/github-adapter";
 import {
   analysisMergeInput,
   type MergeGateFinding,
-} from "../domain/analysis-merge-findings";
+} from "#src/domain/analysis-merge-findings";
 import {
   evaluateMergeReadiness,
   type MergeReadiness,
   type MergeWarningCode,
-} from "../domain/merge-readiness";
-import type { MergeMethod } from "../domain/github-context";
-import type { RefusalCause } from "../domain/github-write-refusal";
-import type { GitSha } from "../domain/ids";
-import type { PullRequestRef } from "../domain/pull-request";
-import type { PullRequestReviewSession } from "../domain/review-session";
-import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/merge-readiness";
+import type { MergeMethod } from "#src/domain/github-context";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
+import type { GitSha } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 import { settleRefusedWrite } from "./refused-write-settlement";
 

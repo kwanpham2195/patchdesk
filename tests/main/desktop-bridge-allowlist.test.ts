@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   deliberatelyDeniedRoutes,
   isAllowedDesktopRequest,
-} from "../../src/main/desktop-bridge";
-import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
+} from "#src/main/desktop-bridge";
+import type { LocalApiDesktopRequest } from "#src/main/ipc-contract";
 
 /**
  * Hono route registrations look like `app.get("/v1/foo", ...)` or the

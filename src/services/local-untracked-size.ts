@@ -1,8 +1,8 @@
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { mapConcurrent } from "../domain/map-concurrent";
-import { err, ok, type Result } from "../domain/result";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
 import type { GitReadExecutor } from "./review-worktree-service";
 
 export type UntrackedLimits = {

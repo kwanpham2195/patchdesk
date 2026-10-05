@@ -2,8 +2,8 @@ import {
   parseAbsolutePath,
   parseGitHubHost,
   parseGitHubLogin,
-} from "../../../domain/ids";
-import type { Profile } from "../renderer-models";
+} from "#src/domain/ids";
+import type { Profile } from "#src/renderer/src/renderer-models";
 
 /** The profile fields every `PUT /v1/profiles` from the Workspace editor carries. */
 export type ProfileValues = {

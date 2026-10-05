@@ -10,9 +10,9 @@ import {
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
-import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
+} from "#src/domain/ids";
+import { ok, type Result } from "#src/domain/result";
+import type { ReviewWriteOperation } from "#src/domain/review-write-operation";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 /**

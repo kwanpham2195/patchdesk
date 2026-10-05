@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractImageRewrites } from "../../src/adapters/github/github-image-rewrites";
+import { extractImageRewrites } from "#src/adapters/github/github-image-rewrites";
 
 describe("extractImageRewrites", () => {
   it("maps a proxied image from its original URL to the camo URL", () => {

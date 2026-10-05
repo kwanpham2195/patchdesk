@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { adhocSignPackagedApp } from "../../scripts/sign-mac-adhoc-lib.mjs";
+import { adhocSignPackagedApp } from "#scripts/sign-mac-adhoc-lib.mjs";
 
 type Invocation = {
   command: string;

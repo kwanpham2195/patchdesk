@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { InsightStore } from "../../src/adapters/storage/insight-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   createAgentRunRequestId,
   createReviewId,
@@ -18,14 +18,14 @@ import {
   parseIsoTimestamp,
   parseLocalBranchName,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { createReview, type ReviewIdentity } from "../../src/domain/review";
-import type { LocalReviewSource } from "../../src/domain/review-source";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { AgentRunRequestService } from "../../src/services/agent-run-request-service";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { createReview, type ReviewIdentity } from "#src/domain/review";
+import type { LocalReviewSource } from "#src/domain/review-source";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { AgentRunRequestService } from "#src/services/agent-run-request-service";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("Invalid fixture");

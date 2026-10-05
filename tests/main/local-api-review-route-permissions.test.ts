@@ -3,14 +3,14 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewRemoteStore } from "../../src/adapters/storage/review-remote-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { createReview } from "../../src/domain/review";
-import { createReviewSession } from "../../src/domain/review-session";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewRemoteStore } from "#src/adapters/storage/review-remote-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { createReview } from "#src/domain/review";
+import { createReviewSession } from "#src/domain/review-session";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -20,12 +20,9 @@ import {
   parseGitSha,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
+} from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 
 // Moved from tests/browser/local-api-workbench.spec.ts:88-190 -- this test
 // never touched the page's DOM. It only used Playwright's `page.evaluate` as

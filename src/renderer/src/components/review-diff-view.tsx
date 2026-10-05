@@ -20,7 +20,7 @@ import type {
   ReviewContextControl,
   ReviewContextStatus,
 } from "@/review-context-control";
-import { type GitHubThreadId } from "../../../domain/ids";
+import { type GitHubThreadId } from "#src/domain/ids";
 import { AccessiblePatch } from "./review-diff-accessible-patch";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import { NonVirtualizedReviewDiff } from "./review-diff-non-virtualized";
@@ -36,12 +36,12 @@ import {
   type ScopeFilterControl,
 } from "./review-diff-toolbar";
 import type { DiffChangesControl } from "./review-diff-changes-menu";
-import { useReviewDiffRegionName } from "../hooks/use-review-diff-region-name";
-import type { PendingReviewDrafts } from "../hooks/use-pending-review-drafts";
+import { useReviewDiffRegionName } from "#src/renderer/src/hooks/use-review-diff-region-name";
+import type { PendingReviewDrafts } from "#src/renderer/src/hooks/use-pending-review-drafts";
 import {
   SplitViewFallbackContext,
   useSplitViewFallback,
-} from "../hooks/use-split-view-fallback";
+} from "#src/renderer/src/hooks/use-split-view-fallback";
 import type {
   ConversationThreadCardData,
   ReviewConversationActions,
@@ -57,7 +57,7 @@ import {
   EMPTY_BODY_CONTEXT,
   type PullRequestBodyContext,
 } from "./pull-request-description";
-import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
+import type { ReviewAnchorFingerprint } from "#src/domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
 import { ReviewDiffFindBar } from "./review-diff-find-bar";
@@ -93,7 +93,7 @@ import {
   type DiffAuthoringRefusal,
 } from "@/hooks/use-review-conversation-overlays";
 import { MarkdownFilePreview } from "./markdown-file-preview";
-import { canPreviewMarkdownFile } from "../markdown-preview-eligibility";
+import { canPreviewMarkdownFile } from "#src/renderer/src/markdown-preview-eligibility";
 
 registerPierreThemeLoaders();
 

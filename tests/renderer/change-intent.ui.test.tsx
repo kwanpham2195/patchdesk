@@ -13,8 +13,8 @@ import userEvent, {
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   failure,
   installDesktopDouble,

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   sendInsightSettled,
   subscribeToInsightSettled,
-} from "../../src/main/desktop-insight-settled-channel";
+} from "#src/main/desktop-insight-settled-channel";
 
 type SettledHandler = (event: undefined) => void;
 

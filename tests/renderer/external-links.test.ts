@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { parsePullRequestInput } from "../../src/domain/pull-request";
-import { resolvePullRequestExternalUrl } from "../../src/renderer/src/external-links";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import { resolvePullRequestExternalUrl } from "#src/renderer/src/external-links";
 
 const pullRequest = (() => {
   const parsed = parsePullRequestInput(

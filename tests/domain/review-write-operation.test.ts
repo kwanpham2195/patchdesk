@@ -1,17 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  parseGitHubReviewNodeId,
-  parseGitHubThreadId,
-} from "../../src/domain/ids";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
+import { parseGitHubReviewNodeId, parseGitHubThreadId } from "#src/domain/ids";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
   parseReviewWriteOperation,
   setReviewWriteResolution,
   type ReviewWriteIntent,
-} from "../../src/domain/review-write-operation";
+} from "#src/domain/review-write-operation";
 import {
   reviewWriteIntents,
   storedReviewWriteOperation as stored,

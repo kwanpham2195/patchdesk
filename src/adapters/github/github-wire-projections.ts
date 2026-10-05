@@ -19,8 +19,8 @@ import type {
   RepositoryLabel,
   RequestedReviewer,
   SuggestedPullRequestReviewer,
-} from "../../domain/github-context";
-import { mergeMethodOrder } from "../../domain/github-context";
+} from "#src/domain/github-context";
+import { mergeMethodOrder } from "#src/domain/github-context";
 import {
   parseGitSha,
   parseGitHubReviewRestId,
@@ -30,13 +30,13 @@ import {
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
-} from "../../domain/ids";
-import { definedProps } from "../../domain/defined-props";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
-import type { PendingReviewAnchor } from "../../domain/pending-review";
-import type { GitHubReviewEvent } from "../../domain/pending-review";
-import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { PendingReviewAnchor } from "#src/domain/pending-review";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
+import type { DirectSummaryReviewReceipt } from "#src/domain/direct-summary-review";
 import {
   type GitHubReadFailure,
   type GitHubReadOperation,

@@ -1,21 +1,21 @@
 import { readFile } from "node:fs/promises";
 
-import { containsSensitiveData } from "../adapters/storage/json-file";
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import { definedProps } from "../domain/defined-props";
-import type { FailureKinds } from "../domain/failure-kind";
+import { containsSensitiveData } from "#src/adapters/storage/json-file";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import { definedProps } from "#src/domain/defined-props";
+import type { FailureKinds } from "#src/domain/failure-kind";
 import {
   readFeedbackHandoff,
   type FeedbackHandoffReading,
   type FeedbackHandoffVerdict,
-} from "../domain/feedback-handoff";
-import { fingerprintPatchAnchor } from "../domain/diff-anchor";
+} from "#src/domain/feedback-handoff";
+import { fingerprintPatchAnchor } from "#src/domain/diff-anchor";
 import {
   isAcceptableSuggestionCode,
   resolveSuggestionTarget,
-} from "../domain/finding-suggestion";
+} from "#src/domain/finding-suggestion";
 import {
   parseContentHash,
   parseRepoRelativePath,
@@ -27,8 +27,8 @@ import {
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { sameInsightRevision } from "../domain/insight-record";
+} from "#src/domain/ids";
+import { sameInsightRevision } from "#src/domain/insight-record";
 import {
   isMaintainerNote,
   localDraftFeedbackState,
@@ -39,7 +39,7 @@ import {
   type LocalDraftFeedbackState,
   type LocalDraftTarget,
   type MaintainerNote,
-} from "../domain/local-draft";
+} from "#src/domain/local-draft";
 import {
   localDraftId,
   localDraftTargetId,
@@ -47,17 +47,17 @@ import {
   parseLocalDraftReplyText,
   type LocalDraftReply,
   type LocalDraftReplyStatus,
-} from "../domain/local-draft-reply";
-import { renderLocalDraftsAsAgentPrompt } from "../domain/local-draft-agent-prompt";
+} from "#src/domain/local-draft-reply";
+import { renderLocalDraftsAsAgentPrompt } from "#src/domain/local-draft-agent-prompt";
 import {
   indexPatchHunks,
   placeInView,
   type LocalPatchView,
   type LocalPatchViewPaths,
-} from "../domain/local-patch-view";
-import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
-import { err, ok, type Result } from "../domain/result";
-import { isLocalReview, type Review } from "../domain/review";
+} from "#src/domain/local-patch-view";
+import { mapFindingLocation, parseUnifiedPatch } from "#src/domain/patch";
+import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview, type Review } from "#src/domain/review";
 import {
   addLocalDraft,
   editMaintainerNote,
@@ -65,13 +65,13 @@ import {
   removeLocalDraft,
   replyToLocalDraft,
   setLocalDraftResolved,
-} from "../domain/review-local-drafts";
-import { parseReviewResult } from "../domain/review-result";
+} from "#src/domain/review-local-drafts";
+import { parseReviewResult } from "#src/domain/review-result";
 import {
   isPullRequestReviewSession,
   type LocalSessionViewPatch,
-} from "../domain/review-session";
-import type { LocalReviewSource } from "../domain/review-source";
+} from "#src/domain/review-session";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import {
   pageLocalDrafts,
   type LocalFeedbackPageFailure,

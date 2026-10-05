@@ -2,8 +2,8 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { useReviewWriteRecovery } from "../../src/renderer/src/flows/use-review-write-recovery";
+import type { RawJsonValue } from "#src/domain/json";
+import { useReviewWriteRecovery } from "#src/renderer/src/flows/use-review-write-recovery";
 import {
   failure,
   installDesktopDouble,

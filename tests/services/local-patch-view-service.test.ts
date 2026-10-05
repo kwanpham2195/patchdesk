@@ -3,17 +3,17 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import {
   parseGitShaPrefix,
   parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import type { LocalPatchView } from "../../src/domain/local-patch-view";
-import { LocalPatchViewService } from "../../src/services/local-patch-view-service";
-import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
+} from "#src/domain/ids";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { LocalPatchViewService } from "#src/services/local-patch-view-service";
+import type { ReviewWorkbenchProjection } from "#src/services/review-workbench-projection";
 import {
   cleanupLocalApplyRoots,
   git,

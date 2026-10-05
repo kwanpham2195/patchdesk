@@ -5,17 +5,17 @@ import {
   routedTransport,
   type CannedAnswer,
 } from "./github-transport-doubles";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitHubThreadId,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import type { Result } from "../../src/domain/result";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { Result } from "#src/domain/result";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { StubCredentials } from "./stub-github-credentials";
 
 /**

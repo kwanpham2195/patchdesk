@@ -10,14 +10,14 @@ import {
   string,
 } from "valibot";
 
-import { definedProps } from "../domain/defined-props";
-import type { FailureKinds } from "../domain/failure-kind";
+import { definedProps } from "#src/domain/defined-props";
+import type { FailureKinds } from "#src/domain/failure-kind";
 
-import type { GitSha } from "../domain/ids";
+import type { GitSha } from "#src/domain/ids";
 
-import type { InsightActivitySink } from "../adapters/codex/codex-activity";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { InsightStore } from "../adapters/storage/insight-store";
+import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
 import {
   parseContentHash,
   parseInsightRunId,
@@ -30,7 +30,7 @@ import {
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   beginInsightRun,
   dismissInsightFinding,
@@ -45,7 +45,7 @@ import {
   type InsightRevision,
   type InsightType,
   type WalkthroughProgress,
-} from "../domain/insight-record";
+} from "#src/domain/insight-record";
 import {
   INSIGHT_LANGUAGES,
   INSIGHT_PROVIDERS,
@@ -53,30 +53,33 @@ import {
   type InsightProvider,
   type InsightLanguage,
   type InsightReasoning,
-} from "../domain/insight-provider";
-import { parseReviewResult, type ReviewResult } from "../domain/review-result";
+} from "#src/domain/insight-provider";
+import {
+  parseReviewResult,
+  type ReviewResult,
+} from "#src/domain/review-result";
 import {
   renderSuggestionCommentBody,
   resolveSuggestionTarget,
-} from "../domain/finding-suggestion";
+} from "#src/domain/finding-suggestion";
 import type {
   FindingReviewSource,
   PendingReviewAnchor,
-} from "../domain/pending-review";
-import type { Review } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+} from "#src/domain/pending-review";
+import type { Review } from "#src/domain/review";
+import type { ReviewSession } from "#src/domain/review-session";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   canonicalModelId,
   type PiRuntimeModelCatalog,
-} from "../adapters/pi/pi-runtime-model-catalog";
+} from "#src/adapters/pi/pi-runtime-model-catalog";
 import type { InsightSettledNotifier } from "./insight-run-executor";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightProviderCatalog } from "./insight-provider-catalog";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { contentHash } from "./review-artifact-hash";
-import { err, ok, type Result } from "../domain/result";
+import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { InsightRecovery } from "./insight-recovery";
 import type { ReviewContextPackService } from "./review-context-pack-service";

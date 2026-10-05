@@ -6,9 +6,9 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   CommandRunner,
   NodeCommandExecutor,
-} from "../../src/adapters/github/command-runner";
-import { discoverExecutable } from "../../src/adapters/process/executable-discovery";
-import { startLoginShellEnvironmentImport } from "../../src/adapters/process/login-shell-import";
+} from "#src/adapters/github/command-runner";
+import { discoverExecutable } from "#src/adapters/process/executable-discovery";
+import { startLoginShellEnvironmentImport } from "#src/adapters/process/login-shell-import";
 
 /** Named so nothing on the real PATH or on the macOS fallback list can resolve it. */
 const IMPORTED_TOOL = "patchdesk-login-shell-fixture-tool";

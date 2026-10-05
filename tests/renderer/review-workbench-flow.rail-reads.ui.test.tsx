@@ -3,12 +3,9 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
-import type {
-  DesktopRequest,
-  DesktopResponse,
-} from "../../src/main/ipc-contract";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import type { DesktopRequest, DesktopResponse } from "#src/main/ipc-contract";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { callPath, projection } from "./review-workbench-fixtures";
 

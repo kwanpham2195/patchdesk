@@ -3,13 +3,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ok } from "../../src/domain/result";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ok } from "#src/domain/result";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 
 // The Brief run and cancel routes are the third arm of the Insight lifecycle.
 // This proves the route exists, parses a `brief` body, and reaches the

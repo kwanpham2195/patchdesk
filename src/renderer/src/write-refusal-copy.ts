@@ -1,4 +1,4 @@
-import type { RefusalCause } from "../../domain/github-write-refusal";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 
 /**
  * The one cause-to-phrase map for a GitHub write GitHub refused (issue #755).

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { RepositoryLabelPermission } from "../../../domain/github-context";
-import { PatchdeskApiError, refusedWriteMessage } from "../api-client";
+import type { RepositoryLabelPermission } from "#src/domain/github-context";
+import {
+  PatchdeskApiError,
+  refusedWriteMessage,
+} from "#src/renderer/src/api-client";
 import {
   projectReadState,
   type GithubListReadState,
   type GithubListResponse,
-} from "../github-read-failure-copy";
-import { withoutMember } from "../picker-selection";
+} from "#src/renderer/src/github-read-failure-copy";
+import { withoutMember } from "#src/renderer/src/picker-selection";
 
 /** How long the search box waits after the last keystroke before it re-queries the server-side filter — long enough to absorb normal typing cadence, short enough to still feel live. */
 export const SEARCH_DEBOUNCE_MS = 200;

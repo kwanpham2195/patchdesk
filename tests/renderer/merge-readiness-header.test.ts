@@ -5,9 +5,9 @@ import {
   isUnconfirmedBlock,
   mergeBlockerLabels,
   mergeReadinessLabel,
-} from "../../src/renderer/src/components/merge-readiness-items";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { MergeDisplayReason } from "../../src/domain/github-context";
+} from "#src/renderer/src/components/merge-readiness-items";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { MergeDisplayReason } from "#src/domain/github-context";
 
 type Tag = WorkbenchResponse["mergeReadiness"]["_tag"];
 

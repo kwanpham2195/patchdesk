@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { InsightRunDialog } from "../../src/renderer/src/components/insight-run-dialog";
+import { InsightRunDialog } from "#src/renderer/src/components/insight-run-dialog";
 
 const models = Array.from({ length: 269 }, (_, index) => ({
   id: `provider/model-${index}`,

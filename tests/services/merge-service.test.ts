@@ -1,14 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { definedProps } from "../../src/domain/defined-props";
-import type { MergeOutcome } from "../../src/adapters/github/github-ports";
-import type {
-  CheckSummary,
-  MergeMethod,
-} from "../../src/domain/github-context";
-import type { GitHubWriteFailure } from "../../src/domain/github-write";
-import type { RefusalCause } from "../../src/domain/github-write-refusal";
-import { mergePullRequest } from "../../src/services/merge-service";
+import { definedProps } from "#src/domain/defined-props";
+import type { MergeOutcome } from "#src/adapters/github/github-ports";
+import type { CheckSummary, MergeMethod } from "#src/domain/github-context";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
+import { mergePullRequest } from "#src/services/merge-service";
 
 // SAFETY: This literal is a well-formed GitSha fixture for the merge service seam.
 const sha = "abcdef1234567890abcdef1234567890abcdef12" as never;

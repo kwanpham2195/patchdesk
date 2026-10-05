@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import type { NarrowedDiffControl } from "../components/review-diff-changes-menu";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { SinceLastRefreshDiffResponse } from "../review-diff-contracts";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import type { NarrowedDiffControl } from "#src/renderer/src/components/review-diff-changes-menu";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { SinceLastRefreshDiffResponse } from "#src/renderer/src/review-diff-contracts";
 import {
   useNarrowedPatchRequest,
   type NarrowedPatchState,

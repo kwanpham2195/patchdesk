@@ -1,4 +1,4 @@
-import type { IsoTimestamp } from "../../domain/ids";
+import type { IsoTimestamp } from "#src/domain/ids";
 
 /**
  * Reads the process wall clock as the branded instant every service's

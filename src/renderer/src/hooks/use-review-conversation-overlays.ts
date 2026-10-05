@@ -3,21 +3,24 @@ import type { RefObject } from "react";
 import type { SelectedLineRange } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import { isOutcomeUnknownRetry, refusedWriteMessage } from "../api-client";
-import { definedProps } from "../../../domain/defined-props";
-import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
+import {
+  isOutcomeUnknownRetry,
+  refusedWriteMessage,
+} from "#src/renderer/src/api-client";
+import { definedProps } from "#src/domain/defined-props";
+import { fingerprintPatchAnchor } from "#src/domain/diff-anchor";
 import {
   parseGitHubThreadId,
   parseRepoRelativePath,
   type GitHubThreadId,
-} from "../../../domain/ids";
-import { composerErrorMessage } from "../components/review-diff-authoring-errors";
-import type { DraftRecovery } from "../components/draft-recovery";
+} from "#src/domain/ids";
+import { composerErrorMessage } from "#src/renderer/src/components/review-diff-authoring-errors";
+import type { DraftRecovery } from "#src/renderer/src/components/draft-recovery";
 import { useLatestCommitted } from "./use-latest-committed";
 import {
   diffLineRangeLabel,
   diffLineRangeLocation,
-} from "../review-diff-line-range";
+} from "#src/renderer/src/review-diff-line-range";
 import type {
   PendingReviewDrafts,
   PendingReviewWrite,
@@ -25,14 +28,14 @@ import type {
 import type {
   ConversationThreadCardData,
   ReviewConversationActions,
-} from "../components/conversation-thread-card";
+} from "#src/renderer/src/components/conversation-thread-card";
 import type {
   LocalCommentAuthoring,
   LocalCommentAuthoringSaveInput,
   LocalCommentLocation,
   PendingReviewComposerActions,
   ReviewInlineAnnotation,
-} from "../components/review-diff-view";
+} from "#src/renderer/src/components/review-diff-view";
 
 type CreatedThreadOverlay =
   | {

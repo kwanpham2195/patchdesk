@@ -4,9 +4,9 @@ import { Hono, type MiddlewareHandler } from "hono";
 import {
   notificationSettingsOf,
   type NotificationSettings,
-} from "../domain/contracts";
-import { definedProps } from "../domain/defined-props";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/contracts";
+import { definedProps } from "#src/domain/defined-props";
+import { err, ok, type Result } from "#src/domain/result";
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
 import { hasMatchingAppCapability } from "./app-capability";
 import type { LocalApiStartupResult } from "./app-lifecycle";

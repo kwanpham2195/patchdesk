@@ -1,9 +1,9 @@
-import type { BriefSignals } from "../brief-contracts";
+import type { BriefSignals } from "#src/renderer/src/brief-contracts";
 import {
   BRIEF_SIGNAL_GROUPS,
   BRIEF_SIGNAL_LABELS,
   briefSignalWarns,
-} from "../../../domain/brief-signals";
+} from "#src/domain/brief-signals";
 
 type BriefSignalRow = BriefSignals[number];
 

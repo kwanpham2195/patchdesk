@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
-} from "../../src/renderer/src/review-view-preferences";
+} from "#src/renderer/src/review-view-preferences";
 
 // The defaults are written out here rather than imported from the module under
 // test, so the test pins what an absent or unreadable stored value must fall

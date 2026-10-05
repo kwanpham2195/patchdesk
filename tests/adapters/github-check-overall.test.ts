@@ -1,4 +1,4 @@
-import { parseGitSha } from "../../src/domain/ids";
+import { parseGitSha } from "#src/domain/ids";
 import { describe, expect, it } from "vitest";
 import { orderedTransport, routedTransport } from "./github-transport-doubles";
 import {

@@ -1,9 +1,9 @@
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxPageRequest,
-} from "../domain/maintainer-inbox";
-import type { Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/maintainer-inbox";
+import type { Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { normalizeInboxLabels } from "./maintainer-inbox-service";
 import type {
   InboxPageRequestFailure,

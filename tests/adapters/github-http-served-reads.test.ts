@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import {
   assignableUsersQuery,
   maintainerInboxSearchQuery,
   mergePolicyQuery,
   repositoryBranchesQuery,
   threadQuery,
-} from "../../src/adapters/github/github-graphql-queries";
+} from "#src/adapters/github/github-graphql-queries";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -16,9 +16,9 @@ import {
   parseGitSha,
   parseIsoTimestamp,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import { err, ok, type Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
 import { json, profile, useFixtureServer } from "./github-http-fixture-server";
 import { RecordingGhExecutor } from "./github-transport-doubles";
 import { StubCredentials } from "./stub-github-credentials";

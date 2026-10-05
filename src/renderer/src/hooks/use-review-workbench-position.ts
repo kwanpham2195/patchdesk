@@ -1,18 +1,18 @@
 import { useCallback, useState } from "react";
 
-import type { ReviewWorkbenchInitialState } from "../components/review-workbench";
-import type { ReviewNavigatorSection } from "../components/review-navigator";
-import type { SelectedDiffRange } from "../components/review-diff-view";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import type { ReviewWorkbenchInitialState } from "#src/renderer/src/components/review-workbench";
+import type { ReviewNavigatorSection } from "#src/renderer/src/components/review-navigator";
+import type { SelectedDiffRange } from "#src/renderer/src/components/review-diff-view";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   sourceListsCommits,
   type WorkbenchReviewSource,
-} from "../review-source";
+} from "#src/renderer/src/review-source";
 import type {
   WorkbenchActiveTab,
   WorkbenchPosition,
   WorkbenchSection,
-} from "../lib/screen-restore";
+} from "#src/renderer/src/lib/screen-restore";
 
 /** Where the workbench is pointed: tab, navigator section, file, commit, thread. */
 export type ReviewWorkbenchPositionState = {

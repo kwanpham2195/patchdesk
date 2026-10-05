@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MarkdownFilePreview } from "../../src/renderer/src/components/markdown-file-preview";
+import { MarkdownFilePreview } from "#src/renderer/src/components/markdown-file-preview";
 
 afterEach(cleanup);
 

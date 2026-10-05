@@ -4,7 +4,7 @@ import {
   type LocalPatchView,
   type LocalPatchViewPaths,
   type PatchHunkIndex,
-} from "../../domain/local-patch-view";
+} from "#src/domain/local-patch-view";
 import type {
   AgentExplanationEntry,
   LocalDraftEntry,

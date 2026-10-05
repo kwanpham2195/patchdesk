@@ -10,16 +10,16 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseContentHash } from "../../src/domain/ids";
-import { App, type ReviewWorkbenchLoader } from "../../src/renderer/src/app";
+import { parseContentHash } from "#src/domain/ids";
+import { App, type ReviewWorkbenchLoader } from "#src/renderer/src/app";
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
-} from "../../src/renderer/src/inbox-view-preferences";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { ReviewWorkbenchFlowProps } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { InboxStateFilter } from "../../src/domain/maintainer-inbox";
-import type { RawJsonValue } from "../../src/domain/json";
+} from "#src/renderer/src/inbox-view-preferences";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { ReviewWorkbenchFlowProps } from "#src/renderer/src/flows/review-workbench-flow";
+import type { InboxStateFilter } from "#src/domain/maintainer-inbox";
+import type { RawJsonValue } from "#src/domain/json";
 import {
   installDesktopDouble,
   success,

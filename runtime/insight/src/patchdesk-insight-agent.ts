@@ -5,15 +5,15 @@ import type { TextContent, ThinkingLevel } from "@earendil-works/pi-ai";
 import { toJsonSchema } from "@valibot/to-json-schema";
 import * as v from "valibot";
 
-import { briefOutputSchema } from "../../../src/domain/brief";
-import { parseReviewSessionId } from "../../../src/domain/ids";
-import { INSIGHT_LANGUAGES } from "../../../src/domain/insight-provider";
+import { briefOutputSchema } from "#app/domain/brief";
+import { parseReviewSessionId } from "#app/domain/ids";
+import { INSIGHT_LANGUAGES } from "#app/domain/insight-provider";
 import {
   modelReviewResultSchema,
   requiredVerdictForFindings,
-} from "../../../src/domain/review-result";
-import { MAX_ANALYSIS_INSPECTION_CALLS } from "../../../src/services/review-inspector";
-import { walkthroughOutputSchema } from "../../../src/services/walkthrough-operation";
+} from "#app/domain/review-result";
+import { MAX_ANALYSIS_INSPECTION_CALLS } from "#app/services/review-inspector";
+import { walkthroughOutputSchema } from "#app/services/walkthrough-operation";
 
 export const MAX_RUNTIME_STDIN_BYTES = 2 * 1024 * 1024;
 export const MAX_RUNTIME_STDOUT_BYTES = 2 * 1024 * 1024;

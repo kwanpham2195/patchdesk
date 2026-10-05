@@ -2,31 +2,31 @@ import type {
   GitHubReader,
   GitHubReadFailure,
   RepositoryPermissionEvidence,
-} from "../adapters/github/github-adapter";
-import type { ForbiddenReason } from "../adapters/github/command-runner";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import type { PullRequestSummary } from "../domain/github-context";
-import type { GitHubWriteFailure } from "../domain/github-write";
-import type { RefusalCause } from "../domain/github-write-refusal";
+} from "#src/adapters/github/github-adapter";
+import type { ForbiddenReason } from "#src/adapters/github/command-runner";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import type { PullRequestSummary } from "#src/domain/github-context";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 import type {
   IsoTimestamp,
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
-import type { PullRequestRef } from "../domain/pull-request";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
-import type { ReviewSessionKey } from "../domain/review-session";
-import type { PullRequestReviewSource } from "../domain/review-source";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import type { ReviewSessionKey } from "#src/domain/review-session";
+import type { PullRequestReviewSource } from "#src/domain/review-source";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
   type ReviewWriteIntent,
   type ReviewWriteOperation,
-} from "../domain/review-write-operation";
-import { casesHandled, err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/review-write-operation";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   postDesktopNotification,
   type DesktopNotifier,

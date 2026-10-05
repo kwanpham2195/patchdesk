@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
 
-import type { RepositoryIdentity } from "../../../domain/repository-identity";
-import { requestJson } from "../api-client";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
+import { requestJson } from "#src/renderer/src/api-client";
 import {
   localBranchesPath,
   parseLocalBranches,
   sharedReviewSource,
-} from "../local-branches";
+} from "#src/renderer/src/local-branches";
 import {
   localReviewOpenFailure,
   type InboxReviewOpeningControls,

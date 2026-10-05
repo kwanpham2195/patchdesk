@@ -1,22 +1,22 @@
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
 import type {
   GitHubComments,
   GitHubComment,
   GitHubPublishedFeedback,
   PullRequestSummary,
-} from "../domain/github-context";
-import type { ReviewId, WorkspaceProfileId } from "../domain/ids";
-import type { PullRequestReviewSession } from "../domain/review-session";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+} from "#src/domain/github-context";
+import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
   setReviewWriteResolution,
   type ReviewWriteOperation,
-} from "../domain/review-write-operation";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+} from "#src/domain/review-write-operation";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { requireCurrentHead, type ReviewWriteGate } from "./review-write-gate";
 

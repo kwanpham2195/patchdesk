@@ -6,24 +6,24 @@ import {
   useState,
 } from "react";
 
-import { isApiErrorCode, requestJson } from "../api-client";
+import { isApiErrorCode, requestJson } from "#src/renderer/src/api-client";
 import {
   changeIntentRunRefusal,
   type ChangeIntentRunRefusal,
-} from "../change-intent-copy";
+} from "#src/renderer/src/change-intent-copy";
 import { useLatestCommitted } from "./use-latest-committed";
-import { definedProps } from "../../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   InsightLanguage,
   InsightProvider,
   InsightReasoning,
-} from "../../../domain/insight-provider";
+} from "#src/domain/insight-provider";
 import {
   parseInsightRunResponse,
   parseWorkbenchResponse,
   type InsightRunResponse,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 /** The Insight types a run can be started for; the wire contract owns the list. */
 export type InsightRunType = InsightRunResponse["type"];

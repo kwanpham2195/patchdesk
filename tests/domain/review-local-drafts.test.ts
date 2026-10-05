@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentRunRequest } from "../../src/domain/agent-run-request";
+import type { AgentRunRequest } from "#src/domain/agent-run-request";
 import {
   createAgentRunRequestId,
   createReviewSessionId,
@@ -16,14 +16,14 @@ import {
   parsePullRequestNumber,
   parseRepoRelativePath,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   projectLocalDraft,
   type FindingDraft,
   type LocalDraft,
   type MaintainerNote,
-} from "../../src/domain/local-draft";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/local-draft";
+import type { Result } from "#src/domain/result";
 import {
   createReview,
   moveLocalReviewToSession,
@@ -32,15 +32,15 @@ import {
   setAgentRunRequests,
   type Review,
   type ReviewIdentity,
-} from "../../src/domain/review";
+} from "#src/domain/review";
 import {
   addLocalDraft,
   editMaintainerNote,
   recordFeedbackHandoff,
   removeLocalDraft,
-} from "../../src/domain/review-local-drafts";
-import { readFeedbackHandoff } from "../../src/domain/feedback-handoff";
-import type { LocalReviewSource } from "../../src/domain/review-source";
+} from "#src/domain/review-local-drafts";
+import { readFeedbackHandoff } from "#src/domain/feedback-handoff";
+import type { LocalReviewSource } from "#src/domain/review-source";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("Invalid fixture");

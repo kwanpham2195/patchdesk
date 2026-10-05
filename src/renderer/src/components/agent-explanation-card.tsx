@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 
-import { diffLineRangeLabel } from "../review-diff-line-range";
+import { diffLineRangeLabel } from "#src/renderer/src/review-diff-line-range";
 
 export type AgentExplanationCardProps = {
   readonly explanationId: string;

@@ -1,9 +1,9 @@
 import * as v from "valibot";
 
 import type { CommandFailure, ForbiddenReason } from "./command-runner";
-import type { IsoTimestamp } from "../../domain/ids";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+import type { IsoTimestamp } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { parseGitHubTimestamp } from "./github-wire-projections";
 import type {
   GitHubGraphQlRequest,

@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   sendMenuAction,
   subscribeToMenuActions,
-} from "../../src/main/desktop-menu-channel";
+} from "#src/main/desktop-menu-channel";
 import {
   DESKTOP_MENU_ACTION_CHANNEL,
   type DesktopMenuAction,
-} from "../../src/main/ipc-contract";
+} from "#src/main/ipc-contract";
 
 /**
  * The channel name is a runtime string. If `sendMenuAction` and

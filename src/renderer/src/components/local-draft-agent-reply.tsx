@@ -1,5 +1,5 @@
-import type { LocalDraftReplyEntry } from "../local-draft-contracts";
-import { cn } from "../lib/utils";
+import type { LocalDraftReplyEntry } from "#src/renderer/src/local-draft-contracts";
+import { cn } from "#src/renderer/src/lib/utils";
 import { RelativeTime } from "./relative-time";
 import { Badge } from "./ui/badge";
 

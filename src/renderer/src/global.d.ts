@@ -1,4 +1,4 @@
-import type { PatchdeskDesktopApi } from "../../main/ipc-contract";
+import type { PatchdeskDesktopApi } from "#src/main/ipc-contract";
 
 declare global {
   interface Window {

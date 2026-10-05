@@ -1,5 +1,5 @@
-import { insightOutputGuidance } from "../domain/insight-output-guidance";
-import type { InsightLanguage } from "../domain/insight-provider";
+import { insightOutputGuidance } from "#src/domain/insight-output-guidance";
+import type { InsightLanguage } from "#src/domain/insight-provider";
 
 /**
  * The severity scale the profile's merge policy keys on: it blocks or asks for

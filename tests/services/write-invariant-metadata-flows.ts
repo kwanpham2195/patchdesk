@@ -1,15 +1,15 @@
 import type {
   GitHubReadFailure,
   GitHubReviewWriter,
-} from "../../src/adapters/github/github-adapter";
-import type { PullRequestSummary } from "../../src/domain/github-context";
-import { err, ok, type Result } from "../../src/domain/result";
-import { AssigneeService } from "../../src/services/assignee-service";
-import { BaseBranchService } from "../../src/services/base-branch-service";
-import { DraftStateService } from "../../src/services/draft-state-service";
-import { LabelService } from "../../src/services/label-service";
-import { ReviewerService } from "../../src/services/reviewer-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/adapters/github/github-adapter";
+import type { PullRequestSummary } from "#src/domain/github-context";
+import { err, ok, type Result } from "#src/domain/result";
+import { AssigneeService } from "#src/services/assignee-service";
+import { BaseBranchService } from "#src/services/base-branch-service";
+import { DraftStateService } from "#src/services/draft-state-service";
+import { LabelService } from "#src/services/label-service";
+import { ReviewerService } from "#src/services/reviewer-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { now, profileId, reviewId, values } from "./review-invariant-fixtures";
 import {
   freshGate,

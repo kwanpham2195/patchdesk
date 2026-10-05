@@ -2,8 +2,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BaseBranchListResponse } from "../../src/renderer/src/base-branch-contracts";
-import { useBaseBranchCandidates } from "../../src/renderer/src/hooks/use-base-branch-candidates";
+import type { BaseBranchListResponse } from "#src/renderer/src/base-branch-contracts";
+import { useBaseBranchCandidates } from "#src/renderer/src/hooks/use-base-branch-candidates";
 
 afterEach(() => {
   cleanup();

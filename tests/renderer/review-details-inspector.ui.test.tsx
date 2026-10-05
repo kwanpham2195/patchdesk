@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 
-import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
-import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+import { MaintainerInbox } from "#src/renderer/src/components/maintainer-inbox";
+import type { InboxRow } from "#src/renderer/src/renderer-contracts";
 
 afterEach(() => {
   cleanup();

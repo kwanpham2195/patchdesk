@@ -7,25 +7,29 @@ import {
   type InsightLanguage,
   type InsightProvider,
   type InsightReasoning,
-} from "../../../domain/insight-provider";
-import { isApiErrorCode, PatchdeskApiError, requestJson } from "../api-client";
+} from "#src/domain/insight-provider";
+import {
+  isApiErrorCode,
+  PatchdeskApiError,
+  requestJson,
+} from "#src/renderer/src/api-client";
 import {
   INSIGHT_PREFERENCE_TYPES,
   loadInsightRunPreference,
   type InsightPreferenceType,
   type InsightRunPreference,
-} from "../insight-run-preferences";
+} from "#src/renderer/src/insight-run-preferences";
 import {
   loadAccountModelCache,
   saveAccountModelCache,
-} from "../account-model-cache";
+} from "#src/renderer/src/account-model-cache";
 import {
   parseInsightProviderCatalog,
   type InsightProviderCatalog,
   type InsightProviderCatalogModel,
-} from "../insight-catalog-contracts";
-import { insightRunOptionsForProvider } from "../insight-run-options";
-import type { InsightRunDialogType } from "../components/insight-run-dialog";
+} from "#src/renderer/src/insight-catalog-contracts";
+import { insightRunOptionsForProvider } from "#src/renderer/src/insight-run-options";
+import type { InsightRunDialogType } from "#src/renderer/src/components/insight-run-dialog";
 
 /** Why an account provider's explicit model load failed; `requiredVersion` is set for an outdated pi. */
 export type AccountModelsFailure = {

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import type { SettingsSection } from "../flows/settings-flow";
-import type { AppDestination } from "../routes";
+import type { SettingsSection } from "#src/renderer/src/flows/settings-flow";
+import type { AppDestination } from "#src/renderer/src/routes";
 import type { NavigationState } from "./use-app-navigation";
 import { useDesktopMenuActions } from "./use-desktop-menu-actions";
 

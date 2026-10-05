@@ -2,7 +2,7 @@ import { orderedTransport } from "./github-transport-doubles";
 import {
   maintainerInboxQuery,
   maintainerInboxSearchQuery,
-} from "../../src/adapters/github/github-graphql-queries";
+} from "#src/adapters/github/github-graphql-queries";
 import { describe, expect, it } from "vitest";
 import { profile, pr, testAdapter, sent } from "./github-adapter-test-support";
 

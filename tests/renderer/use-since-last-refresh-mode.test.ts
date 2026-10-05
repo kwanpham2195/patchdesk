@@ -2,9 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useSinceLastRefreshMode } from "../../src/renderer/src/hooks/use-since-last-refresh-mode";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { SinceLastRefreshDiffResponse } from "../../src/renderer/src/review-diff-contracts";
+import { useSinceLastRefreshMode } from "#src/renderer/src/hooks/use-since-last-refresh-mode";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { SinceLastRefreshDiffResponse } from "#src/renderer/src/review-diff-contracts";
 import { projection } from "./review-workbench-fixtures";
 
 function model(

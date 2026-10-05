@@ -6,7 +6,7 @@ import {
   orderedTransport,
   type HttpTransportDouble,
 } from "./github-transport-doubles";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -14,9 +14,9 @@ import {
   parseGitHubReviewNodeId,
   parsePullRequestNumber,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 /**
  * What a pending-review write accepts as proof that the comment it asked for

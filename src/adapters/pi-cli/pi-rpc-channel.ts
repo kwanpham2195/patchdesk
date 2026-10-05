@@ -1,7 +1,7 @@
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import * as v from "valibot";
 
-import { err, ok, type Result } from "../../domain/result";
+import { err, ok, type Result } from "#src/domain/result";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 /** `agent_end` echoes the whole prompt (up to 6 MiB for an Analysis) plus tool results in one record; anything longer is a broken stream. */

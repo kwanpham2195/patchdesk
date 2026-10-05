@@ -3,11 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type {
-  ChangeScope,
-  ChangeScopeBucket,
-} from "../../src/domain/change-scope";
-import { ScopeGauge } from "../../src/renderer/src/components/scope-gauge";
+import type { ChangeScope, ChangeScopeBucket } from "#src/domain/change-scope";
+import { ScopeGauge } from "#src/renderer/src/components/scope-gauge";
 
 afterEach(() => {
   cleanup();

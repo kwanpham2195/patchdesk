@@ -4,8 +4,8 @@ import { ChevronDown } from "lucide-react";
 import {
   localPatchViews,
   type LocalPatchView,
-} from "../../../domain/local-patch-view";
-import { localPatchViewLabels } from "../review-source";
+} from "#src/domain/local-patch-view";
+import { localPatchViewLabels } from "#src/renderer/src/review-source";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

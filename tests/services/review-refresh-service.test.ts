@@ -10,8 +10,8 @@ import {
   parseIsoTimestamp,
   parsePendingReviewRequestId,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
 
 const { profileId, identity, headSha, at, snapshot, review } =
   createReviewRefreshFixtureValues();

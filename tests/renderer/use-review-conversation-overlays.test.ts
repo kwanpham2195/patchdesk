@@ -2,21 +2,21 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
 
-import type { ConversationThreadCardData } from "../../src/renderer/src/components/conversation-thread-card";
+import type { ConversationThreadCardData } from "#src/renderer/src/components/conversation-thread-card";
 import type {
   LocalCommentAuthoring,
   ReviewInlineAnnotation,
-} from "../../src/renderer/src/components/review-diff-view";
+} from "#src/renderer/src/components/review-diff-view";
 import {
   useReviewConversationOverlays,
   type ReviewConversationOverlays,
-} from "../../src/renderer/src/hooks/use-review-conversation-overlays";
+} from "#src/renderer/src/hooks/use-review-conversation-overlays";
 import {
   usePendingReviewDrafts,
   type PendingReviewDrafts,
-} from "../../src/renderer/src/hooks/use-pending-review-drafts";
+} from "#src/renderer/src/hooks/use-pending-review-drafts";
 
 /**
  * The two id spaces one published comment lives in: the create receipt carries

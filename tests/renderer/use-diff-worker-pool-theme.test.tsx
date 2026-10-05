@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { ContextType, ReactNode } from "react";
 import { WorkerPoolContext } from "@pierre/diffs/react";
 
-import { useDiffWorkerPoolTheme } from "../../src/renderer/src/hooks/use-diff-worker-pool-theme";
-import type { DiffThemePreferences } from "../../src/renderer/src/diff-theme-preferences";
+import { useDiffWorkerPoolTheme } from "#src/renderer/src/hooks/use-diff-worker-pool-theme";
+import type { DiffThemePreferences } from "#src/renderer/src/diff-theme-preferences";
 
 type WorkerPool = NonNullable<ContextType<typeof WorkerPoolContext>>;
 

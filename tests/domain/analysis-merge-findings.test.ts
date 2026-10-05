@@ -5,13 +5,9 @@ import {
   isAnalysisFindingHandled,
   mergeGateFindings,
   projectAnalysisFindings,
-} from "../../src/domain/analysis-merge-findings";
-import type {
-  ContentHash,
-  FindingId,
-  InsightRunId,
-} from "../../src/domain/ids";
-import type { FindingReviewReceipt } from "../../src/domain/pending-review";
+} from "#src/domain/analysis-merge-findings";
+import type { ContentHash, FindingId, InsightRunId } from "#src/domain/ids";
+import type { FindingReviewReceipt } from "#src/domain/pending-review";
 
 // SAFETY: fixture ids; the brand marks a parsed safe slug and these are ones.
 const firstFindingId = "finding-1" as FindingId;

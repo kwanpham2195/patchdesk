@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-import { INBOX_INSIGHT_STATES } from "../../domain/maintainer-inbox";
+import { INBOX_INSIGHT_STATES } from "#src/domain/maintainer-inbox";
 
 /**
  * Strict renderer wire-boundary schema for a row's Insight readiness: one

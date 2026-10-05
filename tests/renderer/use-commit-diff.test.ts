@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   useCommitDiff,
   type CommitDiffLoader,
-} from "../../src/renderer/src/hooks/use-commit-diff";
+} from "#src/renderer/src/hooks/use-commit-diff";
 
 const response = (sha: string) => ({
   commit: {

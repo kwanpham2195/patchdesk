@@ -3,43 +3,43 @@ import { describe, expect, it, vi } from "vitest";
 import {
   FakeGitHubAdapter,
   type FakeGitHubAdapterValues,
-} from "../../src/adapters/github/fake-github-adapter";
-import type { GitHubMergeWriter } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+} from "#src/adapters/github/fake-github-adapter";
+import type { GitHubMergeWriter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   parseContentHash,
   parseGitSha,
   parseIsoTimestamp,
   type InvalidDomainValue,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { MergePolicySnapshot } from "../../src/domain/github-context";
-import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
-import type { MergeOperation } from "../../src/domain/merge-operation";
-import { definedProps } from "../../src/domain/defined-props";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { PullRequestReview } from "../../src/domain/review";
+} from "#src/domain/ids";
+import type { MergePolicySnapshot } from "#src/domain/github-context";
+import type { ReviewRemoteSnapshot } from "#src/adapters/storage/review-remote-store";
+import type { MergeOperation } from "#src/domain/merge-operation";
+import { definedProps } from "#src/domain/defined-props";
+import { err, ok, type Result } from "#src/domain/result";
+import type { PullRequestReview } from "#src/domain/review";
 import {
   createReviewSession,
   type PullRequestReviewSession,
-} from "../../src/domain/review-session";
+} from "#src/domain/review-session";
 import type {
   AnalysisMergePolicy,
   WorkspaceProfileConfig,
-} from "../../src/domain/workspace-profile";
-import type { StorageFailure } from "../../src/adapters/storage/json-file";
-import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
+} from "#src/domain/workspace-profile";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
 import {
   MergeWriteController,
   mergeReceiptBody,
   type MergeCommand,
-} from "../../src/services/merge-write-controller";
-import { parseMergeReceipt } from "../../src/renderer/src/review-write-receipts";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ReviewWriteGate } from "../../src/services/review-write-gate";
+} from "#src/services/merge-write-controller";
+import { parseMergeReceipt } from "#src/renderer/src/review-write-receipts";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewWriteGate } from "#src/services/review-write-gate";
 import {
   createReviewRefreshFixtureValues,
   type ReviewRefreshFixtureValues,
@@ -48,11 +48,11 @@ import {
   json,
   profile as servedProfile,
   useFixtureServer,
-} from "../adapters/github-http-fixture-server";
+} from "#tests/adapters/github-http-fixture-server";
 import {
   pr as servedPullRequest,
   writeAdapter,
-} from "../adapters/github-write-shape";
+} from "#tests/adapters/github-write-shape";
 
 const githubServer = useFixtureServer();
 const patch =

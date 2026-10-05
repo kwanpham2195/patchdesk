@@ -17,17 +17,17 @@ import {
   type PullRequestNumber,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import {
   parseFindingReviewReceipts,
   parsePendingReviewState,
   pendingReviewMatchesSession,
   type PendingReviewState,
-} from "../../domain/pending-review";
-import { definedProps } from "../../domain/defined-props";
-import { parseDirectSummaryReviewState } from "../../domain/direct-summary-review";
-import { KeyedMutex } from "../../domain/keyed-mutex";
-import { mapConcurrent } from "../../domain/map-concurrent";
+} from "#src/domain/pending-review";
+import { definedProps } from "#src/domain/defined-props";
+import { parseDirectSummaryReviewState } from "#src/domain/direct-summary-review";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import { mapConcurrent } from "#src/domain/map-concurrent";
 import {
   isPullRequestReviewSession,
   type LocalCommit,
@@ -38,13 +38,13 @@ import {
   type ReviewSession,
   type ReviewSessionFields,
   type ReviewSessionKey,
-} from "../../domain/review-session";
+} from "#src/domain/review-session";
 import {
   parseStoredLocalReviewSource,
   storedLocalReviewSourceSchema,
   type ReviewSource,
-} from "../../domain/review-source";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/review-source";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isNotFound,
   readJsonFile,

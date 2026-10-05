@@ -1,7 +1,7 @@
-import type { WorkspaceProfileId } from "../domain/ids";
-import type { ReviewRetention } from "../services/review-retention";
-import type { ReviewDiagnosticService } from "../services/review-diagnostic-service";
-import type { StorageManagementService } from "../services/storage-management-service";
+import type { WorkspaceProfileId } from "#src/domain/ids";
+import type { ReviewRetention } from "#src/services/review-retention";
+import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
+import type { StorageManagementService } from "#src/services/storage-management-service";
 
 /** Retention sweep interval once per 24 hours while the app runs. */
 const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;

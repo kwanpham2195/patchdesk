@@ -2,13 +2,13 @@ import { Fragment, type ReactNode } from "react";
 import { Circle, CircleCheck } from "lucide-react";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 
-import { cn } from "../lib/utils";
+import { cn } from "#src/renderer/src/lib/utils";
 import { MarkdownCodeFence } from "./markdown-code-fence";
 import {
   groupMarkdownHtml,
   isMarkdownHtmlElement,
   type MarkdownNode,
-} from "../markdown-inline-html";
+} from "#src/renderer/src/markdown-inline-html";
 
 const marked = new Marked({ gfm: true, breaks: false });
 

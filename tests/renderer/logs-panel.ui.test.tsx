@@ -9,8 +9,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopResponse } from "../../src/main/ipc-contract";
-import { LogsPanel } from "../../src/renderer/src/components/logs-panel";
+import type { DesktopResponse } from "#src/main/ipc-contract";
+import { LogsPanel } from "#src/renderer/src/components/logs-panel";
 import {
   installDesktopDouble,
   success,

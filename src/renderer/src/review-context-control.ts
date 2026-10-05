@@ -1,6 +1,6 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 
-import { casesHandled } from "../../domain/result";
+import { casesHandled } from "#src/domain/result";
 import type { ReviewDiffUnavailableReason } from "./hooks/use-review-diff-hydration";
 
 export type ReviewContextStatus = "idle" | "loading" | "ready" | "unavailable";

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { AnalysisMergePolicy } from "../../src/domain/workspace-profile";
-import { ok } from "../../src/domain/result";
+import type { AnalysisMergePolicy } from "#src/domain/workspace-profile";
+import { ok } from "#src/domain/result";
 import {
   at,
   fixture,

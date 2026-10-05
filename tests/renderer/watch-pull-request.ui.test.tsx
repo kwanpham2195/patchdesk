@@ -11,16 +11,16 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { parsePullRequestInput } from "../../src/domain/pull-request";
-import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
-import { ReviewWorkbenchHeader } from "../../src/renderer/src/components/review-workbench-header";
-import { WatchPullRequestButton } from "../../src/renderer/src/components/watch-pull-request-button";
+import type { RawJsonValue } from "#src/domain/json";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import { MaintainerInbox } from "#src/renderer/src/components/maintainer-inbox";
+import { ReviewWorkbenchHeader } from "#src/renderer/src/components/review-workbench-header";
+import { WatchPullRequestButton } from "#src/renderer/src/components/watch-pull-request-button";
 import {
   useWatchedPullRequests,
   WatchedPullRequestsProvider,
-} from "../../src/renderer/src/hooks/use-watched-pull-requests";
-import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/hooks/use-watched-pull-requests";
+import type { InboxRow } from "#src/renderer/src/renderer-contracts";
 import {
   failure,
   installDesktopDouble,

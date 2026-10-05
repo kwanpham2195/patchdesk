@@ -1,4 +1,4 @@
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
+import type { ChangeScopeBucket } from "#src/domain/change-scope";
 
 /** The one label each bucket carries wherever it is named: the gauge's legend rows, its accessible sentence, and the diff toolbar's filter chip. */
 export const SCOPE_BUCKET_LABELS = {

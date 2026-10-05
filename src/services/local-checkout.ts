@@ -1,25 +1,25 @@
 import { realpath, stat } from "node:fs/promises";
 
-import { isNotFound } from "../adapters/storage/json-file";
-import { isPathContained } from "../adapters/storage/path-containment";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { isNotFound } from "#src/adapters/storage/json-file";
+import { isPathContained } from "#src/adapters/storage/path-containment";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   checkoutFolderName,
   parseAbsolutePath,
   parseLocalBranchName,
   type AbsolutePath,
   type LocalBranchName,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   parseGitHubOrigin,
   sameRepositoryIdentity,
   type RepositoryIdentity,
-} from "../domain/repository-identity";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/repository-identity";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   WatchedRepoConfig,
   WorkspaceProfileConfig,
-} from "../domain/workspace-profile";
+} from "#src/domain/workspace-profile";
 import { resolveCheckoutRoot } from "./local-apply-checkout";
 import type { GitReadExecutor } from "./review-worktree-service";
 

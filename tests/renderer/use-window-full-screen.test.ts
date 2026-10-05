@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useWindowFullScreen } from "../../src/renderer/src/hooks/use-window-full-screen";
+import { useWindowFullScreen } from "#src/renderer/src/hooks/use-window-full-screen";
 import {
   installDesktopDouble,
   type DesktopDouble,

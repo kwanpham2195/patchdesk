@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitHubWriteFailure } from "../../src/domain/github-write";
-import { err, ok } from "../../src/domain/result";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import { err, ok } from "#src/domain/result";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
   type ReviewWriteOperation,
-} from "../../src/domain/review-write-operation";
-import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
-import { MergeWriteController } from "../../src/services/merge-write-controller";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewWriteRecoveryService } from "../../src/services/review-write-recovery-service";
+} from "#src/domain/review-write-operation";
+import { DirectSummaryReviewService } from "#src/services/direct-summary-review-service";
+import { MergeWriteController } from "#src/services/merge-write-controller";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ReviewWriteRecoveryService } from "#src/services/review-write-recovery-service";
 import {
   anchor,
   at,

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -21,14 +21,14 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ReviewPreparationJournal } from "../../src/services/review-preparation-journal";
-import type { Result } from "../../src/domain/result";
-import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
-import { err, ok } from "../../src/domain/result";
-import type { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { createReviewSession } from "../../src/domain/review-session";
-import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
+} from "#src/domain/ids";
+import { ReviewPreparationJournal } from "#src/services/review-preparation-journal";
+import type { Result } from "#src/domain/result";
+import { ReviewWorktreeService } from "#src/services/review-worktree-service";
+import { err, ok } from "#src/domain/result";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { createReviewSession } from "#src/domain/review-session";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
 
 /**
  * Records every `withProfileLock` call (as a string profile id) while still

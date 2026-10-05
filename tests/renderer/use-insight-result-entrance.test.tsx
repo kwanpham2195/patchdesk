@@ -3,7 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useInsightResultEntrance } from "../../src/renderer/src/hooks/use-insight-result-entrance";
+import { useInsightResultEntrance } from "#src/renderer/src/hooks/use-insight-result-entrance";
 
 type InputPatch = Omit<Partial<HookInput>, "retainedRunIds"> & {
   readonly retainedRunIds?: Partial<HookInput["retainedRunIds"]>;

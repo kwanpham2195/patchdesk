@@ -4,8 +4,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../components/ui/card";
-import type { Dashboard, Repo } from "../renderer-models";
+} from "#src/renderer/src/components/ui/card";
+import type { Dashboard, Repo } from "#src/renderer/src/renderer-models";
 import {
   AddWatchedRepositoryForm,
   useWatchedRepositories,

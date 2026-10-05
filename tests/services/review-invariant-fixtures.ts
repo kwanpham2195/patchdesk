@@ -7,8 +7,8 @@ import {
   parseGitHubThreadId,
   parseInsightRunId,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 import { createReviewRefreshFixtureValues } from "./review-refresh-fixture";
 
 /**

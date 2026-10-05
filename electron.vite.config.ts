@@ -60,6 +60,14 @@ function mcpShimBundle(): Plugin {
     async buildStart() {
       const output = await build({
         configFile: false,
+        resolve: {
+          alias: {
+            "#src": fileURLToPath(new URL("./src", import.meta.url)),
+            "#package": fileURLToPath(
+              new URL("./package.json", import.meta.url),
+            ),
+          },
+        },
         logLevel: "warn",
         build: {
           ssr: "src/mcp/main.ts",
@@ -94,6 +102,12 @@ function mcpShimBundle(): Plugin {
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin(), mcpShimBundle()],
+    resolve: {
+      alias: {
+        "#src": fileURLToPath(new URL("./src", import.meta.url)),
+        "#package": fileURLToPath(new URL("./package.json", import.meta.url)),
+      },
+    },
     build: {
       rollupOptions: {
         input: {
@@ -103,6 +117,9 @@ export default defineConfig({
     },
   },
   preload: {
+    resolve: {
+      alias: { "#src": fileURLToPath(new URL("./src", import.meta.url)) },
+    },
     build: {
       // The sandbox cannot resolve external Node packages from a preload script.
       externalizeDeps: false,
@@ -130,6 +147,8 @@ export default defineConfig({
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src/renderer/src", import.meta.url)),
+        "#src": fileURLToPath(new URL("./src", import.meta.url)),
+        "#resources": fileURLToPath(new URL("./resources", import.meta.url)),
       },
     },
   },

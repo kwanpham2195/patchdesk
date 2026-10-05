@@ -2,9 +2,9 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopResponse } from "../../src/main/ipc-contract";
-import { useChangeIntent } from "../../src/renderer/src/flows/use-change-intent";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type { DesktopResponse } from "#src/main/ipc-contract";
+import { useChangeIntent } from "#src/renderer/src/flows/use-change-intent";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   failure,
   installDesktopDouble,

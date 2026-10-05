@@ -1,20 +1,20 @@
-import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import { definedProps } from "../domain/defined-props";
+import type { LocalApplyOperationStore } from "#src/adapters/storage/local-apply-operation-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   ContentHash,
   IsoTimestamp,
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   decideLocalApplyRecovery,
   type LocalApplyFile,
   type LocalApplyOperation,
-} from "../domain/local-apply-operation";
-import { isLocalReview } from "../domain/review";
-import { markLocalDraftsApplied } from "../domain/review-local-drafts";
+} from "#src/domain/local-apply-operation";
+import { isLocalReview } from "#src/domain/review";
+import { markLocalDraftsApplied } from "#src/domain/review-local-drafts";
 import type { AppLogService } from "./app-log-service";
 import {
   hashFileBytes,

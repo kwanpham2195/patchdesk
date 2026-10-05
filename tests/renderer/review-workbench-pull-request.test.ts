@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createHeadSideCommentAuthoring } from "../../src/renderer/src/components/review-workbench-pull-request";
+import { createHeadSideCommentAuthoring } from "#src/renderer/src/components/review-workbench-pull-request";
 
 // The pull request diff has two hunks; a head commit's own hunk can span the unchanged lines between them.
 const FULL_PATCH = [

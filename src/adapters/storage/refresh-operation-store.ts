@@ -1,13 +1,13 @@
 import { readdir, rm } from "node:fs/promises";
 
-import type { ReviewId, WorkspaceProfileId } from "../../domain/ids";
-import { parseReviewId } from "../../domain/ids";
+import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
+import { parseReviewId } from "#src/domain/ids";
 import {
   parseRefreshOperation,
   serializeRefreshOperation,
   type RefreshOperation,
-} from "../../domain/refresh-operation";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/refresh-operation";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isNotFound,
   readJsonFile,

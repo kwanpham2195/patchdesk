@@ -1,26 +1,26 @@
-import { parseUnifiedPatch } from "../domain/patch";
-import { canonicalPatchFlags } from "../adapters/process/git-patch-flags";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
+import { parseUnifiedPatch } from "#src/domain/patch";
+import { canonicalPatchFlags } from "#src/adapters/process/git-patch-flags";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import type {
   ReviewRemoteSnapshot,
   ReviewRemoteStore,
-} from "../adapters/storage/review-remote-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { GitSha, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import type { PullRequestCommit } from "../domain/github-context";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/adapters/storage/review-remote-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { GitSha, ReviewId, WorkspaceProfileId } from "#src/domain/ids";
+import type { PullRequestCommit } from "#src/domain/github-context";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isPullRequestReview,
   sessionRepresentsReview,
   type Review,
-} from "../domain/review";
+} from "#src/domain/review";
 import {
   isPullRequestReviewSession,
   type ReviewSession,
-} from "../domain/review-session";
-import { selectSinceReviewBaseline } from "../domain/since-review-baseline";
+} from "#src/domain/review-session";
+import { selectSinceReviewBaseline } from "#src/domain/since-review-baseline";
 import {
   asPullRequestCommit,
   readFirstParentOrEmptyTree,

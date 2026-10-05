@@ -1,16 +1,16 @@
 import { Plus, X } from "lucide-react";
-import { Button } from "../components/ui/button";
+import { Button } from "#src/renderer/src/components/ui/button";
 import {
   FieldDescription,
   FieldLegend,
   FieldSet,
-} from "../components/ui/field";
-import { Input } from "../components/ui/input";
+} from "#src/renderer/src/components/ui/field";
+import { Input } from "#src/renderer/src/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "../components/ui/tooltip";
+} from "#src/renderer/src/components/ui/tooltip";
 import type { FieldStatus } from "./settings-workspace-profile-editor";
 import type {
   ProfileListEntry,

@@ -1,14 +1,14 @@
-import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
-import { InsightRunCoordinator } from "../../src/services/insight-run-coordinator";
-import { PendingReviewService } from "../../src/services/pending-review-service";
-import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
-import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
-import { ReviewObservationService } from "../../src/services/review-observation-service";
-import type { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
-import { ReviewRefreshService } from "../../src/services/review-refresh-service";
-import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
-import { err, ok } from "../../src/domain/result";
+import { DirectSummaryReviewService } from "#src/services/direct-summary-review-service";
+import { InsightRunCoordinator } from "#src/services/insight-run-coordinator";
+import { PendingReviewService } from "#src/services/pending-review-service";
+import { PublishedFeedbackService } from "#src/services/published-feedback-service";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import { ReviewObservationService } from "#src/services/review-observation-service";
+import type { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ReviewRecoveryService } from "#src/services/review-recovery-service";
+import { ReviewRefreshService } from "#src/services/review-refresh-service";
+import { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
+import { err, ok } from "#src/domain/result";
 import { now, values, type Recorder } from "./review-invariant-fixtures";
 
 /**

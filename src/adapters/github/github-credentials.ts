@@ -1,6 +1,6 @@
-import { type GitHubHost } from "../../domain/ids";
-import { err, ok, type Result } from "../../domain/result";
-import { type WorkspaceProfileConfig } from "../../domain/workspace-profile";
+import { type GitHubHost } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { type WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { type CommandFailure, type CommandRunner } from "./command-runner";
 
 const credentialTimeoutMs = 10_000;

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   sendNotificationClick,
   subscribeToNotificationClicks,
-} from "../../src/main/desktop-notification-channel";
-import type { DesktopNotificationClick } from "../../src/main/ipc-contract";
+} from "#src/main/desktop-notification-channel";
+import type { DesktopNotificationClick } from "#src/main/ipc-contract";
 
 type ClickHandler = (event: undefined, click: DesktopNotificationClick) => void;
 

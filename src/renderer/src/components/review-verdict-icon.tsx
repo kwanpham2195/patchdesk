@@ -1,6 +1,6 @@
 import { Ban, CheckCircle2, MessageCircle, XCircle } from "lucide-react";
 
-import type { ReviewVerdictState } from "../../../domain/review-verdicts";
+import type { ReviewVerdictState } from "#src/domain/review-verdicts";
 
 /** Shared so every review verdict (Reviewers rail, review cards, review-state filter, Analysis verdict) draws one glyph per verdict, and always `aria-hidden` because every place that draws one also writes the verdict out in words. */
 export function ReviewVerdictIcon({

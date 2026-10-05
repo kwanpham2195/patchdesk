@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-import type { RepositoryIdentity } from "../../domain/repository-identity";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
 
 // `GET /v1/reviews/local-checkouts` (#489): the configured checkout and its live linked worktrees.
 const localCheckoutsSchema = v.array(

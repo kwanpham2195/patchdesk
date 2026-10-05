@@ -2,7 +2,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useInsightConfiguration } from "../../src/renderer/src/hooks/use-insight-configuration";
+import { useInsightConfiguration } from "#src/renderer/src/hooks/use-insight-configuration";
 import {
   failure,
   installDesktopDouble,

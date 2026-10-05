@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ReviewNavigatorResizeHandle } from "../../src/renderer/src/components/review-navigator-resize-handle";
+import { ReviewNavigatorResizeHandle } from "#src/renderer/src/components/review-navigator-resize-handle";
 
 let nextFrame = 1;
 let frames = new Map<number, FrameRequestCallback>();

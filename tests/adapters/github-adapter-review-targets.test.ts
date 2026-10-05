@@ -1,5 +1,5 @@
 import { orderedTransport } from "./github-transport-doubles";
-import { parseGitHubThreadId, parseGitSha } from "../../src/domain/ids";
+import { parseGitHubThreadId, parseGitSha } from "#src/domain/ids";
 import { describe, expect, it } from "vitest";
 import {
   created,

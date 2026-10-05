@@ -3,12 +3,12 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type { RawJsonValue } from "#src/domain/json";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   useReviewObservation,
   type ReviewWorkbenchPatch,
-} from "../../src/renderer/src/flows/use-review-observation";
+} from "#src/renderer/src/flows/use-review-observation";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 import { projection } from "./review-workbench-fixtures";
 

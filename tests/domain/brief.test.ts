@@ -8,22 +8,22 @@ import {
   type BriefError,
   type BriefSnapshot,
   type NormalizedBrief,
-} from "../../src/domain/brief";
+} from "#src/domain/brief";
 import {
   MAX_FLOW_DEPTH,
   MAX_FLOW_LABEL_LENGTH,
   MAX_FLOW_NODES_PER_TREE,
   MAX_FLOW_TREES,
-} from "../../src/domain/brief-flow";
+} from "#src/domain/brief-flow";
 import {
   parseContentHash,
   parseGitSha,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { insightOutputGuidance } from "../../src/domain/insight-output-guidance";
-import type { Result } from "../../src/domain/result";
-import { parseStoredBrief } from "../../src/domain/stored-brief";
+} from "#src/domain/ids";
+import { insightOutputGuidance } from "#src/domain/insight-output-guidance";
+import type { Result } from "#src/domain/result";
+import { parseStoredBrief } from "#src/domain/stored-brief";
 
 const PATCH = [
   "diff --git a/src/recovery.ts b/src/recovery.ts",

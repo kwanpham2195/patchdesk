@@ -1,7 +1,7 @@
 import { Check, CircleDashed, CircleX, History } from "lucide-react";
 
 import { Spinner } from "./ui/spinner";
-import type { InsightStatus } from "../insight-status";
+import type { InsightStatus } from "#src/renderer/src/insight-status";
 import { cn } from "@/lib/utils";
 
 /** Outdated evidence is still readable, so it reads amber; only Failed reads red. */

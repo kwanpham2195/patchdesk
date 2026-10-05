@@ -9,10 +9,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppShell } from "../../src/renderer/src/components/app-shell";
-import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { Dashboard } from "../../src/renderer/src/renderer-models";
+import { AppShell } from "#src/renderer/src/components/app-shell";
+import { BusyProvider } from "#src/renderer/src/hooks/use-busy";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { Dashboard } from "#src/renderer/src/renderer-models";
 import {
   installDesktopDouble,
   success,
@@ -34,7 +34,7 @@ import {
   SHARED_INBOX_ROUTES,
 } from "./inbox-flow-fixtures";
 import { InboxFlowHarness as InboxFlow } from "./inbox-flow-harness";
-import type { RawJsonValue } from "../../src/domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 
 let desktop: DesktopDouble | undefined;
 

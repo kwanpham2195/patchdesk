@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canPreviewMarkdownFile } from "../../src/renderer/src/markdown-preview-eligibility";
+import { canPreviewMarkdownFile } from "#src/renderer/src/markdown-preview-eligibility";
 
 describe("Markdown preview eligibility", () => {
   it.each([

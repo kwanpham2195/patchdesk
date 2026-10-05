@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   sendWatchedPullRequestChange,
   subscribeToWatchedPullRequestChanges,
-} from "../../src/main/desktop-watched-pull-request-channel";
+} from "#src/main/desktop-watched-pull-request-channel";
 
 type ChangeHandler = (event: undefined, profileId: string) => void;
 

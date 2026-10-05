@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseReviewWriteOperation } from "../../src/domain/review-write-operation";
-import { err, ok } from "../../src/domain/result";
+import { parseReviewWriteOperation } from "#src/domain/review-write-operation";
+import { err, ok } from "#src/domain/result";
 import {
   at,
   fixture,

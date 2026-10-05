@@ -4,15 +4,15 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BRIEF_SIGNAL_KINDS } from "../../src/domain/brief-signals";
-import { changeScopeFromPatch } from "../../src/domain/change-scope";
+import { BRIEF_SIGNAL_KINDS } from "#src/domain/brief-signals";
+import { changeScopeFromPatch } from "#src/domain/change-scope";
 import {
   briefCitationChipLabel,
   briefCitationChipTitle,
   briefCitationStatusLine,
   briefOwnershipTree,
-} from "../../src/renderer/src/brief-contracts";
-import { BriefReader } from "../../src/renderer/src/components/brief-reader";
+} from "#src/renderer/src/brief-contracts";
+import { BriefReader } from "#src/renderer/src/components/brief-reader";
 import { briefInsight, briefValue } from "./review-workbench-fixtures";
 
 const retained = () => {

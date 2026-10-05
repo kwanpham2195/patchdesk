@@ -5,17 +5,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   DesktopResponse,
   LocalApiDesktopRequest,
-} from "../../src/main/ipc-contract";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+} from "#src/main/ipc-contract";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   useAddAllFindings,
   type AddAllFindingsOutcome,
-} from "../../src/renderer/src/flows/use-add-all-findings";
+} from "#src/renderer/src/flows/use-add-all-findings";
 import {
   useAnalysisReviewActions,
   type FindingAddResult,
-} from "../../src/renderer/src/flows/use-analysis-review-actions";
-import type { RunDirectCommand } from "../../src/renderer/src/flows/use-review-observation";
+} from "#src/renderer/src/flows/use-analysis-review-actions";
+import type { RunDirectCommand } from "#src/renderer/src/flows/use-review-observation";
 import {
   failure,
   installDesktopDouble,

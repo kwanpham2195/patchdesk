@@ -1,17 +1,17 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { isApiErrorCode, requestJson } from "../api-client";
+import { isApiErrorCode, requestJson } from "#src/renderer/src/api-client";
 import {
   branchMismatchMessage,
   checkoutMissingMessage,
   localReviewSourceInput,
   untrackedTooLargeMessage,
   patchTooLargeMessage,
-} from "../local-review-reopen";
+} from "#src/renderer/src/local-review-reopen";
 import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 /** Refresh on a local Review (#452): read the checkout again and show the session it resolves to. */
 export type LocalRefreshControls = {

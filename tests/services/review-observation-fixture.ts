@@ -1,6 +1,6 @@
-import type { BranchProtectionRead } from "../../src/adapters/github/github-merge-policy";
-import type { PullRequestReviewsRead } from "../../src/adapters/github/github-pull-request-reviews";
-import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
+import type { BranchProtectionRead } from "#src/adapters/github/github-merge-policy";
+import type { PullRequestReviewsRead } from "#src/adapters/github/github-pull-request-reviews";
+import type { ReviewRemoteSnapshot } from "#src/adapters/storage/review-remote-store";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -9,8 +9,8 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { ok, type Result } from "#src/domain/result";
 
 export const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "err") throw new Error("fixture");

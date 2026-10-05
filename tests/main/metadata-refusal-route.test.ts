@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { err } from "../../src/domain/result";
-import { registerReviewWriteRoutes } from "../../src/main/routes/review-write-routes";
-import { GitHubRefusedMetadataWrite } from "../../src/services/pull-request-metadata-write";
+import type { RawJsonValue } from "#src/domain/json";
+import { err } from "#src/domain/result";
+import { registerReviewWriteRoutes } from "#src/main/routes/review-write-routes";
+import { GitHubRefusedMetadataWrite } from "#src/services/pull-request-metadata-write";
 
 const reviewId = "acme__octo-org__patchdesk__pr-42__review-abcdef123456";
 const common = { profileId: "acme", reviewId };

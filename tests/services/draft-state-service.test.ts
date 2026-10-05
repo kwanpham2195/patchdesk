@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { DraftStateService } from "../../src/services/draft-state-service";
-import { ok, err } from "../../src/domain/result";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { DraftStateService } from "#src/services/draft-state-service";
+import { ok, err } from "#src/domain/result";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import {
   makeGate,
   makeRecentWrites,

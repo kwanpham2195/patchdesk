@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createDesktopLifecycle } from "../src/main/app-lifecycle";
-import { preloadScriptPath } from "../src/main/electron-paths";
+import { createDesktopLifecycle } from "#src/main/app-lifecycle";
+import { preloadScriptPath } from "#src/main/electron-paths";
 
 describe("desktop lifecycle", () => {
   it("uses Electron's CommonJS preload output in development and packaged output", () => {

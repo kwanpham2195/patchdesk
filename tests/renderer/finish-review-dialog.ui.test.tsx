@@ -9,9 +9,9 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
-import { FinishReviewDialog } from "../../src/renderer/src/components/finish-review-dialog";
-import type { PendingReviewProjection } from "../../src/renderer/src/renderer-contracts";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
+import { FinishReviewDialog } from "#src/renderer/src/components/finish-review-dialog";
+import type { PendingReviewProjection } from "#src/renderer/src/renderer-contracts";
 
 const projection: PendingReviewProjection = {
   state: "pending",

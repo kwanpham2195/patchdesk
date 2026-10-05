@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { MaintainerInboxService } from "../../src/services/maintainer-inbox-service";
-import type { ReviewId, WorkspaceProfileId } from "../../src/domain/ids";
+import { MaintainerInboxService } from "#src/services/maintainer-inbox-service";
+import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
 import type {
   InboxInsightKind,
   InboxInsightReadiness,
-} from "../../src/domain/maintainer-inbox";
-import { ok } from "../../src/domain/result";
-import type { parseStoredBrief } from "../../src/domain/stored-brief";
+} from "#src/domain/maintainer-inbox";
+import { ok } from "#src/domain/result";
+import type { parseStoredBrief } from "#src/domain/stored-brief";
 
 // SAFETY: MaintainerInboxService reads only host/owner/repo off the
 // repository parameter; the plain strings stand in for the branded GitHub

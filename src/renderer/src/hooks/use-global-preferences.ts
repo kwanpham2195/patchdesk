@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../api-client";
+import { api } from "#src/renderer/src/api-client";
 import {
   applyAppearance,
   clearAppearancePreference,
   currentAppearancePreference,
   loadAppearancePreference,
   type AppearancePreference,
-} from "../appearance-preferences";
+} from "#src/renderer/src/appearance-preferences";
 import {
   applyDiffThemePreferences,
   clearDiffThemePreferences,
   loadDiffThemePreferences,
   parseDiffThemePreferences,
   type DiffThemePreferences,
-} from "../diff-theme-preferences";
-import { record } from "../json-guards";
+} from "#src/renderer/src/diff-theme-preferences";
+import { record } from "#src/renderer/src/json-guards";
 
 /**
  * Appearance and diff theme: the two preferences stored globally rather than

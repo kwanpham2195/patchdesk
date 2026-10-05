@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
-import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
-import { BusyIndicator } from "../../src/renderer/src/components/busy-indicator";
-import type { RawJsonValue } from "../../src/domain/json";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { Dashboard } from "../../src/renderer/src/renderer-models";
+import { BusyProvider } from "#src/renderer/src/hooks/use-busy";
+import { BusyIndicator } from "#src/renderer/src/components/busy-indicator";
+import type { RawJsonValue } from "#src/domain/json";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { Dashboard } from "#src/renderer/src/renderer-models";
 import {
   success,
   type DesktopDouble,

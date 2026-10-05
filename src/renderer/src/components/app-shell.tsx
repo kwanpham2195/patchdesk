@@ -14,11 +14,11 @@ import type {
   InboxFilterChange,
   InboxPreset,
   InboxStateFilter,
-} from "../../../domain/maintainer-inbox";
-import type { GitHubHost } from "../../../domain/ids";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import type { RepositoryIdentity } from "../../../domain/repository-identity";
-import { definedProps } from "../../../domain/defined-props";
+} from "#src/domain/maintainer-inbox";
+import type { GitHubHost } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
+import { definedProps } from "#src/domain/defined-props";
 import { AppCommandDialog } from "@/components/app-command-dialog";
 import { AppUpdateControl } from "@/components/app-update-control";
 import { BrandMark } from "@/components/brand-mark";
@@ -52,11 +52,11 @@ import {
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { useVisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
-import { isTextEntryTarget } from "../text-entry-target";
+import { isTextEntryTarget } from "#src/renderer/src/text-entry-target";
 import {
   ReviewCommandRegistryContext,
   useReviewCommandRegistry,
-} from "../review-commands";
+} from "#src/renderer/src/review-commands";
 
 type ProfileEntry = {
   readonly id: string;

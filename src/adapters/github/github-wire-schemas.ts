@@ -5,8 +5,8 @@ import type {
   GitHubMergeStateStatus,
   MergeMethod,
   MergePolicySnapshot,
-} from "../../domain/github-context";
-import type { GitSha } from "../../domain/ids";
+} from "#src/domain/github-context";
+import type { GitSha } from "#src/domain/ids";
 
 export const publishedReviewSchema = v.array(
   v.looseObject({

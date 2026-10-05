@@ -15,28 +15,22 @@ import {
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import * as v from "valibot";
 
-import { CommandRunner } from "../../../src/adapters/github/command-runner";
-import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
-import { definedProps } from "../../../src/domain/defined-props";
-import {
-  rawJsonValueSchema,
-  type RawJsonValue,
-} from "../../../src/domain/json";
-import {
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-} from "../../../src/domain/ids";
+import { CommandRunner } from "#app/adapters/github/command-runner";
+import { PatchdeskPaths } from "#app/adapters/storage/patchdesk-paths";
+import { definedProps } from "#app/domain/defined-props";
+import { rawJsonValueSchema, type RawJsonValue } from "#app/domain/json";
+import { parseReviewSessionId, parseWorkspaceProfileId } from "#app/domain/ids";
 import {
   AnalysisPromptTooLargeError,
   prepareModelReview,
   type PreparedModelReview,
-} from "../../../src/services/model-review-runner";
-import type { ReviewInspector } from "../../../src/services/review-inspector";
-import { prepareBriefPrompt } from "../../../src/services/brief-operation";
+} from "#app/services/model-review-runner";
+import type { ReviewInspector } from "#app/services/review-inspector";
+import { prepareBriefPrompt } from "#app/services/brief-operation";
 import {
   prepareWalkthroughPrompt,
   walkthroughOutputLimitDiagnostic,
-} from "../../../src/services/walkthrough-operation";
+} from "#app/services/walkthrough-operation";
 
 import {
   MAX_RUNTIME_STDIN_BYTES,

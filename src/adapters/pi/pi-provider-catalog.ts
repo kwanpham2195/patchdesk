@@ -2,9 +2,9 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { definedProps } from "../../domain/defined-props";
-import { ok, type Result } from "../../domain/result";
-import { whenLoginShellEnvironmentImported } from "../process/login-shell-import";
+import { definedProps } from "#src/domain/defined-props";
+import { ok, type Result } from "#src/domain/result";
+import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-shell-import";
 
 /** A bounded, renderer-safe availability description. It never contains values or paths. */
 export type PiProviderStatus = {

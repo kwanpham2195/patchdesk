@@ -9,7 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { InlineCommentComposer } from "../../src/renderer/src/components/review-diff-authoring";
+import { InlineCommentComposer } from "#src/renderer/src/components/review-diff-authoring";
 
 function deferred<T>() {
   let reject: (reason: Error) => void = () => {

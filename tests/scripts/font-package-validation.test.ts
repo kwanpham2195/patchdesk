@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   validatePackagedFontRuntime,
   validateRendererFontBundle,
-} from "../../scripts/font-package-validation.mjs";
+} from "#scripts/font-package-validation.mjs";
 
 const expectedAssets = [
   "assets/geist-latin-wght-normal-a.woff2",

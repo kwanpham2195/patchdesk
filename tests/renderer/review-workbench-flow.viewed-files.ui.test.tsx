@@ -10,9 +10,9 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { chooseViewedAction } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";

@@ -2,9 +2,9 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { useLocalApply } from "../../src/renderer/src/flows/use-local-apply";
+import type { RawJsonValue } from "#src/domain/json";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { useLocalApply } from "#src/renderer/src/flows/use-local-apply";
 import {
   failure,
   installDesktopDouble,

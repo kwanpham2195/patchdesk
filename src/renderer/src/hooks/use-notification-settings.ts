@@ -5,8 +5,8 @@ import {
   notificationSettingsOf,
   WATCH_INTERVAL_MINUTES,
   type NotificationSettings,
-} from "../../../domain/contracts";
-import { requestJson } from "../api-client";
+} from "#src/domain/contracts";
+import { requestJson } from "#src/renderer/src/api-client";
 
 // Loose: `/v1/settings` also carries appearance and diff theme, which this hook does not own.
 const settingsResponseSchema = v.looseObject({

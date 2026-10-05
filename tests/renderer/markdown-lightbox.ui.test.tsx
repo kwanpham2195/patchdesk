@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MarkdownLightbox } from "../../src/renderer/src/components/markdown-lightbox";
+import { MarkdownLightbox } from "#src/renderer/src/components/markdown-lightbox";
 
 const originalShowModalDescriptor = Object.getOwnPropertyDescriptor(
   HTMLDialogElement.prototype,

@@ -1,8 +1,8 @@
-import { definedProps } from "../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   readFeedbackHandoff,
   type FeedbackHandoffReading,
-} from "../domain/feedback-handoff";
+} from "#src/domain/feedback-handoff";
 import type {
   FindingId,
   IsoTimestamp,
@@ -10,16 +10,16 @@ import type {
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   isMaintainerNote,
   localDraftFeedbackState,
   type FindingDraft,
   type LocalDraft,
   type LocalDraftFeedbackState,
-} from "../domain/local-draft";
-import { compareLocalDraftsByFileThenLine } from "../domain/local-draft-agent-prompt";
-import { ok, type Result } from "../domain/result";
+} from "#src/domain/local-draft";
+import { compareLocalDraftsByFileThenLine } from "#src/domain/local-draft-agent-prompt";
+import { ok, type Result } from "#src/domain/result";
 import type {
   InsightReadingFailure,
   InsightStatusesReading,

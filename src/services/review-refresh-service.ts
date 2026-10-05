@@ -1,60 +1,60 @@
-import { definedProps } from "../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 
 import type {
   GitHubReadFailure,
   GitHubReader,
-} from "../adapters/github/github-adapter";
-import type { BranchProtectionRead } from "../adapters/github/github-merge-policy";
+} from "#src/adapters/github/github-adapter";
+import type { BranchProtectionRead } from "#src/adapters/github/github-merge-policy";
 import {
   assembleConversation,
   noPublishedFeedback,
-} from "../adapters/github/github-conversation-assembly";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+} from "#src/adapters/github/github-conversation-assembly";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
 import type {
   ReviewRemoteSnapshot,
   ReviewRemoteStore,
-} from "../adapters/storage/review-remote-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
+} from "#src/adapters/storage/review-remote-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import {
   isPullRequestReview,
   markReviewTerminal,
   moveReviewToSession,
   type PullRequestReview,
   type Review,
-} from "../domain/review";
-import type { PullRequestRef } from "../domain/pull-request";
+} from "#src/domain/review";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   toMergeEvidence,
   type GitHubComments,
   type GitHubMergePolicyEvidence,
   type GitHubPublishedFeedback,
   type PullRequestSummary,
-} from "../domain/github-context";
+} from "#src/domain/github-context";
 import type {
   ContentHash,
   IsoTimestamp,
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   isPullRequestReviewSession,
   sameReviewRevision,
   type PullRequestReviewSession,
   type ReviewRevision,
-} from "../domain/review-session";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/review-session";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewSessionPreparation } from "./review-session-preparation";
 import type {
   ReviewWorkbenchProjection,
   WorkbenchProjectionFailure,
 } from "./review-workbench-projection";
 import type { PendingReviewService } from "./pending-review-service";
-import type { PendingReviewState } from "../domain/pending-review";
+import type { PendingReviewState } from "#src/domain/pending-review";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { AppLogService } from "./app-log-service";
 import type { AvatarSyncService } from "./avatar-sync-service";

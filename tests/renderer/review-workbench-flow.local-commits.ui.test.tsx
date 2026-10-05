@@ -13,8 +13,8 @@ import userEvent, {
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { chooseChanges } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { callBody, callPath, projection } from "./review-workbench-fixtures";

@@ -1,14 +1,14 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import type { ReviewId, WorkspaceProfileId } from "../../src/domain/ids";
-import { ok, err, type Result } from "../../src/domain/result";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
-import { registerReviewWriteRoutes } from "../../src/main/routes/review-write-routes";
+import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
+import { ok, err, type Result } from "#src/domain/result";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import { registerReviewWriteRoutes } from "#src/main/routes/review-write-routes";
 import type {
   ReviewWriteRecovery,
   ReviewWriteRecoveryFailure,
-} from "../../src/services/review-write-recovery-service";
+} from "#src/services/review-write-recovery-service";
 
 const body = {
   profileId: "acme",

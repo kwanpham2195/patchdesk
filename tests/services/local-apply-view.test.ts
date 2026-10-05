@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { err } from "../../src/domain/result";
+import { err } from "#src/domain/result";
 import {
   applyRequest,
   cleanupLocalApplyRoots,

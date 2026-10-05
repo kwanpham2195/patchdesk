@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { selectSinceReviewBaseline } from "../../../domain/since-review-baseline";
-import type { NarrowedDiffControl } from "../components/review-diff-changes-menu";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { SinceReviewDiffResponse } from "../review-diff-contracts";
+import { selectSinceReviewBaseline } from "#src/domain/since-review-baseline";
+import type { NarrowedDiffControl } from "#src/renderer/src/components/review-diff-changes-menu";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { SinceReviewDiffResponse } from "#src/renderer/src/review-diff-contracts";
 import {
   useNarrowedPatchRequest,
   type NarrowedPatchState,

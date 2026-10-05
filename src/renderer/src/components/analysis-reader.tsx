@@ -1,17 +1,17 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
-import { definedProps } from "../../../domain/defined-props";
-import { contextualMessage } from "../api-client";
-import { FINDING_ACTION_MESSAGES } from "../review-copy";
-import { useFindingErrors } from "../hooks/use-finding-errors";
-import { useRestoreRefreshNotices } from "../hooks/use-restore-refresh-notices";
-import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
+import { definedProps } from "#src/domain/defined-props";
+import { contextualMessage } from "#src/renderer/src/api-client";
+import { FINDING_ACTION_MESSAGES } from "#src/renderer/src/review-copy";
+import { useFindingErrors } from "#src/renderer/src/hooks/use-finding-errors";
+import { useRestoreRefreshNotices } from "#src/renderer/src/hooks/use-restore-refresh-notices";
+import type { AnalysisVerificationControls } from "#src/renderer/src/hooks/use-analysis-verification";
 import {
   renderAnalysisFixPrompt,
   type AnalysisFixPromptContext,
-} from "../analysis-fix-prompt";
-import type { ReviewVerdictState } from "../../../domain/review-verdicts";
+} from "#src/renderer/src/analysis-fix-prompt";
+import type { ReviewVerdictState } from "#src/domain/review-verdicts";
 import {
   analysisVerdictLabel,
   checkStatusLabel,
@@ -20,10 +20,10 @@ import {
   type AnalysisFindingStatus as FindingStatus,
   type AnalysisResult,
   type CheckStatus,
-} from "../analysis-headline";
-import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
-import type { LocalApplyControls } from "../flows/use-local-apply";
-import type { LocalDraftControls } from "../flows/use-local-drafts";
+} from "#src/renderer/src/analysis-headline";
+import type { AddAllFindingsControls } from "#src/renderer/src/flows/use-add-all-findings";
+import type { LocalApplyControls } from "#src/renderer/src/flows/use-local-apply";
+import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-drafts";
 import { AnalysisAddAllFindings } from "./analysis-add-all-findings";
 import { AnalysisDismissedFindingRow } from "./analysis-dismissed-finding-row";
 import {

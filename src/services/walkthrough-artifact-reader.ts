@@ -1,6 +1,6 @@
 import { open } from "node:fs/promises";
 
-import { err, ok, type Result } from "../domain/result";
+import { err, ok, type Result } from "#src/domain/result";
 
 export type BoundedArtifactReadError =
   | { readonly reason: "input_too_large" }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { inboxFreshnessLabel } from "../../src/renderer/src/inbox-freshness";
+import { inboxFreshnessLabel } from "#src/renderer/src/inbox-freshness";
 
 describe("inboxFreshnessLabel", () => {
   it("returns Stale for a hard-refused cached snapshot", () => {

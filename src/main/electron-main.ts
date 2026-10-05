@@ -52,61 +52,61 @@ import {
   createDesktopNotifier,
   type NotificationDestination,
 } from "./desktop-notifier";
-import type { DesktopNotifier } from "../services/desktop-notifier";
+import type { DesktopNotifier } from "#src/services/desktop-notifier";
 import type { DesktopMenuAction } from "./ipc-contract";
 import {
   healthCheckLocalApi,
   startLocalApiServer,
   type LocalApiServer,
 } from "./local-api";
-import { CommandRunner } from "../adapters/github/command-runner";
-import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { desktopMcpSocketPath } from "./mcp/mcp-socket-listener";
-import { ProfileStore } from "../adapters/storage/profile-store";
-import { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import { ReviewStore } from "../adapters/storage/review-store";
-import { InsightStore } from "../adapters/storage/insight-store";
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { GitHubFetch } from "../adapters/github/github-http-client";
-import { ReviewContextPackService } from "../services/review-context-pack-service";
-import { ReviewContextService } from "../services/review-context-service";
-import type { Appearance } from "../domain/contracts";
-import { parseGitSha } from "../domain/ids";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import type { GitHubFetch } from "#src/adapters/github/github-http-client";
+import { ReviewContextPackService } from "#src/services/review-context-pack-service";
+import { ReviewContextService } from "#src/services/review-context-service";
+import type { Appearance } from "#src/domain/contracts";
+import { parseGitSha } from "#src/domain/ids";
 import type {
   AccountInsightProvider,
   InsightProvider,
-} from "../domain/insight-provider";
-import { loggableMetaValue } from "../domain/log-entry";
-import { err } from "../domain/result";
+} from "#src/domain/insight-provider";
+import { loggableMetaValue } from "#src/domain/log-entry";
+import { err } from "#src/domain/result";
 import {
   PiInsightChildInvoker,
   unavailablePiInsightInvoker,
-} from "../services/pi-insight-child-invoker";
+} from "#src/services/pi-insight-child-invoker";
 import { resolveInsightRuntime } from "./insight-runtime";
 import { createReadOnlyGitExecutor } from "./local-api-stores";
-import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
-import { AppLogService } from "../services/app-log-service";
-import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
-import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
+import { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
+import { AppLogService } from "#src/services/app-log-service";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { workbenchWindowChrome } from "./window-chrome";
 import { windowBackgroundColor } from "./window-appearance";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
-import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
-import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
-import { PiRpcClient } from "../adapters/pi-cli/pi-rpc-client";
-import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
-import { importLoginShellEnvironment } from "../adapters/process/login-shell-environment";
-import { startLoginShellEnvironmentImport } from "../adapters/process/login-shell-import";
-import { briefReachComputer } from "../services/brief-reach-service";
+import { LocalPiRuntimeModelCatalog } from "#src/adapters/pi/pi-runtime-model-catalog";
+import { CodexAppServerClient } from "#src/adapters/codex/codex-app-server-client";
+import { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
+import { discoverPathOnlyExecutable } from "#src/adapters/process/executable-discovery";
+import { importLoginShellEnvironment } from "#src/adapters/process/login-shell-environment";
+import { startLoginShellEnvironmentImport } from "#src/adapters/process/login-shell-import";
+import { briefReachComputer } from "#src/services/brief-reach-service";
 import {
   AccountInsightInvoker,
   type AccountInsightRunner,
-} from "../services/account-insight-invoker";
-import { InsightProviderCatalog } from "../services/insight-provider-catalog";
+} from "#src/services/account-insight-invoker";
+import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
 import {
   InsightRunCoordinator,
   type InsightInvoker,
-} from "../services/insight-run-coordinator";
+} from "#src/services/insight-run-coordinator";
 
 const renderer = rendererSource(process.env, app.isPackaged);
 const rendererOrigin = renderer.origin;

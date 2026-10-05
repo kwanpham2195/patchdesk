@@ -5,20 +5,20 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parsePullRequestNumber,
-} from "../../../domain/ids";
-import { mergeMethodOrder } from "../../../domain/github-context";
-import type { MergeReadiness } from "../../../domain/merge-readiness";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import { PatchdeskApiError, requestJson } from "../api-client";
-import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
-import { mergeRefusalMessage } from "../merge-refusal";
+} from "#src/domain/ids";
+import { mergeMethodOrder } from "#src/domain/github-context";
+import type { MergeReadiness } from "#src/domain/merge-readiness";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { PatchdeskApiError, requestJson } from "#src/renderer/src/api-client";
+import type { PullRequestOverviewMerge } from "#src/renderer/src/components/pr-overview-sheet";
+import { mergeRefusalMessage } from "#src/renderer/src/merge-refusal";
 import {
   parseMergeReceipt,
   parseWorkbenchResponse,
   type MergeReceipt,
   type WorkbenchResponse,
-} from "../renderer-contracts";
-import { workbenchPullRequestNumber } from "../review-source";
+} from "#src/renderer/src/renderer-contracts";
+import { workbenchPullRequestNumber } from "#src/renderer/src/review-source";
 import type { RunDirectCommand } from "./use-review-observation";
 
 function pullRequestExternalRef(

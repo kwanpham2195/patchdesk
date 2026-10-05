@@ -2,43 +2,43 @@ import type {
   GitHubPendingReviewGateway,
   GitHubReadFailure,
   GitHubReader,
-} from "../adapters/github/github-adapter";
-import type { BranchProtectionRead } from "../adapters/github/github-merge-policy";
-import type { PullRequestReviewsRead } from "../adapters/github/github-pull-request-reviews";
-import { definedProps } from "../domain/defined-props";
-import type { PullRequestRef } from "../domain/pull-request";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+} from "#src/adapters/github/github-adapter";
+import type { BranchProtectionRead } from "#src/adapters/github/github-merge-policy";
+import type { PullRequestReviewsRead } from "#src/adapters/github/github-pull-request-reviews";
+import { definedProps } from "#src/domain/defined-props";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
 import type {
   ReviewObservationJournal,
   ReviewObservationJournalStore,
-} from "../adapters/storage/review-observation-journal-store";
+} from "#src/adapters/storage/review-observation-journal-store";
 import type {
   ReviewRemoteSnapshot,
   ReviewRemoteStore,
-} from "../adapters/storage/review-remote-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+} from "#src/adapters/storage/review-remote-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   toMergeEvidence,
   type GitHubMergePolicyEvidence,
   type GitHubPublishedFeedback,
-} from "../domain/github-context";
+} from "#src/domain/github-context";
 import {
   assembleConversation,
   noPublishedFeedback,
-} from "../adapters/github/github-conversation-assembly";
+} from "#src/adapters/github/github-conversation-assembly";
 import {
   parseGitHubLogin,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import type {
   PendingReviewRead,
   PendingReviewState,
-} from "../domain/pending-review";
+} from "#src/domain/pending-review";
 import {
   isPullRequestReview,
   markReviewRevisionChanged,
@@ -48,12 +48,12 @@ import {
   type PullRequestReview,
   type Review,
   type RevisionUnavailableReason,
-} from "../domain/review";
+} from "#src/domain/review";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
-} from "../domain/review-session";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+} from "#src/domain/review-session";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import type {
   ReviewWorkbenchProjection,
   WorkbenchProjectionFailure,
@@ -61,11 +61,11 @@ import type {
 import {
   unionRecentWrites,
   type RecentReviewWrite,
-} from "../domain/recent-review-write";
+} from "#src/domain/recent-review-write";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 import type { PendingReviewService } from "./pending-review-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import { requestAbortContext } from "../adapters/github/command-runner";
+import { requestAbortContext } from "#src/adapters/github/command-runner";
 import {
   applySessionAdoption,
   completeObservationJournal,

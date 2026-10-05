@@ -4,27 +4,30 @@ import { History, PenLine, RotateCcw } from "lucide-react";
 import type {
   GitHubLabel,
   PullRequestAssigneePermission,
-} from "../../../domain/github-context";
-import { definedProps } from "../../../domain/defined-props";
-import { REVIEW_VERDICT_LABELS } from "../review-verdict-labels";
+} from "#src/domain/github-context";
+import { definedProps } from "#src/domain/defined-props";
+import { REVIEW_VERDICT_LABELS } from "#src/renderer/src/review-verdict-labels";
 import {
   PatchdeskApiError,
   contextualMessage,
   refusedWriteMessage,
-} from "../api-client";
+} from "#src/renderer/src/api-client";
 import {
   forbiddenCopy,
   rateLimitedCopy,
   signInCopy,
   WRITE_PERMISSION_UNCONFIRMED,
-} from "../github-read-failure-copy";
-import { RE_REQUEST_REVIEW_MESSAGES } from "../review-copy";
-import { freshnessCopy, type RevisionFreshness } from "../rail-freshness";
+} from "#src/renderer/src/github-read-failure-copy";
+import { RE_REQUEST_REVIEW_MESSAGES } from "#src/renderer/src/review-copy";
+import {
+  freshnessCopy,
+  type RevisionFreshness,
+} from "#src/renderer/src/rail-freshness";
 import type {
   AssignableUserListResponse,
   PendingReviewProjection,
   ReviewerListResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import {
   AssigneePicker,
   type AssigneesSectionActions,
@@ -38,7 +41,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
-import type { ForbiddenReason } from "../../../domain/github-forbidden-reason";
+import type { ForbiddenReason } from "#src/domain/github-forbidden-reason";
 
 /**
  * One topic section inside `PullRequestMetadataRail`: its heading row and

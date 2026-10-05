@@ -5,11 +5,11 @@ import {
 } from "node:child_process";
 import * as v from "valibot";
 
-import { err, ok, type Result } from "../../domain/result";
-import type { InsightReasoning } from "../../domain/insight-provider";
-import type { InsightFailureCategory } from "../../domain/insight-record";
-import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
-import { parseTurnJson } from "../codex/codex-app-server-client";
+import { err, ok, type Result } from "#src/domain/result";
+import type { InsightReasoning } from "#src/domain/insight-provider";
+import type { InsightFailureCategory } from "#src/domain/insight-record";
+import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
+import { parseTurnJson } from "#src/adapters/codex/codex-app-server-client";
 import {
   PiRpcChannel,
   type PiProcessFactory,

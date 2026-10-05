@@ -2,7 +2,7 @@ import {
   changeScopeSegments,
   type ChangeScope,
   type ChangeScopeBucket,
-} from "../../../domain/change-scope";
+} from "#src/domain/change-scope";
 import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
 import { cn } from "@/lib/utils";
 

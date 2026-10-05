@@ -4,12 +4,12 @@ import {
   parseReviewId,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import {
   parseLocalApplyOperation,
   type LocalApplyOperation,
-} from "../../domain/local-apply-operation";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/local-apply-operation";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isNotFound,
   readJsonFile,

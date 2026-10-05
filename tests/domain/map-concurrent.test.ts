@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mapConcurrent } from "../../src/domain/map-concurrent";
+import { mapConcurrent } from "#src/domain/map-concurrent";
 
 /**
  * Yield `ticks` times, so one `map` call can take measurably longer than

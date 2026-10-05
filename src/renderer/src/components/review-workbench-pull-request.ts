@@ -1,18 +1,18 @@
-import { definedProps } from "../../../domain/defined-props";
-import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
+import { definedProps } from "#src/domain/defined-props";
+import { fingerprintPatchAnchor } from "#src/domain/diff-anchor";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parsePullRequestNumber,
   parseRepoRelativePath,
-} from "../../../domain/ids";
-import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import type { PendingReviewAnchor } from "../../../domain/pending-review";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import { diffLineRangeLabel } from "../review-diff-line-range";
-import { workbenchPullRequestNumber } from "../review-source";
+} from "#src/domain/ids";
+import { mapFindingLocation, parseUnifiedPatch } from "#src/domain/patch";
+import type { PendingReviewAnchor } from "#src/domain/pending-review";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { diffLineRangeLabel } from "#src/renderer/src/review-diff-line-range";
+import { workbenchPullRequestNumber } from "#src/renderer/src/review-source";
 import type { ReviewConversationActions } from "./conversation-thread-card";
 import type {
   LocalCommentAuthoring,

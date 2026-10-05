@@ -2,31 +2,31 @@ import { readFile } from "node:fs/promises";
 
 import * as v from "valibot";
 
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import { readJsonFile } from "../adapters/storage/json-file";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import { readJsonFile } from "#src/adapters/storage/json-file";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import {
   changeIntentProvenance,
   type ChangeIntent,
   type ChangeIntentProvenance,
   type ResolvedChangeIntent,
-} from "../domain/change-intent";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import { definedProps } from "../domain/defined-props";
-import type { ContentHash } from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import { reviewSourceTitle } from "../domain/review-source";
+} from "#src/domain/change-intent";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { definedProps } from "#src/domain/defined-props";
+import type { ContentHash } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { reviewSourceTitle } from "#src/domain/review-source";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
   type ReviewSession,
-} from "../domain/review-session";
+} from "#src/domain/review-session";
 import {
   renderStatedGoalSection,
   type StatedGoal,
-} from "../domain/stated-goal";
-import { tokenizeUnifiedPatch } from "../domain/unified-patch";
+} from "#src/domain/stated-goal";
+import { tokenizeUnifiedPatch } from "#src/domain/unified-patch";
 import {
   resolveChangeIntent,
   type ChangeIntentUnreadable,

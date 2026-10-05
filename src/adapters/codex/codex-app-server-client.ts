@@ -8,12 +8,12 @@ import { isAbsolute } from "node:path";
 import * as v from "valibot";
 import type { JsonSchema } from "@valibot/to-json-schema";
 
-import { err, ok, type Result } from "../../domain/result";
-import type { InsightReasoning } from "../../domain/insight-provider";
-import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
-import type { InsightFailureCategory } from "../../domain/insight-record";
-import { isNotFound } from "../storage/json-file";
-import { isPathContained } from "../storage/path-containment";
+import { err, ok, type Result } from "#src/domain/result";
+import type { InsightReasoning } from "#src/domain/insight-provider";
+import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
+import type { InsightFailureCategory } from "#src/domain/insight-record";
+import { isNotFound } from "#src/adapters/storage/json-file";
+import { isPathContained } from "#src/adapters/storage/path-containment";
 import { createCodexActivityEmitter } from "./codex-activity";
 import type {
   CodexActivityEmitter,

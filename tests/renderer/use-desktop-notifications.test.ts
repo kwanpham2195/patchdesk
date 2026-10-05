@@ -2,10 +2,10 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import type { NavigationState } from "../../src/renderer/src/hooks/use-app-navigation";
-import { useDesktopNotificationClicks } from "../../src/renderer/src/hooks/use-desktop-notifications";
-import type { AppDestination } from "../../src/renderer/src/routes";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { NavigationState } from "#src/renderer/src/hooks/use-app-navigation";
+import { useDesktopNotificationClicks } from "#src/renderer/src/hooks/use-desktop-notifications";
+import type { AppDestination } from "#src/renderer/src/routes";
 import {
   installDesktopDouble,
   type DesktopDouble,

@@ -9,9 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ReviewDiffView,
   type LocalCommentAuthoring,
-} from "../../src/renderer/src/components/review-diff-view";
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
+} from "#src/renderer/src/components/review-diff-view";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "#src/renderer/src/review-view-preferences";
 import { dragDiffGutter, type GutterLine } from "./pierre-gutter";
 
 const range = (from: number, to: number, prefix: string) =>

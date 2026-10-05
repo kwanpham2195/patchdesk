@@ -5,7 +5,7 @@ import {
   loadNavigatorWidthPreferences,
   parseNavigatorWidthPreferences,
   saveNavigatorWidthPreferences,
-} from "../../src/renderer/src/navigator-width-preferences";
+} from "#src/renderer/src/navigator-width-preferences";
 
 const storageKey = "patchdesk.review-navigator-width.v1";
 const defaults = { width: 18 };

@@ -1,18 +1,18 @@
 import { writeFile } from "node:fs/promises";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewRemoteStore } from "../../src/adapters/storage/review-remote-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { parseGitSha, parseReviewId } from "../../src/domain/ids";
-import { err, ok } from "../../src/domain/result";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { ReviewCommitService } from "../../src/services/review-commit-service";
-import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewRemoteStore } from "#src/adapters/storage/review-remote-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { parseGitSha, parseReviewId } from "#src/domain/ids";
+import { err, ok } from "#src/domain/result";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { ReviewCommitService } from "#src/services/review-commit-service";
+import type { ReviewWorkbenchProjection } from "#src/services/review-workbench-projection";
 import {
   cleanupLocalApplyRoots,
   git,

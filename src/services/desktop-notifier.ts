@@ -1,7 +1,7 @@
-import type { ReviewId } from "../domain/ids";
-import type { InsightType } from "../domain/insight-record";
-import type { PullRequestRef } from "../domain/pull-request";
-import type { WatchedPullRequestChange } from "../domain/watched-pull-request";
+import type { ReviewId } from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { WatchedPullRequestChange } from "#src/domain/watched-pull-request";
 
 /** The Review and pull request every desktop notification names. */
 type DesktopNotificationSubject = {

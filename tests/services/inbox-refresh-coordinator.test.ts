@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { InboxRefreshCoordinator } from "../../src/services/inbox-refresh-coordinator";
+import { InboxRefreshCoordinator } from "#src/services/inbox-refresh-coordinator";
 import type {
   InboxRepositoryRef,
   MaintainerInbox,
-} from "../../src/services/maintainer-inbox-service";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { ok } from "../../src/domain/result";
+} from "#src/services/maintainer-inbox-service";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { ok } from "#src/domain/result";
 
 // SAFETY: InboxRefreshCoordinator reads only the profile id to separate
 // in-flight requests; these fixtures provide that sole dependency.

@@ -4,7 +4,7 @@ import {
   mapFindingLocation,
   parseUnifiedPatch,
   toGitHubReviewCoordinates,
-} from "../../src/domain/patch";
+} from "#src/domain/patch";
 
 const patch = `diff --git a/src/a.ts b/src/a.ts
 index 1..2 100644

@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
 import * as v from "valibot";
 
 import {
   parseGitHubReviewNodeId,
   parseGitHubThreadId,
   type GitHubThreadId,
-} from "../../../domain/ids";
+} from "#src/domain/ids";
 import {
   PatchdeskApiError,
   ReviewPreconditionError,
@@ -15,23 +15,23 @@ import {
   isOutcomeUnknownRetry,
   requestJson,
   untrustedWriteResponseError,
-} from "../api-client";
+} from "#src/renderer/src/api-client";
 import {
   FINISH_REVIEW_MESSAGES,
   PENDING_REVIEW_RECOVERY_MESSAGES,
   PENDING_REVIEW_REPLACED,
-} from "../review-copy";
-import { definedProps } from "../../../domain/defined-props";
-import type { PendingReviewComposerActions } from "../components/review-diff-view";
-import type { FinishReviewDraft } from "../components/finish-review-dialog";
+} from "#src/renderer/src/review-copy";
+import { definedProps } from "#src/domain/defined-props";
+import type { PendingReviewComposerActions } from "#src/renderer/src/components/review-diff-view";
+import type { FinishReviewDraft } from "#src/renderer/src/components/finish-review-dialog";
 import {
   parsePendingReviewProjection,
   parseWorkbenchResponse,
   type PendingReviewProjection,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchPatch } from "./use-review-observation";
-import type { GitHubReviewEvent } from "../../../domain/pending-review";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
 import type {
   RunDirectCommand,
   AppendRecentWrites,

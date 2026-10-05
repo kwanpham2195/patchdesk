@@ -1,9 +1,9 @@
-import type { WorkspaceProfileId } from "../../domain/ids";
-import { err, ok, type Result } from "../../domain/result";
+import type { WorkspaceProfileId } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   parseWatchedPullRequests,
   type WatchedPullRequest,
-} from "../../domain/watched-pull-request";
+} from "#src/domain/watched-pull-request";
 import {
   readJsonFile,
   writeAtomicJson,

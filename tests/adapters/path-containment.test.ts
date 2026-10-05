@@ -1,7 +1,7 @@
 import { sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isPathContained } from "../../src/adapters/storage/path-containment";
+import { isPathContained } from "#src/adapters/storage/path-containment";
 
 // Every containment check that guards a destructive filesystem operation
 // (worktree cleanup, the preparation journal, the review inspector) shares

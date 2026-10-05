@@ -4,23 +4,23 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import type { ChangeIntent } from "../../src/domain/change-intent";
-import { parseRepoRelativePath } from "../../src/domain/ids";
-import type { InsightType } from "../../src/domain/insight-record";
-import { ok } from "../../src/domain/result";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { parseWorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ChangeIntent } from "#src/domain/change-intent";
+import { parseRepoRelativePath } from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
+import { ok } from "#src/domain/result";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { parseWorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   InsightRunCoordinator,
   type InsightInvoker,
-} from "../../src/services/insight-run-coordinator";
-import { LocalChangeIntentService } from "../../src/services/local-change-intent-service";
-import { ReviewContextPackService } from "../../src/services/review-context-pack-service";
-import { ReviewContextService } from "../../src/services/review-context-service";
+} from "#src/services/insight-run-coordinator";
+import { LocalChangeIntentService } from "#src/services/local-change-intent-service";
+import { ReviewContextPackService } from "#src/services/review-context-pack-service";
+import { ReviewContextService } from "#src/services/review-context-service";
 import { analysisResult, settled } from "./insight-run-fixture";
 import {
   cleanupLocalApplyRoots,

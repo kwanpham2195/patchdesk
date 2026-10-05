@@ -5,14 +5,14 @@ import {
   isOutcomeUnknownRetry,
   requestJson,
   untrustedWriteResponseError,
-} from "../api-client";
-import { DIRECT_SUMMARY_MESSAGES } from "../review-copy";
+} from "#src/renderer/src/api-client";
+import { DIRECT_SUMMARY_MESSAGES } from "#src/renderer/src/review-copy";
 import {
   parseDirectSummaryReviewResponse,
   type DirectSummaryReviewProjection,
   type WorkbenchResponse,
-} from "../renderer-contracts";
-import type { GitHubReviewEvent } from "../../../domain/pending-review";
+} from "#src/renderer/src/renderer-contracts";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
 import type {
   RunDirectCommand,
   AppendRecentWrites,

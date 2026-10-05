@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeReviewPrompt } from "../../src/services/review-rubric";
+import { composeReviewPrompt } from "#src/services/review-rubric";
 
 const prompt = composeReviewPrompt({
   reviewInput: "# Review input",

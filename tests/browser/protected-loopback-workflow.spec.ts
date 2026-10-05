@@ -3,12 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { test, expect } from "playwright/test";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 import { installTestDesktopBridge } from "./bridge-fixture";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 

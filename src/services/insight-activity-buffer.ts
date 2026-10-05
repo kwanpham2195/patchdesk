@@ -2,8 +2,8 @@ import {
   MAX_REASONING_TAIL_CHARS,
   type InsightActivityEvent,
   type InsightCommandStatus,
-} from "../adapters/codex/codex-activity";
-import { casesHandled } from "../domain/result";
+} from "#src/adapters/codex/codex-activity";
+import { casesHandled } from "#src/domain/result";
 
 /** Row cap; the 2026-09-17 spike saw 0 commands on a Walkthrough and 1 on an Analysis run, so the 200-row default stands. */
 const MAX_ACTIVITY_COMMANDS = 200;

@@ -2,8 +2,8 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useReviewWorkbenchPosition } from "../../src/renderer/src/hooks/use-review-workbench-position";
-import type { ReviewWorkbenchInitialState } from "../../src/renderer/src/components/review-workbench";
+import { useReviewWorkbenchPosition } from "#src/renderer/src/hooks/use-review-workbench-position";
+import type { ReviewWorkbenchInitialState } from "#src/renderer/src/components/review-workbench";
 import { projection } from "./review-workbench-fixtures";
 
 const { commits, revision, session } = projection();

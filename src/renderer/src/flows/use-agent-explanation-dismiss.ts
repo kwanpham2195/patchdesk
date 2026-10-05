@@ -1,9 +1,9 @@
 import { useCallback } from "react";
 import * as v from "valibot";
 
-import { isApiErrorCode, requestJson } from "../api-client";
-import { agentExplanationListSchema } from "../local-draft-contracts";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import { isApiErrorCode, requestJson } from "#src/renderer/src/api-client";
+import { agentExplanationListSchema } from "#src/renderer/src/local-draft-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type {
   ReviewWorkbenchPatch,
   RunDirectCommand,

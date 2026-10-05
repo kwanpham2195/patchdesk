@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
 import {
   createReviewId,
   createReviewSessionId,
@@ -18,13 +18,13 @@ import {
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { InsightType } from "../../src/domain/insight-record";
-import type { ReviewSession } from "../../src/domain/review-session";
-import type { Result } from "../../src/domain/result";
-import { err, ok } from "../../src/domain/result";
-import { ReviewPreparationJournal } from "../../src/services/review-preparation-journal";
-import { StorageManagementService } from "../../src/services/storage-management-service";
+} from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
+import type { ReviewSession } from "#src/domain/review-session";
+import type { Result } from "#src/domain/result";
+import { err, ok } from "#src/domain/result";
+import { ReviewPreparationJournal } from "#src/services/review-preparation-journal";
+import { StorageManagementService } from "#src/services/storage-management-service";
 
 const roots: string[] = [];
 const profileId = unwrap(parseWorkspaceProfileId("acme"));

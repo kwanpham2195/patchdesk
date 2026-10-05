@@ -1,9 +1,9 @@
 import type { InferOutput } from "valibot";
 
-import { COMMAND_OUTPUT_CAP_BYTES } from "../../adapters/github/command-runner";
-import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
-import type { ReviewStore } from "../../adapters/storage/review-store";
-import { definedProps } from "../../domain/defined-props";
+import { COMMAND_OUTPUT_CAP_BYTES } from "#src/adapters/github/command-runner";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseAbsolutePath,
   parseLocalBranchName,
@@ -12,59 +12,62 @@ import {
   parseReviewSessionId,
   type AbsolutePath,
   type ReviewId,
-} from "../../domain/ids";
-import { err, ok, type Result } from "../../domain/result";
-import { isLocalReview } from "../../domain/review";
-import { parseLocalReviewSourceRequest } from "../../domain/review-source";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
-import type { McpToolRefusal } from "../../mcp/socket-protocol";
-import type { ReviewShowOutcome, ReviewWindow } from "../desktop-review-window";
-import type { mcpToolManifest } from "../../mcp/tool-manifest";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview } from "#src/domain/review";
+import { parseLocalReviewSourceRequest } from "#src/domain/review-source";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { McpToolRefusal } from "#src/mcp/socket-protocol";
+import type {
+  ReviewShowOutcome,
+  ReviewWindow,
+} from "#src/main/desktop-review-window";
+import type { mcpToolManifest } from "#src/mcp/tool-manifest";
 import type {
   AgentExplanationAdded,
   AgentExplanationFailure,
   AgentExplanationService,
-} from "../../services/agent-explanation-service";
+} from "#src/services/agent-explanation-service";
 import type {
   AgentRunRequestFailure,
   AgentRunRequestReply,
   AgentRunRequestService,
-} from "../../services/agent-run-request-service";
-import type { DashboardController } from "../../services/dashboard-controller";
+} from "#src/services/agent-run-request-service";
+import type { DashboardController } from "#src/services/dashboard-controller";
 import {
   checkAgentIntentText,
   type AgentIntentFailure,
   type LocalChangeIntentService,
-} from "../../services/local-change-intent-service";
+} from "#src/services/local-change-intent-service";
 import type {
   LocalDraftReplied,
   LocalDraftReplyFailure,
   LocalDraftService,
   LocalFeedback,
-} from "../../services/local-draft-service";
-import type { LocalFeedbackPageFailure } from "../../services/local-feedback-page";
+} from "#src/services/local-draft-service";
+import type { LocalFeedbackPageFailure } from "#src/services/local-feedback-page";
 import type {
   LocalReviewAgentOpenRequest,
   LocalReviewAgentRefreshFailure,
   LocalReviewBaseRequired,
   LocalReviewOpening,
   LocalReviewPrepared,
-} from "../../services/local-review-opening";
-import type { CheckoutSharedReviews } from "../../services/local-shared-review-list";
-import { localSnapshotUntrackedLimits } from "../../services/local-untracked-size";
+} from "#src/services/local-review-opening";
+import type { CheckoutSharedReviews } from "#src/services/local-shared-review-list";
+import { localSnapshotUntrackedLimits } from "#src/services/local-untracked-size";
 import type {
   InsightReading,
   InsightReadingFailure,
   ReviewInsightReader,
-} from "../../services/review-insight-reading";
+} from "#src/services/review-insight-reading";
 import {
   describeOpenedLocalReview,
   type LocalReviewOpened,
-} from "../../services/review-session-description";
+} from "#src/services/review-session-description";
 import {
   readReviewStatus,
   type ReviewStatus,
-} from "../../services/review-status-reading";
+} from "#src/services/review-status-reading";
 
 /**
  * What `review_local` answers. The intent fields are present when the call

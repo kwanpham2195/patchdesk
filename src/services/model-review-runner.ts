@@ -4,7 +4,7 @@ import { isAbsolute, win32 } from "node:path";
 import * as v from "valibot";
 
 import { ReviewInspector } from "./review-inspector";
-import type { InsightLanguage } from "../domain/insight-provider";
+import type { InsightLanguage } from "#src/domain/insight-provider";
 import { composeReviewPrompt } from "./review-rubric";
 
 const MAX_SNAPSHOT_FILE_BYTES = 512 * 1024;

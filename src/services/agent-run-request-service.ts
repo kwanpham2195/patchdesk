@@ -1,15 +1,15 @@
 import { minLength, pipe, string, strictObject } from "valibot";
 
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   findAgentRunRequest,
   putAgentRunRequest,
   type AgentRunRequest,
-} from "../domain/agent-run-request";
-import { definedProps } from "../domain/defined-props";
-import type { FailureKinds } from "../domain/failure-kind";
+} from "#src/domain/agent-run-request";
+import { definedProps } from "#src/domain/defined-props";
+import type { FailureKinds } from "#src/domain/failure-kind";
 import type {
   AgentRunRequestId,
   InsightRunId,
@@ -17,16 +17,16 @@ import type {
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
-import type { InsightType } from "../domain/insight-record";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isLocalReview,
   reviewRequestSchema,
   setAgentRunRequests,
   type Review,
-} from "../domain/review";
-import type { LocalReviewSource } from "../domain/review-source";
+} from "#src/domain/review";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import {
   postDesktopNotification,

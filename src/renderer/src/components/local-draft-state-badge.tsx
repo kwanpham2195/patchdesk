@@ -1,4 +1,4 @@
-import type { LocalDraftEntry } from "../local-draft-contracts";
+import type { LocalDraftEntry } from "#src/renderer/src/local-draft-contracts";
 import { Badge } from "./ui/badge";
 
 type LocalDraftState = NonNullable<LocalDraftEntry["state"]>;

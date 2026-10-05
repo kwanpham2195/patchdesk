@@ -3,25 +3,31 @@ import { readFile } from "node:fs/promises";
 
 import * as v from "valibot";
 
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { NormalizedBrief } from "../domain/brief";
-import { definedProps } from "../domain/defined-props";
-import { createReviewId, type WorkspaceProfileId } from "../domain/ids";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { NormalizedBrief } from "#src/domain/brief";
+import { definedProps } from "#src/domain/defined-props";
+import { createReviewId, type WorkspaceProfileId } from "#src/domain/ids";
 import type {
   InsightArtifactStatus,
   InsightScopeProjection,
-} from "../domain/insight";
-import type { InsightRecord, RetainedInsight } from "../domain/insight-record";
+} from "#src/domain/insight";
+import type {
+  InsightRecord,
+  RetainedInsight,
+} from "#src/domain/insight-record";
 import {
   normalizeNarrativeWalkthrough,
   type NarrativeWalkthrough,
-} from "../domain/narrative-walkthrough";
-import { parseUnifiedPatch } from "../domain/patch";
-import { err, ok, type Result } from "../domain/result";
-import { parseReviewResult, type ReviewResult } from "../domain/review-result";
-import type { ReviewSession } from "../domain/review-session";
-import { parseStoredBrief } from "../domain/stored-brief";
+} from "#src/domain/narrative-walkthrough";
+import { parseUnifiedPatch } from "#src/domain/patch";
+import { err, ok, type Result } from "#src/domain/result";
+import {
+  parseReviewResult,
+  type ReviewResult,
+} from "#src/domain/review-result";
+import type { ReviewSession } from "#src/domain/review-session";
+import { parseStoredBrief } from "#src/domain/stored-brief";
 import { readObjectField } from "./read-object-field";
 import type { WorkbenchProjectionFailure } from "./review-workbench-projection";
 

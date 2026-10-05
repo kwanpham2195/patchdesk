@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { InsightProviderCatalog } from "../../src/services/insight-provider-catalog";
-import { err, ok } from "../../src/domain/result";
-import type { CodexAppServerClient } from "../../src/adapters/codex/codex-app-server-client";
-import type { PiRpcClient } from "../../src/adapters/pi-cli/pi-rpc-client";
-import type { PiRuntimeModelCatalog } from "../../src/adapters/pi/pi-runtime-model-catalog";
+import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
+import { err, ok } from "#src/domain/result";
+import type { CodexAppServerClient } from "#src/adapters/codex/codex-app-server-client";
+import type { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
+import type { PiRuntimeModelCatalog } from "#src/adapters/pi/pi-runtime-model-catalog";
 
 const pi: PiRuntimeModelCatalog = {
   async get() {

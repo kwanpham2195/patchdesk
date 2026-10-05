@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isPaneTooNarrowForSplit,
   SPLIT_VIEW_MIN_PANE_WIDTH,
-} from "../../src/renderer/src/hooks/use-split-view-fallback";
+} from "#src/renderer/src/hooks/use-split-view-fallback";
 
 describe("split view pane width threshold", () => {
   it.each([

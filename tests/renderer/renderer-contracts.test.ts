@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   parseInsightProviderCatalog,
   parseModelCatalog,
-} from "../../src/renderer/src/insight-catalog-contracts";
-import { parseCommitDiffResponse } from "../../src/renderer/src/review-diff-contracts";
+} from "#src/renderer/src/insight-catalog-contracts";
+import { parseCommitDiffResponse } from "#src/renderer/src/review-diff-contracts";
 import {
   parseInboxResponse,
   parseInsightRunResponse,
@@ -12,7 +12,7 @@ import {
   parsePendingReviewProjection,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
-} from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 const sessionProjection = {
   id: "github.com__octo-org__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",

@@ -2,8 +2,8 @@ import { readdir, rm } from "node:fs/promises";
 
 import * as v from "valibot";
 
-import { definedProps } from "../../domain/defined-props";
-import { mapConcurrent } from "../../domain/map-concurrent";
+import { definedProps } from "#src/domain/defined-props";
+import { mapConcurrent } from "#src/domain/map-concurrent";
 import {
   parseContentHash,
   parseIsoTimestamp,
@@ -17,14 +17,14 @@ import {
   type ReviewSessionId,
   type GitSha,
   type WorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import {
   parseFindingReviewReceipts,
   parsePendingReviewState,
   type FindingReviewReceipt,
   type PendingReviewState,
-} from "../../domain/pending-review";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/pending-review";
+import { err, ok, type Result } from "#src/domain/result";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
   isNotFound,

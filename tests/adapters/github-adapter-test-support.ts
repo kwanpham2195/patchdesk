@@ -9,26 +9,26 @@ import type {
   CommandExecution,
   CommandExecutor,
   CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import type { GitHubServedTransport } from "../../src/adapters/github/gh-request-runner";
+} from "#src/adapters/github/command-runner";
+import type { GitHubServedTransport } from "#src/adapters/github/gh-request-runner";
 import {
   ghInvocationFor,
   type GhInvocation,
-} from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/github-request";
 import {
   noChildProcesses,
   type HttpTransportDouble,
 } from "./github-transport-doubles";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import type { GitHubCredentials } from "../../src/adapters/github/github-credentials";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
+import type { GitHubCredentials } from "#src/adapters/github/github-credentials";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 const fixtureRoot = join(
   import.meta.dirname,

@@ -17,8 +17,8 @@ import { subscribeToInsightSettled } from "./desktop-insight-settled-channel";
 import { subscribeToReviewsRemoved } from "./desktop-reviews-removed-channel";
 import { subscribeToNotificationClicks } from "./desktop-notification-channel";
 import { subscribeToWatchedPullRequestChanges } from "./desktop-watched-pull-request-channel";
-import type { AppUpdateState } from "../domain/app-update";
-import type { Appearance } from "../domain/contracts";
+import type { AppUpdateState } from "#src/domain/app-update";
+import type { Appearance } from "#src/domain/contracts";
 import {
   DESKTOP_REQUEST_CHANNEL,
   type DesktopMenuAction,

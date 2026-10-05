@@ -2,8 +2,8 @@ import {
   RUN_INSIGHTS_ORDER,
   type RunInsightsDialogController,
   type RunInsightsRow,
-} from "../hooks/use-run-insights-dialog";
-import type { InsightRunType } from "../hooks/use-insight-run";
+} from "#src/renderer/src/hooks/use-run-insights-dialog";
+import type { InsightRunType } from "#src/renderer/src/hooks/use-insight-run";
 import { INSIGHT_NOUNS } from "./insight-run-dialog";
 import {
   AccountModelsControl,
@@ -12,12 +12,12 @@ import {
   InsightReasoningSelect,
   ModelListPrice,
 } from "./insight-run-option-controls";
-import { modelReasoningOptions } from "../insight-run-options";
+import { modelReasoningOptions } from "#src/renderer/src/insight-run-options";
 import {
   isAccountInsightProvider,
   type AccountInsightProvider,
-} from "../../../domain/insight-provider";
-import type { AccountModelsFailure } from "../hooks/use-insight-configuration";
+} from "#src/domain/insight-provider";
+import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 import { ModelCombobox } from "./model-combobox";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";

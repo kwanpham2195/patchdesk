@@ -1,4 +1,4 @@
-import { isAnalysisFindingHandled } from "../../domain/analysis-merge-findings";
+import { isAnalysisFindingHandled } from "#src/domain/analysis-merge-findings";
 import type { WorkbenchResponse } from "./renderer-contracts";
 
 export type AnalysisResult = NonNullable<

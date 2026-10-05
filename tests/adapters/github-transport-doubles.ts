@@ -5,16 +5,16 @@ import {
   type CommandExecutor,
   type CommandFailure,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import type { GitHubServedTransport } from "../../src/adapters/github/gh-request-runner";
+} from "#src/adapters/github/command-runner";
+import type { GitHubServedTransport } from "#src/adapters/github/gh-request-runner";
 import {
   ghInvocationFor,
   type GitHubGraphQlRequest,
   type GitHubRequest,
   type GitHubRestRequest,
-} from "../../src/adapters/github/github-request";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/adapters/github/github-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 /**
  * These doubles let GitHub adapter suites assert HTTPS requests and responses

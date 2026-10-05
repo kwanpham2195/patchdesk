@@ -6,8 +6,8 @@ import { resolve } from "node:path";
 import {
   agentInstructionsBlock,
   reviewLoopInstructions,
-} from "../src/mcp/review-loop-instructions.ts";
-import { mcpToolManifest } from "../src/mcp/tool-manifest.ts";
+} from "#src/mcp/review-loop-instructions.ts";
+import { mcpToolManifest } from "#src/mcp/tool-manifest.ts";
 import {
   updateAgentInstructionsBlock,
   updateMcpToolsBlock,

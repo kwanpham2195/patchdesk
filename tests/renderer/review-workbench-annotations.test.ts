@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPendingReviewAnnotations } from "../../src/renderer/src/components/review-workbench-annotations";
+import { buildPendingReviewAnnotations } from "#src/renderer/src/components/review-workbench-annotations";
 import { pending } from "./review-workbench-fixtures";
 
 describe("buildPendingReviewAnnotations", () => {

@@ -1,7 +1,7 @@
 import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 /** What a detect-updates `Reconciled` observation carries for the workbench. */
 export type ReconciledProjection =

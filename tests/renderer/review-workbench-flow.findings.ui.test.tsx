@@ -11,13 +11,13 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
 import {
   ReviewCommandRegistryContext,
   type ReviewCommandSource,
-} from "../../src/renderer/src/review-commands";
+} from "#src/renderer/src/review-commands";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   callPath,
   providerCatalog,

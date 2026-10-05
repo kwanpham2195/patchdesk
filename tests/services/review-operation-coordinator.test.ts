@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
 describe("ReviewOperationCoordinator", () => {
   it("queues reconciliation behind an active Review operation", async () => {

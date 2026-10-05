@@ -5,9 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { OpenLocalReviewAction } from "../../src/renderer/src/components/local-review-source-dialog";
-import type { LocalReviewSourceInput } from "../../src/renderer/src/flows/use-inbox-review-opening";
+import type { RawJsonValue } from "#src/domain/json";
+import { OpenLocalReviewAction } from "#src/renderer/src/components/local-review-source-dialog";
+import type { LocalReviewSourceInput } from "#src/renderer/src/flows/use-inbox-review-opening";
 import {
   installDesktopDouble,
   success,

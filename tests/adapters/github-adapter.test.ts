@@ -1,13 +1,13 @@
-import { CommandRunner } from "../../src/adapters/github/command-runner";
+import { CommandRunner } from "#src/adapters/github/command-runner";
 import { orderedTransport } from "./github-transport-doubles";
 import {
   type GitHubAdapter,
   pullRequestWritePermission,
   repositoryLabelPermission,
   type GitHubReadFailure,
-} from "../../src/adapters/github/github-adapter";
-import { parseGitSha } from "../../src/domain/ids";
-import { err, ok } from "../../src/domain/result";
+} from "#src/adapters/github/github-adapter";
+import { parseGitSha } from "#src/domain/ids";
+import { err, ok } from "#src/domain/result";
 import { describe, expect, it } from "vitest";
 import {
   headSha,

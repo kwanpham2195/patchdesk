@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
-import { commandTimeoutMs } from "../../src/adapters/github/gh-request-runner";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
-import type { GitHubWriteFailure } from "../../src/domain/github-write";
-import type { RefusalCause } from "../../src/domain/github-write-refusal";
+import { runWithRequestAbortSignal } from "#src/adapters/github/command-runner";
+import { commandTimeoutMs } from "#src/adapters/github/gh-request-runner";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
+import { GitHubHttpClient } from "#src/adapters/github/github-http-client";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 import {
   parseGitHubReviewNodeId,
   parseGitHubThreadId,
   parseRepoRelativePath,
   parseGitSha,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   json,
   profile,

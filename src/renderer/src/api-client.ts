@@ -1,6 +1,6 @@
-import type { LocalApiDesktopRequest } from "../../main/ipc-contract";
-import type { RawJsonValue } from "../../domain/json";
-import { REFUSAL_CAUSES } from "../../domain/github-write-refusal";
+import type { LocalApiDesktopRequest } from "#src/main/ipc-contract";
+import type { RawJsonValue } from "#src/domain/json";
+import { REFUSAL_CAUSES } from "#src/domain/github-write-refusal";
 import { appLog } from "./lib/logger";
 import {
   forbiddenWriteCopy,

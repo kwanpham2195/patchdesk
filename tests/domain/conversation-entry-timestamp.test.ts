@@ -4,7 +4,7 @@ import {
   conversationEntryTimestamp,
   isNewSinceLastLooked,
   newestConversationTimestamp,
-} from "../../src/domain/conversation-entry-timestamp";
+} from "#src/domain/conversation-entry-timestamp";
 
 const early = "2026-09-01T10:00:00.000Z";
 const late = "2026-09-02T10:00:00.000Z";

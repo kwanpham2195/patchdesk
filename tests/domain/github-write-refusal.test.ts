@@ -5,8 +5,8 @@ import {
   WRITE_KINDS,
   refusalFinality,
   type WriteKind,
-} from "../../src/domain/github-write-refusal";
-import { REVIEW_WRITE_INTENT_TAGS } from "../../src/domain/review-write-operation";
+} from "#src/domain/github-write-refusal";
+import { REVIEW_WRITE_INTENT_TAGS } from "#src/domain/review-write-operation";
 
 /** The per-write decisions recorded in issue #755, restated one kind at a time. */
 const expected = {

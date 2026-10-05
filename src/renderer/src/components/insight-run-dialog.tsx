@@ -4,8 +4,8 @@ import {
   type InsightLanguage,
   type InsightProvider,
   type InsightReasoning,
-} from "../../../domain/insight-provider";
-import type { AccountModelsFailure } from "../hooks/use-insight-configuration";
+} from "#src/domain/insight-provider";
+import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 
 import {
   AccountModelsControl,
@@ -15,7 +15,7 @@ import {
   ModelListPrice,
   type InsightModelOption,
 } from "./insight-run-option-controls";
-import { modelReasoningOptions } from "../insight-run-options";
+import { modelReasoningOptions } from "#src/renderer/src/insight-run-options";
 import { ModelCombobox } from "./model-combobox";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";

@@ -1,4 +1,4 @@
-import type { ReviewVerdictState } from "../../domain/review-verdicts";
+import type { ReviewVerdictState } from "#src/domain/review-verdicts";
 
 /** One word per verdict, shared by the Reviewers rail and the Conversation review cards. */
 export const REVIEW_VERDICT_LABELS = {

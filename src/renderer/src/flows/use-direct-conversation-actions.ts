@@ -1,16 +1,16 @@
 import { useCallback, useRef } from "react";
 
-import type { RawJsonValue } from "../../../domain/json";
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
-import { parseGitHubThreadId } from "../../../domain/ids";
+import type { RawJsonValue } from "#src/domain/json";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import { parseGitHubThreadId } from "#src/domain/ids";
 import {
   isOutcomeUnknownRetry,
   PatchdeskApiError,
   requestJson,
   ReviewPreconditionError,
   untrustedWriteResponseError,
-} from "../api-client";
-import type { LocalCommentAuthoringSaveInput } from "../components/review-diff-view";
+} from "#src/renderer/src/api-client";
+import type { LocalCommentAuthoringSaveInput } from "#src/renderer/src/components/review-diff-view";
 import {
   parseDirectConversationReceipt,
   parsePublishedFeedbackReceipt,
@@ -18,7 +18,7 @@ import {
 import type {
   RemoteWriteRecovery,
   WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import type {
   RunDirectCommand,
   AppendRecentWrites,

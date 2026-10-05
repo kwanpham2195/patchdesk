@@ -4,15 +4,15 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   createReview,
   markReviewLeft,
   markReviewOpened,
   markReviewTerminal,
   type ReviewIdentity,
-} from "../../src/domain/review";
+} from "#src/domain/review";
 import {
   createReviewId,
   createReviewSessionId,
@@ -23,8 +23,8 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("Invalid fixture");

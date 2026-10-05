@@ -4,15 +4,15 @@ import {
   parseWorkspaceProfileId,
   type InvalidDomainValue,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { startRetentionSweepScheduler } from "../../src/main/retention-sweep-scheduler";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { startRetentionSweepScheduler } from "#src/main/retention-sweep-scheduler";
 import type {
   StorageManagementFailure,
   StorageManagementService,
-} from "../../src/services/storage-management-service";
-import type { ReviewRetention } from "../../src/services/review-retention";
-import type { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
+} from "#src/services/storage-management-service";
+import type { ReviewRetention } from "#src/services/review-retention";
+import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 
 // The sweep interval is written out here rather than imported from the
 // scheduler, so this test pins the once-per-24-hours rule instead of

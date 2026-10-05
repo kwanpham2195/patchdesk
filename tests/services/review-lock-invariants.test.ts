@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { err, ok, type Result } from "../../src/domain/result";
+import { PublishedFeedbackService } from "#src/services/published-feedback-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   at,
   barrier,

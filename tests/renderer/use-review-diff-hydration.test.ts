@@ -2,9 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useReviewDiffHydration } from "../../src/renderer/src/hooks/use-review-diff-hydration";
-import type { RawJsonValue } from "../../src/domain/json";
-import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
+import { useReviewDiffHydration } from "#src/renderer/src/hooks/use-review-diff-hydration";
+import type { RawJsonValue } from "#src/domain/json";
+import type { LocalApiDesktopRequest } from "#src/main/ipc-contract";
 import {
   installDesktopDouble,
   type DesktopDouble,

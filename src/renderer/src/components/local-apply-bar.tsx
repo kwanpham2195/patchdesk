@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
 
-import { definedProps } from "../../../domain/defined-props";
-import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
+import { definedProps } from "#src/domain/defined-props";
+import { resolveSuggestionTarget } from "#src/domain/finding-suggestion";
 
-import type { LocalApplyControls } from "../flows/use-local-apply";
-import { findingLocation, type AnalysisResult } from "../analysis-headline";
+import type { LocalApplyControls } from "#src/renderer/src/flows/use-local-apply";
+import {
+  findingLocation,
+  type AnalysisResult,
+} from "#src/renderer/src/analysis-headline";
 import {
   AlertDialog,
   AlertDialogAction,

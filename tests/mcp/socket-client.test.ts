@@ -4,13 +4,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { callPatchdeskApp } from "../../src/mcp/socket-client";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { callPatchdeskApp } from "#src/mcp/socket-client";
 import {
   mcpSocketBounds,
   resolveMcpSocketPath,
-} from "../../src/mcp/socket-protocol";
-import { shortTemporaryDirectory } from "../main/mcp-app-fixture";
+} from "#src/mcp/socket-protocol";
+import { shortTemporaryDirectory } from "#tests/main/mcp-app-fixture";
 
 const cleanups: Array<() => Promise<void>> = [];
 

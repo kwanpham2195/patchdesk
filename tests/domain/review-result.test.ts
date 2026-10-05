@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type * as v from "valibot";
 
-import type { modelReviewResultSchema } from "../../src/domain/review-result";
+import type { modelReviewResultSchema } from "#src/domain/review-result";
 import {
   parseModelReviewResult,
   parseReviewResult,
-} from "../../src/domain/review-result";
+} from "#src/domain/review-result";
 
 type ModelFindingInput = v.InferOutput<
   typeof modelReviewResultSchema

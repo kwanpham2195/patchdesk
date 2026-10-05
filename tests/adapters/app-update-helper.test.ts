@@ -12,7 +12,7 @@ import {
   startAppUpdateHelper,
   type AppInstallation,
   type AppUpdater,
-} from "../../src/adapters/process/app-update-helper";
+} from "#src/adapters/process/app-update-helper";
 
 const installerPath =
   "/Applications/Patchdesk.app/Contents/Resources/install-release.sh";

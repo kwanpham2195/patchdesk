@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Client } from "@modelcontextprotocol/client";
 import * as v from "valibot";
 
-import type { McpAppFixture } from "../main/mcp-app-fixture";
+import type { McpAppFixture } from "#tests/main/mcp-app-fixture";
 
 /** The parts of a workbench projection the MCP read-tool tests compare with. */
 const workbenchSchema = v.looseObject({

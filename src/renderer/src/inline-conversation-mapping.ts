@@ -1,5 +1,5 @@
-import { definedProps } from "../../domain/defined-props";
-import type { ParsedPatchFile } from "../../domain/patch";
+import { definedProps } from "#src/domain/defined-props";
+import type { ParsedPatchFile } from "#src/domain/patch";
 
 export type MappedConversationThread = {
   readonly _tag: "Mapped";

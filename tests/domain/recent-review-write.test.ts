@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGitHubThreadId } from "../../src/domain/ids";
+import { parseGitHubThreadId } from "#src/domain/ids";
 import {
   appendRecentWriteReceipts,
   parseRecentReviewWrite,
   unionRecentWrites,
   type RecentReviewWrite,
-} from "../../src/domain/recent-review-write";
+} from "#src/domain/recent-review-write";
 
 const threadId = parseGitHubThreadId("PRRT_thread");
 if (threadId._tag === "err") throw new Error("invalid fixture");

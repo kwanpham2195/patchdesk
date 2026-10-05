@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reconciledProjection } from "../../src/renderer/src/flows/review-observation-projection";
+import { reconciledProjection } from "#src/renderer/src/flows/review-observation-projection";
 import { projection } from "./review-workbench-fixtures";
 
 describe("reconciledProjection", () => {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { contextualMessage } from "../api-client";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
-import { FINDING_ACTION_MESSAGES } from "../review-copy";
+import { contextualMessage } from "#src/renderer/src/api-client";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
+import { FINDING_ACTION_MESSAGES } from "#src/renderer/src/review-copy";
 import type {
   AnalysisFinding,
   FindingAddResult,

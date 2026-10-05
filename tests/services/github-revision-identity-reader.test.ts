@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { GitHubReader } from "../../src/adapters/github/github-adapter";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import {
   parseAbsolutePath,
   parseContentHash,
@@ -15,13 +15,13 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type ContentHash,
-} from "../../src/domain/ids";
-import type { PullRequestSummary } from "../../src/domain/github-context";
-import { createReviewSession } from "../../src/domain/review-session";
-import { ok, type Result } from "../../src/domain/result";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { hashReviewArtifactContent } from "../../src/services/review-artifact-hash";
-import { GitHubRevisionIdentityReader } from "../../src/services/github-revision-identity-reader";
+} from "#src/domain/ids";
+import type { PullRequestSummary } from "#src/domain/github-context";
+import { createReviewSession } from "#src/domain/review-session";
+import { ok, type Result } from "#src/domain/result";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
+import { GitHubRevisionIdentityReader } from "#src/services/github-revision-identity-reader";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "err") throw new Error("Invalid fixture");

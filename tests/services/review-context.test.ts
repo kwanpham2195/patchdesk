@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ReviewContextService } from "../../src/services/review-context-service";
+import { ReviewContextService } from "#src/services/review-context-service";
 
 /** The slice of a rendered `context.json` the package-summary cases read. */
 type RenderedContext = {

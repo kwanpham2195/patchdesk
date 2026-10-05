@@ -6,7 +6,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 
-import { runPatchdeskChild } from "../src/patchdesk-insight-runner";
+import { runPatchdeskChild } from "#runtime/src/patchdesk-insight-runner";
 
 describe("Walkthrough child output diagnostics", () => {
   it("returns field counts without generated prose when Pi rejects a tool submission", async () => {

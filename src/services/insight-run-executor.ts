@@ -1,13 +1,13 @@
 import * as v from "valibot";
 
-import { definedProps } from "../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseContentHash,
   parseIsoTimestamp,
   type ContentHash,
   type InsightRunId,
   type IsoTimestamp,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   completeInsightRun,
   failInsightRun,
@@ -17,19 +17,19 @@ import {
   type InsightRecord,
   type RetainedInsightEnvelope,
   type InsightType,
-} from "../domain/insight-record";
-import { rawJsonValueSchema } from "../domain/json";
+} from "#src/domain/insight-record";
+import { rawJsonValueSchema } from "#src/domain/json";
 import {
   isLocalReview,
   isPullRequestReview,
   type Review,
-} from "../domain/review";
-import { err, type Result } from "../domain/result";
-import type { InsightActivitySink } from "../adapters/codex/codex-activity";
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+} from "#src/domain/review";
+import { err, type Result } from "#src/domain/result";
+import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type { BriefReachComputer } from "./brief-reach-service";
 import {
   postDesktopNotification,

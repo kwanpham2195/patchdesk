@@ -1,15 +1,15 @@
-import type { NotificationSettings } from "../domain/contracts";
-import type { ReviewId } from "../domain/ids";
-import type { InsightType } from "../domain/insight-record";
-import type { WatchedPullRequestChange } from "../domain/watched-pull-request";
-import type { LogEntryInput } from "../domain/log-entry";
-import { loggableMetaValue } from "../domain/log-entry";
-import { casesHandled, type Result } from "../domain/result";
+import type { NotificationSettings } from "#src/domain/contracts";
+import type { ReviewId } from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
+import type { WatchedPullRequestChange } from "#src/domain/watched-pull-request";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { loggableMetaValue } from "#src/domain/log-entry";
+import { casesHandled, type Result } from "#src/domain/result";
 import type {
   DesktopNotificationEvent,
   DesktopNotifier,
   LocalReviewNotificationSubject,
-} from "../services/desktop-notifier";
+} from "#src/services/desktop-notifier";
 import type { DesktopNotificationClick } from "./ipc-contract";
 
 /** Electron's `Notification`, structurally, so the notifier runs under Vitest. */

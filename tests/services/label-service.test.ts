@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  LabelService,
-  type LabelCommand,
-} from "../../src/services/label-service";
-import { ok } from "../../src/domain/result";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { LabelService, type LabelCommand } from "#src/services/label-service";
+import { ok } from "#src/domain/result";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
 import {
   makeGate,

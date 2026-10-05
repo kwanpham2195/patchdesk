@@ -1,8 +1,8 @@
-import type { PullRequestRef } from "../../domain/pull-request";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   isAllowedExternalUrl,
   normalizeExternalHosts,
-} from "../../domain/external-hosts";
+} from "#src/domain/external-hosts";
 
 /** Builds the immutable GitHub page used as the sole base for review links. */
 export function pullRequestPageUrl(pr: PullRequestRef): URL {

@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useCheckForUpdatesSetting } from "../../src/renderer/src/hooks/use-check-for-updates-setting";
+import { useCheckForUpdatesSetting } from "#src/renderer/src/hooks/use-check-for-updates-setting";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 let restore: (() => void) | undefined;

@@ -1,11 +1,15 @@
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 
-import type { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import type { RefreshOperation } from "../domain/refresh-operation";
-import { err, ok, type Result } from "../domain/result";
+import type { RefreshOperationStore } from "#src/adapters/storage/refresh-operation-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type {
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "#src/domain/ids";
+import type { RefreshOperation } from "#src/domain/refresh-operation";
+import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
   ReviewRefreshFailure,

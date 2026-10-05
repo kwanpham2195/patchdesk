@@ -7,11 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   hashAvatarUrl,
   writeAvatar,
-} from "../../src/adapters/storage/avatar-cache-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import type { AvatarRailDependencies } from "../../src/services/avatar-sync-service";
-import { MaintainerInboxService } from "../../src/services/maintainer-inbox-service";
-import { ok } from "../../src/domain/result";
+} from "#src/adapters/storage/avatar-cache-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { AvatarRailDependencies } from "#src/services/avatar-sync-service";
+import { MaintainerInboxService } from "#src/services/maintainer-inbox-service";
+import { ok } from "#src/domain/result";
 
 // SAFETY: MaintainerInboxService reads only host/owner/repo off the
 // repository parameter; the plain strings stand in for the branded GitHub

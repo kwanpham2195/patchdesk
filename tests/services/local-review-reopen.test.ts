@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
-import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
-import { ok } from "../../src/domain/result";
-import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
-import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
+import { ok } from "#src/domain/result";
+import { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
+import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
 import {
   cleanupLocalApplyRoots,
   git,

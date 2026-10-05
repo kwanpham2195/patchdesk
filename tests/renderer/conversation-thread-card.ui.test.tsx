@@ -12,20 +12,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ConversationThreadCard,
   type ConversationThreadTarget,
-} from "../../src/renderer/src/components/conversation-thread-card";
-import { parseGitHubThreadId } from "../../src/domain/ids";
+} from "#src/renderer/src/components/conversation-thread-card";
+import { parseGitHubThreadId } from "#src/domain/ids";
 import {
   PatchdeskApiError,
   contextualMessage,
-} from "../../src/renderer/src/api-client";
+} from "#src/renderer/src/api-client";
 import {
   COMMENT_DELETE_MESSAGES,
   COMMENT_EDIT_MESSAGES,
   THREAD_REPLY_MESSAGES,
-} from "../../src/renderer/src/review-copy";
-import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
-import { parsePullRequestInput } from "../../src/domain/pull-request";
-import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
+} from "#src/renderer/src/review-copy";
+import { PullRequestImageCacheProvider } from "#src/renderer/src/hooks/use-pull-request-image";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import { refusalCausePhrase } from "#src/renderer/src/write-refusal-copy";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;

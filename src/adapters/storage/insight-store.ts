@@ -3,8 +3,8 @@ import * as v from "valibot";
 import {
   changeIntentProvenanceSchema,
   parseChangeIntentProvenance,
-} from "../../domain/change-intent";
-import { definedProps } from "../../domain/defined-props";
+} from "#src/domain/change-intent";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseContentHash,
   parseFindingId,
@@ -15,7 +15,7 @@ import {
   parseReviewSessionId,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import {
   parseRetainedInsight,
   type InsightFailure,
@@ -26,13 +26,13 @@ import {
   type RetainedInsight,
   type RetainedInsightEnvelope,
   type WalkthroughProgress,
-} from "../../domain/insight-record";
+} from "#src/domain/insight-record";
 import {
   INSIGHT_LANGUAGES,
   INSIGHT_PROVIDERS,
-} from "../../domain/insight-provider";
-import { KeyedMutex } from "../../domain/keyed-mutex";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/insight-provider";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   readJsonFile,
   writeAtomicJson,

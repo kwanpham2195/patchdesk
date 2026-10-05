@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
-import { writeAtomicJson } from "../../src/adapters/storage/json-file";
-import { createReviewId } from "../../src/domain/ids";
-import type { LogEntryInput } from "../../src/domain/log-entry";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
+import { writeAtomicJson } from "#src/adapters/storage/json-file";
+import { createReviewId } from "#src/domain/ids";
+import type { LogEntryInput } from "#src/domain/log-entry";
 import {
   parseGitHubHost,
   parseGitHubReviewNodeId,
@@ -16,9 +16,9 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import type { Result } from "#src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;

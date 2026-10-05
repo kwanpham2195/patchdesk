@@ -21,7 +21,7 @@
  * text, and only two attributes of one void element are read.
  */
 
-import type { GitHubImageRewrites } from "../../domain/github-context";
+import type { GitHubImageRewrites } from "#src/domain/github-context";
 
 const imageTagPattern = /<img\b[^>]*>/gi;
 const attributePattern = /([a-zA-Z][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;

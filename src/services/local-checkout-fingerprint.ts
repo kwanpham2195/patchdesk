@@ -1,8 +1,12 @@
 import { lstat, readlink } from "node:fs/promises";
 import { join } from "node:path";
 
-import { canonicalPatchFlags } from "../adapters/process/git-patch-flags";
-import { parseContentHash, type ContentHash, type GitSha } from "../domain/ids";
+import { canonicalPatchFlags } from "#src/adapters/process/git-patch-flags";
+import {
+  parseContentHash,
+  type ContentHash,
+  type GitSha,
+} from "#src/domain/ids";
 import { localSnapshotUntrackedLimits } from "./local-untracked-size";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { GitReadExecutor } from "./review-worktree-service";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { definedProps } from "../../src/domain/defined-props";
-import { parseGitSha } from "../../src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { parseGitSha } from "#src/domain/ids";
 import {
   composeInboxSearchQuery,
   inboxSearchQueryExcess,
@@ -15,8 +15,8 @@ import {
   parseInboxBaseBranchFilter,
   projectMaintainerInboxRow,
   type InboxFilter,
-} from "../../src/domain/maintainer-inbox";
-import { err, ok } from "../../src/domain/result";
+} from "#src/domain/maintainer-inbox";
+import { err, ok } from "#src/domain/result";
 
 const sha = parseGitSha("a".repeat(40));
 if (sha._tag === "err") throw new Error("fixture SHA invalid");

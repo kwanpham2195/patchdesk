@@ -1,16 +1,16 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { err } from "../../src/domain/result";
-import { serviceResponse } from "../../src/main/routes/http-status";
-import { registerInsightRoutes } from "../../src/main/routes/insight-routes";
-import { registerLocalReviewRoutes } from "../../src/main/routes/local-review-routes";
-import { registerReviewLifecycleRoutes } from "../../src/main/routes/review-lifecycle-routes";
-import type { InsightCoordinatorFailure } from "../../src/services/insight-run-coordinator";
-import type { ChangeIntentFailure } from "../../src/services/local-change-intent-service";
-import type { LocalDraftFailure } from "../../src/services/local-draft-service";
-import type { LocalReviewRefreshFailure } from "../../src/services/local-review-opening";
-import type { ReviewWorkbenchFailure } from "../../src/services/review-workbench-controller";
+import { err } from "#src/domain/result";
+import { serviceResponse } from "#src/main/routes/http-status";
+import { registerInsightRoutes } from "#src/main/routes/insight-routes";
+import { registerLocalReviewRoutes } from "#src/main/routes/local-review-routes";
+import { registerReviewLifecycleRoutes } from "#src/main/routes/review-lifecycle-routes";
+import type { InsightCoordinatorFailure } from "#src/services/insight-run-coordinator";
+import type { ChangeIntentFailure } from "#src/services/local-change-intent-service";
+import type { LocalDraftFailure } from "#src/services/local-draft-service";
+import type { LocalReviewRefreshFailure } from "#src/services/local-review-opening";
+import type { ReviewWorkbenchFailure } from "#src/services/review-workbench-controller";
 
 // Each service's reasons, and the HTTP status its route answered with before
 // the reason tables moved beside the services (ADR 0052). Keyed by the

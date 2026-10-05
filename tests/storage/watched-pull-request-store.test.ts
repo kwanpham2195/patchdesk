@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { WatchedPullRequestStore } from "../../src/adapters/storage/watched-pull-request-store";
-import { parseWorkspaceProfileId } from "../../src/domain/ids";
-import { parseWatchedPullRequests } from "../../src/domain/watched-pull-request";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { WatchedPullRequestStore } from "#src/adapters/storage/watched-pull-request-store";
+import { parseWorkspaceProfileId } from "#src/domain/ids";
+import { parseWatchedPullRequests } from "#src/domain/watched-pull-request";
 
 const roots: string[] = [];
 afterEach(async () =>

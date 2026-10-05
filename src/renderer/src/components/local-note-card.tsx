@@ -7,12 +7,12 @@ import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
-import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
+import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
 import type {
   LocalDraftEntry,
   LocalDraftReplyEntry,
-} from "../local-draft-contracts";
-import { diffLineRangeLabel } from "../review-diff-line-range";
+} from "#src/renderer/src/local-draft-contracts";
+import { diffLineRangeLabel } from "#src/renderer/src/review-diff-line-range";
 import { LocalDraftAgentReply } from "./local-draft-agent-reply";
 import { LocalDraftStateBadge } from "./local-draft-state-badge";
 

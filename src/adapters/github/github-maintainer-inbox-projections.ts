@@ -13,16 +13,16 @@ import type {
   MaintainerPullRequest,
   MaintainerPullRequestPage,
   PullRequestSummary,
-} from "../../domain/github-context";
+} from "#src/domain/github-context";
 import {
   parseGitSha,
   parsePullRequestNumber,
   type GitHubHost,
   type GitHubOwner,
   type GitHubRepoName,
-} from "../../domain/ids";
-import type { InboxStateFilter } from "../../domain/maintainer-inbox";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/ids";
+import type { InboxStateFilter } from "#src/domain/maintainer-inbox";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   mapMergeability,
   mapMergeStateStatus,

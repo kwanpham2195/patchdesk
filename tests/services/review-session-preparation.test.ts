@@ -14,11 +14,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   GitHubReader,
   GitHubReadFailure,
-} from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+} from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   createReviewId,
   createReviewSessionId,
@@ -27,14 +27,14 @@ import {
   parseIsoTimestamp,
   type ContentHash,
   type GitSha,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { hashReviewArtifactContent } from "../../src/services/review-artifact-hash";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
-import { ReviewSessionPreparation } from "../../src/services/review-session-preparation";
-import type { GitReadExecutor } from "../../src/services/review-worktree-service";
-import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import { ReviewSessionPreparation } from "#src/services/review-session-preparation";
+import type { GitReadExecutor } from "#src/services/review-worktree-service";
+import { ReviewWorktreeService } from "#src/services/review-worktree-service";
 
 const roots: string[] = [];
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.

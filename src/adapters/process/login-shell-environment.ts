@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { delimiter } from "node:path";
 import type { Readable } from "node:stream";
 
-import { providerCredentialEnvironmentNames } from "../pi/pi-provider-catalog";
+import { providerCredentialEnvironmentNames } from "#src/adapters/pi/pi-provider-catalog";
 
 /**
  * How long the login shell may take to print its environment. A shell whose

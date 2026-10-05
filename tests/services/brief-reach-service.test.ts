@@ -7,14 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import type {
   CommandFailure,
   CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import {
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { computeBriefReach } from "../../src/services/brief-reach-service";
+} from "#src/adapters/github/command-runner";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { parseReviewSessionId, parseWorkspaceProfileId } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { computeBriefReach } from "#src/services/brief-reach-service";
 
 const roots: string[] = [];
 const must = <T>(value: Result<T, unknown>): T => {

@@ -1,11 +1,11 @@
 import type { Mock } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 import type {
   DesktopRequest,
   DesktopResponse,
   LocalApiDesktopRequest,
-} from "../../src/main/ipc-contract";
+} from "#src/main/ipc-contract";
 import {
   failure,
   installDesktopDouble,

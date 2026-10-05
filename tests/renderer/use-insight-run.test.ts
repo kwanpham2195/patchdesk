@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RawJsonValue } from "../../src/domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 import type {
   InsightRunResponse,
   WorkbenchResponse,
-} from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 import {
   clearInsightPollTimer,
   scheduleInsightPoll,
   useInsightRun,
   type InsightRunType,
-} from "../../src/renderer/src/hooks/use-insight-run";
+} from "#src/renderer/src/hooks/use-insight-run";
 import {
   failure,
   installDesktopDouble,

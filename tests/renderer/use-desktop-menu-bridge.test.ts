@@ -3,8 +3,8 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useDesktopMenuBridge } from "../../src/renderer/src/hooks/use-desktop-menu-bridge";
-import type { AppDestination } from "../../src/renderer/src/routes";
+import { useDesktopMenuBridge } from "#src/renderer/src/hooks/use-desktop-menu-bridge";
+import type { AppDestination } from "#src/renderer/src/routes";
 import {
   installDesktopDouble,
   success,

@@ -4,13 +4,13 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
-import type { Profile } from "../../src/renderer/src/renderer-models";
+import type { RawJsonValue } from "#src/domain/json";
+import { SettingsFlow } from "#src/renderer/src/flows/settings-flow";
+import type { Profile } from "#src/renderer/src/renderer-models";
 import type {
   ProfileSwitchResult,
   ProfileSwitchState,
-} from "../../src/renderer/src/hooks/use-profile-switch";
+} from "#src/renderer/src/hooks/use-profile-switch";
 import {
   failure,
   installDesktopDouble,

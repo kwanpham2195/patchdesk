@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import * as v from "valibot";
 
-import { changeIntentViewSchema } from "../../../domain/change-intent";
-import { isApiErrorCode, requestJson } from "../api-client";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import { changeIntentViewSchema } from "#src/domain/change-intent";
+import { isApiErrorCode, requestJson } from "#src/renderer/src/api-client";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchPatch } from "./use-review-observation";
 
 /** What the dialog sends: Markdown text, or a repository-relative spec file path. */

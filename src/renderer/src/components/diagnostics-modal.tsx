@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Activity } from "lucide-react";
 
-import { ReviewActivityCard } from "../flows/review-activity-card";
+import { ReviewActivityCard } from "#src/renderer/src/flows/review-activity-card";
 import { LogsPanel } from "./logs-panel";
 import { Button } from "./ui/button";
 import {

@@ -3,10 +3,10 @@ import {
   parseGitSha,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
-import type { LocalDraftPlacementContext } from "../../src/renderer/src/local-draft-placement";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
+import type { LocalDraftPlacementContext } from "#src/renderer/src/local-draft-placement";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 
 /**
  * Fixture projections and mock-call readers shared by the Review workbench

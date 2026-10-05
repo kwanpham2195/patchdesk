@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import {
   createFetchedDiffRefs,
   type GitHubReader,
-} from "../adapters/github/github-adapter";
-import { writeAtomicFile } from "../adapters/storage/json-file";
-import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+} from "#src/adapters/github/github-adapter";
+import { writeAtomicFile } from "#src/adapters/storage/json-file";
+import type { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   createReviewId,
   createReviewSessionId,
@@ -19,20 +19,20 @@ import {
   type IsoTimestamp,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import type { PullRequestRef } from "../domain/pull-request";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   createReviewSession,
   isPullRequestReviewSession,
   sameReviewRevision,
   type PullRequestReviewSession,
   type ReviewRevision,
-} from "../domain/review-session";
-import { definedProps } from "../domain/defined-props";
-import { KeyedMutex } from "../domain/keyed-mutex";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
-import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/review-session";
+import { definedProps } from "#src/domain/defined-props";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   postDesktopNotification,
   type DesktopNotifier,

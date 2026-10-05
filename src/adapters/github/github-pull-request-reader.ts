@@ -12,16 +12,16 @@ import type {
   MaintainerPullRequestSearchPage,
   PullRequestCommit,
   PullRequestSummary,
-} from "../../domain/github-context";
-import { parseGitSha, type GitSha, type IsoTimestamp } from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
+} from "#src/domain/github-context";
+import { parseGitSha, type GitSha, type IsoTimestamp } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import type {
   InboxPageSize,
   InboxStateFilter,
-} from "../../domain/maintainer-inbox";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
-import type { WatchedSnapshot } from "../../domain/watched-pull-request";
+} from "#src/domain/maintainer-inbox";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { WatchedSnapshot } from "#src/domain/watched-pull-request";
 import {
   maintainerInboxQuery,
   maintainerInboxSearchQuery,

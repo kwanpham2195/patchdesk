@@ -12,9 +12,9 @@ import userEvent, {
 } from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { App } from "../../src/renderer/src/app";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { App } from "#src/renderer/src/app";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { APP_BOOT_OPERATIONS, APP_BOOT_ROUTES } from "./app-boot-routes";
 import {
   failure,

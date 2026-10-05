@@ -8,24 +8,24 @@ import {
   type CannedAnswer,
   type HttpTransportDouble,
 } from "./github-transport-doubles";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { assembleConversationEntries } from "../../src/adapters/github/github-conversation-assembly";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
+import { assembleConversationEntries } from "#src/adapters/github/github-conversation-assembly";
 import type {
   GitHubRequest,
   GitHubRestRequest,
-} from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/github-request";
 import type {
   GitHubComments,
   GitHubPublishedFeedback,
-} from "../../src/domain/github-context";
+} from "#src/domain/github-context";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import { type PullRequestRef } from "../../src/domain/pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import { type PullRequestRef } from "#src/domain/pull-request";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 const headSha = "abcdef1234567890abcdef1234567890abcdef12";
 

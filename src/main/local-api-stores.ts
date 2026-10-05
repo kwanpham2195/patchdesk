@@ -6,44 +6,44 @@ import {
   type ParsedLocalApiConfiguration,
   type StorageManagementSeam,
 } from "./local-api-configuration";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../adapters/storage/profile-store";
-import { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import { ReviewStore } from "../adapters/storage/review-store";
-import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
-import { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
-import { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
-import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
-import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import { InsightStore } from "../adapters/storage/insight-store";
-import { WatchedPullRequestStore } from "../adapters/storage/watched-pull-request-store";
-import { StorageManagementService } from "../services/storage-management-service";
-import { GitHubAdapter } from "../adapters/github/github-adapter";
-import type { GitHubReader } from "../adapters/github/github-adapter";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewRemoteStore } from "#src/adapters/storage/review-remote-store";
+import { ReviewObservationJournalStore } from "#src/adapters/storage/review-observation-journal-store";
+import { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
+import { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { WatchedPullRequestStore } from "#src/adapters/storage/watched-pull-request-store";
+import { StorageManagementService } from "#src/services/storage-management-service";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import {
   GitHubCliCredentials,
   type GitHubCredentials,
-} from "../adapters/github/github-credentials";
+} from "#src/adapters/github/github-credentials";
 import {
   GitHubHttpClient,
   type GitHubFetch,
-} from "../adapters/github/github-http-client";
+} from "#src/adapters/github/github-http-client";
 import {
   CommandRunner,
   NodeCommandExecutor,
   type CommandRequest,
-} from "../adapters/github/command-runner";
-import { discoverExecutable } from "../adapters/process/executable-discovery";
-import { systemNow } from "../adapters/process/system-clock";
-import { AppLogService } from "../services/app-log-service";
-import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
-import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
-import { ReviewWriteGate } from "../services/review-write-gate";
-import { LocalReviewRevisionService } from "../services/local-review-revision-service";
-import type { GitReadExecutor } from "../services/review-worktree-service";
-import { parseWorkspaceProfileId } from "../domain/ids";
-import { err, ok } from "../domain/result";
+} from "#src/adapters/github/command-runner";
+import { discoverExecutable } from "#src/adapters/process/executable-discovery";
+import { systemNow } from "#src/adapters/process/system-clock";
+import { AppLogService } from "#src/services/app-log-service";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
+import { ReviewWriteGate } from "#src/services/review-write-gate";
+import { LocalReviewRevisionService } from "#src/services/local-review-revision-service";
+import type { GitReadExecutor } from "#src/services/review-worktree-service";
+import { parseWorkspaceProfileId } from "#src/domain/ids";
+import { err, ok } from "#src/domain/result";
 
 const defaultGitReadTimeoutMs = 15_000;
 const managedFetchTimeoutMs = 120_000;

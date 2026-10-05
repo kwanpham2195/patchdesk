@@ -4,13 +4,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
-import { ReviewObservationJournalStore } from "../../src/adapters/storage/review-observation-journal-store";
-import { ReviewRemoteStore } from "../../src/adapters/storage/review-remote-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
+import { ReviewObservationJournalStore } from "#src/adapters/storage/review-observation-journal-store";
+import { ReviewRemoteStore } from "#src/adapters/storage/review-remote-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   parseAbsolutePath,
   parseGitHubLogin,
@@ -20,18 +20,18 @@ import {
   parseGitHubThreadId,
   parseIsoTimestamp,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import type {
   PendingReviewRead,
   ViewerPendingReview,
-} from "../../src/domain/pending-review";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
-import { createReview, moveReviewToSession } from "../../src/domain/review";
-import { createReviewSession } from "../../src/domain/review-session";
-import { ok } from "../../src/domain/result";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { ReviewObservationService } from "../../src/services/review-observation-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/pending-review";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import { createReview, moveReviewToSession } from "#src/domain/review";
+import { createReviewSession } from "#src/domain/review-session";
+import { ok } from "#src/domain/result";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { ReviewObservationService } from "#src/services/review-observation-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import {
   baseSha,
   fakeGitHub,

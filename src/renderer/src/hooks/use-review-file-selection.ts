@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { parseUnifiedPatch } from "../../../domain/patch";
+import { parseUnifiedPatch } from "#src/domain/patch";
 
 /** Resolves one file in the displayed patch for both the diff and navigator. */
 export function useReviewFileSelection({

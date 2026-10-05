@@ -1,21 +1,21 @@
 import type {
   GitHubMergeWriter,
   GitHubReader,
-} from "../adapters/github/github-adapter";
-import type { InsightStore } from "../adapters/storage/insight-store";
+} from "#src/adapters/github/github-adapter";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
 import type {
   ReviewStore,
   ReviewStoreFailure,
-} from "../adapters/storage/review-store";
-import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
+} from "#src/adapters/storage/review-store";
+import type { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
 import {
   mergeGateFindings,
   type MergeGateFinding,
-} from "../domain/analysis-merge-findings";
+} from "#src/domain/analysis-merge-findings";
 import type {
   MergeReadiness,
   MergeWarningCode,
-} from "../domain/merge-readiness";
+} from "#src/domain/merge-readiness";
 import type {
   ContentHash,
   GitSha,
@@ -23,26 +23,26 @@ import type {
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   confirmMergeOperation,
   markMergeOutcomeUnknown,
   rejectMergeOperation,
   requestMergeOperation,
   type MergeOperation,
-} from "../domain/merge-operation";
-import { definedProps } from "../domain/defined-props";
-import { markReviewTerminal, type Review } from "../domain/review";
-import { err, ok, type Result } from "../domain/result";
-import { parseReviewResult } from "../domain/review-result";
-import type { PullRequestReviewSession } from "../domain/review-session";
+} from "#src/domain/merge-operation";
+import { definedProps } from "#src/domain/defined-props";
+import { markReviewTerminal, type Review } from "#src/domain/review";
+import { err, ok, type Result } from "#src/domain/result";
+import { parseReviewResult } from "#src/domain/review-result";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
 import {
   postDesktopNotification,
   type DesktopNotifier,
 } from "./desktop-notifier";
 import type { AppLogService } from "./app-log-service";
-import type { MergeMethod } from "../domain/github-context";
-import type { RefusalCause } from "../domain/github-write-refusal";
+import type { MergeMethod } from "#src/domain/github-context";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 import { mergePullRequest, type MergeFailure } from "./merge-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {

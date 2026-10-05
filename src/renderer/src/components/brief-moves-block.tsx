@@ -1,8 +1,8 @@
-import type { BriefMoves } from "../brief-contracts";
+import type { BriefMoves } from "#src/renderer/src/brief-contracts";
 import {
   displayDirectory,
   moreMovedDirectories,
-} from "../../../domain/brief-moves";
+} from "#src/domain/brief-moves";
 
 /** The Moves block: directories the patch moved, from git's rename pairs. */
 export function MovesBlock({

@@ -3,13 +3,13 @@ import type { Socket } from "node:net";
 
 import { describe, expect, it } from "vitest";
 
-import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
+import { runWithRequestAbortSignal } from "#src/adapters/github/command-runner";
 import {
   gitHubApiOrigin,
   GitHubHttpClient,
   type GitHubHttpRequestRecord,
   type GitHubRateLimitObservation,
-} from "../../src/adapters/github/github-http-client";
+} from "#src/adapters/github/github-http-client";
 import {
   errorOf,
   json,

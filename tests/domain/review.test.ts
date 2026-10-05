@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { definedProps } from "../../src/domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   createReview,
   markReviewLeft,
@@ -13,8 +13,8 @@ import {
   serializeReview,
   sessionRepresentsReview,
   type ReviewIdentity,
-} from "../../src/domain/review";
-import { reviewSourceTitle } from "../../src/domain/review-source";
+} from "#src/domain/review";
+import { reviewSourceTitle } from "#src/domain/review-source";
 import {
   createReviewId,
   createReviewSessionId,
@@ -31,8 +31,8 @@ import {
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("Invalid fixture");

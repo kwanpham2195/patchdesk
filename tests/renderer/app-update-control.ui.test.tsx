@@ -4,8 +4,8 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AvailableAppUpdate } from "../../src/domain/app-update";
-import { AppUpdateControl } from "../../src/renderer/src/components/app-update-control";
+import type { AvailableAppUpdate } from "#src/domain/app-update";
+import { AppUpdateControl } from "#src/renderer/src/components/app-update-control";
 import {
   installDesktopDouble,
   success,

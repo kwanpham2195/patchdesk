@@ -5,12 +5,12 @@ import {
   type InsightLanguage,
   type InsightProvider,
   type InsightReasoning,
-} from "../../../domain/insight-provider";
+} from "#src/domain/insight-provider";
 import {
   INSIGHT_LANGUAGE_LABELS,
   INSIGHT_PROVIDER_LABELS,
-} from "../insight-contracts";
-import type { AccountModelsFailure } from "../hooks/use-insight-configuration";
+} from "#src/renderer/src/insight-contracts";
+import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 
 import type { ModelComboboxOption } from "./model-combobox";
 import { Alert, AlertDescription } from "./ui/alert";

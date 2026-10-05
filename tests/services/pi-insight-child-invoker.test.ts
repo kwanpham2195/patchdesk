@@ -5,13 +5,13 @@ import {
   type CommandExecution,
   type CommandExecutor,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
+} from "#src/adapters/github/command-runner";
 import {
   PiInsightChildInvoker,
   unavailablePiInsightInvoker,
-} from "../../src/services/pi-insight-child-invoker";
-import { ANALYSIS_RUN_TIMEOUT_MS } from "../../src/services/child-invocation";
-import type { InsightInvocationInput } from "../../src/services/insight-run-coordinator";
+} from "#src/services/pi-insight-child-invoker";
+import { ANALYSIS_RUN_TIMEOUT_MS } from "#src/services/child-invocation";
+import type { InsightInvocationInput } from "#src/services/insight-run-coordinator";
 
 const sessionId =
   "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__0123456789ab";

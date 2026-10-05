@@ -1,9 +1,9 @@
 import { createContext, useMemo } from "react";
 
-import { definedProps } from "../../../domain/defined-props";
-import type { PendingReviewDrafts } from "../hooks/use-pending-review-drafts";
-import { localNotePlacementInput } from "../local-draft-placement";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import { definedProps } from "#src/domain/defined-props";
+import type { PendingReviewDrafts } from "#src/renderer/src/hooks/use-pending-review-drafts";
+import { localNotePlacementInput } from "#src/renderer/src/local-draft-placement";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type {
   LocalCommentAuthoring,
   PendingReviewComposerActions,

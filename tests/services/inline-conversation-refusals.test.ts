@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   InlineConversationService,
   type DirectConversationCommand,
-} from "../../src/services/inline-conversation-service";
+} from "#src/services/inline-conversation-service";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -12,10 +12,10 @@ import {
   parsePullRequestNumber,
   parseReviewId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { ReviewWriteOperation } from "#src/domain/review-write-operation";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 /** Refused conversation writes (issue #755): which refusals are final and which wait for a landed check. */

@@ -3,15 +3,15 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ForbiddenReason } from "../../src/domain/github-forbidden-reason";
-import { AssigneePicker } from "../../src/renderer/src/components/assignee-picker";
-import { LabelPicker } from "../../src/renderer/src/components/label-picker";
-import { ReviewerPicker } from "../../src/renderer/src/components/reviewer-picker";
+import type { ForbiddenReason } from "#src/domain/github-forbidden-reason";
+import { AssigneePicker } from "#src/renderer/src/components/assignee-picker";
+import { LabelPicker } from "#src/renderer/src/components/label-picker";
+import { ReviewerPicker } from "#src/renderer/src/components/reviewer-picker";
 import type {
   AssignableUserListResponse,
   RepositoryLabelListResponse,
   ReviewerListResponse,
-} from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 /**
  * Checks that each mounted picker renders the shared hook outcomes; the hook

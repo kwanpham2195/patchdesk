@@ -1,5 +1,5 @@
-import { withTrailingNewline } from "../../domain/finding-suggestion";
-import { markdownHeadingText } from "../../domain/markdown-heading";
+import { withTrailingNewline } from "#src/domain/finding-suggestion";
+import { markdownHeadingText } from "#src/domain/markdown-heading";
 import type { AnalysisResult } from "./analysis-headline";
 
 export type AnalysisFixPromptContext = {

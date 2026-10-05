@@ -7,12 +7,12 @@ import {
   updateAgentInstructionsBlock,
   updateMcpToolsBlock,
   updateSkillReviewLoop,
-} from "../../scripts/mcp-tools-doc-lib.mjs";
+} from "#scripts/mcp-tools-doc-lib.mjs";
 import {
   agentInstructionsBlock,
   reviewLoopInstructions,
-} from "../../src/mcp/review-loop-instructions";
-import { mcpToolManifest } from "../../src/mcp/tool-manifest";
+} from "#src/mcp/review-loop-instructions";
+import { mcpToolManifest } from "#src/mcp/tool-manifest";
 
 const readDoc = (path: string): Promise<string> =>
   readFile(resolve(import.meta.dirname, "../..", path), "utf8");

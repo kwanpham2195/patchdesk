@@ -7,22 +7,22 @@ import {
   History,
   type LucideIcon,
 } from "lucide-react";
-import { parseUnifiedPatch } from "../../../domain/patch";
+import { parseUnifiedPatch } from "#src/domain/patch";
 import {
   projectConversationThreadRows,
   type ConversationThreadRow,
   type ConversationThreadRowState,
-} from "../conversation-thread-entries";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import { parseReviewDiff } from "../review-diff-data";
-import type { FileFindingCount } from "../review-finding-counts";
+} from "#src/renderer/src/conversation-thread-entries";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
+import type { FileFindingCount } from "#src/renderer/src/review-finding-counts";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { NeedsReplyBadge } from "./needs-reply-badge";
 import { RelativeTime } from "./relative-time";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
-import type { WorkbenchSection } from "../lib/screen-restore";
+import type { WorkbenchSection } from "#src/renderer/src/lib/screen-restore";
 
 export type ReviewNavigatorSection = Exclude<WorkbenchSection, "insights">;
 

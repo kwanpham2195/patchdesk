@@ -3,11 +3,11 @@ import { dirname } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { definedProps } from "../../src/domain/defined-props";
-import { parseAbsolutePath, parseLocalBranchName } from "../../src/domain/ids";
-import { ok } from "../../src/domain/result";
-import type { InsightInvocationInput } from "../../src/services/insight-run-coordinator";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { definedProps } from "#src/domain/defined-props";
+import { parseAbsolutePath, parseLocalBranchName } from "#src/domain/ids";
+import { ok } from "#src/domain/result";
+import type { InsightInvocationInput } from "#src/services/insight-run-coordinator";
 import {
   analysisResult,
   cleanupRoots,

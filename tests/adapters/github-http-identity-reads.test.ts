@@ -6,21 +6,21 @@ import {
   type CommandExecutor,
   type CommandFailure,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import { GhRequestRunner } from "../../src/adapters/github/gh-request-runner";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import type { GitHubRestRequest } from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/command-runner";
+import { GhRequestRunner } from "#src/adapters/github/gh-request-runner";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
+import type { GitHubRestRequest } from "#src/adapters/github/github-request";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import type { Result } from "../../src/domain/result";
-import { hashReviewArtifactContent } from "../../src/services/review-artifact-hash";
-import { normalizeReviewPatch } from "../../src/services/review-session-preparation";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { Result } from "#src/domain/result";
+import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
+import { normalizeReviewPatch } from "#src/services/review-session-preparation";
 import {
   errorOf,
   profile,

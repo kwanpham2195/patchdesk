@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { fetchLatestPatchdeskRelease } from "../../src/adapters/github/github-latest-release";
+import { fetchLatestPatchdeskRelease } from "#src/adapters/github/github-latest-release";
 import type {
   AppInstallation,
   AppUpdater,
-} from "../../src/adapters/process/app-update-helper";
-import type { AppUpdateRecord } from "../../src/adapters/storage/app-update-state-store";
+} from "#src/adapters/process/app-update-helper";
+import type { AppUpdateRecord } from "#src/adapters/storage/app-update-state-store";
 import type {
   AppUpdateLaunchNotice,
   AppUpdateState,
-} from "../../src/domain/app-update";
-import { AppUpdateService } from "../../src/services/app-update-service";
+} from "#src/domain/app-update";
+import { AppUpdateService } from "#src/services/app-update-service";
 
 const logPath = "/Users/someone/.local/share/patchdesk/logs/update.log";
 const brewUpdater: AppUpdater = {

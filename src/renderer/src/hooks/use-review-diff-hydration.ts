@@ -11,13 +11,13 @@ import * as v from "valibot";
 
 import { requestJson } from "@/api-client";
 import type { ReviewContextStatus } from "@/review-context-control";
-import { definedProps } from "../../../domain/defined-props";
-import type { RawJsonValue } from "../../../domain/json";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
+import { definedProps } from "#src/domain/defined-props";
+import type { RawJsonValue } from "#src/domain/json";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
 import {
   matchUnifiedFileHeader,
   tokenizeUnifiedPatchLines,
-} from "../../../domain/unified-patch";
+} from "#src/domain/unified-patch";
 
 const HYDRATION_CONCURRENCY = 2;
 

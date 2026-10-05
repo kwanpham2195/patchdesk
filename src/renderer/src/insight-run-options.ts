@@ -2,7 +2,7 @@ import type {
   InsightLanguage,
   InsightProvider,
   InsightReasoning,
-} from "../../domain/insight-provider";
+} from "#src/domain/insight-provider";
 import type {
   InsightProviderCatalog,
   InsightProviderCatalogModel,

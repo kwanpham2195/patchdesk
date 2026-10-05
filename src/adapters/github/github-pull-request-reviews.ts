@@ -2,9 +2,9 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import type { GhRequestRunner } from "./gh-request-runner";
-import type { PullRequestRef } from "../../domain/pull-request";
-import type { Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { publishedReviewSchema } from "./github-wire-schemas";
 
 /**

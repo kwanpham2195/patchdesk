@@ -9,7 +9,7 @@ import {
   removeLabelsFromLabelableMutation,
   requestReviewsMutation,
   updatePullRequestBaseBranchMutation,
-} from "../../src/adapters/github/github-graphql-queries";
+} from "#src/adapters/github/github-graphql-queries";
 import { profile, useFixtureServer } from "./github-http-fixture-server";
 import {
   expectSameMutationAsGh,

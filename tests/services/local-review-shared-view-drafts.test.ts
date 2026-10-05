@@ -7,14 +7,14 @@ import {
   parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import type { LocalDraftEntry } from "../../src/domain/local-draft";
-import { err } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { LocalDraftEntry } from "#src/domain/local-draft";
+import { err } from "#src/domain/result";
 import {
   indexPatchHunks,
   placeInView,
   type LocalPatchView,
-} from "../../src/domain/local-patch-view";
+} from "#src/domain/local-patch-view";
 import {
   cleanupLocalApplyRoots,
   git,

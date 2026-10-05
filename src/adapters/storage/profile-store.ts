@@ -1,17 +1,17 @@
 import {
   parsePatchdeskConfig,
   type PatchdeskConfigFile,
-} from "../../domain/contracts";
+} from "#src/domain/contracts";
 import { readdir } from "node:fs/promises";
 import {
   parseWorkspaceProfileConfig,
   type WorkspaceProfileConfig,
-} from "../../domain/workspace-profile";
-import { err, type Result } from "../../domain/result";
+} from "#src/domain/workspace-profile";
+import { err, type Result } from "#src/domain/result";
 import {
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import {
   isNotFound,
   readJsonFile,

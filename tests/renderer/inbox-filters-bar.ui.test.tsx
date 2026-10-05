@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { InboxFilterChange } from "../../src/domain/maintainer-inbox";
-import { InboxFiltersBar } from "../../src/renderer/src/components/inbox-filters-bar";
+import type { InboxFilterChange } from "#src/domain/maintainer-inbox";
+import { InboxFiltersBar } from "#src/renderer/src/components/inbox-filters-bar";
 
 afterEach(() => {
   cleanup();

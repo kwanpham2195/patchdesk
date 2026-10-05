@@ -4,15 +4,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/fake-github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import type { NotificationSettings } from "../../src/domain/contracts";
-import type { RawJsonValue } from "../../src/domain/json";
-import { registerDashboardRoutes } from "../../src/main/routes/dashboard-routes";
-import { DashboardController } from "../../src/services/dashboard-controller";
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
+import { FakeGitHubAdapter } from "#src/adapters/github/fake-github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { NotificationSettings } from "#src/domain/contracts";
+import type { RawJsonValue } from "#src/domain/json";
+import { registerDashboardRoutes } from "#src/main/routes/dashboard-routes";
+import { DashboardController } from "#src/services/dashboard-controller";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 
 const roots: string[] = [];
 afterEach(async () =>

@@ -1,15 +1,19 @@
-import { pullRequestWritePermission } from "../adapters/github/github-adapter";
+import { pullRequestWritePermission } from "#src/adapters/github/github-adapter";
 import type {
   GitHubReader,
   GitHubReviewWriter,
-} from "../adapters/github/github-adapter";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import type { PullRequestAssigneePermission } from "../domain/github-context";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import type { PullRequestRef } from "../domain/pull-request";
-import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/adapters/github/github-adapter";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import type { PullRequestAssigneePermission } from "#src/domain/github-context";
+import type {
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { DesktopNotifier } from "./desktop-notifier";

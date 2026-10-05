@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
-import type { DirectSummaryReviewProjection } from "../renderer-contracts";
+import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
+import type { DirectSummaryReviewProjection } from "#src/renderer/src/renderer-contracts";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {

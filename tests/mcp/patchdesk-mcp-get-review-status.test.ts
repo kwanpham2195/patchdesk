@@ -4,13 +4,13 @@ import { join } from "node:path";
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { parseReviewId } from "../../src/domain/ids";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { parseReviewId } from "#src/domain/ids";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
-import { profileId, value } from "../services/local-apply-fixture";
+} from "#tests/main/mcp-app-fixture";
+import { profileId, value } from "#tests/services/local-apply-fixture";
 import { closeMcpTestClients, connectLegacyClient } from "./mcp-test-clients";
 import { addNote, call, reviewWithNotes } from "./mcp-read-tools-fixture";
 

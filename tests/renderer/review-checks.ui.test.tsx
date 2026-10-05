@@ -3,12 +3,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { parsePullRequestInput } from "../../src/domain/pull-request";
-import type { CheckSummary } from "../../src/domain/github-context";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import type { CheckSummary } from "#src/domain/github-context";
 import {
   ReviewChecks,
   presentOverallCheckResult,
-} from "../../src/renderer/src/components/review-checks";
+} from "#src/renderer/src/components/review-checks";
 import { installDesktopDouble } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;

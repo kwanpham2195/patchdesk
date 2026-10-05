@@ -1,26 +1,26 @@
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   parseGitSha,
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type GitSha,
-} from "../domain/ids";
-import { definedProps } from "../domain/defined-props";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
 import {
   localPatchViews,
   type LocalPatchView,
-} from "../domain/local-patch-view";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/local-patch-view";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isPullRequestReviewSession,
   type LocalReviewSession,
   type ReviewSession,
-} from "../domain/review-session";
+} from "#src/domain/review-session";
 import { configuredLocalPath } from "./local-checkout";
 import type {
   GitReadExecutor,

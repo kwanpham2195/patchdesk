@@ -11,11 +11,11 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { App } from "../../src/renderer/src/app";
-import { DiagnosticsModal } from "../../src/renderer/src/components/diagnostics-modal";
-import { useDiagnosticsOverlay } from "../../src/renderer/src/hooks/use-diagnostics-overlay";
-import { saveSettingsRestore } from "../../src/renderer/src/lib/screen-restore";
+import type { RawJsonValue } from "#src/domain/json";
+import { App } from "#src/renderer/src/app";
+import { DiagnosticsModal } from "#src/renderer/src/components/diagnostics-modal";
+import { useDiagnosticsOverlay } from "#src/renderer/src/hooks/use-diagnostics-overlay";
+import { saveSettingsRestore } from "#src/renderer/src/lib/screen-restore";
 import { APP_BOOT_OPERATIONS, APP_BOOT_ROUTES } from "./app-boot-routes";
 import {
   failure,

@@ -2,21 +2,21 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ok } from "../../src/domain/result";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ReviewWriteGate } from "../../src/services/review-write-gate";
+import { ok } from "#src/domain/result";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewWriteGate } from "#src/services/review-write-gate";
 import {
   ReviewRemoteStore,
   type ReviewRemoteSnapshot,
-} from "../../src/adapters/storage/review-remote-store";
-import { createReview, markReviewUnavailable } from "../../src/domain/review";
+} from "#src/adapters/storage/review-remote-store";
+import { createReview, markReviewUnavailable } from "#src/domain/review";
 import {
   createReviewSession,
   type ReviewSession,
-} from "../../src/domain/review-session";
+} from "#src/domain/review-session";
 import {
   parseAbsolutePath,
   parseGitHubHost,
@@ -26,9 +26,9 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { Result } from "#src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T =>
   result._tag === "ok"

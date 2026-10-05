@@ -3,12 +3,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { NarrativeWalkthroughDiff } from "../../src/renderer/src/components/narrative-walkthrough-diff";
-import type { NarrativeHunk } from "../../src/domain/narrative-walkthrough";
+import { NarrativeWalkthroughDiff } from "#src/renderer/src/components/narrative-walkthrough-diff";
+import type { NarrativeHunk } from "#src/domain/narrative-walkthrough";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
-} from "../../src/renderer/src/review-view-preferences";
+} from "#src/renderer/src/review-view-preferences";
 
 beforeEach(() => window.localStorage.clear());
 afterEach(() => cleanup());

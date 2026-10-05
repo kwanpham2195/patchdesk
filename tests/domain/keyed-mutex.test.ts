@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { KeyedMutex } from "../../src/domain/keyed-mutex";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
 
 /** A promise a test releases by hand, to park one operation inside the lock. */
 type Barrier = {

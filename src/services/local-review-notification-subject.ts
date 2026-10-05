@@ -1,10 +1,10 @@
-import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import type { LocalReviewNotificationSubject } from "./desktop-notifier";
-import type { Review } from "../domain/review";
+import type { Review } from "#src/domain/review";
 import {
   reviewSourceTitle,
   type LocalReviewSource,
-} from "../domain/review-source";
+} from "#src/domain/review-source";
 
 /**
  * How a desktop notification names a local Review (ADR 0052, #496): its

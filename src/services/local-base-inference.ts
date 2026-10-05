@@ -1,4 +1,4 @@
-import { definedProps } from "../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   baseRefName,
   localBranchBaseRef,
@@ -9,9 +9,9 @@ import {
   type GitSha,
   type LocalBaseRef,
   type LocalBranchName,
-} from "../domain/ids";
-import { mapConcurrent } from "../domain/map-concurrent";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
 import type { GitReadExecutor } from "./review-worktree-service";
 
 /** The checkout's `HEAD`: the branch it names, or detached. */

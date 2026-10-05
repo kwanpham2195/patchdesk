@@ -5,14 +5,14 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { parseLocalBranchName } from "../../src/domain/ids";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { parseLocalBranchName } from "#src/domain/ids";
 import {
   listLocalBranches,
   namedBaseRef,
   type LocalBranchListing,
-} from "../../src/services/local-base-inference";
+} from "#src/services/local-base-inference";
 
 const roots: string[] = [];
 

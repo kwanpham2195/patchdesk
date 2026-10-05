@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rendererSource } from "../../src/main/renderer-origin";
+import { rendererSource } from "#src/main/renderer-origin";
 
 describe("rendererSource", () => {
   it("loads the development server URL and trusts its origin in development", () => {

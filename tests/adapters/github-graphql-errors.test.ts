@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   type CommandFailure,
   type ForbiddenReason,
-} from "../../src/adapters/github/command-runner";
-import type { Result } from "../../src/domain/result";
+} from "#src/adapters/github/command-runner";
+import type { Result } from "#src/domain/result";
 import { json, profile, useFixtureServer } from "./github-http-fixture-server";
 
 /**

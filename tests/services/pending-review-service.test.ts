@@ -4,22 +4,22 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { StorageFailure } from "../../src/adapters/storage/json-file";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { createReviewSessionId } from "../../src/domain/ids";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { err, ok, type Result } from "../../src/domain/result";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { createReviewSessionId } from "#src/domain/ids";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   PendingReviewState,
   ViewerPendingReview,
-} from "../../src/domain/pending-review";
-import type { PullRequestReviewSession } from "../../src/domain/review-session";
+} from "#src/domain/pending-review";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
 import {
   PendingReviewService,
   projectPendingReview,
-} from "../../src/services/pending-review-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+} from "#src/services/pending-review-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.

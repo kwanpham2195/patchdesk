@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   useKeyboardJump,
   type KeyboardJump,
-} from "../../src/renderer/src/hooks/use-keyboard-jump";
+} from "#src/renderer/src/hooks/use-keyboard-jump";
 
 function press(key: string): void {
   act(() => {

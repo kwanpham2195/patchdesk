@@ -4,7 +4,7 @@ import type {
   GitHubPendingReviewGateway,
   GitHubReader,
   GitHubReviewWriter,
-} from "../adapters/github/github-adapter";
+} from "#src/adapters/github/github-adapter";
 
 export function isGitHubDirectSummaryGateway(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- structural capability detection on the already-constructed internal `github` adapter, not external/untrusted input; there is no earlier I/O boundary to parse at.

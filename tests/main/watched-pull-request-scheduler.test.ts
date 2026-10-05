@@ -6,22 +6,22 @@ import { join } from "node:path";
 import {
   FakeGitHubAdapter,
   type FakeGitHubAdapterValues,
-} from "../../src/adapters/github/fake-github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { WatchedPullRequestStore } from "../../src/adapters/storage/watched-pull-request-store";
-import { parseIsoTimestamp } from "../../src/domain/ids";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { ok, type Result } from "../../src/domain/result";
+} from "#src/adapters/github/fake-github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { WatchedPullRequestStore } from "#src/adapters/storage/watched-pull-request-store";
+import { parseIsoTimestamp } from "#src/domain/ids";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { ok, type Result } from "#src/domain/result";
 import {
   parseWatchedPullRequests,
   type WatchedPullRequest,
   type WatchedSnapshot,
-} from "../../src/domain/watched-pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { startWatchedPullRequestScheduler } from "../../src/main/watched-pull-request-scheduler";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { WatchedPullRequestService } from "../../src/services/watched-pull-request-service";
+} from "#src/domain/watched-pull-request";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { startWatchedPullRequestScheduler } from "#src/main/watched-pull-request-scheduler";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { WatchedPullRequestService } from "#src/services/watched-pull-request-service";
 
 // Written out rather than imported, so the test pins the interval it passes.
 const INTERVAL_MS = 3 * 60_000;

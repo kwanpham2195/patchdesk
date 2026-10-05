@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { getSharedHighlighter } from "@pierre/diffs";
 
 import { Button } from "@/components/ui/button";
-import { diffColors } from "../diff-colors";
-import { useDiffCodeTheme } from "../hooks/use-diff-code-theme";
+import { diffColors } from "#src/renderer/src/diff-colors";
+import { useDiffCodeTheme } from "#src/renderer/src/hooks/use-diff-code-theme";
 import {
   classifyDiffFence,
   fencedCodeLanguage,
   type DiffFenceLineKind,
-} from "../markdown-code-fence";
-import { registerPierreThemeLoaders } from "../pierre-theme-loaders";
+} from "#src/renderer/src/markdown-code-fence";
+import { registerPierreThemeLoaders } from "#src/renderer/src/pierre-theme-loaders";
 
 // The Diff tab registers these too, but a comment body can render before it
 // mounts, and registration is idempotent.

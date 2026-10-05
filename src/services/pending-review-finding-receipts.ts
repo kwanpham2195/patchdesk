@@ -5,12 +5,12 @@ import type {
   PendingReviewState,
   PendingReviewThreadWrite,
   ViewerPendingReview,
-} from "../domain/pending-review";
-import type { GitHubReviewNodeId } from "../domain/ids";
+} from "#src/domain/pending-review";
+import type { GitHubReviewNodeId } from "#src/domain/ids";
 import type {
   GitHubComments,
   GitHubPublishedFeedback,
-} from "../domain/github-context";
+} from "#src/domain/github-context";
 
 /**
  * Finding-receipt policy for the pending-review lifecycle: which durable

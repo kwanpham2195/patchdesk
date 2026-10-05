@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { bumpCask } from "../../scripts/bump-cask-lib.mjs";
+import { bumpCask } from "#scripts/bump-cask-lib.mjs";
 
 type CommandResult = {
   readonly status: number | null;

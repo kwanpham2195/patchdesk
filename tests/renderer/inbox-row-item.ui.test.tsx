@@ -8,8 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { InboxRowItem } from "../../src/renderer/src/components/inbox-row-item";
-import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+import { InboxRowItem } from "#src/renderer/src/components/inbox-row-item";
+import type { InboxRow } from "#src/renderer/src/renderer-contracts";
 
 afterEach(() => cleanup());
 

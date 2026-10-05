@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   threadNeedsReply,
   type GitHubConversationThread,
-} from "../../src/domain/github-context";
+} from "#src/domain/github-context";
 
 type ThreadCase = {
   readonly state: GitHubConversationThread["state"];

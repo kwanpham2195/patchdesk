@@ -4,8 +4,8 @@ import {
   BRIEF_SIGNAL_KINDS,
   briefSignals,
   type BriefSignalKind,
-} from "../../src/domain/brief-signals";
-import { listPatchChangedFiles } from "../../src/domain/patch-changed-files";
+} from "#src/domain/brief-signals";
+import { listPatchChangedFiles } from "#src/domain/patch-changed-files";
 
 function edited(
   path: string,

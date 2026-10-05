@@ -1,7 +1,7 @@
 import { ChevronDown } from "lucide-react";
 
-import type { FeedbackHandoffVerdict } from "../../../domain/feedback-handoff";
-import type { LocalDraftControls } from "../flows/use-local-drafts";
+import type { FeedbackHandoffVerdict } from "#src/domain/feedback-handoff";
+import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-drafts";
 import { RelativeTime } from "./relative-time";
 import { Button } from "./ui/button";
 import {

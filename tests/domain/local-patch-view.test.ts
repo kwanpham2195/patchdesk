@@ -7,7 +7,7 @@ import {
   type LocalNoteLocation,
   type LocalPatchView,
   type LocalPatchViewPaths,
-} from "../../src/domain/local-patch-view";
+} from "#src/domain/local-patch-view";
 
 /** A one-hunk patch replacing line 5 of a 20-line file; the hunk shows lines 2 to 8 on both sides. */
 function lineFiveChanged(path: string, from: string, to: string): string {

@@ -4,7 +4,7 @@ import {
   CHECK_OVERALL_STATES,
   type CheckRunSummary,
   type CheckSummary,
-} from "../../domain/github-context";
+} from "#src/domain/github-context";
 
 /**
  * The durable on-disk shape of one `CheckSummary`, shared by every store that

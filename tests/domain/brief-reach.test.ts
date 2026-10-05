@@ -7,7 +7,7 @@ import {
   removedSymbols,
   summarizeReach,
   untestedReach,
-} from "../../src/domain/brief-reach";
+} from "#src/domain/brief-reach";
 
 const patch = (...lines: ReadonlyArray<string>) => `${lines.join("\n")}\n`;
 

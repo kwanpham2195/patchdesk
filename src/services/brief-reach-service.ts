@@ -1,9 +1,9 @@
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { CommandRunner } from "../adapters/github/command-runner";
-import { isPathContained } from "../adapters/storage/path-containment";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { CommandRunner } from "#src/adapters/github/command-runner";
+import { isPathContained } from "#src/adapters/storage/path-containment";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   briefReachFiles,
   candidateReachSymbols,
@@ -15,7 +15,7 @@ import {
   type BriefReachRemoved,
   type BriefReachSymbol,
   type BriefReachUnavailableReason,
-} from "../domain/brief-reach";
+} from "#src/domain/brief-reach";
 import {
   enclosingDeclaration,
   mentionKind,
@@ -24,9 +24,9 @@ import {
   MENTION_KIND_ORDER,
   type BriefReachMention,
   type BriefReachMentionKind,
-} from "../domain/brief-reach-mentions";
-import { definedProps } from "../domain/defined-props";
-import type { ReviewSessionId, WorkspaceProfileId } from "../domain/ids";
+} from "#src/domain/brief-reach-mentions";
+import { definedProps } from "#src/domain/defined-props";
+import type { ReviewSessionId, WorkspaceProfileId } from "#src/domain/ids";
 
 /**
  * The Reach block's counts, from `git grep --count` over the represented worktree.

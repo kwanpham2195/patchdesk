@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Review } from "../../src/domain/review";
-import { err, ok } from "../../src/domain/result";
+import type { Review } from "#src/domain/review";
+import { err, ok } from "#src/domain/result";
 import {
   at,
   baseSha,

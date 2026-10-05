@@ -14,17 +14,17 @@ import {
 import type {
   CheckSummary,
   MergeDisplayReason,
-} from "../../../domain/github-context";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import type { MergeReadiness } from "../../../domain/merge-readiness";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import { contextualMessage } from "../api-client";
+} from "#src/domain/github-context";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { MergeReadiness } from "#src/domain/merge-readiness";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { contextualMessage } from "#src/renderer/src/api-client";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
-} from "../external-links";
-import { DRAFT_STATE_MESSAGES } from "../review-copy";
-import { revisionFreshnessLabel } from "../rail-freshness";
+} from "#src/renderer/src/external-links";
+import { DRAFT_STATE_MESSAGES } from "#src/renderer/src/review-copy";
+import { revisionFreshnessLabel } from "#src/renderer/src/rail-freshness";
 import {
   CompactMergeCommand,
   type MergeCommandResult,
@@ -58,9 +58,9 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { INSIGHT_ICONS } from "../insight-icons";
+import { INSIGHT_ICONS } from "#src/renderer/src/insight-icons";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
-import { INSIGHT_STATUS_LABELS } from "../insight-status";
+import { INSIGHT_STATUS_LABELS } from "#src/renderer/src/insight-status";
 import { InsightStatusIcon } from "./insight-status-icon";
 import {
   ChangeBaseBranchCommand,

@@ -1,14 +1,18 @@
 import { useRef, useState } from "react";
 import * as v from "valibot";
-import { requestJson } from "../api-client";
+import { requestJson } from "#src/renderer/src/api-client";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
   type DiffThemePreferences,
-} from "../diff-theme-preferences";
-import type { AppearancePreference } from "../appearance-preferences";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { cleanupCopy } from "../review-copy";
+} from "#src/renderer/src/diff-theme-preferences";
+import type { AppearancePreference } from "#src/renderer/src/appearance-preferences";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "#src/renderer/src/components/ui/alert";
+import { cleanupCopy } from "#src/renderer/src/review-copy";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,17 +22,21 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../components/ui/alert-dialog";
-import { Button } from "../components/ui/button";
+} from "#src/renderer/src/components/ui/alert-dialog";
+import { Button } from "#src/renderer/src/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
-import { useApiProbe } from "../hooks/use-api-probe";
+} from "#src/renderer/src/components/ui/card";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+} from "#src/renderer/src/components/ui/field";
+import { useApiProbe } from "#src/renderer/src/hooks/use-api-probe";
 import { NotificationsCard } from "./settings-notifications-card";
 import { UpdatesCard } from "./settings-updates-card";
 import {
@@ -38,12 +46,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import type { Dashboard, Profile } from "../renderer-models";
+} from "#src/renderer/src/components/ui/select";
+import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
 import type {
   ProfileSwitchResult,
   ProfileSwitchState,
-} from "../hooks/use-profile-switch";
+} from "#src/renderer/src/hooks/use-profile-switch";
 import { WorkspaceProfileSection } from "./settings-workspace-section";
 
 export type SettingsSection = "general" | "workspace" | "data";

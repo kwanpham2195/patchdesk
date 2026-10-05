@@ -1,20 +1,20 @@
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   listedChangeIntent,
   type ListedChangeIntent,
-} from "../domain/change-intent";
-import { definedProps } from "../domain/defined-props";
+} from "#src/domain/change-intent";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   AbsolutePath,
   IsoTimestamp,
   LocalBaseRef,
   LocalBranchName,
   WorkspaceProfileId,
-} from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import { isLocalReview, type Review } from "../domain/review";
-import type { LocalReviewSource } from "../domain/review-source";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview, type Review } from "#src/domain/review";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import type { RepositoryCheckout } from "./local-checkout";
 import type { LocalReviewOpenRequest } from "./local-review-session-preparation";

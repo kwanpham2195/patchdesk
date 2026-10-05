@@ -10,31 +10,31 @@ import {
 
 import type { AppCapability } from "./ipc-contract";
 import type { ReviewWindow } from "./desktop-review-window";
-import type { WorkspaceProfileId } from "../domain/ids";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { WorkspaceProfileId } from "#src/domain/ids";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type {
   StorageManagementService,
   TrashMover,
-} from "../services/storage-management-service";
-import type { CommandRunner } from "../adapters/github/command-runner";
-import type { ReviewWorkbenchController } from "../services/review-workbench-controller";
-import type { GitHubCredentials } from "../adapters/github/github-credentials";
-import type { GitHubFetch } from "../adapters/github/github-http-client";
+} from "#src/services/storage-management-service";
+import type { CommandRunner } from "#src/adapters/github/command-runner";
+import type { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
+import type { GitHubCredentials } from "#src/adapters/github/github-credentials";
+import type { GitHubFetch } from "#src/adapters/github/github-http-client";
 import type {
   GitHubMergeWriter,
   GitHubReader,
   GitHubReviewWriter,
-} from "../adapters/github/github-adapter";
-import type { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
-import type { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
-import type { ReviewDiagnosticService } from "../services/review-diagnostic-service";
-import type { AppLogService } from "../services/app-log-service";
-import type { AvatarFetcher } from "../services/avatar-sync-service";
-import type { DesktopNotifier } from "../services/desktop-notifier";
-import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
-import type { InsightProviderCatalog } from "../services/insight-provider-catalog";
-import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
-import type { GitReadExecutor } from "../services/review-worktree-service";
+} from "#src/adapters/github/github-adapter";
+import type { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import type { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
+import type { AppLogService } from "#src/services/app-log-service";
+import type { AvatarFetcher } from "#src/services/avatar-sync-service";
+import type { DesktopNotifier } from "#src/services/desktop-notifier";
+import type { InsightRunCoordinator } from "#src/services/insight-run-coordinator";
+import type { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
+import type { PiRuntimeModelCatalog } from "#src/adapters/pi/pi-runtime-model-catalog";
+import type { GitReadExecutor } from "#src/services/review-worktree-service";
 
 /** What the Insight routes are allowed to call on the run coordinator. */
 export type InsightCoordinatorSeam = Pick<

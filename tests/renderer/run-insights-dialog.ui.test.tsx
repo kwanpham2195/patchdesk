@@ -11,11 +11,11 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { DesktopResponse } from "../../src/main/ipc-contract";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { InsightsSlot } from "../../src/renderer/src/components/review-insights-slot";
-import { saveInsightRunPreference } from "../../src/renderer/src/insight-run-preferences";
+import type { RawJsonValue } from "#src/domain/json";
+import type { DesktopResponse } from "#src/main/ipc-contract";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { InsightsSlot } from "#src/renderer/src/components/review-insights-slot";
+import { saveInsightRunPreference } from "#src/renderer/src/insight-run-preferences";
 import {
   failure,
   installDesktopDouble,

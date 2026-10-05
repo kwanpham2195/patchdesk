@@ -12,7 +12,7 @@ import type {
   PullRequestReviewerListing,
   PullRequestSummary,
   RepositoryLabelListing,
-} from "../../domain/github-context";
+} from "#src/domain/github-context";
 import {
   type GitSha,
   type GitHubLogin,
@@ -20,22 +20,22 @@ import {
   type GitHubReviewRestId,
   type GitHubThreadId,
   type RepoRelativePath,
-} from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import type {
   InboxPageSize,
   InboxStateFilter,
-} from "../../domain/maintainer-inbox";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+} from "#src/domain/maintainer-inbox";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   type PendingReviewAnchor,
   type PendingReviewRead,
   type PendingReviewThreadWrite,
-} from "../../domain/pending-review";
-import type { GitHubReviewEvent } from "../../domain/pending-review";
-import type { GitHubWriteFailure } from "../../domain/github-write";
-import type { GitHubReviewCoordinates } from "../../domain/patch";
+} from "#src/domain/pending-review";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { GitHubReviewCoordinates } from "#src/domain/patch";
 import {
   type AuthenticatedGitHubAccount,
   type BranchProtectionEvidence,
@@ -52,7 +52,7 @@ import {
   type RepositoryPermissionEvidence,
   type WatchedPullRequestRead,
 } from "./github-adapter";
-import type { WatchedSnapshot } from "../../domain/watched-pull-request";
+import type { WatchedSnapshot } from "#src/domain/watched-pull-request";
 import type { BranchProtectionRead } from "./github-merge-policy";
 import type { PullRequestReviewsRead } from "./github-pull-request-reviews";
 import { samePullRequest } from "./github-wire-projections";

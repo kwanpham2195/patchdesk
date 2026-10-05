@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { AccountInsightInvoker } from "../../src/services/account-insight-invoker";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { AccountInsightInvoker } from "#src/services/account-insight-invoker";
 import {
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
   MAX_WALKTHROUGH_PROMPT_BYTES,
   type CodexRunInput,
-} from "../../src/adapters/codex/codex-app-server-client";
-import { ok } from "../../src/domain/result";
+} from "#src/adapters/codex/codex-app-server-client";
+import { ok } from "#src/domain/result";
 
 // Matches PiInsightChildInvoker's Analysis run bound.
 const EXPECTED_ANALYSIS_TIMEOUT_MS = 10 * 60_000;

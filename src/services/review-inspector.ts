@@ -1,9 +1,9 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve, win32 } from "node:path";
 
-import { mapConcurrent } from "../domain/map-concurrent";
-import { err, ok, type Result } from "../domain/result";
-import { isPathContained } from "../adapters/storage/path-containment";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
+import { isPathContained } from "#src/adapters/storage/path-containment";
 
 /** Exported so the Analysis tool descriptions state the same number. */
 export const MAX_ANALYSIS_INSPECTION_CALLS = 8;

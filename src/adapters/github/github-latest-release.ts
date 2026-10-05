@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-import { err, ok, type Result } from "../../domain/result";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   gitHubApiOrigin,
   gitHubRestHeaders,

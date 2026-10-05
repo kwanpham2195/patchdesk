@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   localDraftKey,
   useLocalDrafts,
-} from "../../src/renderer/src/flows/use-local-drafts";
-import type { LocalDraftEntry } from "../../src/renderer/src/local-draft-contracts";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/flows/use-local-drafts";
+import type { LocalDraftEntry } from "#src/renderer/src/local-draft-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   failure,
   installDesktopDouble,

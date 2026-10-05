@@ -4,16 +4,16 @@ import {
   createDesktopNotifier,
   decideDesktopNotification,
   type NotificationDestination,
-} from "../../src/main/desktop-notifier";
-import type { DesktopNotificationClick } from "../../src/main/ipc-contract";
-import type { NotificationSettings } from "../../src/domain/contracts";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { ok } from "../../src/domain/result";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+} from "#src/main/desktop-notifier";
+import type { DesktopNotificationClick } from "#src/main/ipc-contract";
+import type { NotificationSettings } from "#src/domain/contracts";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { ok } from "#src/domain/result";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
 import {
   reviewId,
   sessionKey,
-} from "../services/pull-request-metadata-fixtures";
+} from "#tests/services/pull-request-metadata-fixtures";
 
 const pullRequest = {
   host: sessionKey.host,

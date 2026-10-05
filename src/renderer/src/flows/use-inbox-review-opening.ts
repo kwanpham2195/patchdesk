@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isApiErrorCode, PatchdeskApiError, requestJson } from "../api-client";
-import { useBusy } from "../hooks/use-busy";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
+import {
+  isApiErrorCode,
+  PatchdeskApiError,
+  requestJson,
+} from "#src/renderer/src/api-client";
+import { useBusy } from "#src/renderer/src/hooks/use-busy";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
 import {
   parseWorkbenchResponse,
   pullRequestIdentityKey,
-} from "../renderer-contracts";
-import type { InboxResponse } from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
+import type { InboxResponse } from "#src/renderer/src/renderer-contracts";
 import {
   branchMismatchMessage,
   checkoutMissingMessage,
   patchTooLargeMessage,
   storedBranchMismatchMessage,
   untrackedTooLargeMessage,
-} from "../local-review-reopen";
-import type { Dashboard, WorkbenchPayload } from "../renderer-models";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import type { RepositoryIdentity } from "../../../domain/repository-identity";
+} from "#src/renderer/src/local-review-reopen";
+import type {
+  Dashboard,
+  WorkbenchPayload,
+} from "#src/renderer/src/renderer-models";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
 
 /** The local Review source a maintainer picks, as `POST /v1/reviews/open-local` takes it (ADR 0050). */
 export type LocalReviewSourceInput =

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { createGitHubHttpClient } from "../../src/main/local-api-stores";
-import { profile } from "../adapters/github-http-fixture-server";
-import { StubCredentials } from "../adapters/stub-github-credentials";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { createGitHubHttpClient } from "#src/main/local-api-stores";
+import { profile } from "#tests/adapters/github-http-fixture-server";
+import { StubCredentials } from "#tests/adapters/stub-github-credentials";
 
 /**
  * The one transport a launch builds (ADR 0046, issue #276). A request served

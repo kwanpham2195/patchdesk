@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { newerReleaseVersion } from "../../src/domain/app-update";
+import { newerReleaseVersion } from "#src/domain/app-update";
 
 describe("newerReleaseVersion", () => {
   it.each([

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseUnifiedPatch } from "../../src/domain/patch";
+import { parseUnifiedPatch } from "#src/domain/patch";
 import {
   citedHunkRelation,
   mapConversationThread,
   projectReadOnlyConversationAnnotations,
-} from "../../src/renderer/src/inline-conversation-mapping";
-import { toDiffLineAnnotation } from "../../src/renderer/src/review-diff-annotations";
+} from "#src/renderer/src/inline-conversation-mapping";
+import { toDiffLineAnnotation } from "#src/renderer/src/review-diff-annotations";
 
 const patch = parseUnifiedPatch(`diff --git a/src/example.ts b/src/example.ts
 --- a/src/example.ts

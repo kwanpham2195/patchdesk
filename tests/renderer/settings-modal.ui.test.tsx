@@ -10,7 +10,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
+import { SettingsModal } from "#src/renderer/src/components/settings-modal";
 import {
   failure,
   installDesktopDouble,

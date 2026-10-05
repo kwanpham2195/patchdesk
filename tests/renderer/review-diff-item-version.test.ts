@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reviewDiffItemVersion } from "../../src/renderer/src/review-diff-item-version";
+import { reviewDiffItemVersion } from "#src/renderer/src/review-diff-item-version";
 
 describe("reviewDiffItemVersion", () => {
   it("assigns a distinct revision to every collapsed and hydrated state", () => {

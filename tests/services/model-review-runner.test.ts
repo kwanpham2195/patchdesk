@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   AnalysisPromptTooLargeError,
   prepareModelReview,
-} from "../../src/services/model-review-runner";
+} from "#src/services/model-review-runner";
 
 type GitObjectFixture =
   | string

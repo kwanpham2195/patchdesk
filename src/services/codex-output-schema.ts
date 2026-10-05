@@ -5,9 +5,9 @@ import {
   type OverrideSchemaContext,
 } from "@valibot/to-json-schema";
 
-import { briefOutputSchema } from "../domain/brief";
-import type { RawJsonValue } from "../domain/json";
-import { modelReviewResultSchema } from "../domain/review-result";
+import { briefOutputSchema } from "#src/domain/brief";
+import type { RawJsonValue } from "#src/domain/json";
+import { modelReviewResultSchema } from "#src/domain/review-result";
 import { walkthroughOutputSchema } from "./walkthrough-operation";
 
 /**

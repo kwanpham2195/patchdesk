@@ -12,8 +12,8 @@ import {
   useAppNavigation,
   type AppNavigation,
   type LeftWorkbench,
-} from "../../src/renderer/src/hooks/use-app-navigation";
-import type { WorkbenchPayload } from "../../src/renderer/src/renderer-models";
+} from "#src/renderer/src/hooks/use-app-navigation";
+import type { WorkbenchPayload } from "#src/renderer/src/renderer-models";
 import { projection } from "./review-workbench-fixtures";
 
 type NavigationHook = RenderHookResult<AppNavigation, unknown>["result"];

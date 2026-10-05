@@ -7,20 +7,20 @@ import {
   orderedTransport,
   type HttpTransportDouble,
 } from "./github-transport-doubles";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import type {
   GitHubRequest,
   GitHubRestRequest,
-} from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/github-request";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 function mustParse<T, E>(
   result:

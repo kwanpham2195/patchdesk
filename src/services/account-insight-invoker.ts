@@ -1,6 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   buildCodexAnalysisPrompt,
   buildCodexWalkthroughPrompt,
@@ -8,20 +8,20 @@ import {
   MAX_WALKTHROUGH_PROMPT_BYTES,
   type CodexAppServerFailure,
   type CodexRunInput,
-} from "../adapters/codex/codex-app-server-client";
-import type { PiRpcFailure } from "../adapters/pi-cli/pi-rpc-client";
+} from "#src/adapters/codex/codex-app-server-client";
+import type { PiRpcFailure } from "#src/adapters/pi-cli/pi-rpc-client";
 import {
   buildCodexBriefPrompt,
   MAX_BRIEF_PROMPT_BYTES,
-} from "../adapters/codex/codex-brief-prompt";
-import type { AccountInsightProvider } from "../domain/insight-provider";
-import type { RepresentedReviewWorktree } from "../domain/represented-review-worktree";
+} from "#src/adapters/codex/codex-brief-prompt";
+import type { AccountInsightProvider } from "#src/domain/insight-provider";
+import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
 import type {
   InsightInvocationInput,
   InsightInvocationOptions,
   InsightInvoker,
 } from "./insight-run-coordinator";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import { prepareBriefPrompt, type BriefPromptFailure } from "./brief-operation";
 import {
   analysisCodexOutputSchema,

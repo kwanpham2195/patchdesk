@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { reviewLoopInstructions } from "../../src/mcp/review-loop-instructions";
-import { mcpToolNames } from "../../src/mcp/tool-manifest";
+import { reviewLoopInstructions } from "#src/mcp/review-loop-instructions";
+import { mcpToolNames } from "#src/mcp/tool-manifest";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
+} from "#tests/main/mcp-app-fixture";
 import {
   closeMcpTestClients,
   connectLegacyClient,

@@ -1,7 +1,7 @@
-import type { CommandFailure } from "../../src/adapters/github/command-runner";
-import type { GitHubCredentials } from "../../src/adapters/github/github-credentials";
-import { ok, type Result } from "../../src/domain/result";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import type { CommandFailure } from "#src/adapters/github/command-runner";
+import type { GitHubCredentials } from "#src/adapters/github/github-credentials";
+import { ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 /**
  * Resolves a fixed credential so command expectations stay about gh argv.

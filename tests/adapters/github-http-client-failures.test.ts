@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { CommandFailure } from "../../src/adapters/github/command-runner";
-import { commandTimeoutMs } from "../../src/adapters/github/gh-request-runner";
-import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
+import type { CommandFailure } from "#src/adapters/github/command-runner";
+import { commandTimeoutMs } from "#src/adapters/github/gh-request-runner";
+import { GitHubHttpClient } from "#src/adapters/github/github-http-client";
 import {
   errorOf,
   json,

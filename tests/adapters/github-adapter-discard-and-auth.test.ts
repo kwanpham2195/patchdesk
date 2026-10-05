@@ -2,19 +2,16 @@ import {
   CommandRunner,
   type CommandExecution,
   type CommandExecutor,
-} from "../../src/adapters/github/command-runner";
+} from "#src/adapters/github/command-runner";
 import { orderedTransport } from "./github-transport-doubles";
 import {
   FakeGitHubAdapter,
   GitHubAdapter,
-} from "../../src/adapters/github/github-adapter";
-import { GitHubCliCredentials } from "../../src/adapters/github/github-credentials";
-import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
-import {
-  parseGitHubLogin,
-  parseGitHubReviewRestId,
-} from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/adapters/github/github-adapter";
+import { GitHubCliCredentials } from "#src/adapters/github/github-credentials";
+import { GitHubHttpClient } from "#src/adapters/github/github-http-client";
+import { parseGitHubLogin, parseGitHubReviewRestId } from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { describe, expect, it } from "vitest";
 import {
   headSha,

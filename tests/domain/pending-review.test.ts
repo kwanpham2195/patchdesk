@@ -15,7 +15,7 @@ import {
   type PendingReviewOperation,
   type PendingReviewState,
   type ViewerPendingReview,
-} from "../../src/domain/pending-review";
+} from "#src/domain/pending-review";
 
 const reviewRaw = {
   restId: "4891263665",

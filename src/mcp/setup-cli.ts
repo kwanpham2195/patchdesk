@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import type {
   WorkspaceRepositorySet,
   WorkspaceSetupStatus,
-} from "../services/workspace-setup-service";
+} from "#src/services/workspace-setup-service";
 import type { SetupCommandName } from "./setup-commands";
 import { callPatchdeskApp } from "./socket-client";
 

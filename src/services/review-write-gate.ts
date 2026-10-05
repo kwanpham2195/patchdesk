@@ -1,13 +1,13 @@
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { PullRequestSummary } from "../domain/github-context";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import type { PullRequestSummary } from "#src/domain/github-context";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type {
   ReviewRemoteSnapshot,
   ReviewRemoteStore,
-} from "../adapters/storage/review-remote-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
+} from "#src/adapters/storage/review-remote-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewObservationJournalStore } from "#src/adapters/storage/review-observation-journal-store";
 import {
   isLocalReview,
   isPullRequestReview,
@@ -15,28 +15,28 @@ import {
   sessionRepresentsReview,
   type PullRequestReview,
   type Review,
-} from "../domain/review";
+} from "#src/domain/review";
 import {
   isPullRequestReviewSession,
   sameReviewRevision,
   type LocalReviewSession,
   type PullRequestReviewSession,
-} from "../domain/review-session";
+} from "#src/domain/review-session";
 import {
   reopenLocalSourceRequest,
   sameReviewSource,
   type LocalReviewSource,
-} from "../domain/review-source";
-import { definedProps } from "../domain/defined-props";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/review-source";
+import { definedProps } from "#src/domain/defined-props";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   parseContentHash,
   type ContentHash,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   resolveLocalReviewCheckout,
   type LocalCheckoutReads,

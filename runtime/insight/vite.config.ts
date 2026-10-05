@@ -1,6 +1,10 @@
 import { defineConfig } from "vite";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
+  resolve: {
+    alias: { "#app": fileURLToPath(new URL("../../src", import.meta.url)) },
+  },
   build: {
     ssr: true,
     target: "node22",

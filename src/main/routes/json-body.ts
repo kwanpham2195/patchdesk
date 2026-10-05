@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 
-import type { RawJsonValue } from "../../domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 
 export async function jsonBody(
   context: Context,

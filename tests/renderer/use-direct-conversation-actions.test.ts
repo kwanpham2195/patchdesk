@@ -2,17 +2,17 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
-import type { DesktopResponse } from "../../src/main/ipc-contract";
+import type { RawJsonValue } from "#src/domain/json";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import type { DesktopResponse } from "#src/main/ipc-contract";
 import {
   PatchdeskApiError,
   ReviewPreconditionError,
-} from "../../src/renderer/src/api-client";
+} from "#src/renderer/src/api-client";
 import {
   useDirectConversationActions,
   type DirectConversationActions,
-} from "../../src/renderer/src/flows/use-direct-conversation-actions";
+} from "#src/renderer/src/flows/use-direct-conversation-actions";
 import {
   failure,
   installDesktopDouble,

@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import type {
   PullRequestReviewEntry,
   RequestedReviewer,
-} from "../../src/domain/github-context";
-import { parseGitSha, parseIsoTimestamp } from "../../src/domain/ids";
-import { deriveReviewVerdicts } from "../../src/domain/review-verdicts";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/github-context";
+import { parseGitSha, parseIsoTimestamp } from "#src/domain/ids";
+import { deriveReviewVerdicts } from "#src/domain/review-verdicts";
+import type { Result } from "#src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;

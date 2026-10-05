@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
 
-import { readBoundedArtifact } from "../../src/services/walkthrough-artifact-reader";
+import { readBoundedArtifact } from "#src/services/walkthrough-artifact-reader";
 import {
   parseWalkthroughOutput,
   prepareWalkthroughPrompt,
   walkthroughOutputSchema,
   walkthroughOutputLimitDiagnostic,
-} from "../../src/services/walkthrough-operation";
+} from "#src/services/walkthrough-operation";
 
 const validOutput = {
   citationVersion: 2,

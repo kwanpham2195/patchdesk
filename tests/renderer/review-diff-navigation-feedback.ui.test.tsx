@@ -3,9 +3,9 @@ import "./pierre-highlighter-mock";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
+import { ReviewDiffView } from "#src/renderer/src/components/review-diff-view";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "#src/renderer/src/review-view-preferences";
 
 let restorePierre: (() => void) | undefined;
 afterEach(() => {

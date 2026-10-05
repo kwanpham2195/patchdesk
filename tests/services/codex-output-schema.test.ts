@@ -1,14 +1,14 @@
 import type { JsonSchema } from "@valibot/to-json-schema";
 import { describe, expect, it } from "vitest";
 
-import { parseBriefOutput } from "../../src/domain/brief";
-import { parseModelReviewResult } from "../../src/domain/review-result";
+import { parseBriefOutput } from "#src/domain/brief";
+import { parseModelReviewResult } from "#src/domain/review-result";
 import {
   analysisCodexOutputSchema,
   briefCodexOutputSchema,
   parseCodexStrictResult,
   walkthroughCodexOutputSchema,
-} from "../../src/services/codex-output-schema";
+} from "#src/services/codex-output-schema";
 
 type SchemaNode = JsonSchema["items"];
 

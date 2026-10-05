@@ -6,7 +6,7 @@ import {
   isMarkdownHtmlElement,
   type MarkdownHtmlElement,
   type MarkdownNode,
-} from "../../src/renderer/src/markdown-inline-html";
+} from "#src/renderer/src/markdown-inline-html";
 
 const marked = new Marked({ gfm: true, breaks: false });
 

@@ -1,5 +1,5 @@
-import { requestJson } from "../api-client";
-import { parseCreatedProfileId } from "../renderer-contracts";
+import { requestJson } from "#src/renderer/src/api-client";
+import { parseCreatedProfileId } from "#src/renderer/src/renderer-contracts";
 import {
   profileRequestBody,
   type ProfileValues,

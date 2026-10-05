@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { composeReviewPrompt } from "../../../src/services/review-rubric";
+import { composeReviewPrompt } from "#app/services/review-rubric";
 
-import { createAnalysisAgent } from "../src/patchdesk-insight-agent";
+import { createAnalysisAgent } from "#runtime/src/patchdesk-insight-agent";
 
 const shared = composeReviewPrompt({
   reviewInput: "# Review input",

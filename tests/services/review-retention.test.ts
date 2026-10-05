@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
 import {
   createLocalNoteId,
   createReviewSessionId,
@@ -17,11 +17,11 @@ import {
   parseRepoRelativePath,
   parseReviewSessionId,
   type ReviewSessionId,
-} from "../../src/domain/ids";
-import { createReview } from "../../src/domain/review";
-import { err } from "../../src/domain/result";
-import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
-import { ReviewPreparationJournal } from "../../src/services/review-preparation-journal";
+} from "#src/domain/ids";
+import { createReview } from "#src/domain/review";
+import { err } from "#src/domain/result";
+import type { ReviewWorkbenchProjection } from "#src/services/review-workbench-projection";
+import { ReviewPreparationJournal } from "#src/services/review-preparation-journal";
 import {
   beginRun,
   cleanupLocalApplyRoots,

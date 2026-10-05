@@ -2,30 +2,30 @@
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { loadAppearancePreference } from "../../src/renderer/src/appearance-preferences";
+import { loadAppearancePreference } from "#src/renderer/src/appearance-preferences";
 import {
   loadAccountModelCache,
   saveAccountModelCache,
-} from "../../src/renderer/src/account-model-cache";
-import { loadDiffThemePreferences } from "../../src/renderer/src/diff-theme-preferences";
+} from "#src/renderer/src/account-model-cache";
+import { loadDiffThemePreferences } from "#src/renderer/src/diff-theme-preferences";
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
-} from "../../src/renderer/src/inbox-view-preferences";
+} from "#src/renderer/src/inbox-view-preferences";
 import {
   INSIGHT_PREFERENCE_TYPES,
   loadInsightRunPreference,
   saveInsightRunPreference,
-} from "../../src/renderer/src/insight-run-preferences";
-import { definePreference } from "../../src/renderer/src/lib/local-preference";
+} from "#src/renderer/src/insight-run-preferences";
+import { definePreference } from "#src/renderer/src/lib/local-preference";
 import {
   loadNavigatorWidthPreferences,
   saveNavigatorWidthPreferences,
-} from "../../src/renderer/src/navigator-width-preferences";
+} from "#src/renderer/src/navigator-width-preferences";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
-} from "../../src/renderer/src/review-view-preferences";
+} from "#src/renderer/src/review-view-preferences";
 
 const realStorage = window.localStorage;
 

@@ -5,17 +5,17 @@ import { createHash } from "node:crypto";
 
 import * as v from "valibot";
 
-import { definedProps } from "../domain/defined-props";
-import { err, ok, type Result } from "../domain/result";
+import { definedProps } from "#src/domain/defined-props";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   renderStatedGoalSection,
   type StatedGoal,
-} from "../domain/stated-goal";
+} from "#src/domain/stated-goal";
 import {
   containsSensitiveData,
   isNotFound,
   writeAtomicFile,
-} from "../adapters/storage/json-file";
+} from "#src/adapters/storage/json-file";
 
 /** First line of every `review-input.md`; a pack without it was written before #495 and is rebuilt. */
 export const REVIEW_INPUT_HEADING = "# Review input\n";

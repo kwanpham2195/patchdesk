@@ -8,7 +8,7 @@ import {
   classifyChangedPath,
   computeChangeScope,
   type ChangeScopeBucket,
-} from "../../src/domain/change-scope";
+} from "#src/domain/change-scope";
 
 const pathCases: ReadonlyArray<{
   readonly path: string;

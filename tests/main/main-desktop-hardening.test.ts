@@ -5,23 +5,23 @@ import { describe, expect, it, vi } from "vitest";
 import {
   isAllowedExternalUrl,
   normalizeExternalHosts,
-} from "../../src/domain/external-hosts";
-import { createDesktopMenuTemplate } from "../../src/main/desktop-menu";
-import { resolveDesktopClose } from "../../src/main/desktop-close-guard";
+} from "#src/domain/external-hosts";
+import { createDesktopMenuTemplate } from "#src/main/desktop-menu";
+import { resolveDesktopClose } from "#src/main/desktop-close-guard";
 import {
   contentSecurityPolicy,
   installWebContentsSecurity,
   isUserActivatedExternalUrl,
   openAllowedExternalUrl,
   openUserActivatedExternalUrl,
-} from "../../src/main/external-navigation";
+} from "#src/main/external-navigation";
 import {
   workbenchTitlebarHeight,
   workbenchWindowChrome,
-} from "../../src/main/window-chrome";
-import { clampWindowBounds } from "../../src/main/window-state";
-import { generatedPiAiCatalog } from "../../src/adapters/pi/pi-ai-catalog.generated";
-import { resolveInsightRuntime } from "../../src/main/insight-runtime";
+} from "#src/main/window-chrome";
+import { clampWindowBounds } from "#src/main/window-state";
+import { generatedPiAiCatalog } from "#src/adapters/pi/pi-ai-catalog.generated";
+import { resolveInsightRuntime } from "#src/main/insight-runtime";
 
 describe("desktop hardening", () => {
   it("allows clean close, confirms dirty drafts, and blocks pending writes", async () => {

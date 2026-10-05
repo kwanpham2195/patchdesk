@@ -1,21 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { GitHubComments } from "../../src/domain/github-context";
+import type { GitHubComments } from "#src/domain/github-context";
 import {
   parseGitHubThreadId,
   parseIsoTimestamp,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   parseReviewWriteOperation,
   type ReviewWriteOperation,
-} from "../../src/domain/review-write-operation";
-import { ok } from "../../src/domain/result";
+} from "#src/domain/review-write-operation";
+import { ok } from "#src/domain/result";
 import {
   classifyConversationIntent,
   ReviewWriteRecoveryService,
-} from "../../src/services/review-write-recovery-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/services/review-write-recovery-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 type ConversationIntentTag =

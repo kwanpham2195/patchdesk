@@ -1,4 +1,4 @@
-import type { AppUpdateState } from "../domain/app-update";
+import type { AppUpdateState } from "#src/domain/app-update";
 import { DESKTOP_APP_UPDATE_CHANNEL } from "./ipc-contract";
 
 /**

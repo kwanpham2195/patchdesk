@@ -6,7 +6,7 @@ import {
   normalizeLogEntry,
   parseLogEntry,
   sanitizeLogMeta,
-} from "../../src/domain/log-entry";
+} from "#src/domain/log-entry";
 
 /** The exact shape `electron-main.ts`'s two crash handlers write. */
 function crashEntry(cause: unknown) {

@@ -14,19 +14,19 @@ import type {
   PublishedReview,
   PublishedReviewComment,
   PullRequestSummary,
-} from "../../domain/github-context";
+} from "#src/domain/github-context";
 import {
   type GitHubLogin,
   type GitSha,
   parseGitHubReviewRestId,
   parseGitSha,
-} from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
-import type { GitHubReviewEvent } from "../../domain/pending-review";
-import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
-import type { GitHubWriteFailure } from "../../domain/github-write";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
+import type { DirectSummaryReviewReceipt } from "#src/domain/direct-summary-review";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
 import {
   directSummaryReceiptSchema,
   publishedCommentSchema,
@@ -42,7 +42,7 @@ import {
 } from "./github-wire-projections";
 import { extractImageRewrites } from "./github-image-rewrites";
 import { invalid, writeFailure } from "./github-write-failures";
-import { definedProps } from "../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   AuthenticatedGitHubAccount,
   BranchProtectionEvidence,

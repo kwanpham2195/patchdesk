@@ -13,10 +13,10 @@ import userEvent, {
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { changeScopeFromPatch } from "../../src/domain/change-scope";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { LocalDraftEntry } from "../../src/renderer/src/local-draft-contracts";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { changeScopeFromPatch } from "#src/domain/change-scope";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
+import type { LocalDraftEntry } from "#src/renderer/src/local-draft-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { chooseChanges } from "./diff-toolbar-menus";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";

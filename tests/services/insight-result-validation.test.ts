@@ -11,15 +11,15 @@ import {
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { RawJsonValue } from "../../src/domain/json";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { RawJsonValue } from "#src/domain/json";
+import type { Result } from "#src/domain/result";
 import {
   parseReviewResult,
   type ReviewResult,
-} from "../../src/domain/review-result";
-import type { InsightInvocationInput } from "../../src/services/insight-run-coordinator";
-import { validateInsightResult } from "../../src/services/insight-result-validation";
+} from "#src/domain/review-result";
+import type { InsightInvocationInput } from "#src/services/insight-run-coordinator";
+import { validateInsightResult } from "#src/services/insight-result-validation";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "ok") return result.value;

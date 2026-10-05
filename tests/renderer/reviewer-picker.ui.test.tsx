@@ -3,8 +3,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReviewerPicker } from "../../src/renderer/src/components/reviewer-picker";
-import type { ReviewerListResponse } from "../../src/renderer/src/renderer-contracts";
+import { ReviewerPicker } from "#src/renderer/src/components/reviewer-picker";
+import type { ReviewerListResponse } from "#src/renderer/src/renderer-contracts";
 
 /**
  * What only a mounted `ReviewerPicker` can show, and only this one: GitHub's

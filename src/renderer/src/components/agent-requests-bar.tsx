@@ -1,10 +1,10 @@
 import {
   displayClientName,
   type AgentRunRequestView,
-} from "../agent-run-requests";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
-import { useAgentRunRequests } from "../hooks/use-agent-run-requests";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/agent-run-requests";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
+import { useAgentRunRequests } from "#src/renderer/src/hooks/use-agent-run-requests";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { INSIGHT_NOUNS } from "./insight-run-dialog";
 import { RelativeTime } from "./relative-time";
 import { Button } from "./ui/button";

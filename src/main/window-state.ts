@@ -2,8 +2,8 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
-import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { readJsonFile, writeAtomicJson } from "#src/adapters/storage/json-file";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 
 export type WindowBounds = {
   readonly x: number;

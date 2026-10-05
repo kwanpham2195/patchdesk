@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
-import { err, ok, type Result } from "../../domain/result";
+import { err, ok, type Result } from "#src/domain/result";
 
-import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
+import { runWithRequestAbortSignal } from "#src/adapters/github/command-runner";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_CHECK_STATUS_FILTER_VALUES,
@@ -19,20 +19,20 @@ import {
   type InboxPageSize,
   type InboxPreset,
   type InboxReviewStateFilter,
-} from "../../domain/maintainer-inbox";
+} from "#src/domain/maintainer-inbox";
 import {
   notificationSettingsOf,
   type NotificationSettings,
-} from "../../domain/contracts";
+} from "#src/domain/contracts";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseWorkspaceProfileId,
-} from "../../domain/ids";
-import type { InboxRepositoryRef } from "../../services/maintainer-inbox-service";
-import { readObjectField } from "../../services/read-object-field";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/domain/ids";
+import type { InboxRepositoryRef } from "#src/services/maintainer-inbox-service";
+import { readObjectField } from "#src/services/read-object-field";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { repositoryLabelListResponse } from "./github-listing-response";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";

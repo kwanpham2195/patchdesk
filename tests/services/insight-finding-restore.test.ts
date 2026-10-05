@@ -6,9 +6,9 @@ import {
   parseFindingId,
   parseInsightRunId,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import { beginInsightRun } from "../../src/domain/insight-record";
-import { err, ok } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { beginInsightRun } from "#src/domain/insight-record";
+import { err, ok } from "#src/domain/result";
 import {
   analysisResult,
   cleanupRoots,

@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import * as v from "valibot";
 
-import { definedProps } from "../../../domain/defined-props";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import { requestJson } from "../api-client";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
+import { definedProps } from "#src/domain/defined-props";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { requestJson } from "#src/renderer/src/api-client";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import { useLatestCommitted } from "./use-latest-committed";
 
 /** The Viewed marks one Review session's Diff renders and edits. */

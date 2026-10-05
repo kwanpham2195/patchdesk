@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { Appearance } from "../../src/domain/contracts";
+import type { Appearance } from "#src/domain/contracts";
 import {
   readWindowAppearance,
   sendWindowAppearance,
   serveWindowAppearance,
-} from "../../src/main/desktop-appearance-channel";
-import { DESKTOP_WINDOW_APPEARANCE_CHANNEL } from "../../src/main/ipc-contract";
+} from "#src/main/desktop-appearance-channel";
+import { DESKTOP_WINDOW_APPEARANCE_CHANNEL } from "#src/main/ipc-contract";
 
 /**
  * The channel name is a runtime string and carries both directions, so two

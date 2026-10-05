@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   MaintainerInboxCacheStore,
   parseMaintainerInboxCache,
-} from "../../src/adapters/storage/maintainer-inbox-cache-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+} from "#src/adapters/storage/maintainer-inbox-cache-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   createReviewId,
   parseGitHubHost,
@@ -19,7 +19,7 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 
 const directories: Array<string> = [];
 

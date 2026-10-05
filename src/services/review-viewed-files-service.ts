@@ -1,13 +1,13 @@
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import type {
   RepoRelativePath,
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
-import type { LocalPatchView } from "../domain/local-patch-view";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
 export type ViewedFilesFailure = {

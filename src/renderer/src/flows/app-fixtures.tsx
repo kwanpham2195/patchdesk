@@ -1,11 +1,11 @@
-import { DiffWorkbench } from "../components/diff-workbench";
-import { CompactMergeCommand } from "../components/compact-merge-command";
-import { PullRequestDescriptionPreview } from "../components/pull-request-description";
-import { mergeMethodOrder } from "../../../domain/github-context";
-import type { FindingId } from "../../../domain/ids";
-import type { MergeReadiness } from "../../../domain/merge-readiness";
-import { parsePullRequestInput } from "../../../domain/pull-request";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import { DiffWorkbench } from "#src/renderer/src/components/diff-workbench";
+import { CompactMergeCommand } from "#src/renderer/src/components/compact-merge-command";
+import { PullRequestDescriptionPreview } from "#src/renderer/src/components/pull-request-description";
+import { mergeMethodOrder } from "#src/domain/github-context";
+import type { FindingId } from "#src/domain/ids";
+import type { MergeReadiness } from "#src/domain/merge-readiness";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { CanonicalFixtureWorkbench } from "./fixtures/canonical-fixture-workbench";
 import type { NavigationState } from "./fixtures/navigation-state";
 import {

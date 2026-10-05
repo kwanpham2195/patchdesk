@@ -1,5 +1,5 @@
-import { NarrativeWalkthrough } from "../../components/narrative-walkthrough";
-import { Button } from "../../components/ui/button";
+import { NarrativeWalkthrough } from "#src/renderer/src/components/narrative-walkthrough";
+import { Button } from "#src/renderer/src/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../../components/ui/dialog";
-import { ModelCombobox } from "../../components/model-combobox";
+} from "#src/renderer/src/components/ui/dialog";
+import { ModelCombobox } from "#src/renderer/src/components/model-combobox";
 import {
   Select,
   SelectContent,
@@ -16,7 +16,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../components/ui/select";
+} from "#src/renderer/src/components/ui/select";
 import { walkthroughFixturePatch } from "./workbench-fixture-data";
 
 export function WalkthroughFixtureControls({

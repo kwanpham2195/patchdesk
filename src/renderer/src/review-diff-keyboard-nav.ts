@@ -6,7 +6,7 @@
  * and hunk navigation.
  */
 
-import { threadNeedsReply } from "../../domain/github-context";
+import { threadNeedsReply } from "#src/domain/github-context";
 
 /** True when `target` is a place the user is actively typing: a native
  * text-entry control, or any element inside a `contenteditable` region.

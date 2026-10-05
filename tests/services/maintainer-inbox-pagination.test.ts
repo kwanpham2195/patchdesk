@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitHubReader } from "../../src/adapters/github/github-adapter";
-import { MaintainerInboxService } from "../../src/services/maintainer-inbox-service";
-import { ok } from "../../src/domain/result";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import { MaintainerInboxService } from "#src/services/maintainer-inbox-service";
+import { ok } from "#src/domain/result";
 
 // SAFETY: MaintainerInboxService reads only host/owner/repo from this fixture.
 const repository = {

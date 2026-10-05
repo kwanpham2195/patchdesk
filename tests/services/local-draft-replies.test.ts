@@ -7,7 +7,7 @@ import {
   parseFindingId,
   parseLocalNoteId,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   cleanupLocalApplyRoots,
   localApplyHarness,

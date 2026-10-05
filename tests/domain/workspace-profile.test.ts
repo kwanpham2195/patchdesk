@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  GITHUB_LOGIN_MAX_LENGTH,
-  parseGitHubLogin,
-} from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { GITHUB_LOGIN_MAX_LENGTH, parseGitHubLogin } from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 const profile = {
   id: "fixture",

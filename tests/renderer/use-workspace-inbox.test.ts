@@ -6,15 +6,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   composeInboxSearchQuery,
   INBOX_SEARCH_QUERY_MAX_LENGTH,
-} from "../../src/domain/maintainer-inbox";
+} from "#src/domain/maintainer-inbox";
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
-} from "../../src/renderer/src/inbox-view-preferences";
+} from "#src/renderer/src/inbox-view-preferences";
 import {
   useWorkspaceInbox,
   type WorkspaceInbox,
-} from "../../src/renderer/src/hooks/use-workspace-inbox";
+} from "#src/renderer/src/hooks/use-workspace-inbox";
 import {
   installDesktopDouble,
   success,

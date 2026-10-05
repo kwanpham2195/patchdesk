@@ -1,4 +1,4 @@
-import type { AvatarFetcher } from "../services/avatar-sync-service";
+import type { AvatarFetcher } from "#src/services/avatar-sync-service";
 
 /** GitHub avatar URLs accept `?s=<pixels>`; a small size keeps cached files tiny. */
 const AVATAR_FETCH_SIZE_PX = 64;

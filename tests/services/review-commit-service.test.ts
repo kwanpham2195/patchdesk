@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewCommitService } from "../../src/services/review-commit-service";
-import { createReview } from "../../src/domain/review";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewCommitService } from "#src/services/review-commit-service";
+import { createReview } from "#src/domain/review";
 import {
   createReviewSessionId,
   parseGitSha,
@@ -11,8 +11,8 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { ok, type Result } from "#src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T =>
   result._tag === "ok"

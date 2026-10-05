@@ -1,4 +1,4 @@
-import type { GitHubReviewEvent } from "../../../domain/pending-review";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
 import type { AssigneesSectionActions } from "./assignee-picker";
 import type { LabelPickerActions } from "./label-picker";
 import type { PullRequestOverviewMerge } from "./pr-overview-sheet";
@@ -9,21 +9,21 @@ import type {
 import type { ReviewerPickerActions } from "./reviewer-picker";
 import type { ChangeBaseBranchActions } from "./change-base-branch-dialog";
 import type { FinishReviewDraft } from "./finish-review-dialog";
-import type { LocalNoteControls } from "../flows/use-local-drafts";
-import type { ChangeIntentControls } from "../flows/use-change-intent";
+import type { LocalNoteControls } from "#src/renderer/src/flows/use-local-drafts";
+import type { ChangeIntentControls } from "#src/renderer/src/flows/use-change-intent";
 import type {
   DirectSummaryReviewProjection,
   WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import type {
   CommitDiffResponse,
   SinceLastRefreshDiffResponse,
   SinceReviewDiffResponse,
-} from "../review-diff-contracts";
+} from "#src/renderer/src/review-diff-contracts";
 import type {
   WorkbenchActiveTab,
   WorkbenchSection,
-} from "../lib/screen-restore";
+} from "#src/renderer/src/lib/screen-restore";
 
 export type ReviewWorkbenchActions = {
   readonly detectUpdates: () => Promise<void>;

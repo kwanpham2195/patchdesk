@@ -5,21 +5,21 @@ import { join } from "node:path";
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { InsightStore } from "../../src/adapters/storage/insight-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   parseContentHash,
   parseGitSha,
   parseReviewId,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import { dismissInsightFinding } from "../../src/domain/insight-record";
-import { isLocalReview } from "../../src/domain/review";
-import { markLocalDraftsApplied } from "../../src/domain/review-local-drafts";
+} from "#src/domain/ids";
+import { dismissInsightFinding } from "#src/domain/insight-record";
+import { isLocalReview } from "#src/domain/review";
+import { markLocalDraftsApplied } from "#src/domain/review-local-drafts";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
+} from "#tests/main/mcp-app-fixture";
 import {
   beginRun,
   now,
@@ -27,7 +27,7 @@ import {
   retainAnalysis,
   suggestionFinding,
   value,
-} from "../services/local-apply-fixture";
+} from "#tests/services/local-apply-fixture";
 import { closeMcpTestClients, mcpProtocolEras } from "./mcp-test-clients";
 import {
   addNote,

@@ -3,10 +3,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CompactMergeCommand } from "../../src/renderer/src/components/compact-merge-command";
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
-import type { FindingId } from "../../src/domain/ids";
-import { deriveCheckReasons } from "../../src/domain/merge-readiness";
+import { CompactMergeCommand } from "#src/renderer/src/components/compact-merge-command";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
+import type { FindingId } from "#src/domain/ids";
+import { deriveCheckReasons } from "#src/domain/merge-readiness";
 import { installDesktopDouble } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;

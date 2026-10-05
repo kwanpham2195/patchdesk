@@ -12,18 +12,15 @@ import type { Message, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 import * as v from "valibot";
 
-import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
-import {
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-} from "../../../src/domain/ids";
+import { PatchdeskPaths } from "#app/adapters/storage/patchdesk-paths";
+import { parseReviewSessionId, parseWorkspaceProfileId } from "#app/domain/ids";
 
-import { modelReviewResultSchema } from "../src/patchdesk-insight-agent";
+import { modelReviewResultSchema } from "#runtime/src/patchdesk-insight-agent";
 import {
   canonicalizeProductionInvocation,
   runPatchdeskChild,
   writeRejectedResult,
-} from "../src/patchdesk-insight-runner";
+} from "#runtime/src/patchdesk-insight-runner";
 
 const blockingFinding = {
   id: "f1",

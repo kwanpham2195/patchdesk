@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { FolderGit2, FolderOpen } from "lucide-react";
 
-import type { LocalReviewSourceInput } from "../flows/use-inbox-review-opening";
-import { useApiProbe, type ApiProbeState } from "../hooks/use-api-probe";
-import { baseRefName } from "../../../domain/ids";
+import type { LocalReviewSourceInput } from "#src/renderer/src/flows/use-inbox-review-opening";
+import {
+  useApiProbe,
+  type ApiProbeState,
+} from "#src/renderer/src/hooks/use-api-probe";
+import { baseRefName } from "#src/domain/ids";
 import {
   baseRefGroups,
   inferredBaseReason,
@@ -11,9 +14,12 @@ import {
   parseLocalBranches,
   sharedReviewSource,
   type LocalBranches,
-} from "../local-branches";
+} from "#src/renderer/src/local-branches";
 import { BaseRefCombobox } from "./base-ref-combobox";
-import { parseLocalCheckouts, type LocalCheckout } from "../local-checkouts";
+import {
+  parseLocalCheckouts,
+  type LocalCheckout,
+} from "#src/renderer/src/local-checkouts";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import {

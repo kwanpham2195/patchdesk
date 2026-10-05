@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   sendReviewsRemoved,
   subscribeToReviewsRemoved,
-} from "../../src/main/desktop-reviews-removed-channel";
+} from "#src/main/desktop-reviews-removed-channel";
 
 type SettledHandler = (event: undefined) => void;
 

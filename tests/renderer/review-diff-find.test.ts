@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
 import {
   adjacentFindMatch,
   findDiffMatches,
-} from "../../src/renderer/src/review-diff-find";
+} from "#src/renderer/src/review-diff-find";
 
 // The hunk header's function context names `tokenHeader`; it must never match.
 const patch = `diff --git a/src/a.ts b/src/a.ts

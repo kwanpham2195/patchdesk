@@ -14,8 +14,8 @@ import {
   jsonSchemaFor,
   modelReviewResultSchema,
   walkthroughResultSchema,
-} from "../src/patchdesk-insight-agent";
-import { runPatchdeskChild } from "../src/patchdesk-insight-runner";
+} from "#runtime/src/patchdesk-insight-agent";
+import { runPatchdeskChild } from "#runtime/src/patchdesk-insight-runner";
 
 /**
  * Runs one candidate submission through the same validator Pi's agent loop

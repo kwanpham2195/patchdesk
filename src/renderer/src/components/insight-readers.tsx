@@ -1,22 +1,22 @@
 import * as v from "valibot";
 
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
-import { definedProps } from "../../../domain/defined-props";
-import type { ParsedPatchFile } from "../../../domain/patch";
+import type { ChangeScopeBucket } from "#src/domain/change-scope";
+import { definedProps } from "#src/domain/defined-props";
+import type { ParsedPatchFile } from "#src/domain/patch";
 import { BriefReader } from "./brief-reader";
-import { renderAnalysisReviewSummary } from "../analysis-review-summary";
+import { renderAnalysisReviewSummary } from "#src/renderer/src/analysis-review-summary";
 import { AnalysisReader, type FindingRestoreOutcome } from "./analysis-reader";
-import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
+import { projectReadOnlyConversationAnnotations } from "#src/renderer/src/inline-conversation-mapping";
 import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
-import { requestJson } from "../api-client";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
-import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
-import type { LocalApplyControls } from "../flows/use-local-apply";
-import type { LocalDraftControls } from "../flows/use-local-drafts";
+import { requestJson } from "#src/renderer/src/api-client";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { AnalysisFinding } from "#src/renderer/src/flows/use-analysis-review-actions";
+import type { AddAllFindingsControls } from "#src/renderer/src/flows/use-add-all-findings";
+import type { LocalApplyControls } from "#src/renderer/src/flows/use-local-apply";
+import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-drafts";
 import type { InsightRunDialogType } from "./insight-run-dialog";
-import type { AnalysisVerificationControls } from "../hooks/use-analysis-verification";
-import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
+import type { AnalysisVerificationControls } from "#src/renderer/src/hooks/use-analysis-verification";
+import type { WalkthroughProgressControls } from "#src/renderer/src/hooks/use-walkthrough-progress";
 import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 type InsightReaderBuilderInput = {

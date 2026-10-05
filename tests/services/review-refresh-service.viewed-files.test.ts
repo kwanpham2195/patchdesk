@@ -4,16 +4,16 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import {
   parseAbsolutePath,
   parseGitSha,
   parseRepoRelativePath,
   type AbsolutePath,
-} from "../../src/domain/ids";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import type { Result } from "#src/domain/result";
 import {
   createReviewRefreshFixture,
   createReviewRefreshFixtureValues,

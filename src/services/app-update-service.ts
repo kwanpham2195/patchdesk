@@ -1,21 +1,21 @@
 import type {
   LatestReleaseFailure,
   PatchdeskRelease,
-} from "../adapters/github/github-latest-release";
+} from "#src/adapters/github/github-latest-release";
 import type {
   AppInstallation,
   AppUpdater,
-} from "../adapters/process/app-update-helper";
-import type { AppUpdateRecord } from "../adapters/storage/app-update-state-store";
+} from "#src/adapters/process/app-update-helper";
+import type { AppUpdateRecord } from "#src/adapters/storage/app-update-state-store";
 import {
   INSTALLED_APP_PATH,
   newerReleaseVersion,
   type AppUpdateLaunchNotice,
   type AvailableAppUpdate,
   type AppUpdateState,
-} from "../domain/app-update";
-import { definedProps } from "../domain/defined-props";
-import type { Result } from "../domain/result";
+} from "#src/domain/app-update";
+import { definedProps } from "#src/domain/defined-props";
+import type { Result } from "#src/domain/result";
 
 type AppUpdateDependencies = {
   /** `app.getVersion()`. */

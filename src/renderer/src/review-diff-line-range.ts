@@ -1,8 +1,8 @@
 import type { SelectedLineRange } from "@pierre/diffs";
 
-import { fingerprintPatchAnchor } from "../../domain/diff-anchor";
-import { parseRepoRelativePath } from "../../domain/ids";
-import { parseUnifiedPatch } from "../../domain/patch";
+import { fingerprintPatchAnchor } from "#src/domain/diff-anchor";
+import { parseRepoRelativePath } from "#src/domain/ids";
+import { parseUnifiedPatch } from "#src/domain/patch";
 import type { LocalCommentLocation } from "./components/review-diff-view";
 
 /** Why a gutter range cannot hold one note or comment: GitHub anchors a range on one side of one hunk. */

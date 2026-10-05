@@ -9,7 +9,7 @@ import {
   type WatchedPullRequest,
   type WatchedPullRequestChange,
   type WatchedSnapshot,
-} from "../../src/domain/watched-pull-request";
+} from "#src/domain/watched-pull-request";
 
 const baseSnapshot = {
   updatedAt: "2026-09-16T10:00:00.000Z",

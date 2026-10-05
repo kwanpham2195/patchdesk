@@ -1,17 +1,21 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { mapConcurrent } from "../domain/map-concurrent";
-import { markReviewTerminal } from "../domain/review";
-import type { MergeOperation } from "../domain/merge-operation";
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type {
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "#src/domain/ids";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { markReviewTerminal } from "#src/domain/review";
+import type { MergeOperation } from "#src/domain/merge-operation";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";

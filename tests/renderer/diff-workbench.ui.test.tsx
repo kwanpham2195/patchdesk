@@ -11,8 +11,8 @@ import userEvent, {
 } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DiffWorkbench } from "../../src/renderer/src/components/diff-workbench";
-import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
+import { DiffWorkbench } from "#src/renderer/src/components/diff-workbench";
+import type { LocalApiDesktopRequest } from "#src/main/ipc-contract";
 import {
   installDesktopDouble,
   success,
