@@ -73,20 +73,12 @@ export type InsightProjection<T> = {
 };
 
 /**
- * `projectStoredInsight` is generic in `T`, so a locally declared
- * `-readonly [K in keyof InsightProjection<T>]` draft type (the pattern used
- * elsewhere in this file for concrete, non-generic shapes) is flagged by
- * `anti-slop/no-known-value-widening`: a generic mapped-type alias is always
- * treated as a container that can silently swallow the literal evidence in
- * an assigned object. Building and returning each branch's literal directly,
- * omitting an optional key with `...(cond && { key })` instead of a typed
- * draft plus assignment, keeps every branch checked against this function's
- * own `InsightProjection<T>` return type and avoids that widening entirely.
- * `cond && {...}` (a `LogicalExpression`) also isn't the ternary-with-`{}`
- * shape `no-conditional-empty-object-spread` matches: when `cond` is false
- * it spreads `false`, which — like spreading `undefined` or `null` —
- * contributes no properties, so omission behaves identically to the
- * original conditional spread.
+ * Returns each status as a literal checked against `InsightProjection<T>`.
+ * `anti-slop/no-known-value-widening` rejects generic mapped drafts such as
+ * `-readonly [K in keyof InsightProjection<T>]` for possible literal widening.
+ * `...(cond && { key })` omits absent keys by spreading `false`, preserving
+ * omission without the ternary shape banned by
+ * `no-conditional-empty-object-spread`.
  */
 export function projectStoredInsight<T>(
   record: InsightRecord<RetainedInsight<T>> | undefined,

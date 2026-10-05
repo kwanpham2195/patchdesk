@@ -156,13 +156,9 @@ const retainedEnvelopeSchema = v.strictObject({
 });
 
 /**
- * The one parser for a stored `retained` entry. It owns the envelope --
- * run id, revision, timestamp, provenance -- and hands only `value` to the
- * caller's parser, because the retained value's shape belongs to whichever
- * Insight produced it.
- *
- * Every read of a stored Insight goes through here, so no caller has to
- * rebuild the envelope rules or cast an unparsed record back into JSON.
+ * Parses every stored `retained` envelope (run ID, revision, timestamp, and
+ * provenance), then gives only `value` to the producing Insight's parser.
+ * Callers never cast an unparsed record or duplicate the envelope rules.
  */
 export function parseRetainedInsight<T>(
   raw: unknown,

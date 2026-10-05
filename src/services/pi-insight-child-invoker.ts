@@ -102,15 +102,11 @@ export class PiInsightChildInvoker implements InsightInvoker {
   ) {}
 
   /**
-   * Runs one Insight on the built-in runtime.
-   *
-   * Every precondition Pi alone has is checked here rather than in the
-   * composition root, which used to hand-build one object per Insight type and
-   * repeat them: this runtime accepts three reasoning efforts of the app-wide
-   * five, an analysis needs the prepared review input, and the runner reads
-   * whatever paths it is given, so they are parsed before it is spawned. A
-   * rejected request is `execution_failed` because the request was wrong, not
-   * the model's answer.
+   * Runs one Insight on the built-in Pi runtime. Pi accepts low, medium, or
+   * high reasoning. Analysis also requires prepared review input and parsed
+   * paths because the runner reads supplied paths. This invoker owns Pi's
+   * preconditions instead of repeating them in the composition root. Rejected
+   * requests are `execution_failed`, not an invalid model result.
    */
   async invoke(
     input: InsightInvocationInput,

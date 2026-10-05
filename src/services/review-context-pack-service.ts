@@ -64,15 +64,11 @@ const packIdentitySchema = v.looseObject({
 });
 
 /**
- * Builds the Insight context pack (`context.json`, `review-input.md`,
- * `debug.json`) on first use rather than at prepare. Opening a Review no
- * longer pays for comments, checks, and a repository rule sweep the
- * maintainer may never run an Insight against.
- *
- * The pack describes the pull request as of the Insight run, not as of
- * prepare. A local Review has no pull request, so its pack carries no
- * comments or checks and makes no GitHub read (ADR 0050). Crash safety needs
- * no journal: a half-written pack fails `isUsable` and is rebuilt from scratch.
+ * Builds `context.json`, `review-input.md`, and `debug.json` on first Insight
+ * use, avoiding comment, check, and repository-rule reads for Reviews without
+ * a run. Pull request evidence is read when building the pack; local Reviews
+ * carry no comments or checks and make no GitHub read (ADR 0050).
+ * An interrupted pack fails `isUsable` and is rebuilt without a journal.
  */
 export class ReviewContextPackService {
   constructor(
