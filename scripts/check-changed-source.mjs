@@ -28,13 +28,9 @@ const projectRoot = resolve(import.meta.dirname, "..");
  * Two forms, the same split `pnpm knip:ratchet` uses:
  *
  * - `<base> <head>`, two commits, is what the pull request gates run.
- * - `<base>` alone reads the **index** as head, so `pnpm check` sees the work
- *   in hand rather than only what is already committed. Without it, the one
- *   command a developer runs before handing work over would report on the
- *   state before their fix -- a gate answering about the wrong tree looks
- *   exactly like a gate that works. The base is moved to `git merge-base
- *   <base> HEAD` first, so a base branch that has moved on since the branch
- *   started does not read as changes this branch made.
+ * - `<base>` alone reads the **index** as head, so `pnpm check` includes staged
+ *   work. It compares against `git merge-base <base> HEAD`, so changes on a
+ *   base branch that has moved on are not attributed to this branch.
  *
  * @param {{
  *   readonly args: ReadonlyArray<string>;

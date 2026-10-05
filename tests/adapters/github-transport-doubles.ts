@@ -17,17 +17,14 @@ import { err, ok, type Result } from "../../src/domain/result";
 import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 
 /**
- * The doubles the GitHub adapter suites drive now that every request it makes
- * goes over HTTPS (ADR 0046, issue #276). A suite states its expectations
- * against the requests one adapter call produced and the answers it was given,
- * never against a spawned child.
+ * These doubles let GitHub adapter suites assert HTTPS requests and responses
+ * rather than spawned-child behavior (ADR 0046, issue #276).
  */
 
 /**
- * One canned answer: the response bytes GitHub returned, or the failure the
- * transport classified the response into. A body string is parsed for the two
- * JSON seams and handed over unchanged for the text one, the way
- * `GitHubHttpClient` treats it.
+ * A canned answer is either a response body or a transport-classified failure.
+ * JSON endpoints parse body strings; the text endpoint returns them unchanged,
+ * matching `GitHubHttpClient`.
  */
 export type CannedAnswer = string | CommandFailure;
 

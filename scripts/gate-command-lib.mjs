@@ -77,9 +77,8 @@ export async function resolveCommitRef(ref, name, { cwd, run, output }) {
  * breaks the repository check instead. A tool missing from `node_modules` is
  * a setup problem, so it is reported as one.
  *
- * Every gate resolves its tool through here -- the commit gate's oxfmt and
- * oxlint, and the count ratchets' oxlint and knip -- so the message names the
- * gates as a whole rather than any one of them.
+ * The commit gate and count ratchets share this resolver, so its missing-tool
+ * message addresses those gates together.
  *
  * @param {string} name
  * @param {string} cwd

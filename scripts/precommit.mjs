@@ -31,18 +31,11 @@ const SKIPPED_MESSAGE =
 /**
  * What the commit gate does about React Doctor.
  *
- * React Doctor reads `package.json`, and it aborts when that file differs
- * between the index and the working tree. Several agent sessions share this
- * checkout, so the file differing usually means another session staged an
- * edit -- a fact about the checkout, not about this commit. Letting the abort
- * through fails commits for somebody else's reason; ignoring it lets a commit
- * pass while nothing was scanned. So the condition is decided here:
- *
- * - Renderer files staged: fail. The scan that mattered is exactly the one
- *   that cannot run, and the remedy is one `git` command away.
- * - No renderer files staged: skip, and say nothing was scanned. A skip
- *   reported as a skip is honest; a skip reported as a pass is not.
- * - `package.json` agrees: run React Doctor, as before.
+ * React Doctor aborts when `package.json` differs between the index and
+ * working tree, which can reflect another session's edit in this shared
+ * checkout rather than this commit. If renderer files are staged, fail because
+ * the required scan cannot run; otherwise skip and report that no scan ran.
+ * When the file agrees, run React Doctor.
  *
  * @param {{
  *   readonly packageJsonDiffers: boolean;
