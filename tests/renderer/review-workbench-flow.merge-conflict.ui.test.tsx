@@ -9,10 +9,8 @@ import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
 
 /**
- * The Diff tab's merge-conflict notice. A Blocked merge is not the signal --
- * a draft, a stale head, a failing check and a review blocker all report
- * Blocked -- so these cases pin the notice to the `conflicting` blocker, and
- * pin the guidance to resolving the conflict in a local checkout.
+ * The notice requires the `conflicting` blocker because other merge blockers
+ * also report `Blocked`. Its guidance points to resolving conflicts locally.
  */
 
 afterEach(() => {

@@ -39,11 +39,9 @@ const SOURCE_EXTENSIONS = new Set([
  */
 
 /**
- * `head` sentinel meaning "the files as they sit on disk", for a gate that
- * runs before anything is staged (`pnpm gate:preflight`). Every other head is
- * a revision git can resolve, or `""` for the index, and neither can name the
- * working tree. A NUL byte keeps it from ever colliding with a real revision:
- * git refuses one in a ref name.
+ * Sentinel for reading files from disk before staging (`pnpm gate:preflight`).
+ * Other heads name a Git revision or use `""` for the index. Git forbids NUL
+ * in ref names, so this sentinel cannot collide with a revision.
  */
 export const WORKING_TREE = "\u0000worktree";
 
@@ -173,17 +171,10 @@ export async function lintStaged({
 }
 
 /**
- * The revision the staged change is measured against: `HEAD` normally, and
- * git's empty tree when the branch is unborn.
- *
- * A pre-commit hook runs before the commit exists, so on the very first
- * commit in a repository there is no `HEAD` at all -- and no `HEAD~1` either,
- * which is why the gate never asks for one. Resolving to the empty tree makes
- * every staged file read as new (the 500-line new-file limit applies) instead
- * of wedging the first commit on "git could not resolve the base revision".
- *
- * The empty tree's object id is asked of git rather than hard-coded, because
- * a SHA-256 repository has a different one.
+ * Uses `HEAD` as the base, or Git's empty tree for an unborn branch's first
+ * commit. The empty tree makes staged paths new files, subject to the
+ * 500-line limit, instead of failing base resolution. Ask Git for the empty
+ * tree's object ID because SHA-256 repositories use a different ID.
  *
  * @returns {Promise<string | undefined>} `undefined` means git itself failed,
  *   already reported to `output`.

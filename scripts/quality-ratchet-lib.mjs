@@ -76,12 +76,11 @@ const KNIP_RATCHET = {
 };
 
 /**
- * `scripts/**` is plain JavaScript that the root `tsconfig.json` does not
- * include, so `tsconfig.scripts.json` checks it separately under `checkJs`.
- * Turning that on found 131 findings at once, almost all of them implicit
- * `any`, and annotating them is a piece of work of its own -- so this ratchet
- * holds the line meanwhile. See `scripts-typecheck-baseline.json` for what the
- * number is and why it does not start at zero the way the other two do.
+ * The root `tsconfig.json` excludes `scripts/**`, so `tsconfig.scripts.json`
+ * checks it separately with `checkJs`. Enabling it found 131 errors, mostly
+ * implicit `any`; this gate prevents the count from growing while those
+ * errors are addressed. `scripts-typecheck-baseline.json` records the count
+ * and why it is nonzero.
  *
  * @type {RatchetSpec}
  */
@@ -208,16 +207,10 @@ async function runCountRatchet(
  * configuration while the baseline file is absent from the change under test
  * is rejected before the tool is paid for.
  *
- * "Absent from the change" is decided from `changedPaths`, which is the
- * change itself: `git diff --cached --name-only` for the staged shape and
- * `git diff --name-only <base>...<head>` for the commit shape. Asking the
- * change is the only question with an answer that varies. An earlier form
- * asked `git ls-files --stage` / `git ls-tree` whether the baseline was
- * PRESENT, reasoning that "staged unchanged" and "never touched" look alike
- * to git -- but a tracked file is present unconditionally, so that test was
- * true for every change and the gate never fired. It could only reject a
- * change that DELETED the baseline from the repository, which is not what a
- * rule-loosening change does.
+ * Use `changedPaths` from the staged or base-to-head diff to determine whether
+ * the baseline changed. Checking whether the tracked baseline exists cannot
+ * detect a configuration edit without a baseline update; it only detects
+ * deletion.
  *
  * The price of asking the change is that staging the baseline unchanged no
  * longer satisfies the rule, because it leaves no diff entry to see. A

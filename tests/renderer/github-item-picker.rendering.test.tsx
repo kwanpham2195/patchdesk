@@ -14,22 +14,10 @@ import type {
 } from "../../src/renderer/src/renderer-contracts";
 
 /**
- * The rendering contract the three rail pickers share, asserted against each
- * mounted component rather than against `useGithubItemPicker`'s own fixture.
- *
- * `use-github-item-picker.test.ts` proves the state machine *decides*
- * correctly. It cannot prove any picker still *shows* what was decided: it
- * runs on its own `projectReady`/`keyOf`/`describeWriteFailure`, so a picker
- * that stopped rendering `picker.writeError`, dropped GitHub's specific
- * forbidden reason, told a permitted account its writes may be refused, or
- * lost its own `totalCount` projection would leave that suite green. Each
- * promise below is therefore asserted once per picker, from the DOM, through
- * shared primitive and picker-state markers rather than
- * through sentences of copy (AGENTS.md Testing).
- *
- * What is picker-specific — the ten-assignee cap, the reviewer suggestion
- * groups, each surface's own command shape — stays in that picker's own
- * `.ui.test.tsx`.
+ * Checks that each mounted picker renders the shared hook outcomes; the hook
+ * suite owns decision logic and each picker's UI suite owns its specific
+ * behavior. Assert shared outcomes through DOM state markers rather than
+ * sentences of copy.
  */
 
 afterEach(() => cleanup());
