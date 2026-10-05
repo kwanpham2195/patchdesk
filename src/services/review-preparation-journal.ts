@@ -29,12 +29,9 @@ import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 /**
- * `reason` is optional rather than a required discriminant: every
- * pre-existing construction site reports a generic storage failure and the
- * caller already treats those uniformly (`SessionStorageUnavailable`), so
- * forcing them to each name a reason would be a bigger diff for no behavior
- * change. Only `begin()`'s new "a live journal is already there" case needs
- * to be distinguished, so it is the only site that sets `reason`.
+ * `reason` stays optional because callers handle generic storage failures
+ * uniformly. Only `begin()` distinguishes an existing journal with
+ * `journal_exists`.
  */
 export type PreparationJournalFailure = {
   readonly _tag: "PreparationJournalFailed";

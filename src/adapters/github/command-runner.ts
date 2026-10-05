@@ -14,12 +14,9 @@ const FORCE_KILL_AFTER_MS = 2_000;
 export const COMMAND_OUTPUT_CAP_BYTES = 2 * 1024 * 1024;
 
 /**
- * Ambient cancellation for the current request. Threading an explicit
- * `signal` through every service and adapter call site between an HTTP route
- * and its eventual `CommandRunner.runText`/`runJson` call would touch every
- * `GitHubReader` method; this carries the route's `AbortSignal` implicitly
- * across the same async call chain instead. A caller-supplied `signal` on
- * `CommandRequest` always wins over the ambient one (see `runText`/`runJson`).
+ * Carries a route's `AbortSignal` through the async call chain without adding
+ * a signal parameter to every `GitHubReader` method. An explicit
+ * `CommandRequest.signal` takes precedence over this ambient signal.
  */
 export const requestAbortContext = new AsyncLocalStorage<AbortSignal>();
 

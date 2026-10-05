@@ -358,14 +358,11 @@ export class MergeWriteController {
   }
 
   /**
-   * The Analysis Findings this merge must answer for. Without them the gate's
-   * Analysis rules -- the profile's merge policy and the high-severity
-   * acknowledgement -- decide on an empty Finding list and can never fire, so
-   * a merge the Workbench badge blocks would still go through.
-   *
-   * A missing or schema-drifted Insight reads as "no Analysis", exactly as the
-   * Workbench projection reads it, so a corrupt record never silently refuses
-   * a merge. Any other storage failure is reported instead of guessed at.
+   * Loads the Analysis Findings used by the merge gate; omitting them would
+   * bypass the profile's merge policy and high-severity acknowledgement even
+   * when the Workbench blocks the merge. Missing or schema-invalid Analysis
+   * means no Analysis, matching the Workbench; other storage failures are
+   * returned rather than treated as absence.
    */
   private async currentAnalysisFindings(
     profileId: WorkspaceProfileId,

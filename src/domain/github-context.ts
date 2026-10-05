@@ -14,13 +14,9 @@ type DiffLocation = {
 };
 
 /**
- * GitHub's own camo substitutions for the images in one Markdown body, keyed
- * by the URL the author wrote and valued by the URL GitHub serves.
- *
- * An off-site image (a SonarQube badge, say) is refused by the main process's
- * host allow-list, but GitHub already proxies a copy onto
- * `*.githubusercontent.com`, which is allowed — so the renderer fetches the
- * value in place of the key. Read from the comment's `body_html`; see
+ * Maps author-written image URLs to GitHub camo URLs from `body_html`. The
+ * renderer substitutes the allowed `*.githubusercontent.com` proxy because
+ * the main-process host allow-list rejects the original off-site URL. See
  * `extractImageRewrites` in `github-image-rewrites.ts`.
  */
 export type GitHubImageRewrites = Readonly<Record<string, string>>;

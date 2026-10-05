@@ -311,26 +311,12 @@ export class MaintainerInboxService {
   }
 
   /**
-   * Reads one page of the Selected repository's inbox.
-   *
-   * Normalizes the request's filter once — `filter.labels` sorted and
-   * deduplicated (`normalizeInboxLabels`) — and
-   * threads that one value through `decodeInboxPageToken`, `readRepository`,
-   * and `composeInboxSearchQuery`. `cachedOrUnavailable` and `unavailablePage`
-   * take `filter.state` alone, for the reason below.
-   *
-   * Only the wholly unfiltered listing — no labels, no review/check qualifier,
-   * no author or base branch, and no one-click preset — is
-   * ever written to the cache. The cache is keyed by profile and repository
-   * alone, and `cachedOrUnavailable` reads it
-   * back with no label argument at all — so a label-filtered result saved
-   * there would come back later as the repository's whole inbox, three
-   * `label:"bug"` rows presented as everything open. Widening the key to hold
-   * one entry per label combination was rejected in ADR 0031's terms: the
-   * offline value of a label-filtered snapshot does not pay for that many
-   * entries. Refusing to save the filtered read instead keeps
-   * `cachedOrUnavailable` and `unavailablePage` label-blind honestly, because
-   * the only thing they can ever find is the unfiltered listing.
+   * Reads one page using the same normalized filter for token validation and
+   * GitHub search. The cache key has only profile and repository, so cache
+   * fresh, complete first-page results only for an unfiltered open listing.
+   * Otherwise filtered rows could later appear as the full inbox. Separate
+   * entries for filter combinations would add storage without enough offline
+   * value. Cached and unavailable responses therefore take only `filter.state`.
    */
   async list(
     profile: WorkspaceProfileConfig,
