@@ -21,12 +21,10 @@ import type {
 } from "../../services/reviewer-service";
 
 /**
- * Shapes a repository-wide label read directly from `GitHubReadFailure` for
- * `GET /v1/inbox/labels` — this route reads through
- * `github.listRepositoryLabels` directly rather than a service, so there is
- * no review-resolution half to fail outright, unlike `labelListResponse`
- * below. `permission` is omitted: the inbox's label filter is read-only and
- * never resolves it.
+ * Shapes `GET /v1/inbox/labels` from `GitHubReadFailure`, returned directly by
+ * `github.listRepositoryLabels`. Unlike `labelListResponse`, this read has no
+ * review-resolution failure. The read-only inbox filter never resolves
+ * `permission`, so the response omits it.
  */
 export function repositoryLabelListResponse(
   context: Context,
@@ -55,12 +53,10 @@ export function repositoryLabelListResponse(
 }
 
 /**
- * Shapes a repository label listing the same way `GET /v1/inbox` shapes
- * per-repo failure state: a GitHub read failure (auth/rate-limit/forbidden)
- * is data in a 200 response, not an HTTP error, so its specific reason
- * survives to the renderer. Only the review-resolution half — the review
- * itself missing or refused — becomes an HTTP error, mirroring
- * `labelResponse`'s write-path status mapping.
+ * Shapes repository label listings like `GET /v1/inbox`: GitHub read failures
+ * (auth/rate-limit/forbidden) stay in HTTP 200 data so their reasons reach the
+ * renderer. Only missing or refused review resolution becomes an HTTP error,
+ * matching `labelResponse`'s write-path status mapping.
  */
 export function labelListResponse(
   context: Context,
@@ -93,12 +89,10 @@ export function labelListResponse(
 }
 
 /**
- * Shapes an assignable-user listing the same way `labelListResponse` shapes
- * a repository label listing: a GitHub read failure (auth/rate-limit/forbidden)
- * is data in a 200 response, not an HTTP error, so its specific reason
- * survives to the renderer. Only the review-resolution half — the review
- * itself missing or refused — becomes an HTTP error, mirroring
- * `assigneeResponse`'s write-path status mapping.
+ * Shapes assignable-user listings like `labelListResponse`: GitHub read
+ * failures (auth/rate-limit/forbidden) stay in HTTP 200 data so their reasons
+ * reach the renderer. Only missing or refused review resolution becomes an
+ * HTTP error, matching `assigneeResponse`'s write-path status mapping.
  */
 export function assigneeListResponse(
   context: Context,
@@ -131,12 +125,10 @@ export function assigneeListResponse(
 }
 
 /**
- * Shapes a reviewer listing the same way `assigneeListResponse` shapes an
- * assignable-user listing: a GitHub read failure (auth/rate-limit/forbidden)
- * is data in a 200 response, not an HTTP error, so its specific reason
- * survives to the renderer. Only the review-resolution half — the review
- * itself missing or refused — becomes an HTTP error, mirroring
- * `reviewerResponse`'s write-path status mapping.
+ * Shapes reviewer listings like `assigneeListResponse`: GitHub read failures
+ * (auth/rate-limit/forbidden) stay in HTTP 200 data so their reasons reach the
+ * renderer. Only missing or refused review resolution becomes an HTTP error,
+ * matching `reviewerResponse`'s write-path status mapping.
  */
 export function reviewerListResponse(
   context: Context,
