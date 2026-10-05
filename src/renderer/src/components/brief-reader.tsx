@@ -419,23 +419,14 @@ function FlowView({
 }
 
 /**
- * One flattened Flow row: a fixed-width marker column carrying the change
- * (blank for `unchanged`, the same +/− the Ownership tree uses), the row's
- * box-drawing `guide` and label on one truncated line, and a right-hand chip
- * column, so the tree reads straight down however many hunks a step cites.
- * Added and removed rows get the diff-hue tint from `FLOW_CHANGE_MARKS`;
- * unchanged rows are dimmed, untinted, and draw no chips, so the changed
- * steps stand out.
- *
- * Hunk citations on a changed step are best effort: the model keeps a step it
- * added or removed even when it could not place it in the diff. Such a row
- * has zero citations, so it draws with the dimmer `uncited*` variant of its
- * hue and no chip -- a claim the Brief could not verify, shown honestly
- * rather than dropped.
- *
- * A `contract` tree's evidence sits on its root, the exported name, so the
- * root keeps its chips even when unchanged, and its signature and field rows
- * draw no chip and are never marked uncited.
+ * One flattened Flow row has a fixed-width change marker (blank when
+ * unchanged), a box-drawing guide and truncated label, and right-hand citation
+ * chips. Added and removed rows use diff hues; ordinary unchanged rows are
+ * dimmed, untinted and have no chips. A changed step without a surviving hunk
+ * citation remains visible in its dim `uncited*` hue without a chip.
+ * In `contract` trees, evidence belongs to the exported-name root, which
+ * retains its chips even when unchanged. Signature and field rows have no
+ * chips and are never marked uncited.
  */
 function FlowRowView({
   row,

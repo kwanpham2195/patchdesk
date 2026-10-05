@@ -437,15 +437,12 @@ type VisitedTerminalMarker = {
 };
 
 /**
- * The marker a closed or merged row carries, and its dot. Merged takes the
- * primary hue the Pull requests screen already uses for merged, and closed a
- * grey, as GitHub does; neither is an alert, so the words stay muted. "seen" is the
- * whole claim: three of the four writers of `observedAt` stamp Patchdesk's own
- * clock beside the GitHub read, so the age is when Patchdesk saw the state,
- * not when GitHub reached it. The fourth, `ReviewRecoveryService`, dates a
- * merge from GitHub's own `mergedAt`, so a merge reconciled at boot can read
- * older than Patchdesk's sighting of it. Either way the date never moves
- * again: a Terminal record is not observed a second time.
+ * Labels a terminal row and its dot. Merged uses the Pull requests screen's
+ * primary hue; closed uses grey, and neither is an alert. "Seen" dates the
+ * observation, not the state change: most `observedAt` writers use Patchdesk's
+ * clock beside the GitHub read, while `ReviewRecoveryService` dates a merge
+ * from GitHub's `mergedAt`. A terminal record is not observed again, so this
+ * date stays fixed.
  */
 // oxlint-disable-next-line react/only-export-components -- Shared state-marker rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedTerminalMarker(

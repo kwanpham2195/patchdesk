@@ -1,11 +1,9 @@
 /**
- * Centralized single-key navigation guard and jump geometry for the review
- * diff surface. patchdesk has no other single-key global bindings today
- * (only Cmd/Ctrl+K and Cmd/Ctrl+,, both modifier-gated); printable keys like
- * `,`/`.`/`[`/`]`/`{`/`}` need this discipline built once, centrally, rather
- * than re-derived per binding. `{`/`}` (comments, see `adjacentCommentAnchor`
- * below) reuses `shouldIgnoreReviewNavKey` and the same "stop, don't wrap"
- * boundary semantics `adjacentFilePath`/`adjacentHunkAnchor` establish here.
+ * Shared guard and navigation geometry for printable-key bindings on the Diff
+ * surface. Cmd/Ctrl+K and Cmd/Ctrl+, are modifier-gated; `,`, `.`, `[`, `]`,
+ * `{`, and `}` must ignore typing, modifiers, IME composition, and overlays.
+ * Comment navigation also uses this guard and stops at either end like file
+ * and hunk navigation.
  */
 
 import { threadNeedsReply } from "../../domain/github-context";
@@ -23,14 +21,12 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
-/** True when the focused element sits inside an open dialog, alertdialog,
- * popover, menu, or listbox popup. Base UI (this app's primitive layer)
- * renders `role="dialog"` for its Dialog and Popover popups,
- * `role="alertdialog"` for AlertDialog, `role="menu"` for Menu, and
- * `role="listbox"` for Select and Combobox, so these selectors cover every
- * surface the guard names without a component-specific check. Base UI's
- * menu typeahead already swallows printable keys, but modifier chords such
- * as ⌘1–⌘3 and ⌘F still reach the window. */
+/**
+ * True when focus is inside an open overlay. Base UI uses dialog for Dialog
+ * and Popover, alertdialog for AlertDialog, menu for Menu, and listbox for
+ * Select and Combobox. Its menu typeahead swallows printable keys, but
+ * modifier chords such as ⌘1–⌘3 and ⌘F still reach the window.
+ */
 export function focusInsideOverlay(): boolean {
   const active = document.activeElement;
   return (
@@ -408,14 +404,10 @@ function adjacentAnchorById<Anchor extends { readonly id: string }>(
 }
 
 /**
- * The status text a `{`/`}` press reports, covering all three outcomes
- * a press can produce: the diff has no unresolved comments at all, the press
- * landed on one (with a "N of M" position counter -- the point of the
- * counter is answering "am I done yet", not just "where am I"), or the press
- * hit a boundary (which also carries the total, so the boundary reads as a
- * definite ending rather than the silence a bare "already at the last
- * comment" would leave). Pure and DOM-independent so the zero-comment and
- * counter-text cases are unit-testable without a live diff surface.
+ * Builds the `{`/`}` announcement for no unresolved comments, a landed
+ * comment with its N-of-M position, or a boundary with the total count. The
+ * count tells the reviewer whether more comments remain. This pure function
+ * keeps those cases testable without a mounted diff.
  */
 export function commentNavAnnouncement(
   order: ReadonlyArray<CommentAnchor>,
@@ -516,19 +508,11 @@ export function findCommentThreadCard(
 }
 
 /**
- * Moves focus onto the `ConversationThreadCard` for `anchorId` once it
- * exists in the DOM. `{`/`}` navigation calls this right after its scroll
- * resolves, but CodeView can still mount the annotation's portal a frame
- * later (it materializes the portal once the target item's own DOM node is
- * in place), so this polls a bounded number of frames rather than assuming
- * the card is already there. A found card can also still reject `focus()`
- * as a no-op -- the portal can mount mid-layout, a frame before it is
- * actually focusable -- so this verifies against `document.activeElement`
- * and keeps polling rather than trusting a silent, ineffective call.
- * `isStale` is checked before every attempt, including the first, so a
- * superseding press or an unmounted listener stops the poll rather than
- * stealing focus from whatever the user is doing by the time a late frame
- * runs.
+ * Focuses the thread card after navigation. CodeView may mount its annotation
+ * portal a frame after scrolling, and `focus()` may be a no-op before layout
+ * makes the card focusable, so poll for at most `MAX_COMMENT_FOCUS_ATTEMPTS`
+ * frames and verify `document.activeElement`. Check `isStale` before every
+ * attempt so a later keypress or unmount cannot steal focus.
  */
 export function focusCommentThreadCard(
   anchorId: string,

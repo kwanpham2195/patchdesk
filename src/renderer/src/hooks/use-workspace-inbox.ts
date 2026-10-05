@@ -58,21 +58,11 @@ import { sameRepositoryIdentity } from "../../../domain/repository-identity";
 import { ok, type Result } from "../../../domain/result";
 
 /**
- * The Pull requests screen's whole read path: the workspace the renderer has
- * loaded, the request that produced its rows, and every control that changes
- * that request.
- *
- * Two generation counters guard it. `workspaceGeneration` discards a cold
- * start whose profile or inbox read was overtaken by a newer one;
- * `inboxRefreshGeneration` does the same for a refresh, and is also bumped
- * whenever the active profile changes so an in-flight read for the old
- * profile cannot land against the new one. They are carried here unchanged
- * from `app.tsx`; the plan's `useKeyedAsync` (S4c) is meant to replace both,
- * and that helper does not exist yet.
- *
- * The refs and `dispatchWorkspace` are returned because the profile-switch
- * handlers in `app.tsx` still drive them directly. Folding those two handlers
- * into this hook is the next slice's work, not this one's.
+ * Owns the Pull requests screen's workspace load, inbox request and filters.
+ * `workspaceGeneration` rejects stale profile and bootstrap reads;
+ * `inboxRefreshGeneration` rejects stale refreshes and is invalidated on
+ * profile changes. Profile-switch handlers in `app.tsx` still use the
+ * returned refs and `dispatchWorkspace` directly.
  */
 export type WorkspaceInbox = {
   readonly profiles: ReadonlyArray<Profile>;

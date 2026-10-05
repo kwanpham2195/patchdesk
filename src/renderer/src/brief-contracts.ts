@@ -9,13 +9,10 @@ import { insightFields, retainedInsightFields } from "./insight-contracts";
 const BRIEF_ALIAS_SYNTAX = /^[hdc][1-9]\d*$/;
 
 /**
- * The renderer's view of one retained Brief.
- *
- * It mirrors `storedBriefSchema` in `src/domain/brief.ts`: a Brief is retained
- * with its citation labels already resolved, so the renderer reads labels, not
- * patch coordinates. A citation `path` is display text here (the chip's file
- * name); the main process is where it passed `parseRepoRelativePath`, and
- * nothing in the reader resolves it against the diff.
+ * Renderer view of `storedBriefSchema` in `src/domain/brief.ts`. The main
+ * process stores resolved citation labels and validates paths with
+ * `parseRepoRelativePath`; here, `path` is display text for a chip, not a
+ * patch coordinate, and is never resolved against the diff.
  */
 const briefCitationSchema = v.strictObject({
   alias: v.pipe(v.string(), v.minLength(1), v.maxLength(16)),
@@ -136,13 +133,11 @@ type BriefFlowNodeEntry = {
 };
 
 /**
- * Builds one level of the Flow node schema, the same way the main process
- * bounds it (`flowNodeSchema` in `src/domain/brief-flow.ts`): `childSchema`
- * validates the nodes one level deeper, and `v.never()` at the deepest level
- * forces `children` to be empty there. `safeParse` against the concrete
- * `briefFlowNodeSchema` built below is bounded to three levels at runtime,
- * with no `v.lazy` self-reference and no cycle a JSON-schema conversion
- * would need `$ref`/`$defs` for.
+ * Builds one Flow-node schema level, matching `flowNodeSchema` in
+ * `src/domain/brief-flow.ts`. Each level validates children with the next
+ * schema; `v.never()` makes the leaf's children empty. The root counts as
+ * level one, so `briefFlowNodeSchema` validates at most three levels without
+ * a `v.lazy` cycle requiring `$ref`/`$defs` in JSON Schema.
  */
 function flowNodeSchema<ChildSchema extends v.GenericSchema>(
   childSchema: ChildSchema,

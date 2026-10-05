@@ -1,26 +1,14 @@
 /**
- * Escapes a file path for interpolation into a double-quoted CSS
- * attribute-selector string, e.g. `[data-item-path="<escaped>"]`.
+ * Escapes an untrusted PR filename for a double-quoted CSS attribute selector.
+ * Quotes and backslashes are escaped; C0 and DEL controls use CSS hex escapes
+ * so they cannot end the string or inject CSS into the shadow root. The space
+ * after each hex escape is mandatory: it terminates the escape before a
+ * following hex digit or literal space.
  *
- * File paths are attacker-controllable content (a PR author picks its own
- * filenames), so without escaping, a path containing `"`, `\`, or a newline
- * could break out of the selector string and inject arbitrary CSS into the
- * shadow root. Backslash and the quote character are backslash-escaped;
- * every other C0 control character (newline included) is emitted as a CSS
- * hex escape, which keeps the result a single valid CSS string token
- * regardless of what the path contains. The trailing space after each hex
- * escape is mandatory, not cosmetic: it is the escape's terminator, so a
- * control character immediately followed by a literal hex digit (or by a
- * literal space) can never be misread as part of the hex sequence.
- *
- * A NUL byte (0x00) hex-escapes to `\0`, which a CSS parser decodes back to
- * U+FFFD (the replacement character), not U+0000
- * (https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point) -- so a
- * NUL-containing path would not match its own generated selector. This is
- * not exploitable (the mismatch stays inside the string; nothing escapes
- * the selector), and filesystems reject NUL in paths anyway, so it is left
- * as-is rather than special-cased. Noted here only so a future "fix" to
- * this function does not reintroduce something worse trying to "correct" it.
+ * A NUL hex-escapes to `\0`, which CSS decodes to U+FFFD rather than U+0000.
+ * Its selector would not match, but remains a single string token; filesystems
+ * reject NUL paths, so do not weaken escaping to special-case it.
+ * https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point
  */
 export function escapeCssAttributeValue(value: string): string {
   let result = "";
@@ -68,23 +56,17 @@ export const FLATTENED_PATH_TREE_STYLE = [
 ].join(" ");
 
 /**
- * Truncates a file name's stem from the start instead of the end, so
- * `sidebar-variant-a-tree.tsx` reads `…variant-a-tree.tsx`.
+ * Truncates the filename stem from the start: `sidebar-variant-a-tree.tsx`
+ * reads `…variant-a-tree.tsx`, unlike the library's middle split at the
+ * extension, which makes sibling names look alike. The trailing LRM keeps the
+ * stem's final `.` on the right of the RTL box; the hidden measured copy also
+ * gets it so kerning yields the same width.
  *
- * The library hard-codes a middle truncation split at the extension, which
- * shows the stem's shared prefix and turns sibling files into identical
- * `sidebar-variant…tsx` rows. The trailing LRM keeps the stem's final `.` on
- * the right inside the RTL box. The hidden copy the library measures overflow
- * with gets it too, so kerning gives both copies the same width.
- *
- * The maintainer wants every truncated name's "…" at the same left edge and
- * no cut or faded letter beside it (#448, decided 2026-09-27). Chromium's
- * `text-overflow` drops whole glyphs but draws its ellipsis against the text,
- * away from the edge. So the box keeps `text-overflow` for the whole-glyph cut
- * with its own ellipsis transparent (the ellipsis takes the box's style, the
- * name its inline element's), and the library's marker, shown only while the
- * name overflows, draws the "…" at the left edge. A gap under one letter wide
- * can remain between the "…" and the name.
+ * #448 requires an edge-aligned ellipsis with no cut or faded letter.
+ * Chromium's `text-overflow` cuts whole glyphs but places its ellipsis beside
+ * the text. The box's native ellipsis is transparent while the name's inline
+ * element retains its color; the library's overflow-only marker draws "…" at
+ * the left edge. A gap smaller than one letter may remain.
  */
 export const FILE_NAME_TREE_STYLE = [
   `[data-truncate-segment-priority="2"] { --truncate-marker-fade-width: 0px; --truncate-middle-marker-opacity: 100%; }`,

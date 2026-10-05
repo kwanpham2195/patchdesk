@@ -91,21 +91,14 @@ export function resolveInboxRepository(
 }
 
 /**
- * Builds the next inbox request from the current one. Each caller states only
- * what it changes; every field it does not name carries over, and the page
- * cursor resets — a cursor minted under a different repository, state, page
- * size, label, review, check, author, or base-branch filter belongs to a
- * different GitHub search and is rejected as `invalid_page`, so carrying one
- * forward could only produce a failed read. The two paging callers are the
- * exception and name `pageToken` and
- * `previousPageTokens` themselves.
- *
- * `repository` is honoured by key presence rather than by value: passing
- * `{ repository: undefined }` clears it, which the bootstrap request and an
- * emptied watchlist both need, while omitting the key keeps the current one.
- * The five optional filters — `preset`, `reviewState`, `checkStatus`,
- * `author`, and `baseBranch` — are honoured the same way, so each can be
- * cleared explicitly.
+ * Applies named changes and carries over other request fields. A fresh search
+ * resets the page cursor because GitHub rejects a cursor from a different
+ * repository, state, page size, label, preset, review, check, author, or base
+ * query as `invalid_page`; paging callers supply their cursor fields explicitly.
+ * Repository and optional filter keys (`preset`, `reviewState`, `checkStatus`,
+ * `author`, `baseBranch`) use own-property presence: explicit `undefined`
+ * clears them, while an omitted key preserves the current value. This also
+ * lets bootstrap and an empty watchlist clear the repository.
  */
 export function nextInboxRequest(
   current: InboxRequestState,

@@ -30,13 +30,11 @@ const POOL_OPTIONS: WorkerPoolOptions = {
 };
 
 /**
- * Read at mount rather than declared as a module constant: the pool is a
- * process-wide singleton built from the options of whichever provider mounts
- * first, and it starts resolving its theme in its own constructor. Seeding
- * `theme` from the saved preference means the very first highlight is already
- * on the user's theme instead of Pierre's default; `useDiffWorkerPoolTheme`
- * carries every later change, since the singleton ignores options passed by
- * subsequent mounts.
+ * Read preferences when the provider mounts: Pierre's process-wide pool uses
+ * the first provider's options and starts resolving its theme in its
+ * constructor. This seeds the first highlight with the saved theme;
+ * `useDiffWorkerPoolTheme` applies later changes because subsequent mounts'
+ * options are ignored.
  */
 function highlighterOptions(): WorkerInitializationRenderOptions {
   return {

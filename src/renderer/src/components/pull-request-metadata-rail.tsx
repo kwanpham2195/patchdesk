@@ -427,20 +427,13 @@ function ReviewersSection({
 }
 
 /**
- * The Assignees section: the pull request's current assignees (each
- * rendered with their GitHub avatar when one resolved, otherwise an
- * initials badge) or, when nobody is assigned, a plain empty state plus a
- * one-click self-assign shortcut. Unlike `LabelPicker` (which fetches only
- * once its own popover opens), this section fetches the real
- * GitHub-evidenced assign permission itself, once on mount and again
- * whenever the workbench re-baselines (`refreshedAt` changes) — the
- * self-assign shortcut's visibility depends on that permission before the
- * picker is ever opened, and detection must never poll on its own. That same
- * fetch doubles as the source of each assignee's avatar: `assignees` itself
- * is only bare logins (`model.pullRequest.assignees`), so this section
- * matches each one against the candidate list's resolved `avatarDataUri` by
- * login (`avatarDataUriByLoginFrom`) — a login absent from that list (or
- * whose avatar never resolved) simply falls back to the initials badge.
+ * Shows current assignees with resolved avatars or initials, and an empty
+ * state with self-assign when nobody is assigned. Unlike `LabelPicker`, this
+ * section reads GitHub-evidenced assign permission on mount and when
+ * `refreshedAt` changes because self-assign visibility depends on it before
+ * the picker opens; it does not poll. The same candidate-list read supplies
+ * avatars, matched by login to the bare `model.pullRequest.assignees` through
+ * `avatarDataUriByLoginFrom`. Missing avatar data falls back to initials.
  */
 function AssigneesSection({
   assignees,
