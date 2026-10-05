@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   FakeGitHubAdapter,
   type FakeGitHubAdapterValues,
-} from "../../src/adapters/github/fake-github-adapter";
-import { BaseBranchService } from "../../src/services/base-branch-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/adapters/github/fake-github-adapter";
+import { BaseBranchService } from "#src/services/base-branch-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { makeReviewWriteOperations } from "./pull-request-metadata-fixtures";
 import { now, profileId, reviewId, values } from "./review-invariant-fixtures";
 import { confirmedWriteJournal, freshGate } from "./write-invariant-harness";

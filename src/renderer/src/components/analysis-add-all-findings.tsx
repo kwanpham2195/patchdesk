@@ -1,11 +1,11 @@
 import { useState } from "react";
 
-import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
+import type { AddAllFindingsControls } from "#src/renderer/src/flows/use-add-all-findings";
 import {
   findingLocation,
   type AnalysisFindingStatus,
   type AnalysisResult,
-} from "../analysis-headline";
+} from "#src/renderer/src/analysis-headline";
 import {
   AlertDialog,
   AlertDialogAction,

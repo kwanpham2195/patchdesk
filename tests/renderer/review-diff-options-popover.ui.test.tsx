@@ -5,9 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
-import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
+import { ReviewDiffView } from "#src/renderer/src/components/review-diff-view";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "#src/renderer/src/review-view-preferences";
 
 afterEach(cleanup);
 

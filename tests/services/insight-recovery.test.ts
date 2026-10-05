@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { InsightStore } from "../../src/adapters/storage/insight-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import type { ReviewStore } from "../../src/adapters/storage/review-store";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   createReviewSessionId,
   parseContentHash,
@@ -19,17 +19,17 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type ReviewId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import type {
   InsightRecord,
   InsightType,
   RetainedInsightEnvelope,
-} from "../../src/domain/insight-record";
-import { createReview, type ReviewIdentity } from "../../src/domain/review";
-import { err, ok, type Result } from "../../src/domain/result";
-import { InsightRecovery } from "../../src/services/insight-recovery";
-import type { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/insight-record";
+import { createReview, type ReviewIdentity } from "#src/domain/review";
+import { err, ok, type Result } from "#src/domain/result";
+import { InsightRecovery } from "#src/services/insight-recovery";
+import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
 type ListResult = Awaited<ReturnType<ReviewStore["list"]>>;
 type InsightLoadResult = Awaited<ReturnType<InsightStore["load"]>>;

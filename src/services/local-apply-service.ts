@@ -1,31 +1,31 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { LocalApplyOperationStore } from "#src/adapters/storage/local-apply-operation-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type {
   FindingId,
   InsightRunId,
   IsoTimestamp,
   ReviewId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   decideLocalApplyRecovery,
   type LocalApplyOperation,
   type LocalApplyRecoveryDecision,
-} from "../domain/local-apply-operation";
-import { definedProps } from "../domain/defined-props";
-import type { LocalPatchView } from "../domain/local-patch-view";
-import { err, ok, type Result } from "../domain/result";
-import { isLocalReview, type Review } from "../domain/review";
+} from "#src/domain/local-apply-operation";
+import { definedProps } from "#src/domain/defined-props";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview, type Review } from "#src/domain/review";
 import {
   reopenLocalSourceRequest,
   type LocalReviewSource,
-} from "../domain/review-source";
+} from "#src/domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import { resolveCheckoutRoot } from "./local-apply-checkout";
 import {

@@ -1,10 +1,10 @@
 import type {
   GitHubReader,
   GitHubReviewWriter,
-} from "../adapters/github/github-adapter";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import type { GitHubReviewCoordinates } from "../domain/patch";
+} from "#src/adapters/github/github-adapter";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import type { GitHubReviewCoordinates } from "#src/domain/patch";
 import {
   parseGitHubLogin,
   parseGitHubReviewCommentId,
@@ -13,24 +13,24 @@ import {
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   requireCurrentHead,
   type ReviewWriteExpectation,
   type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
-import type { GitHubWriteFailure } from "../domain/github-write";
-import type { RefusalCause } from "../domain/github-write-refusal";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
   type ReviewWriteIntent,
   type ReviewWriteOperation,
-} from "../domain/review-write-operation";
-import { err, ok, type Result } from "../domain/result";
-import type { PullRequestRef } from "../domain/pull-request";
+} from "#src/domain/review-write-operation";
+import { err, ok, type Result } from "#src/domain/result";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   postDesktopNotification,
   type DesktopNotifier,

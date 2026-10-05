@@ -10,21 +10,21 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   parseGitShaPrefix,
   parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { ok } from "../../src/domain/result";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { LocalCheckoutChangeDetector } from "../../src/services/local-checkout-change-detector";
-import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
-import type { GitReadExecutor } from "../../src/services/review-worktree-service";
+} from "#src/domain/ids";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { ok } from "#src/domain/result";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { LocalCheckoutChangeDetector } from "#src/services/local-checkout-change-detector";
+import { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
+import type { GitReadExecutor } from "#src/services/review-worktree-service";
 import {
   cleanupLocalApplyRoots,
   git,

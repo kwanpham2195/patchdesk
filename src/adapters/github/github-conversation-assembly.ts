@@ -3,8 +3,8 @@ import type {
   ConversationEntry,
   GitHubComments,
   GitHubPublishedFeedback,
-} from "../../domain/github-context";
-import { casesHandled } from "../../domain/result";
+} from "#src/domain/github-context";
+import { casesHandled } from "#src/domain/result";
 
 /**
  * Orders one Conversation timeline: every published review summary, every

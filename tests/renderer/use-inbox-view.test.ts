@@ -2,11 +2,11 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useInboxView } from "../../src/renderer/src/hooks/use-inbox-view";
+import { useInboxView } from "#src/renderer/src/hooks/use-inbox-view";
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
-} from "../../src/renderer/src/inbox-view-preferences";
+} from "#src/renderer/src/inbox-view-preferences";
 
 const profileId = "acme";
 

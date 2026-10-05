@@ -1,8 +1,8 @@
-import { definedProps } from "../../../domain/defined-props";
-import type { CheckSummary } from "../../../domain/github-context";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import { workbenchPullRequestNumber } from "../review-source";
+import { definedProps } from "#src/domain/defined-props";
+import type { CheckSummary } from "#src/domain/github-context";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { workbenchPullRequestNumber } from "#src/renderer/src/review-source";
 import type { CanonicalReviewOverview } from "./pr-overview-sheet";
 import type { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 import type { ReviewWorkbenchActions } from "./review-workbench";

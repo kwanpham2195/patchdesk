@@ -1,7 +1,7 @@
 import {
   analysisRanAgainstChangeIntent,
   type ChangeIntentSetting,
-} from "../../domain/change-intent";
+} from "#src/domain/change-intent";
 import { isApiErrorCode } from "./api-client";
 import type { WorkbenchResponse } from "./renderer-contracts";
 

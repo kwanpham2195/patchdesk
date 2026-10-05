@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ReviewInspector } from "../../src/services/review-inspector";
+import { ReviewInspector } from "#src/services/review-inspector";
 
 describe("ReviewInspector", () => {
   it("allows narrow worktree reads and records only bounded telemetry counters", async () => {

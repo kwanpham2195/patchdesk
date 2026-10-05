@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 
-import type { ResolvedAppearance } from "../appearance-preferences";
+import type { ResolvedAppearance } from "#src/renderer/src/appearance-preferences";
 import {
   loadDiffThemePreferences,
   parseDiffThemePreferences,
   type DiffThemePreferences,
-} from "../diff-theme-preferences";
+} from "#src/renderer/src/diff-theme-preferences";
 
 type DiffAppearanceTheme = {
   readonly appearance: ResolvedAppearance;

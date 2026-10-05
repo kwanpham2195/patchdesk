@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
-import { parseReviewWriteOperation } from "../../src/domain/review-write-operation";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { parseReviewWriteOperation } from "#src/domain/review-write-operation";
 import {
   reviewWriteIntents,
   storedReviewWriteOperation,
-} from "../domain/review-write-operation-fixture";
+} from "#tests/domain/review-write-operation-fixture";
 
 let root: string | undefined;
 afterEach(async () => {

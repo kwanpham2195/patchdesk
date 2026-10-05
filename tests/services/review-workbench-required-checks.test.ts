@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { mergePullRequest } from "../../src/services/merge-service";
+import { mergePullRequest } from "#src/services/merge-service";
 import {
   at,
   fixture,

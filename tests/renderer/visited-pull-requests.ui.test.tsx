@@ -11,18 +11,18 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { definedProps } from "../../src/domain/defined-props";
-import type { RawJsonValue } from "../../src/domain/json";
-import type { AppDestination } from "../../src/renderer/src/routes";
+import { definedProps } from "#src/domain/defined-props";
+import type { RawJsonValue } from "#src/domain/json";
+import type { AppDestination } from "#src/renderer/src/routes";
 import {
   VisitedPullRequests,
   visitedDateGroupLabel,
   visitedRowLabels,
   visitedTerminalMarker,
-} from "../../src/renderer/src/components/visited-pull-requests";
-import { useVisitedPullRequestRows } from "../../src/renderer/src/hooks/use-visited-pull-request-rows";
-import type { SidebarLocalRepositoryRow } from "../../src/renderer/src/sidebar-contracts";
-import { formatExactTime } from "../../src/renderer/src/lib/relative-time";
+} from "#src/renderer/src/components/visited-pull-requests";
+import { useVisitedPullRequestRows } from "#src/renderer/src/hooks/use-visited-pull-request-rows";
+import type { SidebarLocalRepositoryRow } from "#src/renderer/src/sidebar-contracts";
+import { formatExactTime } from "#src/renderer/src/lib/relative-time";
 import {
   installDesktopDouble,
   success,

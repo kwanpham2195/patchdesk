@@ -3,9 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   parsePullRequestRef,
   type PullRequestRef,
-} from "../../../domain/pull-request";
-import type { ReviewWorkbenchInitialState } from "../components/review-workbench-contracts";
-import { destinationKey, type AppDestination } from "../routes";
+} from "#src/domain/pull-request";
+import type { ReviewWorkbenchInitialState } from "#src/renderer/src/components/review-workbench-contracts";
+import { destinationKey, type AppDestination } from "#src/renderer/src/routes";
 import type { NavigationState } from "./use-app-navigation";
 import { useLatestCommitted } from "./use-latest-committed";
 

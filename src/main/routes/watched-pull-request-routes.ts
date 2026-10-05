@@ -13,15 +13,15 @@ import {
 import {
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
-import type { RawJsonValue } from "../../domain/json";
+} from "#src/domain/ids";
+import type { RawJsonValue } from "#src/domain/json";
 import {
   parsePullRequestRef,
   type PullRequestRef,
-} from "../../domain/pull-request";
-import { casesHandled, type Result } from "../../domain/result";
-import type { WatchedPullRequestFailure } from "../../services/watched-pull-request-service";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/domain/pull-request";
+import { casesHandled, type Result } from "#src/domain/result";
+import type { WatchedPullRequestFailure } from "#src/services/watched-pull-request-service";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { jsonBody } from "./json-body";
 
 const watchedPullRequestCommandSchema = strictObject({

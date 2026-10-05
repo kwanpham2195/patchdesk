@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveWorkspaceProfileId } from "../../src/domain/ids";
+import { deriveWorkspaceProfileId } from "#src/domain/ids";
 
 const noneTaken: ReadonlySet<string> = new Set();
 

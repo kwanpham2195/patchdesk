@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FileChangeCounts } from "../../src/renderer/src/components/review-diff-file-header";
+import { FileChangeCounts } from "#src/renderer/src/components/review-diff-file-header";
 
 afterEach(cleanup);
 

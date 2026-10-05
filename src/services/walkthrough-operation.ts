@@ -1,12 +1,12 @@
 import * as v from "valibot";
 
-import { insightOutputGuidance } from "../domain/insight-output-guidance";
+import { insightOutputGuidance } from "#src/domain/insight-output-guidance";
 import {
   INSIGHT_LANGUAGES,
   type InsightLanguage,
-} from "../domain/insight-provider";
-import { narrativeHunkManifest } from "../domain/narrative-walkthrough";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/insight-provider";
+import { narrativeHunkManifest } from "#src/domain/narrative-walkthrough";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   readBoundedArtifact,
   type BoundedArtifactReadError,

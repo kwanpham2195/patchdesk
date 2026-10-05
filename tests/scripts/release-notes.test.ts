@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractReleaseNotes } from "../../scripts/release-notes.mjs";
+import { extractReleaseNotes } from "#scripts/release-notes.mjs";
 
 const changelog = [
   "# Changelog",

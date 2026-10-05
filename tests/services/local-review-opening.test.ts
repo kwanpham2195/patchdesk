@@ -17,16 +17,16 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { InsightStore } from "../../src/adapters/storage/insight-store";
-import { LocalApplyOperationStore } from "../../src/adapters/storage/local-apply-operation-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
-import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { LocalApplyOperationStore } from "#src/adapters/storage/local-apply-operation-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import {
   parseAbsolutePath,
   parseGitHubHost,
@@ -39,25 +39,25 @@ import {
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { LocalReviewOpening } from "../../src/services/local-review-opening";
-import { LocalReviewRevisionService } from "../../src/services/local-review-revision-service";
-import { LocalReviewSessionPreparation } from "../../src/services/local-review-session-preparation";
-import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { LocalReviewSourceRequest } from "#src/domain/review-source";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { LocalReviewOpening } from "#src/services/local-review-opening";
+import { LocalReviewRevisionService } from "#src/services/local-review-revision-service";
+import { LocalReviewSessionPreparation } from "#src/services/local-review-session-preparation";
+import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
 import type {
   UntrackedFileSize,
   UntrackedLimits,
-} from "../../src/services/local-untracked-size";
+} from "#src/services/local-untracked-size";
 import {
   ReviewWorktreeService,
   type GitReadExecutor,
-} from "../../src/services/review-worktree-service";
+} from "#src/services/review-worktree-service";
 
 const roots: string[] = [];
 const now = value(parseIsoTimestamp("2026-09-25T00:00:00.000Z"));

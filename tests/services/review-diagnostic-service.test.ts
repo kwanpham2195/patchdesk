@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { parseIsoTimestamp } from "../../src/domain/ids";
-import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { parseIsoTimestamp } from "#src/domain/ids";
+import { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 
 // SAFETY: This literal is a well-formed WorkspaceProfileId fixture.
 const profileId = "acme" as never;

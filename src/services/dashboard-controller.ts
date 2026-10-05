@@ -1,14 +1,14 @@
 import * as v from "valibot";
 
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import { CommandRunner } from "../adapters/github/command-runner";
-import { systemNow } from "../adapters/process/system-clock";
-import { InsightStore } from "../adapters/storage/insight-store";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import { MaintainerInboxCacheStore } from "../adapters/storage/maintainer-inbox-cache-store";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import { ReviewStore } from "../adapters/storage/review-store";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { systemNow } from "#src/adapters/process/system-clock";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import { MaintainerInboxCacheStore } from "#src/adapters/storage/maintainer-inbox-cache-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   deriveWorkspaceProfileId,
   parseAbsolutePath,
@@ -19,18 +19,18 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   parsePatchdeskSettingsPatch,
   type PatchdeskConfigFile,
-} from "../domain/contracts";
-import type { InboxPageRequest } from "../domain/maintainer-inbox";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/contracts";
+import type { InboxPageRequest } from "#src/domain/maintainer-inbox";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   WatchedRepoConfig,
   WorkspaceProfileConfig,
-} from "../domain/workspace-profile";
-import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/workspace-profile";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   MaintainerInboxService,
   type InboxInsightReadinessRequest,
@@ -47,7 +47,7 @@ import {
   removeWatchedRepo,
   updateWatchedRepoPath,
 } from "./profile-service";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
 import { chosenRepositoryCheckout } from "./local-checkout";
 import type { GitReadExecutor } from "./review-worktree-service";

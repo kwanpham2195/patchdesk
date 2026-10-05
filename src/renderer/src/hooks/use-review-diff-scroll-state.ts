@@ -15,8 +15,8 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
   activeFilePathAtScrollTop,
   type ActiveFileViewport,
-} from "../review-diff-active-file";
-import { materializeAndScrollTo } from "../review-diff-materialize-and-scroll";
+} from "#src/renderer/src/review-diff-active-file";
+import { materializeAndScrollTo } from "#src/renderer/src/review-diff-materialize-and-scroll";
 import { useLatestCommitted } from "./use-latest-committed";
 import { useReviewDiffQaScrollDiagnostics } from "./use-review-diff-qa-scroll-diagnostics";
 import { useScrollSettledValue } from "./use-scroll-settled-value";

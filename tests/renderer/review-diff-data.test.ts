@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
 
 describe("parseReviewDiff", () => {
   it("derives immutable per-file totals from additions, deletions, renames, and binary files", () => {

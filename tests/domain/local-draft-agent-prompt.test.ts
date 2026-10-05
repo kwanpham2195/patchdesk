@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { definedProps } from "../../src/domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseFindingId,
   parseInsightRunId,
@@ -8,13 +8,10 @@ import {
   parseLocalNoteId,
   parseRepoRelativePath,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import type {
-  FindingDraft,
-  MaintainerNote,
-} from "../../src/domain/local-draft";
-import { renderLocalDraftsAsAgentPrompt } from "../../src/domain/local-draft-agent-prompt";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { FindingDraft, MaintainerNote } from "#src/domain/local-draft";
+import { renderLocalDraftsAsAgentPrompt } from "#src/domain/local-draft-agent-prompt";
+import type { Result } from "#src/domain/result";
 
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("test fixture failed");

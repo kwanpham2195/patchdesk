@@ -1,9 +1,9 @@
-import type { GitHubReader } from "../../src/adapters/github/github-adapter";
-import { ReviewRefreshService } from "../../src/services/review-refresh-service";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import { ReviewRefreshService } from "#src/services/review-refresh-service";
 import {
   hashSnapshot,
   type ReviewRemoteSnapshot,
-} from "../../src/adapters/storage/review-remote-store";
+} from "#src/adapters/storage/review-remote-store";
 import {
   createReview,
   isPullRequestReview,
@@ -11,16 +11,16 @@ import {
   serializeReview,
   type PullRequestReview,
   type PullRequestReviewIdentity,
-} from "../../src/domain/review";
+} from "#src/domain/review";
 import type {
   MergePolicySnapshot,
   PullRequestSummary,
-} from "../../src/domain/github-context";
+} from "#src/domain/github-context";
 import {
   createReviewSession,
   isPullRequestReviewSession,
   type PullRequestReviewSession,
-} from "../../src/domain/review-session";
+} from "#src/domain/review-session";
 import {
   parseAbsolutePath,
   parseContentHash,
@@ -36,13 +36,13 @@ import {
   type IsoTimestamp,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import type { ReviewRefreshDependencies } from "../../src/services/review-refresh-service";
-import type { PrepareReviewSessionFailure } from "../../src/services/review-session-preparation";
-import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ReviewRefreshDependencies } from "#src/services/review-refresh-service";
+import type { PrepareReviewSessionFailure } from "#src/services/review-session-preparation";
+import type { ReviewWorkbenchProjection } from "#src/services/review-workbench-projection";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
 type PendingReviewReconcileResult = Awaited<
   ReturnType<

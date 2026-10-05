@@ -4,12 +4,12 @@ import type {
   IsoTimestamp,
   ReviewId,
   WorkspaceProfileId,
-} from "../../domain/ids";
-import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
-import { KeyedMutex } from "../../domain/keyed-mutex";
-import { mapConcurrent } from "../../domain/map-concurrent";
-import { err, ok, type Result } from "../../domain/result";
-import { parseReview, serializeReview, type Review } from "../../domain/review";
+} from "#src/domain/ids";
+import { parseReviewId, parseWorkspaceProfileId } from "#src/domain/ids";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
+import { parseReview, serializeReview, type Review } from "#src/domain/review";
 import {
   isNotFound,
   readJsonFile,

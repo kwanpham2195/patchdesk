@@ -1,19 +1,19 @@
 import { readFile, realpath } from "node:fs/promises";
 
-import type { AgentExplanation } from "../domain/agent-explanation";
-import type { ReviewAnchorFingerprint } from "../domain/diff-anchor";
-import type { RepoRelativePath } from "../domain/ids";
-import type { LocalDraft } from "../domain/local-draft";
+import type { AgentExplanation } from "#src/domain/agent-explanation";
+import type { ReviewAnchorFingerprint } from "#src/domain/diff-anchor";
+import type { RepoRelativePath } from "#src/domain/ids";
+import type { LocalDraft } from "#src/domain/local-draft";
 import {
   carryAgentExplanation,
   carryLocalDraft,
   type LocalDraftCarryTarget,
-} from "../domain/local-draft-carry";
+} from "#src/domain/local-draft-carry";
 import type {
   LocalPatchView,
   StoredLocalPatchView,
-} from "../domain/local-patch-view";
-import type { LocalReviewSession } from "../domain/review-session";
+} from "#src/domain/local-patch-view";
+import type { LocalReviewSession } from "#src/domain/review-session";
 import { readCheckoutFile } from "./local-apply-checkout";
 import type { LocalReviewSessionPreparation } from "./local-review-session-preparation";
 

@@ -2,12 +2,12 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { pending, projection } from "./review-workbench-fixtures";
-import { ReviewWorkbenchHeader } from "../../src/renderer/src/components/review-workbench-header";
-import { revisionFreshnessLabel } from "../../src/renderer/src/rail-freshness";
+import { ReviewWorkbenchHeader } from "#src/renderer/src/components/review-workbench-header";
+import { revisionFreshnessLabel } from "#src/renderer/src/rail-freshness";
 
 function mount(workbench: WorkbenchResponse): HTMLElement {
   bridge(async () => ({ updatesAvailable: false }));

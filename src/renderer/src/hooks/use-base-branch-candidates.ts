@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { BaseBranchListResponse } from "../base-branch-contracts";
+import type { BaseBranchListResponse } from "#src/renderer/src/base-branch-contracts";
 import {
   projectReadState,
   type GithubListReadState,
-} from "../github-read-failure-copy";
+} from "#src/renderer/src/github-read-failure-copy";
 import { SEARCH_DEBOUNCE_MS } from "./use-github-item-picker";
 
 /** What a ready base-branch read carries on top of the shared permission. */

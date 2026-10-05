@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { projectAnalysisReviewActions } from "../../src/domain/analysis-review-actions";
-import type { GitHubConversationThread } from "../../src/domain/github-context";
+import { projectAnalysisReviewActions } from "#src/domain/analysis-review-actions";
+import type { GitHubConversationThread } from "#src/domain/github-context";
 
 const headSha = "a".repeat(40);
 const patchHash = "b".repeat(64);

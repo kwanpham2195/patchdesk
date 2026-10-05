@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { countLines } from "../../scripts/file-growth-lib.mjs";
-import { checkFileSizes } from "../../scripts/lint-staged-lib.mjs";
+import { countLines } from "#scripts/file-growth-lib.mjs";
+import { checkFileSizes } from "#scripts/lint-staged-lib.mjs";
 
 type CommandResult = {
   readonly status: number | null;

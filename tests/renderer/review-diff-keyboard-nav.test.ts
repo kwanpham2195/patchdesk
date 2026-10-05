@@ -14,7 +14,7 @@ import {
   type CommentAnchor,
   type CommentOrderItem,
   type HunkAnchor,
-} from "../../src/renderer/src/review-diff-keyboard-nav";
+} from "#src/renderer/src/review-diff-keyboard-nav";
 
 function keyEvent(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
   const base: Partial<KeyboardEvent> = {

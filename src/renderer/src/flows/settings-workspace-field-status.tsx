@@ -1,4 +1,7 @@
-import { FieldDescription, FieldError } from "../components/ui/field";
+import {
+  FieldDescription,
+  FieldError,
+} from "#src/renderer/src/components/ui/field";
 import type { FieldStatus } from "./settings-workspace-profile-editor";
 
 /**

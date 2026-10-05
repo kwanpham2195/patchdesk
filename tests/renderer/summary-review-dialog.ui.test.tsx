@@ -9,7 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SummaryReviewDialog } from "../../src/renderer/src/components/summary-review-dialog";
+import { SummaryReviewDialog } from "#src/renderer/src/components/summary-review-dialog";
 
 afterEach(cleanup);
 

@@ -2,24 +2,24 @@ import { CircleAlert, CircleCheck, X } from "lucide-react";
 import {
   UNLIMITED_FILTER_BUDGET,
   type InboxFilterBudget,
-} from "../inbox-request";
+} from "#src/renderer/src/inbox-request";
 import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
   type InboxLabelActions,
-} from "../components/maintainer-inbox";
-import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
+} from "#src/renderer/src/components/maintainer-inbox";
+import { MaintainerInboxSkeleton } from "#src/renderer/src/components/maintainer-inbox-skeleton";
 import {
   Alert,
   AlertAction,
   AlertDescription,
   AlertTitle,
-} from "../components/ui/alert";
-import { Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
-import { requestJson } from "../api-client";
-import { parseRepositoryLabelListResponse } from "../renderer-contracts";
-import type { InboxFreshnessLabel } from "../inbox-freshness";
+} from "#src/renderer/src/components/ui/alert";
+import { Button } from "#src/renderer/src/components/ui/button";
+import { Skeleton } from "#src/renderer/src/components/ui/skeleton";
+import { requestJson } from "#src/renderer/src/api-client";
+import { parseRepositoryLabelListResponse } from "#src/renderer/src/renderer-contracts";
+import type { InboxFreshnessLabel } from "#src/renderer/src/inbox-freshness";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxCheckStatusFilter,
@@ -28,26 +28,26 @@ import {
   type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
-} from "../../../domain/maintainer-inbox";
+} from "#src/domain/maintainer-inbox";
 import type { SettingsSection } from "./settings-flow";
 import type {
   Dashboard,
   DashboardScreenState,
   Profile,
   RepoOutcome,
-} from "../renderer-models";
+} from "#src/renderer/src/renderer-models";
 import type {
   InboxResponse,
   RepositoryLabelListResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import {
   sameRepositoryIdentity,
   type RepositoryIdentity,
-} from "../../../domain/repository-identity";
-import { OpenLocalReviewAction } from "../components/local-review-source-dialog";
-import { localBranchesPath } from "../local-branches";
-import { localCheckoutsPath } from "../local-checkouts";
-import { chooseRepositoryCheckout } from "../watched-repository-checkout";
+} from "#src/domain/repository-identity";
+import { OpenLocalReviewAction } from "#src/renderer/src/components/local-review-source-dialog";
+import { localBranchesPath } from "#src/renderer/src/local-branches";
+import { localCheckoutsPath } from "#src/renderer/src/local-checkouts";
+import { chooseRepositoryCheckout } from "#src/renderer/src/watched-repository-checkout";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 

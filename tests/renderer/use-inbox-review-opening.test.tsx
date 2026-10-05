@@ -2,8 +2,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
-import { useInboxReviewOpening } from "../../src/renderer/src/flows/use-inbox-review-opening";
+import { BusyProvider } from "#src/renderer/src/hooks/use-busy";
+import { useInboxReviewOpening } from "#src/renderer/src/flows/use-inbox-review-opening";
 import {
   failure,
   installDesktopDouble,

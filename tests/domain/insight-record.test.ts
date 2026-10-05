@@ -11,7 +11,7 @@ import {
   sameInsightRevision,
   updateWalkthroughProgress,
   type InsightRecord,
-} from "../../src/domain/insight-record";
+} from "#src/domain/insight-record";
 import {
   createReviewId,
   parseContentHash,
@@ -25,8 +25,8 @@ import {
   parsePullRequestNumber,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;

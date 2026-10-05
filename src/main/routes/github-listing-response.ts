@@ -1,24 +1,24 @@
 import type { Context } from "hono";
 
-import type { GitHubReadFailure } from "../../adapters/github/github-adapter";
-import type { RepositoryLabelListing } from "../../domain/github-context";
-import type { Result } from "../../domain/result";
+import type { GitHubReadFailure } from "#src/adapters/github/github-adapter";
+import type { RepositoryLabelListing } from "#src/domain/github-context";
+import type { Result } from "#src/domain/result";
 import type {
   BaseBranchListFailure,
   BaseBranchListOutcome,
-} from "../../services/base-branch-service";
+} from "#src/services/base-branch-service";
 import type {
   AssigneeListFailure,
   AssigneeListOutcome,
-} from "../../services/assignee-service";
+} from "#src/services/assignee-service";
 import type {
   LabelListFailure,
   LabelListOutcome,
-} from "../../services/label-service";
+} from "#src/services/label-service";
 import type {
   ReviewerListFailure,
   ReviewerListOutcome,
-} from "../../services/reviewer-service";
+} from "#src/services/reviewer-service";
 
 /**
  * Shapes `GET /v1/inbox/labels` from `GitHubReadFailure`, returned directly by

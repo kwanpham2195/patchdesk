@@ -4,9 +4,9 @@ import * as v from "valibot";
 import type {
   LocalPatchView,
   StoredLocalPatchView,
-} from "../../../domain/local-patch-view";
-import { requestJson } from "../api-client";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/domain/local-patch-view";
+import { requestJson } from "#src/renderer/src/api-client";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 
 /** The patch the diff shows: one view of one session. */
 type ShownLocalPatch = {

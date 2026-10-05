@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type Dispatch } from "react";
 
-import { requestJson } from "../api-client";
-import { parseInboxInsightReadinessResponse } from "../renderer-contracts";
-import type { InboxResponse } from "../renderer-contracts";
-import type { WorkspaceAction } from "../workspace-state";
+import { requestJson } from "#src/renderer/src/api-client";
+import { parseInboxInsightReadinessResponse } from "#src/renderer/src/renderer-contracts";
+import type { InboxResponse } from "#src/renderer/src/renderer-contracts";
+import type { WorkspaceAction } from "#src/renderer/src/workspace-state";
 import { useLatestCommitted } from "./use-latest-committed";
 
 /**

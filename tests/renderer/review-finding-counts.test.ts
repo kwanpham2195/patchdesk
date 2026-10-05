@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   countFindingsByPath,
   describeFileFindingCount,
-} from "../../src/renderer/src/review-finding-counts";
+} from "#src/renderer/src/review-finding-counts";
 
 describe("countFindingsByPath", () => {
   it("counts mapped findings per file, ignores unmapped ones, and keeps the highest severity", () => {

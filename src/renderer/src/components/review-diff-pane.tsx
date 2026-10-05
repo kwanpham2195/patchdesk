@@ -3,8 +3,8 @@ import type * as React from "react";
 import {
   FindingStepSlotContext,
   type FindingStepSlot,
-} from "../review-commands";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/review-commands";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 
 /**

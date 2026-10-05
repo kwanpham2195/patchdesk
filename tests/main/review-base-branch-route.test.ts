@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { parseIsoTimestamp } from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { registerReviewWriteRoutes } from "../../src/main/routes/review-write-routes";
+import { parseIsoTimestamp } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { registerReviewWriteRoutes } from "#src/main/routes/review-write-routes";
 import type {
   BaseBranchListFailure,
   BaseBranchListOutcome,
-} from "../../src/services/base-branch-service";
+} from "#src/services/base-branch-service";
 
 const parsedResumeAt = parseIsoTimestamp("2026-09-17T10:00:00.000Z");
 if (parsedResumeAt._tag === "err") throw new Error("invalid fixture");

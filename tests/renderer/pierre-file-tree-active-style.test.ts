@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildActivePathTreeStyle,
   escapeCssAttributeValue,
-} from "../../src/renderer/src/components/pierre-file-tree-active-style";
+} from "#src/renderer/src/components/pierre-file-tree-active-style";
 
 describe("escapeCssAttributeValue", () => {
   it("leaves an ordinary path untouched", () => {

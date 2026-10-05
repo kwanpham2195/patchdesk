@@ -3,14 +3,14 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, test } from "playwright/test";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewRemoteStore } from "../../src/adapters/storage/review-remote-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { createReview } from "../../src/domain/review";
-import { createReviewSession } from "../../src/domain/review-session";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewRemoteStore } from "#src/adapters/storage/review-remote-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { createReview } from "#src/domain/review";
+import { createReviewSession } from "#src/domain/review-session";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -20,14 +20,11 @@ import {
   parseGitSha,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { parseWatchedPullRequests } from "../../src/domain/watched-pull-request";
-import { WatchedPullRequestStore } from "../../src/adapters/storage/watched-pull-request-store";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
+} from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { parseWatchedPullRequests } from "#src/domain/watched-pull-request";
+import { WatchedPullRequestStore } from "#src/adapters/storage/watched-pull-request-store";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 import { installTestDesktopBridge } from "./bridge-fixture";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 

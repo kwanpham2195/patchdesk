@@ -11,7 +11,7 @@ import {
   briefFlowKindLabel,
   flowRows,
   type BriefFlowRow,
-} from "../../../domain/brief-flow-text";
+} from "#src/domain/brief-flow-text";
 import {
   BRIEF_REACH_UNAVAILABLE_LABELS,
   briefCitationChipLabel,
@@ -25,13 +25,10 @@ import {
   type BriefInsight,
   type BriefOwnership,
   type BriefOwnershipRow,
-} from "../brief-contracts";
-import type {
-  ChangeScope,
-  ChangeScopeBucket,
-} from "../../../domain/change-scope";
-import { definedProps } from "../../../domain/defined-props";
-import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
+} from "#src/renderer/src/brief-contracts";
+import type { ChangeScope, ChangeScopeBucket } from "#src/domain/change-scope";
+import { definedProps } from "#src/domain/defined-props";
+import { INSIGHT_PROVIDER_LABELS } from "#src/renderer/src/insight-contracts";
 import { MovesBlock } from "./brief-moves-block";
 import { ReachBlock } from "./brief-reach-block";
 import { SignalsBlock } from "./brief-signals-block";

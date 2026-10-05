@@ -13,13 +13,13 @@ import userEvent, {
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LocalNotesList } from "../../src/renderer/src/components/local-notes-list";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { LocalNotesList } from "#src/renderer/src/components/local-notes-list";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
 import {
   localDraftKey,
   type LocalDraftControls,
-} from "../../src/renderer/src/flows/use-local-drafts";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/flows/use-local-drafts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   failure,
   installDesktopDouble,

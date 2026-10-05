@@ -3,11 +3,11 @@ import { spawn } from "node:child_process";
 
 import * as v from "valibot";
 
-import { definedProps } from "../../domain/defined-props";
-import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
-import { err, ok, type Result } from "../../domain/result";
-import { discoverExecutable } from "../process/executable-discovery";
-import { whenLoginShellEnvironmentImported } from "../process/login-shell-import";
+import { definedProps } from "#src/domain/defined-props";
+import type { ForbiddenReason } from "#src/domain/github-forbidden-reason";
+import { err, ok, type Result } from "#src/domain/result";
+import { discoverExecutable } from "#src/adapters/process/executable-discovery";
+import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-shell-import";
 
 const FORCE_KILL_AFTER_MS = 2_000;
 /** A child writing more than this to stdout or stderr is terminated as `OutputExceeded`. */

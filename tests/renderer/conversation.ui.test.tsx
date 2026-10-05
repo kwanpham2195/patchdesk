@@ -3,10 +3,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
-import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
-import { Conversation } from "../../src/renderer/src/components/conversation";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
+import { refusalCausePhrase } from "#src/renderer/src/write-refusal-copy";
+import { Conversation } from "#src/renderer/src/components/conversation";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 
 afterEach(() => {
   cleanup();

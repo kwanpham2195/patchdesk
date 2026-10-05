@@ -1,14 +1,14 @@
 import { XIcon } from "lucide-react";
 import { useContext, useMemo } from "react";
-import { definedProps } from "../../../domain/defined-props";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import { parseUnifiedPatch, type ParsedPatchFile } from "../../../domain/patch";
+import { definedProps } from "#src/domain/defined-props";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { parseUnifiedPatch, type ParsedPatchFile } from "#src/domain/patch";
 
 import type {
   AccountInsightProvider,
   InsightLanguage,
   InsightProvider,
-} from "../../../domain/insight-provider";
+} from "#src/domain/insight-provider";
 import {
   INSIGHT_NOUNS,
   InsightRunDialog,
@@ -25,37 +25,40 @@ import {
   InsightOutdated,
   InsightRunning,
 } from "./insight-panels";
-import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
+import {
+  NOT_GENERATED_BRIEF,
+  type BriefInsight,
+} from "#src/renderer/src/brief-contracts";
 import { buildInsightReaders } from "./insight-readers";
 import { WalkthroughDiffAuthoringContext } from "./walkthrough-diff-authoring";
-import { useInsightResultEntrance } from "../hooks/use-insight-result-entrance";
-import { useInsightSelection } from "../hooks/use-insight-selection";
-import { useWalkthroughFocusTransition } from "../hooks/use-walkthrough-focus-transition";
-import type { InsightRunConfiguration } from "../hooks/use-insight-configuration";
-import { useInsightRunControls } from "../hooks/use-insight-run-controls";
-import type { RunInsightsDialogController } from "../hooks/use-run-insights-dialog";
-import { useAnalysisVerification } from "../hooks/use-analysis-verification";
-import { useWalkthroughProgress } from "../hooks/use-walkthrough-progress";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
-import type { AddAllFindingsControls } from "../flows/use-add-all-findings";
-import type { LocalApplyControls } from "../flows/use-local-apply";
-import type { LocalDraftControls } from "../flows/use-local-drafts";
+import { useInsightResultEntrance } from "#src/renderer/src/hooks/use-insight-result-entrance";
+import { useInsightSelection } from "#src/renderer/src/hooks/use-insight-selection";
+import { useWalkthroughFocusTransition } from "#src/renderer/src/hooks/use-walkthrough-focus-transition";
+import type { InsightRunConfiguration } from "#src/renderer/src/hooks/use-insight-configuration";
+import { useInsightRunControls } from "#src/renderer/src/hooks/use-insight-run-controls";
+import type { RunInsightsDialogController } from "#src/renderer/src/hooks/use-run-insights-dialog";
+import { useAnalysisVerification } from "#src/renderer/src/hooks/use-analysis-verification";
+import { useWalkthroughProgress } from "#src/renderer/src/hooks/use-walkthrough-progress";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { AnalysisFinding } from "#src/renderer/src/flows/use-analysis-review-actions";
+import type { AddAllFindingsControls } from "#src/renderer/src/flows/use-add-all-findings";
+import type { LocalApplyControls } from "#src/renderer/src/flows/use-local-apply";
+import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-drafts";
 import { AgentRequestsBar } from "./agent-requests-bar";
 import { RunInsightsDialog } from "./run-insights-dialog";
-import { insightRunOptionsForModel } from "../insight-run-options";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
+import { insightRunOptionsForModel } from "#src/renderer/src/insight-run-options";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import {
   INSIGHT_LANGUAGE_LABELS,
   INSIGHT_PROVIDER_LABELS,
-} from "../insight-contracts";
-import { localPatchViewLabels } from "../review-source";
+} from "#src/renderer/src/insight-contracts";
+import { localPatchViewLabels } from "#src/renderer/src/review-source";
 import { RelativeTime } from "./relative-time";
-import type { InsightRunController } from "../hooks/use-insight-run";
+import type { InsightRunController } from "#src/renderer/src/hooks/use-insight-run";
 import {
   analysisChangeIntentLine,
   changeIntentRunRefusalMessage,
-} from "../change-intent-copy";
+} from "#src/renderer/src/change-intent-copy";
 
 function insightRequestFailureMessage(
   insightName: string,

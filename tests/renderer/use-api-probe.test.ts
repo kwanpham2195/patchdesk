@@ -3,12 +3,12 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import * as v from "valibot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopResponse } from "../../src/main/ipc-contract";
+import type { DesktopResponse } from "#src/main/ipc-contract";
 import {
   useApiProbe,
   useEnvironmentCheck,
   type ApiProbeState,
-} from "../../src/renderer/src/hooks/use-api-probe";
+} from "#src/renderer/src/hooks/use-api-probe";
 import {
   failure,
   installDesktopDouble,

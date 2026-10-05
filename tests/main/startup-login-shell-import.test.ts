@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { startDesktopBesideLoginShellImport } from "../../src/main/app-lifecycle";
+import { startDesktopBesideLoginShellImport } from "#src/main/app-lifecycle";
 
 /** A login shell that has not answered yet, and the handle that lets it. */
 function pendingLoginShell() {

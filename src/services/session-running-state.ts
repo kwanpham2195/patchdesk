@@ -1,17 +1,17 @@
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { StorageFailure } from "../adapters/storage/json-file";
-import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import { isDirectSummaryReviewLocked } from "../domain/direct-summary-review";
-import { createReviewId, type WorkspaceProfileId } from "../domain/ids";
-import { isPendingReviewLocked } from "../domain/pending-review";
-import { err, ok, type Result } from "../domain/result";
-import type { Review } from "../domain/review";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import type { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import { isDirectSummaryReviewLocked } from "#src/domain/direct-summary-review";
+import { createReviewId, type WorkspaceProfileId } from "#src/domain/ids";
+import { isPendingReviewLocked } from "#src/domain/pending-review";
+import { err, ok, type Result } from "#src/domain/result";
+import type { Review } from "#src/domain/review";
 import {
   isPullRequestReviewSession,
   type ReviewSession,
-} from "../domain/review-session";
+} from "#src/domain/review-session";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { ReviewPreparationJournal } from "./review-preparation-journal";
 

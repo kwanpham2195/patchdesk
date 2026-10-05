@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   PACKAGE_SIZE_LIMITS_MIB,
   validatePackageSizes,
-} from "../../scripts/package-size-validation.mjs";
+} from "#scripts/package-size-validation.mjs";
 
 const roots: string[] = [];
 const oneMiB = 1024 * 1024;

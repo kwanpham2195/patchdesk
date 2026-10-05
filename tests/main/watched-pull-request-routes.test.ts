@@ -4,19 +4,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/fake-github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { WatchedPullRequestStore } from "../../src/adapters/storage/watched-pull-request-store";
-import {
-  parseIsoTimestamp,
-  parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { RawJsonValue } from "../../src/domain/json";
-import { ok, type Result } from "../../src/domain/result";
-import { parseWatchedPullRequests } from "../../src/domain/watched-pull-request";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { registerWatchedPullRequestRoutes } from "../../src/main/routes/watched-pull-request-routes";
-import { WatchedPullRequestService } from "../../src/services/watched-pull-request-service";
+import { FakeGitHubAdapter } from "#src/adapters/github/fake-github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { WatchedPullRequestStore } from "#src/adapters/storage/watched-pull-request-store";
+import { parseIsoTimestamp, parseWorkspaceProfileId } from "#src/domain/ids";
+import type { RawJsonValue } from "#src/domain/json";
+import { ok, type Result } from "#src/domain/result";
+import { parseWatchedPullRequests } from "#src/domain/watched-pull-request";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { registerWatchedPullRequestRoutes } from "#src/main/routes/watched-pull-request-routes";
+import { WatchedPullRequestService } from "#src/services/watched-pull-request-service";
 
 function mustParse<T, E>(result: Result<T, E>): T {
   if (result._tag === "err") throw new Error("invalid fixture");

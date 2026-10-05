@@ -5,8 +5,8 @@ import {
   contextualMessage,
   PatchdeskApiError,
   requestJson,
-} from "../../src/renderer/src/api-client";
-import { composerErrorMessage } from "../../src/renderer/src/components/review-diff-authoring-errors";
+} from "#src/renderer/src/api-client";
+import { composerErrorMessage } from "#src/renderer/src/components/review-diff-authoring-errors";
 import {
   BASE_BRANCH_MESSAGES,
   COMMENT_DELETE_MESSAGES,
@@ -18,8 +18,8 @@ import {
   RE_REQUEST_REVIEW_MESSAGES,
   REVIEW_DISMISS_MESSAGES,
   THREAD_REPLY_MESSAGES,
-} from "../../src/renderer/src/review-copy";
-import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
+} from "#src/renderer/src/review-copy";
+import { refusalCausePhrase } from "#src/renderer/src/write-refusal-copy";
 import { installDesktopDouble } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;

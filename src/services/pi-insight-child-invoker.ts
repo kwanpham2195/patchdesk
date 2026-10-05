@@ -1,18 +1,18 @@
 import { join } from "node:path";
 
-import { providerEnvironmentNames } from "../adapters/pi/pi-provider-catalog";
-import { whenLoginShellEnvironmentImported } from "../adapters/process/login-shell-import";
+import { providerEnvironmentNames } from "#src/adapters/pi/pi-provider-catalog";
+import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-shell-import";
 
 import type {
   CommandFailure,
   CommandRunner,
-} from "../adapters/github/command-runner";
-import { parseBriefOutput } from "../domain/brief";
-import { definedProps } from "../domain/defined-props";
-import type { InsightLanguage } from "../domain/insight-provider";
-import { parseAbsolutePath, type AbsolutePath } from "../domain/ids";
-import { parseModelReviewResult } from "../domain/review-result";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+} from "#src/adapters/github/command-runner";
+import { parseBriefOutput } from "#src/domain/brief";
+import { definedProps } from "#src/domain/defined-props";
+import type { InsightLanguage } from "#src/domain/insight-provider";
+import { parseAbsolutePath, type AbsolutePath } from "#src/domain/ids";
+import { parseModelReviewResult } from "#src/domain/review-result";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import type { BriefInput } from "./brief-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,

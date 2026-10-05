@@ -13,9 +13,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import type { GitHubCredentials } from "../../src/adapters/github/github-credentials";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { GitHubCredentials } from "#src/adapters/github/github-credentials";
 
 /** All `ReviewWorktreeService` asks of a credential source. */
 type WorktreeCredentials = Pick<GitHubCredentials, "environmentFor">;
@@ -27,14 +27,14 @@ import {
   parsePullRequestNumber,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   ReviewWorktreeService,
   type GitReadExecutor,
-} from "../../src/services/review-worktree-service";
-import { err, ok } from "../../src/domain/result";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
+} from "#src/services/review-worktree-service";
+import { err, ok } from "#src/domain/result";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 
 function must<T>(
   value: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" },

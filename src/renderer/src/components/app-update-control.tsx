@@ -5,7 +5,7 @@ import {
   manualAppUpdate,
   type AppInstallSource,
   type AppUpdateState,
-} from "../../../domain/app-update";
+} from "#src/domain/app-update";
 import { CopyLoadedTextButton } from "@/components/copy-loaded-text-button";
 import { Button } from "@/components/ui/button";
 import {

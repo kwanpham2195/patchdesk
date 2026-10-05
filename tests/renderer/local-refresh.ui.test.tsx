@@ -7,12 +7,12 @@ import userEvent, {
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import { LocalNoteCard } from "../../src/renderer/src/components/local-note-card";
-import { buildLocalNoteAnnotations } from "../../src/renderer/src/components/review-workbench-annotations";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type { LocalDraftEntry } from "../../src/renderer/src/local-draft-contracts";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type { RawJsonValue } from "#src/domain/json";
+import { LocalNoteCard } from "#src/renderer/src/components/local-note-card";
+import { buildLocalNoteAnnotations } from "#src/renderer/src/components/review-workbench-annotations";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
+import type { LocalDraftEntry } from "#src/renderer/src/local-draft-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   failure,
   installDesktopDouble,

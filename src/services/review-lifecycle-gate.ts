@@ -1,5 +1,5 @@
-import type { WorkspaceProfileId } from "../domain/ids";
-import { KeyedMutex } from "../domain/keyed-mutex";
+import type { WorkspaceProfileId } from "#src/domain/ids";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
 
 /**
  * Serializes durable review lifecycle mutations per workspace profile.

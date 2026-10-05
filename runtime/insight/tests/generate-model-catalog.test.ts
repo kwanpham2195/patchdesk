@@ -13,7 +13,7 @@ import {
 } from "@earendil-works/pi-ai/providers/vercel-ai-gateway.models";
 import { describe, expect, it } from "vitest";
 
-import { generateModelCatalog } from "../scripts/generate-model-catalog.mjs";
+import { generateModelCatalog } from "#runtime/scripts/generate-model-catalog.mjs";
 
 describe("generated Pi catalog", () => {
   it("imports and projects all 32 current allowlisted provider catalogs deterministically", () => {

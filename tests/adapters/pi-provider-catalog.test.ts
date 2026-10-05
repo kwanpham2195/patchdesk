@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalPiProviderCatalog } from "../../src/adapters/pi/pi-provider-catalog";
+import { LocalPiProviderCatalog } from "#src/adapters/pi/pi-provider-catalog";
 
 function catalog(
   values: Record<string, string | undefined>,
@@ -168,7 +168,7 @@ describe("LocalPiProviderCatalog", () => {
 describe("provider environment allowlist", () => {
   it("exposes only the selected provider credential names", async () => {
     const { providerEnvironmentNames } =
-      await import("../../src/adapters/pi/pi-provider-catalog");
+      await import("#src/adapters/pi/pi-provider-catalog");
     expect(providerEnvironmentNames("deepseek")).toEqual(["DEEPSEEK_API_KEY"]);
     expect(providerEnvironmentNames("amazon-bedrock")).toContain(
       "AWS_WEB_IDENTITY_TOKEN_FILE",
@@ -182,7 +182,7 @@ describe("provider environment allowlist", () => {
 
   it("collects every provider credential name once, and nothing else", async () => {
     const { providerCredentialEnvironmentNames, providerEnvironmentNames } =
-      await import("../../src/adapters/pi/pi-provider-catalog");
+      await import("#src/adapters/pi/pi-provider-catalog");
     const names = providerCredentialEnvironmentNames();
 
     expect(names).toContain("DEEPSEEK_API_KEY");

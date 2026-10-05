@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
-import { definedProps } from "../../domain/defined-props";
-import { err, ok, type Result } from "../../domain/result";
+import { definedProps } from "#src/domain/defined-props";
+import { err, ok, type Result } from "#src/domain/result";
 import { PI_AI_CATALOG } from "./pi-ai-catalog";
 import {
   LocalPiProviderCatalog,

@@ -12,8 +12,8 @@ import {
   reviewThreadStateMutation,
   updatePullRequestBaseBranchMutation,
   updateThreadCommentMutation,
-} from "../../src/adapters/github/github-graphql-queries";
-import type { GitHubRequest } from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/github-graphql-queries";
+import type { GitHubRequest } from "#src/adapters/github/github-request";
 
 /**
  * Every write request the GitHub adapter can send, one row per label, written

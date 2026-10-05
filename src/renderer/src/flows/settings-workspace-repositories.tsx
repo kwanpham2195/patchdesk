@@ -1,21 +1,25 @@
 import { FolderOpen, Plus, X } from "lucide-react";
 import { useId, useState } from "react";
 
-import { parseGitHubOwner, parseGitHubRepoName } from "../../../domain/ids";
-import { sameRepositoryIdentity } from "../../../domain/repository-identity";
-import { requestJson } from "../api-client";
-import { repositoryKey, type Profile, type Repo } from "../renderer-models";
-import { chooseRepositoryCheckout } from "../watched-repository-checkout";
-import { Button } from "../components/ui/button";
-import { Field, FieldLabel } from "../components/ui/field";
-import { InlineError } from "../components/ui/inline-error";
-import { Input } from "../components/ui/input";
-import { Spinner } from "../components/ui/spinner";
+import { parseGitHubOwner, parseGitHubRepoName } from "#src/domain/ids";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
+import { requestJson } from "#src/renderer/src/api-client";
+import {
+  repositoryKey,
+  type Profile,
+  type Repo,
+} from "#src/renderer/src/renderer-models";
+import { chooseRepositoryCheckout } from "#src/renderer/src/watched-repository-checkout";
+import { Button } from "#src/renderer/src/components/ui/button";
+import { Field, FieldLabel } from "#src/renderer/src/components/ui/field";
+import { InlineError } from "#src/renderer/src/components/ui/inline-error";
+import { Input } from "#src/renderer/src/components/ui/input";
+import { Spinner } from "#src/renderer/src/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "../components/ui/tooltip";
+} from "#src/renderer/src/components/ui/tooltip";
 
 export type WatchedRepositoriesHook = {
   readonly pendingKeys: ReadonlySet<string>;

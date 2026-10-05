@@ -5,7 +5,7 @@ import type { InboxRow } from "@/renderer-contracts";
 import type {
   InboxDataFreshness,
   InboxInsightKind,
-} from "../../../domain/maintainer-inbox";
+} from "#src/domain/maintainer-inbox";
 import {
   inspectorReviewStatus,
   type InspectorReviewStatus,

@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useScrollSettledValue } from "../../src/renderer/src/hooks/use-scroll-settled-value";
+import { useScrollSettledValue } from "#src/renderer/src/hooks/use-scroll-settled-value";
 
 const SETTLE_DELAY_MS = 200;
 

@@ -23,7 +23,7 @@ import {
   type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
-} from "../../../domain/maintainer-inbox";
+} from "#src/domain/maintainer-inbox";
 import type { InboxRow } from "@/renderer-contracts";
 import { CheckStatusIcon } from "./inbox-row-item";
 import { ReviewVerdictIcon } from "./review-verdict-icon";

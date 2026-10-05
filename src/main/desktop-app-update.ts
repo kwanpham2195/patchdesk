@@ -1,19 +1,19 @@
 import { accessSync, constants, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { fetchLatestPatchdeskRelease } from "../adapters/github/github-latest-release";
-import type { GitHubFetch } from "../adapters/github/github-http-client";
+import { fetchLatestPatchdeskRelease } from "#src/adapters/github/github-latest-release";
+import type { GitHubFetch } from "#src/adapters/github/github-http-client";
 import {
   appUpdateHelperCommand,
   findAppInstallation,
   startAppUpdateHelper,
-} from "../adapters/process/app-update-helper";
-import { AppUpdateStateStore } from "../adapters/storage/app-update-state-store";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../adapters/storage/profile-store";
-import { definedProps } from "../domain/defined-props";
-import { loggableMetaValue, type LogEntryInput } from "../domain/log-entry";
-import { AppUpdateService } from "../services/app-update-service";
+} from "#src/adapters/process/app-update-helper";
+import { AppUpdateStateStore } from "#src/adapters/storage/app-update-state-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { definedProps } from "#src/domain/defined-props";
+import { loggableMetaValue, type LogEntryInput } from "#src/domain/log-entry";
+import { AppUpdateService } from "#src/services/app-update-service";
 import {
   sendAppUpdate,
   type AppUpdateSender,

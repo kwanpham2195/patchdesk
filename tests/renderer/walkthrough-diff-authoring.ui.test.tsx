@@ -10,24 +10,21 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  parseGitHubThreadId,
-  parseRepoRelativePath,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
-import type { NarrativeHunk } from "../../src/domain/narrative-walkthrough";
-import type { LocalNoteControls } from "../../src/renderer/src/flows/use-local-drafts";
-import type { PendingReviewDrafts } from "../../src/renderer/src/hooks/use-pending-review-drafts";
-import { NarrativeWalkthroughDiff } from "../../src/renderer/src/components/narrative-walkthrough-diff";
-import { InsightsSlot } from "../../src/renderer/src/components/review-insights-slot";
-import type { ReviewWorkbenchActions } from "../../src/renderer/src/components/review-workbench-contracts";
+import { parseGitHubThreadId, parseRepoRelativePath } from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
+import type { NarrativeHunk } from "#src/domain/narrative-walkthrough";
+import type { LocalNoteControls } from "#src/renderer/src/flows/use-local-drafts";
+import type { PendingReviewDrafts } from "#src/renderer/src/hooks/use-pending-review-drafts";
+import { NarrativeWalkthroughDiff } from "#src/renderer/src/components/narrative-walkthrough-diff";
+import { InsightsSlot } from "#src/renderer/src/components/review-insights-slot";
+import type { ReviewWorkbenchActions } from "#src/renderer/src/components/review-workbench-contracts";
 import {
   useWalkthroughDiffAuthoring,
   WalkthroughDiffAuthoringContext,
   type WalkthroughDiffAuthoring,
-} from "../../src/renderer/src/components/walkthrough-diff-authoring";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
+} from "#src/renderer/src/components/walkthrough-diff-authoring";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "#src/renderer/src/review-view-preferences";
 import { dragDiffGutter, hoveredGutterButton } from "./pierre-gutter";
 import { projection, withWalkthrough } from "./review-workbench-fixtures";
 

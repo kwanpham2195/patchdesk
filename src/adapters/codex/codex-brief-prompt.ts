@@ -1,5 +1,5 @@
-import { BRIEF_RESULT_CONTRACT } from "../../domain/brief";
-import { err, ok, type Result } from "../../domain/result";
+import { BRIEF_RESULT_CONTRACT } from "#src/domain/brief";
+import { err, ok, type Result } from "#src/domain/result";
 import { UNSAFE_PROMPT_PATTERN } from "./codex-app-server-client";
 
 /** Hard bound for one composed Brief prompt; a Brief carries the patch but no context bundle. */

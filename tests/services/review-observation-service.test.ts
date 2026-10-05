@@ -4,36 +4,36 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
-import { ReviewObservationJournalStore } from "../../src/adapters/storage/review-observation-journal-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
+import { ReviewObservationJournalStore } from "#src/adapters/storage/review-observation-journal-store";
 import {
   ReviewRemoteStore,
   hashSnapshot,
-} from "../../src/adapters/storage/review-remote-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
+} from "#src/adapters/storage/review-remote-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   createReview,
   moveReviewToSession,
   type Review,
-} from "../../src/domain/review";
+} from "#src/domain/review";
 import {
   createReviewSession,
   type ReviewSession,
-} from "../../src/domain/review-session";
+} from "#src/domain/review-session";
 import {
   createPendingReviewRequestId,
   parseGitHubThreadId,
   parseIsoTimestamp,
   type IsoTimestamp,
-} from "../../src/domain/ids";
-import type { GitHubConversationThread } from "../../src/domain/github-context";
-import { err, ok } from "../../src/domain/result";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/ids";
+import type { GitHubConversationThread } from "#src/domain/github-context";
+import { err, ok } from "#src/domain/result";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { runWithRequestAbortSignal } from "#src/adapters/github/command-runner";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { barrier, settle } from "./review-invariant-fixtures";
 import {
   baseSha,
@@ -50,11 +50,11 @@ import {
   sharedReadGitHub,
   snapshot,
 } from "./review-observation-fixture";
-import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
+import { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
 import {
   ReviewObservationService,
   type ReviewObservationDependencies,
-} from "../../src/services/review-observation-service";
+} from "#src/services/review-observation-service";
 
 const roots: string[] = [];
 const at = must(parseIsoTimestamp("2026-08-12T00:00:00.000Z"));
@@ -121,7 +121,7 @@ async function fixture(
     key: { ...identity, headSha, baseSha },
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
     patchPath: must(
-      (await import("../../src/domain/ids")).parseAbsolutePath(
+      (await import("#src/domain/ids")).parseAbsolutePath(
         // SAFETY: this literal is only used as a stable path segment for the
         // fixture's temp directory, never validated as a real session id.
         paths.patchFile(profileId, "session" as never),
@@ -129,7 +129,7 @@ async function fixture(
     ),
     worktree: {
       path: must(
-        (await import("../../src/domain/ids")).parseAbsolutePath(
+        (await import("#src/domain/ids")).parseAbsolutePath(
           // SAFETY: this literal is only used as a stable path segment for
           // the fixture's temp directory, never validated as a real session id.
           paths.worktreeDirectory(profileId, "session" as never),

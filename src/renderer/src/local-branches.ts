@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-import type { RepositoryIdentity } from "../../domain/repository-identity";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
 import type { LocalReviewSourceInput } from "./flows/use-inbox-review-opening";
 
 const branchName = v.pipe(v.string(), v.minLength(1));

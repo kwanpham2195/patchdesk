@@ -8,7 +8,7 @@ import { parseReviewDiff } from "@/review-diff-data";
 import {
   buildSuggestionPreviewPatch,
   type SuggestionTarget,
-} from "../../../domain/finding-suggestion";
+} from "#src/domain/finding-suggestion";
 import { ReviewDiffView } from "./review-diff-view";
 
 const suggestionPreviewPreferences: ReviewViewPreferences = {

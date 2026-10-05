@@ -21,9 +21,9 @@
 import type {
   RepositoryLabel,
   RepositoryLabelPermission,
-} from "../../domain/github-context";
+} from "#src/domain/github-context";
 import type { RepositoryLabelListResponse } from "./renderer-contracts";
-import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
+import type { ForbiddenReason } from "#src/domain/github-forbidden-reason";
 
 /**
  * The fields every GitHub-owned list response carries in common: the read's

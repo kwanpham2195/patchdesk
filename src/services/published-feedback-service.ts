@@ -1,30 +1,30 @@
 import type {
   GitHubReader,
   GitHubReviewWriter,
-} from "../adapters/github/github-adapter";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import type { GitHubWriteFailure } from "../domain/github-write";
-import type { GitHubPublishedFeedback } from "../domain/github-context";
-import type { RefusalCause } from "../domain/github-write-refusal";
+} from "#src/adapters/github/github-adapter";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { GitHubPublishedFeedback } from "#src/domain/github-context";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 import {
   parseGitHubReviewCommentId,
   parseGitHubReviewRestId,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import type { PullRequestRef } from "../domain/pull-request";
-import type { PullRequestReviewSession } from "../domain/review-session";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
   type ReviewWriteIntent,
   type ReviewWriteOperation,
   type ReviewWriteRevision,
-} from "../domain/review-write-operation";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/review-write-operation";
+import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { settleRefusedWrite } from "./refused-write-settlement";
 import type { ReviewRefreshFailure } from "./review-refresh-service";

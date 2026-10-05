@@ -18,18 +18,18 @@ import {
   parseGitHubReviewRestId,
   parseGitHubThreadId,
   parseGitSha,
-} from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   samePendingReviewAnchor,
   type PendingReviewAnchor,
   type PendingReviewRead,
   type PendingReviewThreadWrite,
   type ViewerPendingReview,
-} from "../../domain/pending-review";
-import type { GitHubWriteFailure } from "../../domain/github-write";
+} from "#src/domain/pending-review";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
 import {
   addPendingReviewThreadMutation,
   pendingReviewThreadsQuery,

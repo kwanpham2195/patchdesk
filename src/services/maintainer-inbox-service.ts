@@ -2,28 +2,34 @@ import { readFile } from "node:fs/promises";
 
 import * as v from "valibot";
 
-import type { ForbiddenReason } from "../adapters/github/command-runner";
-import type { GitHubReader } from "../adapters/github/github-adapter";
+import type { ForbiddenReason } from "#src/adapters/github/command-runner";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import type {
   InboxCacheRepository,
   MaintainerInboxCache,
   MaintainerInboxCacheStore,
-} from "../adapters/storage/maintainer-inbox-cache-store";
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { StorageFailure } from "../adapters/storage/json-file";
-import { resolveAvatarDataUris } from "../adapters/storage/avatar-cache-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
-import { definedProps } from "../domain/defined-props";
-import type { PullRequestSummary } from "../domain/github-context";
-import type { InsightRecord, InsightRevision } from "../domain/insight-record";
+} from "#src/adapters/storage/maintainer-inbox-cache-store";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import { resolveAvatarDataUris } from "#src/adapters/storage/avatar-cache-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import {
+  changeScopeFromPatch,
+  type ChangeScope,
+} from "#src/domain/change-scope";
+import { definedProps } from "#src/domain/defined-props";
+import type { PullRequestSummary } from "#src/domain/github-context";
+import type {
+  InsightRecord,
+  InsightRevision,
+} from "#src/domain/insight-record";
 import {
   createReviewId,
   parseIsoTimestamp,
   type IsoTimestamp,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   composeInboxSearchQuery,
   DEFAULT_INBOX_PAGE_SIZE,
@@ -45,21 +51,21 @@ import {
   type MaintainerInboxRow,
   type InboxDataFreshness,
   type InboxSnapshotState,
-} from "../domain/maintainer-inbox";
-import type { PullRequestRef } from "../domain/pull-request";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
-import { parseStoredBrief } from "../domain/stored-brief";
+} from "#src/domain/maintainer-inbox";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
+import { parseStoredBrief } from "#src/domain/stored-brief";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
-} from "../domain/review-session";
-import { ok, type Result } from "../domain/result";
+} from "#src/domain/review-session";
+import { ok, type Result } from "#src/domain/result";
 import type {
   WorkspaceProfileConfig,
   WatchedRepoConfig,
-} from "../domain/workspace-profile";
+} from "#src/domain/workspace-profile";
 import type { AvatarRailDependencies } from "./avatar-sync-service";
-import { isInboxCacheStale } from "../domain/inbox-freshness-policy";
+import { isInboxCacheStale } from "#src/domain/inbox-freshness-policy";
 
 const MAX_PAGE_TOKEN_LENGTH = 16_384;
 const MAX_REPOSITORY_CURSOR_LENGTH = 4_096;

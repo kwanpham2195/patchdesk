@@ -5,8 +5,8 @@ import {
   readWindowFullScreen,
   sendWindowFullScreen,
   subscribeToWindowFullScreen,
-} from "../../src/main/desktop-full-screen-channel";
-import { DESKTOP_WINDOW_FULL_SCREEN_CHANNEL } from "../../src/main/ipc-contract";
+} from "#src/main/desktop-full-screen-channel";
+import { DESKTOP_WINDOW_FULL_SCREEN_CHANNEL } from "#src/main/ipc-contract";
 
 /**
  * The channel name is a runtime string, and this channel has three halves —

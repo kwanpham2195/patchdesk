@@ -5,7 +5,7 @@ import {
   parseMergeOperation,
   rejectMergeOperation,
   requestMergeOperation,
-} from "../../src/domain/merge-operation";
+} from "#src/domain/merge-operation";
 
 const operation = {
   operationId: "merge-20260801000000000",

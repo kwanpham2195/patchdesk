@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
-import type { GitHubWriteFailure } from "../../src/domain/github-write";
-import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
-import { err, ok, type Result } from "../../src/domain/result";
+import type { GitHubReviewWriter } from "#src/adapters/github/github-adapter";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { ReviewWriteOperation } from "#src/domain/review-write-operation";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   GitHubRefusedPublishedFeedbackWrite,
   PublishedFeedbackService,
-} from "../../src/services/published-feedback-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { ReviewRefreshFailure } from "../../src/services/review-refresh-service";
+} from "#src/services/published-feedback-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { ReviewRefreshFailure } from "#src/services/review-refresh-service";
 
 type UpdateReviewCommentInput = Parameters<
   NonNullable<GitHubReviewWriter["updateReviewComment"]>

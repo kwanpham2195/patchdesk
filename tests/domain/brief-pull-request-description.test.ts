@@ -5,16 +5,16 @@ import {
   normalizeBrief,
   type BriefSnapshot,
   type NormalizedBrief,
-} from "../../src/domain/brief";
-import { renderBriefAsPullRequestDescription } from "../../src/domain/brief-pull-request-description";
+} from "#src/domain/brief";
+import { renderBriefAsPullRequestDescription } from "#src/domain/brief-pull-request-description";
 import {
   parseContentHash,
   parseGitSha,
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("test fixture failed");

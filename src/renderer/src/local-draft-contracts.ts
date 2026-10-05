@@ -1,8 +1,8 @@
 import * as v from "valibot";
 
-import { agentExplanationEntrySchema } from "../../domain/agent-explanation";
-import { feedbackHandoffReadingSchema } from "../../domain/feedback-handoff";
-import { localDraftReplySchema } from "../../domain/local-draft-reply";
+import { agentExplanationEntrySchema } from "#src/domain/agent-explanation";
+import { feedbackHandoffReadingSchema } from "#src/domain/feedback-handoff";
+import { localDraftReplySchema } from "#src/domain/local-draft-reply";
 
 const nonEmpty = v.pipe(v.string(), v.minLength(1));
 const lineNumber = v.pipe(v.number(), v.integer(), v.minValue(1));

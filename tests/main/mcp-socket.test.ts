@@ -5,33 +5,33 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { err, ok } from "../../src/domain/result";
+import { err, ok } from "#src/domain/result";
 import {
   parseGitSha,
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
-import type { LogEntryInput } from "../../src/domain/log-entry";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
+import type { LogEntryInput } from "#src/domain/log-entry";
 import {
   startMcpSocketListener,
   type McpSocketListener,
-} from "../../src/main/mcp/mcp-socket-listener";
+} from "#src/main/mcp/mcp-socket-listener";
 import {
   createMcpToolTable,
   type McpToolReply,
   type McpToolTable,
-} from "../../src/main/mcp/mcp-tool-dispatcher";
+} from "#src/main/mcp/mcp-tool-dispatcher";
 import {
   mcpSocketBounds,
   type McpSocketBounds,
-} from "../../src/mcp/socket-protocol";
+} from "#src/mcp/socket-protocol";
 import {
   mcpToolManifest,
   mcpToolNames,
   type McpToolName,
-} from "../../src/mcp/tool-manifest";
+} from "#src/mcp/tool-manifest";
 import {
   exchangeSocketLine,
   shortTemporaryDirectory,

@@ -1,8 +1,8 @@
 import { copyFile, mkdir, mkdtemp, rm, stat, utimes } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { canonicalPatchFlags } from "../adapters/process/git-patch-flags";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { canonicalPatchFlags } from "#src/adapters/process/git-patch-flags";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   detachedHeadBranch,
   parseGitSha,
@@ -12,14 +12,14 @@ import {
   type LocalBaseRef,
   type LocalBranchName,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { definedProps } from "../domain/defined-props";
-import { casesHandled, err, ok, type Result } from "../domain/result";
-import type { ReviewRevision } from "../domain/review-session";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
+import type { ReviewRevision } from "#src/domain/review-session";
 import type {
   LocalReviewSource,
   LocalReviewSourceRequest,
-} from "../domain/review-source";
+} from "#src/domain/review-source";
 import {
   checkUntrackedSize,
   localSnapshotUntrackedLimits,

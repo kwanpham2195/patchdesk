@@ -18,10 +18,10 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-import { refusedWriteMessage } from "../api-client";
-import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
-import type { PendingReviewProjection } from "../renderer-contracts";
-import type { GitHubReviewEvent } from "../../../domain/pending-review";
+import { refusedWriteMessage } from "#src/renderer/src/api-client";
+import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
+import type { PendingReviewProjection } from "#src/renderer/src/renderer-contracts";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
 
 type FinishReviewActions = {
   readonly busy: boolean;

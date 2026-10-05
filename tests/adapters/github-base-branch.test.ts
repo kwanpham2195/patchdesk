@@ -6,18 +6,18 @@ import {
   noChildProcesses,
   orderedTransport,
 } from "./github-transport-doubles";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import type {
   GitHubGraphQlRequest,
   GitHubRequest,
-} from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/github-request";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
-} from "../../src/domain/ids";
-import { type Result } from "../../src/domain/result";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/ids";
+import { type Result } from "#src/domain/result";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 function mustParse<T, E>(result: Result<T, E>): T {
   if (result._tag === "err") throw new Error("Expected test value to parse");

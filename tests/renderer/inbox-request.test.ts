@@ -10,12 +10,12 @@ import {
   resolveInboxRepository,
   sameInboxRows,
   type InboxRequestState,
-} from "../../src/renderer/src/inbox-request";
+} from "#src/renderer/src/inbox-request";
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
-} from "../../src/renderer/src/inbox-view-preferences";
-import type { Profile, Repo } from "../../src/renderer/src/renderer-models";
+} from "#src/renderer/src/inbox-view-preferences";
+import type { Profile, Repo } from "#src/renderer/src/renderer-models";
 
 const repoA: Repo = { host: "github.com", owner: "owner-a", repo: "repo-a" };
 const repoB: Repo = { host: "github.com", owner: "owner-b", repo: "repo-b" };

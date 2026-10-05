@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import * as v from "valibot";
 
-import type { RawJsonValue } from "../../domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 
 import { generatedPiAiCatalog } from "./pi-ai-catalog.generated";
 

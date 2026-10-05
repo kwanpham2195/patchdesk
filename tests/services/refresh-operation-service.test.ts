@@ -4,12 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { RefreshOperationStore } from "../../src/adapters/storage/refresh-operation-store";
-import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
-import { createReview } from "../../src/domain/review";
-import type { RefreshOperation } from "../../src/domain/refresh-operation";
-import type { PullRequestReviewSession } from "../../src/domain/review-session";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { RefreshOperationStore } from "#src/adapters/storage/refresh-operation-store";
+import type { ReviewRemoteSnapshot } from "#src/adapters/storage/review-remote-store";
+import { createReview } from "#src/domain/review";
+import type { RefreshOperation } from "#src/domain/refresh-operation";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
 import {
   createReviewSessionId,
   parseContentHash,
@@ -21,14 +21,14 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type ReviewSessionId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import type {
   PreparedReviewRefresh,
   ReviewRefreshService,
-} from "../../src/services/review-refresh-service";
-import { RefreshOperationService } from "../../src/services/refresh-operation-service";
+} from "#src/services/review-refresh-service";
+import { RefreshOperationService } from "#src/services/refresh-operation-service";
 
 function must<Value>(result: Result<Value, unknown>): Value {
   if (result._tag === "err") throw new Error("invalid fixture");

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 import * as v from "valibot";
 
-import { generatedPiAiCatalog } from "../adapters/pi/pi-ai-catalog.generated";
+import { generatedPiAiCatalog } from "#src/adapters/pi/pi-ai-catalog.generated";
 
 const PI_VERSION = "0.99.2";
 const NODE_FLOOR = ">=22.19.0";

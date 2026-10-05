@@ -5,10 +5,10 @@
 
 import { vi } from "vitest";
 
-import { createReviewId } from "../../src/domain/ids";
-import type { Review } from "../../src/domain/review";
-import { ok } from "../../src/domain/result";
-import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
+import { createReviewId } from "#src/domain/ids";
+import type { Review } from "#src/domain/review";
+import { ok } from "#src/domain/result";
+import { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
 
 // SAFETY: this literal is a well-formed WorkspaceProfileId slug.
 export const profileId = "acme" as never;

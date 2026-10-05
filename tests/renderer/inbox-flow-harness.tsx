@@ -1,9 +1,9 @@
 import type { ComponentProps } from "react";
 
-import { InboxFlow } from "../../src/renderer/src/flows/inbox-flow";
-import { useInboxReviewOpening } from "../../src/renderer/src/flows/use-inbox-review-opening";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { Dashboard } from "../../src/renderer/src/renderer-models";
+import { InboxFlow } from "#src/renderer/src/flows/inbox-flow";
+import { useInboxReviewOpening } from "#src/renderer/src/flows/use-inbox-review-opening";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { Dashboard } from "#src/renderer/src/renderer-models";
 
 type InboxFlowHarnessProps = Omit<
   ComponentProps<typeof InboxFlow>,

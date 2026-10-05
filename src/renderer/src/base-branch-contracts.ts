@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
-import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
-import type { RawJsonValue } from "../../domain/json";
+import { FORBIDDEN_REASONS } from "#src/domain/github-forbidden-reason";
+import type { RawJsonValue } from "#src/domain/json";
 
 // Lives beside `renderer-contracts.ts` so that file stays under the size ceiling.
 const baseBranchListResponseSchema = v.strictObject({

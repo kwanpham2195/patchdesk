@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AssigneeService } from "../../src/services/assignee-service";
-import { LabelService } from "../../src/services/label-service";
-import { ReviewerService } from "../../src/services/reviewer-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { GitHubWriteFailure } from "../../src/domain/github-write";
-import { err, ok, type Result } from "../../src/domain/result";
+import { AssigneeService } from "#src/services/assignee-service";
+import { LabelService } from "#src/services/label-service";
+import { ReviewerService } from "#src/services/reviewer-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   DesktopNotificationEvent,
   DesktopNotifier,
-} from "../../src/services/desktop-notifier";
+} from "#src/services/desktop-notifier";
 import {
   makeGate,
   makeRecentWrites,

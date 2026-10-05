@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { InsightRunDialogType } from "../components/insight-run-dialog";
+import type { InsightRunDialogType } from "#src/renderer/src/components/insight-run-dialog";
 import type {
   WorkbenchActiveTab,
   WorkbenchPosition,
-} from "../lib/screen-restore";
-import { focusInsideOverlay } from "../review-diff-keyboard-nav";
+} from "#src/renderer/src/lib/screen-restore";
+import { focusInsideOverlay } from "#src/renderer/src/review-diff-keyboard-nav";
 import {
   useRegisterReviewCommands,
   type FindingStepSlot,
   type ReviewCommand,
-} from "../review-commands";
-import { isTextEntryTarget } from "../text-entry-target";
+} from "#src/renderer/src/review-commands";
+import { isTextEntryTarget } from "#src/renderer/src/text-entry-target";
 import { useLatestCommitted } from "./use-latest-committed";
 
 /**

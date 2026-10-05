@@ -3,10 +3,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { LocalPatchView } from "../../src/domain/local-patch-view";
-import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
-import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
-import { useViewedFiles } from "../../src/renderer/src/hooks/use-viewed-files";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import type { LocalApiDesktopRequest } from "#src/main/ipc-contract";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
+import { useViewedFiles } from "#src/renderer/src/hooks/use-viewed-files";
 import {
   failure,
   installDesktopDouble,

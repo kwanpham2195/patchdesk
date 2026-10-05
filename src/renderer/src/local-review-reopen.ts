@@ -3,7 +3,7 @@ import * as v from "valibot";
 import { PatchdeskApiError } from "./api-client";
 import type { LocalReviewSourceInput } from "./flows/use-inbox-review-opening";
 import type { WorkbenchReviewSource } from "./review-source";
-import { casesHandled } from "../../domain/result";
+import { casesHandled } from "#src/domain/result";
 
 /**
  * The open request that reads a stored local source from the checkout again.

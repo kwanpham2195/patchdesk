@@ -1,8 +1,8 @@
 import { realpath } from "node:fs/promises";
 
-import { detachedHeadBranch } from "../domain/ids";
-import { casesHandled } from "../domain/result";
-import type { LocalReviewSource } from "../domain/review-source";
+import { detachedHeadBranch } from "#src/domain/ids";
+import { casesHandled } from "#src/domain/result";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import { isNamedCheckoutGone, type LocalCheckoutReads } from "./local-checkout";
 
 /**

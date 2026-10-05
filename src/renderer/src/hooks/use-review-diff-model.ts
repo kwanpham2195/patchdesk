@@ -17,7 +17,7 @@ import {
 } from "@/review-context-control";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
-import { toDiffLineAnnotation } from "../review-diff-annotations";
+import { toDiffLineAnnotation } from "#src/renderer/src/review-diff-annotations";
 import {
   selectRenderedPatch,
   useReviewDiffHydration,
@@ -27,11 +27,11 @@ import {
   useReviewDiffScrollState,
   type ReviewDiffScrollState,
 } from "./use-review-diff-scroll-state";
-import type { DiffThemePreferences } from "../diff-theme-preferences";
+import type { DiffThemePreferences } from "#src/renderer/src/diff-theme-preferences";
 import type {
   ReviewInlineAnnotation,
   SelectedDiffRange,
-} from "../components/review-diff-view";
+} from "#src/renderer/src/components/review-diff-view";
 import type { ReviewContextStatus } from "@/review-context-control";
 
 const TREE_ORDER_SORT_LIMIT = 256;

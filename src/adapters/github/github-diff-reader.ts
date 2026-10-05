@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-import { canonicalPatchFlags } from "../process/git-patch-flags";
+import { canonicalPatchFlags } from "#src/adapters/process/git-patch-flags";
 import type { CommandFailure, CommandRunner } from "./command-runner";
 import {
   commandTimeoutMs,
@@ -9,16 +9,16 @@ import {
   type GitHubReadOperation,
 } from "./gh-request-runner";
 import type { GitHubRequest } from "./github-request";
-import type { CheckSummary } from "../../domain/github-context";
+import type { CheckSummary } from "#src/domain/github-context";
 import {
   type AbsolutePath,
   type GitSha,
   parseGitSha,
   type RepoRelativePath,
-} from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   checkRunsSchema,
   commitStatusesSchema,

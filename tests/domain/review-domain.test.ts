@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createReview, markReviewTerminal } from "../../src/domain/review";
+import { createReview, markReviewTerminal } from "#src/domain/review";
 
 const identity = {
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.

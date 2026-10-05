@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { Target } from "lucide-react";
 
-import { changeIntentSummary } from "../change-intent-copy";
+import { changeIntentSummary } from "#src/renderer/src/change-intent-copy";
 import {
   changeIntentDraftFromSaved,
   changeIntentUnsentText,
   type ChangeIntentControls,
   type ChangeIntentDraft,
   type ChangeIntentInput,
-} from "../flows/use-change-intent";
-import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
+} from "#src/renderer/src/flows/use-change-intent";
+import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";

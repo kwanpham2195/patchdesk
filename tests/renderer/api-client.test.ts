@@ -2,10 +2,7 @@
 import * as v from "valibot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  PatchdeskApiError,
-  requestJson,
-} from "../../src/renderer/src/api-client";
+import { PatchdeskApiError, requestJson } from "#src/renderer/src/api-client";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
@@ -179,7 +176,7 @@ describe("renderer API request logging", () => {
     // A fresh module graph gives this test its own logger queue and flush timer.
     vi.resetModules();
     const { requestJson: freshRequestJson } =
-      await import("../../src/renderer/src/api-client");
+      await import("#src/renderer/src/api-client");
     const loggedMessages: string[] = [];
     desktop = installDesktopDouble({
       "/v1/logs": (input) => {

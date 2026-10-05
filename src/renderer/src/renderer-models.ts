@@ -1,4 +1,4 @@
-import type { RepositoryIdentity } from "../../domain/repository-identity";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
 
 export type DashboardScreenState =
   | "empty"

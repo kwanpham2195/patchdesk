@@ -5,41 +5,41 @@ import type {
   GitHubOwner,
   GitHubRepoName,
   WorkspaceProfileId,
-} from "../../domain/ids";
-import { definedProps } from "../../domain/defined-props";
-import { err, ok, type Result } from "../../domain/result";
-import type { DashboardController } from "../../services/dashboard-controller";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { err, ok, type Result } from "#src/domain/result";
+import type { DashboardController } from "#src/services/dashboard-controller";
 import {
   describeRepositoryCheckout,
   type RepositoryCheckoutDescription,
-} from "../../services/local-checkout";
+} from "#src/services/local-checkout";
 import type {
   LocalReviewOpenFailure,
   LocalReviewPrepared,
-} from "../../services/local-review-opening";
-import type { ReviewDiagnosticService } from "../../services/review-diagnostic-service";
+} from "#src/services/local-review-opening";
+import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 import {
   ReviewInsightReader,
   type InsightReading,
-} from "../../services/review-insight-reading";
-import type { ReviewWorkbenchController } from "../../services/review-workbench-controller";
+} from "#src/services/review-insight-reading";
+import type { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
 import type {
   McpSocketRequest,
   McpToolRefusal,
-} from "../../mcp/socket-protocol";
+} from "#src/mcp/socket-protocol";
 import type {
   LocalDraftReplied,
   LocalFeedback,
-} from "../../services/local-draft-service";
-import type { CheckoutSharedReviews } from "../../services/local-shared-review-list";
-import type { AgentRunRequestReply } from "../../services/agent-run-request-service";
-import type { AgentExplanationAdded } from "../../services/agent-explanation-service";
-import type { ReviewStatus } from "../../services/review-status-reading";
+} from "#src/services/local-draft-service";
+import type { CheckoutSharedReviews } from "#src/services/local-shared-review-list";
+import type { AgentRunRequestReply } from "#src/services/agent-run-request-service";
+import type { AgentExplanationAdded } from "#src/services/agent-explanation-service";
+import type { ReviewStatus } from "#src/services/review-status-reading";
 import {
   isMcpToolName,
   mcpToolManifest,
   type McpToolName,
-} from "../../mcp/tool-manifest";
+} from "#src/mcp/tool-manifest";
 import {
   explainLines,
   getFeedback,

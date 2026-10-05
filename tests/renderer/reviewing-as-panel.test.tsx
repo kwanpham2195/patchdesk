@@ -4,12 +4,9 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
-import type { EnvironmentCheckResponse } from "../../src/renderer/src/renderer-contracts";
-import type {
-  Dashboard,
-  Profile,
-} from "../../src/renderer/src/renderer-models";
+import { SettingsFlow } from "#src/renderer/src/flows/settings-flow";
+import type { EnvironmentCheckResponse } from "#src/renderer/src/renderer-contracts";
+import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
 import {
   installDesktopDouble,
   success,

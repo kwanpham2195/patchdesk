@@ -3,14 +3,14 @@ import { useEffect, useRef, type RefObject } from "react";
 import type { Hunk, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import { materializeAndScrollTo } from "../review-diff-materialize-and-scroll";
+import { materializeAndScrollTo } from "#src/renderer/src/review-diff-materialize-and-scroll";
 import {
   adjacentHunkAnchor,
   hunkNavigationStatus,
   shouldIgnoreReviewNavKey,
   type HunkAnchor,
   type ReviewNavDirection,
-} from "../review-diff-keyboard-nav";
+} from "#src/renderer/src/review-diff-keyboard-nav";
 import type { ReviewDiffNavigationOperation } from "./use-review-diff-navigation-feedback";
 import { useKeyboardJump } from "./use-keyboard-jump";
 import { useLatestCommitted } from "./use-latest-committed";

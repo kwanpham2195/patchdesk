@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { moveReferenceUpdatePaths } from "../../src/domain/move-reference-updates";
-import { listPatchChangedFiles } from "../../src/domain/patch-changed-files";
+import { moveReferenceUpdatePaths } from "#src/domain/move-reference-updates";
+import { listPatchChangedFiles } from "#src/domain/patch-changed-files";
 
 function edited(
   path: string,

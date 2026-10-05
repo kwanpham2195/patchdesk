@@ -10,11 +10,11 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AgentExplanationCard } from "../../src/renderer/src/components/agent-explanation-card";
-import { buildAgentExplanationAnnotations } from "../../src/renderer/src/components/review-workbench-annotations";
-import { useAgentExplanationDismiss } from "../../src/renderer/src/flows/use-agent-explanation-dismiss";
-import type { AgentExplanationEntry } from "../../src/renderer/src/local-draft-contracts";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { AgentExplanationCard } from "#src/renderer/src/components/agent-explanation-card";
+import { buildAgentExplanationAnnotations } from "#src/renderer/src/components/review-workbench-annotations";
+import { useAgentExplanationDismiss } from "#src/renderer/src/flows/use-agent-explanation-dismiss";
+import type { AgentExplanationEntry } from "#src/renderer/src/local-draft-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   failure,
   installDesktopDouble,

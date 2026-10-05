@@ -15,15 +15,18 @@ import {
 import { Spinner } from "./ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import type { InsightFailureCategory } from "../../../domain/insight-record";
-import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
+import type { InsightFailureCategory } from "#src/domain/insight-record";
+import {
+  NOT_GENERATED_BRIEF,
+  type BriefInsight,
+} from "#src/renderer/src/brief-contracts";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { InsightRunActivity } from "../insight-contracts";
-import type { InsightRunController } from "../hooks/use-insight-run";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { InsightRunActivity } from "#src/renderer/src/insight-contracts";
+import type { InsightRunController } from "#src/renderer/src/hooks/use-insight-run";
 import { RelativeTime } from "./relative-time";
-import { INSIGHT_STATUS_LABELS } from "../insight-status";
-import { INSIGHT_ICONS } from "../insight-icons";
+import { INSIGHT_STATUS_LABELS } from "#src/renderer/src/insight-status";
+import { INSIGHT_ICONS } from "#src/renderer/src/insight-icons";
 import { InsightStatusIcon } from "./insight-status-icon";
 import { cn } from "@/lib/utils";
 

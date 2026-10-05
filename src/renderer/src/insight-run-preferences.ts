@@ -6,7 +6,7 @@ import {
   type InsightLanguage,
   type InsightProvider,
   type InsightReasoning,
-} from "../../domain/insight-provider";
+} from "#src/domain/insight-provider";
 import { definePreference } from "./lib/local-preference";
 
 /** Every Insight type that stores its own provider/model/reasoning/language choice. */

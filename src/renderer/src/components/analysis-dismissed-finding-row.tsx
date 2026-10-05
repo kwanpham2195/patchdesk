@@ -1,6 +1,6 @@
 import { ChevronDownIcon } from "lucide-react";
 
-import type { AnalysisResult } from "../analysis-headline";
+import type { AnalysisResult } from "#src/renderer/src/analysis-headline";
 import {
   GeneratedMarkdown,
   GeneratedMarkdownInline,

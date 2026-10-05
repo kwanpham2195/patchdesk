@@ -7,13 +7,13 @@ import {
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { failInsightRun, type InsightType } from "../domain/insight-record";
-import { mapConcurrent } from "../domain/map-concurrent";
-import { err, ok, type Result } from "../domain/result";
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ReviewStore } from "../adapters/storage/review-store";
+} from "#src/domain/ids";
+import { failInsightRun, type InsightType } from "#src/domain/insight-record";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type {
   Active,
   InsightCoordinatorFailure,

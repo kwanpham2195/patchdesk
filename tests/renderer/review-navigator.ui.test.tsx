@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ReviewNavigator } from "../../src/renderer/src/components/review-navigator";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { ReviewInlineAnnotation } from "../../src/renderer/src/components/review-diff-view";
+import { ReviewNavigator } from "#src/renderer/src/components/review-navigator";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { ReviewInlineAnnotation } from "#src/renderer/src/components/review-diff-view";
 
 const callbacks = {
   onSectionChange: vi.fn(),

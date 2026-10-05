@@ -3,9 +3,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { definedProps } from "../../src/domain/defined-props";
-import { parseRepoRelativePath } from "../../src/domain/ids";
-import type { LocalFeedback } from "../../src/services/local-draft-service";
+import { definedProps } from "#src/domain/defined-props";
+import { parseRepoRelativePath } from "#src/domain/ids";
+import type { LocalFeedback } from "#src/services/local-draft-service";
 import {
   cleanupLocalApplyRoots,
   localApplyHarness,

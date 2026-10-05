@@ -9,7 +9,7 @@ import {
   parseReviewId,
   type IsoTimestamp,
   type ReviewSessionId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   cleanupLocalApplyRoots,
   git,

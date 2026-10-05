@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import type { DesktopMenuAction } from "../../../main/ipc-contract";
+import type { DesktopMenuAction } from "#src/main/ipc-contract";
 import { FIND_IN_DIFF_REQUEST } from "./use-review-diff-find";
 
 /**

@@ -1,23 +1,26 @@
 import { useCallback, useState } from "react";
 import * as v from "valibot";
 
-import { definedProps } from "../../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   AccountInsightProvider,
   InsightProvider,
-} from "../../../domain/insight-provider";
-import { requestJson, untrustedWriteResponseError } from "../api-client";
-import { appLog } from "../lib/logger";
+} from "#src/domain/insight-provider";
+import {
+  requestJson,
+  untrustedWriteResponseError,
+} from "#src/renderer/src/api-client";
+import { appLog } from "#src/renderer/src/lib/logger";
 import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import {
   saveInsightRunPreference,
   type InsightRunPreference,
-} from "../insight-run-preferences";
-import { seedInsightRunOptions } from "../insight-run-options";
-import { approveAgentRunRequests } from "../agent-run-requests";
+} from "#src/renderer/src/insight-run-preferences";
+import { seedInsightRunOptions } from "#src/renderer/src/insight-run-options";
+import { approveAgentRunRequests } from "#src/renderer/src/agent-run-requests";
 import {
   useInsightRun,
   type InsightPatchOptions,
@@ -28,14 +31,14 @@ import {
   useInsightConfiguration,
   type InsightRunConfiguration,
 } from "./use-insight-configuration";
-import type { FindingRestoreOutcome } from "../components/analysis-reader";
+import type { FindingRestoreOutcome } from "#src/renderer/src/components/analysis-reader";
 import {
   useRunInsightsDialog,
   type RunInsightsDialogController,
 } from "./use-run-insights-dialog";
-import type { InsightRunDialogType } from "../components/insight-run-dialog";
-import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
+import type { InsightRunDialogType } from "#src/renderer/src/components/insight-run-dialog";
+import type { AnalysisFinding } from "#src/renderer/src/flows/use-analysis-review-actions";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 
 const dismissedFindingResponseSchema = v.strictObject({
   findingId: v.pipe(v.string(), v.minLength(1)),

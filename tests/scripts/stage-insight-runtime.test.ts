@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { stageInsightRuntime } from "../../scripts/stage-insight-runtime-lib.mjs";
+import { stageInsightRuntime } from "#scripts/stage-insight-runtime-lib.mjs";
 
 const roots: string[] = [];
 afterEach(

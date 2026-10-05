@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { CodeViewScrollTarget } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import type { ReviewInlineAnnotation } from "../../src/renderer/src/components/review-diff-view";
+import type { ReviewInlineAnnotation } from "#src/renderer/src/components/review-diff-view";
 import {
   FindingStepSlotContext,
   type FindingStepSlot,
-} from "../../src/renderer/src/review-commands";
-import type { ReviewDiffNavigationStatus } from "../../src/renderer/src/review-diff-keyboard-nav";
-import { useReviewFindingNavigation } from "../../src/renderer/src/hooks/use-review-finding-navigation";
+} from "#src/renderer/src/review-commands";
+import type { ReviewDiffNavigationStatus } from "#src/renderer/src/review-diff-keyboard-nav";
+import { useReviewFindingNavigation } from "#src/renderer/src/hooks/use-review-finding-navigation";
 
 afterEach(() => {
   cleanup();

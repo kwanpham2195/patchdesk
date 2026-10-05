@@ -1,16 +1,16 @@
 import { readFile } from "node:fs/promises";
 
-import type { InsightStore } from "../adapters/storage/insight-store";
-import { resolveSuggestionTarget } from "../domain/finding-suggestion";
-import { parseRepoRelativePath, type RepoRelativePath } from "../domain/ids";
-import { sameInsightRevision } from "../domain/insight-record";
-import type { LocalApplyFile } from "../domain/local-apply-operation";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import { resolveSuggestionTarget } from "#src/domain/finding-suggestion";
+import { parseRepoRelativePath, type RepoRelativePath } from "#src/domain/ids";
+import { sameInsightRevision } from "#src/domain/insight-record";
+import type { LocalApplyFile } from "#src/domain/local-apply-operation";
 import {
   composeLocalApplyFileChange,
   type LocalApplyEdit,
-} from "../domain/local-apply-patch";
-import { err, ok, type Result } from "../domain/result";
-import { parseReviewResult } from "../domain/review-result";
+} from "#src/domain/local-apply-patch";
+import { err, ok, type Result } from "#src/domain/result";
+import { parseReviewResult } from "#src/domain/review-result";
 import {
   findWorkingTreeConversion,
   hashFileBytes,

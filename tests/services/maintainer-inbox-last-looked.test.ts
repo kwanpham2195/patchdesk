@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { MaintainerInboxService } from "../../src/services/maintainer-inbox-service";
-import { err, ok } from "../../src/domain/result";
+import { MaintainerInboxService } from "#src/services/maintainer-inbox-service";
+import { err, ok } from "#src/domain/result";
 
 // SAFETY: MaintainerInboxService reads only host/owner/repo off the
 // repository parameter; the plain strings stand in for the branded types.

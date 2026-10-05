@@ -1,11 +1,11 @@
 import type { Context } from "hono";
 
-import type { FailureKind, FailureKinds } from "../../domain/failure-kind";
+import type { FailureKind, FailureKinds } from "#src/domain/failure-kind";
 import {
   insightFailureKinds,
   type InsightCoordinatorFailure,
-} from "../../services/insight-run-coordinator";
-import type { UntrackedTooLarge } from "../../services/local-untracked-size";
+} from "#src/services/insight-run-coordinator";
+import type { UntrackedTooLarge } from "#src/services/local-untracked-size";
 
 /**
  * The eight write-failure reasons every review write route shares.

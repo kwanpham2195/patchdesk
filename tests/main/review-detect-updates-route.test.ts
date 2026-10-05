@@ -5,10 +5,10 @@ import {
   parseGitHubThreadId,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok } from "../../src/domain/result";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
-import { registerReviewLifecycleRoutes } from "../../src/main/routes/review-lifecycle-routes";
+} from "#src/domain/ids";
+import { ok } from "#src/domain/result";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import { registerReviewLifecycleRoutes } from "#src/main/routes/review-lifecycle-routes";
 
 const body = {
   profileId: "acme",

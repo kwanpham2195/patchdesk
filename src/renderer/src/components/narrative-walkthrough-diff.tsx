@@ -8,14 +8,14 @@ import {
   ReviewDiffView,
   type ReviewInlineAnnotation,
 } from "./review-diff-view";
-import { definedProps } from "../../../domain/defined-props";
-import { parseGitHubThreadId } from "../../../domain/ids";
-import { filterNarrativePatchToHunks } from "../../../domain/narrative-walkthrough";
+import { definedProps } from "#src/domain/defined-props";
+import { parseGitHubThreadId } from "#src/domain/ids";
+import { filterNarrativePatchToHunks } from "#src/domain/narrative-walkthrough";
 import {
   citedHunkRelation,
   type ReadOnlyConversationAnnotation,
-} from "../inline-conversation-mapping";
-import { deriveConversationThreadEntries } from "../conversation-thread-entries";
+} from "#src/renderer/src/inline-conversation-mapping";
+import { deriveConversationThreadEntries } from "#src/renderer/src/conversation-thread-entries";
 import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReadOnlyConversationAnnotation> = [];

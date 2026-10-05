@@ -2,12 +2,12 @@ import { execFileSync } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { describeStatus, runSetupCommand } from "../../src/mcp/setup-cli";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { describeStatus, runSetupCommand } from "#src/mcp/setup-cli";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
+} from "#tests/main/mcp-app-fixture";
 
 let app: McpAppFixture | undefined;
 

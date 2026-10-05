@@ -3,17 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   indexPatchHunks,
   type LocalPatchView,
-} from "../../src/domain/local-patch-view";
+} from "#src/domain/local-patch-view";
 import type {
   AgentExplanationEntry,
   LocalDraftEntry,
-} from "../../src/renderer/src/local-draft-contracts";
+} from "#src/renderer/src/local-draft-contracts";
 import {
   placeAgentExplanation,
   placeLocalDraft,
   type LocalDraftPlacement,
   type LocalDraftPlacementContext,
-} from "../../src/renderer/src/local-draft-placement";
+} from "#src/renderer/src/local-draft-placement";
 
 /** src/a.ts's first three lines changed, on both sides. */
 const patchOfA = [

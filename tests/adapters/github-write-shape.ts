@@ -1,19 +1,19 @@
 import { expect } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { GitHubAdapter } from "#src/adapters/github/github-adapter";
 import {
   ghInvocationFor,
   type GitHubRestRequest,
-} from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/github-request";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { Result } from "#src/domain/result";
 import {
   type FixtureServer,
   type RecordedRequest,

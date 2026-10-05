@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   forbiddenCopy,
   rateLimitedCopy,
-} from "../../src/renderer/src/flows/inbox-flow";
+} from "#src/renderer/src/flows/inbox-flow";
 
 const repo = { owner: "OmisePayments", repo: "dynamic-onboarding-service" };
 

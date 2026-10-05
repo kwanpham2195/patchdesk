@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseReviewId } from "../../src/domain/ids";
-import type { DesktopNavigationState } from "../../src/main/desktop-close-guard";
-import { createReviewWindow } from "../../src/main/desktop-review-window";
+import { parseReviewId } from "#src/domain/ids";
+import type { DesktopNavigationState } from "#src/main/desktop-close-guard";
+import { createReviewWindow } from "#src/main/desktop-review-window";
 import {
   DESKTOP_NOTIFICATION_CLICK_CHANNEL,
   type DesktopNotificationClick,
-} from "../../src/main/ipc-contract";
+} from "#src/main/ipc-contract";
 
 const shownId = (() => {
   const parsed = parseReviewId(

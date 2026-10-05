@@ -1,16 +1,16 @@
 import { useRef, useState } from "react";
 import { GitMerge, ShieldAlert } from "lucide-react";
 
-import type { MergeDisplayReason } from "../../../domain/github-context";
-import type { MergeReadiness } from "../../../domain/merge-readiness";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import { PatchdeskApiError } from "../api-client";
-import { mergeRefusalMessage } from "../merge-refusal";
-import { unconfirmedWriteCopy } from "../review-copy";
+import type { MergeDisplayReason } from "#src/domain/github-context";
+import type { MergeReadiness } from "#src/domain/merge-readiness";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
+import { mergeRefusalMessage } from "#src/renderer/src/merge-refusal";
+import { unconfirmedWriteCopy } from "#src/renderer/src/review-copy";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
-} from "../external-links";
+} from "#src/renderer/src/external-links";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";

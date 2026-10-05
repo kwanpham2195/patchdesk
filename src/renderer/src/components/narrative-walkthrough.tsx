@@ -23,7 +23,7 @@ import type { ReviewViewPreferences } from "@/review-view-preferences";
 import { cn } from "@/lib/utils";
 
 import { NarrativeWalkthroughDiff } from "./narrative-walkthrough-diff";
-import type { ReadOnlyConversationAnnotation } from "../inline-conversation-mapping";
+import type { ReadOnlyConversationAnnotation } from "#src/renderer/src/inline-conversation-mapping";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 

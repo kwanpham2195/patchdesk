@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useRef } from "react";
 import * as v from "valibot";
 
-import { definedProps } from "../../../domain/defined-props";
-import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
-import { parseRepoRelativePath } from "../../../domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { mapFindingLocation, parseUnifiedPatch } from "#src/domain/patch";
+import { resolveSuggestionTarget } from "#src/domain/finding-suggestion";
+import { parseRepoRelativePath } from "#src/domain/ids";
 import {
   ReviewPreconditionError,
   isOutcomeUnknownRetry,
   requestJson,
   untrustedWriteResponseError,
-} from "../api-client";
-import { appLog } from "../lib/logger";
+} from "#src/renderer/src/api-client";
+import { appLog } from "#src/renderer/src/lib/logger";
 import {
   parsePendingReviewProjection,
   type PendingReviewProjection,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import type { RunDirectCommand } from "./use-review-observation";
 
 const PENDING_REVIEW_COMMAND_PATH = "/v1/reviews/pending-review/command";

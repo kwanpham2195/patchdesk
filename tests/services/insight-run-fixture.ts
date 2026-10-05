@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { InsightStore } from "../../src/adapters/storage/insight-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   parseAbsolutePath,
   parseContentHash,
@@ -18,38 +18,38 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type InsightRunId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   beginInsightRun,
   completeInsightRun,
   type InsightType,
-} from "../../src/domain/insight-record";
-import type { ReviewResult } from "../../src/domain/review-result";
-import { contentHash } from "../../src/services/review-artifact-hash";
-import { createReview } from "../../src/domain/review";
+} from "#src/domain/insight-record";
+import type { ReviewResult } from "#src/domain/review-result";
+import { contentHash } from "#src/services/review-artifact-hash";
+import { createReview } from "#src/domain/review";
 import {
   createLocalReviewSession,
   createReviewSession,
   type ReviewSession,
-} from "../../src/domain/review-session";
-import type { LocalReviewSource } from "../../src/domain/review-source";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { ok, type Result } from "../../src/domain/result";
-import type { DesktopNotifier } from "../../src/services/desktop-notifier";
-import type { BriefReachComputer } from "../../src/services/brief-reach-service";
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import type { InsightProviderCatalog } from "../../src/services/insight-provider-catalog";
-import { ReviewContextPackService } from "../../src/services/review-context-pack-service";
-import { ReviewContextService } from "../../src/services/review-context-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
+} from "#src/domain/review-session";
+import type { LocalReviewSource } from "#src/domain/review-source";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { ok, type Result } from "#src/domain/result";
+import type { DesktopNotifier } from "#src/services/desktop-notifier";
+import type { BriefReachComputer } from "#src/services/brief-reach-service";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import type { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
+import { ReviewContextPackService } from "#src/services/review-context-pack-service";
+import { ReviewContextService } from "#src/services/review-context-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 import {
   InsightRunCoordinator,
   type InsightInvoker,
   type InsightRunResponse,
-} from "../../src/services/insight-run-coordinator";
+} from "#src/services/insight-run-coordinator";
 
 const roots: string[] = [];
 export const must = <T>(value: Result<T, unknown>): T => {

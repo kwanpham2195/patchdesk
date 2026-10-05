@@ -1,4 +1,4 @@
-import { DiffWorkbench } from "../components/diff-workbench";
+import { DiffWorkbench } from "#src/renderer/src/components/diff-workbench";
 
 const patch = buildLargePatchFixture();
 

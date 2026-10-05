@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
-import { definedProps } from "../../../domain/defined-props";
-import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import { resolveSuggestionTarget } from "../../../domain/finding-suggestion";
+import { definedProps } from "#src/domain/defined-props";
+import { mapFindingLocation, parseUnifiedPatch } from "#src/domain/patch";
+import { resolveSuggestionTarget } from "#src/domain/finding-suggestion";
 import {
   findingLocation,
   type AnalysisFindingStatus as FindingStatus,
   type AnalysisResult,
-} from "../analysis-headline";
+} from "#src/renderer/src/analysis-headline";
 import { FindingEvidenceHunk } from "./finding-evidence-hunk";
 import { FindingSuggestionPreview } from "./finding-suggestion-preview";
 import { analysisFindingRowId } from "./review-workbench-finding-navigation";

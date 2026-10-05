@@ -21,22 +21,22 @@ import {
 } from "./insight-contracts";
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
-import { agentRunRequestSchema } from "../../domain/agent-run-request";
+import { agentRunRequestSchema } from "#src/domain/agent-run-request";
 import {
   changeIntentProvenanceSchema,
   changeIntentViewSchema,
-} from "../../domain/change-intent";
-import { changeScopeSchema } from "../../domain/change-scope";
-import { feedbackHandoffReadingSchema } from "../../domain/feedback-handoff";
-import { agentExplanationEntrySchema } from "../../domain/agent-explanation";
-import { localDraftReplySchema } from "../../domain/local-draft-reply";
+} from "#src/domain/change-intent";
+import { changeScopeSchema } from "#src/domain/change-scope";
+import { feedbackHandoffReadingSchema } from "#src/domain/feedback-handoff";
+import { agentExplanationEntrySchema } from "#src/domain/agent-explanation";
+import { localDraftReplySchema } from "#src/domain/local-draft-reply";
 import {
   CHECK_OVERALL_STATES,
   GITHUB_MERGE_STATE_STATUSES,
-} from "../../domain/github-context";
-import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
-import type { RawJsonValue } from "../../domain/json";
-import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
+} from "#src/domain/github-context";
+import { FORBIDDEN_REASONS } from "#src/domain/github-forbidden-reason";
+import type { RawJsonValue } from "#src/domain/json";
+import { FINDING_MAPPING_STATUSES } from "#src/domain/review-result";
 import {
   INBOX_CATEGORIES,
   INBOX_DATA_FRESHNESS,
@@ -44,8 +44,8 @@ import {
   INBOX_REPOSITORY_OUTCOMES,
   INBOX_SNAPSHOT_STATES,
   INBOX_STATE_FILTER_VALUES,
-} from "../../domain/maintainer-inbox";
-import { GITHUB_REVIEW_EVENTS } from "../../domain/pending-review";
+} from "#src/domain/maintainer-inbox";
+import { GITHUB_REVIEW_EVENTS } from "#src/domain/pending-review";
 /** The one renderer-side spelling of the domain's closed forbidden-reason set. */
 const forbiddenReasonSchema = v.optional(v.picklist(FORBIDDEN_REASONS));
 

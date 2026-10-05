@@ -6,17 +6,17 @@ import {
   parseContentHash,
   parseFindingId,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { contentHash } from "../../src/services/review-artifact-hash";
-import type { BriefReachRequest } from "../../src/services/brief-reach-service";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { contentHash } from "#src/services/review-artifact-hash";
+import type { BriefReachRequest } from "#src/services/brief-reach-service";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
 import {
   InsightRunCoordinator,
   type InsightInvoker,
-} from "../../src/services/insight-run-coordinator";
-import { InsightProviderCatalog } from "../../src/services/insight-provider-catalog";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/services/insight-run-coordinator";
+import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import {
   analysisResult,
   cleanupRoots,

@@ -1,11 +1,11 @@
-import type { PullRequestReviewIdentity, Review } from "../domain/review";
-import { isPullRequestReviewSession } from "../domain/review-session";
+import type { PullRequestReviewIdentity, Review } from "#src/domain/review";
+import { isPullRequestReviewSession } from "#src/domain/review-session";
 import type {
   GitSha,
   IsoTimestamp,
   ReviewId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -15,21 +15,21 @@ import {
   parseReviewId,
   createReviewId,
   parseWorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   createReview,
   isLocalReview,
   markReviewLeft,
   markReviewOpened,
-} from "../domain/review";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
-import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import type { StorageFailure } from "../adapters/storage/json-file";
+} from "#src/domain/review";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ReviewRemoteStore } from "#src/adapters/storage/review-remote-store";
+import type { ReviewObservationJournalStore } from "#src/adapters/storage/review-observation-journal-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
 import type { ReviewRefreshService } from "./review-refresh-service";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
 import type {
   ReviewObservation,
   ReviewObservationService,
@@ -41,18 +41,18 @@ import type {
   LocalReviewOpening,
 } from "./local-review-opening";
 import type { LocalCheckoutChangeDetector } from "./local-checkout-change-detector";
-import type { LocalReviewSource } from "../domain/review-source";
-import type { FailureKinds } from "../domain/failure-kind";
+import type { LocalReviewSource } from "#src/domain/review-source";
+import type { FailureKinds } from "#src/domain/failure-kind";
 import {
   agentRunRequestsOnSession,
   type AgentRunRequest,
-} from "../domain/agent-run-request";
+} from "#src/domain/agent-run-request";
 import {
   projectAgentExplanation,
   type AgentExplanationEntry,
-} from "../domain/agent-explanation";
-import type { LocalDraftReply } from "../domain/local-draft-reply";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/agent-explanation";
+import type { LocalDraftReply } from "#src/domain/local-draft-reply";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   PrepareReviewSessionFailure,
   ReviewSessionPreparation,
@@ -62,7 +62,7 @@ import type {
   ReviewWorkbenchProjectionService,
   WorkbenchProjectionFailure,
 } from "./review-workbench-projection";
-import { systemNow } from "../adapters/process/system-clock";
+import { systemNow } from "#src/adapters/process/system-clock";
 import { readObjectField } from "./read-object-field";
 import type { AppLogService } from "./app-log-service";
 

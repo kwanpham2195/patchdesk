@@ -1,20 +1,20 @@
 import { useMemo } from "react";
 import { Settings2 } from "lucide-react";
 
-import type { RepositoryLabel } from "../../../domain/github-context";
+import type { RepositoryLabel } from "#src/domain/github-context";
 import {
   forbiddenCopy,
   rateLimitedCopy,
   signInCopy,
   WRITE_PERMISSION_UNCONFIRMED,
   type RepositoryLabelReadState,
-} from "../github-read-failure-copy";
+} from "#src/renderer/src/github-read-failure-copy";
 import {
   useGithubItemPicker,
   type GithubItemPicker,
   type GithubItemPickerActions,
-} from "../hooks/use-github-item-picker";
-import type { RepositoryLabelListResponse } from "../renderer-contracts";
+} from "#src/renderer/src/hooks/use-github-item-picker";
+import type { RepositoryLabelListResponse } from "#src/renderer/src/renderer-contracts";
 import { LabelChip } from "./label-chip";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";

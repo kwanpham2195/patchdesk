@@ -14,12 +14,12 @@ import {
   type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
-} from "../../domain/maintainer-inbox";
-import { definedProps } from "../../domain/defined-props";
+} from "#src/domain/maintainer-inbox";
+import { definedProps } from "#src/domain/defined-props";
 import {
   sameRepositoryIdentity,
   type RepositoryIdentity,
-} from "../../domain/repository-identity";
+} from "#src/domain/repository-identity";
 
 /** What the filters need to stay inside GitHub's search length limit: whether one more filter or label choice still fits, and the filters the last repository change dropped to fit, by display name. */
 export type InboxFilterBudget = {

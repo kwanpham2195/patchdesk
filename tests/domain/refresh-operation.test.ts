@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createReview, serializeReview } from "../../src/domain/review";
-import { parseRefreshOperation } from "../../src/domain/refresh-operation";
+import { createReview, serializeReview } from "#src/domain/review";
+import { parseRefreshOperation } from "#src/domain/refresh-operation";
 import {
   createReviewSessionId,
   parseGitHubHost,
@@ -11,8 +11,8 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 function must<Value>(result: Result<Value, unknown>): Value {
   if (result._tag === "err") throw new Error("invalid fixture");

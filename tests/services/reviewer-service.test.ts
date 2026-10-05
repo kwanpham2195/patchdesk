@@ -6,21 +6,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ReviewerService,
   type ReviewerCommand,
-} from "../../src/services/reviewer-service";
+} from "#src/services/reviewer-service";
 import {
   hashAvatarUrl,
   writeAvatar,
-} from "../../src/adapters/storage/avatar-cache-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ok } from "../../src/domain/result";
-import { AvatarSyncService } from "../../src/services/avatar-sync-service";
+} from "#src/adapters/storage/avatar-cache-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ok } from "#src/domain/result";
+import { AvatarSyncService } from "#src/services/avatar-sync-service";
 
 // The avatar fan-out cap is written out here rather than imported from the
 // service, so this test pins the cap instead of restating whatever the
 // implementation happens to hold.
 const MAX_AVATARS_PER_SYNC = 24;
 
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
 // Real temp `PatchdeskPaths`, mirroring `assignee-service.test.ts`: avatar
 // resolution reads real bytes off disk, so a mock store would not exercise

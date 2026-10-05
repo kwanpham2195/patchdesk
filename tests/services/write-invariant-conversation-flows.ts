@@ -1,8 +1,8 @@
-import { err, ok } from "../../src/domain/result";
-import { InlineConversationService } from "../../src/services/inline-conversation-service";
-import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { Result } from "../../src/domain/result";
+import { err, ok } from "#src/domain/result";
+import { InlineConversationService } from "#src/services/inline-conversation-service";
+import { PublishedFeedbackService } from "#src/services/published-feedback-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { Result } from "#src/domain/result";
 import {
   anchor,
   at,

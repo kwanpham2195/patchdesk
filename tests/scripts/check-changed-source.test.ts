@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkChangedSource } from "../../scripts/check-changed-source.mjs";
+import { checkChangedSource } from "#scripts/check-changed-source.mjs";
 
 type CommandCall = {
   readonly command: string;

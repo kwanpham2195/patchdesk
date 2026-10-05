@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import type {
   AnalysisFindingStatus,
   AnalysisResult,
-} from "../../src/renderer/src/analysis-headline";
-import { useFindingErrors } from "../../src/renderer/src/hooks/use-finding-errors";
+} from "#src/renderer/src/analysis-headline";
+import { useFindingErrors } from "#src/renderer/src/hooks/use-finding-errors";
 
 const finding = {
   id: "finding-1",

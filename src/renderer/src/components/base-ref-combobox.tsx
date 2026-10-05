@@ -1,7 +1,10 @@
 import { Combobox } from "@base-ui/react/combobox";
 import { Check, ChevronDown } from "lucide-react";
 
-import type { BaseRefGroup, BaseRefOption } from "../local-branches";
+import type {
+  BaseRefGroup,
+  BaseRefOption,
+} from "#src/renderer/src/local-branches";
 
 /**
  * The shared Review's base picker (#591): one search over local and

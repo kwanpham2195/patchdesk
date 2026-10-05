@@ -1,8 +1,8 @@
-import type { CommandRunner } from "../adapters/github/command-runner";
+import type { CommandRunner } from "#src/adapters/github/command-runner";
 import {
   listAuthenticatedGitHubAccounts,
   type GitHubAuthAccount,
-} from "../adapters/github/github-auth-accounts";
+} from "#src/adapters/github/github-auth-accounts";
 
 const TOOL_VERSION_TIMEOUT_MS = 5_000;
 const GITHUB_AUTH_TIMEOUT_MS = 10_000;

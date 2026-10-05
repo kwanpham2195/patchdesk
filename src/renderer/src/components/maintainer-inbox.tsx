@@ -2,7 +2,7 @@ import { type KeyboardEvent } from "react";
 import {
   UNLIMITED_FILTER_BUDGET,
   type InboxFilterBudget,
-} from "../inbox-request";
+} from "#src/renderer/src/inbox-request";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
@@ -16,7 +16,7 @@ import { InboxRowItem } from "./inbox-row-item";
 import { RelativeTime } from "./relative-time";
 import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import { ReviewDetailsInspector } from "./review-details-inspector";
-import { useInboxView } from "../hooks/use-inbox-view";
+import { useInboxView } from "#src/renderer/src/hooks/use-inbox-view";
 import type { InboxFreshnessLabel } from "@/inbox-freshness";
 import {
   inboxColumnVisibility,
@@ -24,7 +24,7 @@ import {
   type InboxColumnVisibility,
 } from "@/inbox-columns";
 import { formatExactTime, formatRelativeTime } from "@/lib/relative-time";
-import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
+import { isInboxCacheDegraded } from "#src/domain/inbox-freshness-policy";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_PAGE_SIZES,
@@ -36,7 +36,7 @@ import {
   type InboxReviewStateFilter,
   type InboxSnapshotState,
   type InboxStateFilter,
-} from "../../../domain/maintainer-inbox";
+} from "#src/domain/maintainer-inbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,7 +64,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import type { RepositoryIdentity } from "../../../domain/repository-identity";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
 
 /**
  * Feeds the label filter popover the Selected repository's real,

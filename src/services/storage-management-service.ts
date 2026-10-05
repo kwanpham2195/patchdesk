@@ -1,28 +1,28 @@
-import { err, ok, type Result } from "../domain/result";
-import { definedProps } from "../domain/defined-props";
+import { err, ok, type Result } from "#src/domain/result";
+import { definedProps } from "#src/domain/defined-props";
 import {
   type IsoTimestamp,
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   isPullRequestReviewSession,
   type ReviewSession,
-} from "../domain/review-session";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import { createReviewId } from "../domain/ids";
+} from "#src/domain/review-session";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { createReviewId } from "#src/domain/ids";
 import {
   parseQuarantineEntryName,
   type ReviewArtifactStorage,
-} from "../adapters/storage/review-artifact-storage";
-import type { StorageFailure } from "../adapters/storage/json-file";
+} from "#src/adapters/storage/review-artifact-storage";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
 import type { GitReadExecutor } from "./review-worktree-service";
 import { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import {

@@ -5,8 +5,8 @@ import {
   type CommandExecution,
   type CommandExecutor,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import { GitHubEnvironmentProbe } from "../../src/services/github-environment-probe";
+} from "#src/adapters/github/command-runner";
+import { GitHubEnvironmentProbe } from "#src/services/github-environment-probe";
 
 /** Records every argv it is given, so a test can count `gh auth status` spawns. */
 class RecordingCommandExecutor implements CommandExecutor {

@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   loadAccountModelCache,
   saveAccountModelCache,
-} from "../../src/renderer/src/account-model-cache";
-import type { InsightProviderCatalogModel } from "../../src/renderer/src/insight-catalog-contracts";
+} from "#src/renderer/src/account-model-cache";
+import type { InsightProviderCatalogModel } from "#src/renderer/src/insight-catalog-contracts";
 
 const storageKey = "patchdesk.codex-models.v1.profile";
 

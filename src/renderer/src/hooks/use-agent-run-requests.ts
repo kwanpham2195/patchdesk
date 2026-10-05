@@ -1,11 +1,14 @@
 import { useCallback, useState } from "react";
 import * as v from "valibot";
 
-import { definedProps } from "../../../domain/defined-props";
-import { agentRunRequestSchema } from "../../../domain/agent-run-request";
-import { requestJson, untrustedWriteResponseError } from "../api-client";
-import type { AgentRunRequestView } from "../agent-run-requests";
-import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
+import { definedProps } from "#src/domain/defined-props";
+import { agentRunRequestSchema } from "#src/domain/agent-run-request";
+import {
+  requestJson,
+  untrustedWriteResponseError,
+} from "#src/renderer/src/api-client";
+import type { AgentRunRequestView } from "#src/renderer/src/agent-run-requests";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import { useLatestCommitted } from "./use-latest-committed";
 
 const declinedResponseSchema = v.strictObject({

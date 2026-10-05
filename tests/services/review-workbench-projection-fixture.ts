@@ -1,9 +1,9 @@
 import { vi } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { createReviewId } from "../../src/domain/ids";
-import { err, ok } from "../../src/domain/result";
-import { ReviewWorkbenchProjectionService } from "../../src/services/review-workbench-projection";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { createReviewId } from "#src/domain/ids";
+import { err, ok } from "#src/domain/result";
+import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
 
 // No fixture below gives a comment an `authorAvatarUrl`, so the projection
 // never reads the avatar cache; this path need not exist on disk.

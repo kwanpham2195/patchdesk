@@ -4,7 +4,7 @@ import {
   normalizeNarrativeWalkthrough,
   filterNarrativePatchToHunks,
   type NarrativeSnapshot,
-} from "../../src/domain/narrative-walkthrough";
+} from "#src/domain/narrative-walkthrough";
 import {
   parseContentHash,
   parseGitSha,
@@ -14,9 +14,9 @@ import {
   type GitSha,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
-import { parseUnifiedPatch } from "../../src/domain/patch";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { parseUnifiedPatch } from "#src/domain/patch";
+import type { Result } from "#src/domain/result";
 
 const PATCH = [
   "diff --git a/src/recovery.ts b/src/recovery.ts",

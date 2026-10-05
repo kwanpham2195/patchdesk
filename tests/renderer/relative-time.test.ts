@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRelativeTime } from "../../src/renderer/src/lib/relative-time";
+import { formatRelativeTime } from "#src/renderer/src/lib/relative-time";
 
 const now = Date.parse("2026-09-02T12:00:00.000Z");
 

@@ -5,8 +5,8 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import type { SettingsSection } from "../flows/settings-flow";
-import { loadSettingsRestore } from "../lib/screen-restore";
+import type { SettingsSection } from "#src/renderer/src/flows/settings-flow";
+import { loadSettingsRestore } from "#src/renderer/src/lib/screen-restore";
 import type { NavigationState } from "./use-app-navigation";
 
 /**

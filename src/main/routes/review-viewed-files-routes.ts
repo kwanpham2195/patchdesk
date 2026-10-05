@@ -10,16 +10,16 @@ import {
   string,
 } from "valibot";
 
-import { MAX_VIEWED_FILES } from "../../adapters/storage/viewed-files-store";
+import { MAX_VIEWED_FILES } from "#src/adapters/storage/viewed-files-store";
 import {
   parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type RepoRelativePath,
-} from "../../domain/ids";
-import { localPatchViews } from "../../domain/local-patch-view";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/domain/ids";
+import { localPatchViews } from "#src/domain/local-patch-view";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
 

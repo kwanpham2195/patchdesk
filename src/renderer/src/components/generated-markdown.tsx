@@ -4,7 +4,7 @@ import {
   type MarkdownContentPolicy,
 } from "./markdown-content";
 
-import { cn } from "../lib/utils";
+import { cn } from "#src/renderer/src/lib/utils";
 
 const generatedMarkdownPolicy: MarkdownContentPolicy = {
   renderLink: ({ children, key }) => <span key={key}>{children}</span>,

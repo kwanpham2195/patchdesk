@@ -13,7 +13,7 @@ import {
   InsightFailed,
   InsightNavRail,
   InsightRunning,
-} from "../../src/renderer/src/components/insight-panels";
+} from "#src/renderer/src/components/insight-panels";
 import { briefInsight, withAnalysis } from "./review-workbench-fixtures";
 
 const failedProjection = {

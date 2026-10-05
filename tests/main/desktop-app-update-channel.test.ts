@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { AppUpdateState } from "../../src/domain/app-update";
+import type { AppUpdateState } from "#src/domain/app-update";
 import {
   answerAppUpdateReads,
   readAppUpdate,
   sendAppUpdate,
   subscribeToAppUpdate,
-} from "../../src/main/desktop-app-update-channel";
+} from "#src/main/desktop-app-update-channel";
 
 /** Both halves on one fake bus: main's `webContents.send`/`ipcMain.on` and preload's `ipcRenderer`. */
 function fakeIpcBus(rendererId: number) {

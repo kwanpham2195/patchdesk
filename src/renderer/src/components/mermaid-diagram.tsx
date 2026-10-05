@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import type { Mermaid } from "mermaid";
 
-import { useLightbox } from "../use-lightbox";
+import { useLightbox } from "#src/renderer/src/use-lightbox";
 
 let mermaidPromise: Promise<Mermaid> | undefined;
 

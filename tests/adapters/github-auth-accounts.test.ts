@@ -5,8 +5,8 @@ import {
   type CommandExecution,
   type CommandExecutor,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import { listAuthenticatedGitHubAccounts } from "../../src/adapters/github/github-auth-accounts";
+} from "#src/adapters/github/command-runner";
+import { listAuthenticatedGitHubAccounts } from "#src/adapters/github/github-auth-accounts";
 
 class FakeCommandExecutor implements CommandExecutor {
   constructor(private readonly execution: CommandExecution) {}

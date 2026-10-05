@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { prepareBriefPrompt } from "../../src/services/brief-operation";
+import { prepareBriefPrompt } from "#src/services/brief-operation";
 
 const PATCH = [
   "diff --git a/src/recovery.ts b/src/recovery.ts",

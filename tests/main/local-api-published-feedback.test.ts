@@ -1,15 +1,15 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { err, ok, type Result } from "../../src/domain/result";
-import type { RawJsonValue } from "../../src/domain/json";
-import { registerPublishedFeedbackRoutes } from "../../src/main/routes/published-feedback-routes";
+import { err, ok, type Result } from "#src/domain/result";
+import type { RawJsonValue } from "#src/domain/json";
+import { registerPublishedFeedbackRoutes } from "#src/main/routes/published-feedback-routes";
 import {
   GitHubRefusedPublishedFeedbackWrite,
   type PublishedFeedbackFailure,
   type PublishedFeedbackReceipt,
   type PublishedFeedbackService,
-} from "../../src/services/published-feedback-service";
+} from "#src/services/published-feedback-service";
 
 const expected = {
   sessionId:

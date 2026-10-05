@@ -1,4 +1,4 @@
-import type { WorkbenchResponse } from "../../renderer-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 
 /** A `conversation.inline.threads` entry, as the Threads navigator section
  * consumes it -- seeded per fixture so the browser suite can exercise the

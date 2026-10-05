@@ -6,22 +6,22 @@ import {
 import type {
   GitHubComment,
   PublishedReview,
-} from "../../../domain/github-context";
+} from "#src/domain/github-context";
 import {
   conversationEntryTimestamp,
   isNewSinceLastLooked,
-} from "../../../domain/conversation-entry-timestamp";
-import { definedProps } from "../../../domain/defined-props";
-import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
-import type { PullRequestRef } from "../../../domain/pull-request";
-import { contextualMessage } from "../api-client";
-import { REVIEW_DISMISS_MESSAGES } from "../review-copy";
-import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { ReviewVerdictState } from "../../../domain/review-verdicts";
+} from "#src/domain/conversation-entry-timestamp";
+import { definedProps } from "#src/domain/defined-props";
+import { parseGitHubThreadId, parseIsoTimestamp } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { contextualMessage } from "#src/renderer/src/api-client";
+import { REVIEW_DISMISS_MESSAGES } from "#src/renderer/src/review-copy";
+import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { ReviewVerdictState } from "#src/domain/review-verdicts";
 import { RelativeTime } from "./relative-time";
 import { ReviewVerdictIcon } from "./review-verdict-icon";
-import { REVIEW_VERDICT_LABELS } from "../review-verdict-labels";
+import { REVIEW_VERDICT_LABELS } from "#src/renderer/src/review-verdict-labels";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";

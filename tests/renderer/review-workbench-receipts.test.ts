@@ -6,7 +6,7 @@ import {
   parseLabelReceipt,
   parsePublishedFeedbackReceipt,
   parseReviewerReceipt,
-} from "../../src/renderer/src/flows/review-workbench-receipts";
+} from "#src/renderer/src/flows/review-workbench-receipts";
 
 describe("review workbench receipt parsers", () => {
   it("parses direct conversation receipts and validates thread IDs", () => {

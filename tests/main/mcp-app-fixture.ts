@@ -3,15 +3,12 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import type { DesktopNotifier } from "../../src/services/desktop-notifier";
-import type { ReviewWindow } from "../../src/main/desktop-review-window";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { DesktopNotifier } from "#src/services/desktop-notifier";
+import type { ReviewWindow } from "#src/main/desktop-review-window";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";

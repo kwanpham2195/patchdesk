@@ -2,17 +2,17 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-import { definedProps } from "../../../domain/defined-props";
-import { changeScopeFromPatch } from "../../../domain/change-scope";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
+import { definedProps } from "#src/domain/defined-props";
+import { changeScopeFromPatch } from "#src/domain/change-scope";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
 import {
   deriveConversationThreadEntries,
   type ConversationThreadRow,
-} from "../conversation-thread-entries";
-import { reviewSourceTitle } from "../../../domain/review-source";
+} from "#src/renderer/src/conversation-thread-entries";
+import { reviewSourceTitle } from "#src/domain/review-source";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 
-import type { WorkbenchResponse } from "../renderer-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { Conversation } from "./conversation";
 import { DiffWorkbench } from "./diff-workbench";
 import { ReviewDiffPane } from "./review-diff-pane";
@@ -46,15 +46,18 @@ import {
 import {
   type FileFindingCount,
   useFindingCountsByPath,
-} from "../review-finding-counts";
-import type { LocalPatchViewSelection } from "../flows/use-local-patch-view";
-import type { LocalDraftControls } from "../flows/use-local-drafts";
+} from "#src/renderer/src/review-finding-counts";
+import type { LocalPatchViewSelection } from "#src/renderer/src/flows/use-local-patch-view";
+import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-drafts";
 import { LocalNotesList } from "./local-notes-list";
-import { localPatchViewLabels, sourceListsCommits } from "../review-source";
+import {
+  localPatchViewLabels,
+  sourceListsCommits,
+} from "#src/renderer/src/review-source";
 import { ReviewDiffChangesMenu } from "./review-diff-changes-menu";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
 import { ReviewWorkbenchHeader } from "./review-workbench-header";
-import { revisionFreshnessLabel } from "../rail-freshness";
+import { revisionFreshnessLabel } from "#src/renderer/src/rail-freshness";
 import {
   buildOverview,
   buildOverviewRevision,
@@ -66,33 +69,33 @@ import {
   pullRequestExternalRef,
   visibleFinishReview,
 } from "./review-workbench-pull-request";
-import { useReviewWorkbenchCommands } from "../hooks/use-review-workbench-commands";
-import { useNarrowedReviewDiff } from "../hooks/use-narrowed-review-diff";
-import { useInsightDiffNavigation } from "../hooks/use-insight-diff-navigation";
-import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
-import type { ViewedFilesControls } from "../hooks/use-viewed-files";
-import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
-import { useReviewFileSelection } from "../hooks/use-review-file-selection";
-import { useLocalNotesNavigation } from "../hooks/use-local-notes-navigation";
+import { useReviewWorkbenchCommands } from "#src/renderer/src/hooks/use-review-workbench-commands";
+import { useNarrowedReviewDiff } from "#src/renderer/src/hooks/use-narrowed-review-diff";
+import { useInsightDiffNavigation } from "#src/renderer/src/hooks/use-insight-diff-navigation";
+import { useReviewScopeFilter } from "#src/renderer/src/hooks/use-review-scope-filter";
+import type { ViewedFilesControls } from "#src/renderer/src/hooks/use-viewed-files";
+import { useReviewWorkbenchPosition } from "#src/renderer/src/hooks/use-review-workbench-position";
+import { useReviewFileSelection } from "#src/renderer/src/hooks/use-review-file-selection";
+import { useLocalNotesNavigation } from "#src/renderer/src/hooks/use-local-notes-navigation";
 import {
   useWalkthroughDiffAuthoring,
   WalkthroughDiffAuthoringContext,
 } from "./walkthrough-diff-authoring";
-import { usePendingReviewDrafts } from "../hooks/use-pending-review-drafts";
-import { useReviewNavigationState } from "../hooks/use-review-navigation-state";
+import { usePendingReviewDrafts } from "#src/renderer/src/hooks/use-pending-review-drafts";
+import { useReviewNavigationState } from "#src/renderer/src/hooks/use-review-navigation-state";
 import {
   UnsentReviewTextContext,
   useUnsentReviewTextFields,
-} from "../hooks/use-unsent-review-text";
+} from "#src/renderer/src/hooks/use-unsent-review-text";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
   type ReviewViewPreferences,
-} from "../review-view-preferences";
+} from "#src/renderer/src/review-view-preferences";
 import {
   loadNavigatorWidthPreferences,
   saveNavigatorWidthPreferences,
-} from "../navigator-width-preferences";
+} from "#src/renderer/src/navigator-width-preferences";
 import { RelativeTime } from "./relative-time";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -102,7 +105,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type {
   WorkbenchActiveTab,
   WorkbenchPosition,
-} from "../lib/screen-restore";
+} from "#src/renderer/src/lib/screen-restore";
 
 /** What the Diff tab shows in place of a diff, from both the tab itself and
  * the commit-slice pane below it. */

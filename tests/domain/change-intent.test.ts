@@ -4,7 +4,7 @@ import {
   analysisRanAgainstChangeIntent,
   parseChangeIntent,
   type ChangeIntent,
-} from "../../src/domain/change-intent";
+} from "#src/domain/change-intent";
 import {
   createReviewSessionId,
   parseContentHash,
@@ -17,15 +17,15 @@ import {
   parsePullRequestNumber,
   parseRepoRelativePath,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 import {
   createReview,
   moveLocalReviewToSession,
   parseReview,
   serializeReview,
   setChangeIntent,
-} from "../../src/domain/review";
+} from "#src/domain/review";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("Invalid fixture");

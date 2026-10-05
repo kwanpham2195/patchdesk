@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { FindingId } from "../../src/domain/ids";
-import { analysisMergeInput } from "../../src/domain/analysis-merge-findings";
+import type { FindingId } from "#src/domain/ids";
+import { analysisMergeInput } from "#src/domain/analysis-merge-findings";
 import {
   deriveCheckReasons,
   evaluateMergeReadiness,
-} from "../../src/domain/merge-readiness";
+} from "#src/domain/merge-readiness";
 
 // SAFETY: fixture ids; the brand marks a parsed safe slug and these are ones.
 const firstFindingId = "finding-1" as FindingId;

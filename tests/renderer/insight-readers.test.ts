@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { walkthroughDiscussionState } from "../../src/renderer/src/components/insight-readers";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { walkthroughDiscussionState } from "#src/renderer/src/components/insight-readers";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { patchHash, projection, sha } from "./review-workbench-fixtures";
 
 const ready = projection({

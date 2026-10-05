@@ -8,18 +8,18 @@ import {
   XCircle,
 } from "lucide-react";
 
-import type { ChangeScope } from "../../../domain/change-scope";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import type { PullRequestRef } from "../../../domain/pull-request";
+import type { ChangeScope } from "#src/domain/change-scope";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
-} from "../external-links";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/external-links";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   localRevisionLabel,
   workbenchPullRequestNumber,
-} from "../review-source";
+} from "#src/renderer/src/review-source";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { blockedMergeChip, mergeBlockerLabels } from "./merge-readiness-items";

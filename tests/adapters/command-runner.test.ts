@@ -5,11 +5,11 @@ import {
   CommandRunner,
   NodeCommandExecutor,
   normalizeCommandLabel,
-} from "../../src/adapters/github/command-runner";
+} from "#src/adapters/github/command-runner";
 import {
   addLabelsToLabelableMutation,
   maintainerInboxQuery,
-} from "../../src/adapters/github/github-graphql-queries";
+} from "#src/adapters/github/github-graphql-queries";
 
 describe("CommandRunner", () => {
   it("does not spawn when cancellation happens during executable discovery", async () => {

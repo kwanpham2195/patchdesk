@@ -13,16 +13,16 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { DesktopResponse } from "../../src/main/ipc-contract";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { definedProps } from "../../src/domain/defined-props";
-import { InsightsSlot } from "../../src/renderer/src/components/review-insights-slot";
-import { saveInsightRunPreference } from "../../src/renderer/src/insight-run-preferences";
+import type { RawJsonValue } from "#src/domain/json";
+import type { DesktopResponse } from "#src/main/ipc-contract";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { definedProps } from "#src/domain/defined-props";
+import { InsightsSlot } from "#src/renderer/src/components/review-insights-slot";
+import { saveInsightRunPreference } from "#src/renderer/src/insight-run-preferences";
 import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
-} from "../../src/renderer/src/components/review-workbench-finding-navigation";
+} from "#src/renderer/src/components/review-workbench-finding-navigation";
 import {
   failure,
   installDesktopDouble,

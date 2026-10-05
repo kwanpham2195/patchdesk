@@ -5,10 +5,10 @@ import {
   changeScopePathsForBucket,
   type ChangeScope,
   type ChangeScopeBucket,
-} from "../../../domain/change-scope";
-import type { ReviewNavigatorSection } from "../components/review-navigator";
-import type { ScopeFilterControl } from "../components/review-diff-toolbar";
-import type { WorkbenchPosition } from "../lib/screen-restore";
+} from "#src/domain/change-scope";
+import type { ReviewNavigatorSection } from "#src/renderer/src/components/review-navigator";
+import type { ScopeFilterControl } from "#src/renderer/src/components/review-diff-toolbar";
+import type { WorkbenchPosition } from "#src/renderer/src/lib/screen-restore";
 
 /** Which Scope bucket the Diff is filtered by, and the files that bucket leaves visible. */
 export type ReviewScopeFilterState = {

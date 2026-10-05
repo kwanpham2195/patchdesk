@@ -42,7 +42,7 @@ import type {
   PullRequestSummary,
   RepositoryLabelListing,
   RepositoryLabelPermission,
-} from "../../domain/github-context";
+} from "#src/domain/github-context";
 import type {
   AbsolutePath,
   GitHubLogin,
@@ -52,23 +52,23 @@ import type {
   GitSha,
   IsoTimestamp,
   RepoRelativePath,
-} from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import type {
   InboxPageSize,
   InboxStateFilter,
-} from "../../domain/maintainer-inbox";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+} from "#src/domain/maintainer-inbox";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import type {
   GitHubReviewEvent,
   PendingReviewAnchor,
   PendingReviewRead,
   PendingReviewThreadWrite,
-} from "../../domain/pending-review";
-import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
-import type { GitHubWriteFailure } from "../../domain/github-write";
-import type { GitHubReviewCoordinates } from "../../domain/patch";
+} from "#src/domain/pending-review";
+import type { DirectSummaryReviewReceipt } from "#src/domain/direct-summary-review";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
+import type { GitHubReviewCoordinates } from "#src/domain/patch";
 import {
   authenticatedUserSchema,
   reviewReceiptSchema,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ReviewPatchIndex } from "../../src/services/review-patch-index";
+import { ReviewPatchIndex } from "#src/services/review-patch-index";
 
 describe("ReviewPatchIndex", () => {
   it("returns byte-exact slices and aliases both sides of a rename", () => {

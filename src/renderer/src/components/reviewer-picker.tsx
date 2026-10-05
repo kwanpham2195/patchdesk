@@ -6,14 +6,14 @@ import {
   rateLimitedCopy,
   signInCopy,
   WRITE_PERMISSION_UNCONFIRMED,
-} from "../github-read-failure-copy";
-import type { GithubListReadState } from "../github-read-failure-copy";
+} from "#src/renderer/src/github-read-failure-copy";
+import type { GithubListReadState } from "#src/renderer/src/github-read-failure-copy";
 import {
   useGithubItemPicker,
   type GithubItemPicker,
   type GithubItemPickerActions,
-} from "../hooks/use-github-item-picker";
-import type { ReviewerListResponse } from "../renderer-contracts";
+} from "#src/renderer/src/hooks/use-github-item-picker";
+import type { ReviewerListResponse } from "#src/renderer/src/renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";

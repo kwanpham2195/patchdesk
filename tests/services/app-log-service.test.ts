@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { AppLogService, readLogFile } from "../../src/services/app-log-service";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { AppLogService, readLogFile } from "#src/services/app-log-service";
 
 import * as v from "valibot";
 

@@ -8,16 +8,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CommandRunner,
   type CommandExecution,
-} from "../../src/adapters/github/command-runner";
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { parseAbsolutePath, type AbsolutePath } from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { DashboardController } from "../../src/services/dashboard-controller";
-import type { GitHubEnvironmentSnapshot } from "../../src/services/github-environment-probe";
-import { WorkspaceSetupService } from "../../src/services/workspace-setup-service";
+} from "#src/adapters/github/command-runner";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { parseAbsolutePath, type AbsolutePath } from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { DashboardController } from "#src/services/dashboard-controller";
+import type { GitHubEnvironmentSnapshot } from "#src/services/github-environment-probe";
+import { WorkspaceSetupService } from "#src/services/workspace-setup-service";
 
 const git = createReadOnlyGitExecutor(new CommandRunner());
 

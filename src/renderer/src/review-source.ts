@@ -1,8 +1,8 @@
 import * as v from "valibot";
 
-import { baseRefName } from "../../domain/ids";
-import type { LocalPatchView } from "../../domain/local-patch-view";
-import { casesHandled } from "../../domain/result";
+import { baseRefName } from "#src/domain/ids";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { casesHandled } from "#src/domain/result";
 
 /** What the view control and the header call each patch view of a shared local Review. */
 export const localPatchViewLabels = {

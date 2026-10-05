@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { diffCatalogs } from "../../scripts/pi-catalog-delta.mjs";
+import { diffCatalogs } from "#scripts/pi-catalog-delta.mjs";
 
 const model = (id: string, name: string, provider: string) =>
   `  { id: "${id}", name: "${name}", provider: "${provider}" },`;

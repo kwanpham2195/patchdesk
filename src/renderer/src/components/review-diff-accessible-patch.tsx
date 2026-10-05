@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 
-import { definedProps } from "../../../domain/defined-props";
-import { tokenizeUnifiedPatch } from "../../../domain/unified-patch";
+import { definedProps } from "#src/domain/defined-props";
+import { tokenizeUnifiedPatch } from "#src/domain/unified-patch";
 import type {
   LocalCommentAuthoring,
   SelectedDiffRange,

@@ -13,12 +13,9 @@ import {
 } from "@earendil-works/pi-ai";
 import type { FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 
-import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
-import {
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-} from "../../../src/domain/ids";
-import { ReviewInspector } from "../../../src/services/review-inspector";
+import { PatchdeskPaths } from "#app/adapters/storage/patchdesk-paths";
+import { parseReviewSessionId, parseWorkspaceProfileId } from "#app/domain/ids";
+import { ReviewInspector } from "#app/services/review-inspector";
 
 import {
   createAnalysisAgent,
@@ -26,7 +23,7 @@ import {
   createWalkthroughAgent,
   modelReviewResultSchema,
   walkthroughResultSchema,
-} from "../src/patchdesk-insight-agent";
+} from "#runtime/src/patchdesk-insight-agent";
 import {
   MAX_AGENT_TURNS,
   canonicalizeProductionInvocation,
@@ -35,7 +32,7 @@ import {
   runPatchdeskChild,
   runPatchdeskChildProcess,
   runProductionChild,
-} from "../src/patchdesk-insight-runner";
+} from "#runtime/src/patchdesk-insight-runner";
 
 const walkthrough = {
   citationVersion: 2,

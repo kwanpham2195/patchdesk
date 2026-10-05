@@ -3,8 +3,8 @@ import type {
   PendingReviewState,
   PendingReviewThreadWrite,
   ViewerPendingReview,
-} from "../domain/pending-review";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+} from "#src/domain/pending-review";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
 
 /**
  * The typed own-write journal entries one confirmed pending-review write

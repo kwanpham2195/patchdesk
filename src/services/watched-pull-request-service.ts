@@ -1,16 +1,16 @@
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { GitHubReadFailure } from "../adapters/github/gh-request-runner";
-import type { StorageFailure } from "../adapters/storage/json-file";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { WatchedPullRequestStore } from "../adapters/storage/watched-pull-request-store";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import type { GitHubReadFailure } from "#src/adapters/github/gh-request-runner";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { WatchedPullRequestStore } from "#src/adapters/storage/watched-pull-request-store";
 import {
   createReviewId,
   type IsoTimestamp,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { KeyedMutex } from "../domain/keyed-mutex";
-import type { PullRequestRef } from "../domain/pull-request";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   checkWatchCapacity,
   diffWatchedSnapshot,
@@ -19,8 +19,8 @@ import {
   watchPullRequest,
   type WatchedPullRequest,
   type WatchLimitReached,
-} from "../domain/watched-pull-request";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/watched-pull-request";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   postDesktopNotification,
   type DesktopNotificationEvent,

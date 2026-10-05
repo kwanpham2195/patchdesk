@@ -4,14 +4,14 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as v from "valibot";
 
-import { FakeGitHubAdapter } from "../src/adapters/github/github-adapter";
-import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../src/adapters/storage/profile-store";
-import { ReviewRemoteStore } from "../src/adapters/storage/review-remote-store";
-import { ReviewStore } from "../src/adapters/storage/review-store";
-import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
-import { createReview } from "../src/domain/review";
-import { createReviewSession } from "../src/domain/review-session";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewRemoteStore } from "#src/adapters/storage/review-remote-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { createReview } from "#src/domain/review";
+import { createReviewSession } from "#src/domain/review-session";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -22,12 +22,9 @@ import {
   parseGitHubThreadId,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../src/main/local-api";
+} from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";

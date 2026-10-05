@@ -1,13 +1,13 @@
 import type { Context, Hono } from "hono";
 import { safeParse } from "valibot";
 
-import { definedProps } from "../../domain/defined-props";
-import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
-import type { ReviewSessionId, WorkspaceProfileId } from "../../domain/ids";
-import type { RawJsonValue } from "../../domain/json";
-import type { Result } from "../../domain/result";
-import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
-import { isPullRequestReviewSession } from "../../domain/review-session";
+import { definedProps } from "#src/domain/defined-props";
+import { parseReviewId, parseWorkspaceProfileId } from "#src/domain/ids";
+import type { ReviewSessionId, WorkspaceProfileId } from "#src/domain/ids";
+import type { RawJsonValue } from "#src/domain/json";
+import type { Result } from "#src/domain/result";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { isPullRequestReviewSession } from "#src/domain/review-session";
 import {
   GitHubRefusedPendingReviewWrite,
   projectPendingReview,
@@ -15,16 +15,16 @@ import {
   type PendingReviewProjection,
   type PendingReviewService,
   type PendingReviewServiceFailure,
-} from "../../services/pending-review-service";
+} from "#src/services/pending-review-service";
 import {
   GitHubRefusedDirectSummaryReview,
   projectDirectSummaryReview,
   type DirectSummaryReviewFailure,
   type DirectSummaryReviewService,
-} from "../../services/direct-summary-review-service";
-import type { FindingSuggestionCommand } from "../../services/insight-run-coordinator";
-import type { InsightCoordinatorSeam } from "../local-api-configuration";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/services/direct-summary-review-service";
+import type { FindingSuggestionCommand } from "#src/services/insight-run-coordinator";
+import type { InsightCoordinatorSeam } from "#src/main/local-api-configuration";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import {
   parseDirectSummaryCommand,
   parseFindingSuggestionCommand,

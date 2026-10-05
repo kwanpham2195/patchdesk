@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { requestJson } from "../api-client";
+import { requestJson } from "#src/renderer/src/api-client";
 import {
   parseEnvironmentCheckResponse,
   type EnvironmentCheckResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 /**
  * One read-only status request, as every setup probe in the renderer models

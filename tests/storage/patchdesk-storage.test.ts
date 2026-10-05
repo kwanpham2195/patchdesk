@@ -7,12 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ReviewSessionStore,
   parseStoredReviewSession,
-} from "../../src/adapters/storage/review-session-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+} from "#src/adapters/storage/review-session-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   createReviewSession,
   type LocalReviewSession,
-} from "../../src/domain/review-session";
+} from "#src/domain/review-session";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -26,8 +26,8 @@ import {
   parseLocalBranchName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 function must<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("Invalid fixture");

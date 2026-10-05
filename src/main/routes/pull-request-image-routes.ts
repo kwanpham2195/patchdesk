@@ -17,8 +17,8 @@ import {
   parseGitHubRepoName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../domain/ids";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/domain/ids";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
 

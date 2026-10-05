@@ -2,7 +2,7 @@ import {
   refusalFinality,
   type RefusalCause,
   type WriteKind,
-} from "../domain/github-write-refusal";
+} from "#src/domain/github-write-refusal";
 
 /** What a write service does with a refusal: report it, or keep the uncertain-outcome path. */
 export type RefusalSettlement =

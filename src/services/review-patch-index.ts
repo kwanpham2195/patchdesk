@@ -1,5 +1,5 @@
-import { parseUnifiedPatch, type ParsedPatchFile } from "../domain/patch";
-import { tokenizeUnifiedPatchLines } from "../domain/unified-patch";
+import { parseUnifiedPatch, type ParsedPatchFile } from "#src/domain/patch";
+import { tokenizeUnifiedPatchLines } from "#src/domain/unified-patch";
 
 export type IndexedPatchFile = {
   readonly file: ParsedPatchFile;

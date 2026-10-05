@@ -5,7 +5,7 @@ import {
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
-import { extractFindingEvidenceHunk } from "../../../domain/patch";
+import { extractFindingEvidenceHunk } from "#src/domain/patch";
 import { ReviewDiffView } from "./review-diff-view";
 
 const findingEvidencePreferences: ReviewViewPreferences = {

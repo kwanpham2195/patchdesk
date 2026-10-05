@@ -3,12 +3,12 @@ import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parsePullRequestInput } from "../../src/domain/pull-request";
+import { parsePullRequestInput } from "#src/domain/pull-request";
 import {
   PullRequestImageCacheProvider,
   usePullRequestImage,
   type PullRequestImageSource,
-} from "../../src/renderer/src/hooks/use-pull-request-image";
+} from "#src/renderer/src/hooks/use-pull-request-image";
 import {
   failure,
   installDesktopDouble,

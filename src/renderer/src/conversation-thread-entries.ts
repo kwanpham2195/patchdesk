@@ -1,5 +1,5 @@
-import { isNewSinceLastLooked } from "../../domain/conversation-entry-timestamp";
-import { threadNeedsReply } from "../../domain/github-context";
+import { isNewSinceLastLooked } from "#src/domain/conversation-entry-timestamp";
+import { threadNeedsReply } from "#src/domain/github-context";
 import type { ReviewInlineAnnotation } from "./components/review-diff-view";
 
 /**

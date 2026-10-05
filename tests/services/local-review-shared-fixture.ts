@@ -1,18 +1,18 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   localBranchBaseRef,
   parseLocalBranchName,
   parseReviewSessionId,
   type LocalBranchName,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   isPullRequestReviewSession,
   type LocalReviewSession,
-} from "../../src/domain/review-session";
-import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
+} from "#src/domain/review-session";
+import type { LocalReviewSourceRequest } from "#src/domain/review-source";
 import {
   git,
   profileId,

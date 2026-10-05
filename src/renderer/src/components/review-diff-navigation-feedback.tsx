@@ -1,4 +1,4 @@
-import type { ReviewDiffNavigationStatus } from "../review-diff-keyboard-nav";
+import type { ReviewDiffNavigationStatus } from "#src/renderer/src/review-diff-keyboard-nav";
 
 /** Visible, absolute feedback for the latest successful or boundary attempt. */
 export function ReviewDiffNavigationFeedback({

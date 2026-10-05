@@ -1,6 +1,6 @@
 import { CircleAlert } from "lucide-react";
-import { Button } from "../components/ui/button";
-import type { Dashboard, Profile } from "../renderer-models";
+import { Button } from "#src/renderer/src/components/ui/button";
+import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
 import { useWorkspaceProfileEditor } from "./settings-workspace-profile-editor";
 import { useReviewingAsProbe } from "./settings-workspace-reviewing-as";
 import { ReviewingAsCard, RepositoriesCard } from "./settings-workspace-cards";

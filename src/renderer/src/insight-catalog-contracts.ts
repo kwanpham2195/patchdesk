@@ -2,7 +2,7 @@
 
 import * as v from "valibot";
 
-import { INSIGHT_PROVIDERS } from "../../domain/insight-provider";
+import { INSIGHT_PROVIDERS } from "#src/domain/insight-provider";
 
 const modelCatalogEntrySchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),

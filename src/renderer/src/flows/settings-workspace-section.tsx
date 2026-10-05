@@ -1,24 +1,24 @@
 import { Plus, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
+import { Button } from "#src/renderer/src/components/ui/button";
+import { Card, CardContent } from "#src/renderer/src/components/ui/card";
 import {
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
-} from "../components/ui/field";
+} from "#src/renderer/src/components/ui/field";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../components/ui/collapsible";
-import { Input } from "../components/ui/input";
-import { Spinner } from "../components/ui/spinner";
+} from "#src/renderer/src/components/ui/collapsible";
+import { Input } from "#src/renderer/src/components/ui/input";
+import { Spinner } from "#src/renderer/src/components/ui/spinner";
 import type {
   ProfileSwitchResult,
   ProfileSwitchState,
-} from "../hooks/use-profile-switch";
+} from "#src/renderer/src/hooks/use-profile-switch";
 import {
   Select,
   SelectContent,
@@ -26,8 +26,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import type { Dashboard, Profile } from "../renderer-models";
+} from "#src/renderer/src/components/ui/select";
+import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
 import {
   useWorkspaceProfileEditor,
   type FieldStatus,

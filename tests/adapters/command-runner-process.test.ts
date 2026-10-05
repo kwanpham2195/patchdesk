@@ -6,7 +6,7 @@ import {
   CommandRunner,
   NodeCommandExecutor,
   runWithRequestAbortSignal,
-} from "../../src/adapters/github/command-runner";
+} from "#src/adapters/github/command-runner";
 
 describe("CommandRunner owned-process termination", () => {
   it("force-kills an owned process group that ignores SIGTERM", async () => {

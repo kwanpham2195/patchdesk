@@ -23,33 +23,36 @@ import {
   parseWorkspaceProfileId,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
-import type { RawJsonValue } from "../../domain/json";
+} from "#src/domain/ids";
+import type { RawJsonValue } from "#src/domain/json";
 import type {
   AssigneeCommand,
   AssigneeService,
-} from "../../services/assignee-service";
+} from "#src/services/assignee-service";
 import {
   GitHubRefusedConversationWrite,
   type DirectConversationCommand,
   type InlineConversationService,
-} from "../../services/inline-conversation-service";
-import type { LabelCommand, LabelService } from "../../services/label-service";
-import { GitHubRefusedMetadataWrite } from "../../services/pull-request-metadata-write";
-import type { ReviewWriteRecoveryFailure } from "../../services/review-write-recovery-service";
+} from "#src/services/inline-conversation-service";
+import type { LabelCommand, LabelService } from "#src/services/label-service";
+import { GitHubRefusedMetadataWrite } from "#src/services/pull-request-metadata-write";
+import type { ReviewWriteRecoveryFailure } from "#src/services/review-write-recovery-service";
 import type {
   BaseBranchCommand,
   BaseBranchService,
-} from "../../services/base-branch-service";
+} from "#src/services/base-branch-service";
 import type {
   DraftStateCommand,
   DraftStateService,
-} from "../../services/draft-state-service";
+} from "#src/services/draft-state-service";
 import type {
   ReviewerCommand,
   ReviewerService,
-} from "../../services/reviewer-service";
-import type { LocalApiContainer, LogWriter } from "../local-api-container";
+} from "#src/services/reviewer-service";
+import type {
+  LocalApiContainer,
+  LogWriter,
+} from "#src/main/local-api-container";
 import {
   assigneeListResponse,
   baseBranchListResponse,

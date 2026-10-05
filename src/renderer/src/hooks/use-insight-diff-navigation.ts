@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import type { ReviewWorkbenchFindingNavigation } from "../components/review-workbench-finding-navigation";
+import type { ChangeScopeBucket } from "#src/domain/change-scope";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import type { ReviewWorkbenchFindingNavigation } from "#src/renderer/src/components/review-workbench-finding-navigation";
 import type { ReviewWorkbenchPositionState } from "./use-review-workbench-position";
 
 /**

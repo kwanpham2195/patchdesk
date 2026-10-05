@@ -1,7 +1,7 @@
 import { onTestFinished, vi, type Mock } from "vitest";
 
-import type { AppUpdateState } from "../../src/domain/app-update";
-import type { RawJsonValue } from "../../src/domain/json";
+import type { AppUpdateState } from "#src/domain/app-update";
+import type { RawJsonValue } from "#src/domain/json";
 import type {
   DesktopMenuAction,
   DesktopNotificationClick,
@@ -9,7 +9,7 @@ import type {
   DesktopResponse,
   LocalApiDesktopRequest,
   PatchdeskDesktopApi,
-} from "../../src/main/ipc-contract";
+} from "#src/main/ipc-contract";
 
 /**
  * Shared response builders for renderer tests that fake the desktop bridge

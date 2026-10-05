@@ -3,8 +3,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AnalysisReader } from "../../src/renderer/src/components/analysis-reader";
-import type { LocalApplyControls } from "../../src/renderer/src/flows/use-local-apply";
+import { AnalysisReader } from "#src/renderer/src/components/analysis-reader";
+import type { LocalApplyControls } from "#src/renderer/src/flows/use-local-apply";
 
 afterEach(cleanup);
 

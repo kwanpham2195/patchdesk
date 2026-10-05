@@ -11,11 +11,11 @@ import type {
   AssignableUserListing,
   PullRequestReviewerListing,
   RepositoryLabelListing,
-} from "../../domain/github-context";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
-import type { GitHubWriteFailure } from "../../domain/github-write";
+} from "#src/domain/github-context";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { GitHubWriteFailure } from "#src/domain/github-write";
 import {
   addAssigneesToAssignableMutation,
   addLabelsToLabelableMutation,

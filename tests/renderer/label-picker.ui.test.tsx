@@ -3,8 +3,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LabelPicker } from "../../src/renderer/src/components/label-picker";
-import type { RepositoryLabelListResponse } from "../../src/renderer/src/renderer-contracts";
+import { LabelPicker } from "#src/renderer/src/components/label-picker";
+import type { RepositoryLabelListResponse } from "#src/renderer/src/renderer-contracts";
 
 /**
  * What only a mounted `LabelPicker` can show, and only this one: that it

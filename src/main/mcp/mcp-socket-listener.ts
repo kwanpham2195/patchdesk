@@ -4,12 +4,12 @@ import { dirname } from "node:path";
 
 import * as v from "valibot";
 
-import type { PatchdeskPaths } from "../../adapters/storage/patchdesk-paths";
-import { whenLoginShellEnvironmentImported } from "../../adapters/process/login-shell-import";
-import { loggableMetaValue } from "../../domain/log-entry";
-import { parseReviewId } from "../../domain/ids";
-import { err } from "../../domain/result";
-import { readObjectField } from "../../services/read-object-field";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-shell-import";
+import { loggableMetaValue } from "#src/domain/log-entry";
+import { parseReviewId } from "#src/domain/ids";
+import { err } from "#src/domain/result";
+import { readObjectField } from "#src/services/read-object-field";
 import {
   MCP_SOCKET_ENV,
   mcpSocketBounds,
@@ -18,11 +18,11 @@ import {
   type McpSocketBounds,
   type McpSocketReply,
   type McpToolRefusal,
-} from "../../mcp/socket-protocol";
-import { isSetupCommandName } from "../../mcp/setup-commands";
-import { isMcpToolName } from "../../mcp/tool-manifest";
-import type { WorkspaceSetupService } from "../../services/workspace-setup-service";
-import type { LogWriter } from "../local-api-container";
+} from "#src/mcp/socket-protocol";
+import { isSetupCommandName } from "#src/mcp/setup-commands";
+import { isMcpToolName } from "#src/mcp/tool-manifest";
+import type { WorkspaceSetupService } from "#src/services/workspace-setup-service";
+import type { LogWriter } from "#src/main/local-api-container";
 import {
   dispatchMcpTool,
   type McpRefusedCall,

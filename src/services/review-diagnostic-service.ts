@@ -2,15 +2,15 @@ import { randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { isNotFound, writeAtomicFile } from "../adapters/storage/json-file";
-import { definedProps } from "../domain/defined-props";
-import { KeyedMutex } from "../domain/keyed-mutex";
-import { err, ok, type Result } from "../domain/result";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { isNotFound, writeAtomicFile } from "#src/adapters/storage/json-file";
+import { definedProps } from "#src/domain/defined-props";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH,
   REVIEW_DIAGNOSTIC_MAX_EVENTS,
@@ -23,7 +23,7 @@ import {
   type ReviewDiagnosticInput,
   type ReviewDiagnosticMetadata,
   type ReviewSupportBundle,
-} from "../domain/review-diagnostic";
+} from "#src/domain/review-diagnostic";
 
 export type ReviewDiagnosticFailure = {
   readonly _tag: "ReviewDiagnosticStorageFailed";

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 
-import { requestJson } from "../api-client";
+import { requestJson } from "#src/renderer/src/api-client";
 
 // Loose: `/v1/settings` also carries the settings other hooks own.
 const settingsResponseSchema = v.looseObject({

@@ -12,14 +12,14 @@ import { join } from "node:path";
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { parseReviewId } from "../../src/domain/ids";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { parseReviewId } from "#src/domain/ids";
 import {
   shortTemporaryDirectory,
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
+} from "#tests/main/mcp-app-fixture";
 import {
   addNote,
   call,
@@ -28,7 +28,7 @@ import {
   reviewWithNotes,
   setIntentInApp,
 } from "./mcp-read-tools-fixture";
-import { profileId, value } from "../services/local-apply-fixture";
+import { profileId, value } from "#tests/services/local-apply-fixture";
 import { closeMcpTestClients, connectLegacyClient } from "./mcp-test-clients";
 
 let app: McpAppFixture | undefined;

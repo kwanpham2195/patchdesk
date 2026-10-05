@@ -16,7 +16,7 @@ import type {
   PublishedIssueComment,
   PullRequestCommit,
   PullRequestSummary,
-} from "../../domain/github-context";
+} from "#src/domain/github-context";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -29,10 +29,10 @@ import {
   type ContentHash,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
-import { definedProps } from "../../domain/defined-props";
-import { mapConcurrent } from "../../domain/map-concurrent";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
 import { projectChecks } from "./check-summary-schema";
 import {
   isNotFound,

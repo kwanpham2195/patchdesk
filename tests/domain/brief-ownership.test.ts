@@ -4,7 +4,7 @@ import {
   briefOwnershipFiles,
   normalizeBriefOwnership,
   type BriefOwnershipOutput,
-} from "../../src/domain/brief-ownership";
+} from "#src/domain/brief-ownership";
 
 /**
  * One patch that carries every status the skeleton reports, plus a lockfile so

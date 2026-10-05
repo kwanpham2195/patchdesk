@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import {
   INSTALLED_APP_PATH,
   type AppInstallSource,
-} from "../../domain/app-update";
+} from "#src/domain/app-update";
 
 /** The Homebrew prefixes Patchdesk recognizes; nothing else is searched, so no release data can choose an executable. */
 const homebrewPrefixes = ["/opt/homebrew", "/usr/local"] as const;

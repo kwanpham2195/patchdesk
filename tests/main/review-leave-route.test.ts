@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { ok } from "../../src/domain/result";
-import { registerReviewLifecycleRoutes } from "../../src/main/routes/review-lifecycle-routes";
-import type { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
+import { ok } from "#src/domain/result";
+import { registerReviewLifecycleRoutes } from "#src/main/routes/review-lifecycle-routes";
+import type { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
 
 type LeaveInput = Parameters<ReviewWorkbenchController["leave"]>[0];
 /** A request body as the renderer might send it, well-formed or not. */

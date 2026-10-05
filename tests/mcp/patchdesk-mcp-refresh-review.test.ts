@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
+} from "#tests/main/mcp-app-fixture";
 import {
   closeMcpTestClients,
   connectLegacyClient,

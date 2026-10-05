@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   MaintainerInboxService,
   type InboxRepositoryRef,
-} from "../../src/services/maintainer-inbox-service";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { MaintainerInboxCache } from "../../src/adapters/storage/maintainer-inbox-cache-store";
-import type { StorageFailure } from "../../src/adapters/storage/json-file";
+} from "#src/services/maintainer-inbox-service";
+import { err, ok, type Result } from "#src/domain/result";
+import type { MaintainerInboxCache } from "#src/adapters/storage/maintainer-inbox-cache-store";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
 const REFUSE_AFTER_MS = 4 * 60 * 60 * 1000; // pins the four-hour refuse rule
 
 // SAFETY: MaintainerInboxService reads only host/owner/repo off the

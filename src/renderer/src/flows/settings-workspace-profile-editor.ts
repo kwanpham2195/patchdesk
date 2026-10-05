@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { requestJson } from "../api-client";
-import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
-import type { Dashboard, Profile } from "../renderer-models";
+import { requestJson } from "#src/renderer/src/api-client";
+import type { ProfileSwitchResult } from "#src/renderer/src/hooks/use-profile-switch";
+import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
 import {
   listError,
   persistedForFields,

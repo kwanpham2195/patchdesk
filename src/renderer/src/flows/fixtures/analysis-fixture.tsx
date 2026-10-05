@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 
-import { buildInsightReaders } from "../../components/insight-readers";
-import { parseUnifiedPatch } from "../../../../domain/patch";
-import type { WorkbenchResponse } from "../../renderer-contracts";
+import { buildInsightReaders } from "#src/renderer/src/components/insight-readers";
+import { parseUnifiedPatch } from "#src/domain/patch";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   analysisFixtureData,
   analysisFixtureReviewActions,

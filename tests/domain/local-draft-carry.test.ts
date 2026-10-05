@@ -7,13 +7,10 @@ import {
   parseLocalNoteId,
   parseRepoRelativePath,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import type {
-  FindingDraft,
-  MaintainerNote,
-} from "../../src/domain/local-draft";
-import { carryLocalDraft } from "../../src/domain/local-draft-carry";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { FindingDraft, MaintainerNote } from "#src/domain/local-draft";
+import { carryLocalDraft } from "#src/domain/local-draft-carry";
+import type { Result } from "#src/domain/result";
 
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("test fixture failed");

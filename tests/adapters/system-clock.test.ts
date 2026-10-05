@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 
-import { systemNow } from "../../src/adapters/process/system-clock";
-import { parseIsoTimestamp } from "../../src/domain/ids";
+import { systemNow } from "#src/adapters/process/system-clock";
+import { parseIsoTimestamp } from "#src/domain/ids";
 
 // `systemNow` is the one place the wall clock becomes a branded
 // `IsoTimestamp` without going through `parseIsoTimestamp`; it asserts the

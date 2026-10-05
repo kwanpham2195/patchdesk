@@ -1,17 +1,17 @@
 import type {
   GitHubPendingReviewGateway,
   GitHubReader,
-} from "../adapters/github/github-adapter";
-import { parseGitHubLogin } from "../domain/ids";
+} from "#src/adapters/github/github-adapter";
+import { parseGitHubLogin } from "#src/domain/ids";
 import {
   matchPendingReviewThread,
   type PendingReviewAnchor,
   type PendingReviewOperation,
   type PendingReviewRead,
   type PendingReviewThreadWrite,
-} from "../domain/pending-review";
-import type { PullRequestRef } from "../domain/pull-request";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/pending-review";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 
 type PendingReviewReader = Pick<
   GitHubPendingReviewGateway,

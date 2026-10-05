@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LocalPiProviderCatalog } from "../../src/adapters/pi/pi-provider-catalog";
+import { LocalPiProviderCatalog } from "#src/adapters/pi/pi-provider-catalog";
 
 it("parses the generated isolated Pi catalog and exposes only its safe projection", async () => {
-  const { PI_AI_CATALOG } = await import("../../src/adapters/pi/pi-ai-catalog");
+  const { PI_AI_CATALOG } = await import("#src/adapters/pi/pi-ai-catalog");
   expect(PI_AI_CATALOG).toHaveLength(32);
   expect(
     PI_AI_CATALOG.find((entry) => entry.provider === "openai")?.models.some(
@@ -18,8 +18,8 @@ it("parses the generated isolated Pi catalog and exposes only its safe projectio
 import {
   LocalPiRuntimeModelCatalog,
   canonicalModelId,
-} from "../../src/adapters/pi/pi-runtime-model-catalog";
-import type { RawJsonValue } from "../../src/domain/json";
+} from "#src/adapters/pi/pi-runtime-model-catalog";
+import type { RawJsonValue } from "#src/domain/json";
 
 const roots: string[] = [];
 afterEach(async () => {

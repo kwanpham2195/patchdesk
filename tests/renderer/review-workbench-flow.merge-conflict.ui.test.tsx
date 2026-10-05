@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import { projection } from "./review-workbench-fixtures";
 

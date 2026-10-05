@@ -14,7 +14,7 @@ import {
   string,
 } from "valibot";
 
-import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
+import { runWithRequestAbortSignal } from "#src/adapters/github/command-runner";
 import {
   parseContentHash,
   parseGitSha,
@@ -22,15 +22,15 @@ import {
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import {
   parseRecentReviewWrite,
   recentReviewWriteRecordSchema,
   type RecentReviewWrite,
-} from "../../domain/recent-review-write";
-import type { LocalApiContainer } from "../local-api-container";
-import { mergeReceiptBody } from "../../services/merge-write-controller";
-import { reviewWorkbenchFailureKinds } from "../../services/review-workbench-controller";
+} from "#src/domain/recent-review-write";
+import type { LocalApiContainer } from "#src/main/local-api-container";
+import { mergeReceiptBody } from "#src/services/merge-write-controller";
+import { reviewWorkbenchFailureKinds } from "#src/services/review-workbench-controller";
 import { response, serviceResponse } from "./http-status";
 import { jsonBody } from "./json-body";
 import { reviewRecoverySchema } from "./review-recovery-schema";

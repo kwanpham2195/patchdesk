@@ -1,4 +1,4 @@
-import { KeyedMutex } from "../domain/keyed-mutex";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
 
 /**
  * One in-process owner for every operation that can change or reconcile one

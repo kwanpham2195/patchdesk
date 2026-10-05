@@ -1,11 +1,11 @@
-import { PatchdeskApiError } from "../../api-client";
-import type { AssigneesSectionActions } from "../../components/assignee-picker";
-import type { ReviewerPickerActions } from "../../components/reviewer-picker";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
+import type { AssigneesSectionActions } from "#src/renderer/src/components/assignee-picker";
+import type { ReviewerPickerActions } from "#src/renderer/src/components/reviewer-picker";
 import type {
   AssignableUserListResponse,
   RepositoryLabelListResponse,
   ReviewerListResponse,
-} from "../../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 
 // The repository's full label catalog, as the Labels picker's `fetchLabels`
 // reads it -- deliberately a superset of `workbenchFixtureData.pullRequest

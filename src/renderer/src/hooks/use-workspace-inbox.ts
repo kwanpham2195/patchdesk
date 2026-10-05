@@ -8,12 +8,12 @@ import {
   type Dispatch,
   type RefObject,
 } from "react";
-import { api } from "../api-client";
+import { api } from "#src/renderer/src/api-client";
 import {
   inboxPreferencesWithinQueryBudget,
   loadInboxViewPreferences,
   saveInboxViewPreferences,
-} from "../inbox-view-preferences";
+} from "#src/renderer/src/inbox-view-preferences";
 import {
   dropFiltersToFit,
   droppedFilterPreferences,
@@ -27,22 +27,25 @@ import {
   resolveInboxRepository,
   sameInboxRows,
   type InboxRequestState,
-} from "../inbox-request";
-import { parseInboxResponse, type InboxResponse } from "../renderer-contracts";
+} from "#src/renderer/src/inbox-request";
+import {
+  parseInboxResponse,
+  type InboxResponse,
+} from "#src/renderer/src/renderer-contracts";
 import type {
   Dashboard,
   DashboardScreenState,
   Profile,
   Repo,
-} from "../renderer-models";
-import { screenStateForInbox } from "../screen-state-for-inbox";
+} from "#src/renderer/src/renderer-models";
+import { screenStateForInbox } from "#src/renderer/src/screen-state-for-inbox";
 import {
   dashboardFromInbox,
   isProfile,
   unsavedDefaultProfile,
   workspaceReducer,
   type WorkspaceAction,
-} from "../workspace-state";
+} from "#src/renderer/src/workspace-state";
 import {
   MAX_INBOX_FILTER_LABELS,
   parseInboxAuthorFilter,
@@ -53,9 +56,9 @@ import {
   type InboxPageSize,
   type InboxPreset,
   type InboxReviewStateFilter,
-} from "../../../domain/maintainer-inbox";
-import { sameRepositoryIdentity } from "../../../domain/repository-identity";
-import { ok, type Result } from "../../../domain/result";
+} from "#src/domain/maintainer-inbox";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
+import { ok, type Result } from "#src/domain/result";
 
 /**
  * Owns the Pull requests screen's workspace load, inbox request and filters.

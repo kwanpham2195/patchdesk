@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PierreFileTree,
   type PierreFileTreeItem,
-} from "../../src/renderer/src/components/pierre-file-tree";
+} from "#src/renderer/src/components/pierre-file-tree";
 
 afterEach(cleanup);
 

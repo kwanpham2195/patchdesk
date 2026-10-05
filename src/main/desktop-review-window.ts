@@ -1,4 +1,4 @@
-import type { ReviewId } from "../domain/ids";
+import type { ReviewId } from "#src/domain/ids";
 import type { DesktopNavigationState } from "./desktop-close-guard";
 import {
   sendNotificationClick,

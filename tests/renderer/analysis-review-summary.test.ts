@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   renderAnalysisReviewBody,
   renderAnalysisReviewSummary,
-} from "../../src/renderer/src/analysis-review-summary";
-import { parseFindingId, parseRepoRelativePath } from "../../src/domain/ids";
-import type { ReviewResult } from "../../src/domain/review-result";
-import type { Result } from "../../src/domain/result";
+} from "#src/renderer/src/analysis-review-summary";
+import { parseFindingId, parseRepoRelativePath } from "#src/domain/ids";
+import type { ReviewResult } from "#src/domain/review-result";
+import type { Result } from "#src/domain/result";
 
 function requireParsed<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("invalid test fixture");

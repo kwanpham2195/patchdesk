@@ -2,20 +2,20 @@ import { useState } from "react";
 import { Combobox } from "@base-ui/react/combobox";
 import { Check, GitBranch } from "lucide-react";
 
-import { contextualMessage } from "../api-client";
-import type { BaseBranchListResponse } from "../base-branch-contracts";
-import type { BaseBranchChangeOutcome } from "../flows/use-review-metadata-actions";
+import { contextualMessage } from "#src/renderer/src/api-client";
+import type { BaseBranchListResponse } from "#src/renderer/src/base-branch-contracts";
+import type { BaseBranchChangeOutcome } from "#src/renderer/src/flows/use-review-metadata-actions";
 import {
   forbiddenCopy,
   rateLimitedCopy,
   signInCopy,
   WRITE_PERMISSION_UNCONFIRMED,
-} from "../github-read-failure-copy";
+} from "#src/renderer/src/github-read-failure-copy";
 import {
   useBaseBranchCandidates,
   type BaseBranchReadState,
-} from "../hooks/use-base-branch-candidates";
-import { BASE_BRANCH_MESSAGES } from "../review-copy";
+} from "#src/renderer/src/hooks/use-base-branch-candidates";
+import { BASE_BRANCH_MESSAGES } from "#src/renderer/src/review-copy";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,

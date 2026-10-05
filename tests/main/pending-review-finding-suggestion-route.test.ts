@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { err, ok, type Result } from "../../src/domain/result";
-import { registerPendingReviewRoutes } from "../../src/main/routes/pending-review-routes";
-import type { FindingSuggestionCommand } from "../../src/services/insight-run-coordinator";
-import type { PendingReviewServiceFailure } from "../../src/services/pending-review-service";
+import { err, ok, type Result } from "#src/domain/result";
+import { registerPendingReviewRoutes } from "#src/main/routes/pending-review-routes";
+import type { FindingSuggestionCommand } from "#src/services/insight-run-coordinator";
+import type { PendingReviewServiceFailure } from "#src/services/pending-review-service";
 
 const PATH = "/v1/reviews/pending-review/finding-suggestion";
 const reviewId = "acme__octo-org__patchdesk__pr-42__review-abcdef123456";

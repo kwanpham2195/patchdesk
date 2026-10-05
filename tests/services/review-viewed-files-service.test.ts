@@ -3,17 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewStore } from "../../src/adapters/storage/review-store";
-import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import {
   createReviewSessionId,
   parseGitSha,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import { markReviewTerminal } from "../../src/domain/review";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ReviewViewedFilesService } from "../../src/services/review-viewed-files-service";
+} from "#src/domain/ids";
+import { markReviewTerminal } from "#src/domain/review";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { ReviewViewedFilesService } from "#src/services/review-viewed-files-service";
 import { must, values } from "./review-invariant-fixtures";
 
 let root: string | undefined;

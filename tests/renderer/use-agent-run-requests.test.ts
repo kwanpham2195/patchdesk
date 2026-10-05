@@ -2,10 +2,10 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AgentRunRequestView } from "../../src/renderer/src/agent-run-requests";
-import { displayClientName } from "../../src/renderer/src/agent-run-requests";
-import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
-import { useAgentRunRequests } from "../../src/renderer/src/hooks/use-agent-run-requests";
+import type { AgentRunRequestView } from "#src/renderer/src/agent-run-requests";
+import { displayClientName } from "#src/renderer/src/agent-run-requests";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
+import { useAgentRunRequests } from "#src/renderer/src/hooks/use-agent-run-requests";
 import {
   failure,
   installDesktopDouble,

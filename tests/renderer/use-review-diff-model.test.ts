@@ -4,10 +4,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { RefObject } from "react";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import { useReviewDiffModel } from "../../src/renderer/src/hooks/use-review-diff-model";
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
-import type { LocalNoteCardProps } from "../../src/renderer/src/components/local-note-card";
-import type { ReviewInlineAnnotation } from "../../src/renderer/src/components/review-diff-view";
+import { useReviewDiffModel } from "#src/renderer/src/hooks/use-review-diff-model";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
+import type { LocalNoteCardProps } from "#src/renderer/src/components/local-note-card";
+import type { ReviewInlineAnnotation } from "#src/renderer/src/components/review-diff-view";
 import {
   installDesktopDouble,
   type DesktopDouble,

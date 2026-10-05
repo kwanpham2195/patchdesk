@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { BriefReach } from "../../src/domain/brief-reach";
+import type { BriefReach } from "#src/domain/brief-reach";
 import {
   parseContentHash,
   parseGitSha,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
-import { parseStoredBrief } from "../../src/domain/stored-brief";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
+import { parseStoredBrief } from "#src/domain/stored-brief";
 
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("test fixture failed");

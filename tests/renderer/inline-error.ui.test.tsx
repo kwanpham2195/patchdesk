@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { InlineError } from "../../src/renderer/src/components/ui/inline-error";
+import { InlineError } from "#src/renderer/src/components/ui/inline-error";
 
 afterEach(cleanup);
 

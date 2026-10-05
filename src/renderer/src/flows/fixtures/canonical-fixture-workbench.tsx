@@ -1,12 +1,12 @@
 import {
   ReviewWorkbench,
   type ReviewWorkbenchActions,
-} from "../../components/review-workbench";
-import { definedProps } from "../../../../domain/defined-props";
-import type { PullRequestOverviewMerge } from "../../components/pr-overview-sheet";
-import type { AssigneesSectionActions } from "../../components/assignee-picker";
-import type { ReviewerPickerActions } from "../../components/reviewer-picker";
-import type { WorkbenchResponse } from "../../renderer-contracts";
+} from "#src/renderer/src/components/review-workbench";
+import { definedProps } from "#src/domain/defined-props";
+import type { PullRequestOverviewMerge } from "#src/renderer/src/components/pr-overview-sheet";
+import type { AssigneesSectionActions } from "#src/renderer/src/components/assignee-picker";
+import type { ReviewerPickerActions } from "#src/renderer/src/components/reviewer-picker";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { NavigationState } from "./navigation-state";
 import {
   fixtureAssigneeActions,

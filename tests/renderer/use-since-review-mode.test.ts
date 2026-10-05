@@ -2,9 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useSinceReviewMode } from "../../src/renderer/src/hooks/use-since-review-mode";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import type { SinceReviewDiffResponse } from "../../src/renderer/src/review-diff-contracts";
+import { useSinceReviewMode } from "#src/renderer/src/hooks/use-since-review-mode";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { SinceReviewDiffResponse } from "#src/renderer/src/review-diff-contracts";
 
 const head = "b".repeat(40);
 const reviewed = "a".repeat(40);

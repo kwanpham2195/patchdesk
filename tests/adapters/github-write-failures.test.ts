@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { CommandFailure } from "../../src/adapters/github/command-runner";
+import type { CommandFailure } from "#src/adapters/github/command-runner";
 import {
   optionalPolicyUnavailableReason,
   writeFailure,
-} from "../../src/adapters/github/github-write-failures";
-import type { ForbiddenReason } from "../../src/domain/github-forbidden-reason";
+} from "#src/adapters/github/github-write-failures";
+import type { ForbiddenReason } from "#src/domain/github-forbidden-reason";
 
 const forbiddenReasons: ReadonlyArray<ForbiddenReason> = [
   "ip_allow_list",

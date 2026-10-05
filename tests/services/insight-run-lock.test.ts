@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { err } from "../../src/domain/result";
-import type { InsightInvoker } from "../../src/services/insight-run-coordinator";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { err } from "#src/domain/result";
+import type { InsightInvoker } from "#src/services/insight-run-coordinator";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import {
   barrier,
   profileId,

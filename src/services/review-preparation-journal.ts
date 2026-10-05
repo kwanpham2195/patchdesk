@@ -11,20 +11,20 @@ import {
 import { basename, dirname, join } from "node:path";
 import * as v from "valibot";
 
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
-import { isPathContained } from "../adapters/storage/path-containment";
-import { definedProps } from "../domain/defined-props";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { readJsonFile, writeAtomicJson } from "#src/adapters/storage/json-file";
+import { isPathContained } from "#src/adapters/storage/path-containment";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { mapConcurrent } from "../domain/map-concurrent";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewWorktreeService } from "./review-worktree-service";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 

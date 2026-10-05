@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { prepareRelease } from "../../scripts/prepare-release-lib.mjs";
+import { prepareRelease } from "#scripts/prepare-release-lib.mjs";
 
 type CommandResult = {
   readonly status: number | null;

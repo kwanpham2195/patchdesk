@@ -3,9 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { RefreshOperationStore } from "../../src/adapters/storage/refresh-operation-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { createReview } from "../../src/domain/review";
+import { RefreshOperationStore } from "#src/adapters/storage/refresh-operation-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { createReview } from "#src/domain/review";
 import {
   createReviewSessionId,
   parseGitHubHost,
@@ -15,8 +15,8 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 const roots: string[] = [];
 afterEach(async () => {

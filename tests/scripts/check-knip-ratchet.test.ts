@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkKnipCount } from "../../scripts/check-knip-ratchet.mjs";
+import { checkKnipCount } from "#scripts/check-knip-ratchet.mjs";
 
 type CommandCall = {
   readonly command: string;

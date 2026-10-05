@@ -314,14 +314,14 @@ invariant the surrounding code checked, not restate what the code does.
 ## Verifying before pushing
 
 `pnpm check` is the pre-handoff command: it runs `pnpm typecheck`,
-`pnpm typecheck:scripts`, `pnpm check:error-ui`, `pnpm test:all`,
+`pnpm typecheck:scripts`, `pnpm check:error-ui`, `pnpm check:imports`, `pnpm test:all`,
 `pnpm lint:staged` (checks what you will commit),
 `pnpm lint:changed -- origin/main` (checks the whole branch the way the pull
 request gates will), then `pnpm knip:ratchet`, in that order, and stops at the
 first failure. `pnpm check:error-ui` scans the renderer for a literal
 `role="alert"` outside the three primitives that own one (`alert.tsx`,
 `field.tsx`, `inline-error.tsx`), so error surfaces stay in those components.
-`pnpm lint:staged` reports "no staged source files" when nothing is staged.
+`pnpm check:imports` rejects parent-climbing module specifiers, not filesystem paths or fixture strings. Root-owned code imports across directories through package `#src/*`, `#tests/*`, `#scripts/*`, and `#tools/*`; `#package` and `#resources/*` cover root assets. The Insight runtime uses `#runtime/*` locally and build-only `#app/*` for root source. Portable anti-slop plugins use package-local `#anti-slop/*`. Keep `./` imports for files in the same directory. `pnpm lint:staged` reports "no staged source files" when nothing is staged.
 The repo-wide count ratchet runs once, inside
 `pnpm lint:changed`, which is the shape CI enforces.
 

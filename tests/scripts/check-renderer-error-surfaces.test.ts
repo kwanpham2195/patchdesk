@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { scanRendererErrorSurfaceSources } from "../../scripts/check-renderer-error-surfaces.mjs";
+import { scanRendererErrorSurfaceSources } from "#scripts/check-renderer-error-surfaces.mjs";
 
 const approvedPrimitiveSources = [
   {

@@ -1,15 +1,15 @@
 import * as v from "valibot";
 import { describe, expect, it } from "vitest";
 
-import type { BriefCitation } from "../../src/domain/brief";
+import type { BriefCitation } from "#src/domain/brief";
 import {
   briefFlowOutputSchema,
   normalizeBriefFlow,
   patchTouchesUiComponents,
   type BriefFlowOutput,
-} from "../../src/domain/brief-flow";
-import { parseRepoRelativePath } from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/brief-flow";
+import { parseRepoRelativePath } from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "err") throw new Error("test fixture failed");

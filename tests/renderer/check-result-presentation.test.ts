@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { presentOverallCheckResult } from "../../src/renderer/src/components/review-checks";
-import type { CheckSummary } from "../../src/domain/github-context";
+import { presentOverallCheckResult } from "#src/renderer/src/components/review-checks";
+import type { CheckSummary } from "#src/domain/github-context";
 
 type Overall = CheckSummary["overall"];
 type Freshness = Parameters<typeof presentOverallCheckResult>[1];

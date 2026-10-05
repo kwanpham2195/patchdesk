@@ -7,9 +7,9 @@ import {
   parseGitSha,
   parseRepoRelativePath,
   parseReviewSessionId,
-} from "../../src/domain/ids";
-import type { ReviewWriteIntent } from "../../src/domain/review-write-operation";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { ReviewWriteIntent } from "#src/domain/review-write-operation";
+import type { Result } from "#src/domain/result";
 
 /** A persisted Reply operation in its on-disk JSON shape. */
 export const storedReviewWriteOperation = {

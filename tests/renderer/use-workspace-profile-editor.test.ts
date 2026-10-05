@@ -3,12 +3,9 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useWorkspaceProfileEditor } from "../../src/renderer/src/flows/settings-workspace-profile-editor";
-import type {
-  Dashboard,
-  Profile,
-} from "../../src/renderer/src/renderer-models";
-import type { DesktopResponse } from "../../src/main/ipc-contract";
+import { useWorkspaceProfileEditor } from "#src/renderer/src/flows/settings-workspace-profile-editor";
+import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
+import type { DesktopResponse } from "#src/main/ipc-contract";
 import {
   failure,
   installDesktopDouble,

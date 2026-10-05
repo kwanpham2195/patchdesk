@@ -8,7 +8,7 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
   useReviewDiffScrollState,
   useReviewDiffSelectionScroll,
-} from "../../src/renderer/src/hooks/use-review-diff-scroll-state";
+} from "#src/renderer/src/hooks/use-review-diff-scroll-state";
 
 const items = [{ id: "src/a.ts" }, { id: "src/b.ts" }];
 const selectionTarget = { type: "item", id: "src/b.ts", align: "start" };

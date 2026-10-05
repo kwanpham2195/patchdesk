@@ -4,13 +4,10 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
-import { registerReviewLifecycleRoutes } from "../../src/main/routes/review-lifecycle-routes";
-import { parseMergeReceipt } from "../../src/renderer/src/review-write-receipts";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
+import { registerReviewLifecycleRoutes } from "#src/main/routes/review-lifecycle-routes";
+import { parseMergeReceipt } from "#src/renderer/src/review-write-receipts";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";

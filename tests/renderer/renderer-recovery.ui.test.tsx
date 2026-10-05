@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { RendererRecovery } from "../../src/renderer/src/components/renderer-recovery";
+import { RendererRecovery } from "#src/renderer/src/components/renderer-recovery";
 
 describe("RendererRecovery", () => {
   it("renders the owned reload action", async () => {

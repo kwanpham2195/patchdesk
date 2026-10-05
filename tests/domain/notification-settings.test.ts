@@ -4,7 +4,7 @@ import {
   notificationSettingsOf,
   parsePatchdeskConfig,
   parsePatchdeskSettingsPatch,
-} from "../../src/domain/contracts";
+} from "#src/domain/contracts";
 
 describe("notification settings", () => {
   it("defaults to notifications on and preparation and merge off when the config names none", () => {

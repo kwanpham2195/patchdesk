@@ -1,5 +1,5 @@
-import type { MergeMethod } from "../../domain/github-context";
-import type { RefusalCause } from "../../domain/github-write-refusal";
+import type { MergeMethod } from "#src/domain/github-context";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 import { isApiErrorCode } from "./api-client";
 import { refusalCausePhrase } from "./write-refusal-copy";
 

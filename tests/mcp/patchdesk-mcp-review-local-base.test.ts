@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
-import { profileId } from "../services/local-apply-fixture";
+} from "#tests/main/mcp-app-fixture";
+import { profileId } from "#tests/services/local-apply-fixture";
 import {
   call,
   linkedBranchWithCommit,

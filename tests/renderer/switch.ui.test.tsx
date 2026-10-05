@@ -3,7 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { Switch } from "../../src/renderer/src/components/ui/switch";
+import { Switch } from "#src/renderer/src/components/ui/switch";
 
 afterEach(cleanup);
 

@@ -2,14 +2,14 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   ReviewRemoteStore,
   hashSnapshot,
   parseReviewRemoteSnapshot,
   type ReviewRemoteSnapshot,
-} from "../../src/adapters/storage/review-remote-store";
-import { createReviewId } from "../../src/domain/ids";
+} from "#src/adapters/storage/review-remote-store";
+import { createReviewId } from "#src/domain/ids";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -17,8 +17,8 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   parseGitSha,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T =>
   result._tag === "ok"

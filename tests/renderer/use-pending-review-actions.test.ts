@@ -2,23 +2,23 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 import {
   PatchdeskApiError,
   ReviewPreconditionError,
   contextualMessage,
   untrustedWriteResponseError,
-} from "../../src/renderer/src/api-client";
-import { PENDING_REVIEW_RECOVERY_MESSAGES } from "../../src/renderer/src/review-copy";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/api-client";
+import { PENDING_REVIEW_RECOVERY_MESSAGES } from "#src/renderer/src/review-copy";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type {
   ReviewWorkbenchPatch,
   RunDirectCommand,
-} from "../../src/renderer/src/flows/use-review-observation";
+} from "#src/renderer/src/flows/use-review-observation";
 import {
   usePendingReviewActions,
   type PendingReviewActionsResult,
-} from "../../src/renderer/src/flows/use-pending-review-actions";
+} from "#src/renderer/src/flows/use-pending-review-actions";
 import {
   failure,
   installDesktopDouble,

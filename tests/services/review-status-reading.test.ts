@@ -3,19 +3,19 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   parseAgentRunRequestId,
   parseFindingId,
   parseRepoRelativePath,
   parseReviewId,
-} from "../../src/domain/ids";
-import { ok } from "../../src/domain/result";
-import { isLocalReview, setAgentRunRequests } from "../../src/domain/review";
-import { markLocalDraftsApplied } from "../../src/domain/review-local-drafts";
-import { ReviewInsightReader } from "../../src/services/review-insight-reading";
-import { readReviewStatus } from "../../src/services/review-status-reading";
-import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
+} from "#src/domain/ids";
+import { ok } from "#src/domain/result";
+import { isLocalReview, setAgentRunRequests } from "#src/domain/review";
+import { markLocalDraftsApplied } from "#src/domain/review-local-drafts";
+import { ReviewInsightReader } from "#src/services/review-insight-reading";
+import { readReviewStatus } from "#src/services/review-status-reading";
+import type { ReviewWorkbenchProjection } from "#src/services/review-workbench-projection";
 import {
   cleanupLocalApplyRoots,
   localApplyHarness,

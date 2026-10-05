@@ -10,7 +10,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PullRequestMetadataRail } from "../../src/renderer/src/components/pull-request-metadata-rail";
+import { PullRequestMetadataRail } from "#src/renderer/src/components/pull-request-metadata-rail";
 
 afterEach(() => cleanup());
 

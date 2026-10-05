@@ -60,10 +60,10 @@ import type { WorkbenchResponse } from "./renderer-contracts";
 import { saveInboxViewPreferences } from "./inbox-view-preferences";
 import { inboxFreshnessLabel } from "./inbox-freshness";
 import { firstInboxRequest } from "./inbox-request";
-import { parseGitHubHost } from "../../domain/ids";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { sameRepositoryIdentity } from "../../domain/repository-identity";
-import { definedProps } from "../../domain/defined-props";
+import { parseGitHubHost } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
+import { definedProps } from "#src/domain/defined-props";
 import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
 import {
   useLocalRowOpen,

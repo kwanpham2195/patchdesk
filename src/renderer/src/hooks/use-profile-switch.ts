@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { contextualMessage, requestJson } from "../api-client";
+import { contextualMessage, requestJson } from "#src/renderer/src/api-client";
 import { useLatestCommitted } from "./use-latest-committed";
 
 /** The profile control that most recently expressed switching intent. */

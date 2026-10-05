@@ -11,36 +11,36 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
 import {
   CommandRunner,
   type CommandExecution,
   type CommandExecutor,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import type { StorageFailure } from "../../src/adapters/storage/json-file";
+} from "#src/adapters/github/command-runner";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
 import {
   parsePatchdeskConfig,
   type PatchdeskConfigFile,
-} from "../../src/domain/contracts";
+} from "#src/domain/contracts";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
-} from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { err, ok, type Result } from "../../src/domain/result";
-import { DashboardController } from "../../src/services/dashboard-controller";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
+} from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { err, ok, type Result } from "#src/domain/result";
+import { DashboardController } from "#src/services/dashboard-controller";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 import {
   addWatchedRepo,
   detectDefaultWorkspaceProfile,
   ProfileSettingsService,
   removeWatchedRepo,
   updateWatchedRepoPath,
-} from "../../src/services/profile-service";
+} from "#src/services/profile-service";
 
 class FakeCommandExecutor implements CommandExecutor {
   readonly requests: CommandRequest[] = [];

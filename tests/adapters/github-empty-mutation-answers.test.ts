@@ -4,7 +4,7 @@ import {
   parseGitHubReviewNodeId,
   parseGitHubThreadId,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import { json, profile, useFixtureServer } from "./github-http-fixture-server";
 import { mustParse, pr, writeAdapter } from "./github-write-shape";
 

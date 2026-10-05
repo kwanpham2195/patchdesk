@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { gatePreflight } from "../../scripts/gate-preflight.mjs";
-import {
-  WORKING_TREE,
-  checkFileSizes,
-} from "../../scripts/lint-staged-lib.mjs";
+import { gatePreflight } from "#scripts/gate-preflight.mjs";
+import { WORKING_TREE, checkFileSizes } from "#scripts/lint-staged-lib.mjs";
 
 type CommandResult = {
   readonly status: number | null;

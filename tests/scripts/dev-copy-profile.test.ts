@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { copyInstalledProfileToDev } from "../../scripts/dev-copy-profile-lib.mjs";
+import { copyInstalledProfileToDev } from "#scripts/dev-copy-profile-lib.mjs";
 
 let home: string;
 const installed = () => join(home, ".config", "patchdesk");

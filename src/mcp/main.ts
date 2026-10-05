@@ -1,7 +1,7 @@
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 
-import { version } from "../../package.json";
-import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { version } from "#package";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { createPatchdeskMcpServer } from "./patchdesk-mcp-server";
 import { runSetupCommand } from "./setup-cli";
 import { callPatchdeskApp } from "./socket-client";

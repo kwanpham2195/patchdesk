@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { FINDING_RESTORED_REFRESH_NOTICE } from "../review-copy";
+import { FINDING_RESTORED_REFRESH_NOTICE } from "#src/renderer/src/review-copy";
 
 /**
  * Findings whose Restore was saved while the Review reload failed. Each shows

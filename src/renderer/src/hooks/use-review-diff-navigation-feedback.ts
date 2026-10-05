@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
-import type { ReviewDiffNavigationStatus } from "../review-diff-keyboard-nav";
+import type { ReviewDiffNavigationStatus } from "#src/renderer/src/review-diff-keyboard-nav";
 
 /** A navigation attempt that can publish feedback only while it is current. */
 export type ReviewDiffNavigationOperation = {

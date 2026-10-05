@@ -2,13 +2,13 @@ import {
   briefManifest,
   renderBriefManifest,
   MAX_REACH_SYMBOLS,
-} from "../domain/brief";
-import { briefMoves, renderBriefPatchFacts } from "../domain/brief-moves";
-import { insightOutputGuidance } from "../domain/insight-output-guidance";
-import { moveReferenceUpdatePaths } from "../domain/move-reference-updates";
-import type { InsightLanguage } from "../domain/insight-provider";
-import { listPatchChangedFiles } from "../domain/patch-changed-files";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/brief";
+import { briefMoves, renderBriefPatchFacts } from "#src/domain/brief-moves";
+import { insightOutputGuidance } from "#src/domain/insight-output-guidance";
+import { moveReferenceUpdatePaths } from "#src/domain/move-reference-updates";
+import type { InsightLanguage } from "#src/domain/insight-provider";
+import { listPatchChangedFiles } from "#src/domain/patch-changed-files";
+import { err, ok, type Result } from "#src/domain/result";
 import { readBoundedArtifact } from "./walkthrough-artifact-reader";
 
 const MAX_BRIEF_PATCH_BYTES = 2 * 1024 * 1024;

@@ -1,4 +1,4 @@
-import type { RawJsonValue } from "../domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 
 /**
  * Reads one own property from a parsed JSON object that arrived at an I/O

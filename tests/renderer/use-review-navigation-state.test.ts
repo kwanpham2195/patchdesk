@@ -2,7 +2,7 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useReviewNavigationState } from "../../src/renderer/src/hooks/use-review-navigation-state";
+import { useReviewNavigationState } from "#src/renderer/src/hooks/use-review-navigation-state";
 
 afterEach(cleanup);
 

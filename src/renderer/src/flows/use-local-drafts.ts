@@ -1,21 +1,21 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import * as v from "valibot";
 
-import { definedProps } from "../../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   feedbackHandoffReadingSchema,
   type FeedbackHandoffVerdict,
-} from "../../../domain/feedback-handoff";
-import { findingDraftStates } from "../../../domain/local-draft";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import { isApiErrorCode, requestJson } from "../api-client";
-import type { LocalCommentLocation } from "../components/review-diff-view";
+} from "#src/domain/feedback-handoff";
+import { findingDraftStates } from "#src/domain/local-draft";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { isApiErrorCode, requestJson } from "#src/renderer/src/api-client";
+import type { LocalCommentLocation } from "#src/renderer/src/components/review-diff-view";
 import {
   localDraftListSchema,
   type LocalDraftEntry,
   type LocalDraftReplyEntry,
-} from "../local-draft-contracts";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/local-draft-contracts";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchPatch } from "./use-review-observation";
 
 /** Maintainer notes on a local Review (ADR 0051). Each command rejects with a message its form shows beside the text. */

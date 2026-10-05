@@ -1,12 +1,12 @@
 import { useCallback, useMemo } from "react";
 
-import type { LocalPatchViewSelection } from "../flows/use-local-patch-view";
+import type { LocalPatchViewSelection } from "#src/renderer/src/flows/use-local-patch-view";
 import {
   localNotePlacementInput,
   type InlineLocalDraftPlacement,
   type LocalDraftPlacementContext,
-} from "../local-draft-placement";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/local-draft-placement";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchPositionState } from "./use-review-workbench-position";
 
 /** Where the Notes list and the diff place Local drafts, and how a Notes row reveals its lines. */

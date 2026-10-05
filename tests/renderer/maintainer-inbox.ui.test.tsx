@@ -8,8 +8,8 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
-import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+import { MaintainerInbox } from "#src/renderer/src/components/maintainer-inbox";
+import type { InboxRow } from "#src/renderer/src/renderer-contracts";
 
 afterEach(() => {
   cleanup();

@@ -1,9 +1,9 @@
 import * as v from "valibot";
 
-import { definedProps } from "../../domain/defined-props";
-import { parseIsoTimestamp, type IsoTimestamp } from "../../domain/ids";
-import { err, ok, type Result } from "../../domain/result";
-import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+import { definedProps } from "#src/domain/defined-props";
+import { parseIsoTimestamp, type IsoTimestamp } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   classifyGraphqlErrorBody,
   classifyRestStatus,

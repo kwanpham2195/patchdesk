@@ -1,4 +1,4 @@
-import type { RawJsonValue } from "../domain/json";
+import type { RawJsonValue } from "#src/domain/json";
 import { randomUUID } from "node:crypto";
 import type { IpcMain } from "electron";
 import {
@@ -22,8 +22,8 @@ import {
   type DesktopResponse,
   type LocalApiDesktopRequest,
 } from "./ipc-contract";
-import { definedProps } from "../domain/defined-props";
-import { parseReviewId } from "../domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { parseReviewId } from "#src/domain/ids";
 import type { NotificationDestination } from "./desktop-notifier";
 import type { StartedLocalApi } from "./app-lifecycle";
 

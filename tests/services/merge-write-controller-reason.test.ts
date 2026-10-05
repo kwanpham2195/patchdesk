@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { MergeReadiness } from "../../src/domain/merge-readiness";
-import { mergeReason } from "../../src/services/merge-write-controller";
+import type { MergeReadiness } from "#src/domain/merge-readiness";
+import { mergeReason } from "#src/services/merge-write-controller";
 
 const readiness: MergeReadiness = {
   _tag: "Blocked",

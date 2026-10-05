@@ -1,15 +1,15 @@
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   detachedHeadBranch,
   parseGitSha,
   type ContentHash,
   type GitSha,
-} from "../domain/ids";
-import type { Review } from "../domain/review";
-import { isPullRequestReviewSession } from "../domain/review-session";
-import type { LocalReviewSource } from "../domain/review-source";
+} from "#src/domain/ids";
+import type { Review } from "#src/domain/review";
+import { isPullRequestReviewSession } from "#src/domain/review-session";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import {
   fingerprintLocalCheckout,

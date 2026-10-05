@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { installPackagedMacApp } from "../../scripts/install-mac-lib.mjs";
+import { installPackagedMacApp } from "#scripts/install-mac-lib.mjs";
 
 const SOURCE = "/repo/release/mac-arm64/Patchdesk.app";
 const DESTINATION = "/Applications/Patchdesk.app";

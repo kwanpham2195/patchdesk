@@ -7,10 +7,10 @@ import {
   type RepoRelativePath,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
-import type { LocalPatchView } from "../../domain/local-patch-view";
-import type { LogEntryInput } from "../../domain/log-entry";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/ids";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   readJsonFile,
   type StorageFailure,

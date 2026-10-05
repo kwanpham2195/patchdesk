@@ -3,11 +3,11 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { RefreshOperationStore } from "../../src/adapters/storage/refresh-operation-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { RefreshOperationStore } from "#src/adapters/storage/refresh-operation-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -18,21 +18,21 @@ import {
   parseGitSha,
   parsePendingReviewRequestId,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import { definedProps } from "../../src/domain/defined-props";
-import { ok } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { ok } from "#src/domain/result";
 import {
   createReview,
   markReviewTerminal,
   type PullRequestReview,
   type PullRequestReviewIdentity,
-} from "../../src/domain/review";
+} from "#src/domain/review";
 import {
   createReviewSession,
   type PullRequestReviewSession,
-} from "../../src/domain/review-session";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
+} from "#src/domain/review-session";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { ReviewWorktreeService } from "#src/services/review-worktree-service";
 import {
   beginRun,
   cleanupLocalApplyRoots,

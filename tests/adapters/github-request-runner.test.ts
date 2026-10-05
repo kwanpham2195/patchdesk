@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { GhRequestRunner } from "../../src/adapters/github/gh-request-runner";
+import { GhRequestRunner } from "#src/adapters/github/gh-request-runner";
 import {
   confirmCreatedCommentThreadQuery,
   reviewCommentTargetQuery,
   reviewThreadTargetQuery,
   watchedPullRequestsQuery,
-} from "../../src/adapters/github/github-graphql-queries";
+} from "#src/adapters/github/github-graphql-queries";
 import type {
   GitHubGraphQlRequest,
   GitHubRestRequest,
-} from "../../src/adapters/github/github-request";
-import { err, ok } from "../../src/domain/result";
+} from "#src/adapters/github/github-request";
+import { err, ok } from "#src/domain/result";
 import { profile } from "./github-http-fixture-server";
 import {
   labelFor,

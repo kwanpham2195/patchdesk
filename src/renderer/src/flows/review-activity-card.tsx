@@ -1,14 +1,18 @@
 import { useRef, useState } from "react";
 import * as v from "valibot";
-import { requestJson } from "../api-client";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { Button } from "../components/ui/button";
+import { requestJson } from "#src/renderer/src/api-client";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "#src/renderer/src/components/ui/alert";
+import { Button } from "#src/renderer/src/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-} from "../components/ui/card";
+} from "#src/renderer/src/components/ui/card";
 
 // Not `strictObject`: the redacted local-activity feed may gain fields over
 // time, and this panel only ever reads this fixed set.

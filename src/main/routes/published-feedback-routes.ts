@@ -14,16 +14,16 @@ import {
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../domain/ids";
-import { err, type Result } from "../../domain/result";
+} from "#src/domain/ids";
+import { err, type Result } from "#src/domain/result";
 import {
   GitHubRefusedPublishedFeedbackWrite,
   type PublishedFeedbackFailure,
   type PublishedFeedbackReceipt,
   type PublishedFeedbackService,
-} from "../../services/published-feedback-service";
-import type { ReviewWriteExpectation } from "../../services/review-write-gate";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/services/published-feedback-service";
+import type { ReviewWriteExpectation } from "#src/services/review-write-gate";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { jsonBody } from "./json-body";
 import { mapReviewWriteFailureStatus } from "./http-status";
 

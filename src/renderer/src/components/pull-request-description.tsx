@@ -10,15 +10,15 @@ import { ExternalLink } from "lucide-react";
 import * as v from "valibot";
 import type { Tokens } from "marked";
 
-import { useLightbox } from "../use-lightbox";
+import { useLightbox } from "#src/renderer/src/use-lightbox";
 import { MermaidDiagram } from "./mermaid-diagram";
 import {
   usePullRequestImage,
   type PullRequestImageSource,
-} from "../hooks/use-pull-request-image";
+} from "#src/renderer/src/hooks/use-pull-request-image";
 
-import type { GitHubImageRewrites } from "../../../domain/github-context";
-import type { PullRequestRef } from "../../../domain/pull-request";
+import type { GitHubImageRewrites } from "#src/domain/github-context";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   externalLinkHost,
   openPullRequestExternalUrl,

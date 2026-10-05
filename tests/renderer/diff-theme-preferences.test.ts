@@ -6,7 +6,7 @@ import {
   DIFF_LIGHT_THEMES,
   loadDiffThemePreferences,
   parseDiffThemePreferences,
-} from "../../src/renderer/src/diff-theme-preferences";
+} from "#src/renderer/src/diff-theme-preferences";
 
 afterEach(() => window.localStorage.clear());
 
@@ -206,7 +206,7 @@ describe("diff theme preferences", () => {
   // run afterward under shuffled order.
   it("announces saved config values and clears both renderer keys", async () => {
     vi.resetModules();
-    const mod = await import("../../src/renderer/src/diff-theme-preferences");
+    const mod = await import("#src/renderer/src/diff-theme-preferences");
 
     const events: Array<Event> = [];
     const onTheme = (event: Event): void => {
@@ -247,7 +247,7 @@ describe("diff theme preferences", () => {
   // in this file.
   it("returns the last applied preferences even when localStorage is empty", async () => {
     vi.resetModules();
-    const mod = await import("../../src/renderer/src/diff-theme-preferences");
+    const mod = await import("#src/renderer/src/diff-theme-preferences");
 
     mod.applyDiffThemePreferences({
       light: "github-light",

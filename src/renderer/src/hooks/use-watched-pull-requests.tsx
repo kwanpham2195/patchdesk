@@ -10,7 +10,7 @@ import {
 } from "react";
 import * as v from "valibot";
 
-import { PatchdeskApiError, requestJson } from "../api-client";
+import { PatchdeskApiError, requestJson } from "#src/renderer/src/api-client";
 
 /** A pull request as the renderer names it: plain strings, as every local API payload carries. */
 export type WatchedPullRequestRef = {

@@ -4,11 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   ReviewRemoteStore,
   type ReviewRemoteSnapshot,
-} from "../../src/adapters/storage/review-remote-store";
+} from "#src/adapters/storage/review-remote-store";
 import {
   createReviewId,
   parseGitHubHost,
@@ -19,9 +19,9 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type ContentHash,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { completeObservationJournal } from "../../src/services/review-observation-recovery";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { completeObservationJournal } from "#src/services/review-observation-recovery";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "err") throw new Error("fixture");

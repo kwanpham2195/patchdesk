@@ -1,13 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import * as v from "valibot";
 
-import { definedProps } from "../../../domain/defined-props";
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import { PatchdeskApiError, requestJson } from "../api-client";
+import { definedProps } from "#src/domain/defined-props";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import { PatchdeskApiError, requestJson } from "#src/renderer/src/api-client";
 import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchPatch } from "./use-review-observation";
 
 type LocalApplyLock = "outcome_unknown" | "check_required";

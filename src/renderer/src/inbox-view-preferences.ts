@@ -17,10 +17,10 @@ import {
   type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
-} from "../../domain/maintainer-inbox";
-import { definedProps } from "../../domain/defined-props";
-import type { RepositoryIdentity } from "../../domain/repository-identity";
-import type { Result } from "../../domain/result";
+} from "#src/domain/maintainer-inbox";
+import { definedProps } from "#src/domain/defined-props";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
+import type { Result } from "#src/domain/result";
 import { definePreference } from "./lib/local-preference";
 
 const inboxStateFilterSchema = v.picklist(INBOX_STATE_FILTER_VALUES);

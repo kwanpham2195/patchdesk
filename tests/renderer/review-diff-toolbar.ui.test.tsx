@@ -10,9 +10,9 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReviewDiffToolbar } from "../../src/renderer/src/components/review-diff-toolbar";
-import type { NarrowedDiffControl } from "../../src/renderer/src/components/review-diff-changes-menu";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
+import { ReviewDiffToolbar } from "#src/renderer/src/components/review-diff-toolbar";
+import type { NarrowedDiffControl } from "#src/renderer/src/components/review-diff-changes-menu";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "#src/renderer/src/review-view-preferences";
 import { openToolbarMenu, VIEWED_COUNT } from "./diff-toolbar-menus";
 
 afterEach(cleanup);

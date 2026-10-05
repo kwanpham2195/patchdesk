@@ -3,12 +3,12 @@ import { execFileSync } from "node:child_process";
 import * as v from "valibot";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import type { ReviewWindow } from "../../src/main/desktop-review-window";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewWindow } from "#src/main/desktop-review-window";
 import {
   startAppWithLinkedWorktree,
   type McpAppFixture,
-} from "../main/mcp-app-fixture";
+} from "#tests/main/mcp-app-fixture";
 import { call } from "./mcp-read-tools-fixture";
 import { closeMcpTestClients, connectLegacyClient } from "./mcp-test-clients";
 

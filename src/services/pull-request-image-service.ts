@@ -1,16 +1,16 @@
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import {
   hashPullRequestImageUrl,
   imageDataUri,
   readPullRequestImageDataUri,
   writePullRequestImage,
-} from "../adapters/storage/pull-request-image-cache-store";
-import type { GitHubCredentials } from "../adapters/github/github-credentials";
-import type { GitHubHost, WorkspaceProfileId } from "../domain/ids";
-import type { PullRequestRef } from "../domain/pull-request";
-import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/adapters/storage/pull-request-image-cache-store";
+import type { GitHubCredentials } from "#src/adapters/github/github-credentials";
+import type { GitHubHost, WorkspaceProfileId } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import type { AppLogService } from "./app-log-service";
 
 /**

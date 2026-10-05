@@ -1,7 +1,7 @@
-import { CommandRunner } from "../../src/adapters/github/command-runner";
+import { CommandRunner } from "#src/adapters/github/command-runner";
 import { orderedTransport } from "./github-transport-doubles";
-import { createFetchedDiffRefs } from "../../src/adapters/github/github-adapter";
-import { parseAbsolutePath, parseGitSha } from "../../src/domain/ids";
+import { createFetchedDiffRefs } from "#src/adapters/github/github-adapter";
+import { parseAbsolutePath, parseGitSha } from "#src/domain/ids";
 import { describe, expect, it } from "vitest";
 import {
   headSha,

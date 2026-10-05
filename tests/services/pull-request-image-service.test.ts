@@ -3,18 +3,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { parseWorkspaceProfileId } from "../../src/domain/ids";
-import { parsePullRequestInput } from "../../src/domain/pull-request";
-import { ok, type Result } from "../../src/domain/result";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { parseWorkspaceProfileId } from "#src/domain/ids";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import { ok, type Result } from "#src/domain/result";
 import {
   parseWorkspaceProfileConfig,
   type WorkspaceProfileConfig,
-} from "../../src/domain/workspace-profile";
+} from "#src/domain/workspace-profile";
 import {
   PullRequestImageService,
   type ImageHttpFetch,
-} from "../../src/services/pull-request-image-service";
+} from "#src/services/pull-request-image-service";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "err") throw new Error("fixture");

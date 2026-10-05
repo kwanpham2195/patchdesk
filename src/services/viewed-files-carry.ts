@@ -1,22 +1,22 @@
 import { readFile } from "node:fs/promises";
 
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import type {
   AbsolutePath,
   RepoRelativePath,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   localPatchViews,
   type LocalPatchView,
-} from "../domain/local-patch-view";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/local-patch-view";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isPullRequestReviewSession,
   type ReviewSession,
-} from "../domain/review-session";
+} from "#src/domain/review-session";
 import { ReviewPatchIndex } from "./review-patch-index";
 
 /**

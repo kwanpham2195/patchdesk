@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AnalysisFindingStatus,
   AnalysisResult,
-} from "../analysis-headline";
+} from "#src/renderer/src/analysis-headline";
 
 type FindingSettlementSnapshot = {
   readonly disposition: "open" | "added" | "dismissed";

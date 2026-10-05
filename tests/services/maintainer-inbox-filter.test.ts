@@ -1,27 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/fake-github-adapter";
+import { FakeGitHubAdapter } from "#src/adapters/github/fake-github-adapter";
 import type {
   MaintainerInboxCache,
   MaintainerInboxCacheStore,
-} from "../../src/adapters/storage/maintainer-inbox-cache-store";
-import type { StorageFailure } from "../../src/adapters/storage/json-file";
-import type { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { parseGitSha, parseIsoTimestamp } from "../../src/domain/ids";
-import { parsePullRequestInput } from "../../src/domain/pull-request";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { MaintainerPullRequestSearchPage } from "../../src/domain/github-context";
+} from "#src/adapters/storage/maintainer-inbox-cache-store";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { parseGitSha, parseIsoTimestamp } from "#src/domain/ids";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
+import type { MaintainerPullRequestSearchPage } from "#src/domain/github-context";
 import type {
   InboxCheckStatusFilter,
   InboxReviewStateFilter,
-} from "../../src/domain/maintainer-inbox";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+} from "#src/domain/maintainer-inbox";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import {
   MaintainerInboxService,
   type InboxClock,
   type InboxRepositoryRef,
-} from "../../src/services/maintainer-inbox-service";
-import type { GitHubReader } from "../../src/adapters/github/github-adapter";
+} from "#src/services/maintainer-inbox-service";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
 
 function requireFixture<T, E>(result: Result<T, E>): T {
   if (result._tag === "err") throw new Error("invalid test fixture");

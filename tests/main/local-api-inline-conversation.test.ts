@@ -4,16 +4,13 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import type { RawJsonValue } from "../../src/domain/json";
-import type { LogEntryInput } from "../../src/domain/log-entry";
-import { err } from "../../src/domain/result";
-import { registerReviewWriteRoutes } from "../../src/main/routes/review-write-routes";
-import { GitHubRefusedConversationWrite } from "../../src/services/inline-conversation-service";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../../src/main/local-api";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { RawJsonValue } from "#src/domain/json";
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { err } from "#src/domain/result";
+import { registerReviewWriteRoutes } from "#src/main/routes/review-write-routes";
+import { GitHubRefusedConversationWrite } from "#src/services/inline-conversation-service";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";

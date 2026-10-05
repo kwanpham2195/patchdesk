@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeFilePathAtScrollTop,
   type ActiveFileViewport,
-} from "../../src/renderer/src/review-diff-active-file";
+} from "#src/renderer/src/review-diff-active-file";
 
 // A generous viewport/content pair that makes every item in these tests
 // reachable (top <= contentHeight - viewportHeight), so the common,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { screenStateForInbox } from "../../src/renderer/src/screen-state-for-inbox";
-import type { InboxResponse } from "../../src/renderer/src/renderer-contracts";
-import type { Dashboard } from "../../src/renderer/src/renderer-models";
-import type { InboxStateFilter } from "../../src/domain/maintainer-inbox";
+import { screenStateForInbox } from "#src/renderer/src/screen-state-for-inbox";
+import type { InboxResponse } from "#src/renderer/src/renderer-contracts";
+import type { Dashboard } from "#src/renderer/src/renderer-models";
+import type { InboxStateFilter } from "#src/domain/maintainer-inbox";
 
 /**
  * `screenStateForInbox` decides the whole screen's state ("error",

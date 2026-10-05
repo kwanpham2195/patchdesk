@@ -10,7 +10,7 @@ import {
   DEFAULT_NAVIGATOR_WIDTH_REM,
   MAX_NAVIGATOR_WIDTH_REM,
   MIN_NAVIGATOR_WIDTH_REM,
-} from "../navigator-width-preferences";
+} from "#src/renderer/src/navigator-width-preferences";
 
 const KEYBOARD_STEP_REM = 1;
 

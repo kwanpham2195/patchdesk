@@ -8,16 +8,16 @@ import type { AddressInfo, Socket } from "node:net";
 
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
-import type { CommandFailure } from "../../src/adapters/github/command-runner";
+import type { CommandFailure } from "#src/adapters/github/command-runner";
 import {
   GitHubHttpClient,
   type GitHubApiOrigin,
   type GitHubRateLimitObservation,
-} from "../../src/adapters/github/github-http-client";
+} from "#src/adapters/github/github-http-client";
 import {
   parseWorkspaceProfileConfig,
   type WorkspaceProfileConfig,
-} from "../../src/domain/workspace-profile";
+} from "#src/domain/workspace-profile";
 import { StubCredentials } from "./stub-github-credentials";
 
 /**

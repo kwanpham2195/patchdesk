@@ -1,6 +1,6 @@
-import { isMaintainerNote, type LocalDraft } from "../domain/local-draft";
-import { compareLocalDraftsByFileThenLine } from "../domain/local-draft-agent-prompt";
-import { err, ok, type Result } from "../domain/result";
+import { isMaintainerNote, type LocalDraft } from "#src/domain/local-draft";
+import { compareLocalDraftsByFileThenLine } from "#src/domain/local-draft-agent-prompt";
+import { err, ok, type Result } from "#src/domain/result";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 
 /** ADR 0052 "Feedback size": at most 25 entries a page, however short. */

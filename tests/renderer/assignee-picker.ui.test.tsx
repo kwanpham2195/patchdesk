@@ -3,8 +3,8 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AssigneePicker } from "../../src/renderer/src/components/assignee-picker";
-import type { AssignableUserListResponse } from "../../src/renderer/src/renderer-contracts";
+import { AssigneePicker } from "#src/renderer/src/components/assignee-picker";
+import type { AssignableUserListResponse } from "#src/renderer/src/renderer-contracts";
 
 /**
  * What only a mounted `AssigneePicker` can show, and only this one: that it

@@ -2,14 +2,14 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import type { RawJsonValue } from "#src/domain/json";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
 import {
   useReviewMetadataActions,
   type BaseBranchChangeOutcome,
   type ReviewMetadataActions,
-} from "../../src/renderer/src/flows/use-review-metadata-actions";
+} from "#src/renderer/src/flows/use-review-metadata-actions";
 import {
   failure,
   installDesktopDouble,

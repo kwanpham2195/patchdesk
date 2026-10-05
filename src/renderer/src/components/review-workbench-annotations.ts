@@ -1,11 +1,11 @@
-import { definedProps } from "../../../domain/defined-props";
-import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import { parseGitHubThreadId } from "../../../domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { mapFindingLocation, parseUnifiedPatch } from "#src/domain/patch";
+import { parseGitHubThreadId } from "#src/domain/ids";
 import {
   projectReadOnlyConversationAnnotations,
   type ReadOnlyConversationAnnotation,
-} from "../inline-conversation-mapping";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/inline-conversation-mapping";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import type { ConversationThreadCardData } from "./conversation-thread-card";
@@ -13,16 +13,16 @@ import {
   localDraftKey,
   type LocalDraftControls,
   type LocalNoteControls,
-} from "../flows/use-local-drafts";
+} from "#src/renderer/src/flows/use-local-drafts";
 import type {
   AgentExplanationEntry,
   LocalDraftEntry,
-} from "../local-draft-contracts";
+} from "#src/renderer/src/local-draft-contracts";
 import {
   placeAgentExplanation,
   placeLocalDraft,
   type LocalDraftPlacementContext,
-} from "../local-draft-placement";
+} from "#src/renderer/src/local-draft-placement";
 
 /** The mapped Analysis findings the diff renders as inline annotations. */
 export type MappedFinding = NonNullable<

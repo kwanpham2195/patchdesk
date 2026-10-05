@@ -4,26 +4,26 @@ import type {
   GitHubDirectSummaryGateway,
   GitHubPendingReviewGateway,
   GitHubReader,
-} from "../adapters/github/github-adapter";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { DirectSummaryReviewState } from "../domain/direct-summary-review";
-import type { RefusalCause } from "../domain/github-write-refusal";
+} from "#src/adapters/github/github-adapter";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { DirectSummaryReviewState } from "#src/domain/direct-summary-review";
+import type { RefusalCause } from "#src/domain/github-write-refusal";
 import {
   parseGitHubLogin,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import type { PullRequestRef } from "../domain/pull-request";
-import { KeyedMutex } from "../domain/keyed-mutex";
-import { err, ok, type Result } from "../domain/result";
-import { definedProps } from "../domain/defined-props";
+} from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
+import { err, ok, type Result } from "#src/domain/result";
+import { definedProps } from "#src/domain/defined-props";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
-} from "../domain/review-session";
-import type { GitHubReviewEvent } from "../domain/pending-review";
+} from "#src/domain/review-session";
+import type { GitHubReviewEvent } from "#src/domain/pending-review";
 import {
   requireCurrentHead,
   type ReviewWriteExpectation,

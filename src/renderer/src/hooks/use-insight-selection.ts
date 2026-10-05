@@ -1,11 +1,11 @@
 import { useContext, useEffect, useRef, useState } from "react";
 
-import type { InsightRunDialogType } from "../components/insight-run-dialog";
+import type { InsightRunDialogType } from "#src/renderer/src/components/insight-run-dialog";
 import {
   analysisFindingRowId,
   ReviewWorkbenchFindingNavigationContext,
-} from "../components/review-workbench-finding-navigation";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/components/review-workbench-finding-navigation";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 
 /** The tab strip's reading order, which is also the order the default landing checks. */
 const LANDING_ORDER = [

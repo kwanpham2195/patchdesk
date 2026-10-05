@@ -1,27 +1,27 @@
 import { readFile } from "node:fs/promises";
 
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   agentChangeIntent,
   type AgentChangeIntent,
-} from "../domain/change-intent";
-import { definedProps } from "../domain/defined-props";
+} from "#src/domain/change-intent";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseContentHash,
   type ContentHash,
   type GitSha,
   type ReviewId,
   type ReviewSessionId,
-} from "../domain/ids";
-import type { InsightType } from "../domain/insight-record";
+} from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
 import {
   listPatchChangedFiles,
   type PatchChangedFile,
-} from "../domain/patch-changed-files";
-import { err, ok, type Result } from "../domain/result";
-import type { Review } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
-import { reviewSourceTitle } from "../domain/review-source";
+} from "#src/domain/patch-changed-files";
+import { err, ok, type Result } from "#src/domain/result";
+import type { Review } from "#src/domain/review";
+import type { ReviewSession } from "#src/domain/review-session";
+import { reviewSourceTitle } from "#src/domain/review-source";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewWorkbenchProjection } from "./review-workbench-projection";
 

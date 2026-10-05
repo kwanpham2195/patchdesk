@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { diffLineRangeLocation } from "../../src/renderer/src/review-diff-line-range";
+import { diffLineRangeLocation } from "#src/renderer/src/review-diff-line-range";
 
 // Renamed and modified: the diff shows the file as src/new.ts, and its old-side lines belong to src/old.ts.
 const RENAMED_PATCH = [

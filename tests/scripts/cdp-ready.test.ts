@@ -4,7 +4,7 @@ import {
   DEFAULT_CDP_PORT,
   cdpPort,
   checkCdpReady,
-} from "../../scripts/cdp-ready.mjs";
+} from "#scripts/cdp-ready.mjs";
 
 function collect() {
   const stdout: string[] = [];

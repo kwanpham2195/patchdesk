@@ -8,8 +8,8 @@ import {
 } from "react";
 import * as v from "valibot";
 
-import type { PullRequestRef } from "../../../domain/pull-request";
-import { requestJson } from "../api-client";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { requestJson } from "#src/renderer/src/api-client";
 import { useLatestCommitted } from "./use-latest-committed";
 
 /** Everything the main process needs to decide whether one image may be fetched. */

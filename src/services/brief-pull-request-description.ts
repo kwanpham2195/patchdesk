@@ -1,8 +1,12 @@
-import type { InsightStore } from "../adapters/storage/insight-store";
-import { renderBriefAsPullRequestDescription } from "../domain/brief-pull-request-description";
-import type { InsightRunId, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import { parseStoredBrief } from "../domain/stored-brief";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import { renderBriefAsPullRequestDescription } from "#src/domain/brief-pull-request-description";
+import type {
+  InsightRunId,
+  ReviewId,
+  WorkspaceProfileId,
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { parseStoredBrief } from "#src/domain/stored-brief";
 
 /**
  * The retained Brief of one run as a pull request description. The renderer

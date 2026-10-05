@@ -3,7 +3,7 @@ import { StrictMode } from "react";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { useLatestCommitted } from "../../src/renderer/src/hooks/use-latest-committed";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
 
 describe("useLatestCommitted", () => {
   it("keeps one ref identity and updates it after committed rerenders", () => {

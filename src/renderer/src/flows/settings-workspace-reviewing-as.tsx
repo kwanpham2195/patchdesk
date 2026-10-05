@@ -3,21 +3,29 @@ import { ChevronDown } from "lucide-react";
 import type {
   EnvironmentCheckResponse,
   GithubAuthAccount,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import {
   useEnvironmentCheck,
   type ApiProbeState,
-} from "../hooks/use-api-probe";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
+} from "#src/renderer/src/hooks/use-api-probe";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "#src/renderer/src/components/ui/alert";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../components/ui/collapsible";
-import { Button } from "../components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
-import { Input } from "../components/ui/input";
-import { Spinner } from "../components/ui/spinner";
+} from "#src/renderer/src/components/ui/collapsible";
+import { Button } from "#src/renderer/src/components/ui/button";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+} from "#src/renderer/src/components/ui/field";
+import { Input } from "#src/renderer/src/components/ui/input";
+import { Spinner } from "#src/renderer/src/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -25,8 +33,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
+} from "#src/renderer/src/components/ui/select";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
 import { FieldSaveStatus } from "./settings-workspace-field-status";
 import type { FieldStatus } from "./settings-workspace-profile-editor";
 

@@ -4,16 +4,16 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { renderReviewDiffAnnotation } from "../../src/renderer/src/components/review-diff-finding-card";
+import { renderReviewDiffAnnotation } from "#src/renderer/src/components/review-diff-finding-card";
 import {
   ReviewDiffView,
   type ReviewInlineAnnotation,
-} from "../../src/renderer/src/components/review-diff-view";
-import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
-import { parseGitHubThreadId } from "../../src/domain/ids";
-import { parsePullRequestInput } from "../../src/domain/pull-request";
+} from "#src/renderer/src/components/review-diff-view";
+import { PullRequestImageCacheProvider } from "#src/renderer/src/hooks/use-pull-request-image";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "#src/renderer/src/review-view-preferences";
+import { parseGitHubThreadId } from "#src/domain/ids";
+import { parsePullRequestInput } from "#src/domain/pull-request";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;

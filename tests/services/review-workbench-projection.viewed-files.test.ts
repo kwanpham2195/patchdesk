@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { err, ok } from "../../src/domain/result";
+import { err, ok } from "#src/domain/result";
 import {
   at,
   fixture,

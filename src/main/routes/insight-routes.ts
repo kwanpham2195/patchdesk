@@ -21,21 +21,21 @@ import {
   parseInsightRunId,
   parseReviewId,
   parseWorkspaceProfileId,
-} from "../../domain/ids";
-import type { InsightType } from "../../domain/insight-record";
-import { definedProps } from "../../domain/defined-props";
+} from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
+import { definedProps } from "#src/domain/defined-props";
 import {
   agentRunDeclineRequestSchema,
   agentRunRequestFailureKinds,
   type AgentRunRequestService,
-} from "../../services/agent-run-request-service";
-import { readBriefPullRequestDescription } from "../../services/brief-pull-request-description";
+} from "#src/services/agent-run-request-service";
+import { readBriefPullRequestDescription } from "#src/services/brief-pull-request-description";
 import {
   insightRunRequestSchema,
   type InsightRunCoordinator,
-} from "../../services/insight-run-coordinator";
-import type { InsightCoordinatorSeam } from "../local-api-configuration";
-import type { LocalApiContainer } from "../local-api-container";
+} from "#src/services/insight-run-coordinator";
+import type { InsightCoordinatorSeam } from "#src/main/local-api-configuration";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import {
   insightFailureStatus,
   response,

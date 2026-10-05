@@ -1,6 +1,6 @@
 import type { WebContents } from "electron";
 
-import { isAllowedExternalUrl } from "../domain/external-hosts";
+import { isAllowedExternalUrl } from "#src/domain/external-hosts";
 
 /** A DOM-style event this module only ever cancels. */
 type PreventableEvent = {

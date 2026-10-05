@@ -1,25 +1,25 @@
 import { createHash } from "node:crypto";
 
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
-import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import { definedProps } from "../domain/defined-props";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { LocalApplyOperationStore } from "#src/adapters/storage/local-apply-operation-store";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { RefreshOperationStore } from "#src/adapters/storage/refresh-operation-store";
+import type { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { definedProps } from "#src/domain/defined-props";
 import {
   createReviewId,
   type IsoTimestamp,
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { mapConcurrent } from "../domain/map-concurrent";
-import { err, ok, type Result } from "../domain/result";
-import { isLocalReview } from "../domain/review";
-import type { ReviewSession } from "../domain/review-session";
+} from "#src/domain/ids";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview } from "#src/domain/review";
+import type { ReviewSession } from "#src/domain/review-session";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";

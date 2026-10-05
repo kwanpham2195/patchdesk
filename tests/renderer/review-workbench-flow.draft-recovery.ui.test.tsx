@@ -12,9 +12,9 @@ import userEvent, {
 } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { changeScopeFromPatch } from "../../src/domain/change-scope";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
+import { changeScopeFromPatch } from "#src/domain/change-scope";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
 import { bridge, Refusal, restoreBridge } from "./review-workbench-bridge";
 import { pending, projection, sha } from "./review-workbench-fixtures";
 import { dragDiffGutter } from "./pierre-gutter";

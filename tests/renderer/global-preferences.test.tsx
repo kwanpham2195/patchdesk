@@ -10,19 +10,19 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopResponse } from "../../src/main/ipc-contract";
+import type { DesktopResponse } from "#src/main/ipc-contract";
 
-import { App } from "../../src/renderer/src/app";
+import { App } from "#src/renderer/src/app";
 import {
   applyAppearance,
   type AppearancePreference,
-} from "../../src/renderer/src/appearance-preferences";
+} from "#src/renderer/src/appearance-preferences";
 import {
   parseDiffThemePreferences,
   type DiffThemePreferences,
-} from "../../src/renderer/src/diff-theme-preferences";
-import { useGlobalPreferences } from "../../src/renderer/src/hooks/use-global-preferences";
-import { record } from "../../src/renderer/src/json-guards";
+} from "#src/renderer/src/diff-theme-preferences";
+import { useGlobalPreferences } from "#src/renderer/src/hooks/use-global-preferences";
+import { record } from "#src/renderer/src/json-guards";
 import {
   failure,
   installDesktopDouble,

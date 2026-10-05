@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   PI_CLI_MINIMUM_VERSION,
   PiRpcClient,
-} from "../../src/adapters/pi-cli/pi-rpc-client";
-import type { RepresentedReviewWorktree } from "../../src/domain/represented-review-worktree";
+} from "#src/adapters/pi-cli/pi-rpc-client";
+import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
 import {
   assistantAnswer,
   fakePi,

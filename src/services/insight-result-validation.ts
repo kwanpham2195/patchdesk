@@ -8,30 +8,30 @@ import {
   parseBriefOutput,
   type BriefError,
   type NormalizedBrief,
-} from "../domain/brief";
+} from "#src/domain/brief";
 import {
   containsFenceLine,
   isAcceptableSuggestionCode,
   resolveSuggestionTarget,
-} from "../domain/finding-suggestion";
-import type { InsightRevision, InsightType } from "../domain/insight-record";
-import type { RawJsonValue } from "../domain/json";
+} from "#src/domain/finding-suggestion";
+import type { InsightRevision, InsightType } from "#src/domain/insight-record";
+import type { RawJsonValue } from "#src/domain/json";
 import {
   normalizeNarrativeWalkthrough,
   type NarrativeWalkthroughError,
-} from "../domain/narrative-walkthrough";
+} from "#src/domain/narrative-walkthrough";
 import {
   mapFindingLocation,
   parseUnifiedPatch,
   type FindingLocation,
   type FindingLocationInput,
-} from "../domain/patch";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/patch";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   parseModelReviewResult,
   parseReviewResult,
   type FindingSuggestedReplacement,
-} from "../domain/review-result";
+} from "#src/domain/review-result";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightInvocationInput } from "./insight-run-coordinator";
 import { parseWalkthroughOutput } from "./walkthrough-operation";

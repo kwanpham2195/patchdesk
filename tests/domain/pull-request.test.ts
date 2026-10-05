@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGitHubHost } from "../../src/domain/ids";
-import { parsePullRequestInput } from "../../src/domain/pull-request";
+import { parseGitHubHost } from "#src/domain/ids";
+import { parsePullRequestInput } from "#src/domain/pull-request";
 
 const expected = {
   host: "github.com",

@@ -1,8 +1,8 @@
 import * as v from "valibot";
 
-import type { RawJsonValue } from "../../../domain/json";
-import { definedProps } from "../../../domain/defined-props";
-import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
+import type { RawJsonValue } from "#src/domain/json";
+import { definedProps } from "#src/domain/defined-props";
+import { parseGitHubThreadId, type GitHubThreadId } from "#src/domain/ids";
 
 export type DirectConversationReceipt =
   | {

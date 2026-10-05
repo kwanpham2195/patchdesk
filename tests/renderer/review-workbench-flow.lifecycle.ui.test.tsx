@@ -9,9 +9,9 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
-import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import { FINDING_ACTION_MESSAGES } from "../../src/renderer/src/review-copy";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import { ReviewWorkbenchFlow } from "#src/renderer/src/flows/review-workbench-flow";
+import { FINDING_ACTION_MESSAGES } from "#src/renderer/src/review-copy";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import {
   callPath,

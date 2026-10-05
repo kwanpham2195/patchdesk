@@ -6,7 +6,7 @@ import {
   renderSuggestionCommentBody,
   resolveSuggestionTarget,
   SUGGESTED_REPLACEMENT_MAX_BYTES,
-} from "../../src/domain/finding-suggestion";
+} from "#src/domain/finding-suggestion";
 
 const patch = [
   "diff --git a/src/a.ts b/src/a.ts",

@@ -1,9 +1,13 @@
 import { useState } from "react";
 
-import { useEnvironmentCheck } from "../hooks/use-api-probe";
-import type { GithubAuthAccount } from "../renderer-contracts";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { Button } from "../components/ui/button";
+import { useEnvironmentCheck } from "#src/renderer/src/hooks/use-api-probe";
+import type { GithubAuthAccount } from "#src/renderer/src/renderer-contracts";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "#src/renderer/src/components/ui/alert";
+import { Button } from "#src/renderer/src/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,9 +15,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../components/ui/dialog";
-import { Field, FieldError, FieldLabel } from "../components/ui/field";
-import { Input } from "../components/ui/input";
+} from "#src/renderer/src/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldLabel,
+} from "#src/renderer/src/components/ui/field";
+import { Input } from "#src/renderer/src/components/ui/input";
 import { createWorkspaceProfile } from "./settings-workspace-create-profile";
 import { AccountSelect, accountKey } from "./settings-workspace-reviewing-as";
 import { scalarError } from "./settings-workspace-profile-values";

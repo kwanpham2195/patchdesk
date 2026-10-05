@@ -1,23 +1,23 @@
 import { vi } from "vitest";
 
-import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
-import type { StorageFailure } from "../../src/adapters/storage/json-file";
-import type { MergeOperation } from "../../src/domain/merge-operation";
-import type { PendingReviewState } from "../../src/domain/pending-review";
-import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
+import { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import type { MergeOperation } from "#src/domain/merge-operation";
+import type { PendingReviewState } from "#src/domain/pending-review";
+import type { ReviewWriteOperation } from "#src/domain/review-write-operation";
 import {
   createReviewSession,
   type PullRequestReviewSession,
-} from "../../src/domain/review-session";
+} from "#src/domain/review-session";
 import {
   parseGitHubReviewNodeId,
   parseGitHubReviewRestId,
-} from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import { PendingReviewService } from "../../src/services/pending-review-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { PendingReviewService } from "#src/services/pending-review-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import {
   anchor,
   at,

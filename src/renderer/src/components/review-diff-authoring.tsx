@@ -1,14 +1,14 @@
 import { useId, useRef, useState } from "react";
 
-import { PatchdeskApiError } from "../api-client";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
 import type {
   PendingReviewComposerActions,
   ReviewInlineAnnotation,
 } from "./review-diff-view";
 import { composerErrorMessage } from "./review-diff-authoring-errors";
-import type { DiffAuthoringRefusal } from "../hooks/use-review-conversation-overlays";
-import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
-import { diffLineRangeLabel } from "../review-diff-line-range";
+import type { DiffAuthoringRefusal } from "#src/renderer/src/hooks/use-review-conversation-overlays";
+import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
+import { diffLineRangeLabel } from "#src/renderer/src/review-diff-line-range";
 import {
   PullRequestDescriptionPreview,
   type PullRequestBodyContext,

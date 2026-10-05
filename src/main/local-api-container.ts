@@ -12,70 +12,70 @@ import type {
   LocalApiConfiguration,
   ReviewWorkbenchSeam,
 } from "./local-api-configuration";
-import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
-import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
-import type { InsightStore } from "../adapters/storage/insight-store";
-import { RefreshOperationStore } from "../adapters/storage/refresh-operation-store";
-import { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
-import { systemNow } from "../adapters/process/system-clock";
+import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import { LocalApplyOperationStore } from "#src/adapters/storage/local-apply-operation-store";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import { RefreshOperationStore } from "#src/adapters/storage/refresh-operation-store";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
+import { systemNow } from "#src/adapters/process/system-clock";
 import type {
   GitHubDirectSummaryGateway,
   GitHubPendingReviewGateway,
   GitHubReader,
-} from "../adapters/github/github-adapter";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import { definedProps } from "../domain/defined-props";
-import { err, ok } from "../domain/result";
-import { DashboardController } from "../services/dashboard-controller";
-import { PublishedFeedbackService } from "../services/published-feedback-service";
-import { InlineConversationService } from "../services/inline-conversation-service";
-import { LabelService } from "../services/label-service";
-import { AssigneeService } from "../services/assignee-service";
-import { ReviewerService } from "../services/reviewer-service";
-import { BaseBranchService } from "../services/base-branch-service";
-import { DraftStateService } from "../services/draft-state-service";
-import { PendingReviewService } from "../services/pending-review-service";
-import { PullRequestImageService } from "../services/pull-request-image-service";
-import { DirectSummaryReviewService } from "../services/direct-summary-review-service";
-import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
-import { AvatarSyncService } from "../services/avatar-sync-service";
-import { ReviewWorkbenchController } from "../services/review-workbench-controller";
-import { ReviewViewedFilesService } from "../services/review-viewed-files-service";
-import { ReviewRefreshService } from "../services/review-refresh-service";
-import { RefreshOperationService } from "../services/refresh-operation-service";
-import { ReviewObservationService } from "../services/review-observation-service";
-import { ReviewWriteRecoveryService } from "../services/review-write-recovery-service";
-import { ReviewSessionPreparation } from "../services/review-session-preparation";
-import { ReviewWorkbenchProjectionService } from "../services/review-workbench-projection";
-import { ReviewCommitService } from "../services/review-commit-service";
-import { ReviewPreparationJournal } from "../services/review-preparation-journal";
-import { MergeWriteController } from "../services/merge-write-controller";
-import { ReviewRecoveryService } from "../services/review-recovery-service";
-import { ReviewWorktreeService } from "../services/review-worktree-service";
-import { LocalCheckoutChangeDetector } from "../services/local-checkout-change-detector";
-import { LocalReviewOpening } from "../services/local-review-opening";
-import { LocalApplyService } from "../services/local-apply-service";
-import { LocalApplySettlement } from "../services/local-apply-settlement";
-import { LocalChangeIntentService } from "../services/local-change-intent-service";
-import { LocalDraftService } from "../services/local-draft-service";
-import { LocalPatchViewService } from "../services/local-patch-view-service";
+} from "#src/adapters/github/github-adapter";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { definedProps } from "#src/domain/defined-props";
+import { err, ok } from "#src/domain/result";
+import { DashboardController } from "#src/services/dashboard-controller";
+import { PublishedFeedbackService } from "#src/services/published-feedback-service";
+import { InlineConversationService } from "#src/services/inline-conversation-service";
+import { LabelService } from "#src/services/label-service";
+import { AssigneeService } from "#src/services/assignee-service";
+import { ReviewerService } from "#src/services/reviewer-service";
+import { BaseBranchService } from "#src/services/base-branch-service";
+import { DraftStateService } from "#src/services/draft-state-service";
+import { PendingReviewService } from "#src/services/pending-review-service";
+import { PullRequestImageService } from "#src/services/pull-request-image-service";
+import { DirectSummaryReviewService } from "#src/services/direct-summary-review-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import { AvatarSyncService } from "#src/services/avatar-sync-service";
+import { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
+import { ReviewViewedFilesService } from "#src/services/review-viewed-files-service";
+import { ReviewRefreshService } from "#src/services/review-refresh-service";
+import { RefreshOperationService } from "#src/services/refresh-operation-service";
+import { ReviewObservationService } from "#src/services/review-observation-service";
+import { ReviewWriteRecoveryService } from "#src/services/review-write-recovery-service";
+import { ReviewSessionPreparation } from "#src/services/review-session-preparation";
+import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
+import { ReviewCommitService } from "#src/services/review-commit-service";
+import { ReviewPreparationJournal } from "#src/services/review-preparation-journal";
+import { MergeWriteController } from "#src/services/merge-write-controller";
+import { ReviewRecoveryService } from "#src/services/review-recovery-service";
+import { ReviewWorktreeService } from "#src/services/review-worktree-service";
+import { LocalCheckoutChangeDetector } from "#src/services/local-checkout-change-detector";
+import { LocalReviewOpening } from "#src/services/local-review-opening";
+import { LocalApplyService } from "#src/services/local-apply-service";
+import { LocalApplySettlement } from "#src/services/local-apply-settlement";
+import { LocalChangeIntentService } from "#src/services/local-change-intent-service";
+import { LocalDraftService } from "#src/services/local-draft-service";
+import { LocalPatchViewService } from "#src/services/local-patch-view-service";
 import {
   createAgentExplanationId,
   createAgentRunRequestId,
   createLocalNoteId,
-} from "../domain/ids";
-import { AgentExplanationService } from "../services/agent-explanation-service";
-import { AgentRunRequestService } from "../services/agent-run-request-service";
-import { ReviewRetention } from "../services/review-retention";
-import { LocalReviewSessionPreparation } from "../services/local-review-session-preparation";
-import { ReviewDiffSourceService } from "../services/review-diff-source-service";
-import { SidebarListingService } from "../services/sidebar-listing-service";
-import { WatchedPullRequestService } from "../services/watched-pull-request-service";
-import type { AppLogService } from "../services/app-log-service";
-import { GitHubEnvironmentProbe } from "../services/github-environment-probe";
-import { WorkspaceSetupService } from "../services/workspace-setup-service";
+} from "#src/domain/ids";
+import { AgentExplanationService } from "#src/services/agent-explanation-service";
+import { AgentRunRequestService } from "#src/services/agent-run-request-service";
+import { ReviewRetention } from "#src/services/review-retention";
+import { LocalReviewSessionPreparation } from "#src/services/local-review-session-preparation";
+import { ReviewDiffSourceService } from "#src/services/review-diff-source-service";
+import { SidebarListingService } from "#src/services/sidebar-listing-service";
+import { WatchedPullRequestService } from "#src/services/watched-pull-request-service";
+import type { AppLogService } from "#src/services/app-log-service";
+import { GitHubEnvironmentProbe } from "#src/services/github-environment-probe";
+import { WorkspaceSetupService } from "#src/services/workspace-setup-service";
 
 /** The narrow log seam every request-scoped writer needs. */
 export type LogWriter = Pick<AppLogService, "write">;

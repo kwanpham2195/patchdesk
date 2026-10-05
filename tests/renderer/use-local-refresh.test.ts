@@ -2,8 +2,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useLocalRefresh } from "../../src/renderer/src/flows/use-local-refresh";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { useLocalRefresh } from "#src/renderer/src/flows/use-local-refresh";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { failure, installDesktopDouble } from "./fake-desktop-response";
 import { projection } from "./review-workbench-fixtures";
 

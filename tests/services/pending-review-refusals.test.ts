@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { PendingReviewService } from "../../src/services/pending-review-service";
+import type { PendingReviewService } from "#src/services/pending-review-service";
 import {
   anchor,
   expected,

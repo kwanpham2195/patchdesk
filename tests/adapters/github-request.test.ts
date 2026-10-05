@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ghInvocationFor,
   type GitHubRequest,
-} from "../../src/adapters/github/github-request";
+} from "#src/adapters/github/github-request";
 
 /**
  * Every expectation below is the argv literal the matching call site wrote

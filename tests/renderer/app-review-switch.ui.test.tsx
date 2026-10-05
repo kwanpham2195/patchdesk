@@ -13,15 +13,15 @@ import userEvent, {
 } from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { DesktopResponse } from "../../src/main/ipc-contract";
-import { App } from "../../src/renderer/src/app";
-import { ChangeIntentControl } from "../../src/renderer/src/components/change-intent-control";
+import type { DesktopResponse } from "#src/main/ipc-contract";
+import { App } from "#src/renderer/src/app";
+import { ChangeIntentControl } from "#src/renderer/src/components/change-intent-control";
 import {
   ReviewWorkbenchFlow,
   type ReviewWorkbenchFlowProps,
-} from "../../src/renderer/src/flows/review-workbench-flow";
-import { useChangeIntent } from "../../src/renderer/src/flows/use-change-intent";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/flows/review-workbench-flow";
+import { useChangeIntent } from "#src/renderer/src/flows/use-change-intent";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { APP_BOOT_OPERATIONS, APP_BOOT_ROUTES } from "./app-boot-routes";
 import {
   failure,

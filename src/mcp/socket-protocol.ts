@@ -2,7 +2,7 @@ import { isAbsolute } from "node:path";
 
 import * as v from "valibot";
 
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 
 /**
  * The line protocol between the `patchdesk mcp` shim and the app's socket

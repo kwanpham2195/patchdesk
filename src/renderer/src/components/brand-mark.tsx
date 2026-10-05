@@ -1,4 +1,4 @@
-import logoUrl from "../../../../resources/branding/patchdesk-logo.svg?url";
+import logoUrl from "#resources/branding/patchdesk-logo.svg?url";
 
 export function BrandMark({
   size = 32,

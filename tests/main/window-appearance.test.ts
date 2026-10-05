@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { windowBackgroundColor } from "../../src/main/window-appearance";
+import { windowBackgroundColor } from "#src/main/window-appearance";
 
 /**
  * The window is created before any renderer exists, so this mapping is the

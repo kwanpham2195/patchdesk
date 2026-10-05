@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   mergeLoginShellEnvironment,
   readLoginShellEnvironment,
-} from "../../src/adapters/process/login-shell-environment";
+} from "#src/adapters/process/login-shell-environment";
 
 const GUI_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 const LOGIN_SHELL_PATH =

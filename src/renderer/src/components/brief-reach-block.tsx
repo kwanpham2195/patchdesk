@@ -1,7 +1,7 @@
 import { ChevronRightIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { definedProps } from "../../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   briefBlastRadius,
   briefBlastRadiusFootnote,
@@ -10,7 +10,7 @@ import {
   type BlastRadiusName,
   type BriefReach,
   type BriefReachRow,
-} from "../brief-contracts";
+} from "#src/renderer/src/brief-contracts";
 
 const FOLD_BUTTON =
   "flex items-center gap-1.5 self-start rounded-sm text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";

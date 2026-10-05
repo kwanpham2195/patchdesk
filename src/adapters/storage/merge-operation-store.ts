@@ -1,12 +1,12 @@
 import { readdir, rm } from "node:fs/promises";
 
-import type { WorkspaceProfileId, ReviewSessionId } from "../../domain/ids";
-import { parseReviewSessionId } from "../../domain/ids";
+import type { WorkspaceProfileId, ReviewSessionId } from "#src/domain/ids";
+import { parseReviewSessionId } from "#src/domain/ids";
 import {
   parseMergeOperation,
   type MergeOperation,
-} from "../../domain/merge-operation";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/merge-operation";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isNotFound,
   readJsonFile,

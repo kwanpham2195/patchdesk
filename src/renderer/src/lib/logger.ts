@@ -1,9 +1,9 @@
 import * as v from "valibot";
 
-import { requestJson } from "../api-client";
+import { requestJson } from "#src/renderer/src/api-client";
 
-import { definedProps } from "../../../domain/defined-props";
-import type { LogMetaInput } from "../../../domain/log-entry";
+import { definedProps } from "#src/domain/defined-props";
+import type { LogMetaInput } from "#src/domain/log-entry";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 

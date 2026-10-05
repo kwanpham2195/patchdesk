@@ -1,4 +1,4 @@
-import { requestJson } from "../api-client";
+import { requestJson } from "#src/renderer/src/api-client";
 import {
   parseCommitDiffResponse,
   parseSinceLastRefreshDiffResponse,
@@ -6,7 +6,7 @@ import {
   type CommitDiffResponse,
   type SinceLastRefreshDiffResponse,
   type SinceReviewDiffResponse,
-} from "../review-diff-contracts";
+} from "#src/renderer/src/review-diff-contracts";
 
 export async function loadReviewCommitDiff(
   profileId: string,

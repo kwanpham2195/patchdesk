@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
-import { isPathContained } from "../adapters/storage/path-containment";
+import { isPathContained } from "#src/adapters/storage/path-containment";
 import {
   parseContentHash,
   type ContentHash,
   type RepoRelativePath,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import type { GitReadExecutor } from "./review-worktree-service";
 
 /**

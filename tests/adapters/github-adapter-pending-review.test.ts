@@ -4,7 +4,7 @@ import {
   parseGitHubReviewNodeId,
   parseGitSha,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import { describe, expect, it } from "vitest";
 import {
   headSha,

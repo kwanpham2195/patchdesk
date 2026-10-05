@@ -10,10 +10,10 @@ import {
   readAvatar,
   sniffImageContentType,
   writeAvatar,
-} from "../../src/adapters/storage/avatar-cache-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { parseWorkspaceProfileId } from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/adapters/storage/avatar-cache-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { parseWorkspaceProfileId } from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T =>
   result._tag === "ok"

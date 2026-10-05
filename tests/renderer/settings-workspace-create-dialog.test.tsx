@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CreateWorkspaceDialog } from "../../src/renderer/src/flows/settings-workspace-create-dialog";
+import { CreateWorkspaceDialog } from "#src/renderer/src/flows/settings-workspace-create-dialog";
 import {
   failure,
   installDesktopDouble,

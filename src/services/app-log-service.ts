@@ -9,14 +9,14 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   normalizeLogEntry,
   parseLogEntry,
   sanitizeLogEntry,
   type LogEntry,
   type LogEntryInput,
-} from "../domain/log-entry";
+} from "#src/domain/log-entry";
 
 export type AppLogServiceOptions = {
   readonly bufferSize?: number;

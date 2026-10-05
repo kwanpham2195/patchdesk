@@ -1,19 +1,19 @@
-import { WATCH_INTERVAL_MINUTES } from "../../../domain/contracts";
+import { WATCH_INTERVAL_MINUTES } from "#src/domain/contracts";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../components/ui/card";
+} from "#src/renderer/src/components/ui/card";
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-} from "../components/ui/field";
-import { InlineError } from "../components/ui/inline-error";
+} from "#src/renderer/src/components/ui/field";
+import { InlineError } from "#src/renderer/src/components/ui/inline-error";
 import {
   Select,
   SelectContent,
@@ -21,9 +21,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import { Switch } from "../components/ui/switch";
-import { useNotificationSettings } from "../hooks/use-notification-settings";
+} from "#src/renderer/src/components/ui/select";
+import { Switch } from "#src/renderer/src/components/ui/switch";
+import { useNotificationSettings } from "#src/renderer/src/hooks/use-notification-settings";
 
 function intervalLabel(minutes: number): string {
   return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`;

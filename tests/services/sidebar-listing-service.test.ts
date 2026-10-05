@@ -4,10 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { InsightStore } from "../../src/adapters/storage/insight-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import type { ReviewStore } from "../../src/adapters/storage/review-store";
-import { definedProps } from "../../src/domain/defined-props";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseAbsolutePath,
   parseGitHubHost,
@@ -23,19 +23,19 @@ import {
   createReviewSessionId,
   parseContentHash,
   parseInsightRunId,
-} from "../../src/domain/ids";
-import { beginInsightRun } from "../../src/domain/insight-record";
-import { ok, type Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { beginInsightRun } from "#src/domain/insight-record";
+import { ok, type Result } from "#src/domain/result";
 import {
   createReview,
   type Review,
   type ReviewIdentity,
-} from "../../src/domain/review";
-import type { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
+} from "#src/domain/review";
+import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 import {
   SidebarListingService,
   type SidebarListing,
-} from "../../src/services/sidebar-listing-service";
+} from "#src/services/sidebar-listing-service";
 
 type ListResult = Awaited<ReturnType<ReviewStore["list"]>>;
 type DiagnosticInput = Parameters<ReviewDiagnosticService["record"]>[0];

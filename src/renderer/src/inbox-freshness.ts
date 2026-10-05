@@ -1,4 +1,4 @@
-import type { InboxSnapshotState } from "../../domain/maintainer-inbox";
+import type { InboxSnapshotState } from "#src/domain/maintainer-inbox";
 
 /**
  * The maintainer-facing copy for how current the inbox rows are. This is

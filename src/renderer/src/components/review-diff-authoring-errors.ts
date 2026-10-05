@@ -1,5 +1,11 @@
-import { PatchdeskApiError, refusedWriteMessage } from "../api-client";
-import { forbiddenWriteCopy, unconfirmedWriteCopy } from "../review-copy";
+import {
+  PatchdeskApiError,
+  refusedWriteMessage,
+} from "#src/renderer/src/api-client";
+import {
+  forbiddenWriteCopy,
+  unconfirmedWriteCopy,
+} from "#src/renderer/src/review-copy";
 
 /** Bounded copy for a failed inline write; shared by the composer and pending-write cards. */
 export function composerErrorMessage(cause: unknown): string {

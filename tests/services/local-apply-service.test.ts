@@ -8,9 +8,9 @@ import {
   parseFindingId,
   parseGitShaPrefix,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
-import { dismissInsightFinding } from "../../src/domain/insight-record";
-import { err } from "../../src/domain/result";
+} from "#src/domain/ids";
+import { dismissInsightFinding } from "#src/domain/insight-record";
+import { err } from "#src/domain/result";
 import {
   applyRequest,
   cleanupLocalApplyRoots,

@@ -11,9 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -25,17 +25,17 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
-} from "../../src/domain/ids";
-import { createReviewSession } from "../../src/domain/review-session";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { CommandRunner } from "../../src/adapters/github/command-runner";
-import { createReadOnlyGitExecutor } from "../../src/main/local-api-stores";
-import { ReviewDiffSourceService } from "../../src/services/review-diff-source-service";
+} from "#src/domain/ids";
+import { createReviewSession } from "#src/domain/review-session";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { CommandRunner } from "#src/adapters/github/command-runner";
+import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { ReviewDiffSourceService } from "#src/services/review-diff-source-service";
 import {
   ReviewWorktreeService,
   type GitReadExecutor,
-} from "../../src/services/review-worktree-service";
-import { ok } from "../../src/domain/result";
+} from "#src/services/review-worktree-service";
+import { ok } from "#src/domain/result";
 import {
   cleanupLocalApplyRoots,
   git,

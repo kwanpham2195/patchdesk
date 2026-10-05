@@ -10,14 +10,14 @@ import type { ComponentProps } from "react";
 import {
   ReviewDiffView,
   type PendingReviewComposerActions,
-} from "../../src/renderer/src/components/review-diff-view";
-import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
-import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
-import { refusalCausePhrase } from "../../src/renderer/src/write-refusal-copy";
-import { usePendingReviewDrafts } from "../../src/renderer/src/hooks/use-pending-review-drafts";
-import { parseGitHubThreadId } from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/renderer/src/components/review-diff-view";
+import { parseReviewDiff } from "#src/renderer/src/review-diff-data";
+import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "#src/renderer/src/review-view-preferences";
+import { PatchdeskApiError } from "#src/renderer/src/api-client";
+import { refusalCausePhrase } from "#src/renderer/src/write-refusal-copy";
+import { usePendingReviewDrafts } from "#src/renderer/src/hooks/use-pending-review-drafts";
+import { parseGitHubThreadId } from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 import {
   installDesktopDouble,
   success,

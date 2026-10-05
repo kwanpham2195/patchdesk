@@ -7,9 +7,9 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parsePullRequestNumber,
-} from "../../src/domain/ids";
-import { createReview } from "../../src/domain/review";
-import { LocalChangeIntentService } from "../../src/services/local-change-intent-service";
+} from "#src/domain/ids";
+import { createReview } from "#src/domain/review";
+import { LocalChangeIntentService } from "#src/services/local-change-intent-service";
 import {
   cleanupLocalApplyRoots,
   localApplyHarness,

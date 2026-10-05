@@ -3,7 +3,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import type { CodeViewDiffItem } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
-import { materializeAndScrollTo } from "../review-diff-materialize-and-scroll";
+import { materializeAndScrollTo } from "#src/renderer/src/review-diff-materialize-and-scroll";
 import {
   adjacentCommentAnchor,
   buildCommentOrder,
@@ -13,8 +13,8 @@ import {
   type CommentAnchor,
   type CommentOrderItem,
   type ReviewNavDirection,
-} from "../review-diff-keyboard-nav";
-import type { ReviewInlineAnnotation } from "../components/review-diff-view";
+} from "#src/renderer/src/review-diff-keyboard-nav";
+import type { ReviewInlineAnnotation } from "#src/renderer/src/components/review-diff-view";
 import type { ReviewDiffNavigationOperation } from "./use-review-diff-navigation-feedback";
 import { useKeyboardJump } from "./use-keyboard-jump";
 import { useLatestCommitted } from "./use-latest-committed";

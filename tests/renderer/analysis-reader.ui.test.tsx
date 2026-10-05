@@ -10,20 +10,20 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { AnalysisReader } from "../../src/renderer/src/components/analysis-reader";
-import { renderAnalysisFixPrompt } from "../../src/renderer/src/analysis-fix-prompt";
+import { AnalysisReader } from "#src/renderer/src/components/analysis-reader";
+import { renderAnalysisFixPrompt } from "#src/renderer/src/analysis-fix-prompt";
 import {
   PatchdeskApiError,
   contextualMessage,
-} from "../../src/renderer/src/api-client";
+} from "#src/renderer/src/api-client";
 import {
   FINDING_ACTION_MESSAGES,
   FINDING_RESTORED_REFRESH_NOTICE,
-} from "../../src/renderer/src/review-copy";
+} from "#src/renderer/src/review-copy";
 import type {
   AddAllFindingsControls,
   AddAllFindingsOutcome,
-} from "../../src/renderer/src/flows/use-add-all-findings";
+} from "#src/renderer/src/flows/use-add-all-findings";
 
 const result: Parameters<typeof AnalysisReader>[0]["result"] = {
   changeSummary: "Analysis of the `currentChange`",

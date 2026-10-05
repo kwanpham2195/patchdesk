@@ -10,13 +10,13 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppShell } from "../../src/renderer/src/components/app-shell";
-import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
-import { useRegisterReviewCommands } from "../../src/renderer/src/review-commands";
-import { definedProps } from "../../src/domain/defined-props";
-import { parseGitHubHost } from "../../src/domain/ids";
-import type { PullRequestRef } from "../../src/domain/pull-request";
-import type { RepositoryIdentity } from "../../src/domain/repository-identity";
+import { AppShell } from "#src/renderer/src/components/app-shell";
+import { BusyProvider } from "#src/renderer/src/hooks/use-busy";
+import { useRegisterReviewCommands } from "#src/renderer/src/review-commands";
+import { definedProps } from "#src/domain/defined-props";
+import { parseGitHubHost } from "#src/domain/ids";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import type { RepositoryIdentity } from "#src/domain/repository-identity";
 import {
   installDesktopDouble,
   success,

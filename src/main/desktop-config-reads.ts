@@ -1,12 +1,12 @@
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { ProfileStore } from "../adapters/storage/profile-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
 import {
   notificationSettingsOf,
   type Appearance,
   type NotificationSettings,
-} from "../domain/contracts";
-import { normalizeExternalHosts } from "../domain/external-hosts";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/contracts";
+import { normalizeExternalHosts } from "#src/domain/external-hosts";
+import { err, ok, type Result } from "#src/domain/result";
 
 /** The stored appearance, or "system" when no config file names one yet. */
 export async function loadStoredAppearance(

@@ -1,11 +1,11 @@
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   findAgentRunRequest,
   type AgentRunRequest,
-} from "../domain/agent-run-request";
-import { renderBriefAsPullRequestDescription } from "../domain/brief-pull-request-description";
-import { definedProps } from "../domain/defined-props";
+} from "#src/domain/agent-run-request";
+import { renderBriefAsPullRequestDescription } from "#src/domain/brief-pull-request-description";
+import { definedProps } from "#src/domain/defined-props";
 import type {
   AgentRunRequestId,
   GitSha,
@@ -13,17 +13,17 @@ import type {
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import type {
   InsightFailureCategory,
   InsightType,
-} from "../domain/insight-record";
-import { findingDraftStates } from "../domain/local-draft";
-import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
-import type { ReviewResult } from "../domain/review-result";
-import { casesHandled, err, ok, type Result } from "../domain/result";
-import { isLocalReview, type Review } from "../domain/review";
-import type { LocalReviewSource } from "../domain/review-source";
+} from "#src/domain/insight-record";
+import { findingDraftStates } from "#src/domain/local-draft";
+import type { NarrativeWalkthrough } from "#src/domain/narrative-walkthrough";
+import type { ReviewResult } from "#src/domain/review-result";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
+import { isLocalReview, type Review } from "#src/domain/review";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import type { LocalBranchMismatch } from "./local-review-opening";
 import {
   describeProjectedSession,

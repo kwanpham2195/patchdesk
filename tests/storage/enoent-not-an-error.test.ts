@@ -2,9 +2,9 @@ import type { PathLike } from "node:fs";
 import type * as FsPromises from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 
-import { readAvatar } from "../../src/adapters/storage/avatar-cache-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
+import { readAvatar } from "#src/adapters/storage/avatar-cache-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
 import {
   createReviewId,
   parseGitHubHost,
@@ -12,8 +12,8 @@ import {
   parseGitHubRepoName,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+} from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
 
 /**
  * `isNotFound` in `json-file.ts` reads `code` off any object rather than

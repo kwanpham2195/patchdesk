@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import type { WorkspaceProfileId } from "../../domain/ids";
-import { err, ok, type Result } from "../../domain/result";
+import type { WorkspaceProfileId } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
 import { isNotFound, writeAtomicFile } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 

@@ -3,7 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useProfileSwitch } from "../../src/renderer/src/hooks/use-profile-switch";
+import { useProfileSwitch } from "#src/renderer/src/hooks/use-profile-switch";
 import {
   failure,
   installDesktopDouble,

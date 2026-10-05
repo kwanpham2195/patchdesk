@@ -11,7 +11,7 @@ import {
   type InferOutput,
 } from "valibot";
 
-import { definedProps } from "../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import {
   anchorSchema,
   findingSourceSchema,
@@ -19,7 +19,7 @@ import {
   parsePendingReviewAnchorFields,
   type FindingReviewSource,
   type PendingReviewAnchor,
-} from "../../domain/pending-review";
+} from "#src/domain/pending-review";
 import {
   parseContentHash,
   parseFindingId,
@@ -34,8 +34,8 @@ import {
   type InsightRunId,
   type ReviewId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
-import type { ReviewWriteExpectation } from "../../services/review-write-gate";
+} from "#src/domain/ids";
+import type { ReviewWriteExpectation } from "#src/services/review-write-gate";
 
 type PendingReviewCommandDto =
   | {

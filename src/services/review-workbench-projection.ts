@@ -1,40 +1,43 @@
-import type { AgentRunRequest } from "../domain/agent-run-request";
+import type { AgentRunRequest } from "#src/domain/agent-run-request";
 import { createHash } from "node:crypto";
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { GitHubReadFailure } from "../adapters/github/gh-request-runner";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import type { GitHubReadFailure } from "#src/adapters/github/gh-request-runner";
 import { readFile, stat } from "node:fs/promises";
 
 import {
   avatarDataUri,
   hashAvatarUrl,
-} from "../adapters/storage/avatar-cache-store";
-import type { InsightStore } from "../adapters/storage/insight-store";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
-import type { LocalApplyOperationStore } from "../adapters/storage/local-apply-operation-store";
-import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
-import type { ReviewWriteIntentTag } from "../domain/review-write-operation";
+} from "#src/adapters/storage/avatar-cache-store";
+import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
+import type { LocalApplyOperationStore } from "#src/adapters/storage/local-apply-operation-store";
+import type { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
+import type { ReviewWriteIntentTag } from "#src/domain/review-write-operation";
 import {
   isLocalReview,
   sessionRepresentsReview,
   type ReviewFreshness,
-} from "../domain/review";
+} from "#src/domain/review";
 import {
   readFeedbackHandoff,
   type FeedbackHandoffReading,
-} from "../domain/feedback-handoff";
+} from "#src/domain/feedback-handoff";
 import {
   projectAgentExplanation,
   type AgentExplanationEntry,
-} from "../domain/agent-explanation";
-import { projectLocalDraft, type LocalDraftEntry } from "../domain/local-draft";
-import type { LocalDraftReply } from "../domain/local-draft-reply";
-import type { LocalPatchView } from "../domain/local-patch-view";
-import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
+} from "#src/domain/agent-explanation";
+import {
+  projectLocalDraft,
+  type LocalDraftEntry,
+} from "#src/domain/local-draft";
+import type { LocalDraftReply } from "#src/domain/local-draft-reply";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import type { ReviewRemoteSnapshot } from "#src/adapters/storage/review-remote-store";
 import type {
   CheckSummary,
   Conversation,
@@ -45,7 +48,7 @@ import type {
   MergeMethod,
   PullRequestCommit,
   PullRequestSummary,
-} from "../domain/github-context";
+} from "#src/domain/github-context";
 import {
   createReviewId,
   parseGitHubLogin,
@@ -59,48 +62,51 @@ import {
   type RepoRelativePath,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
+} from "#src/domain/ids";
 import {
   projectStoredInsight,
   type InsightProjection,
-} from "../domain/insight";
-import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
-import type { NormalizedBrief } from "../domain/brief";
-import { definedProps } from "../domain/defined-props";
-import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
+} from "#src/domain/insight";
+import {
+  changeScopeFromPatch,
+  type ChangeScope,
+} from "#src/domain/change-scope";
+import type { NormalizedBrief } from "#src/domain/brief";
+import { definedProps } from "#src/domain/defined-props";
+import type { NarrativeWalkthrough } from "#src/domain/narrative-walkthrough";
 import {
   evaluateMergeReadiness,
   readinessMergeability,
   type MergeReadiness,
-} from "../domain/merge-readiness";
-import { deriveMergeReasons } from "../domain/merge-display-reasons";
+} from "#src/domain/merge-readiness";
+import { deriveMergeReasons } from "#src/domain/merge-display-reasons";
 import {
   projectAnalysisReviewActions,
   type AnalysisReviewActionsProjection,
   type WorkbenchRevisionFreshness,
-} from "../domain/analysis-review-actions";
+} from "#src/domain/analysis-review-actions";
 import {
   analysisMergeInput,
   mergeGateFindings,
   projectAnalysisFindings,
-} from "../domain/analysis-merge-findings";
+} from "#src/domain/analysis-merge-findings";
 import type { PendingReviewProjection } from "./pending-review-service";
 import {
   projectDirectSummaryReview,
   type DirectSummaryReviewProjection,
 } from "./direct-summary-review-service";
 import { projectPendingReview } from "./pending-review-service";
-import type { PendingReviewState } from "../domain/pending-review";
-import type { ReviewResult } from "../domain/review-result";
+import type { PendingReviewState } from "#src/domain/pending-review";
+import type { ReviewResult } from "#src/domain/review-result";
 import {
   isPullRequestReviewSession,
   type LocalSessionViewPatch,
   type LocalSessionViewPatches,
   type ReviewSession,
-} from "../domain/review-session";
-import type { ReviewSource } from "../domain/review-source";
-import { err, ok, type Result } from "../domain/result";
-import type { ChangeIntentView } from "../domain/change-intent";
+} from "#src/domain/review-session";
+import type { ReviewSource } from "#src/domain/review-source";
+import { err, ok, type Result } from "#src/domain/result";
+import type { ChangeIntentView } from "#src/domain/change-intent";
 import { changeIntentView } from "./local-change-intent-service";
 import { asPullRequestCommit } from "./local-commit-listing";
 import { RetainedInsightReader } from "./retained-insight-reader";

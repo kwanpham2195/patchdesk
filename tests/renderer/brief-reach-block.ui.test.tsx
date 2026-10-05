@@ -4,9 +4,9 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { definedProps } from "../../src/domain/defined-props";
-import type { BriefReach } from "../../src/renderer/src/brief-contracts";
-import { ReachBlock } from "../../src/renderer/src/components/brief-reach-block";
+import { definedProps } from "#src/domain/defined-props";
+import type { BriefReach } from "#src/renderer/src/brief-contracts";
+import { ReachBlock } from "#src/renderer/src/components/brief-reach-block";
 
 const HEAD_SHA = "e1126f94".padEnd(40, "0");
 

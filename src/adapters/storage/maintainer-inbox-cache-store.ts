@@ -2,8 +2,8 @@ import { dirname, join } from "node:path";
 
 import * as v from "valibot";
 
-import { changeScopeSchema } from "../../domain/change-scope";
-import { definedProps } from "../../domain/defined-props";
+import { changeScopeSchema } from "#src/domain/change-scope";
+import { definedProps } from "#src/domain/defined-props";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -13,7 +13,7 @@ import {
   parsePullRequestNumber,
   parseReviewId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import {
   INBOX_CATEGORIES,
   INBOX_DATA_FRESHNESS,
@@ -26,13 +26,13 @@ import {
   type InboxRecommendedAction,
   type InboxReviewSummary,
   type MaintainerInboxRow,
-} from "../../domain/maintainer-inbox";
+} from "#src/domain/maintainer-inbox";
 import {
   GITHUB_MERGE_STATE_STATUSES,
   type PullRequestSummary,
-} from "../../domain/github-context";
-import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
+} from "#src/domain/github-context";
+import type { PullRequestRef } from "#src/domain/pull-request";
+import { err, ok, type Result } from "#src/domain/result";
 import { checksSchema, projectChecks } from "./check-summary-schema";
 import {
   readJsonFile,

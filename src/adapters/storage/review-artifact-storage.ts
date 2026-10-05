@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 
-import { mapConcurrent } from "../../domain/map-concurrent";
-import { err, ok, type Result } from "../../domain/result";
+import { mapConcurrent } from "#src/domain/map-concurrent";
+import { err, ok, type Result } from "#src/domain/result";
 import { isPathContained } from "./path-containment";
 import {
   parseReviewSessionId,
@@ -11,7 +11,7 @@ import {
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../../domain/ids";
+} from "#src/domain/ids";
 import { isNotFound, removePath, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 

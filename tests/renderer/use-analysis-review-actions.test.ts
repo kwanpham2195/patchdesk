@@ -2,18 +2,18 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { DesktopResponse } from "../../src/main/ipc-contract";
+import type { RawJsonValue } from "#src/domain/json";
+import type { DesktopResponse } from "#src/main/ipc-contract";
 import {
   PatchdeskApiError,
   ReviewPreconditionError,
-} from "../../src/renderer/src/api-client";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+} from "#src/renderer/src/api-client";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   useAnalysisReviewActions,
   type FindingAddResult,
-} from "../../src/renderer/src/flows/use-analysis-review-actions";
-import type { RunDirectCommand } from "../../src/renderer/src/flows/use-review-observation";
+} from "#src/renderer/src/flows/use-analysis-review-actions";
+import type { RunDirectCommand } from "#src/renderer/src/flows/use-review-observation";
 import {
   failure,
   installDesktopDouble,

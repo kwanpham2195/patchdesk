@@ -4,16 +4,16 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../components/ui/card";
+} from "#src/renderer/src/components/ui/card";
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldLabel,
-} from "../components/ui/field";
-import { InlineError } from "../components/ui/inline-error";
-import { Switch } from "../components/ui/switch";
-import { useCheckForUpdatesSetting } from "../hooks/use-check-for-updates-setting";
+} from "#src/renderer/src/components/ui/field";
+import { InlineError } from "#src/renderer/src/components/ui/inline-error";
+import { Switch } from "#src/renderer/src/components/ui/switch";
+import { useCheckForUpdatesSetting } from "#src/renderer/src/hooks/use-check-for-updates-setting";
 
 /** Settings → General → Updates: the release check behind the title-bar notice (#800). */
 export function UpdatesCard(): React.JSX.Element {

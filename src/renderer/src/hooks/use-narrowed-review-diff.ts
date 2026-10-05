@@ -1,11 +1,11 @@
 import { useCallback, useMemo } from "react";
 
-import type { LocalPatchView } from "../../../domain/local-patch-view";
-import type { WorkbenchResponse } from "../renderer-contracts";
-import type { CommitDiffResponse } from "../review-diff-contracts";
-import type { LocalCommentAuthoring } from "../components/review-diff-view";
-import type { ReviewWorkbenchActions } from "../components/review-workbench-contracts";
-import { createHeadSideCommentAuthoring } from "../components/review-workbench-pull-request";
+import type { LocalPatchView } from "#src/domain/local-patch-view";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
+import type { CommitDiffResponse } from "#src/renderer/src/review-diff-contracts";
+import type { LocalCommentAuthoring } from "#src/renderer/src/components/review-diff-view";
+import type { ReviewWorkbenchActions } from "#src/renderer/src/components/review-workbench-contracts";
+import { createHeadSideCommentAuthoring } from "#src/renderer/src/components/review-workbench-pull-request";
 import { useCommitDiff, type CommitDiffState } from "./use-commit-diff";
 import {
   useSinceLastRefreshMode,

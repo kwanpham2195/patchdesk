@@ -1,4 +1,4 @@
-import type { Appearance } from "../domain/contracts";
+import type { Appearance } from "#src/domain/contracts";
 import { DESKTOP_WINDOW_APPEARANCE_CHANNEL } from "./ipc-contract";
 
 /**

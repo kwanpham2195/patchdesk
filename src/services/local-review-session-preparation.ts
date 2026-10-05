@@ -1,8 +1,8 @@
-import { writeAtomicFile } from "../adapters/storage/json-file";
-import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import type { ProfileStore } from "../adapters/storage/profile-store";
-import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import { writeAtomicFile } from "#src/adapters/storage/json-file";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -17,14 +17,14 @@ import {
   type RepoRelativePath,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import { definedProps } from "../domain/defined-props";
+} from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
 import {
   listPatchTouchedPaths,
   type LocalPatchView,
-} from "../domain/local-patch-view";
-import { err, ok, type Result } from "../domain/result";
-import type { ReviewIdentity } from "../domain/review";
+} from "#src/domain/local-patch-view";
+import { err, ok, type Result } from "#src/domain/result";
+import type { ReviewIdentity } from "#src/domain/review";
 import {
   createLocalReviewSession,
   isPullRequestReviewSession,
@@ -32,11 +32,11 @@ import {
   type LocalSessionRound,
   type LocalSessionViewPatch,
   type ReviewRevision,
-} from "../domain/review-session";
+} from "#src/domain/review-session";
 import type {
   LocalReviewSource,
   LocalReviewSourceRequest,
-} from "../domain/review-source";
+} from "#src/domain/review-source";
 import { listLocalCommits } from "./local-commit-listing";
 import {
   listLocalBranches,

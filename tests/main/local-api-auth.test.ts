@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { ProfileStore } from "../../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { createReviewSession } from "../../src/domain/review-session";
+import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { createReviewSession } from "#src/domain/review-session";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -17,25 +17,25 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+} from "#src/domain/ids";
+import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   createReadOnlyGitExecutor,
   startLocalApiServer,
   type LocalApiServer,
-} from "../../src/main/local-api";
+} from "#src/main/local-api";
 import {
   CommandRunner,
   type CommandExecution,
   type CommandRequest,
-} from "../../src/adapters/github/command-runner";
+} from "#src/adapters/github/command-runner";
 import type {
   ReviewWorkbenchSeam,
   StorageManagementSeam,
-} from "../../src/main/local-api-configuration";
-import type { WorkspaceProfileId } from "../../src/domain/ids";
-import { err, ok } from "../../src/domain/result";
+} from "#src/main/local-api-configuration";
+import type { WorkspaceProfileId } from "#src/domain/ids";
+import { err, ok } from "#src/domain/result";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";

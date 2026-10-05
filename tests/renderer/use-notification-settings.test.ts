@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useNotificationSettings } from "../../src/renderer/src/hooks/use-notification-settings";
+import { useNotificationSettings } from "#src/renderer/src/hooks/use-notification-settings";
 import {
   failure,
   installDesktopDouble,

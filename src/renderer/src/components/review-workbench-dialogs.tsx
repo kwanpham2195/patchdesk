@@ -1,9 +1,9 @@
-import { definedProps } from "../../../domain/defined-props";
-import type { PullRequestRef } from "../../../domain/pull-request";
+import { definedProps } from "#src/domain/defined-props";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
-} from "../external-links";
+} from "#src/renderer/src/external-links";
 import { CompactMergeCommand } from "./compact-merge-command";
 import { FinishReviewDialog } from "./finish-review-dialog";
 import {

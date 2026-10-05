@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
 
-import type { DiffThemePreferences } from "../diff-theme-preferences";
-import type { AppearancePreference } from "../appearance-preferences";
-import type { Dashboard, Profile } from "../renderer-models";
-import { SettingsFlow, type SettingsSection } from "../flows/settings-flow";
+import type { DiffThemePreferences } from "#src/renderer/src/diff-theme-preferences";
+import type { AppearancePreference } from "#src/renderer/src/appearance-preferences";
+import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
+import {
+  SettingsFlow,
+  type SettingsSection,
+} from "#src/renderer/src/flows/settings-flow";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -21,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import type {
   ProfileSwitchResult,
   ProfileSwitchState,
-} from "../hooks/use-profile-switch";
+} from "#src/renderer/src/hooks/use-profile-switch";
 
 export type SettingsModalProps = {
   readonly open: boolean;

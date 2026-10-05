@@ -4,12 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "../src/main/local-api";
-import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
-import { AppLogService } from "../src/services/app-log-service";
+import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { AppLogService } from "#src/services/app-log-service";
 
 const capability = "test-only-capability";
 const allowedOrigin = "http://patchdesk.local";

@@ -1,6 +1,6 @@
 import { createContext } from "react";
 
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
+import type { ChangeScopeBucket } from "#src/domain/change-scope";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { MappedFinding } from "./review-workbench-annotations";
 

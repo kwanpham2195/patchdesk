@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   localBranchBaseRef,
   parseAbsolutePath,
@@ -22,10 +22,10 @@ import {
   parseReviewSessionId,
   type IsoTimestamp,
   type ReviewSessionId,
-} from "../../src/domain/ids";
-import { markReviewTerminal } from "../../src/domain/review";
-import { err } from "../../src/domain/result";
-import type { LocalReviewSourceRequest } from "../../src/domain/review-source";
+} from "#src/domain/ids";
+import { markReviewTerminal } from "#src/domain/review";
+import { err } from "#src/domain/result";
+import type { LocalReviewSourceRequest } from "#src/domain/review-source";
 import {
   cleanupLocalApplyRoots,
   git,

@@ -1,12 +1,12 @@
 import { useCallback } from "react";
 
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
 import {
   PatchdeskApiError,
   isOutcomeUnknownRetry,
   requestJson,
   untrustedWriteResponseError,
-} from "../api-client";
+} from "#src/renderer/src/api-client";
 import {
   parseAssignableUserListResponse,
   parseRepositoryLabelListResponse,
@@ -16,11 +16,11 @@ import {
   type RepositoryLabelListResponse,
   type ReviewerListResponse,
   type WorkbenchResponse,
-} from "../renderer-contracts";
+} from "#src/renderer/src/renderer-contracts";
 import {
   parseBaseBranchListResponse,
   type BaseBranchListResponse,
-} from "../base-branch-contracts";
+} from "#src/renderer/src/base-branch-contracts";
 import {
   parseAssigneeReceipt,
   parseBaseBranchReceipt,

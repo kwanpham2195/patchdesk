@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRetainedInsight } from "../../src/domain/insight-record";
-import { err, ok } from "../../src/domain/result";
+import { parseRetainedInsight } from "#src/domain/insight-record";
+import { err, ok } from "#src/domain/result";
 import {
   at,
   fixture,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkFileSizes, lintStaged } from "../../scripts/lint-staged-lib.mjs";
+import { checkFileSizes, lintStaged } from "#scripts/lint-staged-lib.mjs";
 import {
   createHarness,
   cwd,

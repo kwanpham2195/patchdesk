@@ -1,13 +1,13 @@
-import { containsSensitiveData } from "../adapters/storage/json-file";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import { containsSensitiveData } from "#src/adapters/storage/json-file";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   parseAgentExplanationText,
   projectAgentExplanation,
   type AgentExplanationEntry,
-} from "../domain/agent-explanation";
-import { fingerprintPatchAnchor } from "../domain/diff-anchor";
-import type { FailureKinds } from "../domain/failure-kind";
+} from "#src/domain/agent-explanation";
+import { fingerprintPatchAnchor } from "#src/domain/diff-anchor";
+import type { FailureKinds } from "#src/domain/failure-kind";
 import type {
   AgentExplanationId,
   IsoTimestamp,
@@ -15,14 +15,14 @@ import type {
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import { isLocalReview, type Review } from "../domain/review";
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview, type Review } from "#src/domain/review";
 import {
   addAgentExplanation,
   dismissAgentExplanation,
-} from "../domain/review-agent-explanations";
-import type { LocalReviewSource } from "../domain/review-source";
+} from "#src/domain/review-agent-explanations";
+import type { LocalReviewSource } from "#src/domain/review-source";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import {
   describeCurrentSession,

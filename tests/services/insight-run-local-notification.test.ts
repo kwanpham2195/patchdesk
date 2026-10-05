@@ -7,11 +7,11 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parseLocalBranchName,
-} from "../../src/domain/ids";
-import { ok } from "../../src/domain/result";
-import { AgentRunRequestService } from "../../src/services/agent-run-request-service";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
-import type { InsightInvoker } from "../../src/services/insight-run-coordinator";
+} from "#src/domain/ids";
+import { ok } from "#src/domain/result";
+import { AgentRunRequestService } from "#src/services/agent-run-request-service";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import type { InsightInvoker } from "#src/services/insight-run-coordinator";
 import {
   analysisResult,
   cleanupRoots,

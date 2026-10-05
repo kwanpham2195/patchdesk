@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 
-import { agentExplanationEntrySchema } from "../../../domain/agent-explanation";
-import { agentRunRequestSchema } from "../../../domain/agent-run-request";
-import { localDraftReplySchema } from "../../../domain/local-draft-reply";
+import { agentExplanationEntrySchema } from "#src/domain/agent-explanation";
+import { agentRunRequestSchema } from "#src/domain/agent-run-request";
+import { localDraftReplySchema } from "#src/domain/local-draft-reply";
 import {
   appendRecentWriteReceipts,
   type RecentReviewWrite,
-} from "../../../domain/recent-review-write";
-import { requestJson } from "../api-client";
+} from "#src/domain/recent-review-write";
+import { requestJson } from "#src/renderer/src/api-client";
 import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
-} from "../renderer-contracts";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
-import { useDurableRefreshResume } from "../hooks/use-durable-refresh-resume";
+} from "#src/renderer/src/renderer-contracts";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
+import { useDurableRefreshResume } from "#src/renderer/src/hooks/use-durable-refresh-resume";
 import { reconciledProjection } from "./review-observation-projection";
 
 export type ReviewWorkbenchPatch = Omit<

@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   hasAvatar,
   hashAvatarUrl,
-} from "../../src/adapters/storage/avatar-cache-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
-import { parseWorkspaceProfileId } from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
-import { AvatarSyncService } from "../../src/services/avatar-sync-service";
+} from "#src/adapters/storage/avatar-cache-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { ReviewRemoteSnapshot } from "#src/adapters/storage/review-remote-store";
+import { parseWorkspaceProfileId } from "#src/domain/ids";
+import type { Result } from "#src/domain/result";
+import { AvatarSyncService } from "#src/services/avatar-sync-service";
 
 // The avatar fan-out cap is written out here rather than imported from the
 // service, so this test pins the cap instead of restating whatever the

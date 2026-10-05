@@ -1,14 +1,14 @@
-import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { PullRequestSummary } from "../domain/github-context";
-import type { PullRequestRef } from "../domain/pull-request";
+import type { GitHubReader } from "#src/adapters/github/github-adapter";
+import type { PullRequestSummary } from "#src/domain/github-context";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import type {
   ObservedRevisionIdentity,
   RevisionUnavailableReason,
-} from "../domain/review";
-import type { PullRequestReviewSession } from "../domain/review-session";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import { parseContentHash } from "../domain/ids";
-import { ok, type Result } from "../domain/result";
+} from "#src/domain/review";
+import type { PullRequestReviewSession } from "#src/domain/review-session";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import { parseContentHash } from "#src/domain/ids";
+import { ok, type Result } from "#src/domain/result";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import { normalizeReviewPatch } from "./review-session-preparation";
 

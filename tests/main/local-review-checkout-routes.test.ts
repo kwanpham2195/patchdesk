@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { err, ok } from "../../src/domain/result";
-import { registerLocalReviewRoutes } from "../../src/main/routes/local-review-routes";
-import type { LocalPatchViewService } from "../../src/services/local-patch-view-service";
-import type { LocalReviewOpening } from "../../src/services/local-review-opening";
+import { err, ok } from "#src/domain/result";
+import { registerLocalReviewRoutes } from "#src/main/routes/local-review-routes";
+import type { LocalPatchViewService } from "#src/services/local-patch-view-service";
+import type { LocalReviewOpening } from "#src/services/local-review-opening";
 
 type OpenInput = Parameters<LocalReviewOpening["open"]>[0];
 type PatchViewInput = Parameters<LocalPatchViewService["load"]>[0];

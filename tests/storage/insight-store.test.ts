@@ -13,17 +13,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   InsightStore,
   parseInsightRecord,
-} from "../../src/adapters/storage/insight-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+} from "#src/adapters/storage/insight-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   parseIsoTimestamp,
   parseReviewId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import {
   beginInsightRun,
   setAnalysisVerificationStep,
-} from "../../src/domain/insight-record";
+} from "#src/domain/insight-record";
 
 const currentRecord = {
   schemaVersion: 2 as const,

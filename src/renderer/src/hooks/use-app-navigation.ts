@@ -4,12 +4,12 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import type { WorkbenchPayload } from "../renderer-models";
-import type { AppDestination } from "../routes";
-import { destinationKey, parseDestination } from "../routes";
+import type { WorkbenchPayload } from "#src/renderer/src/renderer-models";
+import type { AppDestination } from "#src/renderer/src/routes";
+import { destinationKey, parseDestination } from "#src/renderer/src/routes";
 import { useLatestCommitted } from "./use-latest-committed";
-import { newestConversationTimestamp } from "../../../domain/conversation-entry-timestamp";
-import { definedProps } from "../../../domain/defined-props";
+import { newestConversationTimestamp } from "#src/domain/conversation-entry-timestamp";
+import { definedProps } from "#src/domain/defined-props";
 
 export type NavigationState = "clear" | "dirty_draft" | "write_pending";
 

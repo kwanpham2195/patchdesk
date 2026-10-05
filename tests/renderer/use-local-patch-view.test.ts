@@ -2,10 +2,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { RawJsonValue } from "../../src/domain/json";
-import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
-import { useLocalPatchView } from "../../src/renderer/src/flows/use-local-patch-view";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type { RawJsonValue } from "#src/domain/json";
+import type { LocalApiDesktopRequest } from "#src/main/ipc-contract";
+import { useLocalPatchView } from "#src/renderer/src/flows/use-local-patch-view";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import {
   installDesktopDouble,
   success,

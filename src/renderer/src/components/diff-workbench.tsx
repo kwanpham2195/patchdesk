@@ -3,9 +3,9 @@ import {
   mapFindingLocation,
   parseUnifiedPatch,
   type FindingLocationInput,
-} from "../../../domain/patch";
-import { definedProps } from "../../../domain/defined-props";
-import { filterUnifiedPatchFiles } from "../../../domain/unified-patch";
+} from "#src/domain/patch";
+import { definedProps } from "#src/domain/defined-props";
+import { filterUnifiedPatchFiles } from "#src/domain/unified-patch";
 import { DiffWorkerPoolProvider } from "./diff-worker-pool";
 import { PierreFileTree } from "./pierre-file-tree";
 import {

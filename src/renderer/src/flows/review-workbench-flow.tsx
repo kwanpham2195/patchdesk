@@ -1,10 +1,10 @@
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
-} from "../components/review-workbench";
-import type { WorkbenchResponse } from "../renderer-contracts";
+} from "#src/renderer/src/components/review-workbench";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 
-import { InsightsSlot } from "../components/review-insights-slot";
+import { InsightsSlot } from "#src/renderer/src/components/review-insights-slot";
 import { useWorkbenchActions } from "./use-workbench-actions";
 import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useAddAllFindings } from "./use-add-all-findings";
@@ -20,21 +20,21 @@ import { usePendingReviewActions } from "./use-pending-review-actions";
 import { useReviewMetadataActions } from "./use-review-metadata-actions";
 import { useReviewMergeAction } from "./use-review-merge-action";
 import { useReviewWriteRecovery } from "./use-review-write-recovery";
-import { useViewedFiles } from "../hooks/use-viewed-files";
+import { useViewedFiles } from "#src/renderer/src/hooks/use-viewed-files";
 import {
   useReviewObservation,
   type ReviewWorkbenchPatch,
 } from "./use-review-observation";
-import type { WorkbenchPosition } from "../lib/screen-restore";
+import type { WorkbenchPosition } from "#src/renderer/src/lib/screen-restore";
 import {
   Alert,
   AlertAction,
   AlertDescription,
   AlertTitle,
-} from "../components/ui/alert";
-import { Button } from "../components/ui/button";
-import { InlineError } from "../components/ui/inline-error";
-import { Spinner } from "../components/ui/spinner";
+} from "#src/renderer/src/components/ui/alert";
+import { Button } from "#src/renderer/src/components/ui/button";
+import { InlineError } from "#src/renderer/src/components/ui/inline-error";
+import { Spinner } from "#src/renderer/src/components/ui/spinner";
 
 export type { ReviewWorkbenchPatch } from "./use-review-observation";
 

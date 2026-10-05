@@ -2,13 +2,10 @@ import { createServer, type Server } from "node:http";
 import type { IpcMainInvokeEvent } from "electron";
 import { describe, expect, it } from "vitest";
 
-import { installDesktopRequestBridge } from "../../src/main/desktop-bridge";
-import type { NotificationDestination } from "../../src/main/desktop-notifier";
-import type { RawJsonValue } from "../../src/domain/json";
-import type {
-  DesktopRequest,
-  DesktopResponse,
-} from "../../src/main/ipc-contract";
+import { installDesktopRequestBridge } from "#src/main/desktop-bridge";
+import type { NotificationDestination } from "#src/main/desktop-notifier";
+import type { RawJsonValue } from "#src/domain/json";
+import type { DesktopRequest, DesktopResponse } from "#src/main/ipc-contract";
 
 import * as v from "valibot";
 

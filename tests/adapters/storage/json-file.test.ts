@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { writeAtomicFile } from "../../../src/adapters/storage/json-file";
+import { writeAtomicFile } from "#src/adapters/storage/json-file";
 
 /**
  * The one member of a `FileHandle` the fsync-ordering test calls through to:

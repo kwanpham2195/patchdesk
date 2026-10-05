@@ -1,34 +1,38 @@
-import { pullRequestWritePermission } from "../adapters/github/github-adapter";
+import { pullRequestWritePermission } from "#src/adapters/github/github-adapter";
 import type {
   GitHubReader,
   GitHubReviewWriter,
-} from "../adapters/github/github-adapter";
+} from "#src/adapters/github/github-adapter";
 import {
   resolveAvatarDataUris,
   withAvatarDataUri,
-} from "../adapters/storage/avatar-cache-store";
-import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
-import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+} from "#src/adapters/storage/avatar-cache-store";
+import type { ConfirmedWriteJournal } from "#src/adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "#src/adapters/storage/review-write-operation-store";
 import type {
   AssignableUser,
   PullRequestAssigneePermission,
   SuggestedPullRequestReviewer,
-} from "../domain/github-context";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { parseNonEmptyStringArray } from "../domain/review-write-operation";
-import { definedProps } from "../domain/defined-props";
-import type { PullRequestRef } from "../domain/pull-request";
+} from "#src/domain/github-context";
+import type {
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "#src/domain/ids";
+import { parseNonEmptyStringArray } from "#src/domain/review-write-operation";
+import { definedProps } from "#src/domain/defined-props";
+import type { PullRequestRef } from "#src/domain/pull-request";
 import {
   deriveReviewVerdicts,
   type ReviewerVerdictRow,
-} from "../domain/review-verdicts";
-import { err, ok, type Result } from "../domain/result";
-import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+} from "#src/domain/review-verdicts";
+import { err, ok, type Result } from "#src/domain/result";
+import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import type { AvatarRailDependencies } from "./avatar-sync-service";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { DesktopNotifier } from "./desktop-notifier";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+import type { RecentReviewWrite } from "#src/domain/recent-review-write";
 import {
   mapGitHubReadFailure,
   mapGitHubWriteFailure,

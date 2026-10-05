@@ -11,9 +11,9 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { writeAtomicJson } from "../../src/adapters/storage/json-file";
+import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { writeAtomicJson } from "#src/adapters/storage/json-file";
 
 const roots: string[] = [];
 // SAFETY: This literal is a well-formed WorkspaceProfileId fixture.

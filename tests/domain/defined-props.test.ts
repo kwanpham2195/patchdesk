@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { definedProps } from "../../src/domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 
 describe("definedProps", () => {
   it("drops keys whose value is undefined", () => {

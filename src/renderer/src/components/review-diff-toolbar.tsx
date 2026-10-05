@@ -6,7 +6,7 @@ import type {
   ReviewContextControl,
   ReviewContextStatus,
 } from "@/review-context-control";
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
+import type { ChangeScopeBucket } from "#src/domain/change-scope";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import {

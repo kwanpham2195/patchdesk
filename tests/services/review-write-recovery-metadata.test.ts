@@ -3,20 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { writeAtomicJson } from "../../src/adapters/storage/json-file";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
+import { writeAtomicJson } from "#src/adapters/storage/json-file";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { RecentWriteJournalStore } from "#src/adapters/storage/recent-write-journal-store";
 import {
   parseReviewWriteOperation,
   type ReviewWriteIntent,
   type ReviewWriteOperation,
-} from "../../src/domain/review-write-operation";
-import { ok } from "../../src/domain/result";
+} from "#src/domain/review-write-operation";
+import { ok } from "#src/domain/result";
 import {
   classifyMetadataIntent,
   ReviewWriteRecoveryService,
-} from "../../src/services/review-write-recovery-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+} from "#src/services/review-write-recovery-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 const createdAt = (() => {

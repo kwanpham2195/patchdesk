@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { addPendingReviewThreadMutation } from "../../src/adapters/github/github-graphql-queries";
+import type { GitHubAdapter } from "#src/adapters/github/github-adapter";
+import { addPendingReviewThreadMutation } from "#src/adapters/github/github-graphql-queries";
 import {
   parseGitHubReviewNodeId,
   parseGitHubReviewRestId,
   parseGitSha,
   parseRepoRelativePath,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 import { profile, useFixtureServer } from "./github-http-fixture-server";
 import {
   expectSameMutationAsGh,

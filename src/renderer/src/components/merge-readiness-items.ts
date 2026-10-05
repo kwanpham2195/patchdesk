@@ -1,10 +1,10 @@
-import type { MergeDisplayReason } from "../../../domain/github-context";
+import type { MergeDisplayReason } from "#src/domain/github-context";
 import {
   evaluateMergeReadiness,
   listingMergeability,
   type MergeReadiness,
-} from "../../../domain/merge-readiness";
-import type { InboxRow } from "../renderer-contracts";
+} from "#src/domain/merge-readiness";
+import type { InboxRow } from "#src/renderer/src/renderer-contracts";
 
 /** One entry of PR overview's Merge readiness list. */
 export type MergeReadinessItem =

@@ -1,17 +1,17 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-import type { GitHubThreadId } from "../../../domain/ids";
+import type { GitHubThreadId } from "#src/domain/ids";
 import {
   PatchdeskApiError,
   contextualMessage,
   refusedWriteMessage,
-} from "../api-client";
-import { useReportUnsentReviewText } from "../hooks/use-unsent-review-text";
+} from "#src/renderer/src/api-client";
+import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
 import {
   COMMENT_DELETE_MESSAGES,
   COMMENT_EDIT_MESSAGES,
   THREAD_REPLY_MESSAGES,
-} from "../review-copy";
+} from "#src/renderer/src/review-copy";
 import {
   EMPTY_BODY_CONTEXT,
   PullRequestDescriptionPreview,

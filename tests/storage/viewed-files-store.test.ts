@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ViewedFilesStore } from "../../src/adapters/storage/viewed-files-store";
-import type { LogEntryInput } from "../../src/domain/log-entry";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
+import type { LogEntryInput } from "#src/domain/log-entry";
 import {
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
-} from "../../src/domain/ids";
+} from "#src/domain/ids";
 
 let root: string | undefined;
 afterEach(async () => {

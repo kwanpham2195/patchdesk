@@ -1,21 +1,25 @@
 import { nullable, strictObject } from "valibot";
 
-import { containsSensitiveData } from "../adapters/storage/json-file";
-import type { ReviewStore } from "../adapters/storage/review-store";
+import { containsSensitiveData } from "#src/adapters/storage/json-file";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   changeIntentSchema,
   parseChangeIntent,
   type ChangeIntent,
   type ChangeIntentView,
-} from "../domain/change-intent";
-import type { FailureKinds } from "../domain/failure-kind";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
+} from "#src/domain/change-intent";
+import type { FailureKinds } from "#src/domain/failure-kind";
+import type {
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
 import {
   isLocalReview,
   reviewRequestSchema,
   setChangeIntent,
-} from "../domain/review";
+} from "#src/domain/review";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 

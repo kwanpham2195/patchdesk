@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Review } from "../../src/domain/review";
-import { err, ok } from "../../src/domain/result";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import type { Review } from "#src/domain/review";
+import { err, ok } from "#src/domain/result";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import {
   at,
   baseSha,

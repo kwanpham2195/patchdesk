@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 
-import { parseWorkspaceProfileId } from "../../domain/ids";
-import type { LocalApiContainer } from "../local-api-container";
+import { parseWorkspaceProfileId } from "#src/domain/ids";
+import type { LocalApiContainer } from "#src/main/local-api-container";
 import { response } from "./http-status";
 
 /** The active workspace profile's visited pull requests, as sidebar rows. */

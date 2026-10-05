@@ -1,11 +1,11 @@
-import type { CommandRunner } from "../adapters/github/command-runner";
-import type { AbsolutePath, WorkspaceProfileId } from "../domain/ids";
-import { err, ok, type Result } from "../domain/result";
-import { sameRepositoryIdentity } from "../domain/repository-identity";
+import type { CommandRunner } from "#src/adapters/github/command-runner";
+import type { AbsolutePath, WorkspaceProfileId } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import type {
   WatchedRepoConfig,
   WorkspaceProfileConfig,
-} from "../domain/workspace-profile";
+} from "#src/domain/workspace-profile";
 import type {
   DashboardController,
   DashboardControllerFailure,

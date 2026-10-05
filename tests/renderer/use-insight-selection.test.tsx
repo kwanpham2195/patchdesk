@@ -8,8 +8,8 @@ import {
   analysisFindingRowId,
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
-} from "../../src/renderer/src/components/review-workbench-finding-navigation";
-import { useInsightSelection } from "../../src/renderer/src/hooks/use-insight-selection";
+} from "#src/renderer/src/components/review-workbench-finding-navigation";
+import { useInsightSelection } from "#src/renderer/src/hooks/use-insight-selection";
 import {
   briefInsight,
   projection,

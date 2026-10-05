@@ -10,9 +10,9 @@ import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parsePullRequestInput } from "../../src/domain/pull-request";
-import { PullRequestDescriptionPreview } from "../../src/renderer/src/components/pull-request-description";
-import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
+import { parsePullRequestInput } from "#src/domain/pull-request";
+import { PullRequestDescriptionPreview } from "#src/renderer/src/components/pull-request-description";
+import { PullRequestImageCacheProvider } from "#src/renderer/src/hooks/use-pull-request-image";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 const pullRequest = (() => {

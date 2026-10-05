@@ -1,6 +1,6 @@
-import type { AppUpdateState } from "../domain/app-update";
-import type { Appearance } from "../domain/contracts";
-import type { RawJsonValue } from "../domain/json";
+import type { AppUpdateState } from "#src/domain/app-update";
+import type { Appearance } from "#src/domain/contracts";
+import type { RawJsonValue } from "#src/domain/json";
 
 /** Header accepted by the loopback API for every request. */
 export const APP_CAPABILITY_HEADER = "X-Patchdesk-Capability";

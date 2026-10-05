@@ -8,7 +8,7 @@ import {
   loadWorkbenchUiState,
   saveSettingsRestore,
   saveWorkbenchUiState,
-} from "../../src/renderer/src/lib/screen-restore";
+} from "#src/renderer/src/lib/screen-restore";
 
 // The storage key is written out here rather than imported from the module
 // under test, so the test pins the persisted key format instead of

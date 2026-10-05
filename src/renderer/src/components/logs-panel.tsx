@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 
-import { requestJson } from "../api-client";
-import type { RawJsonValue } from "../../../domain/json";
+import { requestJson } from "#src/renderer/src/api-client";
+import type { RawJsonValue } from "#src/domain/json";
 import {
   parseLogEntry,
   type LogEntry,
   type LogLevel,
   type LogProcess,
-} from "../../../domain/log-entry";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
-import { cn } from "../lib/utils";
+} from "#src/domain/log-entry";
+import { useLatestCommitted } from "#src/renderer/src/hooks/use-latest-committed";
+import { cn } from "#src/renderer/src/lib/utils";
 import * as v from "valibot";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "./ui/card";

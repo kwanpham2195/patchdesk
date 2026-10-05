@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import type { ReviewWorkbenchActions } from "../components/review-workbench-contracts";
+import type { ReviewWorkbenchActions } from "#src/renderer/src/components/review-workbench-contracts";
 import { useLatestCommitted } from "./use-latest-committed";
 
 type ReviewNavigationState = Parameters<

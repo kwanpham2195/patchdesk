@@ -4,20 +4,20 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { StorageFailure } from "../../src/adapters/storage/json-file";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
-import { createReviewSessionId, type IsoTimestamp } from "../../src/domain/ids";
-import { err, ok, type Result } from "../../src/domain/result";
-import type { DirectSummaryReviewState } from "../../src/domain/direct-summary-review";
-import type { PendingReviewState } from "../../src/domain/pending-review";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { createReviewSessionId, type IsoTimestamp } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
+import type { DirectSummaryReviewState } from "#src/domain/direct-summary-review";
+import type { PendingReviewState } from "#src/domain/pending-review";
 import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
-} from "../../src/domain/review-session";
-import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
-import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+} from "#src/domain/review-session";
+import { DirectSummaryReviewService } from "#src/services/direct-summary-review-service";
+import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
+import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.

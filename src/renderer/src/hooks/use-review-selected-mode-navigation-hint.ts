@@ -1,7 +1,7 @@
 import {
   shouldIgnoreReviewNavKey,
   type ReviewDiffNavigationStatus,
-} from "../review-diff-keyboard-nav";
+} from "#src/renderer/src/review-diff-keyboard-nav";
 import type { ReviewDiffNavigationOperation } from "./use-review-diff-navigation-feedback";
 import { useKeyboardJump } from "./use-keyboard-jump";
 

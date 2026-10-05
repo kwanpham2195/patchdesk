@@ -5,12 +5,12 @@ import type {
   ReviewId,
   ReviewSessionId,
   WorkspaceProfileId,
-} from "../../domain/ids";
-import type { InsightType } from "../../domain/insight-record";
+} from "#src/domain/ids";
+import type { InsightType } from "#src/domain/insight-record";
 import type {
   LocalPatchView,
   StoredLocalPatchView,
-} from "../../domain/local-patch-view";
+} from "#src/domain/local-patch-view";
 
 export type PatchdeskPathRoots = {
   readonly configDirectory: string;

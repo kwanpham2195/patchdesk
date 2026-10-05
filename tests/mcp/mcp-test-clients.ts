@@ -9,7 +9,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import {
   createPatchdeskMcpServer,
   type PatchdeskMcpServerOptions,
-} from "../../src/mcp/patchdesk-mcp-server";
+} from "#src/mcp/patchdesk-mcp-server";
 
 const openClients: Array<() => Promise<void>> = [];
 

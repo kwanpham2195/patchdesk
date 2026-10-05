@@ -7,7 +7,13 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/renderer/src/*"]
+      "@/*": ["src/renderer/src/*"],
+      "#src/*": ["src/*"],
+      "#tests/*": ["tests/*"],
+      "#scripts/*": ["scripts/*"],
+      "#tools/*": ["tools/*"],
+      "#package": ["package.json"],
+      "#resources/*": ["resources/*"]
     },
     "allowImportingTsExtensions": false,
     "allowJs": true,

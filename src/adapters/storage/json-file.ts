@@ -2,7 +2,7 @@ import { chmod, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { err, ok, type Result } from "../../domain/result";
+import { err, ok, type Result } from "#src/domain/result";
 
 export type StorageFailure = {
   readonly _tag: "StorageFailure";

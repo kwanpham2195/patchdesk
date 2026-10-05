@@ -1,21 +1,21 @@
 import { safeParse } from "valibot";
 
-import { parseAbsolutePath } from "../../domain/ids";
-import { err, type Result } from "../../domain/result";
+import { parseAbsolutePath } from "#src/domain/ids";
+import { err, type Result } from "#src/domain/result";
 import type {
   McpSocketRequest,
   McpToolRefusal,
-} from "../../mcp/socket-protocol";
+} from "#src/mcp/socket-protocol";
 import {
   isSetupCommandName,
   setupCommandInputSchemas,
-} from "../../mcp/setup-commands";
+} from "#src/mcp/setup-commands";
 import type {
   WorkspaceRepositorySet,
   WorkspaceSetupFailure,
   WorkspaceSetupService,
   WorkspaceSetupStatus,
-} from "../../services/workspace-setup-service";
+} from "#src/services/workspace-setup-service";
 
 export type SetupCommandReply = Result<
   WorkspaceSetupStatus | WorkspaceRepositorySet,

@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from "react";
 
-import { definedProps } from "../../../domain/defined-props";
-import { parseRepoRelativePath } from "../../../domain/ids";
-import type { AssigneesSectionActions } from "../components/assignee-picker";
-import type { ChangeBaseBranchActions } from "../components/change-base-branch-dialog";
-import type { LabelPickerActions } from "../components/label-picker";
-import type { LocalCommentAuthoring } from "../components/review-diff-view";
-import type { ReviewWorkbenchActions } from "../components/review-workbench";
-import type { ReviewerPickerActions } from "../components/reviewer-picker";
+import { definedProps } from "#src/domain/defined-props";
+import { parseRepoRelativePath } from "#src/domain/ids";
+import type { AssigneesSectionActions } from "#src/renderer/src/components/assignee-picker";
+import type { ChangeBaseBranchActions } from "#src/renderer/src/components/change-base-branch-dialog";
+import type { LabelPickerActions } from "#src/renderer/src/components/label-picker";
+import type { LocalCommentAuthoring } from "#src/renderer/src/components/review-diff-view";
+import type { ReviewWorkbenchActions } from "#src/renderer/src/components/review-workbench";
+import type { ReviewerPickerActions } from "#src/renderer/src/components/reviewer-picker";
 import {
   loadLocalSinceLastRefreshDiff,
   loadReviewCommitDiff,

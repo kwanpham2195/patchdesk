@@ -1,7 +1,7 @@
-import { definedProps } from "../../../domain/defined-props";
+import { definedProps } from "#src/domain/defined-props";
 import { NarrativeWalkthrough } from "./narrative-walkthrough";
 import { InlineError } from "./ui/inline-error";
-import type { WalkthroughProgressControls } from "../hooks/use-walkthrough-progress";
+import type { WalkthroughProgressControls } from "#src/renderer/src/hooks/use-walkthrough-progress";
 
 type WalkthroughProgressReaderProps = Omit<
   React.ComponentProps<typeof NarrativeWalkthrough>,

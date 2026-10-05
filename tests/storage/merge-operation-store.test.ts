@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
-import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { MergeOperationStore } from "#src/adapters/storage/merge-operation-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 
 const roots: string[] = [];
 afterEach(async () =>

@@ -13,18 +13,18 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
   materializeAndScrollTo,
   settleLineScroll,
-} from "../review-diff-materialize-and-scroll";
+} from "#src/renderer/src/review-diff-materialize-and-scroll";
 import {
   adjacentFindMatch,
   findDiffMatches,
   findNavigationStatus,
   type DiffFindMatch,
-} from "../review-diff-find";
-import { markDiffFindMatch } from "../review-diff-find-mark";
+} from "#src/renderer/src/review-diff-find";
+import { markDiffFindMatch } from "#src/renderer/src/review-diff-find-mark";
 import {
   focusInsideOverlay,
   type ReviewNavDirection,
-} from "../review-diff-keyboard-nav";
+} from "#src/renderer/src/review-diff-keyboard-nav";
 import type { ReviewDiffNavigationOperation } from "./use-review-diff-navigation-feedback";
 import { useKeyboardJump } from "./use-keyboard-jump";
 import { useLatestCommitted } from "./use-latest-committed";

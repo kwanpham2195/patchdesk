@@ -2,9 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useAnalysisVerification } from "../../src/renderer/src/hooks/use-analysis-verification";
-import type { ReviewWorkbenchPatch } from "../../src/renderer/src/flows/use-review-observation";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import { useAnalysisVerification } from "#src/renderer/src/hooks/use-analysis-verification";
+import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
+import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { withAnalysis } from "./review-workbench-fixtures";
 import {
   failure,

@@ -1,4 +1,4 @@
-import type { Appearance } from "../domain/contracts";
+import type { Appearance } from "#src/domain/contracts";
 
 /**
  * The native window colour for each resolved appearance. It pairs with

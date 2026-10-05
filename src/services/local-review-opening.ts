@@ -1,9 +1,9 @@
 import { minLength, pipe, strictObject, string } from "valibot";
 
-import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
-import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ViewedFilesStore } from "../adapters/storage/viewed-files-store";
+import type { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
+import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
+import type { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import {
   createReviewId,
   detachedHeadBranch,
@@ -17,9 +17,9 @@ import {
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
-} from "../domain/ids";
-import type { LocalDraft } from "../domain/local-draft";
-import { casesHandled, err, ok, type Result } from "../domain/result";
+} from "#src/domain/ids";
+import type { LocalDraft } from "#src/domain/local-draft";
+import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import {
   createReview,
   isLocalReview,
@@ -27,15 +27,15 @@ import {
   moveLocalReviewToSession,
   recordPreparedLocalSession,
   type Review,
-} from "../domain/review";
-import { definedProps } from "../domain/defined-props";
-import type { FailureKinds } from "../domain/failure-kind";
+} from "#src/domain/review";
+import { definedProps } from "#src/domain/defined-props";
+import type { FailureKinds } from "#src/domain/failure-kind";
 import {
   localReviewSourceRequestSchema,
   reopenLocalSourceRequest,
   type LocalReviewSource,
   type LocalReviewSourceRequest,
-} from "../domain/review-source";
+} from "#src/domain/review-source";
 import {
   carryAgentExplanationsToSession,
   carryToSession,

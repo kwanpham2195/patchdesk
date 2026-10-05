@@ -7,13 +7,13 @@ import {
   isOutcomeUnknownRetry,
   type ApiFailureKind,
   type ReviewPreconditionReason,
-} from "../../src/renderer/src/api-client";
+} from "#src/renderer/src/api-client";
 import {
   DIRECT_SUMMARY_MESSAGES,
   FINISH_REVIEW_MESSAGES,
   PENDING_REVIEW_RECOVERY_MESSAGES,
   cleanupCopy,
-} from "../../src/renderer/src/review-copy";
+} from "#src/renderer/src/review-copy";
 
 describe("review copy contract", () => {
   it("defines exact cleanup retention copy", () => {

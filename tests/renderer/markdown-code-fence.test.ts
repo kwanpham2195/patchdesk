@@ -4,7 +4,7 @@ import {
   classifyDiffFence,
   classifyDiffLine,
   fencedCodeLanguage,
-} from "../../src/renderer/src/markdown-code-fence";
+} from "#src/renderer/src/markdown-code-fence";
 
 describe("fenced code language", () => {
   it.each([
