@@ -49,18 +49,12 @@ export class GitHubThreadWriter {
   }
 
   /**
-   * Bounded, retried proof that a REST-created comment belongs to a
-   * confirmed, published review thread. Reuses `pendingReviewAfterWrite`'s
-   * discipline (never upgrade without proof) for a published rather than
-   * pending comment: up to 3 attempts (500ms then 1500ms backoff for
-   * eventual consistency), each reading the 20 most-recently-created
-   * threads and matching by comment id equality (the same REST
-   * `node_id`-as-GraphQL-node-id equivalence already relied on by
-   * `getReviewCommentTarget`), with a body match as cheap defense-in-depth.
-   * A transport/command error stops the read-back immediately rather than
-   * retrying a hard failure. Never fabricates an id: returns `undefined`
-   * on any unconfirmed or exhausted outcome, and the caller must not fail
-   * the write over it — the comment was already posted successfully.
+   * Confirms a REST-created comment's published thread with up to three reads
+   * of the 20 newest threads, waiting 500 then 1500 ms between attempts for
+   * eventual consistency. Match the REST `node_id` to the GraphQL comment ID
+   * and check the body. A transport or command error stops retries; return
+   * `undefined` without a confirmed thread ID. This optional read-back must
+   * not turn the already successful comment write into a failure.
    */
   private async confirmPublishedCommentThread(
     profile: WorkspaceProfileConfig,

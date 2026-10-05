@@ -76,15 +76,11 @@ export class ReviewRecoveryService {
   }
 
   /**
-   * The merge-operation half takes Review locks; the session-sweep half takes
-   * this profile's lock. They run as two independent halves, never one inside
-   * the other, because this codebase keeps exactly one global lock order:
-   * the Review lock is always outer and the profile lock always inner (see
+   * Keep merge reconciliation (Review lock) and the session sweep (profile
+   * lock) separate. The global order is Review lock, then profile lock (see
    * `tests/services/review-lock-order.test.ts`). Holding the profile lock
-   * across the whole reconciliation — as this did before — inverted that
-   * order against `open()` and `refresh`, which take the Review lock first
-   * and only then reach `prepare()`'s profile lock. Two non-reentrant locks
-   * taken in opposite orders wait on each other forever.
+   * around both reverses the order used by `open()` and `refresh()` and can
+   * deadlock because neither lock is reentrant.
    */
   private async reconcileProfile(
     profileId: WorkspaceProfileId,

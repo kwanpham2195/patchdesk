@@ -255,11 +255,9 @@ function stripComments(lines) {
 }
 
 /**
- * The index of the quote that closes the literal opened at `start`, or the
- * last index of the line when it does not close there. A literal left open
- * takes the rest of the line, which is what a line of prose holding an
- * apostrophe wants: either way the line is not an import declaration and the
- * region ends at it.
+ * Returns the closing quote index, or the line's last index if none is found.
+ * Treat an unterminated literal as consuming the rest of the line so prose
+ * containing an apostrophe cannot be mistaken for an import declaration.
  */
 function findStringEnd(line, start, quote) {
   for (let index = start + 1; index < line.length; index += 1) {
@@ -273,10 +271,9 @@ function findStringEnd(line, start, quote) {
 }
 
 /**
- * A declaration is at most this many lines. Oxfmt puts one specifier on a
- * line, so this is already a very large import; a longer run of lines is not
- * a declaration anyone wrote, and reading it as one is what this bound
- * refuses.
+ * Bounds import parsing to 200 lines. Oxfmt puts one specifier per line, so
+ * this allows unusually large imports while rejecting longer runs as a
+ * single declaration.
  */
 const MAX_DECLARATION_LINES = 200;
 

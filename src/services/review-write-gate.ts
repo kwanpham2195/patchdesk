@@ -53,16 +53,11 @@ export type CurrentHeadFailure = {
 };
 
 /**
- * The remote half of the write gate: one `getPullRequest` immediately before
- * a write, proving GitHub still reports the head SHA this session pinned.
- * `requireFresh` proves the durable state is coherent; this proves the remote
- * has not moved since. Every caller runs it after the storage gate and before
- * its first GitHub write, so the round trip happens exactly where it did.
- *
- * Two reasons, not one. Every call site renders "GitHub could not be read"
- * and "the head moved under you" differently -- one is a retry, the other is
- * a refresh -- so the distinction is kept here rather than flattened and
- * guessed at again by each caller.
+ * Reads the PR immediately before a write and compares GitHub's current head
+ * with the session's pinned SHA. Call after `requireFresh` and before the
+ * first GitHub write. Keep read failure (`github_read`) distinct from a moved
+ * head (`head_moved`): callers offer retry for the former and refresh for the
+ * latter.
  */
 export async function requireCurrentHead(
   github: Pick<GitHubReader, "getPullRequest">,
