@@ -126,21 +126,11 @@ export class GitHubRevisionIdentityReader {
   }
 
   /**
-   * Cheaply reconfirm a previously proven identity without re-fetching or
-   * re-hashing the diff.
-   *
-   * WHY THIS IS SUFFICIENT: `headSha` and `baseSha` are content-addressed Git
-   * commit identifiers, each naming an immutable tree. GitHub's diff between
-   * a fixed pair of commits is a pure function of those two trees, so it
-   * cannot change while the pair itself does not. A prior `read()` already
-   * fetched and hashed the full diff for `input.identity`'s pair and proved
-   * it canonical; if `getPullRequest` now reports the same (headSha, baseSha)
-   * pair, the diff GitHub would return for it is provably the same diff
-   * `read()` already hashed, so re-fetching and re-hashing it proves nothing
-   * new. This holds only because Git SHAs are content-addressed and GitHub
-   * does not let a SHA's tree change underneath it (no "force-push onto an
-   * existing SHA") — if that ever stopped being true, this shortcut would be
-   * unsound and `read()` would need to run again instead.
+   * Rechecks a previously proven canonical identity without fetching or hashing
+   * the diff. `read()` already hashed the complete diff for `input.identity`'s
+   * head/base pair. Both SHAs name immutable Git trees, so an unchanged pair
+   * means the same diff. If GitHub could change a tree under its SHA, rerun
+   * `read()` instead; this shortcut would be unsound.
    */
   async recheckUnchanged(input: {
     readonly profile: WorkspaceProfileConfig;

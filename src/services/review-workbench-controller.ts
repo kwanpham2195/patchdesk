@@ -97,10 +97,9 @@ export const reviewWorkbenchFailureKinds = {
 export type { ReviewWorkbenchProjection };
 
 /**
- * Temporary local-API application facade. It retains the current unknown-input
- * parser and maps precise preparation/projection failures onto the existing
- * route vocabulary. Opening a new Review performs its one initial GitHub
- * snapshot fetch; later remote changes still require explicit refresh.
+ * Local API facade: parses unknown input and maps preparation/projection
+ * failures to route reasons. A new pull-request Review fetches its initial
+ * GitHub snapshot; later remote changes require explicit Refresh.
  */
 export class ReviewWorkbenchController {
   constructor(

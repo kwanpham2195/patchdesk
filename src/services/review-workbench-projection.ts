@@ -388,13 +388,11 @@ export class ReviewWorkbenchProjectionService {
   }
 
   /**
-   * Resolves each comment's `authorAvatarUrl` to a cached `data:` URI the
-   * renderer's `img-src 'self' data:` CSP can actually load. Only
-   * `conversation.entries` (`IssueComment`/`ReviewComment`/`GeneralThread`) and
-   * `conversation.inline` reach the renderer via `ConversationThreadCard`;
-   * `ReviewSummary`/`PrDescription` entries carry no comment and pass
-   * through untouched. A per-call cache avoids re-reading the same avatar
-   * file for every comment a repeat commenter left.
+   * Resolves comment `authorAvatarUrl` values to cached `data:` URIs allowed by
+   * the renderer's `img-src 'self' data:` CSP. Only `conversation.entries`
+   * (`IssueComment`/`ReviewComment`/`GeneralThread`) and `conversation.inline`
+   * reach `ConversationThreadCard`; `ReviewSummary`/`PrDescription` pass through
+   * unchanged. A per-call cache avoids rereading repeated commenters' avatars.
    */
   private async resolveAvatars(
     conversation: Conversation,
