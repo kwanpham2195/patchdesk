@@ -1,3 +1,4 @@
+import type { RetainedGuide } from "#src/domain/guide";
 import type { AgentRunRequest } from "#src/domain/agent-run-request";
 import { createHash } from "node:crypto";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
@@ -185,6 +186,7 @@ export type ReviewWorkbenchProjection = {
     readonly analysis: InsightProjection<ReviewResult>;
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
     readonly brief: InsightProjection<NormalizedBrief>;
+    readonly guide: InsightProjection<RetainedGuide>;
   };
   /** Absent on a local Review, which has no Finding review command (ADR 0050). */
   readonly analysisReviewActions?: AnalysisReviewActionsProjection;
@@ -717,6 +719,16 @@ export class ReviewWorkbenchProjectionService {
         analysis,
         walkthrough,
         brief,
+        guide: projectStoredInsight(
+          storedInsights.value.guide,
+          session,
+          patchHash,
+          undefined,
+          undefined,
+          storedInsights.value.guide?.retained === undefined
+            ? undefined
+            : "verified",
+        ),
       },
       // A local Review has no pending review and no Finding review command (ADR 0050).
       ...definedProps({

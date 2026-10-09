@@ -77,7 +77,7 @@ const LOCAL_BRANCH_NAME_MAX_LENGTH = 255;
 const isoTimestampSyntax = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const contentHashSyntax = /^[a-f0-9]{64}$/;
 const insightRunIdSyntax =
-  /^insight-(analysis|walkthrough|brief)-[1-9]\d*-[a-f0-9]{12}-.+$/;
+  /^insight-(analysis|walkthrough|brief|guide)-[1-9]\d*-[a-f0-9]{12}-.+$/;
 
 /** Parse a path-safe workspace profile identifier. */
 export function parseWorkspaceProfileId(

@@ -33,18 +33,21 @@ import { cn } from "@/lib/utils";
 export type InsightProjection =
   | WorkbenchResponse["insights"]["analysis"]
   | WorkbenchResponse["insights"]["walkthrough"]
-  | BriefInsight;
+  | BriefInsight
+  | NonNullable<WorkbenchResponse["insights"]["guide"]>;
 /** Each type's call to action when nothing has been generated for this revision. */
 const GENERATE_LABELS = {
   analysis: "Generate analysis",
   walkthrough: "Generate walkthrough",
   brief: "Generate brief",
+  guide: "Generate Guide",
 } as const satisfies Record<InsightRunDialogType, string>;
 /** What each Insight gives the reviewer, shown before one has been generated. */
 const INSIGHT_PURPOSES = {
   analysis: "Findings and a merge verdict.",
   walkthrough: "Chapter-by-chapter read of the change.",
   brief: "Structure and where to start.",
+  guide: "Ordered behavior groups with their supporting files.",
 } as const satisfies Record<InsightRunDialogType, string>;
 /** Not run reads dimmer than a tab with a result, selected or not. */
 const NOT_RUN_TAB_CLASS =
@@ -80,6 +83,7 @@ export function InsightNavRail({
   // behaves now, Analysis whether it should merge. The judgment comes last.
   const documents = [
     ["brief", workbench.insights.brief ?? NOT_GENERATED_BRIEF],
+    ["guide", workbench.insights.guide],
     ["walkthrough", workbench.insights.walkthrough],
     ["analysis", workbench.insights.analysis],
   ] as const satisfies ReadonlyArray<

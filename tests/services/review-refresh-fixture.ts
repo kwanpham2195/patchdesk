@@ -487,6 +487,7 @@ function createProjection(
       analysis: { status: "not_generated" },
       walkthrough: { status: "not_generated" },
       brief: { status: "not_generated" },
+      guide: { status: "not_generated" },
     },
     analysisReviewActions: {
       findings: {},

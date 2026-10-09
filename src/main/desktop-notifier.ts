@@ -207,6 +207,7 @@ const insightLabels = {
   analysis: "Analysis",
   walkthrough: "Walkthrough",
   brief: "Brief",
+  guide: "Guide",
 } as const;
 
 const watchedChangeTitles = {

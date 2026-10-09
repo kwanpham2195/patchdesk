@@ -196,6 +196,7 @@ describe("Run Insights dialog", () => {
     renderInsights(
       projection({
         insights: {
+          guide: { status: "not_generated" },
           analysis: { status: "outdated" },
           walkthrough: {
             status: "running",

@@ -10,6 +10,7 @@ import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 /** The tab strip's reading order, which is also the order the default landing checks. */
 const LANDING_ORDER = [
   "brief",
+  "guide",
   "walkthrough",
   "analysis",
 ] as const satisfies ReadonlyArray<InsightRunDialogType>;

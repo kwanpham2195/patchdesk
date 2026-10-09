@@ -31,7 +31,9 @@ import {
   type InsightReasoning,
 } from "./insight-provider";
 
-export type InsightType = "analysis" | "walkthrough" | "brief";
+/** Existing agent API types remain a separate closed contract. */
+export type AgentInsightType = "analysis" | "walkthrough" | "brief";
+export type InsightType = AgentInsightType | "guide";
 export type InsightRevision = {
   readonly sessionId: ReviewSessionId;
   readonly headSha: GitSha;

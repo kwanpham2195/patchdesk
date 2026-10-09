@@ -1,5 +1,5 @@
 import { XIcon } from "lucide-react";
-import { useContext, useMemo } from "react";
+import { useContext, useMemo, type RefObject } from "react";
 import { definedProps } from "#src/domain/defined-props";
 import type { LocalPatchView } from "#src/domain/local-patch-view";
 import { parseUnifiedPatch, type ParsedPatchFile } from "#src/domain/patch";
@@ -24,6 +24,7 @@ import {
   InsightNavRail,
   InsightOutdated,
   InsightRunning,
+  type InsightProjection,
 } from "./insight-panels";
 import {
   NOT_GENERATED_BRIEF,
@@ -65,6 +66,12 @@ function insightRequestFailureMessage(
   requestFailure: InsightRunController["requestFailure"],
 ): string | undefined {
   if (requestFailure === undefined) return undefined;
+  if (requestFailure === "guide_input_too_large")
+    return "Guide input exceeds the complete-input size limit. The existing Guide is retained.";
+  if (requestFailure === "guide_patch_empty")
+    return "Guide needs a nonempty patch with readable file headers.";
+  if (requestFailure === "guide_artifact_unreadable")
+    return "Guide could not read its complete review evidence. Reprepare the Review and retry.";
   if (requestFailure === "start")
     return `${insightName} could not start. Check the run options and try again.`;
   if (requestFailure === "cancel")
@@ -114,10 +121,19 @@ function InsightDocumentMeta({
     selectedInsight === "brief" ? undefined : retained.provenance;
   const language = retained.provenance?.language;
   return (
-    <p className="min-w-0 truncate text-xs text-muted-foreground">
+    <p
+      aria-label="Insight document metadata"
+      className="min-w-0 truncate text-xs text-muted-foreground"
+    >
       <RelativeTime
         iso={retained.generatedAt}
-        prefix={selectedIsOutdated ? "Outdated · generated " : "Generated "}
+        prefix={
+          selectedIsOutdated
+            ? "Outdated · generated "
+            : selectedInsight === "guide"
+              ? "Current · generated "
+              : "Generated "
+        }
       />
       {provenance === undefined
         ? null
@@ -212,6 +228,7 @@ function retainedInsightDescription(
     return workbench.insights.analysis.retained?.value.summary;
   if (selectedInsight === "walkthrough")
     return workbench.insights.walkthrough.retained?.value.focus;
+  if (selectedInsight === "guide") return undefined;
   return brief.retained?.value.flow?.trees[0]?.title;
 }
 
@@ -230,7 +247,7 @@ export function InsightsSlot({
   patchView,
 }: {
   readonly workbench: WorkbenchResponse;
-  readonly initialDetail?: "analysis" | "walkthrough";
+  readonly initialDetail?: "analysis" | "walkthrough" | "guide";
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly onReprepare: () => Promise<WorkbenchResponse>;
@@ -299,6 +316,7 @@ export function InsightsSlot({
     analysis: workbench.insights.analysis,
     walkthrough: workbench.insights.walkthrough,
     brief,
+    guide: workbench.insights.guide,
   };
   const reviewOpen = workbench.review.status === "open";
   const runEnabled = insightRunEnabled(configuration, reviewOpen);
@@ -307,6 +325,7 @@ export function InsightsSlot({
     retainedRunIds: {
       analysis: workbench.insights.analysis.retained?.runId,
       brief: brief.retained?.runId,
+      guide: workbench.insights.guide?.retained?.runId,
       walkthrough: workbench.insights.walkthrough.retained?.runId,
     },
     selectedInsight,
@@ -351,7 +370,10 @@ export function InsightsSlot({
   const walkthroughFocusActive =
     selectedInsight === "walkthrough" && walkthroughFocused;
   const selectedRetained = selectedProjection?.retained;
-  const selectedIsOutdated = selectedProjection?.status === "outdated";
+  const selectedIsOutdated =
+    selectedInsight === "guide"
+      ? workbench.insights.guide.retained?.freshness === "outdated"
+      : selectedProjection?.status === "outdated";
   const analysisFirstRunActive =
     selectedInsight === "analysis" &&
     selectedProjection?.status === "running" &&
@@ -431,74 +453,27 @@ export function InsightsSlot({
             }
           />
         )}
-        <article
-          aria-label={`${selectedInsight} document`}
-          data-review-insight-document={selectedInsight}
-          className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${selectedInsight === "walkthrough" ? "overflow-hidden" : "overflow-auto"}`}
-        >
-          {walkthroughFocusActive || walkthroughTitle === undefined ? null : (
-            <h2 className="shrink-0 truncate pb-2 text-lg font-semibold">
-              {walkthroughTitle}
-            </h2>
-          )}
-          <InsightAvailabilityErrors
-            reviewOpen={reviewOpen}
-            configuration={configuration}
-            requestFailureMessage={selectedRequestFailureMessage}
-          />
-          {selectedProjection?.artifactStatus === "mismatch" ? (
-            <InsightArtifactMismatch />
-          ) : null}
-          <div
-            data-review-insight-content
-            className={`flex min-h-0 flex-col gap-4 ${selectedInsight === "walkthrough" ? "flex-1 overflow-hidden" : ""}`}
-          >
-            {selectedBusy ? (
-              <InsightRunning
-                type={selectedInsight}
-                projection={selectedProjection}
-                activity={selectedRunning?.activity}
-              />
-            ) : selectedProjection?.status === "failed" ? (
-              <InsightFailed
-                projection={selectedProjection}
-                activity={selectedRunning?.activity}
-                onReprepare={onReprepare}
-                {...definedProps({ retainedDescription, onRetry: retryRun })}
-              />
-            ) : selectedIsOutdated ? (
-              <InsightOutdated
-                type={selectedInsight}
-                {...definedProps({
-                  retainedRevision: selectedRetained?.headSha,
-                  onRetry: retryRun,
-                })}
-                currentRevision={currentRevision}
-              />
-            ) : retainedReader === null ? (
-              <InsightEmpty
-                type={selectedInsight}
-                disabled={!runEnabled}
-                {...definedProps({
-                  onRun: reviewOpen ? () => openRunDialog("run") : undefined,
-                })}
-              />
-            ) : null}
-            {retainedReader === null ? null : (
-              <div
-                ref={insightResultRef}
-                data-insight-result
-                className={
-                  selectedInsight === "walkthrough"
-                    ? "min-h-0 flex-1 overflow-hidden"
-                    : ""
-                }
-              >
-                {retainedReader}
-              </div>
-            )}
-          </div>
-        </article>
+        <InsightDocument
+          selectedInsight={selectedInsight}
+          walkthroughTitle={
+            walkthroughFocusActive ? undefined : walkthroughTitle
+          }
+          reviewOpen={reviewOpen}
+          configuration={configuration}
+          requestFailureMessage={selectedRequestFailureMessage}
+          selectedProjection={selectedProjection}
+          selectedBusy={selectedBusy}
+          selectedRunning={selectedRunning}
+          onReprepare={onReprepare}
+          retainedDescription={retainedDescription}
+          retryRun={retryRun}
+          selectedIsOutdated={selectedIsOutdated}
+          currentRevision={currentRevision}
+          onRun={() => openRunDialog("run")}
+          runEnabled={runEnabled}
+          retainedReader={retainedReader}
+          insightResultRef={insightResultRef}
+        />
       </div>
       <InsightRunControls
         configuration={configuration}
@@ -512,6 +487,115 @@ export function InsightsSlot({
         runsOnCombined={workbench.patchViews !== undefined}
       />
     </section>
+  );
+}
+
+function InsightDocument({
+  selectedInsight,
+  walkthroughTitle,
+  reviewOpen,
+  configuration,
+  requestFailureMessage,
+  selectedProjection,
+  selectedBusy,
+  selectedRunning,
+  onReprepare,
+  retainedDescription,
+  retryRun,
+  selectedIsOutdated,
+  currentRevision,
+  onRun,
+  runEnabled,
+  retainedReader,
+  insightResultRef,
+}: {
+  readonly selectedInsight: InsightRunDialogType;
+  readonly walkthroughTitle: string | undefined;
+  readonly reviewOpen: boolean;
+  readonly configuration: InsightRunConfiguration;
+  readonly requestFailureMessage: string | undefined;
+  readonly selectedProjection: InsightProjection | undefined;
+  readonly selectedBusy: boolean;
+  readonly selectedRunning: InsightRunController | undefined;
+  readonly onReprepare: () => Promise<WorkbenchResponse>;
+  readonly retainedDescription: string | undefined;
+  readonly retryRun: (() => void) | undefined;
+  readonly selectedIsOutdated: boolean;
+  readonly currentRevision: string;
+  readonly onRun: () => void;
+  readonly runEnabled: boolean;
+  readonly retainedReader: React.ReactNode;
+  readonly insightResultRef: RefObject<HTMLDivElement | null>;
+}): React.JSX.Element {
+  return (
+    <article
+      aria-label={`${selectedInsight} document`}
+      data-review-insight-document={selectedInsight}
+      className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${selectedInsight === "walkthrough" ? "overflow-hidden" : "overflow-auto"}`}
+    >
+      {walkthroughTitle === undefined ? null : (
+        <h2 className="shrink-0 truncate pb-2 text-lg font-semibold">
+          {walkthroughTitle}
+        </h2>
+      )}
+      <InsightAvailabilityErrors
+        reviewOpen={reviewOpen}
+        configuration={configuration}
+        requestFailureMessage={requestFailureMessage}
+      />
+      {selectedProjection?.artifactStatus === "mismatch" ? (
+        <InsightArtifactMismatch />
+      ) : null}
+      <div
+        data-review-insight-content
+        className={`flex min-h-0 flex-col gap-4 ${selectedInsight === "walkthrough" ? "flex-1 overflow-hidden" : ""}`}
+      >
+        {selectedBusy ? (
+          <InsightRunning
+            type={selectedInsight}
+            projection={selectedProjection}
+            activity={selectedRunning?.activity}
+          />
+        ) : selectedProjection?.status === "failed" ? (
+          <InsightFailed
+            projection={selectedProjection}
+            activity={selectedRunning?.activity}
+            onReprepare={onReprepare}
+            {...definedProps({ retainedDescription, onRetry: retryRun })}
+          />
+        ) : selectedIsOutdated ? (
+          <InsightOutdated
+            type={selectedInsight}
+            {...definedProps({
+              retainedRevision: selectedProjection?.retained?.headSha,
+              onRetry: retryRun,
+            })}
+            currentRevision={currentRevision}
+          />
+        ) : retainedReader === null ? (
+          <InsightEmpty
+            type={selectedInsight}
+            disabled={!runEnabled}
+            {...definedProps({
+              onRun: reviewOpen ? onRun : undefined,
+            })}
+          />
+        ) : null}
+        {retainedReader === null ? null : (
+          <div
+            ref={insightResultRef}
+            data-insight-result
+            className={
+              selectedInsight === "walkthrough"
+                ? "min-h-0 flex-1 overflow-hidden"
+                : ""
+            }
+          >
+            {retainedReader}
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -548,6 +632,7 @@ function RunInsightsControls({
       accountModelsFailure={configuration.accountModelsFailure}
       startFailureMessages={{
         brief: startFailureMessage("brief"),
+        guide: startFailureMessage("guide"),
         walkthrough: startFailureMessage("walkthrough"),
         analysis: startFailureMessage("analysis"),
       }}

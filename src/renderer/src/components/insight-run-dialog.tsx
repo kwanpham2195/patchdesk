@@ -29,12 +29,17 @@ import {
 } from "./ui/dialog";
 import { Spinner } from "./ui/spinner";
 
-export type InsightRunDialogType = "analysis" | "walkthrough" | "brief";
+export type InsightRunDialogType =
+  | "analysis"
+  | "walkthrough"
+  | "brief"
+  | "guide";
 /** The one spelling of each Insight type's name, for headings, buttons, and run copy. */
 export const INSIGHT_NOUNS = {
   analysis: "Analysis",
   walkthrough: "Walkthrough",
   brief: "Brief",
+  guide: "Guide",
 } as const satisfies Record<InsightRunDialogType, string>;
 
 /** Collects the provider choice and final disclosure before one Insight starts. */

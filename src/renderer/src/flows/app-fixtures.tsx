@@ -1,3 +1,4 @@
+import { GuideFixture } from "./fixtures/guide-fixture";
 import { DiffWorkbench } from "#src/renderer/src/components/diff-workbench";
 import { CompactMergeCommand } from "#src/renderer/src/components/compact-merge-command";
 import { PullRequestDescriptionPreview } from "#src/renderer/src/components/pull-request-description";
@@ -80,6 +81,7 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
       />
     ),
     "#analysis-fixture": () => <AnalysisFixture />,
+    "#guide-fixture": () => <GuideFixture />,
     "#walkthrough-fixture": (onNavigationStateChange) => (
       <WalkthroughFixture onNavigationStateChange={onNavigationStateChange} />
     ),

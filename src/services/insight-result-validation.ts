@@ -1,3 +1,4 @@
+import { retainGuide } from "#src/domain/guide";
 import { readFile } from "node:fs/promises";
 
 import * as v from "valibot";
@@ -54,6 +55,11 @@ export async function validateInsightResult(
    */
   reach?: BriefReachComputer,
 ): Promise<Result<unknown, ValidateResultReason>> {
+  if (type === "guide") {
+    if (input.guide === undefined) return err("invalid_result");
+    const guide = retainGuide(value, input.guide);
+    return guide._tag === "ok" ? guide : err("invalid_result");
+  }
   const patch = await readFile(input.patchPath, "utf8").catch(() => undefined);
   if (patch === undefined) return err("invalid_result");
   if (type === "analysis") {

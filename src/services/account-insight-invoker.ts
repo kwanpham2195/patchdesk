@@ -1,3 +1,4 @@
+import { MAX_GUIDE_PROMPT_BYTES } from "./guide-operation";
 import { readFile, realpath } from "node:fs/promises";
 
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
@@ -24,6 +25,7 @@ import type {
 import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import { prepareBriefPrompt, type BriefPromptFailure } from "./brief-operation";
 import {
+  guideCodexOutputSchema,
   analysisCodexOutputSchema,
   briefCodexOutputSchema,
   parseCodexStrictResult,
@@ -125,6 +127,33 @@ export class AccountInsightInvoker implements InsightInvoker {
       "Read only the represented review revision. Patchdesk validates the result and owns all publication decisions.";
     // SAFETY: candidatePath is realpath-checked against this session's app-owned worktree and its immutable expected head above.
     const worktreePath = candidatePath as RepresentedReviewWorktree;
+    if (input.type === "guide") {
+      if (input.guide === undefined)
+        return err({
+          reason: "execution_failed" as const,
+          phase: "guide_input_missing",
+        });
+      const runTimeoutMs = await resolveWalkthroughTimeoutMs(
+        { contextPath: input.contextPath, patchPath: input.patchPath },
+        options.signal,
+      );
+      const result = await this.clientFactory(this.executablePath).run(
+        {
+          worktreePath,
+          expectedHeadSha: head,
+          model: input.model,
+          reasoning: input.reasoning,
+          prompt: input.guide.prompt,
+          outputSchema: guideCodexOutputSchema,
+          maxPromptBytes: MAX_GUIDE_PROMPT_BYTES,
+          runTimeoutMs,
+        },
+        options,
+      );
+      return result._tag === "ok"
+        ? result
+        : err({ reason: result.error.reason, phase: result.error.phase });
+    }
     if (input.type === "walkthrough") {
       const contextPath = resolvedArtifacts[0];
       const patchPath = resolvedArtifacts[2];

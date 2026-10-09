@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { buildGuideInventory } from "#src/domain/guide";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -93,6 +95,47 @@ function invocation(
 }
 
 describe("PiInsightChildInvoker", () => {
+  it("sends Guide artifact identities and the captured prompt hash without transporting prompt text", async () => {
+    const executor = new RecordingExecutor({
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, value: { groups: [] } }),
+      stderr: "",
+    });
+    const invoker = new PiInsightChildInvoker(
+      new CommandRunner(executor),
+      "/workspace/patchdesk",
+      "/runtime/node",
+      "/runtime/child.mjs",
+      fixtureEnvironment,
+    );
+    const patchText =
+      "diff --git a/a.ts b/a.ts\nold mode 100644\nnew mode 100755\n";
+    const inventory = buildGuideInventory(patchText);
+    if (inventory._tag === "err") throw new Error("Invalid patch");
+    const prompt = "Captured complete Guide prompt";
+    await invoker.invoke(
+      invocation({
+        type: "guide",
+        guide: { prompt, patchText, inventory: inventory.value },
+      }),
+      { signal: new AbortController().signal },
+    );
+    expect(executor.requests).toHaveLength(1);
+    expect(JSON.parse(executor.requests[0]?.stdin ?? "null")).toEqual({
+      type: "guide",
+      input: {
+        profileId: "profile",
+        sessionId,
+        contextPath: "/app/context",
+        patchPath: "/app/patch",
+        model: "deepseek/deepseek-v4-flash",
+        reasoning: "low",
+        language: "en",
+        expectedPromptHash: createHash("sha256").update(prompt).digest("hex"),
+      },
+    });
+  });
   it("passes a bounded strict stdin protocol and parses only the child data result", async () => {
     const executor = new RecordingExecutor({
       _tag: "Exited",

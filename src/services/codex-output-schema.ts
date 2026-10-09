@@ -1,3 +1,4 @@
+import { guideModelOutputSchema } from "#src/domain/guide";
 import * as v from "valibot";
 import {
   toJsonSchema,
@@ -97,3 +98,6 @@ export function parseCodexStrictResult(
   const parsed = v.safeParse(codexStrictResultSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
+
+/** Guide uses its exact strict model contract for every account turn. */
+export const guideCodexOutputSchema = codexOutputSchema(guideModelOutputSchema);

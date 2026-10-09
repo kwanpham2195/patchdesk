@@ -41,6 +41,7 @@ const reviewProjection = {
   },
   commits: [],
   insights: {
+    guide: { status: "not_generated" },
     analysis: { status: "not_generated" },
     walkthrough: { status: "not_generated" },
   },
@@ -603,6 +604,7 @@ describe("parseWorkbenchResponse", () => {
       parseWorkbenchResponse({
         ...reviewProjection,
         insights: {
+          guide: { status: "not_generated" },
           analysis: {
             status: "current",
             retained: {
@@ -692,6 +694,7 @@ describe("parseWorkbenchResponse", () => {
           },
         ],
         insights: {
+          guide: { status: "not_generated" },
           analysis: {
             status: "current",
             retained: {

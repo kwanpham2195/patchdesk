@@ -1,3 +1,4 @@
+import { guideInsightSchema } from "./guide-contracts";
 import * as v from "valibot";
 
 import { reviewSourceSchema } from "./review-source";
@@ -897,6 +898,7 @@ const workbenchProjectionSchema = v.strictObject({
     walkthrough: walkthroughInsightSchema,
     /** Optional for the same reason `mergeReasons` is: the projection always sends one, and a response without it reads as a Brief that was never generated. */
     brief: v.optional(briefInsightSchema),
+    guide: guideInsightSchema,
   }),
   analysisReviewActions: v.optional(analysisReviewActionsSchema),
   pendingReview: v.optional(pendingReviewProjectionSchema),
@@ -939,7 +941,7 @@ export function parsePendingReviewProjection(
 
 const insightRunResponseSchema = v.strictObject({
   runId: v.pipe(v.string(), v.minLength(1)),
-  type: v.picklist(["analysis", "walkthrough", "brief"]),
+  type: v.picklist(["analysis", "walkthrough", "brief", "guide"]),
   status: v.picklist([
     "queued",
     "running",

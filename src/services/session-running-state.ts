@@ -55,15 +55,17 @@ export async function readSessionRunningState(
   if (preparation._tag === "err") return err({ _tag: "StorageUnavailable" });
   if (preparation.value !== undefined) return ok({ running: true });
   const reviewId = createReviewId(session.key);
-  const [review, analysis, walkthrough, brief, merge] = await Promise.all([
-    dependencies.reviews.load(profileId, reviewId),
-    dependencies.insights.load(profileId, reviewId, "analysis"),
-    dependencies.insights.load(profileId, reviewId, "walkthrough"),
-    dependencies.insights.load(profileId, reviewId, "brief"),
-    dependencies.mergeOperations.load(profileId, session.id),
-  ]);
+  const [review, analysis, walkthrough, brief, guide, merge] =
+    await Promise.all([
+      dependencies.reviews.load(profileId, reviewId),
+      dependencies.insights.load(profileId, reviewId, "analysis"),
+      dependencies.insights.load(profileId, reviewId, "walkthrough"),
+      dependencies.insights.load(profileId, reviewId, "brief"),
+      dependencies.insights.load(profileId, reviewId, "guide"),
+      dependencies.mergeOperations.load(profileId, session.id),
+    ]);
   if (
-    [review, analysis, walkthrough, brief, merge].some(
+    [review, analysis, walkthrough, brief, guide, merge].some(
       (value) => value._tag === "err" && value.error.reason !== "not_found",
     )
   )
@@ -77,7 +79,7 @@ export async function readSessionRunningState(
     return ok({ running: true });
   // A Brief reads the session's worktree as an Analysis or Walkthrough does.
   if (
-    [analysis, walkthrough, brief].some(
+    [analysis, walkthrough, brief, guide].some(
       (record) =>
         record._tag === "ok" &&
         record.value.activeRun?.revision.sessionId === session.id,

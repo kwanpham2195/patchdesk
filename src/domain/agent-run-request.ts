@@ -11,7 +11,7 @@ import {
   type IsoTimestamp,
   type ReviewSessionId,
 } from "./ids";
-import type { InsightType } from "./insight-record";
+import type { AgentInsightType } from "./insight-record";
 import { err, ok, type Result } from "./result";
 
 /**
@@ -23,7 +23,7 @@ import { err, ok, type Result } from "./result";
 export type AgentRunRequest = {
   readonly requestId: AgentRunRequestId;
   readonly sessionId: ReviewSessionId;
-  readonly type: InsightType;
+  readonly type: AgentInsightType;
   readonly requestedAt: IsoTimestamp;
   /** The MCP client's own name, when it sent one. */
   readonly clientName?: string;
@@ -99,7 +99,7 @@ function parseStoredAgentRunRequest(
 export function findAgentRunRequest(
   requests: ReadonlyArray<AgentRunRequest> | undefined,
   sessionId: ReviewSessionId,
-  type: InsightType,
+  type: AgentInsightType,
 ): AgentRunRequest | undefined {
   return requests?.find(
     (request) => request.sessionId === sessionId && request.type === type,

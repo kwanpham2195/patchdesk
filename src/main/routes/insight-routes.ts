@@ -89,6 +89,12 @@ export function registerInsightRoutes(
   app.post("/v1/reviews/insights/walkthrough/run", async (context) =>
     insightRunResponse(context, insights, agentRunRequests, "walkthrough"),
   );
+  app.post("/v1/reviews/insights/guide/run", async (context) =>
+    insightRunResponse(context, insights, agentRunRequests, "guide"),
+  );
+  app.post("/v1/reviews/insights/guide/cancel", async (context) =>
+    insightCancelResponse(context, insights, "guide", await jsonBody(context)),
+  );
   app.post("/v1/reviews/insights/brief/run", async (context) =>
     insightRunResponse(context, insights, agentRunRequests, "brief"),
   );
@@ -223,7 +229,7 @@ export function registerInsightRoutes(
 const insightCancelSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
-  type: picklist(["analysis", "walkthrough", "brief"]),
+  type: picklist(["analysis", "walkthrough", "brief", "guide"]),
   runId: pipe(string(), minLength(1)),
 });
 const briefDescriptionSchema = strictObject({
@@ -456,7 +462,10 @@ async function insightFindingResponse(
 }
 
 function parseInsightType(value: string | undefined): InsightType | undefined {
-  return value === "analysis" || value === "walkthrough" || value === "brief"
+  return value === "analysis" ||
+    value === "walkthrough" ||
+    value === "brief" ||
+    value === "guide"
     ? value
     : undefined;
 }

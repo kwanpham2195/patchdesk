@@ -30,6 +30,9 @@ export type InsightRunType = InsightRunResponse["type"];
 type InsightRunState = InsightRunResponse["status"] | "idle" | "error";
 /** A start the main process refused over a local Review's spec file names why (#467). */
 type InsightRunRequestFailure =
+  | "guide_input_too_large"
+  | "guide_patch_empty"
+  | "guide_artifact_unreadable"
   | "start"
   | "cancel"
   | "status"
@@ -246,9 +249,15 @@ export function useInsightRun(input: {
           if (!mountedRef.current || generationRef.current !== generation)
             return;
           setRecordedFailure({
-            failure: isApiErrorCode(cause, "request_not_awaiting")
-              ? "request_not_awaiting"
-              : (changeIntentRunRefusal(cause) ?? "start"),
+            failure: isApiErrorCode(cause, "guide_input_too_large")
+              ? "guide_input_too_large"
+              : isApiErrorCode(cause, "guide_patch_empty")
+                ? "guide_patch_empty"
+                : isApiErrorCode(cause, "guide_artifact_unreadable")
+                  ? "guide_artifact_unreadable"
+                  : isApiErrorCode(cause, "request_not_awaiting")
+                    ? "request_not_awaiting"
+                    : (changeIntentRunRefusal(cause) ?? "start"),
             start: { refusalInputs },
           });
           setStatus("error");

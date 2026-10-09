@@ -18,7 +18,7 @@ import type {
   ReviewSessionId,
   WorkspaceProfileId,
 } from "#src/domain/ids";
-import type { InsightType } from "#src/domain/insight-record";
+import type { AgentInsightType, InsightType } from "#src/domain/insight-record";
 import { err, ok, type Result } from "#src/domain/result";
 import {
   isLocalReview,
@@ -81,7 +81,7 @@ export const agentRunDeclineRequestSchema = strictObject({
 export type AgentRunRequestReply = {
   readonly reviewId: ReviewId;
   readonly sessionId: ReviewSessionId;
-  readonly type: InsightType;
+  readonly type: AgentInsightType;
   readonly status: AgentRunRequest["status"] | "running" | "awaiting_refresh";
   readonly requestId?: AgentRunRequestId;
   readonly runId?: InsightRunId;
@@ -121,7 +121,7 @@ export class AgentRunRequestService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly sessionId: ReviewSessionId;
-    readonly type: InsightType;
+    readonly type: AgentInsightType;
     readonly clientName?: string;
   }): Promise<Result<AgentRunRequestReply, AgentRunRequestFailure>> {
     // `recorded` is the Review a new request was saved on, which the notification names.
@@ -213,6 +213,10 @@ export class AgentRunRequestService {
     input: InsightCoordinatorInput & { readonly requestId?: AgentRunRequestId },
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const { requestId, ...start } = input;
+    if (input.type === "guide")
+      return requestId === undefined
+        ? runs.start(start)
+        : err("invalid_request");
     return runs.start(start, {
       admit: (review) =>
         requestId === undefined ||
@@ -305,7 +309,7 @@ export class AgentRunRequestService {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly sessionId: ReviewSessionId;
-    readonly type: InsightType;
+    readonly type: AgentInsightType;
   }): Promise<Result<InsightRunId | undefined, AgentRunRequestFailure>> {
     const record = await this.dependencies.insights.load(
       input.profileId,
@@ -336,7 +340,7 @@ export class AgentRunRequestService {
   /** Posts one notification per Insight type requested on the Review. */
   private async notify(
     review: Review<LocalReviewSource>,
-    insightTypes: ReadonlyArray<InsightType>,
+    insightTypes: ReadonlyArray<AgentInsightType>,
   ): Promise<void> {
     const subject = await localReviewNotificationSubject(
       this.dependencies.profiles,
@@ -373,6 +377,7 @@ function awaitingRequestOf(
   review: Review,
   type: InsightType,
 ): AgentRunRequest | undefined {
+  if (type === "guide") return undefined;
   const request = isLocalReview(review)
     ? findAgentRunRequest(
         review.agentRunRequests,

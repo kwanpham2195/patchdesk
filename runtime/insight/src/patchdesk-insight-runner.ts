@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import {
+  prepareGuidePrompt,
+  guidePromptFitsTransport,
+} from "#app/services/guide-operation";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -33,6 +38,10 @@ import {
 } from "#app/services/walkthrough-operation";
 
 import {
+  guideInvocationSchema,
+  productionGuideInvocationSchema,
+  guideResultSchema,
+  createGuideAgent,
   MAX_RUNTIME_STDIN_BYTES,
   MAX_RUNTIME_STDOUT_BYTES,
   analysisInvocationSchema,
@@ -54,6 +63,7 @@ import {
 } from "./patchdesk-insight-agent";
 
 const childProtocolSchema = v.variant("type", [
+  v.strictObject({ type: v.literal("guide"), input: guideInvocationSchema }),
   v.strictObject({
     type: v.literal("analysis"),
     input: analysisInvocationSchema,
@@ -69,6 +79,10 @@ const childProtocolSchema = v.variant("type", [
 ]);
 
 const productionProtocolSchema = v.variant("type", [
+  v.strictObject({
+    type: v.literal("guide"),
+    input: productionGuideInvocationSchema,
+  }),
   v.strictObject({
     type: v.literal("analysis"),
     input: productionAnalysisInvocationSchema,
@@ -159,6 +173,11 @@ export async function runPatchdeskChild(
   try {
     assertSupportedNode();
     if (options.signal?.aborted) return { ok: false, reason: "cancelled" };
+    if (
+      invocation.type === "guide" &&
+      !guidePromptFitsTransport(invocation.input.prompt)
+    )
+      return { ok: false, reason: "invalid_input", detail: "prompt_too_large" };
     const created = await createAgent(invocation, options);
     if (created === undefined)
       return { ok: false, reason: "runtime_unavailable" };
@@ -441,8 +460,11 @@ function resultSchemaFor(
 ):
   | typeof modelReviewResultSchema
   | typeof walkthroughResultSchema
-  | typeof briefResultSchema {
+  | typeof briefResultSchema
+  | typeof guideResultSchema {
   switch (type) {
+    case "guide":
+      return guideResultSchema;
     case "analysis":
       return modelReviewResultSchema;
     case "walkthrough":
@@ -459,6 +481,7 @@ async function createAgent(
     readonly inspectors?: InspectorOperations;
   },
 ) {
+  if (invocation.type === "guide") return createGuideAgent(invocation.input);
   if (invocation.type === "walkthrough")
     return createWalkthroughAgent(invocation.input);
   if (invocation.type === "brief") return createBriefAgent(invocation.input);
@@ -558,6 +581,25 @@ export async function runProductionChild(
     ...definedProps({ providers: options.providers }),
   };
   // The language shapes only the prompt composed here; the agent invocation takes the finished prompt.
+  if (canonical.type === "guide") {
+    const { language, expectedPromptHash, ...input } = canonical.input;
+    const prepared = await prepareGuidePrompt({ ...input, language });
+    if (prepared._tag === "err")
+      return {
+        ok: false,
+        reason: "invalid_input",
+        detail: prepared.error.reason,
+      };
+    if (
+      createHash("sha256").update(prepared.value.prompt).digest("hex") !==
+      expectedPromptHash
+    )
+      return { ok: false, reason: "invalid_input" };
+    return runPatchdeskChild(
+      { type: "guide", input: { ...input, prompt: prepared.value.prompt } },
+      childOptions,
+    );
+  }
   if (canonical.type === "walkthrough") {
     const { language, ...input } = canonical.input;
     const prompt = await prepareWalkthroughPrompt({ ...input, language });
@@ -664,7 +706,7 @@ export function canonicalizeProductionInvocation(
     paths.preparedContextFile(profile.value, session.value)
   )
     return undefined;
-  if (invocation.type === "walkthrough")
+  if (invocation.type === "walkthrough" || invocation.type === "guide")
     return { ...invocation, rejectedResultPath };
   if (
     invocation.input.reviewInputPath !==

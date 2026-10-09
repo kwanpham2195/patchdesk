@@ -15,6 +15,7 @@ const initialInput: HookInput = {
     analysis: "analysis-1",
     brief: "brief-1",
     walkthrough: "walkthrough-1",
+    guide: undefined,
   },
   selectedInsight: "analysis",
   selectedProjectionStatus: "current",

@@ -24,6 +24,7 @@ import type { InsightRunController, InsightRunType } from "./use-insight-run";
 /** The dialog's rows in reading order, as the Insight tab strip lists them. */
 export const RUN_INSIGHTS_ORDER = [
   "brief",
+  "guide",
   "walkthrough",
   "analysis",
 ] as const satisfies ReadonlyArray<InsightRunType>;
@@ -118,6 +119,7 @@ export function useRunInsightsDialog({
     };
     setOptions({
       brief: seed("brief"),
+      guide: { ...seed("guide"), checked: false },
       walkthrough: seed("walkthrough"),
       analysis: seed("analysis"),
     });
@@ -131,6 +133,7 @@ export function useRunInsightsDialog({
       ? undefined
       : {
           brief: { ...options.brief, running: isRunning("brief") },
+          guide: { ...options.guide, running: isRunning("guide") },
           walkthrough: {
             ...options.walkthrough,
             running: isRunning("walkthrough"),
@@ -222,6 +225,7 @@ export function useRunInsightsDialog({
               : current[type];
           return {
             brief: reseed("brief"),
+            guide: reseed("guide"),
             walkthrough: reseed("walkthrough"),
             analysis: reseed("analysis"),
           };

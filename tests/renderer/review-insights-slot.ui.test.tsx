@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { buildGuideInventory, retainGuide } from "#src/domain/guide";
 import type { RawJsonValue } from "#src/domain/json";
 import type { DesktopResponse } from "#src/main/ipc-contract";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
@@ -67,7 +68,7 @@ afterEach(() => {
 
 function renderInsights(
   workbench = projection(),
-  initialDetail?: "analysis" | "walkthrough",
+  initialDetail?: "analysis" | "walkthrough" | "guide",
 ): void {
   render(
     <InsightsSlot
@@ -87,7 +88,7 @@ describe("InsightsSlot reading order", () => {
     const rail = within(
       screen.getByRole("navigation", { name: "Insight navigation" }),
     );
-    expect(rail.getAllByRole("tab")).toHaveLength(3);
+    expect(rail.getAllByRole("tab")).toHaveLength(4);
     expect(rail.queryByRole("tab", { name: /^Overview/ })).toBeNull();
     expect(rail.getByRole("tab", { selected: true }).textContent).toMatch(
       /^Analysis/,
@@ -208,6 +209,7 @@ describe("InsightsSlot on a merged Review", () => {
       projection({
         review: { id: "review-42", status: "closed" },
         insights: {
+          guide: { status: "not_generated" },
           analysis: { status: "not_generated" },
           walkthrough: { status: "not_generated" },
           brief: briefInsight(),
@@ -232,6 +234,7 @@ describe("InsightsSlot on a merged Review", () => {
         projection({
           review: { id: "review-42", status },
           insights: {
+            guide: { status: "not_generated" },
             analysis: { status: "failed" },
             walkthrough: { status: "not_generated" },
             brief: briefInsight(),
@@ -257,6 +260,7 @@ describe("InsightsSlot on a merged Review", () => {
     renderInsights(
       projection({
         insights: {
+          guide: { status: "not_generated" },
           analysis: { status: "not_generated" },
           walkthrough: { status: "outdated" },
           brief: briefInsight(),
@@ -281,6 +285,7 @@ describe("InsightsSlot on a merged Review", () => {
       projection({
         review: { id: "review-42", status: "merged" },
         insights: {
+          guide: { status: "not_generated" },
           analysis: { status: "not_generated" },
           walkthrough: { status: "current" },
           brief: briefInsight(),
@@ -304,6 +309,7 @@ describe("InsightsSlot on a merged Review", () => {
         projection({
           review: { id: "review-42", status },
           insights: {
+            guide: { status: "not_generated" },
             analysis: { status: "not_generated" },
             walkthrough: { status: "not_generated" },
             brief: briefInsight({ status: "outdated" }),
@@ -589,6 +595,7 @@ describe("InsightsSlot run requests", () => {
       renderInsights(
         projection({
           insights: {
+            guide: { status: "not_generated" },
             analysis: { status: "not_generated" },
             walkthrough: { status: "not_generated" },
             brief: briefInsight({
@@ -646,6 +653,7 @@ describe("InsightsSlot run requests", () => {
     renderInsights(
       projection({
         insights: {
+          guide: { status: "not_generated" },
           analysis: {
             status: "running",
             activeRun: {
@@ -694,6 +702,7 @@ describe("InsightsSlot run requests", () => {
     renderInsights(
       projection({
         insights: {
+          guide: { status: "not_generated" },
           analysis: {
             status: "running",
             activeRun: {
@@ -913,4 +922,54 @@ describe("InsightsSlot Agent requests bar (ADR 0052)", () => {
       }),
     ]);
   });
+});
+
+describe("retained Guide revision", () => {
+  it.each(["running", "failed"] as const)(
+    "keeps old Guide outdated during %s replacement",
+    (status) => {
+      const workbench = projection();
+      const patchText =
+        "diff --git a/a.ts b/a.ts\nold mode 100644\nnew mode 100755\n";
+      const inventory = buildGuideInventory(patchText);
+      if (inventory._tag === "err") throw new Error("Invalid Guide inventory");
+      const guide = retainGuide(
+        {
+          groups: [
+            {
+              title: "Guard",
+              explanation: "Adds a guard.",
+              files: [{ fileId: "f1", relevance: "Owns the guard." }],
+            },
+          ],
+        },
+        { patchText, inventory: inventory.value },
+      );
+      if (guide._tag === "err") throw new Error("Invalid Guide result");
+      renderInsights(
+        {
+          ...workbench,
+          insights: {
+            ...workbench.insights,
+            guide: {
+              status,
+              retained: {
+                sessionId: "previous-session",
+                headSha: "b".repeat(40),
+                freshness: "outdated",
+                generatedAt: "2026-08-01T00:00:00.000Z",
+                value: guide.value,
+              },
+            },
+          },
+        },
+        "guide",
+      );
+      expect(
+        screen.getByLabelText("Insight document metadata").textContent,
+      ).toMatch(/^Outdated/);
+      expect(screen.getByRole("heading", { name: "Guard" })).toBeDefined();
+      expect(screen.getByRole("list", { name: "Guard files" })).toBeDefined();
+    },
+  );
 });

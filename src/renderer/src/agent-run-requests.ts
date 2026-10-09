@@ -50,7 +50,7 @@ export function agentMarkerInputs(
 /** The session's requests after a run of `type` started: the awaiting one of that type is approved with it, as the main process records. */
 export function approveAgentRunRequests(
   requests: ReadonlyArray<AgentRunRequestView> | undefined,
-  type: AgentRunRequestView["type"],
+  type: AgentRunRequestView["type"] | "guide",
   runId: string,
 ): AgentRunRequestView[] | undefined {
   return requests?.map((request) =>
