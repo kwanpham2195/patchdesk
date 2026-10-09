@@ -1,3 +1,11 @@
+import { useMemo, useState } from "react";
+import { ChevronRight } from "lucide-react";
+import type { ReviewViewPreferences } from "@/review-view-preferences";
+import {
+  decomposeGuidePatch,
+  type GuideFileEvidence,
+} from "./guide-file-evidence";
+import { GuideFileDiff } from "./guide-file-diff";
 import {
   guideOthers,
   type GuideInventoryEntry,
@@ -5,13 +13,27 @@ import {
 } from "#src/domain/guide";
 import { GeneratedMarkdown } from "./generated-markdown";
 
+const evidenceLabels = {
+  text: "",
+  metadata: "Metadata only",
+  binary: "Binary file",
+  submodule: "Submodule change",
+  omitted: "Diff omitted",
+} satisfies Readonly<Record<GuideInventoryEntry["evidence"], string>>;
+
 /** Continuous overview resolves memberships only from its retained inventory. */
 export function GuideReader({
   guide,
+  preferences,
 }: {
   readonly guide: RetainedGuide;
+  readonly preferences?: ReviewViewPreferences;
 }): React.JSX.Element {
-  const files = new Map(guide.inventory.map((file) => [file.id, file]));
+  const files = useMemo(
+    () => new Map(guide.inventory.map((file) => [file.id, file])),
+    [guide],
+  );
+  const evidence = useMemo(() => decomposeGuidePatch(guide), [guide]);
   const others = guideOthers(guide);
   return (
     <div aria-label="Guide" className="@container min-w-0">
@@ -43,10 +65,14 @@ export function GuideReader({
             >
               {group.files.map((membership) => {
                 const file = files.get(membership.fileId);
-                return file === undefined ? null : (
+                const fileEvidence = evidence.get(membership.fileId);
+                return file === undefined ||
+                  fileEvidence === undefined ? null : (
                   <GuideFileRow
                     key={membership.fileId}
                     file={file}
+                    evidence={fileEvidence}
+                    {...(preferences === undefined ? {} : { preferences })}
                     relevance={membership.relevance}
                   />
                 );
@@ -73,9 +99,17 @@ export function GuideReader({
           </p>
         ) : (
           <ul aria-label="Others files" className="min-w-0 space-y-2">
-            {others.map((file) => (
-              <GuideFileRow key={file.id} file={file} />
-            ))}
+            {others.map((file) => {
+              const fileEvidence = evidence.get(file.id);
+              return fileEvidence === undefined ? null : (
+                <GuideFileRow
+                  key={file.id}
+                  file={file}
+                  evidence={fileEvidence}
+                  {...(preferences === undefined ? {} : { preferences })}
+                />
+              );
+            })}
           </ul>
         )}
       </section>
@@ -86,27 +120,44 @@ export function GuideReader({
 function GuideFileRow({
   file,
   relevance,
+  evidence,
+  preferences,
 }: {
   readonly file: GuideInventoryEntry;
   readonly relevance?: string;
+  readonly evidence: GuideFileEvidence;
+  readonly preferences?: ReviewViewPreferences;
 }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
   const path = file.status === "removed" ? file.oldPath : file.newPath;
   const cut = path.lastIndexOf("/");
   return (
     <li className="min-w-0 rounded-md border bg-card px-3 py-3">
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-        <p className="min-w-0 break-all font-mono text-xs">
-          <span className="text-muted-foreground">
-            {path.slice(0, cut + 1)}
+      <button
+        type="button"
+        aria-label={`File ${path}`}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full min-w-0 flex-wrap items-start justify-between gap-2 text-left"
+      >
+        <span className="flex min-w-0 items-start gap-2 break-all font-mono text-xs">
+          <ChevronRight
+            aria-hidden="true"
+            className={`size-3.5 shrink-0 ${expanded ? "rotate-90" : ""}`}
+          />
+          <span>
+            <span className="text-muted-foreground">
+              {path.slice(0, cut + 1)}
+            </span>
+            <strong className="font-semibold">{path.slice(cut + 1)}</strong>
           </span>
-          <strong className="font-semibold">{path.slice(cut + 1)}</strong>
-        </p>
-        <p className="shrink-0 text-xs text-muted-foreground">
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">
           {file.status} ·{" "}
           <span className="text-green-500">+{file.additions}</span>{" "}
           <span className="text-red-400">−{file.deletions}</span>
-        </p>
-      </div>
+        </span>
+      </button>
       {file.status === "renamed" ? (
         <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
           From {file.oldPath}
@@ -114,13 +165,7 @@ function GuideFileRow({
       ) : null}
       {file.evidence === "text" ? null : (
         <p className="mt-1 text-xs text-muted-foreground">
-          {file.evidence === "metadata"
-            ? "Metadata only"
-            : file.evidence === "binary"
-              ? "Binary file"
-              : file.evidence === "submodule"
-                ? "Submodule change"
-                : "Diff omitted"}
+          {evidenceLabels[file.evidence]}
         </p>
       )}
       {relevance === undefined ? null : (
@@ -128,6 +173,13 @@ function GuideFileRow({
           {relevance}
         </p>
       )}
+      {expanded ? (
+        <GuideFileDiff
+          file={file}
+          evidence={evidence}
+          {...(preferences === undefined ? {} : { preferences })}
+        />
+      ) : null}
     </li>
   );
 }

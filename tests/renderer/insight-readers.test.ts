@@ -1,8 +1,20 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it } from "vitest";
+import { buildGuideInventory, retainGuide } from "#src/domain/guide";
+import { parseContentHash } from "#src/domain/ids";
+import { parseUnifiedPatch } from "#src/domain/patch";
+import { must } from "#tests/services/insight-run-fixture";
 
-import { walkthroughDiscussionState } from "#src/renderer/src/components/insight-readers";
+import {
+  buildInsightReaders,
+  walkthroughDiscussionState,
+} from "#src/renderer/src/components/insight-readers";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { patchHash, projection, sha } from "./review-workbench-fixtures";
+
+afterEach(cleanup);
 
 const ready = projection({
   insights: {
@@ -40,6 +52,122 @@ const withRevision = (
 });
 const { fullPatch: _fullPatch, ...withoutPatch } = ready;
 const { patchHash: _patchHash, ...revisionWithoutHash } = ready.revision;
+
+describe("Guide production composition", () => {
+  it("keeps the retained old patch when the workbench advances to a distinct current patch", async () => {
+    const oldPatch =
+      "diff --git a/src/a.ts b/src/a.ts\nold mode 100644\nnew mode 100755\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-beforeRetained()\n+retainedRecovery()\n";
+    const newerPatch =
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-retainedRecovery()\n+currentReplacement()\n";
+    const guide = must(
+      retainGuide(
+        {
+          groups: [
+            {
+              title: "Recovery",
+              explanation: "Retained change.",
+              files: [{ fileId: "f1", relevance: "Recovery owner." }],
+            },
+          ],
+        },
+        { patchText: oldPatch, inventory: must(buildGuideInventory(oldPatch)) },
+      ),
+    );
+    const workbench = projection({
+      fullPatch: oldPatch,
+      insights: {
+        ...ready.insights,
+        guide: {
+          status: "current",
+          artifactStatus: "verified",
+          retained: {
+            runId: "guide-old",
+            sessionId: "session-a",
+            headSha: sha,
+            generatedAt: "2026-08-01T00:00:00.000Z",
+            freshness: "current",
+            value: guide,
+          },
+        },
+      },
+    });
+    const controls = {
+      selectedInsight: "guide",
+      dismissFinding: async () => undefined,
+      restoreFinding: async () => "restored",
+      analysisVerification: {
+        checkedSteps: new Set<number>(),
+        saveFailed: false,
+        setStepChecked: () => undefined,
+      },
+      walkthroughProgress: {
+        progress: { reviewedSectionIds: [], supportReviewed: false },
+        saveFailed: false,
+        selectSection: () => undefined,
+      },
+      walkthroughFocused: false,
+      setWalkthroughFocused: () => undefined,
+      onRegenerateBrief: () => undefined,
+      runEnabled: true,
+    } satisfies Omit<
+      Parameters<typeof buildInsightReaders>[0],
+      "workbench" | "patchFiles"
+    >;
+    const view = render(
+      buildInsightReaders({
+        ...controls,
+        workbench,
+        patchFiles: parseUnifiedPatch(oldPatch),
+      }),
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "File src/a.ts" }));
+    const newerWorkbench = projection({
+      ...workbench,
+      fullPatch: newerPatch,
+      session: {
+        ...workbench.session,
+        key: { ...workbench.session.key, headSha: "c".repeat(40) },
+      },
+      revision: {
+        ...workbench.revision,
+        reviewedHeadSha: "c".repeat(40),
+        currentHeadSha: "c".repeat(40),
+        patchHash: must(parseContentHash("d".repeat(64))),
+      },
+      insights: {
+        ...workbench.insights,
+        guide: {
+          ...workbench.insights.guide,
+          status: "outdated",
+          retained: {
+            runId: "guide-old",
+            sessionId: "session-a",
+            headSha: sha,
+            generatedAt: "2026-08-01T00:00:00.000Z",
+            freshness: "outdated",
+            value: guide,
+          },
+        },
+      },
+    });
+    view.rerender(
+      buildInsightReaders({
+        ...controls,
+        workbench: newerWorkbench,
+        patchFiles: parseUnifiedPatch(newerPatch),
+      }),
+    );
+    const evidence = screen.getByRole("group", {
+      name: "Guide evidence src/a.ts",
+    });
+    expect(evidence.textContent).toContain("beforeRetained()");
+    expect(evidence.textContent).toContain("retainedRecovery()");
+    expect(evidence.textContent).toContain("new mode 100755");
+    expect(evidence.textContent).not.toContain("currentReplacement()");
+  });
+});
 
 describe("walkthroughDiscussionState", () => {
   it("is available when the Walkthrough matches a fresh, fully loaded revision", () => {
