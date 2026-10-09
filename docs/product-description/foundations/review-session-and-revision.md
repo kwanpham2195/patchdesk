@@ -102,7 +102,7 @@ After an interrupted refresh, the previous represented snapshot remains the last
 
 **Review revision and freshness.** This document owns the state words and transitions. Other documents link here rather than defining Fresh, Revision changed, unavailable, or terminal again.
 
-**Local persistence and recovery.** Review, session, remote snapshot, prepared artifacts, and preparation journal are separate durable records. A corrupt stored session is quarantined before preparation retries it.
+**Local persistence and recovery.** Review, session, remote snapshot, prepared artifacts, and preparation journal are separate durable records. A corrupt stored session is quarantined before preparation retries it. The dev app prepares Reviews from configured local checkouts using its own settings, data, and cache.
 
 **GitHub permissions and write authority.** Readable evidence does not grant write authority. Every GitHub write requires a current, non-terminal Review session and the action's permission and recovery checks. Review-content writes also require Fresh evidence and a current-head check. Pull-request metadata writes use the current-session gate without requiring Fresh. See [conversation and metadata](../review-workbench/conversation-and-metadata.md#interactions-with-other-systems).
 

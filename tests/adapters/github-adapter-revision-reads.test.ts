@@ -45,87 +45,92 @@ describe("GitHubAdapter revision and commit reads", () => {
     }
   });
 
-  it("uses the immutable managed refs when fetched-ref evidence is supplied", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: `${baseSha}\n`,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: `${headSha}\n`,
-        stderr: "",
-      },
-      {
-        _tag: "Exited",
-        exitCode: 0,
-        stdout: "diff --git a/fallback.ts b/fallback.ts\n",
-        stderr: "",
-      },
-    ]);
-    const adapter = testAdapter(
-      orderedTransport([]),
-      new CommandRunner(executor),
-    );
+  it.each(["refs/patchdesk", "refs/patchdesk-dev"])(
+    "uses immutable managed refs from %s",
+    async (namespace) => {
+      const executor = new FakeProcessExecutor([
+        {
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: `${baseSha}\n`,
+          stderr: "",
+        },
+        {
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: `${headSha}\n`,
+          stderr: "",
+        },
+        {
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: "diff --git a/fallback.ts b/fallback.ts\n",
+          stderr: "",
+        },
+      ]);
+      const adapter = testAdapter(
+        orderedTransport([]),
+        new CommandRunner(executor),
+      );
 
-    expect(
-      await adapter.getPullRequestDiff({
-        profile,
-        pr,
-        fetchedRefs: mustParse(
-          createFetchedDiffRefs({
-            repositoryPath: mustParse(parseAbsolutePath("/tmp/patchdesk-repo")),
-            baseRef: "refs/patchdesk/base",
-            headRef: "refs/patchdesk/head",
-            baseSha: mustParse(parseGitSha(baseSha)),
-            headSha: mustParse(parseGitSha(headSha)),
-          }),
-        ),
-      }),
-    ).toEqual({
-      _tag: "ok",
-      value: "diff --git a/fallback.ts b/fallback.ts\n",
-    });
-    expect(executor.requests).toEqual([
-      [
-        "git",
-        "-C",
-        "/tmp/patchdesk-repo",
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        "--end-of-options",
-        "refs/patchdesk/base^{commit}",
-      ],
-      [
-        "git",
-        "-C",
-        "/tmp/patchdesk-repo",
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        "--end-of-options",
-        "refs/patchdesk/head^{commit}",
-      ],
-      [
-        "git",
-        "-C",
-        "/tmp/patchdesk-repo",
-        "diff",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--no-color",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        "--no-relative",
-        "--unified=3",
-        "refs/patchdesk/base...refs/patchdesk/head",
-      ],
-    ]);
-  });
+      expect(
+        await adapter.getPullRequestDiff({
+          profile,
+          pr,
+          fetchedRefs: mustParse(
+            createFetchedDiffRefs({
+              repositoryPath: mustParse(
+                parseAbsolutePath("/tmp/patchdesk-repo"),
+              ),
+              baseRef: `${namespace}/base`,
+              headRef: `${namespace}/head`,
+              baseSha: mustParse(parseGitSha(baseSha)),
+              headSha: mustParse(parseGitSha(headSha)),
+            }),
+          ),
+        }),
+      ).toEqual({
+        _tag: "ok",
+        value: "diff --git a/fallback.ts b/fallback.ts\n",
+      });
+      expect(executor.requests).toEqual([
+        [
+          "git",
+          "-C",
+          "/tmp/patchdesk-repo",
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          "--end-of-options",
+          `${namespace}/base^{commit}`,
+        ],
+        [
+          "git",
+          "-C",
+          "/tmp/patchdesk-repo",
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          "--end-of-options",
+          `${namespace}/head^{commit}`,
+        ],
+        [
+          "git",
+          "-C",
+          "/tmp/patchdesk-repo",
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--no-color",
+          "--src-prefix=a/",
+          "--dst-prefix=b/",
+          "--no-relative",
+          "--unified=3",
+          `${namespace}/base...${namespace}/head`,
+        ],
+      ]);
+    },
+  );
 
   it("uses an immutable GitHub comparison when no managed checkout is available", async () => {
     const transport = orderedTransport(["diff --git a/exact.ts b/exact.ts\n"]);
@@ -157,11 +162,17 @@ describe("GitHubAdapter revision and commit reads", () => {
     ]);
   });
 
-  it("rejects untrusted ref names before a git diff fallback can be requested", () => {
+  it.each([
+    "--output=/tmp/unsafe",
+    "refs/patchdesk-dev-other/base",
+    "refs/patchdesk-dev/../base",
+    "refs/patchdesk-dev//base",
+    "refs/heads/base",
+  ])("rejects untrusted ref %s before a git diff fallback", (baseRef) => {
     expect(
       createFetchedDiffRefs({
         repositoryPath: mustParse(parseAbsolutePath("/tmp/patchdesk-repo")),
-        baseRef: "--output=/tmp/unsafe",
+        baseRef,
         headRef: "refs/patchdesk/head",
         baseSha: mustParse(parseGitSha(baseSha)),
         headSha: mustParse(parseGitSha(headSha)),
