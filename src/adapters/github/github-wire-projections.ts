@@ -846,7 +846,7 @@ export function parsePendingReview(
 
 export function isManagedFetchedRef(value: string): boolean {
   return (
-    /^refs\/patchdesk\/[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(value) &&
+    /^refs\/patchdesk(?:-dev)?\/[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(value) &&
     !value.includes("..") &&
     !value.includes("//")
   );
