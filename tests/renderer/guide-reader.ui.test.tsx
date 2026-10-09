@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildGuideInventory, retainGuide } from "#src/domain/guide";
 import { GuideReader } from "#src/renderer/src/components/guide-reader";
@@ -52,5 +53,132 @@ describe("Guide overview", () => {
     expect(container.querySelector("script")).toBeNull();
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
+  });
+});
+
+const textPatch =
+  "diff --git a/src/main.ts b/src/main.ts\nold mode 100644\nnew mode 100755\n--- a/src/main.ts\n+++ b/src/main.ts\n@@ -1 +1 @@\n-oldFirst()\n+snapshotFirst()\n@@ -20 +20 @@\n-oldSecond()\n+snapshotSecond()\n";
+const textGuide = must(
+  retainGuide(
+    {
+      groups: [
+        {
+          title: "First behavior",
+          explanation: "Explains only the first change.",
+          files: [{ fileId: "f1", relevance: "First change." }],
+        },
+        {
+          title: "Supporting behavior",
+          explanation: "Supporting use.",
+          files: [{ fileId: "f1", relevance: "Shared file." }],
+        },
+      ],
+    },
+    { patchText: textPatch, inventory: must(buildGuideInventory(textPatch)) },
+  ),
+);
+
+describe("Guide complete snapshot evidence", () => {
+  it("starts collapsed and expands every hunk independently for repeated memberships", async () => {
+    const user = userEvent.setup();
+    render(<GuideReader guide={textGuide} />);
+    const first = within(
+      screen.getByRole("list", { name: "First behavior files" }),
+    );
+    const second = within(
+      screen.getByRole("list", { name: "Supporting behavior files" }),
+    );
+    expect(
+      first
+        .getByRole("button", { name: "File src/main.ts" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(
+      screen.queryByRole("group", { name: "Guide evidence src/main.ts" }),
+    ).toBeNull();
+    await user.click(first.getByRole("button", { name: "File src/main.ts" }));
+    const evidence = first.getByRole("group", {
+      name: "Guide evidence src/main.ts",
+    });
+    expect(evidence.textContent).toContain("old mode 100644");
+    expect(evidence.textContent).toContain("new mode 100755");
+    expect(evidence.textContent).toContain("snapshotFirst()");
+    expect(evidence.textContent).toContain("snapshotSecond()");
+    expect(
+      second.queryByRole("group", { name: "Guide evidence src/main.ts" }),
+    ).toBeNull();
+    await user.click(second.getByRole("button", { name: "File src/main.ts" }));
+    await user.click(first.getByRole("button", { name: "File src/main.ts" }));
+    expect(
+      first.queryByRole("group", { name: "Guide evidence src/main.ts" }),
+    ).toBeNull();
+    expect(
+      second.getByRole("group", { name: "Guide evidence src/main.ts" })
+        .textContent,
+    ).toContain("snapshotSecond()");
+    expect(screen.queryByRole("button", { name: "Add comment" })).toBeNull();
+  });
+
+  it("expands Others and preserves stored metadata without inventing text evidence", async () => {
+    const user = userEvent.setup();
+    const guide = must(
+      retainGuide({ groups: [group] }, { patchText, inventory }),
+    );
+    render(<GuideReader guide={guide} />);
+    await user.click(screen.getByRole("button", { name: "File src/a.ts" }));
+    expect(
+      screen.getByRole("group", { name: "Guide evidence src/a.ts" })
+        .textContent,
+    ).toContain("new mode 100755");
+    await user.click(
+      screen.getByRole("button", { name: "File assets/icon.png" }),
+    );
+    expect(
+      screen.getByRole("group", { name: "Guide evidence assets/icon.png" })
+        .textContent,
+    ).toContain("Binary files a/assets/icon.png and b/assets/icon.png differ");
+  });
+  it.each([
+    {
+      name: "rename",
+      path: "src/new.ts",
+      block:
+        "diff --git a/src/old.ts b/src/new.ts\nsimilarity index 100%\nrename from src/old.ts\nrename to src/new.ts\n",
+      expected: "rename from src/old.ts",
+    },
+    {
+      name: "omitted",
+      path: "src/large.ts",
+      block: "diff --git a/src/large.ts b/src/large.ts\ndiff too large\n",
+      expected: "diff too large",
+    },
+    {
+      name: "submodule",
+      path: "vendor/module",
+      block:
+        "diff --git a/vendor/module b/vendor/module\nSubmodule vendor/module abc123..def456\n",
+      expected: "Submodule vendor/module abc123..def456",
+    },
+  ])("shows retained $name evidence", async ({ path, block, expected }) => {
+    const user = userEvent.setup();
+    const guide = must(
+      retainGuide(
+        {
+          groups: [
+            {
+              title: "Evidence",
+              explanation: "Stored change.",
+              files: [{ fileId: "f1", relevance: "Supports the change." }],
+            },
+          ],
+        },
+        { patchText: block, inventory: must(buildGuideInventory(block)) },
+      ),
+    );
+    render(<GuideReader guide={guide} />);
+    await user.click(screen.getByRole("button", { name: `File ${path}` }));
+    expect(
+      screen.getByRole("group", { name: `Guide evidence ${path}` }).textContent,
+    ).toContain(expected);
   });
 });

@@ -133,7 +133,12 @@ export function buildInsightReaders({
     selectedInsight === "guide" &&
     workbench.insights.guide?.retained !== undefined
   )
-    return <GuideReader guide={workbench.insights.guide.retained.value} />;
+    return (
+      <GuideReader
+        key={`${workbench.session.id}:${workbench.insights.guide.retained.runId}`}
+        guide={workbench.insights.guide.retained.value}
+      />
+    );
   const analysisSummaryScope = {
     baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
     headShort: workbench.session.key.headSha.slice(0, 7),

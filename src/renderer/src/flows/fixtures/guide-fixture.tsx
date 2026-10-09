@@ -4,12 +4,22 @@ import { GuideReader } from "#src/renderer/src/components/guide-reader";
 import { InsightOutdated } from "#src/renderer/src/components/insight-panels";
 import { Button } from "#src/renderer/src/components/ui/button";
 
+const supportingLines = Array.from(
+  { length: 80 },
+  (_, index) => `+snapshotSupport${index + 1}()`,
+).join("\n");
 const patchText = `diff --git a/src/recovery.ts b/src/recovery.ts
+old mode 100644
+new mode 100755
 --- a/src/recovery.ts
 +++ b/src/recovery.ts
 @@ -1 +1 @@
 -old
 +restorePending()
+@@ -20 +20,81 @@
+-oldCleanup()
++snapshotCleanup()
+${supportingLines}
 diff --git a/tests/recovery.test.ts b/tests/recovery.test.ts
 new file mode 100644
 --- /dev/null
@@ -20,6 +30,12 @@ diff --git a/src/old.ts b/src/new.ts
 similarity index 100%
 rename from src/old.ts
 rename to src/new.ts
+diff --git a/src/deleted.ts b/src/deleted.ts
+deleted file mode 100644
+--- a/src/deleted.ts
++++ /dev/null
+@@ -1 +0,0 @@
+-obsoleteSnapshot()
 diff --git a/assets/icon.png b/assets/icon.png
 Binary files a/assets/icon.png and b/assets/icon.png differ
 diff --git a/scripts/check.sh b/scripts/check.sh
@@ -114,7 +130,7 @@ export function GuideFixture(): React.JSX.Element {
           Current revision · retained snapshot verified
         </p>
       )}
-      <GuideReader guide={guide} />
+      <GuideReader key={generation} guide={guide} />
     </div>
   );
 }
