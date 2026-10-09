@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { resolveWalkthroughTimeoutMs } from "./child-invocation";
 import { join } from "node:path";
 
 import { providerEnvironmentNames } from "#src/adapters/pi/pi-provider-catalog";
@@ -116,6 +118,32 @@ export class PiInsightChildInvoker implements InsightInvoker {
     const reasoning = input.reasoning;
     if (reasoning === "minimal" || reasoning === "xhigh")
       return err({ reason: "execution_failed" });
+    if (input.type === "guide") {
+      if (input.guide === undefined) return err({ reason: "execution_failed" });
+      const timeout = await resolveWalkthroughTimeoutMs(
+        { contextPath: input.contextPath, patchPath: input.patchPath },
+        options.signal,
+      );
+      return this.runChild(
+        {
+          type: "guide",
+          input: {
+            profileId: input.profileId,
+            sessionId: input.sessionId,
+            contextPath: input.contextPath,
+            patchPath: input.patchPath,
+            model: input.model,
+            reasoning,
+            language: input.language,
+            expectedPromptHash: createHash("sha256")
+              .update(input.guide.prompt)
+              .digest("hex"),
+          },
+        },
+        timeout,
+        options.signal,
+      );
+    }
     if (input.type === "walkthrough")
       return invokeWalkthroughWithResolvedTimeout(
         this,

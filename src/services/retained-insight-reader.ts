@@ -1,3 +1,4 @@
+import { parseRetainedGuide, type RetainedGuide } from "#src/domain/guide";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
@@ -32,6 +33,7 @@ import { readObjectField } from "./read-object-field";
 import type { WorkbenchProjectionFailure } from "./review-workbench-projection";
 
 type StoredInsightRecords = {
+  readonly guide?: InsightRecord<RetainedInsight<RetainedGuide>>;
   readonly analysis?: InsightRecord<RetainedInsight<ReviewResult>>;
   readonly walkthrough?: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
   readonly brief?: InsightRecord<RetainedInsight<NormalizedBrief>>;
@@ -57,7 +59,7 @@ export class RetainedInsightReader {
     // A retained Walkthrough belongs to the Session that produced it. Never
     // validate it against the currently represented Session's patch: Refresh
     // intentionally changes that artifact while old reading evidence remains.
-    const [analysis, walkthrough, brief] = await Promise.all([
+    const [analysis, walkthrough, guide, brief] = await Promise.all([
       this.insights.loadTyped(
         session.key.profileId,
         createReviewId(session.key),
@@ -70,6 +72,12 @@ export class RetainedInsightReader {
         (input) => parseReviewResult(input),
       ),
       this.loadWalkthroughRecord(session),
+      this.insights.loadTyped(
+        session.key.profileId,
+        createReviewId(session.key),
+        "guide",
+        parseRetainedGuide,
+      ),
       // A retained Brief already carries its resolved citation labels, so it
       // needs no patch bytes to read back -- only its own stored shape.
       this.insights.loadTyped(
@@ -99,6 +107,12 @@ export class RetainedInsightReader {
       brief.error.reason !== "invalid_stored_value"
     )
       return err({ _tag: "SessionStorageUnavailable" });
+    if (
+      guide._tag === "err" &&
+      guide.error.reason !== "not_found" &&
+      guide.error.reason !== "invalid_stored_value"
+    )
+      return err({ _tag: "SessionStorageUnavailable" });
     const analysisArtifact =
       analysis._tag === "ok" && analysis.value.retained !== undefined
         ? await this.readInsightScope(
@@ -114,6 +128,7 @@ export class RetainedInsightReader {
           )
         : undefined;
     const records: StoredInsightRecords = definedProps({
+      guide: guide._tag === "ok" ? guide.value : undefined,
       analysis: analysis._tag === "ok" ? analysis.value : undefined,
       walkthrough:
         walkthrough._tag === "ok" ? walkthrough.value.record : undefined,

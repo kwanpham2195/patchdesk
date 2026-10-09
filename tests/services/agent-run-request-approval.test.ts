@@ -7,7 +7,7 @@ import {
   parseLocalBranchName,
   type AgentRunRequestId,
 } from "#src/domain/ids";
-import type { InsightType } from "#src/domain/insight-record";
+import type { AgentInsightType } from "#src/domain/insight-record";
 import { err, ok } from "#src/domain/result";
 import type { LogEntryInput } from "#src/domain/log-entry";
 import { registerInsightRoutes } from "#src/main/routes/insight-routes";
@@ -58,7 +58,7 @@ async function approvalFixture(
       createRequestId: () =>
         createAgentRunRequestId(`request-${String((issued += 1))}`),
     });
-  const ask = async (type: InsightType): Promise<AgentRunRequestId> => {
+  const ask = async (type: AgentInsightType): Promise<AgentRunRequestId> => {
     const requested = must(
       await service().request({
         profileId,
@@ -78,7 +78,7 @@ async function approvalFixture(
     ask,
     stored,
     requests: service(reviews?.(value.reviews)),
-    runInput: (type: InsightType) => ({
+    runInput: (type: AgentInsightType) => ({
       profileId,
       reviewId: value.review.id,
       type,

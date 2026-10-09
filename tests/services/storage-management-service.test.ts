@@ -206,6 +206,7 @@ async function fixture(
           analysis: options.analysis,
           walkthrough: options.walkthrough,
           brief: options.brief,
+          guide: undefined,
         }[type];
         return value === undefined ? err({ reason: "not_found" }) : ok(value);
       },

@@ -132,11 +132,13 @@ export class InsightRecovery {
     const recoveryTargets = listings.flatMap(({ profileId, listing }) =>
       listing._tag === "ok"
         ? listing.value.reviews.flatMap((review) =>
-            (["analysis", "walkthrough", "brief"] as const).map((type) => ({
-              profileId,
-              review,
-              type,
-            })),
+            (["analysis", "walkthrough", "brief", "guide"] as const).map(
+              (type) => ({
+                profileId,
+                review,
+                type,
+              }),
+            ),
           )
         : [],
     );

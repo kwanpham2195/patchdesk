@@ -111,6 +111,7 @@ export function projection(
     },
     commits: [],
     insights: {
+      guide: { status: "not_generated" },
       analysis: { status: "not_generated" },
       walkthrough: { status: "not_generated" },
     },
@@ -266,6 +267,7 @@ export function withAnalysis(
   // this is fixture data, not a runtime-decoded value.
   return projection({
     insights: {
+      guide: { status: "not_generated" },
       analysis: {
         status: "current",
         artifactStatus: "verified",
@@ -342,6 +344,7 @@ export function withWalkthrough(): WorkbenchResponse {
   };
   return projection({
     insights: {
+      guide: { status: "not_generated" },
       analysis: { status: "not_generated" },
       walkthrough: {
         status: "current",

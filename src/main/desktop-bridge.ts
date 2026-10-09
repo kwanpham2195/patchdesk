@@ -123,6 +123,8 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/detect-updates",
   "POST /v1/reviews/insights/analysis/run",
   "POST /v1/reviews/insights/walkthrough/run",
+  "POST /v1/reviews/insights/guide/run",
+  "POST /v1/reviews/insights/guide/cancel",
   "POST /v1/reviews/insights/brief/run",
   "POST /v1/reviews/insights/agent-requests/decline",
   "POST /v1/reviews/insights/analysis/cancel",

@@ -126,5 +126,5 @@ export type ReviewWorkbenchInitialState = {
   readonly selectedCommitSha?: string;
   readonly overviewOpen?: boolean;
   readonly draftExpanded?: boolean;
-  readonly insightDetail?: "analysis" | "walkthrough";
+  readonly insightDetail?: "analysis" | "walkthrough" | "guide";
 };

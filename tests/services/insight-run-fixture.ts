@@ -126,6 +126,7 @@ export function contextPackFixture(
 }
 
 type FixtureOptions = {
+  insightStore?: (paths: PatchdeskPaths) => InsightStore;
   operations?: ReviewOperationCoordinator;
   recordDiagnostics?: boolean;
   reach?: BriefReachComputer;
@@ -144,6 +145,7 @@ type FixtureOptions = {
 export async function fixture(
   invoker: InsightInvoker,
   {
+    insightStore,
     operations = new ReviewOperationCoordinator(),
     recordDiagnostics = false,
     reach,
@@ -159,7 +161,8 @@ export async function fixture(
   const paths = PatchdeskPaths.forTest(root);
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
-  const insights = new InsightStore(paths);
+  const insights =
+    insightStore === undefined ? new InsightStore(paths) : insightStore(paths);
   const diagnostics = recordDiagnostics
     ? new ReviewDiagnosticService(paths, () => now)
     : undefined;
@@ -249,7 +252,7 @@ export async function fixture(
         return ok({ models: [{ id: "model", label: "Model" }] });
       },
     },
-    { analysis: invoker, walkthrough: invoker, brief: invoker },
+    { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
     operations,
     contextPack.service,
     () => now,

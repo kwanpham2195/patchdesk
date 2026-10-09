@@ -199,7 +199,7 @@ export class ReviewRetention {
       this.dependencies.localApplyOperations.load(profileId, reviewId),
       this.dependencies.sessions.listSessions(profileId),
       Promise.all(
-        (["analysis", "walkthrough", "brief"] as const).map((type) =>
+        (["analysis", "walkthrough", "brief", "guide"] as const).map((type) =>
           this.dependencies.insights.load(profileId, reviewId, type),
         ),
       ),
@@ -428,7 +428,7 @@ export class ReviewRetention {
     reviewId: ReviewId,
   ): Promise<ReadonlySet<ReviewSessionId> | undefined> {
     const records = await Promise.all(
-      (["analysis", "walkthrough", "brief"] as const).map((type) =>
+      (["analysis", "walkthrough", "brief", "guide"] as const).map((type) =>
         this.dependencies.insights.load(profileId, reviewId, type),
       ),
     );

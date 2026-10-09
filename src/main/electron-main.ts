@@ -479,7 +479,7 @@ function createInsightCoordinator(
     new InsightStore(paths),
     paths,
     modelCatalog,
-    { analysis: invoker, walkthrough: invoker, brief: invoker },
+    { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
     operations,
     new ReviewContextPackService({
       profiles: new ProfileStore(paths),

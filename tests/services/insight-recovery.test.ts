@@ -159,6 +159,7 @@ describe("InsightRecovery.recoverAll", () => {
       { reviewId: readable.id, type: "analysis" },
       { reviewId: readable.id, type: "walkthrough" },
       { reviewId: readable.id, type: "brief" },
+      { reviewId: readable.id, type: "guide" },
     ]);
   });
 
@@ -170,7 +171,7 @@ describe("InsightRecovery.recoverAll", () => {
     await value.recovery.recoverAll();
 
     expect(value.recorded).toEqual([]);
-    expect(value.mutated).toHaveLength(3);
+    expect(value.mutated).toHaveLength(4);
   });
 
   it("reports a failed listing and recovers nothing in that profile", async () => {

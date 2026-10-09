@@ -442,6 +442,7 @@ export function canonicalWorkbenchModel(
         },
       },
       walkthrough: { status: "not_generated" },
+      guide: { status: "not_generated" },
     },
     conversation,
     checks: data.checks,

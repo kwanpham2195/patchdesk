@@ -54,6 +54,9 @@ const localDraftStatuses = {
 } satisfies Record<LocalDraftFailure["reason"], number>;
 
 const insightStatuses = {
+  guide_input_too_large: 400,
+  guide_patch_empty: 400,
+  guide_artifact_unreadable: 503,
   invalid_request: 400,
   model_unavailable: 400,
   ownership_mismatch: 403,

@@ -6,7 +6,7 @@ import {
 } from "./brief-flow";
 import type { InsightLanguage } from "./insight-provider";
 
-export type GuidedInsightType = "analysis" | "walkthrough" | "brief";
+export type GuidedInsightType = "analysis" | "walkthrough" | "brief" | "guide";
 
 const INSIGHT_LANGUAGE_GUIDANCE = [
   "Use short, direct sentences in the active voice. Put one main idea in each sentence.",
@@ -33,6 +33,7 @@ export function insightOutputGuidance(
   language: InsightLanguage,
 ): string {
   const languageRule = `Write human-readable titles and explanatory prose in the language identified by the BCP 47 tag "${language}". ${INSIGHT_LANGUAGE_GUIDANCE}`;
+  if (type === "guide") return languageRule;
   if (type === "analysis") {
     return [
       languageRule,

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { prepareGuidePrompt, type PreparedGuide } from "./guide-operation";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -105,6 +107,7 @@ export type InsightInvocationInput = {
   readonly model: string;
   readonly reasoning: InsightReasoning;
   readonly language: InsightLanguage;
+  readonly guide?: PreparedGuide;
 };
 /**
  * Why one Insight invocation failed, in the app's own vocabulary. The set is
@@ -162,7 +165,7 @@ export type InsightCoordinatorInput = {
 export const insightRunRequestSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
-  type: picklist(["analysis", "walkthrough", "brief"]),
+  type: picklist(["analysis", "walkthrough", "brief", "guide"]),
   provider: picklist(INSIGHT_PROVIDERS),
   model: pipe(string(), minLength(1), maxLength(200)),
   reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]),
@@ -171,6 +174,9 @@ export const insightRunRequestSchema = strictObject({
   requestId: optional(pipe(string(), minLength(1))),
 });
 export type InsightCoordinatorFailure =
+  | "guide_input_too_large"
+  | "guide_patch_empty"
+  | "guide_artifact_unreadable"
   | "invalid_request"
   | "not_found"
   | "ownership_mismatch"
@@ -204,6 +210,9 @@ export type InsightStartHooks = {
 
 /** How each Insight refusal is classified, wherever it surfaces (ADR 0052 "Error model"). */
 export const insightFailureKinds = {
+  guide_input_too_large: "invalid",
+  guide_patch_empty: "invalid",
+  guide_artifact_unreadable: "unavailable",
   invalid_request: "invalid",
   model_unavailable: "invalid",
   ownership_mismatch: "forbidden",
@@ -420,6 +429,31 @@ export class InsightRunCoordinator {
       headSha: session.value.key.headSha,
       patchHash: hash.value,
     };
+    const guide =
+      input.type === "guide"
+        ? await prepareGuidePrompt({
+            contextPath: this.paths.preparedContextFile(
+              input.profileId,
+              session.value.id,
+            ),
+            patchPath: session.value.patchPath,
+            language: input.language,
+          })
+        : undefined;
+    if (guide?._tag === "err")
+      return err(
+        guide.error.reason === "patch_not_indexable"
+          ? "guide_patch_empty"
+          : guide.error.reason === "artifact_unreadable"
+            ? "guide_artifact_unreadable"
+            : "guide_input_too_large",
+      );
+    if (
+      guide?._tag === "ok" &&
+      createHash("sha256").update(guide.value.patchText).digest("hex") !==
+        hash.value
+    )
+      return err("stale_request");
     const started = await this.insights.mutate({
       profileId: input.profileId,
       reviewId: input.reviewId,
@@ -461,6 +495,7 @@ export class InsightRunCoordinator {
       sessionId: session.value.id,
       runId: runId.value,
       type: input.type,
+      ...(guide?._tag === "ok" && { guide: guide.value }),
       expectedHeadSha: session.value.key.headSha,
       contextPath: this.paths.preparedContextFile(
         input.profileId,

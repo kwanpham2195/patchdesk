@@ -901,6 +901,7 @@ function projection(
     },
     commits: [],
     insights: {
+      guide: { status: "not_generated" },
       analysis: { status: "not_generated" },
       walkthrough: { status: "not_generated" },
     },

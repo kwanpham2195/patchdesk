@@ -14,6 +14,7 @@ export const INSIGHT_PREFERENCE_TYPES = [
   "analysis",
   "walkthrough",
   "brief",
+  "guide",
 ] as const;
 export type InsightPreferenceType = (typeof INSIGHT_PREFERENCE_TYPES)[number];
 export type InsightRunPreference = {

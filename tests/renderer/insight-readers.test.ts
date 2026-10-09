@@ -6,6 +6,7 @@ import { patchHash, projection, sha } from "./review-workbench-fixtures";
 
 const ready = projection({
   insights: {
+    guide: { status: "not_generated" },
     analysis: { status: "not_generated" },
     walkthrough: { status: "current", artifactStatus: "verified" },
   },

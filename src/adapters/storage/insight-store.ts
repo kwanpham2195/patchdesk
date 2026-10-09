@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { parseRetainedGuide } from "#src/domain/guide";
 import * as v from "valibot";
 
 import {
@@ -55,7 +57,7 @@ const reasoningSchema = v.picklist([
 const providerSchema = v.picklist(INSIGHT_PROVIDERS);
 const activeRunFields = {
   id: v.pipe(v.string(), v.minLength(1)),
-  type: v.picklist(["analysis", "walkthrough", "brief"]),
+  type: v.picklist(["analysis", "walkthrough", "brief", "guide"]),
   revision: revisionSchema,
   token: v.pipe(v.number(), v.integer(), v.minValue(1)),
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
@@ -107,7 +109,7 @@ const analysisVerificationSchema = v.strictObject({
 });
 const recordFields = {
   reviewId: v.pipe(v.string(), v.minLength(1)),
-  type: v.picklist(["analysis", "walkthrough", "brief"]),
+  type: v.picklist(["analysis", "walkthrough", "brief", "guide"]),
   nextToken: v.pipe(v.number(), v.integer(), v.minValue(1)),
   retained: v.optional(v.unknown()),
   dismissals: v.optional(v.array(dismissalSchema)),
@@ -184,6 +186,15 @@ export class InsightStore {
         }),
         updatedAt: loaded.value.updatedAt,
       });
+    }
+    if (type === "guide") {
+      const guide = parseRetainedGuide(stored.value);
+      if (
+        guide._tag === "err" ||
+        createHash("sha256").update(guide.value.patchText).digest("hex") !==
+          stored.revision.patchHash
+      )
+        return invalidRead();
     }
     const value = parseRetainedValue(stored.value);
     return value._tag === "err"

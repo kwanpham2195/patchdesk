@@ -55,7 +55,7 @@ export type DesktopNotificationClick =
   | {
       readonly kind: "review";
       readonly reviewId: string;
-      readonly insightType?: "analysis" | "walkthrough" | "brief";
+      readonly insightType?: "analysis" | "walkthrough" | "brief" | "guide";
     }
   | {
       readonly kind: "pullRequest";

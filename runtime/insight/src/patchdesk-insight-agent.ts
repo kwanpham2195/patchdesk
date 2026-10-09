@@ -1,3 +1,9 @@
+import {
+  MAX_GUIDE_PROMPT_BYTES,
+  GUIDE_RUNTIME_SUBMISSION_SUFFIX,
+  guidePromptFitsTransport,
+} from "#app/services/guide-operation";
+import { guideModelOutputSchema } from "#app/domain/guide";
 import { readFile } from "node:fs/promises";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -113,6 +119,22 @@ export const productionBriefInvocationSchema = v.strictObject({
   language: languageSchema,
 });
 
+/** Guide generation uses the shared model schema and canonical artifact paths. */
+export const guideResultSchema = guideModelOutputSchema;
+export const guideInvocationSchema = v.strictObject({
+  ...walkthroughInvocationSchema.entries,
+  prompt: v.pipe(
+    v.string(),
+    v.minLength(1),
+    v.maxLength(MAX_GUIDE_PROMPT_BYTES),
+  ),
+});
+export type GuideInvocation = v.InferOutput<typeof guideInvocationSchema>;
+export const productionGuideInvocationSchema = v.strictObject({
+  ...productionWalkthroughInvocationSchema.entries,
+  expectedPromptHash: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+});
+
 export type AnalysisInvocation = v.InferOutput<typeof analysisInvocationSchema>;
 export type WalkthroughInvocation = v.InferOutput<
   typeof walkthroughInvocationSchema
@@ -139,7 +161,8 @@ export type InspectorOperations = {
 type SubmittedInsightResult =
   | v.InferOutput<typeof modelReviewResultSchema>
   | v.InferOutput<typeof walkthroughResultSchema>
-  | v.InferOutput<typeof briefResultSchema>;
+  | v.InferOutput<typeof briefResultSchema>
+  | v.InferOutput<typeof guideResultSchema>;
 
 /** The one submission each invocation is allowed to make, and what it carried. */
 type SubmissionState = {
@@ -218,7 +241,8 @@ export async function loadPatchdeskReviewSkill(
 type PatchdeskResultSchema =
   | typeof modelReviewResultSchema
   | typeof walkthroughResultSchema
-  | typeof briefResultSchema;
+  | typeof briefResultSchema
+  | typeof guideResultSchema;
 
 /**
  * Projects one Valibot schema onto the JSON Schema Pi validates tool arguments
@@ -482,6 +506,30 @@ export function createWalkthroughAgent(
       model: input.model,
       thinkingLevel: input.reasoning,
       tools: [createResultTool(walkthroughResultSchema, state)],
+    },
+    state: executionState(state),
+    capabilities: {
+      customTools: ["submit_patchdesk_result"],
+      usesSkill: false,
+      usesSandbox: false,
+      usesMcp: false,
+      usesSubagent: false,
+    },
+  };
+}
+
+/** Creates an invocation-scoped Guide agent with only result submission. */
+export function createGuideAgent(input: GuideInvocation): CreatedInsightAgent {
+  const systemPrompt = input.prompt + GUIDE_RUNTIME_SUBMISSION_SUFFIX;
+  if (!guidePromptFitsTransport(input.prompt))
+    throw new Error("prompt_too_large");
+  const state: SubmissionState = { submitted: false };
+  return {
+    spec: {
+      systemPrompt,
+      model: input.model,
+      thinkingLevel: input.reasoning,
+      tools: [createResultTool(guideResultSchema, state)],
     },
     state: executionState(state),
     capabilities: {

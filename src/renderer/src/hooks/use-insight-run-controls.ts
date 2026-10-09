@@ -138,6 +138,14 @@ export function useInsightRunControls({
     onWorkbenchReplace,
     onInsightPatch,
   });
+  const guideRun = useInsightRun({
+    profileId,
+    reviewId,
+    type: "guide",
+    activeRun: workbench.insights.guide.activeRun,
+    onWorkbenchReplace,
+    onInsightPatch,
+  });
   const briefRun = useInsightRun({
     profileId,
     reviewId,
@@ -277,6 +285,7 @@ export function useInsightRunControls({
     analysis: analysisRun,
     walkthrough: walkthroughRun,
     brief: briefRun,
+    guide: guideRun,
   } satisfies Record<InsightRunType, InsightRunController>;
   const [runDialogRequestId, setRunDialogRequestId] = useState<string>();
   /**
@@ -346,6 +355,7 @@ export function useInsightRunControls({
       analysis: workbench.insights.analysis.status,
       walkthrough: workbench.insights.walkthrough.status,
       brief: workbench.insights.brief?.status ?? "not_generated",
+      guide: workbench.insights.guide.status,
     },
     agentRunRequests: workbench.agentRunRequests,
     loadAccountModels,

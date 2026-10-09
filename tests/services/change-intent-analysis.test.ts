@@ -71,7 +71,7 @@ async function intentReview(
     harness.insights,
     harness.paths,
     { get: async () => ok({ models: [{ id: "model", label: "Model" }] }) },
-    { analysis: invoker, walkthrough: invoker, brief: invoker },
+    { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
     harness.coordinator,
     new ReviewContextPackService({
       profiles: new ProfileStore(harness.paths),
@@ -290,13 +290,9 @@ describe("Change intent in an Analysis run", () => {
     await review.run();
 
     const workbench = parseWorkbenchResponse(
-      JSON.parse(
-        JSON.stringify(
-          value(
-            await review.harness.opening.refresh(profileId, review.reviewId),
-          ),
-        ),
-      ),
+      await Response.json(
+        value(await review.harness.opening.refresh(profileId, review.reviewId)),
+      ).json(),
     );
 
     const digest = sha256("Reject a negative total.");

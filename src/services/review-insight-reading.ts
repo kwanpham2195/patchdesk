@@ -16,7 +16,7 @@ import type {
 } from "#src/domain/ids";
 import type {
   InsightFailureCategory,
-  InsightType,
+  AgentInsightType,
 } from "#src/domain/insight-record";
 import { findingDraftStates } from "#src/domain/local-draft";
 import type { NarrativeWalkthrough } from "#src/domain/narrative-walkthrough";
@@ -78,7 +78,7 @@ type RetainedInsightReading = {
 
 /** One Insight as `get_insight` answers it (ADR 0052 "Tools, v1"). */
 export type InsightReading = ReviewSessionDescription & {
-  readonly type: InsightType;
+  readonly type: AgentInsightType;
   readonly status:
     | "none"
     | "awaiting_approval"
@@ -103,7 +103,9 @@ type InsightStatusReading = Pick<InsightReading, "status" | "requestId">;
 export type InsightStatusesReading = {
   readonly review: Review<LocalReviewSource>;
   readonly session: ReviewSessionDescription;
-  readonly insights: { readonly [Type in InsightType]: InsightStatusReading };
+  readonly insights: {
+    readonly [Type in AgentInsightType]: InsightStatusReading;
+  };
 };
 
 export type InsightReadingFailure =
@@ -127,7 +129,7 @@ export class ReviewInsightReader {
   async read(request: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
-    readonly type: InsightType;
+    readonly type: AgentInsightType;
   }): Promise<Result<InsightReading, InsightReadingFailure>> {
     const loaded = await this.load(request);
     if (loaded._tag === "err") return loaded;
@@ -225,7 +227,7 @@ export class ReviewInsightReader {
 function readInsightStatus(
   review: Review<LocalReviewSource>,
   projection: ReviewWorkbenchProjection,
-  type: InsightType,
+  type: AgentInsightType,
 ): InsightStatusReading {
   const insight = projection.insights[type];
   const agentRequest = findAgentRunRequest(
@@ -251,7 +253,7 @@ function readInsightStatus(
  */
 function answersRequest(
   request: AgentRunRequest | undefined,
-  insight: ReviewWorkbenchProjection["insights"][InsightType],
+  insight: ReviewWorkbenchProjection["insights"][AgentInsightType],
   sessionId: ReviewSessionId,
 ): request is AgentRunRequest & {
   readonly status: "awaiting_approval" | "declined";
@@ -268,7 +270,7 @@ function answersRequest(
 
 function readRetained(
   projection: ReviewWorkbenchProjection,
-  type: InsightType,
+  type: AgentInsightType,
 ): RetainedInsightReading | undefined {
   const insight = projection.insights[type];
   const retained = insight.retained;

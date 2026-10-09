@@ -48,6 +48,7 @@ export type InsightProjection<T> = {
     readonly sessionId: ReviewSessionId;
     readonly headSha: GitSha;
     readonly generatedAt: IsoTimestamp;
+    readonly freshness?: "current" | "outdated";
     /** The provider, model, and reasoning this Insight was actually produced with. */
     readonly provenance: InsightProvenance;
     /** The Change intent an Analysis ran against (#467). */
@@ -98,6 +99,17 @@ export function projectStoredInsight<T>(
           sessionId: record.retained.revision.sessionId,
           headSha: record.retained.revision.headSha,
           generatedAt: record.retained.generatedAt,
+          ...(record.type === "guide" && {
+            freshness:
+              patchHash !== undefined &&
+              sameInsightRevision(record.retained.revision, {
+                sessionId: session.id,
+                headSha: session.key.headSha,
+                patchHash,
+              })
+                ? ("current" as const)
+                : ("outdated" as const),
+          }),
           provenance: record.retained.provenance,
           ...(record.retained.changeIntent !== undefined && {
             changeIntent: record.retained.changeIntent,

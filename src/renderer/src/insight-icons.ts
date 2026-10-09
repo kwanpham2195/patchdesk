@@ -7,4 +7,5 @@ export const INSIGHT_ICONS = {
   brief: FileText,
   analysis: Sparkles,
   walkthrough: BookOpen,
+  guide: BookOpen,
 } as const satisfies Record<InsightRunDialogType, LucideIcon>;

@@ -10,6 +10,9 @@ import {
   MAX_WALKTHROUGH_PROMPT_BYTES,
   type CodexRunInput,
 } from "#src/adapters/codex/codex-app-server-client";
+import { prepareGuidePrompt } from "#src/services/guide-operation";
+import type { InsightInvocationInput } from "#src/services/insight-run-coordinator";
+import type { AccountInsightProvider } from "#src/domain/insight-provider";
 import { ok } from "#src/domain/result";
 
 // Matches PiInsightChildInvoker's Analysis run bound.
@@ -27,6 +30,7 @@ afterEach(async () =>
 
 async function fixture(
   options: {
+    readonly provider?: AccountInsightProvider;
     readonly type?: "analysis" | "walkthrough" | "brief";
     readonly language?: "en" | "vi";
     readonly runValue?: Readonly<Record<string, ReadonlyArray<never> | null>>;
@@ -77,7 +81,7 @@ async function fixture(
     return ok(runValue);
   };
   const invoker = new AccountInsightInvoker(
-    "codex-cli-account",
+    options.provider ?? "codex-cli-account",
     paths,
     () => ({ run }),
     "/usr/bin/codex",
@@ -86,26 +90,56 @@ async function fixture(
   // SAFETY: AccountInsightInvoker.invoke only compares/forwards these fields (realpath checks and
   // string equality); it never calls their branded parsers, so plain strings exercise the same
   // code paths as real InsightInvocationInput values.
-  const input = {
+  const input: InsightInvocationInput = {
     profileId,
-    reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+    reviewId:
+      "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa" as never,
     sessionId,
-    runId: "insight-analysis-1-aaaaaaaaaaaa-review",
+    runId: "insight-analysis-1-aaaaaaaaaaaa-review" as never,
     type: options.type ?? "analysis",
-    expectedHeadSha: "a".repeat(40),
+    expectedHeadSha: "a".repeat(40) as never,
     contextPath: context,
     reviewInputPath: reviewInput,
     patchPath: patch,
     worktreePath: worktree,
-    provider: "codex-cli-account",
+    provider: options.provider ?? "codex-cli-account",
     model: "codex",
     reasoning: "medium",
     language: options.language ?? "en",
-  } as never;
+  };
   return { invoker, input, calls, worktree, reviewInput, context, patch };
 }
 
 describe("AccountInsightInvoker", () => {
+  it.each(["codex-cli-account", "pi-cli-account"] as const)(
+    "uses captured complete Guide evidence on %s without unavailable tools",
+    async (provider) => {
+      const value = await fixture({ provider, language: "vi" });
+      const prepared = await prepareGuidePrompt({
+        contextPath: value.context,
+        patchPath: value.patch,
+        language: "vi",
+      });
+      if (prepared._tag === "err") throw new Error("Guide preparation failed");
+      await writeFile(value.context, "Changed after capture");
+      await value.invoker.invoke(
+        { ...value.input, type: "guide", guide: prepared.value },
+        { signal: new AbortController().signal },
+      );
+      expect(value.calls).toHaveLength(1);
+      expect(value.calls[0]?.[0].prompt).toBe(prepared.value.prompt);
+      expect(value.calls[0]?.[0].prompt).not.toContain(
+        "submit_patchdesk_result",
+      );
+      expect(value.calls[0]?.[0].prompt).not.toContain("Changed after capture");
+      expect(value.calls[0]?.[0].outputSchema).toMatchObject({
+        type: "object",
+        additionalProperties: false,
+        required: ["groups"],
+      });
+    },
+  );
+
   it("uses only the real app-owned represented worktree, expected head, and prepared review input", async () => {
     const value = await fixture();
     await expect(
