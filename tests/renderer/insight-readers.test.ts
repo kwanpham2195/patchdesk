@@ -13,6 +13,7 @@ import {
 } from "#src/renderer/src/components/insight-readers";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import { patchHash, projection, sha } from "./review-workbench-fixtures";
+import { guideReviewDisabledReason } from "#src/renderer/src/components/guide-review-controls";
 
 afterEach(cleanup);
 
@@ -93,6 +94,23 @@ describe("Guide production composition", () => {
     });
     const controls = {
       selectedInsight: "guide",
+      walkthroughDiffAuthoring: {
+        localCommentAuthoring: { enabled: true, onSave: async () => undefined },
+        pendingReviewDrafts: {
+          writes: [],
+          updateWrites: () => undefined,
+          orphanedBody: undefined,
+          setOrphanedBody: () => undefined,
+          fullPatch: oldPatch,
+        },
+        annotations: [],
+        conversationActions: {},
+        viewedFiles: {
+          paths: new Set<string>(),
+          setPaths: () => undefined,
+          saveFailed: false,
+        },
+      },
       dismissFinding: async () => undefined,
       restoreFinding: async () => "restored",
       analysisVerification: {
@@ -120,6 +138,11 @@ describe("Guide production composition", () => {
         patchFiles: parseUnifiedPatch(oldPatch),
       }),
     );
+    expect(
+      screen
+        .getByRole("button", { name: "Viewed src/a.ts" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "File src/a.ts" }));
@@ -166,6 +189,149 @@ describe("Guide production composition", () => {
     expect(evidence.textContent).toContain("retainedRecovery()");
     expect(evidence.textContent).toContain("new mode 100755");
     expect(evidence.textContent).not.toContain("currentReplacement()");
+    expect(
+      screen
+        .getByRole("button", { name: "Viewed src/a.ts" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(screen.getAllByRole("note").length).toBeGreaterThan(0);
+  });
+});
+
+describe("Guide revision eligibility", () => {
+  const patch = ready.fullPatch ?? "";
+  const guide = must(
+    retainGuide(
+      {
+        groups: [
+          {
+            title: "Review",
+            explanation: "Current change.",
+            files: [{ fileId: "f1", relevance: "Changed file." }],
+          },
+        ],
+      },
+      { patchText: patch, inventory: must(buildGuideInventory(patch)) },
+    ),
+  );
+  const retained = {
+    runId: "guide",
+    sessionId: ready.session.id,
+    headSha: ready.revision.reviewedHeadSha,
+    generatedAt: "2026-10-08T00:00:00.000Z",
+    freshness: "current" as const,
+    value: guide,
+  };
+  const current: WorkbenchResponse = {
+    ...ready,
+    insights: {
+      ...ready.insights,
+      guide: { status: "current", artifactStatus: "verified", retained },
+    },
+  };
+  it("allows current evidence during a replacement run", () => {
+    expect(
+      guideReviewDisabledReason({
+        ...current,
+        insights: {
+          ...current.insights,
+          guide: { ...current.insights.guide, status: "running" },
+        },
+      }),
+    ).toBeUndefined();
+  });
+  it.each([
+    [
+      "retained freshness",
+      {
+        ...current,
+        insights: {
+          ...current.insights,
+          guide: {
+            ...current.insights.guide,
+            retained: { ...retained, freshness: "outdated" as const },
+          },
+        },
+      },
+    ],
+    [
+      "session identity",
+      {
+        ...current,
+        insights: {
+          ...current.insights,
+          guide: {
+            ...current.insights.guide,
+            retained: { ...retained, sessionId: "older-session" },
+          },
+        },
+      },
+    ],
+    [
+      "head identity",
+      {
+        ...current,
+        insights: {
+          ...current.insights,
+          guide: {
+            ...current.insights.guide,
+            retained: { ...retained, headSha: "c".repeat(40) },
+          },
+        },
+      },
+    ],
+    ["snapshot identity", { ...current, fullPatch: patch + "\n" }],
+    [
+      "artifact verification",
+      {
+        ...current,
+        insights: {
+          ...current.insights,
+          guide: {
+            ...current.insights.guide,
+            artifactStatus: "mismatch" as const,
+          },
+        },
+      },
+    ],
+    [
+      "terminal Review",
+      { ...current, review: { ...current.review, status: "merged" as const } },
+    ],
+    [
+      "GitHub freshness",
+      {
+        ...current,
+        revision: {
+          ...current.revision,
+          freshness: "updates_available" as const,
+        },
+      },
+    ],
+  ])(
+    "refuses actions when %s differs even with injected workbench controls",
+    (_, workbench) => {
+      expect(guideReviewDisabledReason(workbench)).toBeDefined();
+    },
+  );
+  it("preserves the session-only local note gate when remote freshness is unavailable", () => {
+    expect(
+      guideReviewDisabledReason({
+        ...current,
+        session: {
+          ...current.session,
+          key: {
+            ...current.session.key,
+            source: {
+              kind: "local_branch",
+              branch: "fixture",
+              baseRef: "main",
+            },
+          },
+        },
+        revision: { ...current.revision, freshness: "not_refreshed" },
+      }),
+    ).toBeUndefined();
   });
 });
 

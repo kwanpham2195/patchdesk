@@ -2,15 +2,16 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { GitHubThreadId } from "#src/domain/ids";
 import {
-  PatchdeskApiError,
-  contextualMessage,
-  refusedWriteMessage,
-} from "#src/renderer/src/api-client";
+  useReviewConversationDraft,
+  type ReviewConversationOwner,
+} from "#src/renderer/src/hooks/use-review-conversation-owner";
+import { contextualMessage } from "#src/renderer/src/api-client";
+import { ConversationThreadActions } from "./conversation-thread-actions";
+import { useConversationThreadActions } from "#src/renderer/src/hooks/use-conversation-thread-actions";
 import { useReportUnsentReviewText } from "#src/renderer/src/hooks/use-unsent-review-text";
 import {
   COMMENT_DELETE_MESSAGES,
   COMMENT_EDIT_MESSAGES,
-  THREAD_REPLY_MESSAGES,
 } from "#src/renderer/src/review-copy";
 import {
   EMPTY_BODY_CONTEXT,
@@ -37,17 +38,21 @@ export type ConversationThreadTarget =
   | { readonly _tag: "comment_only"; readonly commentId: string }
   | { readonly _tag: "unresolved" };
 
+/** Mutation callbacks return false for skipped admission and fulfilled void for a confirmed write. */
 export type ReviewConversationActions = {
   readonly setThreadState?: (
     threadId: string,
     state: "open" | "resolved",
-  ) => Promise<void>;
+  ) => Promise<false | void>;
   readonly replyToThread?: (
     threadId: string,
     body: string,
   ) => Promise<string | void>;
-  readonly editComment?: (commentId: string, body: string) => Promise<void>;
-  readonly deleteComment?: (commentId: string) => Promise<void>;
+  readonly editComment?: (
+    commentId: string,
+    body: string,
+  ) => Promise<false | void>;
+  readonly deleteComment?: (commentId: string) => Promise<false | void>;
   readonly dismissReview?: (
     publishedReviewId: string,
     message: string,
@@ -59,18 +64,25 @@ export type ReviewConversationActions = {
  * inline annotation surface and the Conversation-tab general-thread surface.
  */
 export type ConversationThreadCardData = {
+  /** Shared only when the card belongs to a diff appearance in this Review session. */
+  readonly conversationOwner?: ReviewConversationOwner;
   readonly target: ConversationThreadTarget;
   readonly state: "open" | "resolved" | "outdated" | "unknown";
   readonly complete?: boolean | undefined;
   readonly onSetState?: (
     threadId: string,
     state: "open" | "resolved",
-  ) => Promise<void>;
+  ) => Promise<false | void>;
   readonly onReply?: (threadId: string, body: string) => Promise<string | void>;
-  readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
-  readonly onDeleteComment?: (commentId: string) => Promise<void>;
+  readonly onEditComment?: (
+    commentId: string,
+    body: string,
+  ) => Promise<false | void>;
+  readonly onDeleteComment?: (commentId: string) => Promise<false | void>;
   readonly comments: ReadonlyArray<{
     readonly id: string;
+    /** GraphQL identity keeps an edit draft stable when a REST receipt becomes canonical. */
+    readonly commentNodeId?: string;
     readonly author: string;
     /** `data:` URI resolved from the avatar cache; absent when never synced, failed, or the author has none. */
     readonly authorAvatarDataUri?: string | undefined;
@@ -81,23 +93,6 @@ export type ConversationThreadCardData = {
 };
 
 type ConversationComment = ConversationThreadCardData["comments"][number];
-type ThreadStateFailure = {
-  readonly message: string;
-  readonly ariaLabel?: string;
-};
-
-function threadStateFailure(cause: unknown): ThreadStateFailure {
-  const refused = refusedWriteMessage(cause, "thread update");
-  if (refused !== undefined) return { message: refused };
-  if (cause instanceof PatchdeskApiError && cause.kind === "forbidden")
-    return {
-      message:
-        "GitHub denied this thread update. Use an authorized account with repository write access.",
-      ariaLabel: "GitHub write permission required",
-    };
-  return { message: "Patchdesk could not update this thread." };
-}
-
 /**
  * One comment row shared by opening comments, represented replies, and
  * optimistic published replies. A viewer-authored comment with edit/delete
@@ -109,16 +104,33 @@ function ConversationCommentRow({
   bodyContext,
   onEdit,
   onDelete,
+  conversationOwner,
 }: {
+  readonly conversationOwner?: ReviewConversationOwner | undefined;
   readonly comment: ConversationComment;
   readonly bodyContext: PullRequestBodyContext;
-  readonly onEdit?: (commentId: string, body: string) => Promise<void>;
-  readonly onDelete?: (commentId: string) => Promise<void>;
+  readonly onEdit?: (commentId: string, body: string) => Promise<false | void>;
+  readonly onDelete?: (commentId: string) => Promise<false | void>;
 }): React.JSX.Element {
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState("");
+  const [editBase, setEditBase] = useState<{
+    readonly owner: ReviewConversationOwner | undefined;
+    readonly body: string;
+  }>();
+  const [localEditBody, setLocalEditBody] = useState("");
+  const editDraft = useReviewConversationDraft(
+    conversationOwner,
+    `edit:${comment.commentNodeId ?? comment.id}`,
+  );
+  const editing =
+    (editBase !== undefined &&
+      editBase.owner === conversationOwner &&
+      editBase.body === comment.body) ||
+    editDraft.body !== undefined;
+  const editBody = editDraft.body ?? localEditBody;
   useReportUnsentReviewText(
-    editing && editBody !== comment.body ? editBody : "",
+    conversationOwner === undefined && editing && editBody !== comment.body
+      ? editBody
+      : "",
   );
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -146,7 +158,11 @@ function ConversationCommentRow({
                 aria-invalid={error !== undefined || undefined}
                 aria-describedby={error === undefined ? undefined : errorId}
                 value={editBody}
-                onChange={(event) => setEditBody(event.target.value)}
+                onChange={(event) => {
+                  const body = event.target.value;
+                  setLocalEditBody(body);
+                  editDraft.setBody(body === comment.body ? undefined : body);
+                }}
                 disabled={saving}
               />
               <FieldError id={errorId}>{error}</FieldError>
@@ -165,8 +181,9 @@ function ConversationCommentRow({
                   setSaving(true);
                   setError(undefined);
                   try {
-                    await onEdit(comment.id, editBody);
-                    setEditing(false);
+                    if ((await onEdit(comment.id, editBody)) === false) return;
+                    editDraft.clearSubmitted(editBody);
+                    setEditBase(undefined);
                   } catch (cause) {
                     setError(contextualMessage(cause, COMMENT_EDIT_MESSAGES));
                   } finally {
@@ -187,7 +204,10 @@ function ConversationCommentRow({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setEditing(false)}
+                onClick={() => {
+                  editDraft.setBody(undefined);
+                  setEditBase(undefined);
+                }}
                 disabled={saving}
               >
                 Cancel
@@ -211,8 +231,8 @@ function ConversationCommentRow({
                 className="text-xs font-medium text-primary hover:underline"
                 disabled={deleting}
                 onClick={() => {
-                  setEditing(true);
-                  setEditBody(comment.body);
+                  setEditBase({ owner: conversationOwner, body: comment.body });
+                  setLocalEditBody(comment.body);
                 }}
               >
                 Edit
@@ -272,17 +292,7 @@ export function ConversationThreadCard({
    * navigation surface (e.g. the Conversation tab's general-thread list). */
   readonly navAnchorId?: string;
 }): React.JSX.Element {
-  const [pending, setPending] = useState(false);
-  const pendingRef = useRef(false);
   const [expanded, setExpanded] = useState(false);
-  const [replyBody, setReplyBody] = useState("");
-  useReportUnsentReviewText(replyBody);
-  const [replying, setReplying] = useState(false);
-  const replyingRef = useRef(false);
-  const [error, setError] = useState<ThreadStateFailure>();
-  const [replyError, setReplyError] = useState<string>();
-  const replyEditorId = `thread-reply-${useId()}`;
-  const replyErrorId = `${replyEditorId}-error`;
   const [optimisticReplies, setOptimisticReplies] = useState<
     ReadonlyArray<{
       readonly id: string;
@@ -290,6 +300,9 @@ export function ConversationThreadCard({
       readonly createdAt: string;
     }>
   >([]);
+  const actions = useConversationThreadActions(thread, (reply) =>
+    setOptimisticReplies((current) => [...current, reply]),
+  );
   // A published reply is authoritative (GitHub returned 200); drop its local
   // row once an explicit refresh or reload brings the authoritative thread.
   useEffect(() => {
@@ -304,11 +317,6 @@ export function ConversationThreadCard({
   }, [thread.comments]);
   const opening = thread.comments[0];
   const latest = thread.comments.at(-1);
-  // Only a canonical thread target carries a GitHub thread id; comment-only
-  // cards (fresh REST creates) have none, and their callbacks never exist.
-  const threadId =
-    thread.target._tag === "thread" ? thread.target.id : undefined;
-  const threadWriteBusy = pending || replying;
   const hiddenReplyCount = Math.max(
     0,
     thread.comments.length - (opening === latest ? 1 : 2),
@@ -357,6 +365,7 @@ export function ConversationThreadCard({
         <ConversationCommentRow
           comment={opening}
           bodyContext={bodyContext}
+          conversationOwner={thread.conversationOwner}
           {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
           {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
         />
@@ -370,6 +379,7 @@ export function ConversationThreadCard({
               <ConversationCommentRow
                 comment={comment}
                 bodyContext={bodyContext}
+                conversationOwner={thread.conversationOwner}
                 {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
                 {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
               />
@@ -381,6 +391,7 @@ export function ConversationThreadCard({
           <ConversationCommentRow
             comment={latest}
             bodyContext={bodyContext}
+            conversationOwner={thread.conversationOwner}
             {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
             {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
           />
@@ -394,8 +405,9 @@ export function ConversationThreadCard({
             {...(rowEdit === undefined
               ? {}
               : {
-                  onEdit: async (commentId, body) => {
-                    await rowEdit(commentId, body);
+                  onEdit: async (commentId, body): Promise<false | void> => {
+                    if ((await rowEdit(commentId, body)) === false)
+                      return false;
                     setOptimisticReplies((current) =>
                       current.map((entry) =>
                         entry.id === commentId ? { ...entry, body } : entry,
@@ -406,8 +418,8 @@ export function ConversationThreadCard({
             {...(rowDelete === undefined
               ? {}
               : {
-                  onDelete: async (commentId) => {
-                    await rowDelete(commentId);
+                  onDelete: async (commentId): Promise<false | void> => {
+                    if ((await rowDelete(commentId)) === false) return false;
                     setOptimisticReplies((current) =>
                       current.filter((entry) => entry.id !== commentId),
                     );
@@ -427,127 +439,7 @@ export function ConversationThreadCard({
             : `Show ${hiddenReplyCount} replies`}
         </button>
       ) : null}
-      {thread.target._tag === "comment_only" ? (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Reply and Resolve aren&apos;t available for this comment yet. Refresh
-          to pick up its GitHub thread.
-        </p>
-      ) : null}
-      {thread.onSetState === undefined ? null : (
-        <Button
-          className="mt-3"
-          size="sm"
-          variant="outline"
-          disabled={threadWriteBusy}
-          onClick={async () => {
-            if (pendingRef.current || replyingRef.current) return;
-            const action = thread.onSetState;
-            if (action === undefined || threadId === undefined) return;
-            pendingRef.current = true;
-            setPending(true);
-            setError(undefined);
-            try {
-              await action(
-                threadId,
-                thread.state === "resolved" ? "open" : "resolved",
-              );
-            } catch (cause) {
-              setError(threadStateFailure(cause));
-            } finally {
-              pendingRef.current = false;
-              setPending(false);
-            }
-          }}
-        >
-          {pending ? (
-            <>
-              <Spinner data-icon="inline-start" />
-              {thread.state === "resolved" ? "Unresolving…" : "Resolving…"}
-            </>
-          ) : thread.state === "resolved" ? (
-            "Unresolve"
-          ) : (
-            "Resolve"
-          )}
-        </Button>
-      )}
-      {error === undefined ? null : (
-        <InlineError className="mt-2" aria-label={error.ariaLabel}>
-          {error.message}
-        </InlineError>
-      )}
-      {thread.onReply === undefined ? null : (
-        <div className="mt-4 border-t pt-3">
-          <Field
-            data-invalid={replyError !== undefined || undefined}
-            data-disabled={threadWriteBusy || undefined}
-          >
-            <Textarea
-              id={replyEditorId}
-              aria-label="Reply"
-              aria-invalid={replyError !== undefined || undefined}
-              aria-describedby={
-                replyError === undefined ? undefined : replyErrorId
-              }
-              value={replyBody}
-              onChange={(event) => setReplyBody(event.target.value)}
-              placeholder="Write a reply…"
-              disabled={threadWriteBusy}
-            />
-            <FieldError id={replyErrorId}>{replyError}</FieldError>
-          </Field>
-          <div className="mt-2 flex gap-2">
-            <Button
-              size="sm"
-              onClick={async () => {
-                if (
-                  replyBody.trim().length === 0 ||
-                  replyingRef.current ||
-                  pendingRef.current
-                )
-                  return;
-                const action = thread.onReply;
-                if (action === undefined || threadId === undefined) return;
-                const submittedBody = replyBody;
-                replyingRef.current = true;
-                setReplying(true);
-                setError(undefined);
-                setReplyError(undefined);
-                try {
-                  const commentId = await action(threadId, submittedBody);
-                  setReplyBody("");
-                  if (commentId !== undefined) {
-                    setOptimisticReplies((current) => [
-                      ...current,
-                      {
-                        id: commentId,
-                        body: submittedBody,
-                        createdAt: new Date().toISOString(),
-                      },
-                    ]);
-                  }
-                } catch (cause) {
-                  setReplyError(
-                    contextualMessage(cause, THREAD_REPLY_MESSAGES),
-                  );
-                } finally {
-                  replyingRef.current = false;
-                  setReplying(false);
-                }
-              }}
-              disabled={replyBody.trim().length === 0 || threadWriteBusy}
-            >
-              {replying ? (
-                <>
-                  <Spinner data-icon="inline-start" /> Replying…
-                </>
-              ) : (
-                "Reply"
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
+      <ConversationThreadActions thread={thread} controls={actions} />
     </article>
   );
 }

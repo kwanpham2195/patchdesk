@@ -1,4 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { UnsentReviewTextContext } from "./use-unsent-review-text";
+import {
+  useReviewConversationOwner,
+  useReviewConversationOverlaySnapshot,
+  type CreatedThreadOverlay,
+  inlineDraftKey,
+} from "./use-review-conversation-owner";
 import type { RefObject } from "react";
 import type { SelectedLineRange } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
@@ -9,11 +23,7 @@ import {
 } from "#src/renderer/src/api-client";
 import { definedProps } from "#src/domain/defined-props";
 import { fingerprintPatchAnchor } from "#src/domain/diff-anchor";
-import {
-  parseGitHubThreadId,
-  parseRepoRelativePath,
-  type GitHubThreadId,
-} from "#src/domain/ids";
+import { parseGitHubThreadId, parseRepoRelativePath } from "#src/domain/ids";
 import { composerErrorMessage } from "#src/renderer/src/components/review-diff-authoring-errors";
 import type { DraftRecovery } from "#src/renderer/src/components/draft-recovery";
 import { useLatestCommitted } from "./use-latest-committed";
@@ -36,42 +46,6 @@ import type {
   PendingReviewComposerActions,
   ReviewInlineAnnotation,
 } from "#src/renderer/src/components/review-diff-view";
-
-type CreatedThreadOverlay =
-  | {
-      readonly _tag: "sending";
-      readonly localId: string;
-      readonly path: string;
-      readonly start: number;
-      readonly end: number;
-      readonly side: "new" | "old";
-      readonly body: string;
-    }
-  | {
-      readonly _tag: "failed";
-      readonly localId: string;
-      readonly path: string;
-      readonly start: number;
-      readonly end: number;
-      readonly side: "new" | "old";
-      readonly body: string;
-      /** What GitHub's refusal means, when GitHub refused the comment; the card otherwise shows its generic copy. */
-      readonly message?: string;
-    }
-  | {
-      readonly _tag: "published";
-      readonly localId: string;
-      readonly path: string;
-      readonly start: number;
-      readonly end: number;
-      readonly side: "new" | "old";
-      readonly body: string;
-      /** GitHub's REST id for the created comment, which the create receipt reports. */
-      readonly commentId: string;
-      /** The same comment's GraphQL node id, which is the id space every projected thread comment uses. */
-      readonly commentNodeId: string;
-      readonly threadId?: GitHubThreadId;
-    };
 
 export type ReviewConversationOverlays = {
   readonly displayedAnnotations: ReadonlyArray<ReviewInlineAnnotation>;
@@ -131,95 +105,49 @@ export function useReviewConversationOverlays({
   const [authoringInitialBody, setAuthoringInitialBody] = useState<
     string | undefined
   >();
-  const [createdThreads, setCreatedThreads] = useState<
-    ReadonlyArray<CreatedThreadOverlay>
-  >([]);
+  // Standalone previews own an appearance; workbench diffs receive a session owner.
+  const reportUnsent = useContext(UnsentReviewTextContext);
+  const localOwner = useReviewConversationOwner(
+    "appearance",
+    "appearance",
+    annotations,
+    { reportUnsent },
+  );
+  const owner = pendingReviewDrafts?.conversationOwner ?? localOwner;
+  const {
+    createdThreads,
+    editedBodies,
+    deletedCommentIds,
+    resolvedThreads,
+    replyReceipts,
+  } = useReviewConversationOverlaySnapshot(owner);
+  const {
+    setCreatedThreads,
+    setEditedBodies,
+    setDeletedCommentIds,
+    setResolvedThreads,
+  } = owner;
   const pendingWriteOverlays = pendingReviewDrafts?.writes ?? NO_WRITES;
   const setPendingWriteOverlays = pendingReviewDrafts?.updateWrites;
   const orphanedDraftBody = pendingReviewDrafts?.orphanedBody;
   const setOrphanedDraftBody = pendingReviewDrafts?.setOrphanedBody;
-  const localIdCounter = useRef(0);
-  const [editedBodies, setEditedBodies] = useState<ReadonlyMap<string, string>>(
-    () => new Map(),
+  const currentOwner = useLatestCommitted(owner);
+  const [authoringOwner, setAuthoringOwner] = useState(owner);
+
+  const draftKey =
+    authoringSelection === null
+      ? undefined
+      : inlineDraftKey(patch, authoringSelection, localCommentAuthoring?.kind);
+  const writeDraftBody = useCallback(
+    (key: string, body: string | undefined): void =>
+      owner.update((current) => {
+        const next = new Map(current.draftBodies);
+        if (body === undefined) next.delete(key);
+        else next.set(key, body);
+        return { ...current, draftBodies: next };
+      }),
+    [owner],
   );
-  const [deletedCommentIds, setDeletedCommentIds] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
-  const [resolvedThreads, setResolvedThreads] = useState<
-    ReadonlyMap<string, "open" | "resolved">
-  >(() => new Map());
-
-  const createdThreadsRef = useLatestCommitted(createdThreads);
-
-  // Published writes are authoritative (the receipt is GitHub's 200) and the
-  // projection only changes on an explicit refresh or reload. Local mutation
-  // overrides keep cards truthful until the projection catches up.
-  useEffect(() => {
-    const commentIds = new Set<string>();
-    const commentBodies = new Map<string, string>();
-    const threadStates = new Map<string, string>();
-    for (const annotation of annotations) {
-      const thread = annotation.conversationThread;
-      if (thread === undefined) continue;
-      if (thread.target._tag === "thread")
-        threadStates.set(thread.target.id, thread.state);
-      for (const comment of thread.comments) {
-        commentIds.add(comment.id);
-        commentBodies.set(comment.id, comment.body);
-      }
-    }
-    // Once the projection represents a published overlay, the projection is
-    // authoritative: drop the overlay rather than hiding it at render, or it
-    // reappears with stale actions the moment the projection drops the thread
-    // again (a delete). Both comment id spaces are compared because the create
-    // receipt reports the REST id while the projection carries the node id.
-    setCreatedThreads((current) => {
-      const reconciled = current.filter(
-        (entry) =>
-          entry._tag !== "published" ||
-          !(
-            (entry.threadId !== undefined &&
-              threadStates.has(entry.threadId)) ||
-            commentIds.has(entry.commentId) ||
-            commentIds.has(entry.commentNodeId)
-          ),
-      );
-      return reconciled.length === current.length ? current : reconciled;
-    });
-    setEditedBodies((current) => {
-      let changed = false;
-      const next = new Map(current);
-      for (const [commentId, body] of next) {
-        if (commentBodies.get(commentId) === body) {
-          next.delete(commentId);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-    setDeletedCommentIds((current) => {
-      let changed = false;
-      const next = new Set(current);
-      for (const commentId of next) {
-        if (!commentIds.has(commentId)) {
-          next.delete(commentId);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-    setResolvedThreads((current) => {
-      let changed = false;
-      const next = new Map(current);
-      for (const [threadId, state] of next) {
-        if (threadStates.get(threadId) === state) {
-          next.delete(threadId);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-  }, [annotations]);
 
   // A failed draft whose lines Refresh removed from the full diff waits for a new line. A narrowed view (Scope bucket,
   // commit slice, since-review) only hides a card whose lines it does not show; it never strands the draft.
@@ -259,9 +187,20 @@ export function useReviewConversationOverlays({
     saving: boolean;
     unmounted: boolean;
   }>({ body: undefined, saving: false, unmounted: false });
-  const reportNoteBody = useCallback((body: string): void => {
-    unsavedNote.current.body = body;
-  }, []);
+  if (authoringOwner !== owner) {
+    setAuthoringOwner(owner);
+    setAuthoringSelection(null);
+    setAuthoringInitialBody(undefined);
+    unsavedNote.current.body = undefined;
+  }
+  const reportAuthoringBody = useCallback(
+    (body: string): void => {
+      unsavedNote.current.body = body;
+      if (draftKey !== undefined && localCommentAuthoring?.kind !== "note")
+        writeDraftBody(draftKey, body);
+    },
+    [draftKey, localCommentAuthoring?.kind, writeDraftBody],
+  );
   const keepUnsavedNote = useLatestCommitted({
     note: localCommentAuthoring?.kind === "note",
     setOrphanedDraftBody,
@@ -277,19 +216,37 @@ export function useReviewConversationOverlays({
     };
   }, [keepUnsavedNote]);
 
-  const takeRecoverableDraft = useCallback((): void => {
-    // A new composer starts from the recovered text, or empty.
-    unsavedNote.current.body = recoverableDraftBody;
-    setAuthoringInitialBody(recoverableDraftBody);
-    releaseRecoverableDraft();
-  }, [recoverableDraftBody, releaseRecoverableDraft]);
+  const takeRecoverableDraft = useCallback(
+    (location: LocalCommentLocation): void => {
+      const key = inlineDraftKey(patch, location, localCommentAuthoring?.kind);
+      const body =
+        localCommentAuthoring?.kind === "note"
+          ? recoverableDraftBody
+          : (owner.getSnapshot().draftBodies.get(key) ?? recoverableDraftBody);
+      unsavedNote.current.body = body;
+      setAuthoringInitialBody(body);
+      if (body !== undefined && localCommentAuthoring?.kind !== "note")
+        writeDraftBody(key, body);
+      releaseRecoverableDraft();
+    },
+    [
+      owner,
+      localCommentAuthoring?.kind,
+      patch,
+      recoverableDraftBody,
+      releaseRecoverableDraft,
+      writeDraftBody,
+    ],
+  );
 
   const clearAuthoring = useCallback((): void => {
+    if (currentOwner.current !== owner) return;
+    if (draftKey !== undefined) writeDraftBody(draftKey, undefined);
     unsavedNote.current.body = undefined;
     setAuthoringSelection(null);
     setAuthoringInitialBody(undefined);
     viewer.current?.clearSelectedLines();
-  }, [viewer]);
+  }, [currentOwner, draftKey, owner, viewer, writeDraftBody]);
 
   const openComposer = useCallback(
     (location: LocalCommentLocation): void => {
@@ -306,7 +263,7 @@ export function useReviewConversationOverlays({
       )
         return;
       localCommentAuthoring.onSelectionChange?.(location);
-      takeRecoverableDraft();
+      takeRecoverableDraft(location);
       setAuthoringSelection(location);
     },
     [authoringSelection, localCommentAuthoring, patch, takeRecoverableDraft],
@@ -364,12 +321,12 @@ export function useReviewConversationOverlays({
         return;
       }
       const fingerprint = fingerprintPatchAnchor(patch, anchor);
-      const localId = `local-${Date.now().toString(36)}-${localIdCounter.current}`;
-      localIdCounter.current += 1;
+      const localId = owner.nextLocalId("local");
       setCreatedThreads((current) => [
         ...current,
         {
           _tag: "sending",
+          selectedText: fingerprint?.selectedLines.join("\n"),
           localId,
           path: anchor.path,
           start: anchor.startLine,
@@ -395,6 +352,7 @@ export function useReviewConversationOverlays({
             : parseGitHubThreadId(receipt.threadId);
         const publishedBase = {
           _tag: "published" as const,
+          selectedText: fingerprint?.selectedLines.join("\n"),
           localId,
           path: anchor.path,
           start: anchor.startLine,
@@ -418,6 +376,7 @@ export function useReviewConversationOverlays({
                 }
             : {
                 _tag: "failed" as const,
+                selectedText: fingerprint?.selectedLines.join("\n"),
                 localId,
                 path: anchor.path,
                 start: anchor.startLine,
@@ -437,6 +396,7 @@ export function useReviewConversationOverlays({
             entry.localId === localId
               ? {
                   _tag: "failed" as const,
+                  selectedText: entry.selectedText,
                   localId: entry.localId,
                   path: entry.path,
                   start: entry.start,
@@ -456,6 +416,8 @@ export function useReviewConversationOverlays({
       keepUnsavedNote,
       localCommentAuthoring,
       patch,
+      owner,
+      setCreatedThreads,
     ],
   );
 
@@ -466,8 +428,7 @@ export function useReviewConversationOverlays({
       body: string,
       run: (anchor: LocalCommentLocation, body: string) => Promise<void>,
     ): Promise<void> => {
-      const localId = `pending-write-${Date.now().toString(36)}-${localIdCounter.current}`;
-      localIdCounter.current += 1;
+      const localId = owner.nextLocalId("pending-write");
       setPendingWriteOverlays?.((current) => [
         ...current,
         {
@@ -507,7 +468,7 @@ export function useReviewConversationOverlays({
         );
       }
     },
-    [clearAuthoring, setPendingWriteOverlays],
+    [clearAuthoring, owner, setPendingWriteOverlays],
   );
 
   const localComposerAnnotation = useMemo<
@@ -548,25 +509,36 @@ export function useReviewConversationOverlays({
         line,
         side,
         ...definedProps({ initialBody: authoringInitialBody }),
+        ...definedProps({
+          draftControl:
+            localCommentAuthoring.kind === "note" || draftKey === undefined
+              ? undefined
+              : {
+                  subscribe: owner.subscribe,
+                  getBody: () =>
+                    owner.getSnapshot().draftBodies.get(draftKey) ?? "",
+                },
+        }),
         onCancel: clearAuthoring,
         onSave: saveAuthoring,
         ...definedProps({
           pendingReview: wrappedPendingReview,
           kind: localCommentAuthoring.kind,
-          onBodyChange:
-            localCommentAuthoring.kind === "note" ? reportNoteBody : undefined,
+          onBodyChange: reportAuthoringBody,
         }),
       },
     };
   }, [
     authoringSelection,
     authoringInitialBody,
+    owner,
+    draftKey,
     clearAuthoring,
     localCommentAuthoring?.enabled,
     localCommentAuthoring?.kind,
     pendingReviewComposer,
     pendingReviewDrafts,
-    reportNoteBody,
+    reportAuthoringBody,
     saveAuthoring,
     submitPendingWrite,
   ]);
@@ -591,6 +563,11 @@ export function useReviewConversationOverlays({
         localCommentAuthoring.refuseLocation?.(location) === undefined
       ) {
         localCommentAuthoring.onSelectionChange?.(location);
+        unsavedNote.current.body = candidate.body;
+        writeDraftBody(
+          inlineDraftKey(patch, location, localCommentAuthoring.kind),
+          candidate.body,
+        );
         setAuthoringInitialBody(candidate.body);
         setOrphanedDraftBody?.(undefined);
         setAuthoringSelection(location);
@@ -603,6 +580,8 @@ export function useReviewConversationOverlays({
     },
     [
       localCommentAuthoring,
+      patch,
+      writeDraftBody,
       pendingWriteOverlays,
       setOrphanedDraftBody,
       setPendingWriteOverlays,
@@ -612,64 +591,75 @@ export function useReviewConversationOverlays({
 
   const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
     () => [
-      ...createdThreads.map((entry: CreatedThreadOverlay) => {
-        if (entry._tag !== "published") {
-          return {
-            id: `conversation:pending:${entry.localId}`,
-            path: entry.path,
-            start: entry.start,
-            end: entry.end,
-            side: entry.side,
-            severity: "conversation",
-            title: "Conversation",
-            explanation: "",
-            pendingConversation: {
-              localId: entry.localId,
-              status: entry._tag,
-              body: entry.body,
-              ...definedProps({
-                message: entry._tag === "failed" ? entry.message : undefined,
-              }),
-              onDismiss: (localId: string) =>
-                setCreatedThreads((current) =>
-                  current.filter((candidate) => candidate.localId !== localId),
-                ),
-            },
+      ...createdThreads.flatMap<ReviewInlineAnnotation>(
+        (entry: CreatedThreadOverlay) => {
+          if (anchoredText(patch, entry) !== entry.selectedText) return [];
+          if (entry._tag !== "published") {
+            return [
+              {
+                id: `conversation:pending:${entry.localId}`,
+                path: entry.path,
+                start: entry.start,
+                end: entry.end,
+                side: entry.side,
+                severity: "conversation",
+                title: "Conversation",
+                explanation: "",
+                pendingConversation: {
+                  localId: entry.localId,
+                  status: entry._tag,
+                  body: entry.body,
+                  ...definedProps({
+                    message:
+                      entry._tag === "failed" ? entry.message : undefined,
+                  }),
+                  onDismiss: (localId: string) =>
+                    setCreatedThreads((current) =>
+                      current.filter(
+                        (candidate) => candidate.localId !== localId,
+                      ),
+                    ),
+                },
+              },
+            ];
+          }
+          const conversationThread: ConversationThreadCardData = {
+            target:
+              entry.threadId === undefined
+                ? { _tag: "comment_only" as const, commentId: entry.commentId }
+                : { _tag: "thread" as const, id: entry.threadId },
+            state: "open" as const,
+            complete: true,
+            comments: [
+              {
+                id: entry.commentId,
+                commentNodeId: entry.commentNodeId,
+                author: "You",
+                body: entry.body,
+                createdAt: new Date().toISOString(),
+                viewerDidAuthor: true,
+              },
+            ],
+            ...definedProps({
+              onEditComment: conversationActions?.editComment,
+              onDeleteComment: conversationActions?.deleteComment,
+            }),
           };
-        }
-        const conversationThread: ConversationThreadCardData = {
-          target:
-            entry.threadId === undefined
-              ? { _tag: "comment_only" as const, commentId: entry.commentId }
-              : { _tag: "thread" as const, id: entry.threadId },
-          state: "open" as const,
-          complete: true,
-          comments: [
+          return [
             {
-              id: entry.commentId,
-              author: "You",
-              body: entry.body,
-              createdAt: new Date().toISOString(),
-              viewerDidAuthor: true,
+              id: `conversation:${entry.commentId}`,
+              path: entry.path,
+              start: entry.start,
+              end: entry.end,
+              side: entry.side,
+              severity: "conversation",
+              title: "Conversation",
+              explanation: "",
+              conversationThread,
             },
-          ],
-          ...definedProps({
-            onEditComment: conversationActions?.editComment,
-            onDeleteComment: conversationActions?.deleteComment,
-          }),
-        };
-        return {
-          id: `conversation:${entry.commentId}`,
-          path: entry.path,
-          start: entry.start,
-          end: entry.end,
-          side: entry.side,
-          severity: "conversation",
-          title: "Conversation",
-          explanation: "",
-          conversationThread,
-        };
-      }),
+          ];
+        },
+      ),
       ...shownPendingWrites.map((entry: PendingReviewWrite) => {
         const pendingReviewWrite: NonNullable<
           ReviewInlineAnnotation["pendingReviewWrite"]
@@ -703,8 +693,10 @@ export function useReviewConversationOverlays({
     [
       conversationActions,
       createdThreads,
+      patch,
       editPendingWrite,
       setPendingWriteOverlays,
+      setCreatedThreads,
       shownPendingWrites,
     ],
   );
@@ -769,7 +761,17 @@ export function useReviewConversationOverlays({
         targetThreadId === undefined
           ? thread.state
           : (resolvedThreads.get(targetThreadId) ?? thread.state);
-      const comments = thread.comments.flatMap((comment) => {
+      const replies =
+        targetThreadId === undefined
+          ? []
+          : (replyReceipts.get(targetThreadId) ?? []);
+      const comments = [
+        ...thread.comments,
+        ...replies.filter(
+          (reply) =>
+            !thread.comments.some((comment) => comment.id === reply.id),
+        ),
+      ].flatMap((comment) => {
         if (deletedCommentIds.has(comment.id)) return [];
         const body = editedBodies.get(comment.id);
         return [body === undefined ? comment : { ...comment, body }];
@@ -799,6 +801,7 @@ export function useReviewConversationOverlays({
     renderedAnnotations,
     replyInNote,
     resolvedThreads,
+    replyReceipts,
   ]);
 
   const decorateConversationThread = useCallback(
@@ -810,14 +813,29 @@ export function useReviewConversationOverlays({
       const reply = hasThreadTarget
         ? (thread.onReply ?? conversationActions?.replyToThread)
         : undefined;
+      const onReply: ConversationThreadCardData["onReply"] =
+        reply === undefined
+          ? undefined
+          : async (threadId, body) => {
+              const id = await reply(threadId, body);
+              if (id !== undefined)
+                owner.retainReply(threadId, {
+                  id,
+                  body,
+                  author: "You",
+                  viewerDidAuthor: true,
+                  createdAt: owner.now(),
+                });
+              return id;
+            };
       const edit = thread.onEditComment ?? conversationActions?.editComment;
       const remove =
         thread.onDeleteComment ?? conversationActions?.deleteComment;
       const onSetState: ConversationThreadCardData["onSetState"] =
         setState === undefined
           ? undefined
-          : async (threadId, state) => {
-              await setState(threadId, state);
+          : async (threadId, state): Promise<false | void> => {
+              if ((await setState(threadId, state)) === false) return false;
               setResolvedThreads((current) => {
                 const next = new Map(current);
                 next.set(threadId, state);
@@ -827,27 +845,27 @@ export function useReviewConversationOverlays({
       const onEditComment: ConversationThreadCardData["onEditComment"] =
         edit === undefined
           ? undefined
-          : async (commentId, body) => {
-              await edit(commentId, body);
+          : async (commentId, body): Promise<false | void> => {
               const ids = commentIdAliases(
-                createdThreadsRef.current,
+                owner.getSnapshot().createdThreads,
                 commentId,
               );
+              if ((await edit(commentId, body)) === false) return false;
               setEditedBodies((current) => {
                 const next = new Map(current);
-                for (const id of ids) next.set(id, body);
+                for (const id of ids) next.set(id, body.trim());
                 return next;
               });
             };
       const onDeleteComment: ConversationThreadCardData["onDeleteComment"] =
         remove === undefined
           ? undefined
-          : async (commentId) => {
-              await remove(commentId);
+          : async (commentId): Promise<false | void> => {
               const ids = commentIdAliases(
-                createdThreadsRef.current,
+                owner.getSnapshot().createdThreads,
                 commentId,
               );
+              if ((await remove(commentId)) === false) return false;
               setDeletedCommentIds((current) => {
                 const next = new Set(current);
                 for (const id of ids) next.add(id);
@@ -861,20 +879,25 @@ export function useReviewConversationOverlays({
                 return kept.length === current.length ? current : kept;
               });
             };
-      // Each override only replaces the incoming field when it is wired;
-      // `definedProps` drops the undefined ones so `...thread`'s own value
-      // survives, exactly as the conditional assignments did.
       return {
         ...thread,
+        conversationOwner: owner,
         ...definedProps({
           onSetState,
-          onReply: reply,
+          onReply,
           onEditComment,
           onDeleteComment,
         }),
       };
     },
-    [conversationActions, createdThreadsRef],
+    [
+      conversationActions,
+      owner,
+      setCreatedThreads,
+      setDeletedCommentIds,
+      setEditedBodies,
+      setResolvedThreads,
+    ],
   );
 
   const beginRangeAuthoringNow = useCallback(
@@ -942,7 +965,7 @@ function isSameLocation(
 /** The text of a draft's lines in `patch`, or undefined when `patch` does not show them. */
 function anchoredText(
   patch: string,
-  write: PendingReviewWrite,
+  write: Pick<PendingReviewWrite, "path" | "start" | "end" | "side">,
 ): string | undefined {
   const path = parseRepoRelativePath(write.path);
   if (path._tag !== "ok") return undefined;

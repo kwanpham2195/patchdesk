@@ -24,6 +24,7 @@ import type {
   AppendRecentWrites,
 } from "./use-review-observation";
 
+/** Mutation callbacks return false only when admission skipped the command; fulfilled void means confirmed. */
 export type DirectConversationActions = {
   readonly saveInlineComment: (
     input: LocalCommentAuthoringSaveInput,
@@ -35,13 +36,16 @@ export type DirectConversationActions = {
   readonly setThreadState: (
     threadId: string,
     state: "open" | "resolved",
-  ) => Promise<void>;
+  ) => Promise<false | void>;
   readonly replyToThread: (
     threadId: string,
     body: string,
   ) => Promise<string | void>;
-  readonly editComment: (commentId: string, body: string) => Promise<void>;
-  readonly deleteComment: (commentId: string) => Promise<void>;
+  readonly editComment: (
+    commentId: string,
+    body: string,
+  ) => Promise<false | void>;
+  readonly deleteComment: (commentId: string) => Promise<false | void>;
   readonly dismissReview: (
     publishedReviewId: string,
     message: string,
@@ -179,7 +183,10 @@ export function useDirectConversationActions({
   );
 
   const setThreadState = useCallback(
-    async (threadId: string, state: "open" | "resolved"): Promise<void> => {
+    async (
+      threadId: string,
+      state: "open" | "resolved",
+    ): Promise<false | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
         throw new Error("The current Diff cannot update this thread.");
@@ -212,7 +219,7 @@ export function useDirectConversationActions({
           candidate.threadId === parsedThreadId.value &&
           candidate.state === state,
       );
-      if (receipt?._tag !== "ThreadStateChanged") return;
+      if (receipt?._tag !== "ThreadStateChanged") return false;
       confirmRecentWrite({
         _tag: "ThreadState",
         threadId: receipt.threadId,
@@ -266,7 +273,7 @@ export function useDirectConversationActions({
   );
 
   const editComment = useCallback(
-    async (commentId: string, body: string): Promise<void> => {
+    async (commentId: string, body: string): Promise<false | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
         throw new ReviewPreconditionError("diff_unreadable");
@@ -282,7 +289,7 @@ export function useDirectConversationActions({
           candidate._tag === "PublishedCommentEdited" &&
           candidate.commentId === commentId,
       );
-      if (receipt?._tag !== "PublishedCommentEdited") return;
+      if (receipt?._tag !== "PublishedCommentEdited") return false;
       if (receipt.reconciliation === "required") {
         requireRecovery("EditPublishedComment");
         return;
@@ -295,7 +302,7 @@ export function useDirectConversationActions({
   );
 
   const deleteComment = useCallback(
-    async (commentId: string): Promise<void> => {
+    async (commentId: string): Promise<false | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
         throw new ReviewPreconditionError("diff_unreadable");
@@ -314,7 +321,7 @@ export function useDirectConversationActions({
           candidate._tag === "PublishedCommentDeleted" &&
           candidate.commentId === commentId,
       );
-      if (receipt?._tag !== "PublishedCommentDeleted") return;
+      if (receipt?._tag !== "PublishedCommentDeleted") return false;
       if (receipt.reconciliation === "required") {
         requireRecovery("DeletePublishedComment");
         return;

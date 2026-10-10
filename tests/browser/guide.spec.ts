@@ -1,4 +1,4 @@
-import { expect, test } from "playwright/test";
+import { expect, test, type Locator } from "playwright/test";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 test("Guide expands complete retained files independently and preserves evidence during generation", async ({
@@ -92,6 +92,133 @@ test("Guide expands complete retained files independently and preserves evidence
     await expect(
       second.getByRole("button", { name: "File src/recovery.ts" }),
     ).toHaveAttribute("aria-expanded", "false");
+  } finally {
+    await closeServer(server);
+  }
+});
+
+async function openGuideComposer(files: Locator): Promise<void> {
+  await files.getByRole("button", { name: "File src/recovery.ts" }).click();
+  const cell = files
+    .locator('[data-column-number="1"][data-line-type="change-addition"]')
+    .first();
+  const gutter = files.locator("[data-utility-button]").first();
+  await expect
+    .poll(async () => {
+      await cell.hover();
+      return gutter.isVisible();
+    })
+    .toBe(true);
+  await gutter.click();
+}
+
+test("Guide shares notes and Viewed with repeated appearances and Diff, then disables stale evidence", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${serverOrigin(server)}/#guide-fixture`);
+    const first = page.getByRole("list", {
+      name: "Recover pending requests files",
+    });
+    const second = page.getByRole("list", {
+      name: "Keep the recovery owner together files",
+    });
+    await openGuideComposer(first);
+    await page
+      .getByRole("textbox", { name: "Note", exact: true })
+      .fill("Check interrupted recovery.");
+    await page.getByRole("button", { name: "Add note" }).click();
+    await expect(first.getByRole("article", { name: /Note on/ })).toContainText(
+      "Check interrupted recovery.",
+    );
+    await second.getByRole("button", { name: "File src/recovery.ts" }).click();
+    await expect(
+      second.getByRole("article", { name: /Note on/ }),
+    ).toContainText("Check interrupted recovery.");
+    await first.getByRole("button", { name: "Viewed src/recovery.ts" }).click();
+    await expect(
+      second.getByRole("button", { name: "Viewed src/recovery.ts" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("tab", { name: "Diff", exact: true }).click();
+    const viewed = page.getByRole("checkbox", {
+      name: "Show file src/recovery.ts",
+    });
+    await expect(viewed).toBeChecked();
+    await viewed.click();
+    await expect(page.getByRole("article", { name: /Note on/ })).toContainText(
+      "Check interrupted recovery.",
+    );
+    await page.getByRole("tab", { name: "Insights", exact: true }).click();
+    await expect(
+      first.getByRole("button", { name: "Viewed src/recovery.ts" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await openGuideComposer(first);
+    await page.getByRole("button", { name: "Show outdated revision" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Note", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      first.getByRole("button", { name: "Viewed src/recovery.ts" }),
+    ).toBeDisabled();
+    await expect(
+      first.getByRole("group", { name: "Guide evidence src/recovery.ts" }),
+    ).toContainText("restorePending()");
+    await expect(first.locator("[data-utility-button]")).toHaveCount(0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("Guide retains a refused pending draft in another appearance and Diff without remote writes", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  const remoteRequests: string[] = [];
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      url.protocol.startsWith("http") &&
+      !["localhost", "127.0.0.1"].includes(url.hostname)
+    ) {
+      remoteRequests.push(url.href);
+      await route.abort();
+    } else await route.continue();
+  });
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${serverOrigin(server)}/#guide-fixture`);
+    await page
+      .getByRole("button", { name: "Use pending review fixture" })
+      .click();
+    const first = page.getByRole("list", {
+      name: "Recover pending requests files",
+    });
+    const second = page.getByRole("list", {
+      name: "Keep the recovery owner together files",
+    });
+    await openGuideComposer(first);
+    await page
+      .getByRole("textbox", { name: "Inline comment" })
+      .fill("Check retry ordering.");
+    await page.getByRole("button", { name: "Start a review" }).click();
+    await expect(
+      first.getByRole("article", { name: "Pending review write failed" }),
+    ).toContainText("Check retry ordering.");
+    await second.getByRole("button", { name: "File src/recovery.ts" }).click();
+    await expect(
+      second.getByRole("article", { name: "Pending review write failed" }),
+    ).toContainText("Check retry ordering.");
+    await page.getByRole("tab", { name: "Diff", exact: true }).click();
+    await page
+      .getByRole("article", { name: "Pending review write failed" })
+      .getByRole("button", { name: "Edit draft" })
+      .click();
+    await expect(
+      page.getByRole("textbox", { name: "Inline comment" }),
+    ).toHaveValue("Check retry ordering.");
+    expect(remoteRequests).toEqual([]);
   } finally {
     await closeServer(server);
   }

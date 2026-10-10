@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import {
+  UnsentReviewTextContext,
+  useUnsentReviewTextFields,
+} from "#src/renderer/src/hooks/use-unsent-review-text";
 
+import { useReviewConversationOwner } from "#src/renderer/src/hooks/use-review-conversation-owner";
 import { PatchdeskApiError } from "#src/renderer/src/api-client";
 
 import type { ConversationThreadCardData } from "#src/renderer/src/components/conversation-thread-card";
@@ -255,6 +261,43 @@ const publishedReceipt = async () => ({
 });
 
 afterEach(cleanup);
+
+it("protects a standalone inline draft through its own owner and releases the guard on unmount", () => {
+  const guard = renderHook(() => useUnsentReviewTextFields());
+  const appearance = renderHook(
+    () =>
+      useReviewConversationOverlays({
+        patch: PATCH,
+        annotations: [],
+        viewer: { current: null },
+        localCommentAuthoring: { enabled: true, onSave: publishedReceipt },
+        pendingReviewComposer: undefined,
+        pendingReviewDrafts: undefined,
+        conversationActions: undefined,
+      }),
+    {
+      wrapper: ({ children }) =>
+        createElement(
+          UnsentReviewTextContext.Provider,
+          { value: guard.result.current.report },
+          children,
+        ),
+    },
+  );
+  act(() =>
+    appearance.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+  );
+  const composer =
+    appearance.result.current.localComposerAnnotation?.localComposer;
+  if (composer === undefined) throw new Error("Missing standalone composer");
+  act(() => composer.onBodyChange?.("Standalone draft"));
+  expect(guard.result.current.holdsUnsentText).toBe(true);
+  act(() => composer.onBodyChange?.("   "));
+  expect(guard.result.current.holdsUnsentText).toBe(false);
+  act(() => composer.onBodyChange?.("Retained until unmount"));
+  appearance.unmount();
+  expect(guard.result.current.holdsUnsentText).toBe(false);
+});
 
 describe("useReviewConversationOverlays", () => {
   it("drops a published overlay the projection represented, even after the thread goes away", async () => {
@@ -702,3 +745,105 @@ function rejection(): PatchdeskApiError {
 async function rejectedStart(): Promise<void> {
   throw rejection();
 }
+
+function renderPendingSession(run: () => Promise<void>) {
+  return renderHook(
+    ({ sessionId }) => {
+      const conversationOwner = useReviewConversationOwner(
+        "review-a",
+        sessionId,
+        [],
+      );
+      const drafts = usePendingReviewDrafts("review-a", PATCH);
+      return useReviewConversationOverlays({
+        ...pendingOverlaysInput(PATCH, run, () => true, {
+          ...drafts,
+          conversationOwner,
+        }),
+        pendingReviewComposer: {
+          state: { state: "none" },
+          busy: false,
+          onStartReview: run,
+          onAddReviewComment: run,
+        },
+      });
+    },
+    { initialProps: { sessionId: "session-a" } },
+  );
+}
+function submitPending(
+  rendered: ReturnType<typeof renderPendingSession>,
+  action: "start" | "add",
+  body: string,
+) {
+  act(() =>
+    rendered.result.current.beginAccessibleAuthoring(PATH, 2, "additions"),
+  );
+  const pending =
+    rendered.result.current.localComposerAnnotation?.localComposer
+      ?.pendingReview;
+  if (pending === undefined) throw new Error("Pending composer unavailable");
+  const anchor = { path: PATH, startLine: 2, line: 2, side: "new" as const };
+  let sending = Promise.resolve();
+  act(() => {
+    sending =
+      action === "start"
+        ? pending.onStartReview(anchor, body)
+        : pending.onAddReviewComment("review-node", anchor, body);
+  });
+  return sending;
+}
+it.each(["start", "add"] as const)(
+  "preserves a refused %s body when a new session's pending write settles",
+  async (action) => {
+    let refused = true;
+    const rendered = renderPendingSession(async () => {
+      if (refused) throw rejection();
+    });
+    const older = submitPending(rendered, action, "Older refused body");
+    await act(async () => {
+      await older;
+    });
+    rendered.rerender({ sessionId: "session-b" });
+    expect(failedDraftBodies(rendered.result.current)).toEqual([
+      "Older refused body",
+    ]);
+    refused = false;
+    const newer = submitPending(rendered, action, "New session body");
+    await act(async () => {
+      await newer;
+    });
+    expect(failedDraftBodies(rendered.result.current)).toEqual([
+      "Older refused body",
+    ]);
+  },
+);
+it.each(["start", "add"] as const)(
+  "isolates a late %s completion from the new session's pending card",
+  async (action) => {
+    const completions: Array<() => void> = [];
+    const rendered = renderPendingSession(
+      () =>
+        new Promise((resolve) => {
+          completions.push(resolve);
+        }),
+    );
+    const older = submitPending(rendered, action, "Old session sending");
+    rendered.rerender({ sessionId: "session-b" });
+    const newer = submitPending(rendered, action, "New session sending");
+    await act(async () => {
+      completions[0]?.();
+      await older;
+    });
+    expect(
+      rendered.result.current.displayedAnnotations.flatMap((entry) =>
+        entry.pendingReviewWrite ? [entry.pendingReviewWrite.body] : [],
+      ),
+    ).toEqual(["New session sending"]);
+    await act(async () => {
+      completions[1]?.();
+      await newer;
+    });
+    expect(rendered.result.current.displayedAnnotations).toHaveLength(0);
+  },
+);

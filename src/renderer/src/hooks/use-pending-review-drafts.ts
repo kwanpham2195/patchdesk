@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import type { ReviewConversationOwner } from "./use-review-conversation-owner";
 
 /** An inline Start or Add on its way to the pending review, or one GitHub safely refused. */
 export type PendingReviewWrite =
@@ -26,6 +27,8 @@ export type PendingReviewWrite =
 
 /** Pending-review drafts of one Review, held above the Diff tab so a tab switch or a Refresh to a new head keeps them (#526). */
 export type PendingReviewDrafts = {
+  /** Session owner for inline composer bodies and confirmed conversation mutations. */
+  readonly conversationOwner?: ReviewConversationOwner;
   readonly writes: ReadonlyArray<PendingReviewWrite>;
   readonly updateWrites: (
     update: (

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { retainGuide, buildGuideInventory } from "#src/domain/guide";
-import { GuideReader } from "#src/renderer/src/components/guide-reader";
+import { GuideFixtureWorkbench } from "#src/renderer/src/components/guide-fixture-workbench";
 import { InsightOutdated } from "#src/renderer/src/components/insight-panels";
 import { Button } from "#src/renderer/src/components/ui/button";
 
@@ -130,7 +130,11 @@ export function GuideFixture(): React.JSX.Element {
           Current revision · retained snapshot verified
         </p>
       )}
-      <GuideReader key={generation} guide={guide} />
+      <GuideFixtureWorkbench
+        key={generation}
+        guide={guide}
+        outdated={outdated}
+      />
     </div>
   );
 }

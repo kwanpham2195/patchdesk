@@ -6,13 +6,18 @@ import {
 } from "@/review-view-preferences";
 import type { GuideFileEvidence } from "./guide-file-evidence";
 import { ReviewDiffView } from "./review-diff-view";
+import { definedProps } from "#src/domain/defined-props";
+import { deriveConversationThreadEntries } from "#src/renderer/src/conversation-thread-entries";
+import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
-/** Read-only complete file evidence; no current-source hydration or review authoring. */
+/** Full retained file evidence uses shared actions without current-source hydration. */
 export function GuideFileDiff({
   file,
   evidence,
   preferences,
+  diffAuthoring,
 }: {
+  readonly diffAuthoring?: WalkthroughDiffAuthoring;
   readonly file: GuideInventoryEntry;
   readonly evidence: GuideFileEvidence;
   readonly preferences?: ReviewViewPreferences;
@@ -36,6 +41,21 @@ export function GuideFileDiff({
           parsedFiles={evidence.diff.files}
           fileStatsByPath={evidence.diff.statsByPath}
           selectedPath={path}
+          {...(diffAuthoring === undefined
+            ? {}
+            : {
+                annotations: deriveConversationThreadEntries(
+                  diffAuthoring.conversationAnnotations ?? [],
+                  diffAuthoring.annotations,
+                ).filter((annotation) => annotation.path === path),
+                pendingReviewDrafts: diffAuthoring.pendingReviewDrafts,
+                conversationActions: diffAuthoring.conversationActions,
+                ...definedProps({
+                  localCommentAuthoring: diffAuthoring.localCommentAuthoring,
+                  pendingReviewComposer: diffAuthoring.pendingReviewComposer,
+                  bodyContext: diffAuthoring.bodyContext,
+                }),
+              })}
           preferences={localPreferences}
           collapsedPaths={new Set()}
           onPreferencesChange={(update) =>

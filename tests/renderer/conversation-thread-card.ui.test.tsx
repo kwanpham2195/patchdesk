@@ -3,11 +3,18 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { ReviewWorkbench } from "#src/renderer/src/components/review-workbench";
+import { WalkthroughDiffAuthoringContext } from "#src/renderer/src/components/walkthrough-diff-authoring";
+import {
+  canonicalWorkbenchModel,
+  workbenchFixtureData,
+} from "#src/renderer/src/flows/fixtures/workbench-fixture-data";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ConversationThreadCard,
@@ -27,6 +34,11 @@ import { PullRequestImageCacheProvider } from "#src/renderer/src/hooks/use-pull-
 import { parsePullRequestInput } from "#src/domain/pull-request";
 import { refusalCausePhrase } from "#src/renderer/src/write-refusal-copy";
 import { installDesktopDouble, success } from "./fake-desktop-response";
+import { useReviewConversationOwner } from "#src/renderer/src/hooks/use-review-conversation-owner";
+import {
+  UnsentReviewTextContext,
+  useUnsentReviewTextFields,
+} from "#src/renderer/src/hooks/use-unsent-review-text";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 /** The failure the renderer builds from the route's refusal answer. */
@@ -132,7 +144,151 @@ function renderWithImageCache(ui: ReactNode): ReturnType<typeof render> {
   );
 }
 
+function WorkbenchThread(): React.JSX.Element {
+  const authoring = useContext(WalkthroughDiffAuthoringContext);
+  const owner = authoring?.pendingReviewDrafts.conversationOwner;
+  if (owner === undefined) throw new Error("Missing workbench owner");
+  return (
+    <ConversationThreadCard
+      thread={{
+        ...thread({ onReply: async () => undefined }),
+        conversationOwner: owner,
+      }}
+    />
+  );
+}
+
+it("wires the workbench leave guard above card lifetimes and clears it on disposal", async () => {
+  const user = userEvent.setup();
+  const navigation: string[] = [];
+  const view = render(
+    <ReviewWorkbench
+      model={canonicalWorkbenchModel(workbenchFixtureData)}
+      actions={{
+        detectUpdates: async () => undefined,
+        refresh: async () => undefined,
+        loadCommitDiff: async () => {
+          throw new Error("Unexpected commit diff");
+        },
+        loadSinceReviewDiff: async () => {
+          throw new Error("Unexpected since-review diff");
+        },
+        loadSinceLastRefreshDiff: async () => {
+          throw new Error("Unexpected since-refresh diff");
+        },
+        reportNavigationState: (state) => {
+          navigation.push(state);
+        },
+      }}
+      initialState={{ activeTab: "insights" }}
+      slots={{
+        insights: <WorkbenchThread />,
+        conversation: null,
+        mergeAction: null,
+      }}
+    />,
+  );
+  await user.type(
+    screen.getByRole("textbox", { name: "Reply" }),
+    "Retained workbench reply",
+  );
+  expect(navigation.at(-1)).toBe("dirty_draft");
+  await user.click(screen.getByRole("tab", { name: "Conversation" }));
+  expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
+  expect(navigation.at(-1)).toBe("dirty_draft");
+  await user.click(screen.getByRole("tab", { name: "Insights" }));
+  expect(screen.getByRole("textbox", { name: "Reply" })).toHaveProperty(
+    "value",
+    "Retained workbench reply",
+  );
+  view.unmount();
+  expect(navigation.at(-1)).toBe("clear");
+});
+
 describe("ConversationThreadCard", () => {
+  it.each(["reply", "edit"] as const)(
+    "retains a published %s draft and leave guard across card unmounts until explicit clearing",
+    async (kind) => {
+      const user = userEvent.setup();
+      const guard = renderHook(() => useUnsentReviewTextFields());
+      const owner = renderHook(() =>
+        useReviewConversationOwner("review", "session", [], {
+          reportUnsent: guard.result.current.report,
+        }),
+      );
+      const card = (
+        <UnsentReviewTextContext value={guard.result.current.report}>
+          <ConversationThreadCard
+            thread={{
+              ...thread({
+                onReply: async () => undefined,
+                onEditComment: async () => undefined,
+              }),
+              conversationOwner: owner.result.current,
+            }}
+          />
+        </UnsentReviewTextContext>
+      );
+      const first = render(card);
+      if (kind === "edit")
+        await user.click(screen.getByRole("button", { name: "Edit" }));
+      const label = kind === "reply" ? "Reply" : "Edit comment";
+      await user.clear(screen.getByRole("textbox", { name: label }));
+      await user.type(
+        screen.getByRole("textbox", { name: label }),
+        "Retained card draft",
+      );
+      expect(guard.result.current.holdsUnsentText).toBe(true);
+      first.unmount();
+      expect(guard.result.current.holdsUnsentText).toBe(true);
+      render(card);
+      expect(screen.getByRole("textbox", { name: label })).toHaveProperty(
+        "value",
+        "Retained card draft",
+      );
+      if (kind === "edit")
+        await user.click(screen.getByRole("button", { name: "Cancel" }));
+      else await user.clear(screen.getByRole("textbox", { name: label }));
+      expect(guard.result.current.holdsUnsentText).toBe(false);
+    },
+  );
+
+  it("keeps an edit draft when a REST receipt card becomes a canonical node-id card", async () => {
+    const user = userEvent.setup();
+    const owner = renderHook(() =>
+      useReviewConversationOwner("review", "session", []),
+    );
+    const opening = thread().comments[0];
+    if (opening === undefined) throw new Error("Missing opening comment");
+    const view = render(
+      <ConversationThreadCard
+        thread={{
+          ...thread({ onEditComment: async () => undefined }),
+          conversationOwner: owner.result.current,
+          comments: [{ ...opening, id: "123", commentNodeId: "PRRC_123" }],
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Edit comment" }),
+      " unsent edit",
+    );
+    view.unmount();
+    render(
+      <ConversationThreadCard
+        thread={{
+          ...thread({ onEditComment: async () => undefined }),
+          conversationOwner: owner.result.current,
+          comments: [{ ...opening, id: "PRRC_123" }],
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole("textbox", { name: "Edit comment" }),
+    ).toHaveProperty("value", "Check this line. unsent edit");
+  });
+
   it("treats a freshly published card as authoritative: no pending marker, full actions", () => {
     render(
       <ConversationThreadCard
@@ -325,7 +481,7 @@ describe("ConversationThreadCard", () => {
       pending: "Unresolving…",
     },
   ])(
-    "admits one $idle request and blocks the reply controls until settlement",
+    "disables reply controls during $idle and restores them after settlement",
     async ({ state, idle, pending: pendingCopy }) => {
       const threadState = deferred<void>();
       const onSetState = vi.fn(() => threadState.promise);
@@ -339,9 +495,11 @@ describe("ConversationThreadCard", () => {
       await userEvent.setup().type(reply, "Preserved reply draft");
       const stateButton = screen.getByRole("button", { name: idle });
       fireEvent.click(stateButton);
-      fireEvent.click(stateButton);
 
-      expect(onSetState).toHaveBeenCalledOnce();
+      expect(onSetState).toHaveBeenCalledWith(
+        "thread-1",
+        state === "open" ? "resolved" : "open",
+      );
       expectPendingButton(
         screen.getByRole("button", { name: new RegExp(pendingCopy) }),
       );
@@ -435,7 +593,7 @@ describe("ConversationThreadCard", () => {
     ).toBeNull();
   });
 
-  it("admits one reply synchronously and preserves its draft after failure", async () => {
+  it("disables reply controls while sending and displays failure beside the preserved draft", async () => {
     const user = userEvent.setup();
     const replyRequest = deferred<string | void>();
     const onReply = vi.fn(() => replyRequest.promise);
@@ -446,10 +604,8 @@ describe("ConversationThreadCard", () => {
     await user.type(reply, "Reply while waiting");
     const replyButton = screen.getByRole("button", { name: "Reply" });
     fireEvent.click(replyButton);
-    fireEvent.click(replyButton);
 
     expect(onReply).toHaveBeenCalledWith("thread-1", "Reply while waiting");
-    expect(onReply).toHaveBeenCalledOnce();
     expectPendingButton(screen.getByRole("button", { name: /Replying/ }));
     expect(reply.hasAttribute("disabled")).toBe(true);
     expect(

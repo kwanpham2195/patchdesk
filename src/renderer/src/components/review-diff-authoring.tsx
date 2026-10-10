@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { PatchdeskApiError } from "#src/renderer/src/api-client";
 import type {
@@ -282,12 +282,15 @@ export function DiffAuthoringRefusalNotice({
   );
 }
 
+const noDraftSubscription = (): (() => void) => () => undefined;
+
 export function InlineCommentComposer({
   path,
   startLine,
   line,
   side,
   initialBody = "",
+  draftControl,
   onCancel,
   onSave,
   pendingReview,
@@ -299,17 +302,27 @@ export function InlineCommentComposer({
   readonly line: number;
   readonly side: "new" | "old";
   readonly initialBody?: string;
+  /** Shared text subscribes at the composer, so a keystroke does not replace Pierre's annotations. */
+  readonly draftControl?: {
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly getBody: () => string;
+  };
   readonly onCancel: () => void;
   readonly onSave: (body: string) => Promise<void>;
   readonly pendingReview?: PendingReviewComposerActions;
   /** A maintainer note on a local Review, saved to the Review record (ADR 0051). */
   readonly kind?: "note";
-  /** Reports the text as it changes, so the diff can keep an unsaved note when it unmounts (#556 D5). */
+  /** Reports unsent text to the owner above the diff appearance lifetime. */
   readonly onBodyChange?: (body: string) => void;
 }): React.JSX.Element {
   const note = kind === "note";
   type ComposerAction = "comment" | "start" | "add" | "comment-now";
-  const [body, setBody] = useState(initialBody);
+  const [localBody, setBody] = useState(initialBody);
+  const sharedBody = useSyncExternalStore(
+    draftControl?.subscribe ?? noDraftSubscription,
+    draftControl?.getBody ?? (() => ""),
+  );
+  const body = draftControl === undefined ? localBody : sharedBody;
   useReportUnsentReviewText(body);
   const [pendingAction, setPendingAction] = useState<ComposerAction>();
   const pendingActionRef = useRef<ComposerAction | undefined>(undefined);
