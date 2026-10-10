@@ -90,13 +90,16 @@ export type ReviewWorkbenchActions = {
   readonly setThreadState?: (
     threadId: string,
     state: "open" | "resolved",
-  ) => Promise<void>;
+  ) => Promise<false | void>;
   readonly replyToThread?: (
     threadId: string,
     body: string,
   ) => Promise<string | void>;
-  readonly editComment?: (commentId: string, body: string) => Promise<void>;
-  readonly deleteComment?: (commentId: string) => Promise<void>;
+  readonly editComment?: (
+    commentId: string,
+    body: string,
+  ) => Promise<false | void>;
+  readonly deleteComment?: (commentId: string) => Promise<false | void>;
   readonly dismissReview?: (
     publishedReviewId: string,
     message: string,

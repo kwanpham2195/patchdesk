@@ -1,4 +1,5 @@
 import { GuideReader } from "./guide-reader";
+import { guideReviewDisabledReason } from "./guide-review-controls";
 import * as v from "valibot";
 
 import type { ChangeScopeBucket } from "#src/domain/change-scope";
@@ -132,13 +133,19 @@ export function buildInsightReaders({
   if (
     selectedInsight === "guide" &&
     workbench.insights.guide?.retained !== undefined
-  )
+  ) {
+    const disabledReason = guideReviewDisabledReason(workbench);
     return (
       <GuideReader
         key={`${workbench.session.id}:${workbench.insights.guide.retained.runId}`}
         guide={workbench.insights.guide.retained.value}
+        {...definedProps({ disabledReason })}
+        {...(disabledReason === undefined
+          ? definedProps({ diffAuthoring: walkthroughDiffAuthoring })
+          : {})}
       />
     );
+  }
   const analysisSummaryScope = {
     baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
     headShort: workbench.session.key.headSha.slice(0, 7),

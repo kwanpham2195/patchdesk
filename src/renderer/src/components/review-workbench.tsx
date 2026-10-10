@@ -29,9 +29,7 @@ import {
   buildConversationAnnotations,
   buildAgentExplanationAnnotations,
   buildLocalNoteAnnotations,
-  buildPendingReviewAnnotations,
   buildReadOnlyConversationAnnotations,
-  type LocalNoteAnnotationControls,
   type MappedFinding,
 } from "./review-workbench-annotations";
 import type {
@@ -77,11 +75,8 @@ import type { ViewedFilesControls } from "#src/renderer/src/hooks/use-viewed-fil
 import { useReviewWorkbenchPosition } from "#src/renderer/src/hooks/use-review-workbench-position";
 import { useReviewFileSelection } from "#src/renderer/src/hooks/use-review-file-selection";
 import { useLocalNotesNavigation } from "#src/renderer/src/hooks/use-local-notes-navigation";
-import {
-  useWalkthroughDiffAuthoring,
-  WalkthroughDiffAuthoringContext,
-} from "./walkthrough-diff-authoring";
-import { usePendingReviewDrafts } from "#src/renderer/src/hooks/use-pending-review-drafts";
+import { WalkthroughDiffAuthoringContext } from "./walkthrough-diff-authoring";
+import { useReviewWorkbenchAuthoring } from "./review-workbench-authoring";
 import { useReviewNavigationState } from "#src/renderer/src/hooks/use-review-navigation-state";
 import {
   UnsentReviewTextContext,
@@ -225,22 +220,6 @@ export function ReviewWorkbench({
     selectSection,
     selectCommit,
   } = position;
-  // The Diff tab unmounts on a tab switch and remounts on a new head, so its failed drafts live here (#526).
-  const pendingReviewDrafts = usePendingReviewDrafts(
-    model.review.id,
-    model.fullPatch,
-  );
-  useReviewNavigationState({
-    writePending:
-      actions.pendingReview?.busy === true ||
-      actions.directSummary?.busy === true,
-    unsentText:
-      actions.pendingReview?.finishDraft !== undefined ||
-      unsentTextFields.holdsUnsentText ||
-      (pendingReviewDrafts.orphanedBody?.trim() ?? "") !== "" ||
-      pendingReviewDrafts.writes.some((write) => write._tag === "failed"),
-    report: actions.reportNavigationState,
-  });
   const selectedView = localPatchView?.selected ?? "combined";
   // Findings use Combined coordinates, so another view shows none (#556 D3); notes are placed per view.
   const onOtherView = selectedView !== "combined";
@@ -459,34 +438,29 @@ export function ReviewWorkbench({
         readOnlyConversationAnnotations,
       ],
     );
-  // The builder reads only the pending-review projection, so that is the
-  // dependency: `model` as a whole would also change for a refreshed check or
-  // a new comment, and every new array identity here recomputes
-  // `annotationKey` in `use-review-diff-model.ts`.
-  const pendingReview = model.pendingReview;
-  const pendingReviewAnnotations: ReadonlyArray<ReviewInlineAnnotation> =
-    useMemo(
-      () => buildPendingReviewAnnotations({ pendingReview }),
-      [pendingReview],
-    );
-  // Pieces rather than `localDrafts`, whose object is new on every render.
-  const noteReplies = localDrafts?.replies;
-  const setNoteResolved = localDrafts?.setResolved;
-  const noteControls = useMemo(
-    (): LocalNoteAnnotationControls =>
-      definedProps({
-        notes: actions.localNotes,
-        replies: noteReplies,
-        setResolved: setNoteResolved,
-      }),
-    [actions.localNotes, noteReplies, setNoteResolved],
-  );
-  const walkthroughDiffAuthoring = useWalkthroughDiffAuthoring({
-    model,
-    actions,
-    noteControls,
+  const {
     pendingReviewDrafts,
     pendingReviewAnnotations,
+    noteControls,
+    walkthroughDiffAuthoring,
+  } = useReviewWorkbenchAuthoring({
+    model,
+    actions,
+    localDrafts,
+    viewedFiles: selectedView === "combined" ? viewedFiles : undefined,
+    conversationAnnotations,
+    reportUnsent: unsentTextFields.report,
+  });
+  useReviewNavigationState({
+    writePending:
+      actions.pendingReview?.busy === true ||
+      actions.directSummary?.busy === true,
+    unsentText:
+      actions.pendingReview?.finishDraft !== undefined ||
+      unsentTextFields.holdsUnsentText ||
+      (pendingReviewDrafts.orphanedBody?.trim() ?? "") !== "" ||
+      pendingReviewDrafts.writes.some((write) => write._tag === "failed"),
+    report: actions.reportNavigationState,
   });
   // A pending-review thread is also visible to the thread reader; dedupe
   // lives in `deriveConversationThreadEntries` so the diff and (eventually) a

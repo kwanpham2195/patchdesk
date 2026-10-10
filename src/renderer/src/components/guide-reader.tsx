@@ -12,6 +12,9 @@ import {
   type RetainedGuide,
 } from "#src/domain/guide";
 import { GeneratedMarkdown } from "./generated-markdown";
+import { Button } from "./ui/button";
+import { InlineError } from "./ui/inline-error";
+import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 const evidenceLabels = {
   text: "",
@@ -25,9 +28,13 @@ const evidenceLabels = {
 export function GuideReader({
   guide,
   preferences,
+  diffAuthoring,
+  disabledReason,
 }: {
   readonly guide: RetainedGuide;
   readonly preferences?: ReviewViewPreferences;
+  readonly diffAuthoring?: WalkthroughDiffAuthoring;
+  readonly disabledReason?: string;
 }): React.JSX.Element {
   const files = useMemo(
     () => new Map(guide.inventory.map((file) => [file.id, file])),
@@ -37,6 +44,14 @@ export function GuideReader({
   const others = guideOthers(guide);
   return (
     <div aria-label="Guide" className="@container min-w-0">
+      {disabledReason === undefined ? null : (
+        <p role="note" className="mb-3 text-sm text-muted-foreground">
+          {disabledReason}
+        </p>
+      )}
+      {diffAuthoring?.viewedFiles?.saveFailed ? (
+        <InlineError>Viewed marks could not be saved.</InlineError>
+      ) : null}
       <ol className="m-0 list-none divide-y border-y p-0">
         {guide.groups.map((group, index) => (
           <li
@@ -74,6 +89,10 @@ export function GuideReader({
                     evidence={fileEvidence}
                     {...(preferences === undefined ? {} : { preferences })}
                     relevance={membership.relevance}
+                    {...(diffAuthoring === undefined ? {} : { diffAuthoring })}
+                    {...(disabledReason === undefined
+                      ? {}
+                      : { disabledReason })}
                   />
                 );
               })}
@@ -107,6 +126,8 @@ export function GuideReader({
                   file={file}
                   evidence={fileEvidence}
                   {...(preferences === undefined ? {} : { preferences })}
+                  {...(diffAuthoring === undefined ? {} : { diffAuthoring })}
+                  {...(disabledReason === undefined ? {} : { disabledReason })}
                 />
               );
             })}
@@ -122,7 +143,11 @@ function GuideFileRow({
   relevance,
   evidence,
   preferences,
+  diffAuthoring,
+  disabledReason,
 }: {
+  readonly diffAuthoring?: WalkthroughDiffAuthoring;
+  readonly disabledReason?: string;
   readonly file: GuideInventoryEntry;
   readonly relevance?: string;
   readonly evidence: GuideFileEvidence;
@@ -131,6 +156,13 @@ function GuideFileRow({
   const [expanded, setExpanded] = useState(false);
   const path = file.status === "removed" ? file.oldPath : file.newPath;
   const cut = path.lastIndexOf("/");
+  const viewedFiles =
+    disabledReason === undefined ? diffAuthoring?.viewedFiles : undefined;
+  const viewedDisabledReason =
+    disabledReason ??
+    (viewedFiles === undefined
+      ? "Viewed marks require the Combined Diff view."
+      : undefined);
   return (
     <li className="min-w-0 rounded-md border bg-card px-3 py-3">
       <button
@@ -158,6 +190,29 @@ function GuideFileRow({
           <span className="text-red-400">−{file.deletions}</span>
         </span>
       </button>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          size="xs"
+          variant="outline"
+          aria-label={`Viewed ${path}`}
+          aria-pressed={viewedFiles?.paths.has(path) ?? false}
+          disabled={viewedDisabledReason !== undefined}
+          onClick={() => {
+            if (viewedFiles === undefined) return;
+            const paths = new Set(viewedFiles.paths);
+            if (paths.has(path)) paths.delete(path);
+            else paths.add(path);
+            viewedFiles.setPaths(paths);
+          }}
+        >
+          Viewed
+        </Button>
+        {viewedDisabledReason === undefined ? null : (
+          <span role="note" className="text-xs text-muted-foreground">
+            {viewedDisabledReason}
+          </span>
+        )}
+      </div>
       {file.status === "renamed" ? (
         <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
           From {file.oldPath}
@@ -176,7 +231,11 @@ function GuideFileRow({
       {expanded ? (
         <GuideFileDiff
           file={file}
+          key={disabledReason ?? "current"}
           evidence={evidence}
+          {...(disabledReason === undefined && diffAuthoring !== undefined
+            ? { diffAuthoring }
+            : {})}
           {...(preferences === undefined ? {} : { preferences })}
         />
       ) : null}

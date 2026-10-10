@@ -1,5 +1,18 @@
 // @vitest-environment jsdom
-import { act, cleanup, renderHook } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  renderHook,
+  render,
+  fireEvent,
+  within,
+} from "@testing-library/react";
+import { createElement } from "react";
+import { parseGitHubThreadId } from "#src/domain/ids";
+import { ConversationThreadCard } from "#src/renderer/src/components/conversation-thread-card";
+import type { ReviewInlineAnnotation } from "#src/renderer/src/components/review-diff-view";
+import { useReviewConversationOwner } from "#src/renderer/src/hooks/use-review-conversation-owner";
+import { useReviewConversationOverlays } from "#src/renderer/src/hooks/use-review-conversation-overlays";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "#src/domain/json";
@@ -37,7 +50,10 @@ type ActionCase = {
   readonly invoke: (
     actions: DirectConversationActions,
   ) => Promise<
-    void | string | { readonly commentId: string; readonly threadId?: string }
+    | false
+    | void
+    | string
+    | { readonly commentId: string; readonly threadId?: string }
   >;
   readonly receipt: RawJsonValue;
   readonly wrongReceipt: RawJsonValue;
@@ -480,4 +496,222 @@ describe("useDirectConversationActions", () => {
       commentId: "comment-created",
     });
   });
+});
+
+const parsedThread = parseGitHubThreadId("thread-1");
+if (parsedThread._tag !== "ok") throw new Error("Invalid fixture thread");
+const consumerThreadId = parsedThread.value;
+const consumerComment = {
+  id: "comment-1",
+  body: "Original",
+  author: "You",
+  viewerDidAuthor: true,
+  createdAt: "2026-10-01T00:00:00Z",
+};
+function consumerProjection(
+  body = "Original",
+  state: "open" | "resolved" = "open",
+): ReadonlyArray<ReviewInlineAnnotation> {
+  return [
+    {
+      id: "thread",
+      path: "src/a.ts",
+      start: 1,
+      end: 1,
+      side: "new",
+      severity: "conversation",
+      title: "Conversation",
+      explanation: "",
+      conversationThread: {
+        target: { _tag: "thread", id: consumerThreadId },
+        state,
+        comments: [{ ...consumerComment, body }],
+      },
+    },
+  ];
+}
+function renderConsumer(
+  answer: () => DesktopResponse | Promise<DesktopResponse>,
+) {
+  desktop = installDesktopDouble({
+    [COMMAND]: answer,
+    [PUBLISHED_EDIT]: answer,
+    [PUBLISHED_DELETE]: answer,
+  });
+  return renderHook(
+    ({ annotations }) => {
+      const actions = useDirectConversationActions({
+        workbench: projection(),
+        runDirectCommand: async (request) => request(),
+        appendRecentWrites: () => undefined,
+        observeConfirmedReviewWrite: async () => {
+          throw new Error("Advisory read failed");
+        },
+        requireRecovery: () => undefined,
+      });
+      const owner = useReviewConversationOwner(
+        "review",
+        "session",
+        annotations,
+      );
+      const overlays = useReviewConversationOverlays({
+        patch: "",
+        annotations,
+        viewer: { current: null },
+        localCommentAuthoring: undefined,
+        pendingReviewComposer: undefined,
+        pendingReviewDrafts: {
+          conversationOwner: owner,
+          fullPatch: "",
+          writes: [],
+          updateWrites: () => undefined,
+          orphanedBody: undefined,
+          setOrphanedBody: () => undefined,
+        },
+        conversationActions: actions,
+      });
+      const thread = overlays.displayedAnnotations[0]?.conversationThread;
+      return {
+        thread:
+          thread === undefined
+            ? undefined
+            : overlays.decorateConversationThread(thread),
+      };
+    },
+    { initialProps: { annotations: consumerProjection() } },
+  );
+}
+it("preserves the shared reply when a second appearance skips and the admitted request is refused", async () => {
+  let refuse: (response: DesktopResponse) => void = () => undefined;
+  const consumer = renderConsumer(
+    () =>
+      new Promise((resolve) => {
+        refuse = resolve;
+      }),
+  );
+  const thread = consumer.result.current.thread;
+  if (thread === undefined) throw new Error("Missing thread");
+  const cards = render(
+    createElement(
+      "div",
+      null,
+      createElement(ConversationThreadCard, { thread }),
+      createElement(ConversationThreadCard, { thread }),
+    ),
+  );
+  const appearances = cards.getAllByRole("article");
+  const first = appearances[0];
+  const second = appearances[1];
+  if (first === undefined || second === undefined)
+    throw new Error("Missing appearances");
+  fireEvent.change(within(first).getByRole("textbox", { name: "Reply" }), {
+    target: { value: "Keep my reply" },
+  });
+  fireEvent.click(within(first).getByRole("button", { name: "Reply" }));
+  fireEvent.click(within(second).getByRole("button", { name: "Reply" }));
+  await act(async () => undefined);
+  expect(within(second).getByRole("textbox", { name: "Reply" })).toMatchObject({
+    value: "Keep my reply",
+  });
+  await act(async () =>
+    refuse(failure({ error: "github_refused", cause: "unprocessable" }, 409)),
+  );
+  expect(within(first).getByRole("textbox", { name: "Reply" })).toMatchObject({
+    value: "Keep my reply",
+  });
+  expect(desktop?.request).toHaveBeenCalledTimes(1);
+});
+it.each(["edit", "delete", "resolve"] as const)(
+  "does not show a skipped %s while another native write is held",
+  async (mutation) => {
+    let refuse: (response: DesktopResponse) => void = () => undefined;
+    const consumer = renderConsumer(
+      () =>
+        new Promise((resolve) => {
+          refuse = resolve;
+        }),
+    );
+    const thread = consumer.result.current.thread;
+    if (thread === undefined) throw new Error("Missing thread");
+    const held = thread.onReply?.(consumerThreadId, "Held reply");
+    const refused = expect(held).rejects.toMatchObject({
+      kind: "github_refused",
+    });
+    await act(async () => {
+      if (mutation === "edit")
+        await thread.onEditComment?.("comment-1", "Skipped edit");
+      if (mutation === "delete") await thread.onDeleteComment?.("comment-1");
+      if (mutation === "resolve")
+        await thread.onSetState?.(consumerThreadId, "resolved");
+    });
+    await act(async () => {
+      refuse(failure({ error: "github_refused", cause: "unprocessable" }, 409));
+      await refused;
+    });
+    expect(consumer.result.current.thread?.comments[0]?.body).toBe("Original");
+    expect(consumer.result.current.thread?.state).toBe("open");
+    expect(desktop?.request).toHaveBeenCalledTimes(1);
+  },
+);
+it.each(["edit", "resolve"] as const)(
+  "retires a late %s receipt already acknowledged before callback completion",
+  async (mutation) => {
+    let confirm: (response: DesktopResponse) => void = () => undefined;
+    const consumer = renderConsumer(
+      () =>
+        new Promise((resolve) => {
+          confirm = resolve;
+        }),
+    );
+    const thread = consumer.result.current.thread;
+    if (thread === undefined) throw new Error("Missing thread");
+    const sending =
+      mutation === "edit"
+        ? thread.onEditComment?.("comment-1", "A")
+        : thread.onSetState?.(consumerThreadId, "resolved");
+    consumer.rerender({
+      annotations: consumerProjection(
+        mutation === "edit" ? "A" : "Original",
+        mutation === "resolve" ? "resolved" : "open",
+      ),
+    });
+    await act(async () => {
+      confirm(
+        success(
+          mutation === "edit"
+            ? {
+                _tag: "PublishedCommentEdited",
+                commentId: "comment-1",
+                reconciliation: "complete",
+              }
+            : {
+                _tag: "ThreadStateChanged",
+                threadId: consumerThreadId,
+                state: "resolved",
+              },
+        ),
+      );
+      await sending;
+    });
+    consumer.rerender({ annotations: consumerProjection("B", "open") });
+    expect(consumer.result.current.thread?.comments[0]?.body).toBe("B");
+    expect(consumer.result.current.thread?.state).toBe("open");
+    expect(desktop?.request).toHaveBeenCalledTimes(1);
+  },
+);
+it("retires a whitespace edit after canonical acknowledgment so a later edit wins", async () => {
+  const consumer = renderConsumer(() =>
+    success({
+      _tag: "PublishedCommentEdited",
+      commentId: "comment-1",
+      reconciliation: "complete",
+    }),
+  );
+  await act(async () =>
+    consumer.result.current.thread?.onEditComment?.("comment-1", " Revised "),
+  );
+  consumer.rerender({ annotations: consumerProjection("Revised") });
+  consumer.rerender({ annotations: consumerProjection("Later") });
+  expect(consumer.result.current.thread?.comments[0]?.body).toBe("Later");
+  expect(desktop?.request).toHaveBeenCalledTimes(1);
 });

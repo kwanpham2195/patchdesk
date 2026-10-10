@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
+import type { WalkthroughDiffAuthoring } from "#src/renderer/src/components/walkthrough-diff-authoring";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildGuideInventory, retainGuide } from "#src/domain/guide";
@@ -77,6 +79,54 @@ const textGuide = must(
     { patchText: textPatch, inventory: must(buildGuideInventory(textPatch)) },
   ),
 );
+
+describe("Guide shared Viewed controls", () => {
+  it("shares file marks between repeated appearances while keeping expansion independent", async () => {
+    function SharedMarks(): React.JSX.Element {
+      const [paths, setPaths] = useState<ReadonlySet<string>>(new Set());
+      const authoring: WalkthroughDiffAuthoring = {
+        pendingReviewDrafts: {
+          writes: [],
+          updateWrites: () => undefined,
+          orphanedBody: undefined,
+          setOrphanedBody: () => undefined,
+          fullPatch: textPatch,
+        },
+        conversationActions: {},
+        annotations: [],
+        viewedFiles: { paths, setPaths, saveFailed: false },
+      };
+      return <GuideReader guide={textGuide} diffAuthoring={authoring} />;
+    }
+    const user = userEvent.setup();
+    render(<SharedMarks />);
+    const first = within(
+      screen.getByRole("list", { name: "First behavior files" }),
+    );
+    const second = within(
+      screen.getByRole("list", { name: "Supporting behavior files" }),
+    );
+    await user.click(first.getByRole("button", { name: "Viewed src/main.ts" }));
+    expect(
+      first.getByRole("button", { name: "Viewed src/main.ts", pressed: true }),
+    ).toBeDefined();
+    expect(
+      second.getByRole("button", { name: "Viewed src/main.ts", pressed: true }),
+    ).toBeDefined();
+    await user.click(first.getByRole("button", { name: "File src/main.ts" }));
+    expect(
+      second
+        .getByRole("button", { name: "File src/main.ts" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    await user.click(
+      second.getByRole("button", { name: "Viewed src/main.ts" }),
+    );
+    expect(
+      first.getByRole("button", { name: "Viewed src/main.ts", pressed: false }),
+    ).toBeDefined();
+  });
+});
 
 describe("Guide complete snapshot evidence", () => {
   it("starts collapsed and expands every hunk independently for repeated memberships", async () => {
