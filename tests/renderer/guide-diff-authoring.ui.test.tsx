@@ -270,12 +270,12 @@ describe("Guide shared authoring", () => {
       await second.findByRole("article", { name: /Note on/ }),
     ).toBeDefined();
     await user.click(
-      first.getByRole("button", { name: "Viewed src/recovery.ts" }),
+      first.getByRole("checkbox", { name: "Viewed src/recovery.ts" }),
     );
     expect(
-      second.getByRole("button", {
+      second.getByRole("checkbox", {
         name: "Viewed src/recovery.ts",
-        pressed: true,
+        checked: true,
       }),
     ).toBeDefined();
     expect(reviewBridgeCalls()).toEqual([]);
@@ -298,7 +298,9 @@ describe("Guide shared authoring", () => {
           path: "/v1/reviews/diff-file",
           body: {
             profileId: "fixture",
-            sessionId: "fixture-session",
+            sessionId:
+              "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca",
+            view: "combined",
             path: "src/recovery.ts",
           },
         },
@@ -366,7 +368,8 @@ describe("Guide shared authoring", () => {
           path: "/v1/reviews/diff-file",
           body: {
             profileId: "fixture",
-            sessionId: "fixture-session",
+            sessionId:
+              "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca",
             path: "src/recovery.ts",
           },
         },
@@ -390,7 +393,7 @@ describe("Guide shared authoring", () => {
     expect(screen.queryByRole("textbox", { name: "Note" })).toBeNull();
     expect(
       screen
-        .getAllByRole("button", { name: "Viewed src/recovery.ts" })
+        .getAllByRole("checkbox", { name: "Viewed src/recovery.ts" })
         .every((button) => button.hasAttribute("disabled")),
     ).toBe(true);
     await waitFor(() => expect(hoveredGutterButton({ line: 2 })).toBeNull());

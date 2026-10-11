@@ -292,6 +292,24 @@ export const lockRows: ReadonlyArray<LockRow> = [
     ),
   },
   {
+    name: "InsightRunCoordinator.updateGuideReadingState",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.updateGuideReadingState({
+        profileId,
+        reviewId,
+        runId: insightRunId,
+        sessionId: expected.sessionId,
+        expectedStateVersion: 0,
+        state: {
+          reviewedGroupIds: [],
+          expandedAppearances: [],
+          anchor: { kind: "top" },
+        },
+      }),
+    ),
+  },
+  {
     name: "InsightRunCoordinator.updateWalkthroughProgress",
     kind: "queues",
     build: insightBuild((insights) =>

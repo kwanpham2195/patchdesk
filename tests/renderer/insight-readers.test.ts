@@ -140,7 +140,7 @@ describe("Guide production composition", () => {
     );
     expect(
       screen
-        .getByRole("button", { name: "Viewed src/a.ts" })
+        .getByRole("checkbox", { name: "Viewed src/a.ts" })
         .hasAttribute("disabled"),
     ).toBe(false);
     await userEvent
@@ -191,7 +191,7 @@ describe("Guide production composition", () => {
     expect(evidence.textContent).not.toContain("currentReplacement()");
     expect(
       screen
-        .getByRole("button", { name: "Viewed src/a.ts" })
+        .getByRole("checkbox", { name: "Viewed src/a.ts" })
         .hasAttribute("disabled"),
     ).toBe(true);
     expect(screen.getAllByRole("note").length).toBeGreaterThan(0);

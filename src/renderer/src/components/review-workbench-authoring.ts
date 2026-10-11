@@ -42,7 +42,7 @@ export function useReviewWorkbenchAuthoring({
   readonly localDrafts: LocalDraftControls | undefined;
   readonly viewedFiles: ViewedFilesControls | undefined;
   readonly conversationAnnotations: ReadonlyArray<ReviewInlineAnnotation>;
-  readonly reportUnsent: (fieldId: string, unsent: boolean) => void;
+  readonly reportUnsent: (fieldId: string, text: string) => void;
 }): ReviewWorkbenchAuthoring {
   const conversationOwner = useReviewConversationOwner(
     model.review.id,

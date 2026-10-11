@@ -1,3 +1,6 @@
+import { useGuideReadingState } from "#src/renderer/src/hooks/use-guide-reading-state";
+import { useGuideReadingCommands } from "#src/renderer/src/hooks/use-guide-reading-flush";
+import { GuideReadingSaveError } from "#src/renderer/src/components/guide-reader";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
@@ -70,7 +73,7 @@ export function ReviewWorkbenchFlow({
     requestRefresh,
     requestReprepare,
     replaceWorkbench,
-    runDirectCommand,
+    runDirectCommand: runObservedCommand,
     observeConfirmedReviewWrite,
     appendRecentWrites,
   } = useReviewObservation({
@@ -78,6 +81,8 @@ export function ReviewWorkbenchFlow({
     onWorkbenchReplace,
     onWorkbenchPatch,
   });
+  const guideReading = useGuideReadingState(workbench, onWorkbenchPatch);
+  const runDirectCommand = useGuideReadingCommands(runObservedCommand);
   const writeRecovery = useReviewWriteRecovery({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
@@ -257,6 +262,7 @@ export function ReviewWorkbenchFlow({
           insights: (
             <InsightsSlot
               workbench={workbench}
+              {...(guideReading === undefined ? {} : { guideReading })}
               {...(initialUiState?.insightDetail === undefined
                 ? {}
                 : { initialDetail: initialUiState.insightDetail })}
@@ -285,6 +291,7 @@ export function ReviewWorkbenchFlow({
           mergeAction: null,
         }}
       />
+      <GuideReadingSaveError reading={guideReading} />
       {writeRecovery.recovery === undefined ? null : (
         <Alert className="mx-4 my-2" data-review-write-recovery>
           <AlertTitle>GitHub writes are paused</AlertTitle>

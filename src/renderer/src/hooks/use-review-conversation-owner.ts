@@ -116,7 +116,7 @@ export type ReviewConversationOwner = {
   ) => void;
   readonly nextLocalId: (prefix: string) => string;
   readonly activate: (
-    report: ((fieldId: string, unsent: boolean) => void) | undefined,
+    report: ((fieldId: string, text: string) => void) | undefined,
   ) => void;
   readonly dispose: () => void;
 };
@@ -141,14 +141,17 @@ function createConversationOwner(
   let canonicalThreadIds: ReadonlySet<string> = new Set();
   let canonicalCommentBodies: ReadonlyMap<string, string> = new Map();
   let canonicalThreadStates: ReadonlyMap<string, string> = new Map();
-  let unsentReporter: ((fieldId: string, unsent: boolean) => void) | undefined;
+  let unsentReporter: ((fieldId: string, text: string) => void) | undefined;
   const listeners = new Set<() => void>();
-  const reportDrafts = (): void =>
+  const reportDrafts = (): void => {
+    const drafts = [...snapshot.draftBodies]
+      .filter(([, body]) => body.trim() !== "")
+      .sort(([a], [b]) => a.localeCompare(b));
     unsentReporter?.(
       fieldId,
-      active &&
-        [...snapshot.draftBodies.values()].some((body) => body.trim() !== ""),
+      active && drafts.length > 0 ? JSON.stringify(drafts) : "",
     );
+  };
   const update: ReviewConversationOwner["update"] = (change) => {
     if (!active) return;
     const next = change(snapshot);
@@ -227,7 +230,7 @@ function createConversationOwner(
     update,
     nextLocalId: (prefix) => `${prefix}-${fieldId}-${localId++}`,
     activate: (report) => {
-      if (unsentReporter !== report) unsentReporter?.(fieldId, false);
+      if (unsentReporter !== report) unsentReporter?.(fieldId, "");
       unsentReporter = report;
       active = true;
       reportDrafts();
@@ -329,7 +332,7 @@ export function useReviewConversationOwner(
   }: {
     readonly now?: () => string;
     readonly reportUnsent?:
-      | ((fieldId: string, unsent: boolean) => void)
+      | ((fieldId: string, text: string) => void)
       | undefined;
   } = {},
 ): ReviewConversationOwner {

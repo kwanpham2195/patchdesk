@@ -124,7 +124,6 @@ export function useViewedFiles({
           latest.current.profileId === current.profileId &&
           latest.current.reviewId === current.reviewId &&
           latest.current.sessionId === current.sessionId &&
-          latest.current.view === current.view &&
           (current.view === undefined || current.view === "combined")
         )
           latest.current.onWorkbenchPatch({ viewedPaths: parsed.output.paths });

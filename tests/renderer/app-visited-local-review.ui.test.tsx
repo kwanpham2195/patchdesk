@@ -253,8 +253,8 @@ describe("App visited local Review", () => {
     );
 
     await waitFor(() => expect(openErrorAlert()).toBeDefined());
-    // The draft was discarded when the maintainer left, so nothing is left to confirm.
-    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // The draft was discarded; wait for the original dialog's exit before checking for another prompt.
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(window.localStorage.getItem("patchdesk.destination")).toBe(
       "dashboard",
     );

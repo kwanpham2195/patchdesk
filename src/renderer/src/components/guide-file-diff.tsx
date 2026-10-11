@@ -1,9 +1,6 @@
 import { useState } from "react";
 import type { GuideInventoryEntry } from "#src/domain/guide";
-import {
-  loadReviewViewPreferences,
-  type ReviewViewPreferences,
-} from "@/review-view-preferences";
+import type { ReviewViewPreferences } from "@/review-view-preferences";
 import type { GuideFileEvidence } from "./guide-file-evidence";
 import { ReviewDiffView } from "./review-diff-view";
 import { definedProps } from "#src/domain/defined-props";
@@ -16,15 +13,17 @@ export function GuideFileDiff({
   evidence,
   preferences,
   diffAuthoring,
+  onPreferencesChange,
 }: {
   readonly diffAuthoring?: WalkthroughDiffAuthoring;
   readonly file: GuideInventoryEntry;
   readonly evidence: GuideFileEvidence;
-  readonly preferences?: ReviewViewPreferences;
+  readonly preferences: ReviewViewPreferences;
+  readonly onPreferencesChange: (
+    update: Partial<ReviewViewPreferences>,
+  ) => void;
 }): React.JSX.Element {
-  const [localPreferences, setLocalPreferences] = useState(
-    () => preferences ?? loadReviewViewPreferences(),
-  );
+  const [markdownPreviewActive, setMarkdownPreviewActive] = useState(false);
   const path = file.status === "removed" ? file.oldPath : file.newPath;
   return (
     <div
@@ -32,9 +31,20 @@ export function GuideFileDiff({
       aria-label={`Guide evidence ${path}`}
       className="mt-3 min-w-0 overflow-hidden rounded-md border"
     >
-      <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs">
-        {file.metadata.join("\n")}
-      </pre>
+      {evidence.diff === undefined ? (
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs">
+          {file.metadata.join("\n")}
+        </pre>
+      ) : (
+        <details className="border-b text-xs text-muted-foreground">
+          <summary className="cursor-pointer px-3 py-2 font-medium">
+            Patch metadata
+          </summary>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all px-3 pb-3 font-mono text-xs">
+            {file.metadata.join("\n")}
+          </pre>
+        </details>
+      )}
       {evidence.diff === undefined ? null : (
         <ReviewDiffView
           patch={evidence.patch}
@@ -56,11 +66,12 @@ export function GuideFileDiff({
                   bodyContext: diffAuthoring.bodyContext,
                 }),
               })}
-          preferences={localPreferences}
+          preferences={preferences}
           collapsedPaths={new Set()}
-          onPreferencesChange={(update) =>
-            setLocalPreferences((current) => ({ ...current, ...update }))
-          }
+          onPreferencesChange={onPreferencesChange}
+          showViewOptions={false}
+          markdownPreviewActive={markdownPreviewActive}
+          onMarkdownPreviewChange={setMarkdownPreviewActive}
           onCollapsedPathsChange={() => undefined}
           virtualized={false}
         />

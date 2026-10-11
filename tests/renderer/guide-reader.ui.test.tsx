@@ -5,10 +5,19 @@ import type { WalkthroughDiffAuthoring } from "#src/renderer/src/components/walk
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildGuideInventory, retainGuide } from "#src/domain/guide";
+import { parseInsightRunId, parseReviewSessionId } from "#src/domain/ids";
+import type { GuideReadingState } from "#src/domain/guide-reading-state";
 import { GuideReader } from "#src/renderer/src/components/guide-reader";
 import { must } from "#tests/services/insight-run-fixture";
+import {
+  loadReviewViewPreferences,
+  saveReviewViewPreferences,
+} from "#src/renderer/src/review-view-preferences";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 const patchText =
   "diff --git a/src/a.ts b/src/a.ts\nold mode 100644\nnew mode 100755\ndiff --git a/assets/icon.png b/assets/icon.png\nBinary files a/assets/icon.png and b/assets/icon.png differ\n";
 const inventory = must(buildGuideInventory(patchText));
@@ -81,9 +90,41 @@ const textGuide = must(
 );
 
 describe("Guide shared Viewed controls", () => {
-  it("shares file marks between repeated appearances while keeping expansion independent", async () => {
+  it("shows the shared marks in every appearance when the selected Diff view refuses mutation", () => {
+    render(
+      <GuideReader
+        guide={textGuide}
+        viewedPaths={new Set(["src/main.ts"])}
+        disabledReason="The selected Diff view cannot change Combined Viewed marks."
+      />,
+    );
+    const marks = screen.getAllByRole("checkbox", {
+      name: "Viewed src/main.ts",
+      checked: true,
+    });
+    expect(marks).toHaveLength(2);
+    for (const mark of marks) expect(mark.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("shares file Viewed marks while keeping group Reviewed and appearance expansion independent", async () => {
     function SharedMarks(): React.JSX.Element {
       const [paths, setPaths] = useState<ReadonlySet<string>>(new Set());
+      const [progress, setProgress] = useState<GuideReadingState>({
+        runId: must(
+          parseInsightRunId(
+            "insight-guide-1-aaaaaaaaaaaa-github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+          ),
+        ),
+        sessionId: must(
+          parseReviewSessionId(
+            "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca",
+          ),
+        ),
+        version: 0,
+        reviewedGroupIds: [],
+        expandedAppearances: [],
+        anchor: { kind: "top" },
+      });
       const authoring: WalkthroughDiffAuthoring = {
         pendingReviewDrafts: {
           writes: [],
@@ -96,7 +137,19 @@ describe("Guide shared Viewed controls", () => {
         annotations: [],
         viewedFiles: { paths, setPaths, saveFailed: false },
       };
-      return <GuideReader guide={textGuide} diffAuthoring={authoring} />;
+      return (
+        <GuideReader
+          guide={textGuide}
+          diffAuthoring={authoring}
+          reading={{
+            progress,
+            saveFailed: false,
+            edit: (content) =>
+              setProgress((current) => ({ ...current, ...content })),
+            retry: async () => true,
+          }}
+        />
+      );
     }
     const user = userEvent.setup();
     render(<SharedMarks />);
@@ -106,12 +159,41 @@ describe("Guide shared Viewed controls", () => {
     const second = within(
       screen.getByRole("list", { name: "Supporting behavior files" }),
     );
-    await user.click(first.getByRole("button", { name: "Viewed src/main.ts" }));
+    await user.click(
+      screen.getByRole("button", { name: "Reviewed First behavior" }),
+    );
     expect(
-      first.getByRole("button", { name: "Viewed src/main.ts", pressed: true }),
+      screen.getByRole("button", {
+        name: "Reviewed First behavior",
+        pressed: true,
+      }),
     ).toBeDefined();
     expect(
-      second.getByRole("button", { name: "Viewed src/main.ts", pressed: true }),
+      screen.getByRole("button", {
+        name: "Reviewed Supporting behavior",
+        pressed: false,
+      }),
+    ).toBeDefined();
+    expect(
+      first.getByRole("checkbox", {
+        name: "Viewed src/main.ts",
+        checked: false,
+      }),
+    ).toBeDefined();
+    await user.click(
+      first.getByRole("checkbox", { name: "Viewed src/main.ts" }),
+    );
+    expect(
+      first.getByRole("checkbox", {
+        name: "Viewed src/main.ts",
+        checked: true,
+      }),
+    ).toBeDefined();
+    expect(
+      second.getByRole("checkbox", {
+        name: "Viewed src/main.ts",
+        checked: true,
+      }),
     ).toBeDefined();
     await user.click(first.getByRole("button", { name: "File src/main.ts" }));
     expect(
@@ -120,11 +202,72 @@ describe("Guide shared Viewed controls", () => {
         .getAttribute("aria-expanded"),
     ).toBe("false");
     await user.click(
-      second.getByRole("button", { name: "Viewed src/main.ts" }),
+      second.getByRole("checkbox", { name: "Viewed src/main.ts" }),
     );
     expect(
-      first.getByRole("button", { name: "Viewed src/main.ts", pressed: false }),
+      first.getByRole("checkbox", {
+        name: "Viewed src/main.ts",
+        checked: false,
+      }),
     ).toBeDefined();
+    expect(
+      first
+        .getByRole("button", { name: "File src/main.ts" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+});
+
+describe("Guide drawing preferences", () => {
+  it("applies one local View menu to open and later-opened appearances without changing global preferences", async () => {
+    saveReviewViewPreferences({ diffStyle: "split", overflow: "scroll" });
+    const user = userEvent.setup();
+    render(<GuideReader guide={textGuide} />);
+    const first = within(
+      screen.getByRole("list", { name: "First behavior files" }),
+    );
+    const second = within(
+      screen.getByRole("list", { name: "Supporting behavior files" }),
+    );
+    await user.click(first.getByRole("button", { name: "File src/main.ts" }));
+    expect(
+      screen.getAllByRole("button", { name: "View options" }),
+    ).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "View options" }));
+    await user.click(await screen.findByRole("switch", { name: "Split view" }));
+    await user.click(screen.getByRole("switch", { name: "Wrap lines" }));
+    const fullContext = screen.getByRole("switch", {
+      name: "Full context",
+      checked: false,
+    });
+    expect(fullContext.getAttribute("aria-disabled")).toBe("true");
+    await user.click(fullContext);
+    expect(
+      screen.getByRole("switch", { name: "Full context", checked: false }),
+    ).toBeDefined();
+    await user.keyboard("{Escape}");
+    await user.click(second.getByRole("button", { name: "File src/main.ts" }));
+    expect(
+      first
+        .getByRole("region", { name: /^Review diff/ })
+        .getAttribute("data-diff-style"),
+    ).toBe("unified");
+    expect(
+      second
+        .getByRole("region", { name: /^Review diff/ })
+        .getAttribute("data-diff-style"),
+    ).toBe("unified");
+    expect(
+      screen.getAllByRole("button", { name: "View options" }),
+    ).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "View options" }));
+    expect(
+      await screen.findByRole("switch", { name: "Wrap lines", checked: true }),
+    ).toBeDefined();
+    expect(loadReviewViewPreferences()).toMatchObject({
+      diffStyle: "split",
+      overflow: "scroll",
+    });
   });
 });
 
@@ -150,6 +293,12 @@ describe("Guide complete snapshot evidence", () => {
     const evidence = first.getByRole("group", {
       name: "Guide evidence src/main.ts",
     });
+    const metadata = within(evidence)
+      .getByText("Patch metadata")
+      .closest("details");
+    expect(metadata).toHaveProperty("open", false);
+    await user.click(within(evidence).getByText("Patch metadata"));
+    expect(metadata).toHaveProperty("open", true);
     expect(evidence.textContent).toContain("old mode 100644");
     expect(evidence.textContent).toContain("new mode 100755");
     expect(evidence.textContent).toContain("snapshotFirst()");

@@ -3,6 +3,10 @@ import { onTestFinished, vi, type Mock } from "vitest";
 import type { AppUpdateState } from "#src/domain/app-update";
 import type { RawJsonValue } from "#src/domain/json";
 import type {
+  GuideReadingAdmission,
+  GuideReadingFlushRequest,
+} from "#src/main/guide-reading-flush-channel";
+import type {
   DesktopMenuAction,
   DesktopNotificationClick,
   DesktopRequest,
@@ -68,6 +72,7 @@ export type DesktopDoubleExtras = Partial<
     | "onNotificationClick"
     | "onWatchedPullRequestChange"
     | "onInsightSettled"
+    | "onGuideReadingFlush"
     | "onReviewsRemoved"
     | "onAppUpdate"
   >
@@ -97,6 +102,12 @@ export type DesktopDouble = {
   readonly sendNotificationClick: (click: DesktopNotificationClick) => void;
   /** Fires the listener registered through `onInsightSettled`, as the main process does when an Insight run settles. */
   readonly sendInsightSettled: () => void;
+  /** Awaits the same completion receipt an orderly desktop close awaits. */
+  readonly flushGuideReading: () => Promise<boolean>;
+  /** Drives one bound renderer admission phase without assuming draft approval. */
+  readonly guideAdmission: (
+    request: GuideReadingFlushRequest,
+  ) => Promise<GuideReadingAdmission | undefined>;
   /** Fires the listener registered through `onReviewsRemoved`, as the main process does after a retention sweep removed Reviews. */
   readonly sendReviewsRemoved: () => void;
   /** Fires the listener registered through `onAppUpdate`, as the main process does when the update state changes. */
@@ -155,6 +166,9 @@ export function installDesktopDouble(
     | ((click: DesktopNotificationClick) => void)
     | undefined;
   let insightSettledListener: (() => void) | undefined;
+  let guideReadingFlushListener:
+    | ((request: GuideReadingFlushRequest) => Promise<GuideReadingAdmission>)
+    | undefined;
   let reviewsRemovedListener: (() => void) | undefined;
   let watchedPullRequestChangeListener:
     | ((profileId: string) => void)
@@ -202,6 +216,16 @@ export function installDesktopDouble(
         notificationClickListener = undefined;
       };
     },
+    onGuideReadingFlush: (
+      listener: (
+        request: GuideReadingFlushRequest,
+      ) => Promise<GuideReadingAdmission>,
+    ) => {
+      guideReadingFlushListener = listener;
+      return () => {
+        guideReadingFlushListener = undefined;
+      };
+    },
     onInsightSettled: (listener: () => void) => {
       insightSettledListener = listener;
       return () => {
@@ -243,6 +267,24 @@ export function installDesktopDouble(
       windowFullScreenListener?.(fullScreen),
     sendNotificationClick: (click) => notificationClickListener?.(click),
     sendInsightSettled: () => insightSettledListener?.(),
+    async flushGuideReading() {
+      const inspected = await guideReadingFlushListener?.({
+        requestId: "inspect",
+        phase: "inspect",
+      });
+      if (inspected === undefined) return false;
+      return (
+        (
+          await guideReadingFlushListener?.({
+            requestId: "admit",
+            phase: "admit",
+            approvedDraftRevision: inspected.draftRevision,
+            approvedRendererId: inspected.rendererId,
+          })
+        )?.saved ?? false
+      );
+    },
+    guideAdmission: async (request) => guideReadingFlushListener?.(request),
     sendReviewsRemoved: () => reviewsRemovedListener?.(),
     sendWatchedPullRequestChange: (profileId) =>
       watchedPullRequestChangeListener?.(profileId),

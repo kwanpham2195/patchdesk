@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useGuideReadingTransition } from "#src/renderer/src/hooks/use-guide-reading-flush";
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
@@ -216,10 +217,14 @@ export function ReviewWorkbench({
     setSelectedThreadId,
     selectedRange,
     setSelectedRange,
-    commitWorkbenchPosition,
+    commitWorkbenchPosition: commitPosition,
     selectSection,
     selectCommit,
   } = position;
+  const commitWorkbenchPosition = useGuideReadingTransition(
+    commitPosition,
+    activeTab === "insights",
+  );
   const selectedView = localPatchView?.selected ?? "combined";
   // Findings use Combined coordinates, so another view shows none (#556 D3); notes are placed per view.
   const onOtherView = selectedView !== "combined";
@@ -249,11 +254,7 @@ export function ReviewWorkbench({
     selectSection,
     setActivePath,
   });
-  // A Scope bucket and a commit slice are mutually exclusive readings of the
-  // diff: choosing a bucket already drops the commit, so entering a commit
-  // drops the bucket rather than leaving a filtered tree beside a full slice.
-  // Both entry points land here because the Commits section auto-selects a
-  // commit when it opens with none.
+  // Scope filters and commit slices are exclusive; both entries clear the filter because opening Commits can auto-select a slice.
   const selectNavigatorSection = useCallback(
     (next: ReviewNavigatorSection): void => {
       if (next === "commits") clearScopeBucket();
@@ -451,7 +452,34 @@ export function ReviewWorkbench({
     conversationAnnotations,
     reportUnsent: unsentTextFields.report,
   });
+  const draftIdentity = useCallback(() => {
+    const text = unsentTextFields.getDraftIdentity();
+    const failed = pendingReviewDrafts.writes.flatMap((write) => {
+      if (write._tag !== "failed") return [];
+      const { message: _message, ...identity } = write;
+      return [identity];
+    });
+    if (
+      text === "" &&
+      actions.pendingReview?.finishDraft === undefined &&
+      (pendingReviewDrafts.orphanedBody?.trim() ?? "") === "" &&
+      failed.length === 0
+    )
+      return "";
+    return JSON.stringify([
+      text,
+      actions.pendingReview?.finishDraft,
+      pendingReviewDrafts.orphanedBody,
+      failed,
+    ]);
+  }, [
+    unsentTextFields.getDraftIdentity,
+    actions.pendingReview?.finishDraft,
+    pendingReviewDrafts.orphanedBody,
+    pendingReviewDrafts.writes,
+  ]);
   useReviewNavigationState({
+    draftIdentity,
     writePending:
       actions.pendingReview?.busy === true ||
       actions.directSummary?.busy === true,

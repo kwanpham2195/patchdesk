@@ -95,7 +95,8 @@ const submodulePattern =
   /^Submodule [^\s]+ [0-9a-f]+\.{2,3}[0-9a-f]+(?: \([^)]*\))?$/;
 const hunkHeaderPattern = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 const barePathPairPattern = /^a\/(.+) b\/(.+)$/;
-const quotedPathPairPattern = /^"((?:[^"\\]|\\.)*)" "((?:[^"\\]|\\.)*)"$/;
+const quotedPathPairPattern =
+  /^("(?:[^"\\]|\\.)*"|a\/.+) ("(?:[^"\\]|\\.)*"|b\/.+)$/;
 
 /** True for any line git would emit as the start of a new file section. */
 function isUnifiedFileHeader(line: string): boolean {
@@ -103,9 +104,7 @@ function isUnifiedFileHeader(line: string): boolean {
 }
 
 /**
- * The old and new path a `diff --git` header names, for both the bare
- * `a/x b/x` form and the C-quoted `"a/x" "b/x"` form git uses for paths that
- * need escaping.
+ * Git quotes each path independently, including renames with only one escaped side.
  */
 export function matchUnifiedFileHeader(
   line: string,
@@ -113,9 +112,18 @@ export function matchUnifiedFileHeader(
   if (!isUnifiedFileHeader(line)) return undefined;
   const rest = line.slice(fileHeaderPrefix.length);
   const quoted = quotedPathPairPattern.exec(rest);
-  if (quoted !== null) {
-    const oldPath = stripSidePrefix(unquotePatchPath(quoted[1] ?? ""), "a/");
-    const newPath = stripSidePrefix(unquotePatchPath(quoted[2] ?? ""), "b/");
+  if (
+    quoted !== null &&
+    (quoted[1]?.startsWith('"') || quoted[2]?.startsWith('"'))
+  ) {
+    const oldPath = stripSidePrefix(
+      unquotePatchPath(stripSurroundingQuotes(quoted[1] ?? "")),
+      "a/",
+    );
+    const newPath = stripSidePrefix(
+      unquotePatchPath(stripSurroundingQuotes(quoted[2] ?? "")),
+      "b/",
+    );
     return { oldPath, newPath };
   }
   // Both sides name the same path unless the header describes a rename, so an

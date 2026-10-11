@@ -85,6 +85,9 @@ export async function installTestDesktopBridge(
       onNotificationClick() {
         return () => undefined;
       },
+      onGuideReadingFlush() {
+        return () => undefined;
+      },
       onInsightSettled() {
         return () => undefined;
       },

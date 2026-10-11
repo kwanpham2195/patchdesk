@@ -13,6 +13,11 @@ import {
   subscribeToAppUpdate,
 } from "./desktop-app-update-channel";
 import { subscribeToMenuActions } from "./desktop-menu-channel";
+import {
+  subscribeToGuideReadingFlush,
+  type GuideReadingAdmission,
+  type GuideReadingFlushRequest,
+} from "./guide-reading-flush-channel";
 import { subscribeToInsightSettled } from "./desktop-insight-settled-channel";
 import { subscribeToReviewsRemoved } from "./desktop-reviews-removed-channel";
 import { subscribeToNotificationClicks } from "./desktop-notification-channel";
@@ -57,6 +62,13 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
   },
   onNotificationClick(listener: (click: DesktopNotificationClick) => void) {
     return subscribeToNotificationClicks(ipcRenderer, listener);
+  },
+  onGuideReadingFlush(
+    listener: (
+      request: GuideReadingFlushRequest,
+    ) => Promise<GuideReadingAdmission>,
+  ) {
+    return subscribeToGuideReadingFlush(ipcRenderer, listener);
   },
   onInsightSettled(listener: () => void) {
     return subscribeToInsightSettled(ipcRenderer, listener);

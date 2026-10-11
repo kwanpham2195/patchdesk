@@ -1,3 +1,5 @@
+import type { GuideReadingControls } from "#src/renderer/src/hooks/use-guide-reading-state";
+import { useGuideReadingTransition } from "#src/renderer/src/hooks/use-guide-reading-flush";
 import { XIcon } from "lucide-react";
 import { useContext, useMemo, type RefObject } from "react";
 import { definedProps } from "#src/domain/defined-props";
@@ -234,6 +236,7 @@ function retainedInsightDescription(
 
 export function InsightsSlot({
   workbench,
+  guideReading,
   initialDetail,
   onWorkbenchReplace,
   onWorkbenchPatch,
@@ -247,6 +250,7 @@ export function InsightsSlot({
   patchView,
 }: {
   readonly workbench: WorkbenchResponse;
+  readonly guideReading?: GuideReadingControls;
   readonly initialDetail?: "analysis" | "walkthrough" | "guide";
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
@@ -264,11 +268,12 @@ export function InsightsSlot({
   const {
     initialInsight,
     selectedInsight,
-    setSelectedInsight,
+    setSelectedInsight: selectInsight,
     openFindingInDiff,
     openFileInDiff,
     openScopeBucketInDiff,
   } = useInsightSelection(initialDetail, workbench.insights);
+  const setSelectedInsight = useGuideReadingTransition(selectInsight, true);
   const {
     walkthroughFocused,
     walkthroughFocusTransition,
@@ -348,6 +353,7 @@ export function InsightsSlot({
     patchFiles,
     selectedInsight,
     ...definedProps({
+      guideReading,
       onFinishWithAnalysisSummary,
       addFinding: onAddFinding,
       addAllFindings,
@@ -531,7 +537,7 @@ function InsightDocument({
     <article
       aria-label={`${selectedInsight} document`}
       data-review-insight-document={selectedInsight}
-      className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${selectedInsight === "walkthrough" ? "overflow-hidden" : "overflow-auto"}`}
+      className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${selectedInsight === "walkthrough" || selectedInsight === "guide" ? "overflow-hidden" : "overflow-auto"}`}
     >
       {walkthroughTitle === undefined ? null : (
         <h2 className="shrink-0 truncate pb-2 text-lg font-semibold">
@@ -548,7 +554,7 @@ function InsightDocument({
       ) : null}
       <div
         data-review-insight-content
-        className={`flex min-h-0 flex-col gap-4 ${selectedInsight === "walkthrough" ? "flex-1 overflow-hidden" : ""}`}
+        className={`flex min-h-0 flex-col gap-4 ${selectedInsight === "walkthrough" || selectedInsight === "guide" ? "flex-1 overflow-hidden" : ""}`}
       >
         {selectedBusy ? (
           <InsightRunning
@@ -586,7 +592,7 @@ function InsightDocument({
             ref={insightResultRef}
             data-insight-result
             className={
-              selectedInsight === "walkthrough"
+              selectedInsight === "walkthrough" || selectedInsight === "guide"
                 ? "min-h-0 flex-1 overflow-hidden"
                 : ""
             }

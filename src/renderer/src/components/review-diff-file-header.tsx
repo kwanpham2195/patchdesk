@@ -163,6 +163,41 @@ type FileHeaderToggle = {
   readonly onToggle: () => void;
 };
 
+/** Shared presentation leaves Viewed and expansion ownership with each reader. */
+export function FileViewedCheckbox({
+  checked,
+  label,
+  onToggle,
+  disabled = false,
+}: {
+  readonly checked: boolean;
+  readonly label: string;
+  readonly onToggle: () => void;
+  readonly disabled?: boolean;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onToggle}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors hover:border-primary/60 hover:text-foreground focus-visible:outline disabled:cursor-not-allowed disabled:opacity-50",
+        checked
+          ? "border-primary/60 text-foreground"
+          : "border-border/70 text-muted-foreground",
+      )}
+    >
+      <span className="inline-flex size-3.5 items-center justify-center rounded-[4px] border border-current">
+        {checked ? <Check className="size-2.5" /> : null}
+      </span>
+      Viewed
+    </button>
+  );
+}
+
 /** Renders one diff file header with an optional viewed control. */
 export function FileHeaderRow({
   file,
@@ -218,28 +253,15 @@ export function FileHeaderRow({
       ) : null}
       {stats}
       {toggle !== undefined ? (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={toggle.collapsed}
-          aria-label={
+        <FileViewedCheckbox
+          checked={toggle.collapsed}
+          label={
             toggle.collapsed
               ? `Show file ${path}`
               : `Mark file ${path} as viewed`
           }
-          onClick={toggle.onToggle}
-          className={cn(
-            "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors hover:border-primary/60 hover:text-foreground focus-visible:outline",
-            toggle.collapsed
-              ? "border-primary/60 text-foreground"
-              : "border-border/70 text-muted-foreground",
-          )}
-        >
-          <span className="inline-flex size-3.5 items-center justify-center rounded-[4px] border border-current">
-            {toggle.collapsed ? <Check className="size-2.5" /> : null}
-          </span>
-          Viewed
-        </button>
+          onToggle={toggle.onToggle}
+        />
       ) : null}
     </div>
   );

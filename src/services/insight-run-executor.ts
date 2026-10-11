@@ -376,6 +376,20 @@ export class InsightRunExecutor {
             now: at,
             operation: (record) => {
               const active = record.activeRun;
+              // Cancellation admitted under this lock wins over a provider result queued behind it.
+              if (active?.id === runId && active.status === "cancelling") {
+                return failInsightRun(
+                  record,
+                  runId,
+                  {
+                    runId,
+                    reason: "cancelled",
+                    retryable: true,
+                    failedAt: at,
+                  },
+                  at,
+                );
+              }
               if (
                 active?.id === runId &&
                 (review.value.status._tag === "Terminal" ||
