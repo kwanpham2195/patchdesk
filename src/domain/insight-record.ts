@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import type { GuideReadingState } from "./guide-reading-state";
 
 import {
   changeIntentProvenanceSchema,
@@ -19,6 +20,7 @@ import {
   type IsoTimestamp,
   type ReviewId,
   type ReviewSessionId,
+  type WorkspaceProfileId,
 } from "./ids";
 import { err, ok, type Result } from "./result";
 import {
@@ -69,6 +71,21 @@ export type InsightFindingDismissal = {
   readonly reason: string;
   readonly dismissedAt: IsoTimestamp;
 };
+/** A reading command names the displayed retained result, not the current session. */
+export type InsightReadingIdentity = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly runId: InsightRunId;
+};
+/** Progress updates share their represented-result identity at the coordinator boundary. */
+export type WalkthroughProgressUpdate = InsightReadingIdentity & {
+  readonly progress: WalkthroughProgress;
+};
+/** Verification updates name one step of the represented Analysis. */
+export type AnalysisVerificationUpdate = InsightReadingIdentity & {
+  readonly stepIndex: number;
+  readonly checked: boolean;
+};
 export type WalkthroughProgress = {
   readonly reviewedSectionIds: ReadonlyArray<string>;
   readonly supportReviewed: boolean;
@@ -111,6 +128,7 @@ export type InsightRecord<T> = {
   readonly retained?: T;
   readonly dismissals?: ReadonlyArray<InsightFindingDismissal>;
   readonly walkthroughProgress?: WalkthroughProgress;
+  readonly guideReadingState?: GuideReadingState;
   readonly analysisVerification?: AnalysisVerification;
   readonly activeRun?: InsightRun;
   readonly replacementFailure?: InsightFailure;
@@ -292,12 +310,14 @@ export function completeInsightRun<T>(
     replacementFailure: _replacementFailure,
     dismissals: _dismissals,
     analysisVerification: _analysisVerification,
+    guideReadingState: _guideReadingState,
     ...withoutActiveRun
   } = record;
   void _activeRun;
   void _replacementFailure;
   void _dismissals;
   void _analysisVerification;
+  void _guideReadingState;
   const next =
     record.type === "walkthrough"
       ? withoutWalkthroughProgress(withoutActiveRun)

@@ -250,6 +250,8 @@ type ReviewDiffViewProps = {
   readonly changes?: DiffChangesControl | undefined;
   /** False on read-only evidence previews whose preferences are fixed, where every toolbar control would be inert. */
   readonly showToolbar?: boolean;
+  /** Suppresses only drawing options when the enclosing reader owns them. */
+  readonly showViewOptions?: boolean;
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
@@ -284,6 +286,7 @@ function ReviewDiffSurface({
   toolbarLeadingAction,
   changes,
   showToolbar = true,
+  showViewOptions = true,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const { appearance, themePreferences } = useDiffAppearanceTheme();
@@ -458,6 +461,7 @@ function ReviewDiffSurface({
       toolbarLeadingAction={toolbarLeadingAction}
       changes={changes}
       showToolbar={showToolbar}
+      showViewOptions={showViewOptions}
     />
   );
 }
@@ -524,6 +528,7 @@ export type ReviewDiffRenderSiteProps = {
   readonly toolbarLeadingAction: React.ReactNode;
   readonly changes: DiffChangesControl | undefined;
   readonly showToolbar: boolean;
+  readonly showViewOptions: boolean;
 };
 
 function ReviewDiffRenderSite({
@@ -572,6 +577,7 @@ function ReviewDiffRenderSite({
   toolbarLeadingAction,
   changes,
   showToolbar,
+  showViewOptions,
 }: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
     () => ({
@@ -685,6 +691,7 @@ function ReviewDiffRenderSite({
           markdownPreview={markdownPreview}
           leadingAction={toolbarLeadingAction}
           changes={changes}
+          showViewOptions={showViewOptions}
         />
       ) : null}
       <ReviewDiffFindBar find={find} />

@@ -81,12 +81,45 @@ const retained = retainGuide(
 );
 if (retained._tag === "err") throw new Error("Invalid Guide fixture result");
 const guide = retained.value;
+const longTitlePrefix =
+  "Recover the interrupted operation with its retained snapshot ".repeat(3);
+const navigationPatchText = patchText
+  .replaceAll("src/", "src/retained/recovery/evidence/")
+  .replaceAll("assets/", "assets/retained/recovery/evidence/");
+const navigationInventory = buildGuideInventory(navigationPatchText);
+if (navigationInventory._tag === "err")
+  throw new Error("Invalid Guide navigation fixture patch");
+const navigationRetained = retainGuide(
+  {
+    groups: Array.from({ length: 12 }, (_, index) => ({
+      title:
+        index < 2
+          ? `${longTitlePrefix}${index === 0 ? "Before retry" : "After refresh"}`
+          : `Recovery step ${index + 1}`,
+      explanation:
+        "Read the pending operation and reconcile its result before another submission.",
+      files: navigationInventory.value.slice(0, 5).map((file) => ({
+        fileId: file.id,
+        relevance: "Retained recovery evidence.",
+      })),
+    })),
+  },
+  { patchText: navigationPatchText, inventory: navigationInventory.value },
+);
+if (navigationRetained._tag === "err")
+  throw new Error("Invalid Guide navigation fixture");
+const navigationGuide = navigationRetained.value;
 
 /** Deterministic overview evidence; generation uses a local fake result. */
 export function GuideFixture(): React.JSX.Element {
   const [outdated, setOutdated] = useState(false);
   const [running, setRunning] = useState(false);
   const [generation, setGeneration] = useState(1);
+  const shownGuide = new URLSearchParams(window.location.search).has(
+    "guide-navigation",
+  )
+    ? navigationGuide
+    : guide;
   return (
     <div className="h-full overflow-auto p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
@@ -132,7 +165,7 @@ export function GuideFixture(): React.JSX.Element {
       )}
       <GuideFixtureWorkbench
         key={generation}
-        guide={guide}
+        guide={shownGuide}
         outdated={outdated}
       />
     </div>

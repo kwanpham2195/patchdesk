@@ -56,7 +56,7 @@ afterEach(cleanup);
 
 function renderOwner(
   annotations: ReadonlyArray<ReviewInlineAnnotation> = empty,
-  reportUnsent?: (fieldId: string, unsent: boolean) => void,
+  reportUnsent?: (fieldId: string, text: string) => void,
 ) {
   return renderHook(
     ({ reviewId, sessionId, canonical }) => {
@@ -226,6 +226,11 @@ it("transfers retained drafts to a replacement reporter without an appearance an
     useReviewConversationDraft(scope.result.current, "reply:thread"),
   );
   act(() => draft.result.current.setBody("Retained reply"));
+  const firstIdentity = first.result.current.getDraftIdentity();
+  act(() => draft.result.current.setBody("Retained reply"));
+  expect(first.result.current.getDraftIdentity()).toBe(firstIdentity);
+  act(() => draft.result.current.setBody("New nonempty reply"));
+  expect(first.result.current.getDraftIdentity()).not.toBe(firstIdentity);
   draft.unmount();
   expect(first.result.current.holdsUnsentText).toBe(true);
   scope.rerender({

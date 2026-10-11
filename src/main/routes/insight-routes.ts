@@ -20,9 +20,11 @@ import {
   parseFindingId,
   parseInsightRunId,
   parseReviewId,
+  parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "#src/domain/ids";
 import type { InsightType } from "#src/domain/insight-record";
+import { guideReadingContentSchema } from "#src/domain/guide-reading-state";
 import { definedProps } from "#src/domain/defined-props";
 import {
   agentRunDeclineRequestSchema,
@@ -197,6 +199,55 @@ export function registerInsightRoutes(
       await jsonBody(context),
     ),
   );
+  app.post("/v1/reviews/insights/guide/reading-state", async (context) => {
+    if (insights?.updateGuideReadingState === undefined)
+      return context.json({ error: "workflow_unavailable" }, 503);
+    const parsed = safeParse(
+      strictObject({
+        profileId: string(),
+        reviewId: string(),
+        runId: string(),
+        sessionId: string(),
+        expectedStateVersion: pipe(number(), integer(), minValue(0)),
+        state: guideReadingContentSchema,
+      }),
+      await jsonBody(context),
+    );
+    if (
+      !parsed.success ||
+      !Number.isSafeInteger(parsed.output.expectedStateVersion)
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    const runId = parseInsightRunId(parsed.output.runId);
+    const sessionId = parseReviewSessionId(parsed.output.sessionId);
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      runId._tag === "err" ||
+      sessionId._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    const result = await insights.updateGuideReadingState({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+      runId: runId.value,
+      sessionId: sessionId.value,
+      expectedStateVersion: parsed.output.expectedStateVersion,
+      state: parsed.output.state,
+    });
+    if (result._tag === "ok") return context.json(result.value, 200);
+    return context.json(
+      { error: result.error },
+      result.error === "invalid_reading_state"
+        ? 400
+        : result.error === "guide_identity_conflict" ||
+            result.error === "guide_version_conflict"
+          ? 409
+          : insightFailureStatus(result.error),
+    );
+  });
   app.post("/v1/reviews/insights/analysis/verification", async (context) =>
     analysisVerificationResponse(context, insights, await jsonBody(context)),
   );

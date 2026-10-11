@@ -173,6 +173,15 @@ function bodyNumbers(
 }
 
 describe("UnifiedPatchTokenizer", () => {
+  it.each([
+    ['diff --git "a/caf\\303\\251.txt" b/plain.txt', "café.txt", "plain.txt"],
+    ['diff --git a/plain.txt "b/caf\\303\\251.txt"', "plain.txt", "café.txt"],
+  ])(
+    "decodes independently quoted rename paths: %s",
+    (header, oldPath, newPath) => {
+      expect(matchUnifiedFileHeader(header)).toEqual({ oldPath, newPath });
+    },
+  );
   it("reads the quoted path form git emits for paths that need escaping", () => {
     const files = parseUnifiedPatch(quotedHeaderPatch);
     expect(files.map((file) => [file.oldPath, file.newPath])).toEqual([

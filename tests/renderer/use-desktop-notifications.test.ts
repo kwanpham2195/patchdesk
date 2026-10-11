@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PullRequestRef } from "#src/domain/pull-request";
 import type { NavigationState } from "#src/renderer/src/hooks/use-app-navigation";
+import {
+  GuideReadingFlushProvider,
+  useGuideReadingFlush,
+} from "#src/renderer/src/hooks/use-guide-reading-flush";
 import { useDesktopNotificationClicks } from "#src/renderer/src/hooks/use-desktop-notifications";
 import type { AppDestination } from "#src/renderer/src/routes";
 import {
@@ -48,6 +52,53 @@ const onReview = (reviewId: string): AppDestination => ({
 });
 
 describe("useDesktopNotificationClicks", () => {
+  it("does not remount an on-screen Review for a notification until reading progress is confirmed", async () => {
+    const double = installDesktopDouble({});
+    installed = double;
+    let finish: ((saved: boolean) => void) | undefined;
+    let started: (() => void) | undefined;
+    const saving = new Promise<boolean>((resolve) => {
+      finish = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const hook = renderHook(
+      () => ({
+        focus: useDesktopNotificationClicks({
+          enabled: true,
+          destination: onReview("r1"),
+          navigationState: "clear",
+          navigate: () => undefined,
+          openPullRequest: () => undefined,
+        }),
+        owner: useGuideReadingFlush(),
+      }),
+      { wrapper: GuideReadingFlushProvider },
+    );
+    hook.result.current.owner.register(() => {
+      started?.();
+      return saving;
+    });
+    act(() =>
+      double.sendNotificationClick({
+        kind: "review",
+        reviewId: "r1",
+        insightType: "guide",
+      }),
+    );
+    await entered;
+    expect(hook.result.current.focus).toBeUndefined();
+    await act(async () => {
+      finish?.(true);
+      await saving;
+    });
+    expect(hook.result.current.focus?.state).toEqual({
+      activeTab: "insights",
+      insightDetail: "guide",
+    });
+  });
+
   it("opens an Insight notification's Review on that Insight's reader, through the guarded navigate", () => {
     const { double, navigate, hook } = render({
       destination: { kind: "dashboard" },

@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import { parseRetainedGuide } from "#src/domain/guide";
+import {
+  guideReadingStateSchema,
+  validateGuideReadingState,
+} from "#src/domain/guide-reading-state";
 import * as v from "valibot";
 
 import {
@@ -114,6 +118,7 @@ const recordFields = {
   retained: v.optional(v.unknown()),
   dismissals: v.optional(v.array(dismissalSchema)),
   walkthroughProgress: v.optional(walkthroughProgressSchema),
+  guideReadingState: v.optional(guideReadingStateSchema),
   analysisVerification: v.optional(analysisVerificationSchema),
   replacementFailure: v.optional(failureSchema),
   updatedAt: v.pipe(v.string(), v.isoTimestamp()),
@@ -129,7 +134,10 @@ type InsightMutationFailure =
   | "not_active"
   | "superseded"
   | "invalid_reason"
-  | "not_available";
+  | "not_available"
+  | "guide_identity_conflict"
+  | "guide_version_conflict"
+  | "invalid_reading_state";
 export type InsightStoreFailure = StorageFailure | InsightMutationFailure;
 
 /** Parses the single supported schema-2 Insight record. */
@@ -180,6 +188,7 @@ export class InsightStore {
         ...definedProps({
           dismissals: loaded.value.dismissals,
           walkthroughProgress: loaded.value.walkthroughProgress,
+          guideReadingState: loaded.value.guideReadingState,
           analysisVerification: loaded.value.analysisVerification,
           activeRun: loaded.value.activeRun,
           replacementFailure: loaded.value.replacementFailure,
@@ -247,6 +256,8 @@ export class InsightStore {
     readonly reviewId: ReviewId;
     readonly type: InsightType;
     readonly now: InsightRecord<unknown>["updatedAt"];
+    /** Reading-state writes must preserve malformed authority rather than healing it. */
+    readonly corruptRecordPolicy?: "reject";
     readonly operation: (
       record: InsightRecord<RetainedInsight<unknown>>,
     ) => Result<InsightRecord<unknown>, InsightMutationFailure>;
@@ -260,7 +271,9 @@ export class InsightStore {
         input.reviewId,
         input.type,
       );
-      // ADR 0019: an invalid record reads as absent so this write overwrites and heals it; I/O failures still fail closed.
+      if (loaded._tag === "err" && input.corruptRecordPolicy === "reject")
+        return loaded;
+      // ADR 0019: lifecycle writes heal invalid records; reading-state writes above fail closed.
       const current =
         loaded._tag === "ok"
           ? loaded.value
@@ -306,10 +319,24 @@ function parseV2Record(
       ? undefined
       : parseRetainedInsight(input.retained, (value) => ok(value));
   if (retained?._tag === "err") return invalidRead();
+  const readingState = input.guideReadingState;
+  if (readingState !== undefined) {
+    if (input.type !== "guide" || retained === undefined) return invalidRead();
+    const guide = parseRetainedGuide(retained.value.value);
+    if (
+      guide._tag === "err" ||
+      validateGuideReadingState(readingState, {
+        ...retained.value,
+        value: guide.value,
+      })._tag === "err"
+    )
+      return invalidRead();
+  }
   return ok({
     ...common.value,
     ...definedProps({
       retained: retained?.value,
+      guideReadingState: readingState,
       activeRun: activeRun?.value,
       replacementFailure: replacementFailure?.value,
     }),

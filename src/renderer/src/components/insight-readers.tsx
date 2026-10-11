@@ -1,3 +1,4 @@
+import type { GuideReadingControls } from "#src/renderer/src/hooks/use-guide-reading-state";
 import { GuideReader } from "./guide-reader";
 import { guideReviewDisabledReason } from "./guide-review-controls";
 import * as v from "valibot";
@@ -23,6 +24,7 @@ import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 type InsightReaderBuilderInput = {
   readonly workbench: WorkbenchResponse;
+  readonly guideReading?: GuideReadingControls;
   /** `workbench.fullPatch` already parsed, so a render does not reparse megabytes of diff text. */
   readonly patchFiles: ReadonlyArray<ParsedPatchFile>;
   readonly selectedInsight: InsightRunDialogType;
@@ -110,6 +112,7 @@ async function loadBriefPullRequestDescription(body: {
 
 export function buildInsightReaders({
   workbench,
+  guideReading,
   patchFiles,
   selectedInsight,
   onFinishWithAnalysisSummary,
@@ -139,6 +142,11 @@ export function buildInsightReaders({
       <GuideReader
         key={`${workbench.session.id}:${workbench.insights.guide.retained.runId}`}
         guide={workbench.insights.guide.retained.value}
+        {...(workbench.insights.guide.retained.sessionId ===
+        workbench.session.id
+          ? { viewedPaths: new Set(workbench.viewedPaths) }
+          : {})}
+        {...definedProps({ reading: guideReading })}
         {...definedProps({ disabledReason })}
         {...(disabledReason === undefined
           ? definedProps({ diffAuthoring: walkthroughDiffAuthoring })

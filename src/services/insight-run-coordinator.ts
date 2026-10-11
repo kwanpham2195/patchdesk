@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { prepareGuidePrompt, type PreparedGuide } from "./guide-operation";
 import { readFile } from "node:fs/promises";
+import {
+  saveGuideReadingState,
+  type GuideReadingStateInput,
+} from "./guide-reading-state-service";
 
 import {
   maxLength,
@@ -46,7 +50,8 @@ import {
   type InsightRecord,
   type InsightRevision,
   type InsightType,
-  type WalkthroughProgress,
+  type WalkthroughProgressUpdate,
+  type AnalysisVerificationUpdate,
 } from "#src/domain/insight-record";
 import {
   INSIGHT_LANGUAGES,
@@ -755,23 +760,28 @@ export class InsightRunCoordinator {
     });
   }
 
-  async updateWalkthroughProgress(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly progress: WalkthroughProgress;
-  }): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
+  /** Saves Guide progress under the Review lock before the serialized store comparison. */
+  updateGuideReadingState(
+    input: GuideReadingStateInput,
+  ): ReturnType<typeof saveGuideReadingState> {
+    return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
+      saveGuideReadingState(this.insights, input, this.now(), () =>
+        this.ensureOwned(input.profileId, input.reviewId),
+      ),
+    );
+  }
+
+  async updateWalkthroughProgress(
+    input: WalkthroughProgressUpdate,
+  ): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
     return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
       this.updateWalkthroughProgressUnlocked(input),
     );
   }
 
-  private async updateWalkthroughProgressUnlocked(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly progress: WalkthroughProgress;
-  }): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
+  private async updateWalkthroughProgressUnlocked(
+    input: WalkthroughProgressUpdate,
+  ): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
     const ownership = await this.ensureMutableOwned(
       input.profileId,
       input.reviewId,
@@ -803,25 +813,17 @@ export class InsightRunCoordinator {
     return ok({ status: "saved" });
   }
 
-  async updateAnalysisVerification(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly stepIndex: number;
-    readonly checked: boolean;
-  }): Promise<Result<AnalysisVerification, InsightCoordinatorFailure>> {
+  async updateAnalysisVerification(
+    input: AnalysisVerificationUpdate,
+  ): Promise<Result<AnalysisVerification, InsightCoordinatorFailure>> {
     return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
       this.updateAnalysisVerificationUnlocked(input),
     );
   }
 
-  private async updateAnalysisVerificationUnlocked(input: {
-    readonly profileId: WorkspaceProfileId;
-    readonly reviewId: ReviewId;
-    readonly runId: InsightRunId;
-    readonly stepIndex: number;
-    readonly checked: boolean;
-  }): Promise<Result<AnalysisVerification, InsightCoordinatorFailure>> {
+  private async updateAnalysisVerificationUnlocked(
+    input: AnalysisVerificationUpdate,
+  ): Promise<Result<AnalysisVerification, InsightCoordinatorFailure>> {
     // Ticks are the reviewer's own reading progress, so a merged or closed Review keeps them editable.
     const ownership = await this.ensureOwned(input.profileId, input.reviewId);
     if (ownership._tag === "err") return ownership;

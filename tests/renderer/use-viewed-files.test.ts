@@ -75,6 +75,106 @@ function sentBodies(): ReadonlyArray<v.InferOutput<typeof sentBody>> {
 }
 
 describe("useViewedFiles", () => {
+  it.each([
+    { action: "mark", savedPaths: [], nextPaths: ["src/a.ts"] },
+    { action: "unmark", savedPaths: ["src/a.ts"], nextPaths: [] },
+  ])(
+    "publishes a late Combined $action while Committed remains selected",
+    async ({ savedPaths, nextPaths }) => {
+      let release: (() => void) | undefined;
+      desktop = installDesktopDouble({
+        [viewedFilesPath]: (input) =>
+          new Promise((resolve) => {
+            release = () => resolve(echo(input));
+          }),
+      });
+      const patches: ReviewWorkbenchPatch[] = [];
+      const { result, rerender } = renderViewedFiles(patches, {
+        sessionId: "session-1",
+        view: "combined",
+        savedPaths,
+      });
+      act(() => result.current.setPaths(new Set(nextPaths)));
+      rerender({
+        sessionId: "session-1",
+        view: "committed",
+        savedPaths: ["src/committed.ts"],
+      });
+      await waitFor(() => expect(release).toBeDefined());
+      await act(async () => release?.());
+      expect(patches).toEqual([{ viewedPaths: nextPaths }]);
+      expect([...result.current.paths]).toEqual(["src/committed.ts"]);
+      expect(result.current.saveFailed).toBe(false);
+      expect(sentBodies()).toEqual([
+        {
+          reviewId: "review-42",
+          sessionId: "session-1",
+          view: "combined",
+          paths: nextPaths,
+        },
+      ]);
+    },
+  );
+
+  it.each([
+    {
+      boundary: "profile",
+      profileId: "other-profile",
+      reviewId: "review-42",
+      sessionId: "session-1",
+    },
+    {
+      boundary: "Review",
+      profileId: "profile",
+      reviewId: "other-review",
+      sessionId: "session-1",
+    },
+    {
+      boundary: "session",
+      profileId: "profile",
+      reviewId: "review-42",
+      sessionId: "other-session",
+    },
+  ])(
+    "does not publish a late Combined save after the $boundary changes",
+    async ({ profileId, reviewId, sessionId }) => {
+      let release: (() => void) | undefined;
+      desktop = installDesktopDouble({
+        [viewedFilesPath]: (input) =>
+          new Promise((resolve) => {
+            release = () => resolve(echo(input));
+          }),
+      });
+      const patches: ReviewWorkbenchPatch[] = [];
+      const { result, rerender } = renderHook(
+        (identity: {
+          profileId: string;
+          reviewId: string;
+          sessionId: string;
+        }) =>
+          useViewedFiles({
+            ...identity,
+            view: "combined",
+            savedPaths: [],
+            onWorkbenchPatch: (patch) => patches.push(patch),
+          }),
+        {
+          initialProps: {
+            profileId: "profile",
+            reviewId: "review-42",
+            sessionId: "session-1",
+          },
+        },
+      );
+      act(() => result.current.setPaths(new Set(["src/a.ts"])));
+      rerender({ profileId, reviewId, sessionId });
+      await waitFor(() => expect(release).toBeDefined());
+      await act(async () => release?.());
+      expect(patches).toEqual([]);
+      expect([...result.current.paths]).toEqual([]);
+    },
+  );
+
   it("marks a file at once and saves the whole set for the session", async () => {
     desktop = installDesktopDouble({ [viewedFilesPath]: echo });
     const patches: ReviewWorkbenchPatch[] = [];

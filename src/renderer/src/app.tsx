@@ -4,11 +4,17 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { agentMarkerInputs } from "./agent-run-requests";
+import {
+  GuideReadingFlushProvider,
+  useGuideReadingFlush,
+} from "./hooks/use-guide-reading-flush";
 import { AppShell } from "./components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
@@ -119,7 +125,9 @@ export function App({ ...props }: AppProps): React.JSX.Element {
   return (
     <BusyProvider>
       <PullRequestImageCacheProvider>
-        <AppContent {...props} />
+        <GuideReadingFlushProvider>
+          <AppContent {...props} />
+        </GuideReadingFlushProvider>
       </PullRequestImageCacheProvider>
     </BusyProvider>
   );
@@ -173,9 +181,42 @@ function AppContent({
     bootRestoredDestination,
     pendingDestination,
     setPendingDestination,
-    performNavigation,
-    navigate,
+    performNavigation: commitNavigation,
+    navigate: parkNavigation,
   } = useAppNavigation(leaveWorkbench);
+  const readingOwner = useGuideReadingFlush();
+  const [navigationCommit, setNavigationCommit] = useState(0);
+  const navigationCompletions = useRef(new Set<() => void>());
+  useLayoutEffect(() => {
+    for (const complete of navigationCompletions.current) complete();
+    navigationCompletions.current.clear();
+  }, [navigationCommit]);
+  const performNavigation = useCallback(
+    async (next: AppDestination, discard = false) => {
+      let committed: Promise<void> | undefined;
+      const admitted = await readingOwner.navigate(() => {
+        // The next open must wait until React disposes the previous draft guard.
+        committed = new Promise((complete) => {
+          navigationCompletions.current.add(complete);
+        });
+        commitNavigation(next);
+        setNavigationCommit((current) => current + 1);
+      }, discard);
+      if (admitted) await committed;
+      return admitted;
+    },
+    [commitNavigation, readingOwner],
+  );
+  const navigate = useCallback(
+    (next: AppDestination): void => {
+      if (navigationState !== "clear") {
+        parkNavigation(next);
+        return;
+      }
+      void performNavigation(next);
+    },
+    [navigationState, parkNavigation, performNavigation],
+  );
   const {
     LazyReviewWorkbench,
     restoredWorkbenchUi,
@@ -257,7 +298,7 @@ function AppContent({
       saveInboxViewPreferences(id, { state: "open" });
       resetInboxStateOnProfileLoad.current = true;
       // Leaves a held Review, so the switch records its cursor like any other leave.
-      performNavigation({ kind: "dashboard" });
+      if (!(await performNavigation({ kind: "dashboard" }))) return;
       dispatchWorkspace({ _tag: "cleared" });
       activeInboxProfileId.current = undefined;
       inboxRefreshGeneration.current += 1;
@@ -283,11 +324,12 @@ function AppContent({
     readonly returnFocus: HTMLElement | null;
   }>();
   const confirmLeaveReview = useCallback(
-    (returnFocus: HTMLElement | null = null): Promise<boolean> =>
-      navigationState === "clear"
-        ? Promise.resolve(true)
-        : new Promise((settle) => setParkedLeave({ settle, returnFocus })),
-    [navigationState],
+    async (returnFocus: HTMLElement | null = null): Promise<boolean> => {
+      if (navigationState === "clear")
+        return performNavigation({ kind: "dashboard" });
+      return new Promise((settle) => setParkedLeave({ settle, returnFocus }));
+    },
+    [navigationState, performNavigation],
   );
   const [visitedReloadKey, setVisitedReloadKey] = useState(0);
   // The retention sweep runs in the main process and removes Reviews the column lists, so it reads again on the main process's say-so, never on a timer (#740, ADR 0032).
@@ -307,22 +349,19 @@ function AppContent({
   }
   const openWorkbench = useCallback(
     (next: WorkbenchResponse): void => {
-      setWorkbench(next);
-      // Every open path funnels through here, so bumping the key is what puts
-      // the pull request at the top of the visited column without a relaunch.
-      setVisitedReloadKey((key) => key + 1);
-      performNavigation({
-        kind: "workbench",
-        reviewId: next.review.id,
+      void readingOwner.navigate(() => {
+        setWorkbench(next);
+        setVisitedReloadKey((key) => key + 1);
+        commitNavigation({ kind: "workbench", reviewId: next.review.id });
       });
     },
-    [performNavigation, setWorkbench],
+    [commitNavigation, readingOwner, setWorkbench],
   );
   // The boot restore's way out when the saved Review it named is gone: leaving
   // the route also rewrites the stored destination, so the next launch starts
   // on the dashboard rather than asking for the same missing Review again.
   const returnToDashboard = useCallback((): void => {
-    performNavigation({ kind: "dashboard" });
+    void performNavigation({ kind: "dashboard" });
   }, [performNavigation]);
   const reviewOpening = useInboxReviewOpening({
     dashboard,
@@ -354,8 +393,11 @@ function AppContent({
   // The pull request a palette or notification open waits on behind the leave-confirmation (#606).
   const [parkedPullRequest, setParkedPullRequest] = useState<PullRequestRef>();
   const openWatchedPullRequest = useCallback(
-    (ref: PullRequestRef, leave: () => void): void => {
-      leave();
+    async (
+      ref: PullRequestRef,
+      leave: () => Promise<boolean>,
+    ): Promise<void> => {
+      if (!(await leave())) return;
       const watched = (dashboard?.profile.repos ?? []).some((repo) =>
         sameRepositoryIdentity(repo, ref),
       );
@@ -375,9 +417,11 @@ function AppContent({
         setParkedPullRequest(ref);
         return;
       }
-      openWatchedPullRequest(ref, () => navigate({ kind: "dashboard" }));
+      void openWatchedPullRequest(ref, () =>
+        performNavigation({ kind: "dashboard" }),
+      );
     },
-    [navigate, navigationState, openWatchedPullRequest],
+    [navigationState, openWatchedPullRequest, performNavigation],
   );
   const notificationFocus = useDesktopNotificationClicks({
     enabled: !fixtureMode,
@@ -472,7 +516,7 @@ function AppContent({
         }
         confirmLeaveReview={confirmLeaveReview}
         onCleanupSuccess={(action) => {
-          if (action === "local") performNavigation({ kind: "dashboard" });
+          if (action === "local") void performNavigation({ kind: "dashboard" });
           // The cleanup removed Reviews the column still lists (#618).
           setVisitedReloadKey((key) => key + 1);
         }}
@@ -528,22 +572,27 @@ function AppContent({
             {navigationState === "write_pending" ? null : (
               <AlertDialogAction
                 variant="destructive"
-                onClick={() => {
+                onClick={async () => {
                   setStayReturnFocus(null);
                   if (parkedLeave !== undefined) {
                     // Leaving before the switch or cleanup runs, so one that fails cannot leave the draft on screen unguarded.
-                    performNavigation({ kind: "dashboard" });
+                    if (!(await performNavigation({ kind: "dashboard" }, true)))
+                      return;
                     parkedLeave.settle(true);
                   } else if (parkedLocalOpen !== undefined) {
                     // Leaving first unmounts the draft this confirmation discards.
-                    performNavigation({ kind: "dashboard" });
+                    if (!(await performNavigation({ kind: "dashboard" }, true)))
+                      return;
                     void openLocalRow(parkedLocalOpen, () => undefined);
                   } else if (parkedPullRequest !== undefined) {
-                    openWatchedPullRequest(parkedPullRequest, () =>
-                      performNavigation({ kind: "dashboard" }),
+                    await openWatchedPullRequest(parkedPullRequest, () =>
+                      performNavigation({ kind: "dashboard" }, true),
                     );
-                  } else if (pendingDestination !== undefined)
-                    performNavigation(pendingDestination);
+                  } else if (
+                    pendingDestination !== undefined &&
+                    !(await performNavigation(pendingDestination, true))
+                  )
+                    return;
                   setNavigationState("clear");
                   setPendingDestination(undefined);
                   setParkedLocalOpen(undefined);
@@ -649,7 +698,14 @@ function AppContent({
                 return { ...current, ...rest, ...insightsField };
               })
             }
-            onWorkbenchReplace={(next) => setWorkbench(next)}
+            onWorkbenchReplace={(next) => {
+              if (
+                next.review.id === workbench.review.id &&
+                next.session.key.profileId === workbench.session.key.profileId
+              )
+                setWorkbench(next);
+              else void readingOwner.navigate(() => setWorkbench(next));
+            }}
             onNavigationStateChange={setNavigationState}
           />
         </Suspense>

@@ -1,6 +1,10 @@
 import type { AppUpdateState } from "#src/domain/app-update";
 import type { Appearance } from "#src/domain/contracts";
 import type { RawJsonValue } from "#src/domain/json";
+import type {
+  GuideReadingAdmission,
+  GuideReadingFlushRequest,
+} from "./guide-reading-flush-channel";
 
 /** Header accepted by the loopback API for every request. */
 export const APP_CAPABILITY_HEADER = "X-Patchdesk-Capability";
@@ -9,6 +13,12 @@ export const APP_CAPABILITY_HEADER = "X-Patchdesk-Capability";
 export type AppCapability = string;
 
 export const DESKTOP_REQUEST_CHANNEL = "patchdesk:request";
+/** Orderly close requests and completion receipts share request identity. */
+export const GUIDE_READING_FLUSH_REQUEST_CHANNEL =
+  "patchdesk:guide-reading-flush";
+/** Only the requested renderer may acknowledge its pending save queue. */
+export const GUIDE_READING_FLUSH_ACK_CHANNEL =
+  "patchdesk:guide-reading-flush-ack";
 /**
  * The one channel the native menu uses to reach the renderer. Both halves —
  * `sendMenuAction` in the main process and `subscribeToMenuActions` in
@@ -174,6 +184,12 @@ export type PatchdeskDesktopApi = {
   ): () => void;
   /** Fires when an Insight run finishes or fails, whichever Review it belongs to. */
   onInsightSettled(listener: () => void): () => void;
+  /** Acknowledges current draft admission and confirmed Guide persistence, without draft bodies. */
+  onGuideReadingFlush(
+    listener: (
+      request: GuideReadingFlushRequest,
+    ) => Promise<GuideReadingAdmission>,
+  ): () => void;
   /** Fires when the retention sweep removed at least one Review, whichever workspace it belonged to. */
   onReviewsRemoved(listener: () => void): () => void;
   /** Fires with the profile id when a poll finds a change on one of its watched pull requests. */

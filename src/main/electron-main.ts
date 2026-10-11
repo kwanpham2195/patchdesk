@@ -11,6 +11,14 @@ import {
   shell,
 } from "electron";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { guideReadingAdmissionRequests } from "./guide-reading-flush-channel";
+import { DesktopRendererRecovery } from "./desktop-renderer-recovery";
+import {
+  DesktopOrderlyClose,
+  desktopCloseDialogs,
+  holdDesktopCloseInput,
+} from "./desktop-orderly-close";
 
 import {
   createDesktopLifecycle,
@@ -24,10 +32,7 @@ import {
 } from "./desktop-full-screen-channel";
 import { serveWindowAppearance } from "./desktop-appearance-channel";
 import { installDesktopRequestBridge } from "./desktop-bridge";
-import {
-  resolveDesktopClose,
-  type DesktopNavigationState,
-} from "./desktop-close-guard";
+import { type DesktopNavigationState } from "./desktop-close-guard";
 import { preloadScriptPath } from "./electron-paths";
 import { rendererSource } from "./renderer-origin";
 import {
@@ -118,7 +123,7 @@ let stopping = false;
 let rendererNavigationState: DesktopNavigationState = "clear";
 let rendererDestination: NotificationDestination = { kind: "dashboard" };
 let allowWindowClose = false;
-let closePromptOpen = false;
+let quitApproved = false;
 /** Settles when a window's renderer first reports its destination, by which time its notification-click listener is subscribed. */
 const rendererListening = new WeakMap<BrowserWindow, Promise<void>>();
 /**
@@ -626,13 +631,11 @@ function registerDesktopEvents(): void {
     if (process.platform !== "darwin") app.quit();
   });
   app.on("before-quit", (event) => {
-    if (stopping) return;
-    event.preventDefault();
-    if (rendererNavigationState === "clear") {
-      terminateAfterServerStops();
-      return;
-    }
-    void guardDesktopExit("quit");
+    void orderlyClose.beforeQuit(
+      event,
+      { stopping, quitApproved },
+      terminateAfterServerStops,
+    );
   });
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -825,9 +828,9 @@ async function createWorkbenchWindow(
     }
   });
   window.on("close", (event) => {
-    if (allowWindowClose || rendererNavigationState === "clear") return;
+    if (allowWindowClose || stopping) return;
     event.preventDefault();
-    void guardDesktopExit("window");
+    void orderlyClose.request("window");
   });
   window.webContents.on("render-process-gone", (_event, details) => {
     logs.write({
@@ -837,7 +840,7 @@ async function createWorkbenchWindow(
       message: "Renderer process stopped",
       meta: { reason: details.reason, exitCode: details.exitCode },
     });
-    void offerRendererRecovery(
+    void rendererRecovery.offer(
       window,
       "The workbench process stopped unexpectedly.",
     );
@@ -849,7 +852,7 @@ async function createWorkbenchWindow(
       topic: "renderer",
       message: "Renderer stopped responding",
     });
-    void offerRendererRecovery(window, "The workbench stopped responding.");
+    void rendererRecovery.offer(window, "The workbench stopped responding.");
   });
 
   try {
@@ -863,25 +866,6 @@ async function createWorkbenchWindow(
     if (!window.isDestroyed()) window.destroy();
     throw cause;
   }
-}
-
-async function offerRendererRecovery(
-  window: BrowserWindow,
-  message: string,
-): Promise<void> {
-  if (window.isDestroyed()) return;
-  const result = await dialog.showMessageBox(window, {
-    type: "warning",
-    title: "Patchdesk recovery",
-    message,
-    detail:
-      "Reloading restores saved local state and never retries a GitHub write.",
-    buttons: ["Reload Patchdesk", "Quit"],
-    defaultId: 0,
-    cancelId: 1,
-  });
-  if (result.response === 0 && !window.isDestroyed()) window.reload();
-  else app.quit();
 }
 
 async function focusOrRecreateWorkbench(): Promise<void> {
@@ -928,53 +912,58 @@ function raiseWindowAndSendMenuAction(action: DesktopMenuAction): void {
   focusWindow(window);
 }
 
-async function guardDesktopExit(intent: "window" | "quit"): Promise<void> {
-  if (closePromptOpen) return;
-  const window = mainWindow;
-  if (window === undefined || window.isDestroyed()) return;
-  closePromptOpen = true;
-  try {
-    const decision = await resolveDesktopClose(
-      rendererNavigationState,
-      async () => {
-        const result = await dialog.showMessageBox(window, {
-          type: "warning",
-          title: "Unsaved review draft",
-          message: "Discard the unsaved review draft and close Patchdesk?",
-          detail:
-            "Saved drafts and review history remain on this Mac. Only the latest unsaved edit will be discarded.",
-          buttons: ["Keep reviewing", "Discard unsaved changes"],
-          defaultId: 0,
-          cancelId: 0,
-        });
-        return result.response === 1;
-      },
-    );
-    if (decision === "prevent") {
-      appUpdate.service.cancelInstall();
-      if (rendererNavigationState === "write_pending") {
-        await dialog.showMessageBox(window, {
-          type: "info",
-          title: "GitHub write in progress",
-          message:
-            "Patchdesk must receive the final GitHub result before it can close.",
-          buttons: ["Wait for completion"],
-          defaultId: 0,
-        });
-      }
-      return;
-    }
+const orderlyClose = new DesktopOrderlyClose({
+  ...guideReadingAdmissionRequests(
+    ipcMain,
+    () => mainWindow?.webContents,
+    randomUUID,
+    30_000,
+  ),
+  holdInput: () =>
+    mainWindow === undefined
+      ? () => undefined
+      : holdDesktopCloseInput(
+          mainWindow.webContents,
+          Menu.getApplicationMenu(),
+        ),
+  ...desktopCloseDialogs(async (options) => {
+    const window = mainWindow;
+    return window === undefined || window.isDestroyed()
+      ? { response: 0 }
+      : await dialog.showMessageBox(window, options);
+  }),
+
+  cancelInstall: () => appUpdate.service.cancelInstall(),
+  complete(intent) {
     rendererNavigationState = "clear";
-    if (intent === "quit") app.quit();
-    else {
+    if (intent === "quit") {
+      quitApproved = true;
+      app.quit();
+    } else {
       appUpdate.service.cancelInstall();
       allowWindowClose = true;
-      window.close();
+      mainWindow?.close();
     }
-  } finally {
-    closePromptOpen = false;
-  }
-}
+  },
+});
+
+const rendererRecovery = new DesktopRendererRecovery<BrowserWindow>({
+  current: () => mainWindow,
+  isFailed: (window) => window.webContents.isCrashed(),
+  navigationState: () => rendererNavigationState,
+  show: dialog.showMessageBox,
+  dialogs: desktopCloseDialogs(async (options) =>
+    mainWindow === undefined || mainWindow.isDestroyed()
+      ? { response: 0 }
+      : dialog.showMessageBox(mainWindow, options),
+  ),
+  cancelInstall: () => appUpdate.service.cancelInstall(),
+  requestQuit: () => app.quit(),
+  approveQuit() {
+    quitApproved = true;
+    app.quit();
+  },
+});
 
 function terminateAfterServerStops(): void {
   if (stopping) return;

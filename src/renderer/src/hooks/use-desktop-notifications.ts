@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 
 import {
   parsePullRequestRef,
@@ -8,6 +8,7 @@ import type { ReviewWorkbenchInitialState } from "#src/renderer/src/components/r
 import { destinationKey, type AppDestination } from "#src/renderer/src/routes";
 import type { NavigationState } from "./use-app-navigation";
 import { useLatestCommitted } from "./use-latest-committed";
+import { GuideReadingFlushContext } from "./use-guide-reading-flush";
 
 /**
  * The position a clicked Insight notification asks its Review workbench to
@@ -42,6 +43,7 @@ export function useDesktopNotificationClicks({
   readonly navigate: (next: AppDestination) => void;
   readonly openPullRequest: (ref: PullRequestRef) => void;
 }): NotificationWorkbenchFocus | undefined {
+  const readingOwner = useContext(GuideReadingFlushContext);
   const [focus, setFocus] = useState<NotificationWorkbenchFocus>();
   const generation = useRef(0);
   const latestDestination = useLatestCommitted(destination);
@@ -69,24 +71,33 @@ export function useDesktopNotificationClicks({
         if (ref._tag === "ok") openPullRequest(ref.value);
         return;
       }
-      const onScreen =
-        destinationKey(latestDestination.current) ===
-        destinationKey({ kind: "workbench", reviewId: click.reviewId });
+      const commit = (): void => {
+        const onScreen =
+          destinationKey(latestDestination.current) ===
+          destinationKey({ kind: "workbench", reviewId: click.reviewId });
+        if (
+          click.insightType !== undefined &&
+          latestNavigationState.current === "clear"
+        ) {
+          generation.current += 1;
+          setFocus({
+            reviewId: click.reviewId,
+            state:
+              click.insightType === "brief"
+                ? { activeTab: "insights" }
+                : { activeTab: "insights", insightDetail: click.insightType },
+            generation: generation.current,
+          });
+        }
+        if (!onScreen)
+          navigate({ kind: "workbench", reviewId: click.reviewId });
+      };
       if (
-        click.insightType !== undefined &&
-        latestNavigationState.current === "clear"
-      ) {
-        generation.current += 1;
-        setFocus({
-          reviewId: click.reviewId,
-          state:
-            click.insightType === "brief"
-              ? { activeTab: "insights" }
-              : { activeTab: "insights", insightDetail: click.insightType },
-          generation: generation.current,
-        });
-      }
-      if (!onScreen) navigate({ kind: "workbench", reviewId: click.reviewId });
+        readingOwner === undefined ||
+        latestNavigationState.current !== "clear"
+      )
+        commit();
+      else void readingOwner.navigate(commit);
     });
   }, [
     enabled,
@@ -94,6 +105,7 @@ export function useDesktopNotificationClicks({
     latestNavigationState,
     navigate,
     openPullRequest,
+    readingOwner,
   ]);
 
   return focus;

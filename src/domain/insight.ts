@@ -1,3 +1,4 @@
+import type { GuideReadingState } from "./guide-reading-state";
 import type {
   ContentHash,
   GitSha,
@@ -57,6 +58,7 @@ export type InsightProjection<T> = {
     readonly scope?: InsightScopeProjection;
   };
   readonly progress?: WalkthroughProgress;
+  readonly readingState?: GuideReadingState;
   readonly verification?: AnalysisVerification;
   readonly activeRun?: {
     readonly runId?: InsightRunId;
@@ -127,6 +129,9 @@ export function projectStoredInsight<T>(
       ...(record.analysisVerification !== undefined && {
         verification: record.analysisVerification,
       }),
+      ...(record.guideReadingState !== undefined && {
+        readingState: record.guideReadingState,
+      }),
       ...(retained !== undefined && { retained }),
       activeRun: {
         runId: record.activeRun.id,
@@ -144,6 +149,9 @@ export function projectStoredInsight<T>(
       }),
       ...(record.analysisVerification !== undefined && {
         verification: record.analysisVerification,
+      }),
+      ...(record.guideReadingState !== undefined && {
+        readingState: record.guideReadingState,
       }),
       ...(retained !== undefined && { retained }),
       replacementFailure: {
@@ -184,6 +192,9 @@ export function projectStoredInsight<T>(
     }),
     ...(record?.analysisVerification !== undefined && {
       verification: record.analysisVerification,
+    }),
+    ...(record?.guideReadingState !== undefined && {
+      readingState: record.guideReadingState,
     }),
     retained,
   };

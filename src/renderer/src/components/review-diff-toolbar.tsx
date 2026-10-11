@@ -281,7 +281,10 @@ export function ReviewDiffToolbar({
   markdownPreview,
   leadingAction,
   changes,
+  showViewOptions = true,
 }: {
+  /** Guide owns drawing options above all file readers, leaving other file actions here. */
+  readonly showViewOptions?: boolean;
   readonly virtualized: boolean;
   readonly preferences: Pick<
     ReviewViewPreferences,
@@ -306,7 +309,7 @@ export function ReviewDiffToolbar({
   readonly leadingAction?: React.ReactNode;
   /** What the Changes menu offers; absent where the diff has no other comparison. */
   readonly changes?: DiffChangesControl | undefined;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   // A showing preview replaces the CodeView, so every control that describes
   // one is suppressed; the Scope picker stays because it also filters Browse,
   // and the Patch view stays because it chooses the file being previewed.
@@ -341,6 +344,15 @@ export function ReviewDiffToolbar({
     sinceReview: inAllFiles(changes?.sinceReview),
     sinceLastRefresh: inAllFiles(changes?.sinceLastRefresh),
   };
+  if (
+    !showViewOptions &&
+    !virtualized &&
+    markdownPreview === undefined &&
+    leadingAction === undefined &&
+    scopeFilter === undefined &&
+    changes === undefined
+  )
+    return null;
   return (
     <div
       data-review-diff-toolbar
@@ -352,7 +364,7 @@ export function ReviewDiffToolbar({
         {scopeFilter === undefined ? null : (
           <ReviewDiffScopePicker scopeFilter={scopeFilter} />
         )}
-        {previewing ? null : (
+        {previewing || !showViewOptions ? null : (
           <ReviewDiffOptionsPopover
             preferences={preferences}
             onPreferencesChange={onPreferencesChange}
