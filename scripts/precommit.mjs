@@ -119,6 +119,11 @@ async function stagedPaths(cwd) {
 }
 
 async function main() {
+  const checkExit = await runInherited("pnpm", ["check"], projectRoot);
+  if (checkExit !== 0) {
+    process.exitCode = checkExit;
+    return;
+  }
   const lintExit = await runInherited("pnpm", ["lint:staged"], projectRoot);
   if (lintExit !== 0) {
     process.exitCode = lintExit;
