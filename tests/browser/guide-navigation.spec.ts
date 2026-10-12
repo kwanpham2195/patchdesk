@@ -39,6 +39,17 @@ test("Guide keeps its resting rail compact and animates focus expansion without 
     const strip = rail.locator("[data-guide-minimap-strip='g1']");
     const viewport = page.locator("[data-guide-viewport]");
     const before = await viewport.boundingBox();
+    const positions = await rail
+      .locator("[data-guide-minimap-strip]")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().top),
+      );
+    let previous: number | undefined;
+    for (const position of positions) {
+      if (previous !== undefined)
+        expect(Math.abs(position - previous - 8)).toBeLessThan(0.25);
+      previous = position;
+    }
     expect(
       await strip.evaluate((node) => node.getBoundingClientRect().width),
     ).toBeLessThan(9);
