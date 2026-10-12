@@ -135,7 +135,7 @@ it("moves keyboard focus into the preview and jumps to the selected repeated app
   const user = userEvent.setup();
   const { viewport, outer, rail } = renderMinimap();
   rail.focus();
-  await user.keyboard("{ArrowDown}{Tab}{Tab}");
+  await user.keyboard("{ArrowDown}{Tab}");
   const preview = screen.getByRole("note", { name: "Guide preview Support" });
   expect(preview.contains(document.activeElement)).toBe(true);
   await user.click(screen.getByRole("button", { name: "src/shared.ts" }));
@@ -148,6 +148,18 @@ it("moves keyboard focus into the preview and jumps to the selected repeated app
   expect(
     screen.queryByRole("note", { name: "Guide preview Support" }),
   ).toBeNull();
+});
+
+it("lets Tab leave a preview without file destinations", async () => {
+  const user = userEvent.setup();
+  const { rail } = renderMinimap(
+    groups.slice(0, 1).map((group) => ({ ...group, files: [] })),
+  );
+  rail.focus();
+  await user.keyboard("{Tab}");
+  expect(document.activeElement).toBe(
+    screen.getByRole("textbox", { name: "Draft Recovery" }),
+  );
 });
 
 it("offers the ungrouped file destination in its preview", async () => {

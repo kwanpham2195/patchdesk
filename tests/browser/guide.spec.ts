@@ -36,8 +36,8 @@ test("Guide expands complete retained files independently and preserves evidence
       );
       await expect(changedLine).toBeVisible();
     }
-    await expect(evidence).toContainText("old mode 100644");
-    await expect(evidence).toContainText("new mode 100755");
+    await expect(evidence).not.toContainText("old mode 100644");
+    await expect(evidence).not.toContainText("new mode 100755");
     await first
       .getByRole("button", { name: "File tests/recovery.test.ts" })
       .click();
@@ -436,8 +436,26 @@ for (const width of [1440, 560]) {
       const evidence = files.getByRole("group", {
         name: "Guide evidence src/recovery.ts",
       });
-      await expect(evidence).toContainText("old mode 100644");
-      await expect(evidence).toContainText("new mode 100755");
+      await expect(evidence).not.toContainText("old mode 100644");
+      await expect(evidence).not.toContainText("new mode 100755");
+      const fileHeader = files.getByRole("button", {
+        name: "File src/recovery.ts",
+      });
+      const viewed = files.getByRole("checkbox", {
+        name: "Viewed src/recovery.ts",
+      });
+      const headerBounds = await fileHeader.boundingBox();
+      const viewedBounds = await viewed.boundingBox();
+      if (headerBounds === null || viewedBounds === null)
+        throw new Error("Missing Guide header controls");
+      expect(
+        Math.abs(
+          headerBounds.y +
+            headerBounds.height / 2 -
+            viewedBounds.y -
+            viewedBounds.height / 2,
+        ),
+      ).toBeLessThan(1);
       const left = await explanation.boundingBox();
       const right = await files.boundingBox();
       if (left === null || right === null)

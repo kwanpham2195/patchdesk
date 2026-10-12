@@ -237,9 +237,13 @@ export function GuideMinimap({
             }
             preview(currentIndex, true);
           }}
-          onFocusActions={() =>
-            popup.current?.querySelector<HTMLButtonElement>("button")?.focus()
-          }
+          onFocusActions={() => {
+            const action =
+              popup.current?.querySelector<HTMLButtonElement>("button");
+            if (action === null || action === undefined) return false;
+            action.focus();
+            return true;
+          }}
         />
         {activeGroup === undefined ? null : (
           <PopoverContent
@@ -280,7 +284,7 @@ function GuidePreview({
 }: {
   readonly group: ComponentProps<typeof GuideMinimap>["groups"][number];
   readonly index: number;
-  readonly onSelect: (fileId?: string) => void;
+  readonly onSelect: (fileId: string) => void;
 }): React.JSX.Element {
   return (
     <>
@@ -296,9 +300,6 @@ function GuidePreview({
       <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm text-muted-foreground">
         {group.explanation}
       </p>
-      <Button size="xs" variant="outline" onClick={() => onSelect()}>
-        Jump to group
-      </Button>
       <div className="flex flex-col gap-1">
         {group.files?.map((file) => (
           <Button

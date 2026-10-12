@@ -293,14 +293,7 @@ describe("Guide complete snapshot evidence", () => {
     const evidence = first.getByRole("group", {
       name: "Guide evidence src/main.ts",
     });
-    const metadata = within(evidence)
-      .getByText("Patch metadata")
-      .closest("details");
-    expect(metadata).toHaveProperty("open", false);
-    await user.click(within(evidence).getByText("Patch metadata"));
-    expect(metadata).toHaveProperty("open", true);
-    expect(evidence.textContent).toContain("old mode 100644");
-    expect(evidence.textContent).toContain("new mode 100755");
+    expect(evidence.querySelector("details")).toBeNull();
     expect(evidence.textContent).toContain("snapshotFirst()");
     expect(evidence.textContent).toContain("snapshotSecond()");
     expect(
