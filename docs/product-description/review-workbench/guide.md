@@ -12,7 +12,7 @@ The result shows a distinct file count, a group count, and Reviewed progress. Nu
 
 Mark reviewed records progress for one group. Viewed records progress for a file and is shared with Diff and every Guide appearance. Neither action submits a GitHub review. Notes, comments, replies, and drafts use the [shared inline actions](inline-conversations.md).
 
-The wide minimap rests as a compact rail. Markers expand smoothly around pointer or keyboard focus, revealing the group's explanation and file destinations. Clicking the rail jumps directly to its group; there is no second group button in the preview. File destinations scroll to their appearance without expanding it or changing review content. At narrow widths, selecting a human group name jumps immediately. Files opens that group's destinations. These controls remain available while reading a long expanded file.
+The wide minimap rests as a compact rail, with small Previous and Next controls aligned with its resting ticks. Markers expand smoothly around pointer or keyboard focus, revealing the group's explanation and file destinations. Clicking the rail jumps directly to its group; there is no second group button in the preview. File destinations scroll to their appearance without expanding it or changing review content. At narrow widths, selecting a human group name jumps immediately. Files opens that group's destinations. These controls remain available while reading a long expanded file.
 
 ## The task, event by event
 
@@ -119,4 +119,4 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 - Prior native close, save-failure Retry, restart, held-save input, and crashed-renderer checks cover unchanged queue and main-process code. Crash admission used injected public states, not real pending GitHub writes.
 - Publishing replies, edits, deletions, and review submissions from Guide was not exercised against a real pull request. Owning tests cover those actions; a disposable live write pass remains pending.
 
-Drafted against Patchdesk application source commit `aabdb17c19ee408a6cac90268bad275774f872de`. Layout checked through CDP; native and fixture evidence limits are stated above.
+Drafted against Patchdesk application source commit `b960ff0c292053dd514e6bd33950c542bf92cd10`. Layout checked through CDP; native and fixture evidence limits are stated above.
