@@ -44,6 +44,25 @@ test("Guide keeps its resting rail compact and animates focus expansion without 
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getBoundingClientRect().top),
       );
+    const tickCenter = await strip.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      return bounds.x + bounds.width / 2;
+    });
+    for (const name of ["Previous Guide group", "Next Guide group"]) {
+      const control = await page
+        .getByRole("button", { name })
+        .evaluate((node) => {
+          const bounds = node.getBoundingClientRect();
+          return {
+            width: bounds.width,
+            height: bounds.height,
+            center: bounds.x + bounds.width / 2,
+          };
+        });
+      expect(control.width).toBe(20);
+      expect(control.height).toBe(20);
+      expect(Math.abs(control.center - tickCenter)).toBeLessThan(0.25);
+    }
     let previous: number | undefined;
     for (const position of positions) {
       if (previous !== undefined)

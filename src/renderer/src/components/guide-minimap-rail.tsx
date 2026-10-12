@@ -46,23 +46,23 @@ export function GuideMinimapRail({
     return Math.round(progress * (groups.length - 1));
   };
   return (
-    <div className="group/guide-minimap hidden h-full min-h-0 flex-col items-center justify-center gap-2 @min-[48rem]:flex">
+    <div className="group/guide-minimap hidden h-full min-h-0 flex-col items-center justify-center gap-0.5 @min-[48rem]:flex">
       <span className="sr-only">Groups</span>
       <span className="sr-only">
         {currentIndex + 1}/{groups.length}
       </span>
       <Button
-        size="xs"
+        size="icon-xs"
         variant="ghost"
         className={cn(
-          "opacity-0 transition-opacity duration-150 group-hover/guide-minimap:opacity-100 group-focus-within/guide-minimap:opacity-100",
+          "relative left-3 size-5 -translate-x-1/2 self-start opacity-0 transition-opacity duration-150 group-hover/guide-minimap:opacity-100 group-focus-within/guide-minimap:opacity-100",
           activeIndex !== null && "opacity-100",
         )}
         aria-label="Previous Guide group"
         disabled={currentIndex === 0}
         onClick={() => onSelect(currentIndex - 1)}
       >
-        <ChevronUp aria-hidden="true" />
+        <ChevronUp aria-hidden="true" className="size-4" />
       </Button>
       <div
         ref={scroller}
@@ -178,17 +178,17 @@ export function GuideMinimapRail({
         </div>
       </div>
       <Button
-        size="xs"
+        size="icon-xs"
         variant="ghost"
         className={cn(
-          "opacity-0 transition-opacity duration-150 group-hover/guide-minimap:opacity-100 group-focus-within/guide-minimap:opacity-100",
+          "relative left-3 size-5 -translate-x-1/2 self-start opacity-0 transition-opacity duration-150 group-hover/guide-minimap:opacity-100 group-focus-within/guide-minimap:opacity-100",
           activeIndex !== null && "opacity-100",
         )}
         aria-label="Next Guide group"
         disabled={currentIndex >= groups.length - 1}
         onClick={() => onSelect(currentIndex + 1)}
       >
-        <ChevronDown aria-hidden="true" />
+        <ChevronDown aria-hidden="true" className="size-4" />
       </Button>
     </div>
   );
