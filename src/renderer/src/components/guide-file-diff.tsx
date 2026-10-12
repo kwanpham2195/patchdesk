@@ -35,16 +35,7 @@ export function GuideFileDiff({
         <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs">
           {file.metadata.join("\n")}
         </pre>
-      ) : (
-        <details className="border-b text-xs text-muted-foreground">
-          <summary className="cursor-pointer px-3 py-2 font-medium">
-            Patch metadata
-          </summary>
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all px-3 pb-3 font-mono text-xs">
-            {file.metadata.join("\n")}
-          </pre>
-        </details>
-      )}
+      ) : null}
       {evidence.diff === undefined ? null : (
         <ReviewDiffView
           patch={evidence.patch}

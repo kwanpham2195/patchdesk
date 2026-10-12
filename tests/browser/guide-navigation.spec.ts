@@ -14,7 +14,7 @@ async function expectPreviewReachable(preview: Locator): Promise<void> {
       );
     }),
   ).toBe(true);
-  const jump = preview.getByRole("button", { name: "Jump to group" });
+  const jump = preview.getByRole("button").first();
   expect(
     await jump.evaluate((node) => {
       const bounds = node.getBoundingClientRect();
@@ -27,6 +27,60 @@ async function expectPreviewReachable(preview: Locator): Promise<void> {
     }),
   ).toBe(true);
 }
+
+test("Guide keeps its resting rail compact and animates focus expansion without moving content", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${serverOrigin(server)}/#guide-fixture`);
+    const rail = page.getByRole("button", { name: /^Jump to Guide group:/ });
+    const strip = rail.locator("[data-guide-minimap-strip='g1']");
+    const viewport = page.locator("[data-guide-viewport]");
+    const before = await viewport.boundingBox();
+    expect(
+      await strip.evaluate((node) => node.getBoundingClientRect().width),
+    ).toBeLessThan(9);
+    const next = page.getByRole("button", { name: "Next Guide group" });
+    await expect(next).toHaveCSS("opacity", "0");
+    const middleWidth = await rail.evaluate(async (node) => {
+      node.focus();
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      const marker = node.querySelector("[data-guide-minimap-strip='g1']");
+      if (marker === null) throw new Error("Missing Guide marker");
+      const animation = marker.getAnimations()[0];
+      if (animation === undefined)
+        throw new Error("Guide expansion did not animate");
+      animation.pause();
+      animation.currentTime =
+        Number(animation.effect?.getTiming().duration) / 2;
+      return marker.getBoundingClientRect().width;
+    });
+    expect(middleWidth).toBeGreaterThan(9);
+    expect(middleWidth).toBeLessThan(24);
+    await strip.evaluate((node) =>
+      node.getAnimations().forEach((animation) => animation.finish()),
+    );
+    expect(
+      await strip.evaluate((node) => node.getBoundingClientRect().width),
+    ).toBe(24);
+    await expect(next).toHaveCSS("opacity", "1");
+    expect(await viewport.boundingBox()).toEqual(before);
+    expect(await viewport.evaluate((node) => node.scrollTop)).toBe(0);
+    await rail.press("Escape");
+    await next.focus();
+    await expect(next).toHaveCSS("opacity", "1");
+    await next.press("Enter");
+    await expect(
+      page.locator("[data-guide-minimap-group='g2']"),
+    ).toBeInViewport();
+  } finally {
+    await closeServer(server);
+  }
+});
 
 test("Guide first, middle and last previews escape transformed ancestry and accept pointer and keyboard actions", async ({
   page,
@@ -91,7 +145,7 @@ test("Guide first, middle and last previews escape transformed ancestry and acce
     await expect(
       page
         .getByRole("note", { name: "Guide preview Recover pending requests" })
-        .getByRole("button", { name: "Jump to group" }),
+        .getByRole("button", { name: "src/recovery.ts", exact: true }),
     ).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(rail).toBeFocused();
@@ -207,7 +261,9 @@ test("Guide restores compact Escape focus without suppressing the next wide rail
     const preview = page.getByRole("note", {
       name: "Guide preview Recover pending requests",
     });
-    await preview.getByRole("button", { name: "Jump to group" }).focus();
+    await preview
+      .getByRole("button", { name: "src/recovery.ts", exact: true })
+      .focus();
     await page.keyboard.press("Escape");
     await expect(preview).toHaveCount(0);
     await expect(files).toBeFocused();
