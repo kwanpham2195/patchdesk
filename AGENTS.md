@@ -31,11 +31,12 @@ See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the
 
 ## Development and Verification
 
-For runtime work, make sure the dev log tails are live in herdr:
+For runtime work, keep the dev console and raw log tail live in this workspace's tmux session:
 
-- Log tail tab: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk-dev/logs/patchdesk.jsonl` for `pnpm dev`).
-- Dev tab: the `pnpm dev` console (renderer/api log lines and HMR output).
-- The maintainer authorizes restarting the dev app and log tail in this workspace's `devapp` and `logs` Herdr tabs. Find their current pane IDs with `herdr tab list --workspace "$HERDR_WORKSPACE_ID"` and `herdr pane list --workspace "$HERDR_WORKSPACE_ID"`; verify the tab, cwd, and pane output before control. Inspect with `herdr pane process-info --pane <id>`. If a process group is present, SIGINT that group before restarting; ctrl+c to the pane does not stop it. Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; `herdr pane wait-output` can match old scrollback. Report restarts. If the tabs are missing or ownership is unclear, ask before stopping or creating a pane. Never kill a process outside those panes.
+- `logs` pane: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk-dev/logs/patchdesk.jsonl` for `pnpm dev`).
+- `devapp` pane: the `pnpm dev` console (renderer/api log lines and HMR output).
+- The maintainer authorizes restarting the dev app and log tail in this workspace's existing `devapp` and `logs` tmux panes. Resolve their current IDs with `tmux list-panes -a -F '#{session_name}:#{window_name}.#{pane_index} #{pane_id} #{pane_title} #{pane_current_path} #{pane_pid}'`. Verify the session and pane title, inspect the process cwd and process tree rooted at the pane PID, and read recent output with `tmux capture-pane -p -t '<pane-id>' -S -120` before control. Send SIGINT only to the verified dev or log foreground process group before restarting. Never kill a process outside those panes. If a pane is missing or ownership is unclear, ask before stopping or creating a pane.
+- Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; old tmux scrollback is not readiness evidence. Report restarts.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
 - `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; follow CONTRIBUTING.md for the local gates. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
@@ -235,7 +236,7 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 - `trees`: working with `@pierre/trees` file trees.
 - `shadcn`: adding, debugging, or composing shadcn/ui components.
 - `agent-browser`: live browser or Electron verification over CDP.
-- `herdr`: dev servers, log tails, watchers, and named panes.
+- `tmux`: dev servers, log tails, watchers, and named panes.
 - `issue`: every bug, request, decision, or idea worth tracking goes to GitHub Issues (the tracker for this repo) through issue intake and handoff. Use `~/.agents/skills/issue/SKILL.md`; its permission and destination rules decide whether anything is published.
 - `pr`: pull request inspection, updates, CI, and landing. Use `~/.agents/skills/pr/SKILL.md`.
 - `product-description`: a user-visible behaviour change updates its page under `docs/product-description/`; a new page, checklist, or triage entry follows the skill's "Resuming and extending an existing repo" steps. Read that folder's README.md and goal.md before writing.
