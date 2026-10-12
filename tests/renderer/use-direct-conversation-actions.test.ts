@@ -619,7 +619,29 @@ it("preserves the shared reply when a second appearance skips and the admitted r
   expect(within(first).getByRole("textbox", { name: "Reply" })).toMatchObject({
     value: "Keep my reply",
   });
-  expect(desktop?.request).toHaveBeenCalledTimes(1);
+  // The renderer log flush can share this bridge without admitting another review write.
+  const reviewRequests = desktop?.request.mock.calls
+    .map(([request]) => request)
+    .filter(
+      (request) =>
+        !(
+          "path" in request &&
+          request.method === "POST" &&
+          request.path === "/v1/logs"
+        ),
+    );
+  expect(reviewRequests).toHaveLength(1);
+  expect(reviewRequests?.[0]).toMatchObject({
+    method: "POST",
+    path: COMMAND,
+    body: {
+      command: {
+        _tag: "Reply",
+        threadId: consumerThreadId,
+        body: "Keep my reply",
+      },
+    },
+  });
 });
 it.each(["edit", "delete", "resolve"] as const)(
   "does not show a skipped %s while another native write is held",
