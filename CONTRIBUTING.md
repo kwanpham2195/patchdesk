@@ -79,23 +79,24 @@ pnpm typecheck
 pnpm test -- --run
 ```
 
-Use `pnpm test -- --run <file>` for focused root-suite development. The complete pre-push test gate is `pnpm test:all`; it runs the root suite and the separate `runtime/insight` suite.
+Use `pnpm test -- --run <file>` for focused root-suite development. Run `pnpm check:package root` or `pnpm check:package insight` for affected-package tests, lint, and typechecks. Select both with `pnpm check:package root insight` when shared configuration affects both. Selection is explicit and unknown names fail. Root owns most app code, tests, and lint-plugin validation; its check still runs the whole root suite. Insight checks its compiler, scoped lint through the root tool, and its separate suite.
 
 The inner loop is that focused test file, not the whole project. `pnpm typecheck`
 builds a program over `src` and `tests` every time it runs, so run it when a
 slice is done rather than after each edit; a syntax error in the file you are
 editing is quicker to find by reading the file than by compiling the
-repository. `pnpm check` is the one command to run before handing work over.
+repository. Every commit runs the full `pnpm check` once through pre-commit, including Markdown-only commits. Do not run a redundant manual full suite immediately before committing.
 
 ## Where a test belongs
 
 `AGENTS.md` ("Testing") holds the rules for which layer a test goes in, and
 they are not advisory: test at the lowest layer that can observe the behaviour.
-Bug fixes include a regression test that failed before the fix for the intended
-reason. A hook that owns timing, generations, optimistic state, or a request
-payload gets a `renderHook` test with a fake bridge, never a mounted component.
-Component tests cover meaningful rendering, action wiring, and keyboard and
-focus behaviour that needs a DOM, queried by role or label. Test component logic
+Necessary repairs to existing tests are included in an approved fix. New scenarios
+or expanded coverage require separate approval, and no new renderer tests are
+allowed until asked. Implement first and verify behavior before adding approved
+tests. For approved hook coverage of timing, generations, optimistic state, or
+request payloads, use a fake bridge rather than a mounted component.
+Approved component coverage queries meaningful rendering and actions by role or label. Test component logic
 through observable behaviour; extract domain logic when it has a separate
 responsibility, without exporting
 internals solely for tests. `tests/browser/` is for end-to-end journeys and
@@ -105,9 +106,10 @@ to prove the layers work together. There is no assistive-technology lane (ADR 00
 no axe scans, no screen-reader narration checks, no forced-colors or
 reduced-motion checks. Use the shared doubles rather than hand-rolling one.
 
-`tests/browser/` has no accepted-failure list, and it is not getting one: the
-pull request gates run the suite on every change to `main`. A browser spec that
-fails on `main` is fixed or deleted in the same change that finds it.
+`tests/browser/` has no accepted-failure list. Pull request CI is paused; run the
+local merge gates below. Repair failures caused by approved work and rerun without
+another pause. Stop for unrelated failures or repairs outside scope. Ask before
+removing intentional code or tests.
 
 ## Making changes
 
@@ -122,10 +124,12 @@ One logical unit per commit. Do not add AI or co-authored trailers.
 
 Commits run `pnpm precommit`:
 
-1. `pnpm lint:staged` checks every staged JavaScript and TypeScript file with
+1. `pnpm check` runs the full repository gate exactly once, with no Markdown-only
+   or React Doctor skip exception. A failure blocks the commit.
+2. `pnpm lint:staged` checks every staged JavaScript and TypeScript file with
    Oxfmt, then Oxlint with denied warnings, and applies the file-size ratchet
    to them.
-2. React Doctor scans staged files and remains blocking, unless it cannot read
+3. React Doctor scans staged files and remains blocking, unless it cannot read
    the tree it would scan (below).
 
 Meet that gate when a slice is done, not when you go to commit.
@@ -153,15 +157,14 @@ may be a different version, and a different version disagrees with the gate:
 it rejects files this repository formats correctly, and reformatting to satisfy
 it breaks the repository check instead.
 
-The repo-wide Oxlint count ratchet does not run here. It runs once, inside
-`pnpm lint:changed` (see "The count ratchet" and "Verifying before
-pushing"), which is the shape CI enforces.
+The repo-wide Oxlint count ratchet runs once inside the hook's full check,
+through `pnpm lint:changed` (see "The count ratchet" and "Verifying before pushing").
 
 Pushes run `pnpm prepush`: `pnpm typecheck`, `pnpm typecheck:scripts`,
 `pnpm check:error-ui`, then `pnpm knip:ratchet`. This is where the
 whole-project ratchets live locally, because a push is where the whole branch
-becomes the unit rather than one commit. `git push --no-verify` skips it, and
-CI runs the same checks again on the pull request.
+becomes the unit rather than one commit. Pull request CI is paused; the local
+merge gate covers the branch.
 
 The staged gate is check-only. It rejects partially staged source files and
 never changes the index or working tree. If it blocks, run
@@ -170,7 +173,7 @@ never changes the index or working tree. If it blocks, run
 stage the intended files explicitly.
 
 Repo-wide `pnpm lint` is clean and blocking. The repository reports zero
-Oxlint findings, and the pull request gates run `pnpm lint` over the whole
+Oxlint findings, and the local merge gate runs `pnpm lint` over the whole
 tree, so a finding anywhere fails the build, not only one in a file the change
 happens to touch. There is no legacy backlog left to work around.
 
@@ -229,11 +232,8 @@ work moved the number, commit or set that work aside rather than moving the
 baseline to match it.
 
 The Knip ratchet (`pnpm knip:ratchet`, baseline `knip-baseline.json`) works
-the same way. It is not part of `pnpm precommit`: Knip answers a whole-project
-reachability question, so an ordinary mid-refactor commit moves its count for
-a reason that has nothing wrong with it, and a gate that rejects that commit
-gets switched off. It runs in `pnpm prepush`, in `pnpm check`, and in the pull
-request gates.
+the same way. It runs in `pnpm prepush`, in `pnpm check`, and therefore in
+`pnpm precommit`. Pull request CI is paused; the local merge gate also runs it.
 
 The Knip baseline is zero. Every unused file, export, and type has been
 removed or made module-private, so the ratchet and a bare blocking `pnpm knip`
@@ -248,9 +248,7 @@ them. `tsconfig.scripts.json` does, with `allowJs` and `checkJs`, and
 `pnpm typecheck:scripts` (baseline `scripts-typecheck-baseline.json`) holds
 the count the same way the Oxlint and Knip ratchets hold theirs: a rise fails,
 and so does a drop nobody records. It runs in `pnpm prepush`, in `pnpm check`,
-and in the pull request gates, not in `pnpm precommit` — it builds a whole
-`tsc` program and answers a repository-wide question, not one about the staged
-files.
+and in the local merge gate. Pre-commit runs it through the full `pnpm check`.
 
 Seven hand-written `scripts/*.d.mts` files stood beside these modules until
 2026-08-29. They were not a convenience: TypeScript prefers a declaration file
@@ -313,17 +311,26 @@ invariant the surrounding code checked, not restate what the code does.
 
 ## Verifying before pushing
 
-`pnpm check` is the pre-handoff command: it runs `pnpm typecheck`,
-`pnpm typecheck:scripts`, `pnpm check:error-ui`, `pnpm check:imports`, `pnpm test:all`,
+`pnpm check` runs manually or once at the start of every pre-commit path. It runs `pnpm typecheck`,
+`pnpm typecheck:scripts`, `pnpm check:error-ui`, `pnpm check:imports`,
+`pnpm --dir runtime/insight typecheck`, runtime-scoped Oxlint, `pnpm test:all`,
 `pnpm lint:staged` (checks what you will commit),
-`pnpm lint:changed -- origin/main` (checks the whole branch the way the pull
-request gates will), then `pnpm knip:ratchet`, in that order, and stops at the
+`pnpm lint:changed -- origin/main` (checks the whole branch as the local
+merge gate does), then `pnpm knip:ratchet`, in that order, and stops at the
 first failure. `pnpm check:error-ui` scans the renderer for a literal
 `role="alert"` outside the three primitives that own one (`alert.tsx`,
 `field.tsx`, `inline-error.tsx`), so error surfaces stay in those components.
 `pnpm check:imports` rejects parent-climbing module specifiers, not filesystem paths or fixture strings. Root-owned code imports across directories through package `#src/*`, `#tests/*`, `#scripts/*`, and `#tools/*`; `#package` and `#resources/*` cover root assets. The Insight runtime uses `#runtime/*` locally and build-only `#app/*` for root source. Portable anti-slop plugins use package-local `#anti-slop/*`. Keep `./` imports for files in the same directory. `pnpm lint:staged` reports "no staged source files" when nothing is staged.
-The repo-wide count ratchet runs once, inside
-`pnpm lint:changed`, which is the shape CI enforces.
+The repo-wide count ratchet runs once inside `pnpm lint:changed`.
+
+Manual and hook full checks serialize through `patchdesk-full-check.lock` in
+Git's common directory, shared by all worktrees. Later runs wait and print the
+lock path, then fail after ten minutes. Success, command failure, and handled
+SIGINT/SIGTERM release the owned lock after the owned process group finishes.
+If that group does not stop, the gate fails and retains the lock. A crash
+or SIGKILL also leaves the lock in place. Inspect `owner.txt` and confirm the owner
+and its children have stopped before manually removing it. Never remove an
+active lock or stop another check to get the gate through.
 
 `pnpm check` runs both shapes of the changed-source gate on purpose. The
 staged shape measures one commit's worth of change against `HEAD`; the branch
@@ -639,6 +646,7 @@ install replaces a Homebrew-cask install in place, and the next
 
 ## Pull requests
 
+Every change goes through a PR, including copy and instructions.
 Base branch: `main`. Keep PRs focused on one logical change. User-visible
 behavior changes must update the relevant docs; architectural decisions go
 through an ADR in `docs/adr/`.

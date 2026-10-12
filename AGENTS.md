@@ -6,7 +6,7 @@ Child briefs must include applicable rules below or readable absolute paths to t
 
 - Commit each accepted slice with explicit paths, and end the report with the SHA.
 - A renderer change is finished only after you looked at a screenshot of the affected screen over CDP.
-- Run `pnpm check` before handoff.
+- Run affected-package checks during work and the full `pnpm check` once through pre-commit before handoff.
 - No compatibility shims or fallbacks unless asked for.
 - Ask before removing code that looks intentional.
 
@@ -39,24 +39,24 @@ For runtime work, keep the dev console and raw log tail live in this workspace's
 - Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; old tmux scrollback is not readiness evidence. Report restarts.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
-- `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; follow CONTRIBUTING.md for the local gates. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
+- `CONTRIBUTING.md` and the package scripts define verification commands. Use `pnpm check:package root`, `pnpm check:package insight`, or both for affected packages during work. Shared configuration requires every affected package. Every commit, including Markdown-only commits, runs the full `pnpm check` once through pre-commit. Do not repeat a manual full check immediately before that hook run. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; follow CONTRIBUTING.md for the local gates. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
 - Run it as `pnpm check > /tmp/check.txt 2>&1; echo "EXIT=$?"` and read the
   file. Piping it into `tail`, `head`, or `grep` reports the pipeline's exit
   status rather than the command's, so a failing gate reads as a passing one.
-- `pnpm check` ends in `lint:changed` against a base ref, which reads the git
+- `pnpm check` includes `lint:changed` against a base ref, which reads the git
   **index**, not the working tree (see `scripts/check-changed-source.mjs`).
   Stage or commit your paths first, or it reports violations you have already
   fixed on disk.
 - `pnpm format` runs `oxfmt` repo-wide and reformats unrelated Markdown across
   `docs/`, `AGENTS.md`, and `README.md`. Format explicit paths with
   `npx oxfmt <paths>` instead.
-- Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write. A renderer change is finished only when you have looked at a screenshot of the affected screen taken after the change loaded; an API response, a log line, or a passing test is not live verification, so say which you have.
+- Use `/Users/kwanpham/.local/share/mise/installs/npm-agent-browser/0.37.0/bin/agent-browser` for every browser command below; the default PATH copy lacks `--namespace`. No install or PATH change is needed. Drive the running app with that executable over CDP. Read-only by default; ask before any write. A renderer change is finished only when you have looked at a screenshot of the affected screen taken after the change loaded; an API response, a log line, or a passing test is not live verification, so say which you have.
 - If a live check finds a reproducible UI or UX defect in the approved flow, fix it before handoff, then rerun that flow and inspect a new CDP screenshot. If the fix changes scope or needs a product decision, record the defect and get approval; leave the live check pending until resolved.
 - `location.reload()` is swallowed by this app: a `window` global survives the call. Reload with `agent-browser reload` (CDP `Page.reload`).
 - After a change that adds or removes a Tailwind utility class, reload rather than waiting on HMR. Vite's regenerated CSS can fail to reach the running renderer, leaving the stale rule in `document.styleSheets` indefinitely.
 - CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, and never kills a process outside the dev panes. Restarting 9233 itself is pre-authorized; report it. `pnpm cdp:ready` checks the port: run it before claiming runtime evidence, reporting live verification, or delegating a live-verification slice.
 - Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
-- Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use `gpt-6-luna` on the Codex CLI account provider, not a Sol model; pick it in the run dialog rather than changing the maintainer's stored preference. If it is missing from the model list, press Refresh models.
+- Insight runs started for testing (Brief, Analysis, Walkthrough, Guide) spend the maintainer's provider account. Use `gpt-6-luna` on the Codex CLI account provider, not a Sol model; pick it in the run dialog rather than changing the maintainer's stored preference. If it is missing from the model list, press Refresh models.
 - Before delegating or resuming a child, read `~/.agents/skills/delegated-execution/references/model-policy.md`. It owns role, model, effort, concurrency, and unavailable-model rules; the active harness owns launch and failure protocol. For multi-slice implementation plans, use one worker per slice, sequentially, and pass the previous report forward instead of its full history.
 
 - An audit or inventory ships with a disposition per finding: fix now, a named follow-up, or an evidence-backed rejection.
@@ -75,77 +75,17 @@ For runtime work, keep the dev console and raw log tail live in this workspace's
 
 ## Testing
 
-Test observable behaviour at the lowest layer that can prove the contract.
+- Test observable behaviour at the lowest layer that can prove the contract.
+- Implement first and verify the changed behavior. Necessary repairs to existing tests are included in an approved fix. New scenarios or expanded coverage require separate user approval. This policy applies only to Patchdesk.
+- No `renderer` tests until asked.
 
-- Do not follow test-driven development. Implement the behavior before writing or updating tests. For a bug fix, make the fix work first, then add a regression test for the contract; the test must fail on `main` for the intended reason.
-
-- Coverage floors for new or materially changed code (lines / branches):
-  - `src/domain/`: 80% / 65%; `src/services/`: 70% / 55%; `src/adapters/`: 70% / 55%.
-  - `src/main/`: 60% / 45%; `src/renderer/src/`: 60% / 40%; `runtime/insight/`: 70% / 55%. Browser tests have no percentage floor.
-- Spend no more than 10 percentage points above a layer's floor on coverage work. Coverage may exceed that range; do not delete useful tests to reduce it. Remove tests only when existing test-deletion review rules establish redundancy.
-- Keep explicit tests for critical write, authorization, recovery, and concurrency contracts regardless of percentages. Exercise private helpers through their owning behavior; do not add tests solely to raise coverage.
-- Coverage is not measured by `pnpm check`. Before adding an enforcing gate, measure a baseline and apply it only to new or changed code so legacy coverage does not block unrelated work.
-
-- Write one scenario per test, with as many assertions as needed to prove its
-  relevant outcomes. A rejected submission can assert the error, preserved
-  draft, and absence of a network write together. Separate scenarios with
-  different preconditions or actions; do not split one scenario per assertion.
-- Derive expected results from the behaviour contract. No tautological tests:
-  do not copy the production algorithm or use the function under test or its
-  internal helpers to calculate expectations. Assert a production decision,
-  transformation, state change, or boundary interaction. Checking a mock's
-  returned value is valid only when forwarding it is the public contract and
-  the test exercises production wiring that would fail if broken.
-- Tests must survive internal refactoring that preserves the contract. Do not
-  assert private methods, internal state shape, helper call counts, or incidental
-  call order. Assert interactions and ordering when the contract requires them,
-  such as persisting intent before a network write.
-- Identify the plausible bug each test catches. A bug fix lands with a
-  regression test that failed on `main` for the intended reason. A test that
-  still passes when the protected behaviour is removed provides no protection.
-- Control nondeterminism with fixed clocks, seeded data, and controllable
-  promises where needed. Wait for observable conditions; avoid arbitrary sleeps.
-- Assert fields relevant to the contract. Avoid whole-object snapshots or
-  equality checks that couple the test to unrelated fields.
-- Hooks: a hook that owns timing, generations, optimistic state, or a request
-  payload gets a `renderHook` test with a fake bridge. Do not test hook logic
-  by mounting the component that uses it.
-- Components: test meaningful rendering, action wiring, and keyboard and focus
-  behaviour that needs a DOM. No assertions on copy sentences, class names,
-  badge tone, or element order.
-  Test component logic through observable behaviour. Extract domain logic when
-  it has a separate responsibility; do not export internals solely for tests.
-- Query by role or label (`getByRole`, `getByLabelText`), never by class name
-  or by a sentence of copy.
-- Playwright (`tests/browser/`): end-to-end journeys and things only a real
-  browser shows (Pierre CodeView scrolling, virtualisation, computed CSS,
-  performance budget). Keep detailed behaviour assertions at their lowest
-  useful layer; a small end-to-end journey may exercise the same behaviour to
-  prove the layers work together.
-- Test doubles: use the shared helpers (`tests/renderer/fake-desktop-response.ts`
-  for `window.patchdesk`, `FakeGitHubAdapter` for the GitHub gateway). Do not
-  hand-roll a new `Object.defineProperty(window, "patchdesk", ...)` or an
-  inline gateway fake.
-- Cover every applicable flow for shared invariants, such as persisting intent
-  before a GitHub write, acquiring the Review lock, and recovering preparation
-  after a crash.
-- Before adding a test, find the existing owner of the behaviour and extend it
-  where appropriate. Each test must protect a distinct contract or failure mode;
-  another layer needs a contract the existing owner cannot observe. Do not add
-  tests solely for new functions or branches, or retain proven duplicates.
-- Before merging or deleting tests, name the retained test and compare observable
-  preconditions, outcomes, and relevant success, error, retry, ordering, crash,
-  and concurrency behaviour. Shared line coverage is not equivalent coverage.
-- Reuse fixture factories and shared fakes with fresh state per test. Keep
-  behaviour-relevant inputs and overrides visible in the test. Avoid setup
-  helpers with many flags or hidden scenario-specific behaviour.
-- Use parameterized cases when the same behavioural rule and test structure
-  apply to different inputs. Give each case a useful failure name. Keep
-  different workflows separate even when they share setup; do not combine
-  independent scenarios in one test or loop to reduce the test count.
-- Recovery, concurrency, security, storage, protocol, and cross-flow invariant tests require fault evidence before non-obvious consolidation or deletion.
-- No assistive-technology tests: no axe scans, no screen-reader narration
-  checks, no forced-colors or reduced-motion checks (ADR 0034).
+- Write one scenario per test, with as many assertions as needed to prove its relevant outcomes.
+- Separate scenarios with different preconditions or actions; do not split one scenario per assertion.
+- No tautological tests.
+- Tests must survive internal refactoring that preserves the contract.
+- Control nondeterminism with fixed clocks, seeded data, and controllable promises where needed.
+- Playwright (`tests/browser/`): end-to-end journeys and things only a real browser shows. Keep one or two tests per journey; do not cover every scenario.
+- Before adding a test, find the existing owner of the behaviour and extend it where appropriate.
 
 ## Implementation notes
 
@@ -174,19 +114,9 @@ Main process and GitHub:
 - A confirmed write stays confirmed when a later bookkeeping step (journal append, cache write) fails; log and continue, never re-lock or re-offer it.
 - Path containment uses `isPathContained` in `src/adapters/storage/path-containment.ts`, never `startsWith` on the string; five modules once each wrote their own and two disagreed on whether the root counts.
 
-Tests and gates:
-
-- No file may grow past 1,000 lines and no new file past 500 (`scripts/file-growth-lib.mjs`, pre-commit). Check the size before adding to a large file and split first; this blocked 17 sessions.
-- Run one `pnpm check` at a time. Two at once reproduce the concurrent-load flakes (#108, #145). When a timing test fails and passes on retry, check `ps -Ao pid,pcpu,etime,comm | awk '$2>50'` for a hung `trash` before reading the test.
-- Vitest runs at most 4 workers because the maintainer's laptop overheats. The cap lives in `vitest.config.ts` and in `runtime/insight`'s `test` script; do not raise it or override it with `VITEST_MAX_WORKERS` or `--maxWorkers`.
-- Knip does not read CSS: a dependency it flags may be live via `styles.css`. Deleting the last consumer of an export fails `knip:ratchet` at 0, so delete the dead export in the same commit.
-- `vi.spyOn` on a real module is banned (`tools/oxlint/patchdesk/no-method-spying`); record calls on the injected fake. Read `tools/oxlint/anti-slop/rules/` before naming a parameter type or writing a test double.
-- Relative-time assertions against fixture timestamps drift with the calendar; pin the clock with `vi.setSystemTime`, never widen the regex.
-- Global keydown handlers check the focused editable element and bail on a held modifier (B-08, B-23). A control disabled by a state rule renders the reason beside it (B-10, B-11, B-19).
-
 Process:
 
-- Static copy, alert, and message changes go straight to main. Behaviour changes get their own PR with before/after screenshots in the body (`before-and-after` skill). Prompt and schema changes are reviewed in chat first.
+- Every change goes through a PR, including static copy, alerts, messages, and instructions. Behaviour changes include before/after screenshots in the body (`before-and-after` skill). Prompt and schema changes are reviewed in chat first.
 - Throwaway PRs are always fine for live checks, including writes. For real PRs, follow the scoped write approval under Standing authorization.
 - `Closes #n` auto-closes only the first number after it; repeat the keyword per issue, and close finished issues before starting the next.
 - A PR that fixes an issue says `Closes #n` in its body, and after it lands `gh issue view <n> --json state` must read `CLOSED`. A CHANGELOG citation alone closes nothing: nine fixed bugs stayed open for weeks that way (closed 2026-09-26). Before fixing an old issue, check CHANGELOG and `git log` for its number.
@@ -197,7 +127,7 @@ Process:
 
 - When the maintainer approves execution of a plan or multi-issue program, record its scope, authorized actions, delegation budget, and completion condition in the owning plan. Continue approved slices without asking to proceed. Use the approved budget without repeated requests; do not exceed the plan or harness limit without approval.
 - Read-only screenshots and the dev-pane restarts authorized above need no additional approval. An approval to draft or review a plan does not authorize its execution.
-- Pushes, real-PR creation and updates, and merges are authorized across slices only when the approved execution plan explicitly names those actions and the slices they cover. The parent performs those writes after required gates and reviews. Otherwise ask before each outward write. Ask before removing code that looks intentional, changing scope, or taking a new destructive action; stop at a failed gate or required human review.
+- Pushes, real-PR creation and updates, and merges are authorized across slices only when the approved execution plan explicitly names those actions and the slices they cover. The parent performs those writes after required gates and reviews. Otherwise ask before each outward write. Ask before removing code that looks intentional, changing scope, or taking a new destructive action; repair failures caused by approved work and rerun without another pause. Stop for unrelated failures, repairs outside scope, or required human review.
 
 ## Git
 
@@ -213,7 +143,7 @@ Committing:
 
 Stopping:
 
-- Stop for a user-requested human review, an explicit pause, a decision the plan does not cover, a failed gate, or a GitHub write that lacks scoped approval. Name the review, pause, decision, or blocker; "Continue with the next step?" is not a stop. The `delegated-execution` skill has the full rule.
+- Stop for a user-requested human review, an explicit pause, a decision the plan does not cover, an unrelated or out-of-scope gate failure, or a GitHub write that lacks scoped approval. Name the review, pause, decision, or blocker; "Continue with the next step?" is not a stop. The `delegated-execution` skill has the full rule.
 
 Never run (destroys other agents' work or bypasses checks):
 
@@ -254,9 +184,5 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 - `docs/product-description/glossary.md` owns Patchdesk vocabulary and words to avoid. Read and update it instead of creating a root `CONTEXT.md`.
 - Put durable project rules and preferences here so every agent harness can use them. Other harnesses do not load Claude Code project memory. Keep dated project status and scoped authorizations in the workspace context or tracker; check current state before relying on historical permissions.
 - The issue tracker is GitHub Issues on this repository. Use the `issue` skill. For repository-authored specs, state the problem, then use `Why it matters`, `Scope`, and `Verification`; add `Open questions` and `Confidence` only when a real decision is pending.
-- Read the summaries in `docs/product-description/` and `bug-triage.md` before feature inventory or roadmap work. They describe shipped behavior and known gaps. `ROADMAP.md` records direction and order; check its Not planned section before proposing features, and update it when an issue moves between sections or a direction decision changes. Local Review is for reviewing agent changes, not for committing, pushing, or opening pull requests; read ADR 0051 before proposing changes to that workflow.
-- Frame Brief, Analysis, and Walkthrough Insights for the PR reviewer. Explain what the diff does, its structure, and its risks. The PR description and comments own the author's rationale and decisions.
-- Poll only explicitly watched pull requests. Their polling may notify and set a freshness-badge dot, but must not replace displayed rows, Review sessions, or diffs. Read ADR 0032 and ADR 0045 before changing refresh or polling behavior.
-- Do not use Mermaid in chat. Use numbered steps or plain-text diagrams.
+- Read the summaries in `docs/product-description/` and `docs/product-description/bug-triage.md` before feature inventory or roadmap work. They describe shipped behavior and known gaps. `ROADMAP.md` records direction and order; check its Not planned section before proposing features, and update it when an issue moves between sections or a direction decision changes. Local Review is for reviewing agent changes, not for committing, pushing, or opening pull requests; read ADR 0051 before proposing changes to that workflow.
 - Ask before removing or replacing README screenshots, adding light-theme variants, or starting another screenshot capture round; the existing dark-theme tour was deliberate.
-- Route new private work records with `~/.agents/skills/references/context-routing.md` to the registered workspace context. Do not create local repository folders for them.

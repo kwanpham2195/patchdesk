@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added explicit root and Insight package checks, runtime typechecking, and one full check per commit, serialized across worktrees.
+
 - Added Update now for apps installed with the shell installer or from the disk image: Patchdesk quits, installs the new release, and reopens. `install-release.sh --update` updates such an install by hand. Version 0.0.19 and earlier still show the Homebrew command for these installs, so update them once with `curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update` after quitting Patchdesk. #808
 
 - Fixed opening pull requests in the dev app failing with "could not save the local review state" when a local checkout was configured.
