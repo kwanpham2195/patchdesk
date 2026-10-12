@@ -174,7 +174,7 @@ The vocabulary for Patchdesk product and engineering documents. Use these terms 
 
 ## Insights
 
-**Insight.** A revision-bound aid that helps a maintainer understand or evaluate a represented change. Brief, Analysis, and Walkthrough are Insight types on both pull request and local Reviews; none can publish to GitHub on completion.
+**Insight.** A revision-bound aid that helps a maintainer understand or evaluate a represented change. Brief, Guide, Walkthrough, and Analysis are Insight types on both pull request and local Reviews; none can publish to GitHub on completion.
 
 **Insight provider.** The execution source selected for an Insight run: API key (`pi` internally), Codex CLI account, or pi CLI account. See [Brief](review-workbench/brief.md#begin-an-action) for the run controls.
 
@@ -239,6 +239,12 @@ The vocabulary for Patchdesk product and engineering documents. Use these terms 
 **Finding.** A concern or observation in an Analysis, supported by evidence from the represented revision. A Mapped Finding identifies one unambiguous location in the current diff.
 
 **Walkthrough.** The latest successful guided explanation of a represented revision. It orders narrative chapters and cited diff hunks without changing GitHub.
+
+**Guide.** An optional Insight that groups changed files by behavior and displays complete retained file evidence beside each explanation. It saves reading progress for its retained result and remains separate from Walkthrough. See [Guide](review-workbench/guide.md).
+
+**Reviewed group.** A Guide behavior group the maintainer marked read. This local progress is separate from a file's Viewed mark, Walkthrough progress, and a submitted GitHub review. Others has no Reviewed group state.
+
+**File appearance.** A file row within one Guide group or Others. The same file can appear in several groups with independent expansion while sharing Viewed marks and review content with Diff.
 
 **Scope gauge.** The deterministic bar that groups changed files into Scope buckets, with added and removed line counts. It needs no model and is absent when the patch cannot be read. The pull-request list and the workbench header show it; the Brief's side column shows it as the Scope card, whose rows filter the Diff.
 

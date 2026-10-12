@@ -118,6 +118,7 @@ review-workbench/
   brief.md                            deterministic and model-backed reading orientation
   analysis.md                         findings, evidence, dismissals, and review commands
   walkthrough.md                      guided narrative tied to a represented revision
+  guide.md                            behavior groups, retained file evidence, and saved reading progress
   pending-review-and-finish.md        GitHub pending review, review body, outcome, and submit
   merge.md                            readiness, warnings, method selection, and reconciliation
 
@@ -164,6 +165,7 @@ Status is one of `not started`, `drafted`, or `verified`. A document is `verifie
 | review-workbench/brief.md                       | drafted |
 | review-workbench/analysis.md                    | drafted |
 | review-workbench/walkthrough.md                 | drafted |
+| review-workbench/guide.md                       | drafted |
 | review-workbench/pending-review-and-finish.md   | drafted |
 | review-workbench/merge.md                       | drafted |
 | settings/workspace-profile-editor.md            | drafted |

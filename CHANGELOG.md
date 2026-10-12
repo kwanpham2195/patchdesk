@@ -6,6 +6,8 @@
 
 - Fixed opening pull requests in the dev app failing with "could not save the local review state" when a local checkout was configured.
 
+- Added Guide in Insights: behavior groups beside complete retained file diffs, shared Viewed and review actions, saved Reviewed groups and reading position, and compact animated group/file navigation that stays available in narrow windows. Walkthrough remains separate. #816
+
 ## 0.0.19 - 2026-10-02
 
 - Changed `pnpm dev` to keep its own settings and Review data, so it no longer changes the installed app. `pnpm dev:copy-profile` copies your workspaces into it. #804
