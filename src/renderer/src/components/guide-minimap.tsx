@@ -142,7 +142,7 @@ export function GuideMinimap({
       target.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
   };
   const activeGroup = activeIndex === null ? undefined : groups[activeIndex];
-  const railHeight = Math.max(160, (groups.length - 1) * 24);
+  const railHeight = Math.max(8, (groups.length - 1) * 8);
   if (groups.length === 0) return null;
   const preview = (index: number, keyboard = false): void => {
     const scroller = railScroller.current;
