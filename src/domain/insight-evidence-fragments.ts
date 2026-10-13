@@ -25,7 +25,8 @@ export function fragmentEvidenceText(input: {
     text: value,
   });
   for (const character of input.text) {
-    const candidate = record(text + character, true);
+    // The final false marker costs one more byte than the continuation marker.
+    const candidate = record(text + character, false);
     if (
       new TextEncoder().encode(JSON.stringify(candidate) + "\n").length >
       EVIDENCE_RECORD_BYTES
