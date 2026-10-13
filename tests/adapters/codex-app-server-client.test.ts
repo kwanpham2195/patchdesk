@@ -11,21 +11,61 @@ import {
   buildCodexAnalysisPrompt,
   buildCodexWalkthroughPrompt,
   codexRpcMessageSchema,
-  CodexAppServerClient,
+  CodexAppServerClient as ProductionCodexClient,
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
   MAX_WALKTHROUGH_PROMPT_BYTES,
   parseTurnJson,
   type CodexAppServerFailure,
   type CodexRpcMessage,
+  type CodexRunInput,
 } from "#src/adapters/codex/codex-app-server-client";
 import type {
   InsightActivityEvent,
   InsightActivitySink,
 } from "#src/adapters/codex/codex-activity";
-import type { Result } from "#src/domain/result";
+import { ok, type Result } from "#src/domain/result";
 import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
 import { InsightActivityBuffer } from "#src/services/insight-activity-buffer";
 import { composeReviewPrompt } from "#src/services/review-rubric";
+
+// Fixture homes keep RPC tests from touching the maintainer's credentials.
+class CodexAppServerClient extends ProductionCodexClient {
+  constructor(...args: ConstructorParameters<typeof ProductionCodexClient>) {
+    super(args[0], {
+      ...args[1],
+      homeFactory: async () =>
+        ok({
+          original: "/fixture/source-home",
+          directory: "/fixture/private-home",
+          login: {
+            type: "chatgptAuthTokens",
+            accessToken: "fixture",
+            chatgptAccountId: "fixture",
+          },
+          unchanged: async () => true,
+          cleanup: async () => undefined,
+        }),
+    });
+  }
+}
+
+async function worktreeFixture(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+  roots.push(root);
+  await mkdir(join(root, "src"));
+  await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+  return root;
+}
+
+function runInput(root: string): CodexRunInput {
+  return {
+    worktreePath: representedWorktree(root),
+    expectedHeadSha: "a".repeat(40),
+    model: "fixture-codex",
+    reasoning: "low",
+    prompt: "Return JSON.",
+  };
+}
 
 type FakeCodexProcessOptions = {
   readonly approvalCwd: string;
@@ -100,10 +140,46 @@ class FakeCodexProcess extends EventEmitter {
           nextCursor: null,
         },
       });
+    if (method === "config/read")
+      return this.write({
+        id: message.id,
+        result: {
+          layers: [],
+          config: {
+            model_provider: "openai",
+            mcp_servers: {},
+            features: {
+              hooks: false,
+              plugins: false,
+              apps: false,
+              enable_mcp_apps: false,
+            },
+            skills: {
+              include_instructions: false,
+              bundled: { enabled: false },
+            },
+            project_doc_max_bytes: 0,
+            developer_instructions: "",
+          },
+        },
+      });
+    if (method === "skills/list")
+      return this.write({
+        id: message.id,
+        result: { data: [{ cwd: this.approvalCwd, skills: [], errors: [] }] },
+      });
     if (method === "thread/start")
       return this.write({
         id: message.id,
-        result: { thread: { id: "thread-fixture" } },
+        result: {
+          thread: { id: "thread-fixture" },
+          model: "fixture-codex",
+          reasoningEffort: "low",
+          approvalPolicy: "on-request",
+          approvalsReviewer: "auto_review",
+          sandbox: { type: "workspaceWrite" },
+          instructionSources: [],
+        },
       });
     if (method === "turn/start") {
       this.write({ id: message.id, result: { turn: { id: "turn-fixture" } } });
@@ -141,7 +217,20 @@ class FakeCodexProcess extends EventEmitter {
     }
     if (method === "turn/interrupt")
       return this.write({ id: message.id, result: {} });
-    this.write({ id: message.id, result: {} });
+    const result =
+      method === "account/read"
+        ? {
+            account: {
+              type: "chatgpt",
+              email: "fixture@example.test",
+              planType: "plus",
+            },
+            requiresOpenaiAuth: true,
+          }
+        : method === "configRequirements/read"
+          ? { requirements: null }
+          : {};
+    this.write({ id: message.id, result });
   }
 
   private write(message: CodexRpcMessage): void {
@@ -149,11 +238,6 @@ class FakeCodexProcess extends EventEmitter {
   }
 }
 
-/**
- * The exact ChildProcess surface RpcChild reads: stdin/stdout/stderr, kill(), and once(). `once`
- * is declared to return `void` rather than `this` so this type stays satisfiable by any
- * EventEmitter, since RpcChild never chains off its result.
- */
 type ChildProcessSurface = {
   readonly stdin: ChildProcess["stdin"];
   readonly stdout: ChildProcess["stdout"];
@@ -165,10 +249,7 @@ type ChildProcessSurface = {
 /** Adapts a fake Codex process for injection through the child-process factory hook. */
 function asChildProcess(fake: FakeCodexProcess): ChildProcess {
   const surface: ChildProcessSurface = fake;
-  // SAFETY: RpcChild only reads a ChildProcess's stdin/stdout/stderr streams, calls kill(), and
-  // listens for its "error"/"exit" events; `surface` (typed as exactly that member set) is
-  // structurally satisfied by FakeCodexProcess above, so widening it back to the full
-  // ChildProcess interface never crosses a member the adapter actually touches.
+  // SAFETY: FakeCodexProcess satisfies the pipes, kill(), error and exit surface RpcChild uses.
   return surface as ChildProcess;
 }
 
@@ -187,16 +268,10 @@ afterEach(async () => {
 
 describe("CodexAppServerClient", () => {
   it("uses a fresh child, live model list, strict result, and bounded approval policy", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
-    roots.push(root);
-    await mkdir(join(root, "src"));
-    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+    const root = await worktreeFixture();
     const children: FakeCodexProcess[] = [];
     const client = new CodexAppServerClient("codex", {
-      processFactory: (file, args, options) => {
-        void file;
-        void args;
-        void options;
+      processFactory: () => {
         const child = new FakeCodexProcess({ approvalCwd: root });
         children.push(child);
         return asChildProcess(child);
@@ -208,11 +283,7 @@ describe("CodexAppServerClient", () => {
       value: [{ id: "fixture-codex", reasoning: ["low", "high"] }],
     });
     const result = await client.run({
-      worktreePath: representedWorktree(root),
-      expectedHeadSha: "a".repeat(40),
-      model: "fixture-codex",
-      reasoning: "low",
-      prompt: "Return JSON.",
+      ...runInput(root),
       outputSchema: {
         type: "object",
         properties: { title: { type: "string" } },
@@ -221,14 +292,14 @@ describe("CodexAppServerClient", () => {
       },
     });
     expect(result).toEqual({ _tag: "ok", value: { title: "Fixture" } });
-    expect(children).toHaveLength(2);
+    expect(children).toHaveLength(4);
     expect(children.every((child) => child.killed)).toBe(true);
-    expect(children[1]?.received).toContainEqual({
+    expect(children[3]?.received).toContainEqual({
       id: "approval-fixture",
-      result: { decision: "accept" },
+      result: { decision: "decline" },
     });
     expect(
-      children[1]?.received.find((message) => message.method === "turn/start")
+      children[3]?.received.find((message) => message.method === "turn/start")
         ?.params,
     ).toMatchObject({
       outputSchema: {
@@ -241,16 +312,10 @@ describe("CodexAppServerClient", () => {
   });
 
   it("denies an approval whose cwd is outside the represented worktree", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
-    roots.push(root);
-    await mkdir(join(root, "src"));
-    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+    const root = await worktreeFixture();
     let child: FakeCodexProcess | undefined;
     const client = new CodexAppServerClient("codex", {
-      processFactory: (file, args, options) => {
-        void file;
-        void args;
-        void options;
+      processFactory: () => {
         child = new FakeCodexProcess({ approvalCwd: tmpdir() });
         return asChildProcess(child);
       },
@@ -298,11 +363,8 @@ describe("CodexAppServerClient", () => {
     });
   });
 
-  it("accepts a repository-controlled executable requested inside the worktree", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
-    roots.push(root);
-    await mkdir(join(root, "src"));
-    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+  it("declines client approval for a repository-controlled executable", async () => {
+    const root = await worktreeFixture();
     let child: FakeCodexProcess | undefined;
     const client = new CodexAppServerClient("codex", {
       processFactory: () => {
@@ -324,15 +386,12 @@ describe("CodexAppServerClient", () => {
     ).resolves.toMatchObject({ _tag: "ok" });
     expect(child?.received).toContainEqual({
       id: "approval-fixture",
-      result: { decision: "accept" },
+      result: { decision: "decline" },
     });
   });
 
   it("settles a silent turn as timed out and terminates its child", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
-    roots.push(root);
-    await mkdir(join(root, "src"));
-    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+    const root = await worktreeFixture();
     let child: FakeCodexProcess | undefined;
     const client = new CodexAppServerClient("codex", {
       runTimeoutMs: 5,
@@ -448,19 +507,11 @@ describe("CodexAppServerClient", () => {
         ),
     });
 
-    const result = await client.run(
-      {
-        worktreePath: representedWorktree(root),
-        expectedHeadSha: "a".repeat(40),
-        model: "fixture-codex",
-        reasoning: "low",
-        prompt: "Return JSON.",
-      },
-      { onActivity: (event) => events.push(event) },
-    );
+    const result = await client.run(runInput(root), {
+      onActivity: (event) => events.push(event),
+    });
 
     expect(result).toEqual({ _tag: "ok", value: { title: "Fixture" } });
-    // The approval answer waits on `realpath`, so its position among the notifications is not fixed.
     expect(
       events.filter((event) => event._tag !== "approval_answered"),
     ).toEqual([
@@ -502,28 +553,15 @@ describe("CodexAppServerClient", () => {
     });
 
     await expect(
-      client.run(
-        {
-          worktreePath: representedWorktree(root),
-          expectedHeadSha: "a".repeat(40),
-          model: "fixture-codex",
-          reasoning: "low",
-          prompt: "Return JSON.",
+      client.run(runInput(root), {
+        onActivity: () => {
+          throw new Error("sink failed");
         },
-        {
-          onActivity: () => {
-            throw new Error("sink failed");
-          },
-        },
-      ),
+      }),
     ).resolves.toEqual({ _tag: "ok", value: { title: "Fixture" } });
   });
 
-  // `classifyThrownFailure` reads ENOENT with the shared `isNotFound`, which
-  // takes `code` off any object rather than requiring `instanceof Error`. A
-  // spawn failure that crossed a realm boundary — an Electron utility process,
-  // a worker thread, a `vm` context — arrives ENOENT-shaped but not an `Error`
-  // of this realm, and still means "the Codex binary is not there".
+  // Cross-realm ENOENT objects still mean the executable is missing, even without instanceof Error.
   it("reports a non-Error ENOENT from the spawn as runtime_unavailable", async () => {
     const client = new CodexAppServerClient("codex", {
       processFactory: () => {
@@ -569,19 +607,19 @@ describe("CodexAppServerClient approval requests", () => {
     }>,
     onActivity?: InsightActivitySink,
   ): Promise<FakeCodexProcess> {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
-    roots.push(root);
-    await mkdir(join(root, "src"));
-    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
-    const child = new FakeCodexProcess({
-      approvalCwd: root,
-      notifications: requests.map((request) => ({
-        ...request,
-        params: { cwd: root, command: "cat src/a.ts", ...request.params },
-      })),
-    });
+    const root = await worktreeFixture();
+    let child = new FakeCodexProcess({ approvalCwd: root });
     const client = new CodexAppServerClient("codex", {
-      processFactory: () => asChildProcess(child),
+      processFactory: () => {
+        child = new FakeCodexProcess({
+          approvalCwd: root,
+          notifications: requests.map((request) => ({
+            ...request,
+            params: { cwd: root, command: "cat src/a.ts", ...request.params },
+          })),
+        });
+        return asChildProcess(child);
+      },
     });
     await expect(
       client.run(
@@ -598,14 +636,15 @@ describe("CodexAppServerClient approval requests", () => {
     return child;
   }
 
-  it("starts an ephemeral thread with the untrusted approval policy", async () => {
+  it("starts an ephemeral thread with the native automatic reviewer", async () => {
     const child = await runWithRequests([]);
     expect(
       child.received.find((message) => message.method === "thread/start")
         ?.params,
     ).toMatchObject({
-      sandbox: "read-only",
-      approvalPolicy: "untrusted",
+      sandbox: "workspace-write",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "auto_review",
       ephemeral: true,
     });
   });
@@ -667,8 +706,7 @@ describe("CodexAppServerClient approval requests", () => {
     });
   });
 
-  // A plain `accept` never applies a proposed amendment upstream.
-  it("accepts any command requested from inside the represented worktree", async () => {
+  it("declines client approval even for a command inside the worktree", async () => {
     const child = await runWithRequests([
       {
         id: "arbitrary-command",
@@ -681,11 +719,11 @@ describe("CodexAppServerClient approval requests", () => {
     ]);
     expect(child.received).toContainEqual({
       id: "arbitrary-command",
-      result: { decision: "accept" },
+      result: { decision: "decline" },
     });
   });
 
-  it("counts the accepted and declined command approvals in the activity snapshot", async () => {
+  it("counts declined client approvals in the activity snapshot", async () => {
     const buffer = new InsightActivityBuffer();
     await runWithRequests(
       [
@@ -697,7 +735,7 @@ describe("CodexAppServerClient approval requests", () => {
       ],
       (event) => buffer.append(event),
     );
-    expect(buffer.snapshot().approvals).toEqual({ accepted: 1, declined: 1 });
+    expect(buffer.snapshot().approvals).toEqual({ accepted: 0, declined: 2 });
   });
 
   it("answers a permissions request with an empty profile, which grants nothing", async () => {
@@ -874,10 +912,7 @@ describe("turn/completed answer selection", () => {
     readonly finalText?: string | undefined;
     readonly malformedItems?: boolean | undefined;
   }): Promise<Result<unknown, CodexAppServerFailure>> {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
-    roots.push(root);
-    await mkdir(join(root, "src"));
-    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+    const root = await worktreeFixture();
     const client = new CodexAppServerClient("codex", {
       processFactory: () =>
         asChildProcess(
@@ -889,13 +924,7 @@ describe("turn/completed answer selection", () => {
           }),
         ),
     });
-    return client.run({
-      worktreePath: representedWorktree(root),
-      expectedHeadSha: "a".repeat(40),
-      model: "fixture-codex",
-      reasoning: "low",
-      prompt: "Return JSON.",
-    });
+    return client.run(runInput(root));
   }
 
   it("prefers the completed turn's message over incomplete deltas", async () => {

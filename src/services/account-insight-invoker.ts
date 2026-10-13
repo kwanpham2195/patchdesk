@@ -1,4 +1,5 @@
-import { MAX_GUIDE_PROMPT_BYTES } from "./guide-operation";
+import { NATIVE_INSIGHT_PROMPT_BYTES } from "#src/adapters/codex/codex-insight-policy";
+import { accountInsightEvidenceInstructions } from "./account-insight-evidence";
 import { realpath } from "node:fs/promises";
 import { insightEvidenceReference } from "./insight-evidence-reference";
 
@@ -126,6 +127,29 @@ export class AccountInsightInvoker implements InsightInvoker {
       return err({ reason: "review_worktree_unavailable" as const });
     if (input.evidence === undefined)
       return err({ reason: "execution_failed" as const });
+    const nativeInstructions = await accountInsightEvidenceInstructions(
+      input.evidence,
+      this.paths,
+    );
+    if (nativeInstructions._tag === "err")
+      return err({
+        reason: "execution_failed" as const,
+        phase: nativeInstructions.error.reason,
+      });
+    const runNative = (run: CodexRunInput) => {
+      const prompt = `${run.prompt}\n\n${nativeInstructions.value}`;
+      if (Buffer.byteLength(prompt) > NATIVE_INSIGHT_PROMPT_BYTES)
+        return Promise.resolve(
+          err({
+            reason: "invalid_result" as const,
+            phase: "turn_start" as const,
+          }),
+        );
+      return this.clientFactory(this.executablePath).run(
+        { ...run, prompt, maxPromptBytes: NATIVE_INSIGHT_PROMPT_BYTES },
+        options,
+      );
+    };
     const evidence = insightEvidenceReference(input.evidence);
     const policy =
       "Read only the represented review revision. Patchdesk validates the result and owns all publication decisions.";
@@ -141,19 +165,16 @@ export class AccountInsightInvoker implements InsightInvoker {
         { contextPath: input.contextPath, patchPath: input.evidence.patchPath },
         options.signal,
       );
-      const result = await this.clientFactory(this.executablePath).run(
-        {
-          worktreePath,
-          expectedHeadSha: head,
-          model: input.model,
-          reasoning: input.reasoning,
-          prompt: input.guide.prompt,
-          outputSchema: guideCodexOutputSchema,
-          maxPromptBytes: MAX_GUIDE_PROMPT_BYTES,
-          runTimeoutMs,
-        },
-        options,
-      );
+      const result = await runNative({
+        worktreePath,
+        expectedHeadSha: head,
+        model: input.model,
+        reasoning: input.reasoning,
+        prompt: input.guide.prompt,
+        outputSchema: guideCodexOutputSchema,
+        maxPromptBytes: NATIVE_INSIGHT_PROMPT_BYTES,
+        runTimeoutMs,
+      });
       return result._tag === "ok"
         ? result
         : err({ reason: result.error.reason, phase: result.error.phase });
@@ -182,19 +203,16 @@ export class AccountInsightInvoker implements InsightInvoker {
         { contextPath, patchPath: input.evidence.patchPath },
         options.signal,
       );
-      const result = await this.clientFactory(this.executablePath).run(
-        {
-          worktreePath,
-          expectedHeadSha: head,
-          model: input.model,
-          reasoning: input.reasoning,
-          prompt: prompt.value,
-          outputSchema: walkthroughCodexOutputSchema,
-          maxPromptBytes: MAX_WALKTHROUGH_PROMPT_BYTES,
-          runTimeoutMs,
-        },
-        options,
-      );
+      const result = await runNative({
+        worktreePath,
+        expectedHeadSha: head,
+        model: input.model,
+        reasoning: input.reasoning,
+        prompt: prompt.value,
+        outputSchema: walkthroughCodexOutputSchema,
+        maxPromptBytes: MAX_WALKTHROUGH_PROMPT_BYTES,
+        runTimeoutMs,
+      });
       return result._tag === "ok"
         ? result
         : err({ reason: result.error.reason, phase: result.error.phase });
@@ -216,19 +234,16 @@ export class AccountInsightInvoker implements InsightInvoker {
       });
       if (prompt._tag === "err")
         return err({ reason: "execution_failed" as const });
-      const result = await this.clientFactory(this.executablePath).run(
-        {
-          worktreePath,
-          expectedHeadSha: head,
-          model: input.model,
-          reasoning: input.reasoning,
-          prompt: prompt.value,
-          outputSchema: briefCodexOutputSchema,
-          maxPromptBytes: MAX_BRIEF_PROMPT_BYTES,
-          runTimeoutMs: BRIEF_RUN_TIMEOUT_MS,
-        },
-        options,
-      );
+      const result = await runNative({
+        worktreePath,
+        expectedHeadSha: head,
+        model: input.model,
+        reasoning: input.reasoning,
+        prompt: prompt.value,
+        outputSchema: briefCodexOutputSchema,
+        maxPromptBytes: MAX_BRIEF_PROMPT_BYTES,
+        runTimeoutMs: BRIEF_RUN_TIMEOUT_MS,
+      });
       return strictRunResult(result);
     }
     const contextPath = resolvedArtifacts[0];
@@ -247,19 +262,16 @@ export class AccountInsightInvoker implements InsightInvoker {
     const prompt = buildCodexAnalysisPrompt({ analysisPrompt, policy });
     if (prompt._tag === "err")
       return err({ reason: "execution_failed" as const });
-    const result = await this.clientFactory(this.executablePath).run(
-      {
-        worktreePath,
-        expectedHeadSha: head,
-        model: input.model,
-        reasoning: input.reasoning,
-        prompt: prompt.value,
-        outputSchema: analysisCodexOutputSchema,
-        maxPromptBytes: MAX_ANALYSIS_CODEX_PROMPT_BYTES,
-        runTimeoutMs: ANALYSIS_RUN_TIMEOUT_MS,
-      },
-      options,
-    );
+    const result = await runNative({
+      worktreePath,
+      expectedHeadSha: head,
+      model: input.model,
+      reasoning: input.reasoning,
+      prompt: prompt.value,
+      outputSchema: analysisCodexOutputSchema,
+      maxPromptBytes: MAX_ANALYSIS_CODEX_PROMPT_BYTES,
+      runTimeoutMs: ANALYSIS_RUN_TIMEOUT_MS,
+    });
     return strictRunResult(result);
   }
 }

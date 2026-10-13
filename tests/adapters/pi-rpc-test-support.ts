@@ -93,10 +93,14 @@ export function fakePi(options: {
     spawnOptions: SpawnOptions,
   ): ChildProcess => {
     spawned.push({ args, options: spawnOptions });
-    if (args[0] === "--version") {
+    if (args[0] === "--version" || args[0] === "--help") {
       const versionChild = new FakePiProcess(() => undefined);
       void (options.versionReleased ?? Promise.resolve()).then(() => {
-        versionChild.stdout.write(`${options.version ?? "0.99.2"}\n`);
+        versionChild.stdout.write(
+          args[0] === "--help"
+            ? "--no-mcp --no-skills --no-prompt-templates --no-themes --no-context-files --offline\n"
+            : `${options.version ?? "0.99.2"}\n`,
+        );
         setImmediate(() => versionChild.emit("close", 0, null));
       });
       return asChildProcess(versionChild);
