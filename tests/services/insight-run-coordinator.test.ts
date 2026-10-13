@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   parseContentHash,
@@ -466,16 +466,18 @@ describe("InsightRunCoordinator current lifecycle", () => {
       phase: "turn",
       commands: [{ id: "cmd-1", command: "git diff", status: "in_progress" }],
     };
-    await expect(
-      value.coordinator.observe({
-        profileId,
-        reviewId: value.review.id,
-        type: "analysis",
-        runId: started.value.runId,
-      }),
-    ).resolves.toMatchObject({
-      _tag: "ok",
-      value: { status: "queued", activity: trace },
+    await vi.waitFor(async () => {
+      await expect(
+        value.coordinator.observe({
+          profileId,
+          reviewId: value.review.id,
+          type: "analysis",
+          runId: started.value.runId,
+        }),
+      ).resolves.toMatchObject({
+        _tag: "ok",
+        value: { status: "queued", activity: trace },
+      });
     });
     release();
     expect(
@@ -590,13 +592,15 @@ describe("InsightRunCoordinator current lifecycle", () => {
       value: { status: "completed" },
     });
     expect(firstPoll._tag === "ok" && firstPoll.value.activity).toBe(undefined);
-    await expect(observed(second.value.runId)).resolves.toMatchObject({
-      _tag: "ok",
-      value: {
-        activity: {
-          commands: [{ id: "cmd-2", command: "pwd", status: "in_progress" }],
+    await vi.waitFor(async () => {
+      await expect(observed(second.value.runId)).resolves.toMatchObject({
+        _tag: "ok",
+        value: {
+          activity: {
+            commands: [{ id: "cmd-2", command: "pwd", status: "in_progress" }],
+          },
         },
-      },
+      });
     });
     release();
     await settled(value.coordinator, value.review.id, second.value.runId);
@@ -624,6 +628,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       language: "en",
     });
     if (started._tag === "err") throw new Error("expected run");
+    await vi.waitFor(() => expect(signal).toBeDefined());
     await expect(
       value.coordinator.cancel({
         profileId,

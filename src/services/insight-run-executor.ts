@@ -27,6 +27,9 @@ import {
 import { err, type Result } from "#src/domain/result";
 import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
 import type { InsightStore } from "#src/adapters/storage/insight-store";
+import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
 import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
@@ -38,7 +41,7 @@ import {
 import type {
   Active,
   InsightCoordinatorFailure,
-  InsightInvocationInput,
+  InsightInvocationInput as ProviderInvocationInput,
   InsightInvoker,
   InsightRunResponse,
 } from "./insight-run-coordinator";
@@ -48,6 +51,10 @@ import { walkthroughOutputLimitDiagnostic } from "./walkthrough-operation";
 import { contentHash } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+
+type InsightInvocationInput = ProviderInvocationInput & {
+  readonly evidence: InsightEvidenceBundle;
+};
 
 /** Announces settled runs: the notifier, and the profiles that name a local Review's checkout folder. */
 export type InsightSettledNotifier = {
@@ -76,6 +83,7 @@ export class InsightRunExecutor {
     }) => Promise<
       Result<InsightRunResponse | undefined, InsightCoordinatorFailure>
     >,
+    private readonly paths: PatchdeskPaths,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     /** Counts a completed Brief's Reach block; absent leaves the block off. */
     private readonly reach?: BriefReachComputer,
@@ -91,10 +99,38 @@ export class InsightRunExecutor {
     onActivity: InsightActivitySink | undefined,
   ): Promise<void> {
     try {
-      const invocation = await this.invokers[type].invoke(input, {
-        signal: controller.signal,
-        onActivity,
-      });
+      const evidenceStore = new InsightEvidenceStore(this.paths);
+      const identity = input.evidence.identity;
+      const matchesRun =
+        identity.profileId === input.profileId &&
+        identity.reviewId === input.reviewId &&
+        identity.sessionId === input.sessionId &&
+        identity.runId === runId &&
+        identity.type === type &&
+        identity.headSha === input.expectedHeadSha &&
+        identity.patchHash === startedHash;
+      const before = matchesRun
+        ? await evidenceStore.validate(input.evidence)
+        : err({
+            _tag: "InsightEvidenceFailure" as const,
+            reason: "evidence_mismatch" as const,
+          });
+      const invocation = controller.signal.aborted
+        ? err({
+            reason: "cancelled" as const,
+            phase: undefined,
+            stderr: undefined,
+          })
+        : before._tag === "err"
+          ? err({
+              reason: "execution_failed" as const,
+              phase: before.error.reason,
+              stderr: undefined,
+            })
+          : await this.invokers[type].invoke(input, {
+              signal: controller.signal,
+              onActivity,
+            });
       const latestReview = await this.reviews.load(
         input.profileId,
         input.reviewId,
@@ -208,6 +244,17 @@ export class InsightRunExecutor {
           );
         return;
       }
+      const after = await evidenceStore.validate(input.evidence);
+      if (after._tag === "err") {
+        await this.recordExecutionFailure(
+          input,
+          type,
+          runId,
+          "execution_failed",
+          after.error.reason,
+        );
+        return;
+      }
       // Every invoker leaves its payload `unknown`; the JSON grammar is the contract validation needs.
       const payload = v.safeParse(rawJsonValueSchema, invocation.value);
       if (!payload.success) {
@@ -223,7 +270,7 @@ export class InsightRunExecutor {
       const validated = await validateInsightResult(
         type,
         payload.output,
-        input,
+        { ...input, patchPath: input.evidence.patchPath },
         {
           sessionId: input.sessionId,
           headSha: latestSession.value.key.headSha,
@@ -369,6 +416,12 @@ export class InsightRunExecutor {
             await contentHash(session.value.patchPath),
           );
           if (patchHash._tag === "err") return undefined;
+          const evidence =
+            detail === "completion"
+              ? await new InsightEvidenceStore(this.paths).validate(
+                  input.evidence,
+                )
+              : undefined;
           const mutated = await this.insights.mutate({
             profileId: input.profileId,
             reviewId: input.reviewId,
@@ -406,6 +459,20 @@ export class InsightRunExecutor {
                   {
                     runId,
                     reason: "superseded",
+                    retryable: true,
+                    failedAt: at,
+                  },
+                  at,
+                );
+              }
+              if (evidence?._tag === "err") {
+                return failInsightRun(
+                  record,
+                  runId,
+                  {
+                    runId,
+                    reason: "failed",
+                    category: "execution_failed",
                     retryable: true,
                     failedAt: at,
                   },
@@ -487,7 +554,12 @@ export class InsightRunExecutor {
     type: InsightType,
     runId: InsightRunId,
     category: InsightFailureCategory,
-    detail: "invalid_timestamp" | "unexpected_failure",
+    detail:
+      | "invalid_timestamp"
+      | "unexpected_failure"
+      | "evidence_unavailable"
+      | "evidence_mismatch"
+      | "invalid_input",
   ): Promise<void> {
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "ok") {

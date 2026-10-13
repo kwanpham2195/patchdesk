@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type {
   ReviewId,
+  InsightRunId,
   ReviewSessionId,
   WorkspaceProfileId,
 } from "#src/domain/ids";
@@ -417,6 +418,19 @@ export class PatchdeskPaths {
     sessionId: ReviewSessionId,
   ): string {
     return join(this.sessionDirectory(profileId, sessionId), "prepared");
+  }
+
+  /** One run's captured evidence follows its session's retention and quarantine lifetime. */
+  insightEvidenceDirectory(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    runId: InsightRunId,
+  ): string {
+    return join(
+      this.preparedDirectory(profileId, sessionId),
+      "insight-evidence",
+      runId,
+    );
   }
 
   preparedContextFile(
