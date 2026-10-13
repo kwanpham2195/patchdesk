@@ -16,6 +16,7 @@ import * as v from "valibot";
 import { err, ok, type Result } from "#src/domain/result";
 import { InsightProcessCleanupError } from "#src/adapters/process/insight-process-cleanup";
 import { isDeepStrictEqual } from "node:util";
+import { resolveCodexInsightProvider } from "./codex-insight-provider";
 import type {
   JsonObject,
   CodexInsightRpc,
@@ -240,10 +241,8 @@ export type CodexInsightSession = {
   readonly requirements: JsonObject;
   readonly account: JsonObject;
   readonly provider: string;
+  readonly providerSettings: JsonObject;
 };
-const providerSchema = v.looseObject({
-  config: v.looseObject({ model_provider: v.string() }),
-});
 const accountSchema = v.looseObject({
   account: v.looseObject({
     type: v.literal("chatgpt"),
@@ -364,13 +363,20 @@ export async function discoverCodexInsightSession(
         privateConfig.value,
         privateSkills.value,
       );
-      const provider = v.safeParse(providerSchema, config.value);
-      return resources._tag === "ok" && provider.success
+      const provider = resolveCodexInsightProvider(
+        config.value,
+        requirements.value,
+        discovery.nativeVersion,
+      );
+      if (provider._tag === "err")
+        return err({ reason: "runtime_unavailable", phase: provider.error });
+      return resources._tag === "ok"
         ? ok({
             args: resources.value,
             requirements: requirements.value,
             account: account.value,
-            provider: provider.output.config.model_provider,
+            provider: provider.value.id,
+            providerSettings: provider.value.settings,
           })
         : err({
             reason: "runtime_unavailable",
@@ -418,16 +424,24 @@ export async function validateCodexInsightSession(
     child.request("configRequirements/read", {}, signal),
     child.request("account/read", { refreshToken: false }, signal),
   ]);
-  const provider = v.safeParse(providerSchema, config.value);
+  if (requirements._tag === "err" || account._tag === "err")
+    return err({
+      reason: "runtime_unavailable",
+      phase: "native_policy_unsupported",
+    });
+  const provider = resolveCodexInsightProvider(
+    config.value,
+    requirements.value,
+    child.nativeVersion,
+  );
   if (
-    requirements._tag === "err" ||
-    account._tag === "err" ||
-    !provider.success ||
+    provider._tag === "err" ||
     !v.is(accountSchema, account.value) ||
     !v.is(requirementsSchema, requirements.value) ||
     !isDeepStrictEqual(requirements.value, expected.requirements) ||
     !isDeepStrictEqual(account.value, expected.account) ||
-    provider.output.config.model_provider !== expected.provider ||
+    provider.value.id !== expected.provider ||
+    !isDeepStrictEqual(provider.value.settings, expected.providerSettings) ||
     !(await home.unchanged())
   )
     return err({
