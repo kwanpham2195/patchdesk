@@ -1,3 +1,7 @@
+import {
+  insightFailureDiagnostic,
+  insightEvidenceFailureCategory,
+} from "#src/domain/insight-failure-diagnostic";
 import { NATIVE_INSIGHT_PROMPT_BYTES } from "#src/adapters/codex/codex-insight-policy";
 import { accountInsightEvidenceInstructions } from "./account-insight-evidence";
 import { realpath } from "node:fs/promises";
@@ -31,6 +35,7 @@ import {
   analysisCodexOutputSchema,
   briefCodexOutputSchema,
   parseCodexStrictResult,
+  parseCodexAnalysisOutcome,
   walkthroughCodexOutputSchema,
 } from "./codex-output-schema";
 import { composeReviewPrompt } from "./review-rubric";
@@ -133,8 +138,11 @@ export class AccountInsightInvoker implements InsightInvoker {
     );
     if (nativeInstructions._tag === "err")
       return err({
-        reason: "execution_failed" as const,
-        phase: nativeInstructions.error.reason,
+        reason: insightEvidenceFailureCategory(nativeInstructions.error.reason),
+        ...insightFailureDiagnostic(
+          insightEvidenceFailureCategory(nativeInstructions.error.reason),
+          "evidence",
+        ),
       });
     const runNative = (run: CodexRunInput) => {
       const prompt = `${run.prompt}\n\n${nativeInstructions.value}`;
@@ -177,7 +185,13 @@ export class AccountInsightInvoker implements InsightInvoker {
       });
       return result._tag === "ok"
         ? result
-        : err({ reason: result.error.reason, phase: result.error.phase });
+        : err({
+            reason: result.error.reason,
+            ...insightFailureDiagnostic(
+              result.error.reason,
+              result.error.phase,
+            ),
+          });
     }
     if (input.type === "walkthrough") {
       const contextPath = resolvedArtifacts[0];
@@ -215,7 +229,13 @@ export class AccountInsightInvoker implements InsightInvoker {
       });
       return result._tag === "ok"
         ? result
-        : err({ reason: result.error.reason, phase: result.error.phase });
+        : err({
+            reason: result.error.reason,
+            ...insightFailureDiagnostic(
+              result.error.reason,
+              result.error.phase,
+            ),
+          });
     }
     if (input.type === "brief") {
       const briefPatchPath = resolvedArtifacts[2];
@@ -272,7 +292,26 @@ export class AccountInsightInvoker implements InsightInvoker {
       maxPromptBytes: MAX_ANALYSIS_CODEX_PROMPT_BYTES,
       runTimeoutMs: ANALYSIS_RUN_TIMEOUT_MS,
     });
-    return strictRunResult(result);
+    if (result._tag === "err")
+      return err({
+        reason: result.error.reason,
+        ...insightFailureDiagnostic(result.error.reason, result.error.phase),
+      });
+    const outcome = parseCodexAnalysisOutcome(result.value);
+    if (outcome._tag === "err")
+      return err({
+        reason: "invalid_result" as const,
+        ...insightFailureDiagnostic("invalid_result"),
+      });
+    return outcome.value.outcome === "complete"
+      ? ok(outcome.value.result)
+      : err({
+          reason: "analysis_incomplete" as const,
+          ...insightFailureDiagnostic(
+            "analysis_incomplete",
+            outcome.value.incomplete.reason,
+          ),
+        });
   }
 }
 
@@ -282,7 +321,10 @@ function strictRunResult(
   result: Result<unknown, AccountRunFailure>,
 ) {
   if (result._tag === "err")
-    return err({ reason: result.error.reason, phase: result.error.phase });
+    return err({
+      reason: result.error.reason,
+      ...insightFailureDiagnostic(result.error.reason, result.error.phase),
+    });
   const value = parseCodexStrictResult(result.value);
   return value === undefined
     ? err({ reason: "invalid_result" as const, phase: "turn" as const })

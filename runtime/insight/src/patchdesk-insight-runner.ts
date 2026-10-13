@@ -1,3 +1,4 @@
+import { sanitizedInsightFailureDetail } from "#app/domain/insight-failure-diagnostic";
 import { loadInsightEvidenceReference } from "#app/services/insight-evidence-reference";
 import { InsightEvidenceStore } from "#app/adapters/storage/insight-evidence-store";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -113,7 +114,10 @@ export type PatchdeskChildResult =
         | "invalid_result"
         | "runtime_unavailable"
         | "cancelled"
-        | "execution_failed";
+        | "execution_failed"
+        | "analysis_incomplete"
+        | "evidence_unavailable"
+        | "evidence_mismatch";
       /**
        * One bounded, redacted line naming why the provider refused or failed.
        * Without it a provider refusal (an expired account, no credit, a
@@ -121,6 +125,8 @@ export type PatchdeskChildResult =
        * both the diagnostic and the failed-state copy.
        */
       readonly detail?: string;
+      readonly phase?: "submission" | "model" | "evidence";
+      readonly code?: "insufficient_evidence" | "unable_to_complete";
     };
 
 /** Parses one bounded stdin protocol object. */
@@ -228,6 +234,15 @@ export async function runPatchdeskChild(
       // A recorded result wins: a batch ends only when every call in it
       // terminates, so an inspector ahead of the submission buys one more turn
       // whose provider failure or repeat submission must not discard it.
+      const incomplete = created.state.incompleteAnalysis();
+      if (incomplete !== undefined)
+        return {
+          ok: false,
+          reason: "analysis_incomplete",
+          phase: "submission",
+          code: incomplete.reason,
+          detail: "The provider could not complete the Analysis.",
+        };
       const value = created.state.submittedResult();
       if (value !== undefined) {
         const parsed = v.safeParse(resultSchemaFor(invocation.type), value);
@@ -571,7 +586,11 @@ export async function runProductionChild(
     paths,
   );
   if (loaded._tag === "err")
-    return { ok: false, reason: "invalid_input", detail: loaded.error.reason };
+    return {
+      ok: false,
+      reason: loaded.error.reason,
+      detail: "Captured evidence is unavailable or does not match this run.",
+    };
   const bundle = loaded.value;
   const store = new InsightEvidenceStore(paths);
   const evidenceTools = createEvidenceTools(bundle, store);
@@ -675,7 +694,11 @@ export async function runProductionChild(
   if (signal.aborted) return { ok: false, reason: "cancelled" };
   const validated = await store.validate(bundle);
   return validated._tag === "err"
-    ? { ok: false, reason: "invalid_input", detail: validated.error.reason }
+    ? {
+        ok: false,
+        reason: validated.error.reason,
+        detail: "Captured evidence is unavailable or does not match this run.",
+      }
     : result;
 }
 
@@ -784,49 +807,9 @@ function inspectorOperations(inspector: ReviewInspector): InspectorOperations {
   };
 }
 
-const MAX_FAILURE_DETAIL_CHARS = 200;
-
-/**
- * Renders one bounded line from a provider failure, given either the agent's
- * own error message or a thrown cause. A thrown cause may wrap the provider's
- * own message ("402: Insufficient Balance") inside a generic error, so the
- * deepest message in the cause chain is the one worth keeping. Credentials
- * never appear in these messages, but a provider is free to echo request
- * material, so any long opaque token-shaped run is replaced before the line
- * leaves the child.
- */
-export function redactedFailureDetail(cause: unknown): string | undefined {
-  const message = deepestFailureMessage(cause);
-  if (message === undefined) return undefined;
-  const redacted = message
-    .replaceAll(/[\w-]{24,}/g, "[redacted]")
-    .replaceAll(/\s+/g, " ")
-    .trim();
-  if (redacted.length === 0) return undefined;
-  return redacted.length > MAX_FAILURE_DETAIL_CHARS
-    ? `${redacted.slice(0, MAX_FAILURE_DETAIL_CHARS - 1)}…`
-    : redacted;
-}
-
-const MAX_FAILURE_CAUSE_DEPTH = 5;
-const failureTextSchema = v.pipe(v.string(), v.minLength(1));
-const failureCauseSchema = v.looseObject({
-  message: v.optional(failureTextSchema),
-  cause: v.optional(v.unknown()),
-});
-
-function deepestFailureMessage(cause: unknown): string | undefined {
-  let current: unknown = cause;
-  let deepest: string | undefined;
-  for (let depth = 0; depth < MAX_FAILURE_CAUSE_DEPTH; depth += 1) {
-    const text = v.safeParse(failureTextSchema, current);
-    if (text.success) return text.output;
-    const node = v.safeParse(failureCauseSchema, current);
-    if (!node.success) return deepest;
-    deepest = node.output.message ?? deepest;
-    current = node.output.cause;
-  }
-  return deepest;
+/** Unknown provider failures never expose echoed request material. */
+export function redactedFailureDetail(cause: unknown): string {
+  return sanitizedInsightFailureDetail(cause);
 }
 
 function writeProtocolOutput(

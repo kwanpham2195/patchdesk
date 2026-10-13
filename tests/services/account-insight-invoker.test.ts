@@ -74,7 +74,22 @@ async function fixture(
     ),
   ]);
   const calls: Array<[CodexRunInput, { readonly signal?: AbortSignal }]> = [];
-  const runValue = options.runValue ?? { findings: [] };
+  const complete = {
+    changeSummary: "Change",
+    verdict: "approve",
+    summary: "Reviewed",
+    findings: [],
+    validationPlan: [],
+    assumptions: [],
+  };
+  const resultValue =
+    options.runValue === undefined
+      ? complete
+      : { ...complete, ...options.runValue };
+  const runValue =
+    (options.type ?? "analysis") === "analysis"
+      ? { outcome: "complete", result: resultValue, incomplete: null }
+      : (options.runValue ?? { findings: [] });
   const run = async (
     input: CodexRunInput,
     options: { readonly signal?: AbortSignal } = {},
@@ -362,7 +377,17 @@ describe("AccountInsightInvoker", () => {
       value.invoker.invoke(value.input, {
         signal: new AbortController().signal,
       }),
-    ).resolves.toEqual({ _tag: "ok", value: { findings: [] } });
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        changeSummary: "Change",
+        verdict: "approve",
+        summary: "Reviewed",
+        findings: [],
+        validationPlan: [],
+        assumptions: [],
+      },
+    });
     expect(value.calls).toHaveLength(1);
     // SAFETY: the fake run() above only ever receives the CodexRunInput this test's invoker builds.
     const invocation = value.calls[0]?.[0] as {
@@ -383,7 +408,7 @@ describe("AccountInsightInvoker", () => {
   });
 
   it.each([
-    ["analysis", "verdict"],
+    ["analysis", "outcome"],
     ["brief", "flow"],
   ] as const)(
     "sends the %s output schema and returns null fields as absent",
@@ -396,7 +421,20 @@ describe("AccountInsightInvoker", () => {
         value.invoker.invoke(value.input, {
           signal: new AbortController().signal,
         }),
-      ).resolves.toEqual({ _tag: "ok", value: { findings: [] } });
+      ).resolves.toEqual({
+        _tag: "ok",
+        value:
+          type === "analysis"
+            ? {
+                changeSummary: "Change",
+                verdict: "approve",
+                summary: "Reviewed",
+                findings: [],
+                validationPlan: [],
+                assumptions: [],
+              }
+            : { findings: [] },
+      });
       expect(value.calls[0]?.[0].outputSchema).toMatchObject({
         type: "object",
         additionalProperties: false,

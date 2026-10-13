@@ -334,6 +334,7 @@ describe("one-shot insight runtime", () => {
     );
     expect(tools.spec.tools.map((tool) => tool.name)).toEqual([
       "submit_patchdesk_result",
+      "report_incomplete_analysis",
       "list_changed_files",
       "search_files",
       "read_file_range",
@@ -627,6 +628,7 @@ describe("one-shot insight runtime", () => {
     ).resolves.toEqual({ ok: true, value: analysis });
     expect(analysisTools).toEqual([
       "submit_patchdesk_result",
+      "report_incomplete_analysis",
       "list_changed_files",
       "search_files",
       "read_file_range",
@@ -945,6 +947,7 @@ describe("one-shot insight runtime", () => {
         "read_file_range",
         "git_show",
         "submit_patchdesk_result",
+        "report_incomplete_analysis",
       ],
       usesSkill: true,
       usesSandbox: false,

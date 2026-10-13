@@ -1,4 +1,9 @@
 import {
+  insightFailureDiagnostic,
+  type InsightFailureDiagnostic,
+} from "#src/domain/insight-failure-diagnostic";
+export { buildCodexAnalysisPrompt } from "./codex-analysis-prompt";
+import {
   spawn,
   type ChildProcess,
   type SpawnOptions,
@@ -66,8 +71,13 @@ export type CodexModel = {
 };
 
 /** Typed failures returned by the Codex process adapter. */
-export type CodexAppServerFailure = {
-  readonly reason: InsightFailureCategory | "cancelled";
+export type CodexAppServerFailure = InsightFailureDiagnostic & {
+  readonly reason:
+    | Exclude<
+        InsightFailureCategory,
+        "evidence_unavailable" | "evidence_mismatch" | "analysis_incomplete"
+      >
+    | "cancelled";
   readonly phase:
     | "resolve"
     | "initialize"
@@ -213,49 +223,6 @@ const turnCompletedParamsSchema = v.looseObject({
 const agentMessageDeltaParamsSchema = v.looseObject({
   delta: v.optional(v.string()),
 });
-/** The Analysis result contract Codex must return, kept faithful to modelReviewResultSchema. */
-const ANALYSIS_RESULT_CONTRACT = [
-  '{"changeSummary":string,"verdict":"approve"|"comment"|"request_changes","summary":string,',
-  ' "findings":[{"id":string,"severity":"P0"|"P1"|"P2"|"P3","title":string,"explanation":string,',
-  '   "confidence":"high"|"medium"|"low","file"?:string,"lineStart"?:number,"lineEnd"?:number,',
-  '   "diffSide"?:"new"|"old","suggestedComment"?:string,',
-  '   "category"?:"bug"|"security"|"test"|"performance"|"maintainability"|"docs",',
-  '   "suggestedReplacement"?:{"code":string}}],',
-  ' "validationPlan":[string],"assumptions":[string],',
-  ' "coverage"?:"high"|"medium"|"low","overallConfidence"?:"high"|"medium"|"low",',
-  ' "unresolvedItems"?:[string],',
-  ' "callouts"?:[{"category":"migration"|"dependency"|"dependency_change"|"authentication"|"compatibility"|"destructive_operation"|"feature_flag"|"configuration","title":string,"detail":string,"path"?:string}]}',
-].join("\n");
-
-/**
- * Builds a sanitized Codex child prompt for an Analysis. `analysisPrompt` carries the app-owned
- * immutable patch and context artifacts, so the unsafe-content guard applies only to `policy`:
- * applying it to the patch would reject ordinary code such as ` /**`.
- */
-export function buildCodexAnalysisPrompt(input: {
-  readonly analysisPrompt: string;
-  readonly policy: string;
-}): Result<string, "invalid_prompt"> {
-  if (UNSAFE_PROMPT_PATTERN.test(input.policy)) return err("invalid_prompt");
-  const prompt = [
-    "Patchdesk owns all Review lifecycle, Finding mapping, publication, and merge authority.",
-    "Insight type: analysis",
-    NATIVE_INSIGHT_INSTRUCTIONS,
-    "Return exactly one JSON object satisfying the result contract below. Do not wrap it in a Markdown code fence, and do not add any prose before or after it. Use no keys beyond those listed.",
-    ANALYSIS_RESULT_CONTRACT,
-    // The severity and verdict rules are stated once, by the shared Analysis prompt both providers send.
-    "Give each finding an id that matches ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ and is unique among the findings.",
-    "Give each finding's file a repo-relative path taken from the patch. Never use an absolute path or a path that contains '..'.",
-    "Use at most 50 findings. Use at most 20 validationPlan entries and at most 20 assumptions, each within 500 characters. Use at most 10 unresolvedItems, each within 280 characters. Use at most 12 callouts; each callouts entry is an object, never a string, with title within 120 characters and detail within 500 characters.",
-    "Give changeSummary, summary, and every finding's title and explanation a non-empty value. Keep changeSummary within 600 characters, summary within 400 characters, each finding's title within 120 characters, and each finding's explanation within 800 characters.",
-    input.analysisPrompt,
-    `Patchdesk policy:\n${input.policy}`,
-  ].join("\n\n");
-  if (Buffer.byteLength(prompt, "utf8") > MAX_ANALYSIS_CODEX_PROMPT_BYTES)
-    return err("invalid_prompt");
-  return ok(prompt);
-}
-
 /**
  * Builds a sanitized Codex child prompt for a Walkthrough. `walkthroughPrompt` carries the
  * app-owned immutable patch and context artifacts, so the unsafe-content guard applies only to
@@ -358,12 +325,19 @@ export class CodexAppServerClient {
       return err({ reason: "invalid_result", phase: "turn_start" });
     if (options.signal?.aborted)
       return err({ reason: "cancelled", phase: "initialize" });
-    return withCodexInsightHome(
+    const result = await withCodexInsightHome(
       this.homeFactory,
       input.runTimeoutMs ?? this.runTimeoutMs,
       (home) => this.runWithHome(input, options, home),
       options.signal,
     );
+    return result._tag === "err"
+      ? err({
+          ...result.error,
+          ...insightFailureDiagnostic(result.error.reason, result.error.phase),
+          phase: result.error.phase,
+        })
+      : result;
   }
 
   private async runWithHome(
@@ -969,13 +943,15 @@ function finalAgentMessageText(
   return answer;
 }
 
-function classifyThrownFailure(cause: unknown): InsightFailureCategory {
+function classifyThrownFailure(
+  cause: unknown,
+): CodexAppServerFailure["reason"] {
   if (isNotFound(cause)) return "runtime_unavailable";
   return "execution_failed";
 }
 function classifyRpcFailure(
   cause: RpcFailure,
-): InsightFailureCategory | "cancelled" {
+): CodexAppServerFailure["reason"] {
   if (cause === "cancelled") return "cancelled";
   if (cause === "timeout") return "timed_out";
   if (

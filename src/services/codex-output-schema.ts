@@ -8,7 +8,13 @@ import {
 
 import { briefOutputSchema } from "#src/domain/brief";
 import type { RawJsonValue } from "#src/domain/json";
-import { modelReviewResultSchema } from "#src/domain/review-result";
+import {
+  analysisInvocationOutcomeSchema,
+  analysisInvocationEnvelopeSchema,
+  parseAnalysisInvocationOutcome,
+  type AnalysisInvocationOutcome,
+} from "#src/domain/analysis-invocation-outcome";
+import { err, type Result } from "#src/domain/result";
 import { walkthroughOutputSchema } from "./walkthrough-operation";
 
 /**
@@ -31,9 +37,12 @@ function strictCodexNode({
   valibotSchema,
   jsonSchema,
 }: OverrideSchemaContext): JsonSchema | undefined {
-  // Valibot emits only { const: 2 } for a literal.
-  if (valibotSchema.type === "literal" && jsonSchema.const === 2)
-    return { type: "integer", enum: [2] };
+  // Strict output requires an explicit type for literal values.
+  if (valibotSchema.type === "literal" && jsonSchema.const !== undefined)
+    return {
+      type: v.is(v.string(), jsonSchema.const) ? "string" : "integer",
+      enum: [jsonSchema.const],
+    };
   // An array of `v.never()` can only be empty; Valibot emits { not: {} } items.
   if (
     jsonSchema.type === "array" &&
@@ -58,9 +67,9 @@ function strictCodexNode({
 /** Codex's constraint for a Brief turn, derived from `briefOutputSchema`. */
 export const briefCodexOutputSchema = codexOutputSchema(briefOutputSchema);
 
-/** Codex's constraint for an Analysis turn, derived from `modelReviewResultSchema`. */
+/** Codex requires a closed object root with required nullable terminal payloads. */
 export const analysisCodexOutputSchema = codexOutputSchema(
-  modelReviewResultSchema,
+  analysisInvocationOutcomeSchema,
 );
 
 /** Codex's constraint for a Walkthrough turn; Patchdesk still checks the aggregate section rule after the turn. */
@@ -101,3 +110,19 @@ export function parseCodexStrictResult(
 
 /** Guide uses its exact strict model contract for every account turn. */
 export const guideCodexOutputSchema = codexOutputSchema(guideModelOutputSchema);
+
+/** Preserve required envelope nulls while decoding optional fields inside its result. */
+export function parseCodexAnalysisOutcome(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the native turn is unvalidated JSON; this boundary parses its strict envelope before reading it.
+  input: unknown,
+): Result<AnalysisInvocationOutcome, "invalid_result"> {
+  const envelope = v.safeParse(analysisInvocationEnvelopeSchema, input);
+  if (!envelope.success) return err("invalid_result");
+  return parseAnalysisInvocationOutcome({
+    ...envelope.output,
+    result:
+      envelope.output.result === null
+        ? null
+        : parseCodexStrictResult(envelope.output.result),
+  });
+}
