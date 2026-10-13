@@ -41,6 +41,7 @@ import {
 } from "#src/domain/ids";
 import {
   beginInsightRun,
+  failInsightRun,
   dismissInsightFinding,
   requestInsightCancellation,
   restoreInsightFinding,
@@ -419,14 +420,25 @@ export class InsightRunCoordinator {
       session: session.value,
       language: input.language,
     });
-    if (prepared._tag === "err") return prepared;
+    const preparationFailure =
+      prepared._tag === "err" &&
+      (prepared.error === "evidence_unavailable" ||
+        prepared.error === "evidence_mismatch")
+        ? prepared.error
+        : undefined;
+    if (
+      prepared._tag === "err" &&
+      prepared.error !== "evidence_unavailable" &&
+      prepared.error !== "evidence_mismatch"
+    )
+      return err(prepared.error);
     const started = await this.insights.mutate({
       profileId: input.profileId,
       reviewId: input.reviewId,
       type: input.type,
       now: timestamp.value,
-      operation: (current) =>
-        beginInsightRun(current, {
+      operation: (current) => {
+        const begun = beginInsightRun(current, {
           id: runId.value,
           revision,
           provider,
@@ -435,13 +447,37 @@ export class InsightRunCoordinator {
           language: input.language,
           startedAt: timestamp.value,
           ...definedProps({ changeIntent: pack.value.changeIntent }),
-        }),
+        });
+        // A published capture can outlive a crash before the run record commits.
+        return begun._tag === "err" || preparationFailure === undefined
+          ? begun
+          : failInsightRun(
+              begun.value,
+              runId.value,
+              {
+                runId: runId.value,
+                reason: "failed",
+                category: preparationFailure,
+                retryable: true,
+                failedAt: timestamp.value,
+              },
+              timestamp.value,
+            );
+      },
     });
     if (started._tag === "err")
       return started.error === "already_running"
         ? err("already_running")
         : err("storage_unavailable");
     await hooks?.started(review.value, runId.value);
+    if (prepared._tag === "err")
+      return ok({
+        runId: runId.value,
+        type: input.type,
+        status: "failed",
+        failureReason: "failed",
+        ...definedProps({ failureCategory: preparationFailure }),
+      });
     const controller = new AbortController();
     this.active.set(runId.value, { runId: runId.value, controller });
     // A provider that streams no activity keeps the panel that shows the run's start time.

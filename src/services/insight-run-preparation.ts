@@ -1,5 +1,6 @@
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { definedProps } from "#src/domain/defined-props";
+import { insightEvidenceFailureCategory } from "#src/domain/insight-failure-diagnostic";
 import type {
   InsightEvidenceBundle,
   InsightEvidenceIdentity,
@@ -39,7 +40,8 @@ export class InsightRunPreparation {
       | "guide_artifact_unreadable"
       | "guide_input_too_large"
       | "stale_request"
-      | "storage_unavailable"
+      | "evidence_unavailable"
+      | "evidence_mismatch"
     >
   > {
     const guide =
@@ -73,7 +75,8 @@ export class InsightRunPreparation {
       snapshots: (context) =>
         this.contextPack.captureChangedHeadFiles(input.session, context),
     });
-    if (evidence._tag === "err") return err("storage_unavailable");
+    if (evidence._tag === "err")
+      return err(insightEvidenceFailureCategory(evidence.error.reason));
     return ok({
       evidence: evidence.value,
       ...definedProps({
