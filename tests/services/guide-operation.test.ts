@@ -27,7 +27,20 @@ async function artifacts(
     writeFile(contextPath, context),
     writeFile(patchPath, patch),
   ]);
-  return { contextPath, patchPath, language: "vi" as const };
+  return {
+    contextPath,
+    patchPath,
+    language: "vi" as const,
+    evidence: {
+      identity: {
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40),
+        patchHash: "c".repeat(64),
+      },
+      bundleId: "d".repeat(64),
+      entryPageId: `${"d".repeat(64)}-p1`,
+    } as never,
+  };
 }
 describe("complete Guide preparation", () => {
   it("supplies exact inventory, complete evidence, selected language and strict schema", async () => {
@@ -36,10 +49,11 @@ describe("complete Guide preparation", () => {
       "Generate a Guide for the PR reviewer from the supplied immutable patch.",
     );
     expect(result.prompt).toContain('BCP 47 tag "vi"');
-    expect(result.prompt).toContain("INVENTORY:\n\n");
-    expect(result.prompt).toContain('"id":"f1"');
-    expect(result.prompt).toContain("REVIEW CONTEXT:\n\nReview evidence");
-    expect(result.prompt).toContain("IMMUTABLE PATCH:\n\ndiff --git");
+    expect(result.inventory[0]?.id).toBe("f1");
+    expect(result.patchText).toContain("diff --git");
+    expect(result.prompt).toContain("EVIDENCE ENTRY:");
+    expect(result.prompt).not.toContain("Review evidence");
+    expect(result.prompt).not.toContain("diff --git");
     expect(Buffer.byteLength(result.prompt)).toBeLessThanOrEqual(
       MAX_GUIDE_PROMPT_BYTES,
     );
@@ -69,7 +83,7 @@ describe("complete Guide preparation", () => {
       error: { reason: "inventory_too_large" },
     });
   });
-  it("refuses the final assembled prompt when individually bounded inputs do not fit", async () => {
+  it("keeps the reference prompt bounded when complete inputs would not fit", async () => {
     const metadata = Array.from(
       { length: 2100 },
       (_, index) =>
@@ -84,9 +98,14 @@ describe("complete Guide preparation", () => {
     const result = await prepareGuidePrompt(
       await artifacts(patch, "c".repeat(512 * 1024)),
     );
-    expect(result._tag).toBe("err");
-    if (result._tag === "err")
-      expect(result.error.reason).toBe("prompt_too_large");
+    expect(result._tag).toBe("ok");
+    if (result._tag === "ok") {
+      expect(Buffer.byteLength(result.value.prompt)).toBeLessThanOrEqual(
+        MAX_GUIDE_PROMPT_BYTES,
+      );
+      expect(result.value.patchText).toBe(patch);
+      expect(result.value.prompt).not.toContain("x".repeat(100));
+    }
   });
   it("refuses an empty patch", async () => {
     expect(await prepareGuidePrompt(await artifacts(""))).toEqual({

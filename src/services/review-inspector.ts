@@ -16,6 +16,7 @@ type InspectorInput = {
   readonly fileSnapshots?: Readonly<Record<string, string>>;
   readonly debugPath?: string;
   readonly allowedRevisions?: ReadonlyArray<string>;
+  readonly capturedHeadSha?: string;
   readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string>;
 };
 type InspectorDebug = {
@@ -101,7 +102,7 @@ export class ReviewInspector {
       "show",
       "--format=",
       "--no-ext-diff",
-      revision,
+      revision === "HEAD" ? (this.input.capturedHeadSha ?? revision) : revision,
     ] as const;
     this.gitShowCount += 1;
     await this.persistDebug();

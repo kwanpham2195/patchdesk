@@ -7,6 +7,13 @@ import {
   type EvidenceRecord,
 } from "./insight-evidence";
 
+/** Measures a text evidence result after API JSON escaping. */
+export function encodedEvidenceResponseBytes(text: string): number {
+  return new TextEncoder().encode(
+    JSON.stringify({ content: [{ type: "text", text }] }),
+  ).length;
+}
+
 /** Packs final records with reserved header and continuation space. */
 export class InsightEvidencePages {
   private next = 1;
@@ -22,14 +29,15 @@ export class InsightEvidencePages {
     const groups: Array<Array<EvidenceRecord>> = [[]];
     let bytes = 0;
     for (const record of records) {
-      const size = new TextEncoder().encode(
-        JSON.stringify(record) + "\n",
-      ).length;
-      if (size > EVIDENCE_RECORD_BYTES)
+      const recordText = JSON.stringify(record) + "\n";
+      if (new TextEncoder().encode(recordText).length > EVIDENCE_RECORD_BYTES)
         throw new Error("Evidence record exceeds bound");
+      const size =
+        encodedEvidenceResponseBytes(recordText) -
+        encodedEvidenceResponseBytes("");
       let group = groups.at(-1);
       if (group === undefined) throw new Error("Evidence page group missing");
-      // Two records are reserved for the header and continuation; their combined encoding fits 512 bytes.
+      // Reserve the header, continuation and API response envelope after JSON escaping.
       if (
         bytes + size > EVIDENCE_PAGE_BYTES - 512 ||
         group.length >= EVIDENCE_PAGE_LINES - 2
@@ -59,7 +67,7 @@ export class InsightEvidencePages {
         "",
       ].join("\n");
       if (
-        new TextEncoder().encode(text).length > EVIDENCE_PAGE_BYTES ||
+        encodedEvidenceResponseBytes(text) > EVIDENCE_PAGE_BYTES ||
         text.split("\n").length - 1 > EVIDENCE_PAGE_LINES
       )
         throw new Error("Evidence page exceeds bound");

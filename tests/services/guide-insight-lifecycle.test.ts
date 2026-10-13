@@ -171,7 +171,7 @@ describe("retained Guide lifecycle", () => {
     const value = await fixture({
       async invoke(input) {
         expect(input.guide?.inventory.map((file) => file.id)).toEqual(["f1"]);
-        expect(input.guide?.prompt).toContain("IMMUTABLE PATCH:");
+        expect(input.guide?.prompt).toContain("EVIDENCE ENTRY:");
         return ok(output);
       },
     });

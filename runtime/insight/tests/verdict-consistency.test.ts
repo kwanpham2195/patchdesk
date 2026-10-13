@@ -15,6 +15,7 @@ import * as v from "valibot";
 import { PatchdeskPaths } from "#app/adapters/storage/patchdesk-paths";
 import { parseReviewSessionId, parseWorkspaceProfileId } from "#app/domain/ids";
 
+import { insightEvidenceReferenceSchema } from "#app/services/insight-evidence-reference";
 import { modelReviewResultSchema } from "#runtime/src/patchdesk-insight-agent";
 import {
   canonicalizeProductionInvocation,
@@ -177,6 +178,26 @@ describe("rejected submission on disk", () => {
       model: "faux/test",
       reasoning: "low" as const,
       language: "en" as const,
+      evidence: v.parse(insightEvidenceReferenceSchema, {
+        identity: {
+          profileId,
+          sessionId,
+          reviewId:
+            "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+          runId: "insight-brief-1-aaaaaaaaaaaa-review",
+          type: "brief",
+          headSha: "a".repeat(40),
+          baseSha: "b".repeat(40),
+          patchHash: "c".repeat(64),
+          intentHash: null,
+        },
+        bundleId: "d".repeat(64),
+        directory: "/immutable/evidence",
+        entryPageId: `${"d".repeat(64)}-p1`,
+        pages: [],
+        sources: [],
+        manifest: { sha256: "e".repeat(64), bytes: 2 },
+      }),
     };
     expect(
       canonicalizeProductionInvocation({ type: "brief", input: shared }, paths),
@@ -187,6 +208,10 @@ describe("rejected submission on disk", () => {
           type: "walkthrough",
           input: {
             ...shared,
+            evidence: {
+              ...shared.evidence,
+              identity: { ...shared.evidence.identity, type: "walkthrough" },
+            },
             contextPath: paths.preparedContextFile(profileId, sessionId),
           },
         },
@@ -199,6 +224,10 @@ describe("rejected submission on disk", () => {
           type: "analysis",
           input: {
             ...shared,
+            evidence: {
+              ...shared.evidence,
+              identity: { ...shared.evidence.identity, type: "analysis" },
+            },
             contextPath: paths.preparedContextFile(profileId, sessionId),
             reviewInputPath: paths.preparedReviewInputFile(
               profileId,

@@ -7,7 +7,12 @@ import type {
 import type { InsightLanguage } from "#src/domain/insight-provider";
 import type { ReviewSession } from "#src/domain/review-session";
 import { err, ok, type Result } from "#src/domain/result";
-import { prepareGuidePrompt, type PreparedGuide } from "./guide-operation";
+import {
+  captureGuideEvidence,
+  composeGuidePrompt,
+  type PreparedGuide,
+} from "./guide-operation";
+import { insightEvidenceReference } from "./insight-evidence-reference";
 import { InsightEvidenceService } from "./insight-evidence-service";
 import type { ReviewContextPackService } from "./review-context-pack-service";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
@@ -39,7 +44,7 @@ export class InsightRunPreparation {
   > {
     const guide =
       input.identity.type === "guide"
-        ? await prepareGuidePrompt({
+        ? await captureGuideEvidence({
             contextPath: this.paths.preparedContextFile(
               input.identity.profileId,
               input.session.id,
@@ -72,7 +77,16 @@ export class InsightRunPreparation {
     return ok({
       evidence: evidence.value,
       ...definedProps({
-        guide: guide?._tag === "ok" ? guide.value : undefined,
+        guide:
+          guide?._tag === "ok"
+            ? {
+                ...guide.value,
+                prompt: composeGuidePrompt(
+                  insightEvidenceReference(evidence.value),
+                  input.language,
+                ),
+              }
+            : undefined,
       }),
     });
   }

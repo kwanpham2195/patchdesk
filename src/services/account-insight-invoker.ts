@@ -1,5 +1,6 @@
 import { MAX_GUIDE_PROMPT_BYTES } from "./guide-operation";
-import { readFile, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
+import { insightEvidenceReference } from "./insight-evidence-reference";
 
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
@@ -123,6 +124,9 @@ export class AccountInsightInvoker implements InsightInvoker {
     );
     if (resolvedArtifacts.some((path) => path === undefined))
       return err({ reason: "review_worktree_unavailable" as const });
+    if (input.evidence === undefined)
+      return err({ reason: "execution_failed" as const });
+    const evidence = insightEvidenceReference(input.evidence);
     const policy =
       "Read only the represented review revision. Patchdesk validates the result and owns all publication decisions.";
     // SAFETY: candidatePath is realpath-checked against this session's app-owned worktree and its immutable expected head above.
@@ -134,7 +138,7 @@ export class AccountInsightInvoker implements InsightInvoker {
           phase: "guide_input_missing",
         });
       const runTimeoutMs = await resolveWalkthroughTimeoutMs(
-        { contextPath: input.contextPath, patchPath: input.patchPath },
+        { contextPath: input.contextPath, patchPath: input.evidence.patchPath },
         options.signal,
       );
       const result = await this.clientFactory(this.executablePath).run(
@@ -161,8 +165,9 @@ export class AccountInsightInvoker implements InsightInvoker {
         return err({ reason: "review_worktree_unavailable" as const });
       const walkthroughPrompt = await prepareWalkthroughPrompt({
         contextPath,
-        patchPath,
+        patchPath: input.evidence.patchPath,
         language: input.language,
+        evidence,
       });
       if (walkthroughPrompt._tag === "err")
         return err(promptPreparationFailure(walkthroughPrompt.error));
@@ -174,7 +179,7 @@ export class AccountInsightInvoker implements InsightInvoker {
         return err({ reason: "execution_failed" as const });
       // Match the insight-runtime path: scale the run bound with the patch instead of a flat five minutes.
       const runTimeoutMs = await resolveWalkthroughTimeoutMs(
-        { contextPath, patchPath },
+        { contextPath, patchPath: input.evidence.patchPath },
         options.signal,
       );
       const result = await this.clientFactory(this.executablePath).run(
@@ -199,8 +204,9 @@ export class AccountInsightInvoker implements InsightInvoker {
       if (briefPatchPath === undefined)
         return err({ reason: "review_worktree_unavailable" as const });
       const briefPrompt = await prepareBriefPrompt({
-        patchPath: briefPatchPath,
+        patchPath: input.evidence.patchPath,
         language: input.language,
+        evidence,
       });
       if (briefPrompt._tag === "err")
         return err(promptPreparationFailure(briefPrompt.error));
@@ -234,21 +240,8 @@ export class AccountInsightInvoker implements InsightInvoker {
       patchPath === undefined
     )
       return err({ reason: "review_worktree_unavailable" as const });
-    const [context, reviewInput, fullPatch] = await Promise.all([
-      readFile(contextPath, "utf8").catch(() => undefined),
-      readFile(reviewInputPath, "utf8").catch(() => undefined),
-      readFile(patchPath, "utf8").catch(() => undefined),
-    ]);
-    if (
-      context === undefined ||
-      reviewInput === undefined ||
-      fullPatch === undefined
-    )
-      return err({ reason: "review_worktree_unavailable" as const });
     const analysisPrompt = composeReviewPrompt({
-      reviewInput,
-      context,
-      fullPatch,
+      evidence,
       language: input.language,
     });
     const prompt = buildCodexAnalysisPrompt({ analysisPrompt, policy });

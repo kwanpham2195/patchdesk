@@ -14,8 +14,25 @@ import {
 import type { FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 
 import { PatchdeskPaths } from "#app/adapters/storage/patchdesk-paths";
-import { parseReviewSessionId, parseWorkspaceProfileId } from "#app/domain/ids";
+import {
+  parseContentHash,
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+} from "#app/domain/ids";
 import { ReviewInspector } from "#app/services/review-inspector";
+import { InsightEvidenceService } from "#app/services/insight-evidence-service";
+import {
+  insightEvidenceReference,
+  insightEvidenceReferenceSchema,
+} from "#app/services/insight-evidence-reference";
+import { hashReviewArtifactContent } from "#app/services/review-artifact-hash";
+import * as v from "valibot";
+const reference = v.parse(
+  insightEvidenceReferenceSchema,
+  JSON.parse(
+    '{"identity":{"profileId":"profile","reviewId":"github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa","sessionId":"github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__0123456789ab","runId":"insight-brief-1-aaaaaaaaaaaa-review","type":"brief","headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseSha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","patchHash":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","intentHash":null},"bundleId":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","directory":"/fixture","entryPageId":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd-p1","pages":[],"sources":[],"manifest":{"sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","bytes":2}}',
+  ),
+);
 
 import {
   createAnalysisAgent,
@@ -139,19 +156,19 @@ const reviewSkillPath = new URL(
 ).pathname;
 
 /** Inspectors that always answer, so a test pins the runner rather than a budget. */
-function benignInspectors() {
+function benignInspectors(unavailable = false) {
   return {
     async listChangedFiles() {
-      return { files: ["src/a.ts"] };
+      return { files: unavailable ? [] : ["src/a.ts"] };
     },
     async searchFiles() {
       return { files: [] };
     },
     async readFileRange() {
-      return { content: "" };
+      return unavailable ? { denied: true as const } : { content: "" };
     },
     async gitShow() {
-      return { content: "" };
+      return unavailable ? { denied: true as const } : { content: "" };
     },
   };
 }
@@ -170,15 +187,24 @@ function fake(responses: ReadonlyArray<FauxResponseStep>) {
 const canonicalSessionId =
   "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__0123456789ab";
 
-function canonicalIdentity() {
+function canonicalIdentity(patch = "") {
   const profile = parseWorkspaceProfileId("profile");
   const session = parseReviewSessionId(canonicalSessionId);
-  if (profile._tag === "err" || session._tag === "err")
+  const hash = parseContentHash(hashReviewArtifactContent(patch));
+  if (profile._tag === "err" || session._tag === "err" || hash._tag === "err")
     throw new Error("fixture identity is invalid");
-  return { profileId: profile.value, sessionId: session.value };
+  return {
+    profileId: profile.value,
+    sessionId: session.value,
+    patchHash: hash.value,
+  };
 }
 
-function briefProductionInput(patchPath: string, language: "en" | "vi" = "en") {
+function briefProductionInput(
+  patchPath: string,
+  language: "en" | "vi" = "en",
+  evidence = reference,
+) {
   const { profileId, sessionId } = canonicalIdentity();
   return {
     profileId,
@@ -187,6 +213,7 @@ function briefProductionInput(patchPath: string, language: "en" | "vi" = "en") {
     model: "faux/test",
     reasoning: "low" as const,
     language,
+    evidence,
   };
 }
 
@@ -361,24 +388,8 @@ describe("one-shot insight runtime", () => {
     await expect(
       runPatchdeskChild(analysisInvocation(), {
         providers: [provider.provider],
-        inspectors: {
-          async listChangedFiles() {
-            return { files: ["src/a.ts"] };
-          },
-          async searchFiles() {
-            return { files: [] };
-          },
-          async readFileRange() {
-            return { content: "" };
-          },
-          async gitShow() {
-            return { content: "" };
-          },
-        },
-        skillPath: new URL(
-          "../../../src/skills/patchdesk-code-review/SKILL.md",
-          import.meta.url,
-        ).pathname,
+        inspectors: benignInspectors(),
+        skillPath: reviewSkillPath,
       }),
     ).resolves.toEqual({ ok: true, value: analysis });
     expect(provider.state.callCount).toBe(1);
@@ -610,24 +621,8 @@ describe("one-shot insight runtime", () => {
     await expect(
       runPatchdeskChild(analysisInvocation(), {
         providers: [analysisProvider.provider],
-        inspectors: {
-          async listChangedFiles() {
-            return { files: [] };
-          },
-          async searchFiles() {
-            return { files: [] };
-          },
-          async readFileRange() {
-            return { denied: true };
-          },
-          async gitShow() {
-            return { denied: true };
-          },
-        },
-        skillPath: new URL(
-          "../../../src/skills/patchdesk-code-review/SKILL.md",
-          import.meta.url,
-        ).pathname,
+        inspectors: benignInspectors(true),
+        skillPath: reviewSkillPath,
       }),
     ).resolves.toEqual({ ok: true, value: analysis });
     expect(analysisTools).toEqual([
@@ -669,20 +664,7 @@ describe("one-shot insight runtime", () => {
     await expect(
       runPatchdeskChild(analysisInvocation(), {
         providers: [provider.provider],
-        inspectors: {
-          async listChangedFiles() {
-            return { files: [] };
-          },
-          async searchFiles() {
-            return { files: [] };
-          },
-          async readFileRange() {
-            return { denied: true };
-          },
-          async gitShow() {
-            return { denied: true };
-          },
-        },
+        inspectors: benignInspectors(true),
         skillPath,
       }),
     ).resolves.toEqual({ ok: true, value: analysis });
@@ -761,6 +743,10 @@ describe("one-shot insight runtime", () => {
       contextPath: paths.preparedContextFile(profileId, sessionId),
       reviewInputPath: paths.preparedReviewInputFile(profileId, sessionId),
       worktreePath: paths.worktreeDirectory(profileId, sessionId),
+      evidence: {
+        ...reference,
+        identity: { ...reference.identity, type: "analysis" as const },
+      },
     };
     expect(
       canonicalizeProductionInvocation({ type: "analysis", input }, paths),
@@ -791,12 +777,22 @@ describe("one-shot insight runtime", () => {
       const root = await mkdtemp(join(tmpdir(), "patchdesk-brief-"));
       try {
         const paths = PatchdeskPaths.forTest(root);
-        const { profileId, sessionId } = canonicalIdentity();
+        const { profileId, sessionId, patchHash } =
+          canonicalIdentity(briefPatch);
         const patchPath = paths.patchFile(profileId, sessionId);
         await mkdir(paths.sessionDirectory(profileId, sessionId), {
           recursive: true,
         });
         await writeFile(patchPath, briefPatch, "utf8");
+        const captured = await new InsightEvidenceService(paths).prepare({
+          identity: {
+            ...reference.identity,
+            patchHash,
+          },
+          patchPath,
+          snapshots: async () => ({}),
+        });
+        if (captured._tag === "err") throw new Error(captured.error.reason);
         let systemPrompt = "";
         let briefTools: ReadonlyArray<string> = [];
         const provider = fake([
@@ -813,7 +809,14 @@ describe("one-shot insight runtime", () => {
         ]);
         await expect(
           runProductionChild(
-            { type: "brief", input: briefProductionInput(patchPath, language) },
+            {
+              type: "brief",
+              input: briefProductionInput(
+                patchPath,
+                language,
+                insightEvidenceReference(captured.value),
+              ),
+            },
             new AbortController().signal,
             {
               onHandle: () => undefined,
@@ -822,12 +825,14 @@ describe("one-shot insight runtime", () => {
             },
           ),
         ).resolves.toEqual({ ok: true, value: brief });
-        expect(briefTools).toEqual(["submit_patchdesk_result"]);
-        expect(systemPrompt).toContain("BRIEF CITATION MANIFEST");
+        expect(briefTools).toEqual([
+          "submit_patchdesk_result",
+          "read_evidence_page",
+          "search_evidence",
+        ]);
+        expect(systemPrompt).toContain("EVIDENCE ENTRY:");
         expect(systemPrompt).toContain(rule);
-        expect(systemPrompt).toContain("h1 | hunk | @@ -1,2 +1,3 @@");
-        // ADR 0040: the manifest is hunks only now -- nothing cites a
-        // description or commit alias, so the prompt carries neither section.
+        expect(systemPrompt).not.toContain("h1 | hunk | @@ -1,2 +1,3 @@");
         expect(systemPrompt).not.toContain("PULL REQUEST DESCRIPTION");
         expect(systemPrompt).not.toContain("COMMITS:");
         expect(systemPrompt).not.toContain("d1 | description");

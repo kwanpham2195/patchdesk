@@ -2,14 +2,21 @@ import { describe, expect, it } from "vitest";
 import { composeReviewPrompt } from "#src/services/review-rubric";
 
 const prompt = composeReviewPrompt({
-  reviewInput: "# Review input",
-  context: '{"projectReviewCriteria":[]}',
-  fullPatch: "patch",
+  evidence: {
+    identity: {
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
+      patchHash: "c".repeat(64),
+    },
+    bundleId: "d".repeat(64),
+    entryPageId: `${"d".repeat(64)}-p1`,
+  } as never,
   language: "en",
 });
 
 describe("review rubric", () => {
-  it("uses the complete patch", () => expect(prompt).toContain("patch"));
+  it("references the complete captured patch", () =>
+    expect(prompt).toContain(`patch hash: ${"c".repeat(64)}`));
 
   it("asks for a merge decision on the represented change, whatever its source (#495)", () => {
     expect(prompt.split("\n")[0]).toBe(
@@ -50,11 +57,10 @@ describe("review rubric", () => {
   });
 
   it("labels each input section", () => {
-    expect(prompt).toContain("REVIEW INPUT:\n\n# Review input");
-    expect(prompt).toContain(
-      'REVIEW CONTEXT DOCUMENT:\n\n{"projectReviewCriteria":[]}',
-    );
-    expect(prompt).toContain("PATCH ARTIFACT:\n\npatch");
+    expect(prompt).toContain(`EVIDENCE ENTRY: ${"d".repeat(64)}-p1`);
+    expect(prompt).toContain("Captured head:");
+    expect(prompt).not.toContain("PATCH ARTIFACT:");
+    expect(prompt).not.toContain("REVIEW CONTEXT DOCUMENT:");
   });
 
   it("owns the stated-goal check at P2, with a local Review's change intent as its goal", () => {

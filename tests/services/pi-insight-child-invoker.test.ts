@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { buildGuideInventory } from "#src/domain/guide";
 import { describe, expect, it } from "vitest";
 
@@ -9,14 +8,52 @@ import {
   type CommandRequest,
 } from "#src/adapters/github/command-runner";
 import {
-  PiInsightChildInvoker,
+  PiInsightChildInvoker as ReferenceInsightChildInvoker,
   unavailablePiInsightInvoker,
 } from "#src/services/pi-insight-child-invoker";
 import { ANALYSIS_RUN_TIMEOUT_MS } from "#src/services/child-invocation";
 import type { InsightInvocationInput } from "#src/services/insight-run-coordinator";
 
+import { insightEvidenceReference } from "#src/services/insight-evidence-reference";
+import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
+import type { WalkthroughInput } from "#src/services/walkthrough-operation";
+
 const sessionId =
   "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__0123456789ab";
+const evidence: InsightEvidenceBundle = {
+  identity: {
+    profileId: "profile",
+    reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+    sessionId,
+    runId: "insight-analysis-1-aaaaaaaaaaaa-review",
+    type: "analysis",
+    headSha: "a".repeat(40),
+    baseSha: "b".repeat(40),
+    patchHash: "c".repeat(64),
+    intentHash: null,
+  },
+  bundleId: "d".repeat(64),
+  directory: "/app/evidence",
+  entryPageId: `${"d".repeat(64)}-p1`,
+  pages: [],
+  sources: [],
+  manifestText: "{}",
+  patchPath: "/app/evidence/source-1.txt",
+} as never;
+class PiInsightChildInvoker extends ReferenceInsightChildInvoker {
+  override invokeWalkthrough(
+    input: WalkthroughInput,
+    timeoutMs: number,
+    options?: { readonly signal?: AbortSignal },
+  ) {
+    return super.invokeWalkthrough(
+      { ...input, evidence: insightEvidenceReference(evidence) },
+      timeoutMs,
+      options,
+    );
+  }
+}
+
 const walkthrough = {
   citationVersion: 2,
   title: "Walkthrough",
@@ -90,6 +127,10 @@ function invocation(
     model: "deepseek/deepseek-v4-flash",
     reasoning: "low",
     language: "en",
+    evidence: {
+      ...evidence,
+      identity: { ...evidence.identity, type: overrides.type ?? "analysis" },
+    },
     ...overrides,
   } as never;
 }
@@ -132,7 +173,10 @@ describe("PiInsightChildInvoker", () => {
         model: "deepseek/deepseek-v4-flash",
         reasoning: "low",
         language: "en",
-        expectedPromptHash: createHash("sha256").update(prompt).digest("hex"),
+        evidence: insightEvidenceReference({
+          ...evidence,
+          identity: { ...evidence.identity, type: "guide" },
+        }),
       },
     });
   });
@@ -187,6 +231,7 @@ describe("PiInsightChildInvoker", () => {
             model: "deepseek/deepseek-v4-flash",
             reasoning: "low",
             language: "en",
+            evidence: insightEvidenceReference(evidence),
           },
         }),
       }),

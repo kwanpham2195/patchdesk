@@ -4,6 +4,9 @@ import {
   guidePromptFitsTransport,
 } from "#app/services/guide-operation";
 import { guideModelOutputSchema } from "#app/domain/guide";
+import { insightEvidenceReferenceSchema } from "#app/services/insight-evidence-reference";
+import type { InsightEvidenceBundle } from "#app/domain/insight-evidence";
+import type { InsightEvidenceStore } from "#app/adapters/storage/insight-evidence-store";
 import { readFile } from "node:fs/promises";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -92,6 +95,7 @@ export const productionAnalysisInvocationSchema = v.strictObject({
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
   language: languageSchema,
+  evidence: insightEvidenceReferenceSchema,
 });
 
 /** Production child Walkthrough input likewise never accepts model prompt text. */
@@ -103,6 +107,7 @@ export const productionWalkthroughInvocationSchema = v.strictObject({
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
   language: languageSchema,
+  evidence: insightEvidenceReferenceSchema,
 });
 
 /**
@@ -116,6 +121,7 @@ export const productionBriefInvocationSchema = v.strictObject({
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
   language: languageSchema,
+  evidence: insightEvidenceReferenceSchema,
 });
 
 /** Guide generation uses the shared model schema and canonical artifact paths. */
@@ -131,7 +137,6 @@ export const guideInvocationSchema = v.strictObject({
 export type GuideInvocation = v.InferOutput<typeof guideInvocationSchema>;
 export const productionGuideInvocationSchema = v.strictObject({
   ...productionWalkthroughInvocationSchema.entries,
-  expectedPromptHash: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
 });
 
 export type AnalysisInvocation = v.InferOutput<typeof analysisInvocationSchema>;
@@ -419,7 +424,7 @@ function inspectorTools(
     {
       name: "git_show",
       label: "Show a Git revision",
-      description: `Show the prepared review head commit. revision must be exactly HEAD or the head SHA named in the review context document; any other value, and output over 512 KiB, is denied. ${boundary}`,
+      description: `Show supplementary captured-head commit evidence, not the canonical represented Review diff. revision must be exactly HEAD (resolved to the captured SHA) or that captured head SHA; any other value, and output over 512 KiB, is denied. ${boundary}`,
       parameters: jsonSchemaFor(gitShowInput),
       async execute(_toolCallId, args) {
         const data = v.parse(gitShowInput, args);
@@ -565,6 +570,53 @@ export function createBriefAgent(input: BriefInvocation): CreatedInsightAgent {
       usesSubagent: false,
     },
   };
+}
+
+/** Every production API agent reads only the parent-indexed, digest-checked bundle. */
+export function createEvidenceTools(
+  bundle: InsightEvidenceBundle,
+  store: InsightEvidenceStore,
+): ReadonlyArray<AgentTool> {
+  const readInput = v.strictObject({ pageId: v.string() });
+  const searchInput = v.strictObject({
+    query: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+    cursor: v.optional(v.string()),
+  });
+  return [
+    {
+      name: "read_evidence_page",
+      label: "Read captured evidence page",
+      description:
+        "Read one validated NDJSON page by its parent-indexed page ID. Follow its continuation and entry links. Page lines are not source citation lines.",
+      parameters: jsonSchemaFor(readInput),
+      async execute(_id, args, signal) {
+        if (signal?.aborted) throw new Error("cancelled");
+        const data = v.parse(readInput, args);
+        const result = await store.readPage(bundle, data.pageId);
+        if (signal?.aborted) throw new Error("cancelled");
+        if (result._tag === "err") throw new Error(result.error.reason);
+        return { content: [textContent(result.value)], details: undefined };
+      },
+    },
+    {
+      name: "search_evidence",
+      label: "Search captured evidence",
+      description:
+        "Literal case-sensitive search across captured logical text, including fragment boundaries. Query is 1 to 200 characters. Results contain source coordinates and page IDs; cursor is bound to this bundle and query. Empty matches with null cursor means no match or end, not denial.",
+      parameters: jsonSchemaFor(searchInput),
+      async execute(_id, args, signal) {
+        if (signal?.aborted) throw new Error("cancelled");
+        const data = v.parse(searchInput, args);
+        const result = await store.search(bundle, data.query, data.cursor);
+        if (signal?.aborted) throw new Error("cancelled");
+        if (result._tag === "err") throw new Error(result.error.reason);
+        return {
+          content: [textContent(JSON.stringify(result.value))],
+          details: undefined,
+        };
+      },
+    },
+  ];
 }
 
 export { modelReviewResultSchema };

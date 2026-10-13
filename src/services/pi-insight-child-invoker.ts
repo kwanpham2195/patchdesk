@@ -1,4 +1,7 @@
-import { createHash } from "node:crypto";
+import {
+  insightEvidenceReference,
+  type InsightEvidenceReference,
+} from "./insight-evidence-reference";
 import { resolveWalkthroughTimeoutMs } from "./child-invocation";
 import { join } from "node:path";
 
@@ -19,7 +22,6 @@ import type { BriefInput } from "./brief-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,
   BRIEF_RUN_TIMEOUT_MS,
-  invokeWalkthroughWithResolvedTimeout,
 } from "./child-invocation";
 import type {
   InsightInvocationInput,
@@ -118,6 +120,17 @@ export class PiInsightChildInvoker implements InsightInvoker {
     const reasoning = input.reasoning;
     if (reasoning === "minimal" || reasoning === "xhigh")
       return err({ reason: "execution_failed" });
+    if (
+      input.evidence === undefined ||
+      input.evidence.identity.profileId !== input.profileId ||
+      input.evidence.identity.reviewId !== input.reviewId ||
+      input.evidence.identity.sessionId !== input.sessionId ||
+      input.evidence.identity.runId !== input.runId ||
+      input.evidence.identity.type !== input.type ||
+      input.evidence.identity.headSha !== input.expectedHeadSha
+    )
+      return err({ reason: "execution_failed" });
+    const evidence = insightEvidenceReference(input.evidence);
     if (input.type === "guide") {
       if (input.guide === undefined) return err({ reason: "execution_failed" });
       const timeout = await resolveWalkthroughTimeoutMs(
@@ -135,9 +148,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
             model: input.model,
             reasoning,
             language: input.language,
-            expectedPromptHash: createHash("sha256")
-              .update(input.guide.prompt)
-              .digest("hex"),
+            evidence,
           },
         },
         timeout,
@@ -145,8 +156,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
       );
     }
     if (input.type === "walkthrough")
-      return invokeWalkthroughWithResolvedTimeout(
-        this,
+      return this.invokeWalkthrough(
         {
           profileId: input.profileId,
           sessionId: input.sessionId,
@@ -155,7 +165,9 @@ export class PiInsightChildInvoker implements InsightInvoker {
           model: input.model,
           reasoning,
           language: input.language,
+          evidence,
         },
+        await resolveWalkthroughTimeoutMs(input, options.signal),
         options,
       );
     if (input.type === "brief") {
@@ -168,7 +180,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
         language: input.language,
       };
       const brief = await this.runChild(
-        { type: "brief", input: briefInput },
+        { type: "brief", input: { ...briefInput, evidence } },
         BRIEF_RUN_TIMEOUT_MS,
         options.signal,
       );
@@ -203,7 +215,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
       language: input.language,
     };
     const analysis = await this.runChild(
-      { type: "analysis", input: analysisInput },
+      { type: "analysis", input: { ...analysisInput, evidence } },
       ANALYSIS_RUN_TIMEOUT_MS,
       options.signal,
     );
@@ -221,7 +233,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
    * only do that through a seam it calls.
    */
   async invokeWalkthrough(
-    input: WalkthroughInput,
+    input: WalkthroughInput & { readonly evidence: InsightEvidenceReference },
     timeoutMs: number,
     options?: { readonly signal?: AbortSignal },
   ): Promise<Result<WalkthroughOutput, PiInsightChildFailure>> {

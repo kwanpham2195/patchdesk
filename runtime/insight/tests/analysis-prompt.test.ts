@@ -1,13 +1,32 @@
 import { describe, expect, it } from "vitest";
 
+import * as v from "valibot";
 import { composeReviewPrompt } from "#app/services/review-rubric";
+import { insightEvidenceReferenceSchema } from "#app/services/insight-evidence-reference";
 
 import { createAnalysisAgent } from "#runtime/src/patchdesk-insight-agent";
 
 const shared = composeReviewPrompt({
-  reviewInput: "# Review input",
-  context: '{"projectReviewCriteria":[]}',
-  fullPatch: "diff --git a/src/a.ts b/src/a.ts",
+  evidence: v.parse(insightEvidenceReferenceSchema, {
+    identity: {
+      profileId: "profile",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      sessionId:
+        "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__0123456789ab",
+      runId: "insight-analysis-1-aaaaaaaaaaaa-review",
+      type: "analysis",
+      intentHash: null,
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
+      patchHash: "c".repeat(64),
+    },
+    bundleId: "d".repeat(64),
+    entryPageId: `${"d".repeat(64)}-p1`,
+    directory: "/captured",
+    pages: [],
+    sources: [],
+    manifest: { sha256: "c".repeat(64), bytes: 2 },
+  }),
   language: "en",
 });
 
@@ -79,8 +98,8 @@ describe("Pi Analysis system prompt", () => {
 
   it("labels each input section", () => {
     const systemPrompt = analysisSystemPrompt();
-    expect(systemPrompt).toContain("REVIEW INPUT:");
-    expect(systemPrompt).toContain("REVIEW CONTEXT DOCUMENT:");
-    expect(systemPrompt).toContain("PATCH ARTIFACT:");
+    expect(systemPrompt).toContain("EVIDENCE ENTRY:");
+    expect(systemPrompt).toContain("Captured head:");
+    expect(systemPrompt).not.toContain("PATCH ARTIFACT:");
   });
 });
