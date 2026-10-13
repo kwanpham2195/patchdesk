@@ -1,4 +1,8 @@
 import {
+  insightFailureDiagnostic,
+  type InsightFailureDiagnostic,
+} from "#src/domain/insight-failure-diagnostic";
+import {
   spawn,
   type ChildProcess,
   type SpawnOptions,
@@ -57,8 +61,13 @@ export type PiCliModel = {
 };
 
 /** Typed failures returned by the pi RPC adapter. */
-export type PiRpcFailure = {
-  readonly reason: InsightFailureCategory | "cancelled";
+export type PiRpcFailure = InsightFailureDiagnostic & {
+  readonly reason:
+    | Exclude<
+        InsightFailureCategory,
+        "evidence_unavailable" | "evidence_mismatch" | "analysis_incomplete"
+      >
+    | "cancelled";
   readonly phase:
     | "version"
     | "start"
@@ -207,7 +216,17 @@ export class PiRpcClient {
       input.runTimeoutMs ?? RUN_TIMEOUT_MS,
     );
     try {
-      return await runPrompt(channel, input, controller.signal);
+      const result = await runPrompt(channel, input, controller.signal);
+      return result._tag === "err"
+        ? err({
+            ...result.error,
+            ...insightFailureDiagnostic(
+              result.error.reason,
+              result.error.phase,
+            ),
+            phase: result.error.phase,
+          })
+        : result;
     } finally {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);

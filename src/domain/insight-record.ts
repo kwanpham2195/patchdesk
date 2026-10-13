@@ -96,15 +96,22 @@ export type AnalysisVerification = {
   readonly checkedStepIndexes: ReadonlyArray<number>;
 };
 /** Safe, provider-independent categories suitable for durable user-facing diagnostics. */
+export const INSIGHT_FAILURE_CATEGORIES = [
+  "authentication_required",
+  "rate_limited",
+  "runtime_unavailable",
+  "review_worktree_unavailable",
+  "timed_out",
+  "execution_failed",
+  "invalid_result",
+  "unexpected_failure",
+  "evidence_unavailable",
+  "evidence_mismatch",
+  "analysis_incomplete",
+] as const;
+/** Durable failure vocabulary shared by storage and API projections. */
 export type InsightFailureCategory =
-  | "authentication_required"
-  | "rate_limited"
-  | "runtime_unavailable"
-  | "review_worktree_unavailable"
-  | "timed_out"
-  | "execution_failed"
-  | "invalid_result"
-  | "unexpected_failure";
+  (typeof INSIGHT_FAILURE_CATEGORIES)[number];
 export type InsightFailure = {
   readonly runId: InsightRunId;
   readonly reason: "cancelled" | "failed" | "invalid_result" | "superseded";

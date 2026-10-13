@@ -1,3 +1,4 @@
+import { INSIGHT_FAILURE_CATEGORIES } from "#src/domain/insight-record";
 import * as v from "valibot";
 
 import {
@@ -54,18 +55,7 @@ export const insightFields = {
   replacementFailure: v.optional(
     v.strictObject({
       runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-      category: v.optional(
-        v.picklist([
-          "authentication_required",
-          "rate_limited",
-          "runtime_unavailable",
-          "review_worktree_unavailable",
-          "timed_out",
-          "execution_failed",
-          "invalid_result",
-          "unexpected_failure",
-        ]),
-      ),
+      category: v.optional(v.picklist(INSIGHT_FAILURE_CATEGORIES)),
       model: v.pipe(v.string(), v.minLength(1)),
       reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
       retryable: v.boolean(),

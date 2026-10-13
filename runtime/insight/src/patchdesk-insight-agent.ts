@@ -1,3 +1,4 @@
+import { incompleteAnalysisSchema } from "#app/domain/analysis-invocation-outcome";
 import {
   MAX_GUIDE_PROMPT_BYTES,
   GUIDE_RUNTIME_SUBMISSION_SUFFIX,
@@ -19,6 +20,7 @@ import { parseReviewSessionId } from "#app/domain/ids";
 import { INSIGHT_LANGUAGES } from "#app/domain/insight-provider";
 import {
   modelReviewResultSchema,
+  parseModelReviewResult,
   requiredVerdictForFindings,
 } from "#app/domain/review-result";
 import { walkthroughOutputSchema } from "#app/services/walkthrough-operation";
@@ -172,11 +174,15 @@ type SubmittedInsightResult =
 type SubmissionState = {
   submitted: boolean;
   value?: SubmittedInsightResult;
+  incomplete?: v.InferOutput<typeof incompleteAnalysisSchema>;
 };
 
 type AgentExecutionState = {
   /** The one submitted result, or undefined while nothing has been submitted. */
   readonly submittedResult: () => SubmittedInsightResult | undefined;
+  readonly incompleteAnalysis: () =>
+    | v.InferOutput<typeof incompleteAnalysisSchema>
+    | undefined;
 };
 
 /**
@@ -339,12 +345,50 @@ function createResultTool(
         );
       const mismatch = verdictMismatchDetail(parsed.output);
       if (mismatch !== undefined) throw new Error(mismatch);
+      if (
+        schema === modelReviewResultSchema &&
+        parseModelReviewResult(parsed.output)._tag === "err"
+      )
+        throw new Error(
+          "The submitted Analysis has invalid finding identifiers or locations.",
+        );
       // The one submission is spent only once a result is recorded, so a
       // rejected one leaves the model its chance to correct and resubmit.
       state.submitted = true;
       state.value = parsed.output;
       return {
         content: [textContent("Result recorded.")],
+        details: undefined,
+        terminate: true,
+      };
+    },
+  };
+}
+
+function createIncompleteAnalysisTool(state: SubmissionState): AgentTool {
+  return {
+    name: "report_incomplete_analysis",
+    label: "Report incomplete Analysis",
+    description:
+      "Report that the Analysis cannot be completed. This ends the operation without a merge verdict.",
+    parameters: jsonSchemaFor(incompleteAnalysisSchema),
+    executionMode: "sequential",
+    async execute(_toolCallId, args) {
+      if (state.submitted)
+        return {
+          content: [textContent("Result already recorded.")],
+          details: undefined,
+          terminate: true,
+        };
+      const parsed = v.safeParse(incompleteAnalysisSchema, args);
+      if (!parsed.success)
+        throw new Error(
+          "Incomplete Analysis requires a valid reason and nonblank detail at most 200 characters.",
+        );
+      state.submitted = true;
+      state.incomplete = parsed.output;
+      return {
+        content: [textContent("Incomplete Analysis recorded.")],
         details: undefined,
         terminate: true,
       };
@@ -454,7 +498,10 @@ export type CreatedInsightAgent = {
 };
 
 function executionState(state: SubmissionState): AgentExecutionState {
-  return { submittedResult: () => state.value };
+  return {
+    submittedResult: () => state.value,
+    incompleteAnalysis: () => state.incomplete,
+  };
 }
 
 /**
@@ -475,11 +522,12 @@ export function createAnalysisAgent(
   const state: SubmissionState = { submitted: false };
   return {
     spec: {
-      systemPrompt: `${input.prompt}\n\n${skillSection(skill)}\n\nFollow the Patchdesk review skill above. Use only the supplied inspection tools. Submit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
+      systemPrompt: `${input.prompt}\n\n${skillSection(skill)}\n\nFollow the Patchdesk review skill above. Use only the supplied inspection tools. Submit exactly one complete result with submit_patchdesk_result, or report_incomplete_analysis if you cannot complete the review. Do not submit a partial merge verdict or fabricate a Finding. Low confidence and missing page-read coverage alone do not establish incompleteness. Do not provide an independent answer.`,
       model: input.model,
       thinkingLevel: input.reasoning,
       tools: [
         createResultTool(modelReviewResultSchema, state),
+        createIncompleteAnalysisTool(state),
         ...inspectorTools(operations, state),
       ],
     },
@@ -491,6 +539,7 @@ export function createAnalysisAgent(
         "read_file_range",
         "git_show",
         "submit_patchdesk_result",
+        "report_incomplete_analysis",
       ],
       usesSkill: true,
       usesSandbox: false,

@@ -1,3 +1,4 @@
+import { INSIGHT_FAILURE_CATEGORIES } from "#src/domain/insight-record";
 import { createHash } from "node:crypto";
 import { parseRetainedGuide } from "#src/domain/guide";
 import {
@@ -79,18 +80,7 @@ const activeRunSchemaV2 = v.strictObject({
 const failureFields = {
   runId: v.pipe(v.string(), v.minLength(1)),
   reason: v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
-  category: v.optional(
-    v.picklist([
-      "authentication_required",
-      "rate_limited",
-      "runtime_unavailable",
-      "review_worktree_unavailable",
-      "timed_out",
-      "execution_failed",
-      "invalid_result",
-      "unexpected_failure",
-    ]),
-  ),
+  category: v.optional(v.picklist(INSIGHT_FAILURE_CATEGORIES)),
   provider: providerSchema,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,

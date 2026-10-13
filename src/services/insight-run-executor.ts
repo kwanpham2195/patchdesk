@@ -1,3 +1,7 @@
+import {
+  insightFailureDiagnostic,
+  insightEvidenceFailureCategory,
+} from "#src/domain/insight-failure-diagnostic";
 import * as v from "valibot";
 
 import { definedProps } from "#src/domain/defined-props";
@@ -123,8 +127,8 @@ export class InsightRunExecutor {
           })
         : before._tag === "err"
           ? err({
-              reason: "execution_failed" as const,
-              phase: before.error.reason,
+              reason: insightEvidenceFailureCategory(before.error.reason),
+              phase: "evidence",
               stderr: undefined,
             })
           : await this.invokers[type].invoke(input, {
@@ -199,11 +203,6 @@ export class InsightRunExecutor {
           invocation._tag === "err" && invocation.error.reason !== "cancelled"
             ? invocation.error.reason
             : undefined;
-        // Attach a truncated stderr diagnostic when the walkthrough process provides one.
-        const stderr =
-          invocation._tag === "err" && invocation.error.stderr !== undefined
-            ? invocation.error.stderr.slice(0, 500)
-            : undefined;
         await this.persistTerminal(
           input,
           type,
@@ -231,17 +230,17 @@ export class InsightRunExecutor {
             ),
           "invocation",
         );
-        if (stderr !== undefined)
-          await this.recordDiagnostic(input, type, `stderr:${stderr}`);
-        // Without the phase an invocation failure records no cause at all.
-        if (category !== undefined)
+        if (category !== undefined) {
+          const diagnostic = insightFailureDiagnostic(
+            category,
+            invocation._tag === "err" ? invocation.error.phase : undefined,
+          );
           await this.recordDiagnostic(
             input,
             type,
-            `invocation_${category}${phaseLabel(
-              invocation._tag === "err" ? invocation.error.phase : undefined,
-            )}`,
+            `${input.provider}:${diagnostic.code}:${diagnostic.detail}`,
           );
+        }
         return;
       }
       const after = await evidenceStore.validate(input.evidence);
@@ -250,7 +249,7 @@ export class InsightRunExecutor {
           input,
           type,
           runId,
-          "execution_failed",
+          insightEvidenceFailureCategory(after.error.reason),
           after.error.reason,
         );
         return;
@@ -472,7 +471,9 @@ export class InsightRunExecutor {
                   {
                     runId,
                     reason: "failed",
-                    category: "execution_failed",
+                    category: insightEvidenceFailureCategory(
+                      evidence.error.reason,
+                    ),
                     retryable: true,
                     failedAt: at,
                   },
@@ -618,11 +619,6 @@ function settledOutcome(
     (failure.reason === "failed" || failure.reason === "invalid_result")
     ? "failed"
     : undefined;
-}
-
-/** Renders the invoker's bounded phase label; never provider text. */
-function phaseLabel(phase: string | undefined): string {
-  return phase !== undefined && /^[a-z_]{1,32}$/.test(phase) ? `_${phase}` : "";
 }
 
 function safeFailureDetail(): "unexpected_failure" {

@@ -403,17 +403,14 @@ describe("CodexAppServerClient", () => {
         return asChildProcess(child);
       },
     });
-    await expect(
-      client.run({
-        worktreePath: representedWorktree(root),
-        expectedHeadSha: "a".repeat(40),
-        model: "fixture-codex",
-        reasoning: "low",
-        prompt: "Return JSON.",
-      }),
-    ).resolves.toEqual({
+    await expect(client.run(runInput(root))).resolves.toEqual({
       _tag: "err",
-      error: { reason: "timed_out", phase: "turn" },
+      error: {
+        reason: "timed_out",
+        phase: "turn",
+        code: "turn_timed_out",
+        detail: "The provider run timed out.",
+      },
     });
     expect(child?.killed).toBe(true);
   });
@@ -962,7 +959,12 @@ describe("turn/completed answer selection", () => {
   it("reports an invalid result when neither source parses", async () => {
     await expect(runWith({ deltas: ["not json"] })).resolves.toEqual({
       _tag: "err",
-      error: { reason: "invalid_result", phase: "turn" },
+      error: {
+        reason: "invalid_result",
+        phase: "turn",
+        code: "turn_invalid_result",
+        detail: "The provider returned an invalid result.",
+      },
     });
   });
 });

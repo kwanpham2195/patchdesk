@@ -42,6 +42,8 @@ export type InsightInvocationInput = {
 type InsightInvocationFailure = {
   readonly reason: InsightFailureCategory | "cancelled";
   readonly phase?: string;
+  readonly code?: string;
+  readonly detail?: string;
   readonly stderr?: string;
 };
 /** Per-invocation lifetime and optional provider activity reporting. */

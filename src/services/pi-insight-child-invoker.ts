@@ -1,3 +1,8 @@
+import * as v from "valibot";
+import {
+  insightFailureDiagnostic,
+  sanitizedInsightFailureDetail,
+} from "#src/domain/insight-failure-diagnostic";
 import {
   insightEvidenceReference,
   type InsightEvidenceReference,
@@ -47,13 +52,19 @@ export type PiInsightChildFailure = {
     | "runtime_unavailable"
     | "timed_out"
     | "execution_failed"
-    | "invalid_result";
+    | "invalid_result"
+    | "analysis_incomplete"
+    | "evidence_unavailable"
+    | "evidence_mismatch";
   /**
    * The child's bounded, redacted account of why the run failed, forwarded to
    * `InsightRunExecutor` so a provider refusal is recorded as a cause instead
    * of a bare category. Absent whenever the child had nothing to say.
    */
   readonly stderr?: string;
+  readonly phase?: string;
+  readonly code?: string;
+  readonly detail?: string;
 };
 
 /**
@@ -285,11 +296,19 @@ export class PiInsightChildInvoker implements InsightInvoker {
     if (response === undefined) return err({ reason: "invalid_result" });
     if (response.ok) return ok(response.value);
     const reason = childResponseReason(response.reason);
-    return err(
-      response.detail === undefined
-        ? { reason }
-        : { reason, stderr: response.detail },
-    );
+    return err({
+      reason,
+      ...insightFailureDiagnostic(
+        reason,
+        response.code ?? response.phase ?? "child",
+      ),
+      ...definedProps({
+        stderr:
+          response.detail === undefined
+            ? undefined
+            : sanitizedInsightFailureDetail(response.detail),
+      }),
+    });
   }
 }
 
@@ -306,8 +325,11 @@ function childResponseReason(reason: string): PiInsightChildFailure["reason"] {
       return "cancelled";
     case "runtime_unavailable":
       return "runtime_unavailable";
+    case "analysis_incomplete":
+    case "evidence_unavailable":
+    case "evidence_mismatch":
     case "invalid_result":
-      return "invalid_result";
+      return reason;
     default:
       return "execution_failed";
   }
@@ -349,30 +371,39 @@ function productionChildEnvironment(
   return childEnvironment;
 }
 
-function parseChildResponse(input: unknown):
+const childFailureSchema = v.strictObject({
+  ok: v.literal(false),
+  reason: v.string(),
+  detail: v.optional(v.pipe(v.string(), v.maxLength(MAX_CHILD_DETAIL_CHARS))),
+  phase: v.optional(v.picklist(["submission", "model", "evidence"])),
+  code: v.optional(v.picklist(["insufficient_evidence", "unable_to_complete"])),
+});
+
+function parseChildResponse(
+  input: unknown,
+):
   | { readonly ok: true; readonly value: unknown }
-  | {
-      readonly ok: false;
-      readonly reason: string;
-      readonly detail?: string;
-    }
+  | v.InferOutput<typeof childFailureSchema>
   | undefined {
   if (typeof input !== "object" || input === null || Array.isArray(input))
     return undefined;
   const keys = Object.keys(input);
-  const ok = readObjectField(input, "ok");
-  if (ok === true && keys.length === 2 && Object.hasOwn(input, "value"))
+  if (
+    readObjectField(input, "ok") === true &&
+    keys.length === 2 &&
+    Object.hasOwn(input, "value")
+  )
     return { ok: true, value: readObjectField(input, "value") };
-  const reason = readObjectField(input, "reason");
-  if (ok === false && typeof reason === "string" && keys.length <= 3) {
-    const detail = readObjectField(input, "detail");
-    return keys.length === 2
-      ? { ok: false, reason }
-      : typeof detail === "string"
-        ? { ok: false, reason, detail: detail.slice(0, MAX_CHILD_DETAIL_CHARS) }
-        : undefined;
-  }
-  return undefined;
+  const parsed = v.safeParse(childFailureSchema, input);
+  if (!parsed.success) return undefined;
+  if (
+    parsed.output.reason === "analysis_incomplete" &&
+    (parsed.output.code === undefined ||
+      parsed.output.detail?.trim().length === 0 ||
+      parsed.output.detail === undefined)
+  )
+    return undefined;
+  return parsed.output;
 }
 
 function childFailureReason(

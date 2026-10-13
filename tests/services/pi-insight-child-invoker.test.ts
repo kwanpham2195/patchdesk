@@ -536,7 +536,13 @@ describe("PiInsightChildInvoker failure classification", () => {
       ),
     ).resolves.toEqual({
       _tag: "err",
-      error: { reason: "execution_failed", stderr: detail },
+      error: {
+        reason: "execution_failed",
+        phase: "child",
+        code: "child_execution_failed",
+        detail: "The provider refused or failed the run.",
+        stderr: "Insufficient Balance",
+      },
     });
   });
 
@@ -566,7 +572,15 @@ describe("PiInsightChildInvoker failure classification", () => {
         },
         60_000,
       ),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
+    ).resolves.toEqual({
+      _tag: "err",
+      error: {
+        reason: "execution_failed",
+        phase: "child",
+        code: "child_execution_failed",
+        detail: "The provider refused or failed the run.",
+      },
+    });
   });
 
   // No signal is passed, so `runChild`'s own aborted-signal checks cannot answer first.

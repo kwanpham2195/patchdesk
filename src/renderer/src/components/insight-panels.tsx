@@ -277,8 +277,10 @@ export function InsightFailed({
     failure?.category === undefined
       ? "This Insight run failed."
       : failureMessage(failure.category);
-  const reviewWorktreeUnavailable =
-    failure?.category === "review_worktree_unavailable";
+  const needsReprepare =
+    failure?.category === "review_worktree_unavailable" ||
+    failure?.category === "evidence_unavailable" ||
+    failure?.category === "evidence_mismatch";
   const runReprepare = async (): Promise<void> => {
     setRepreparing(true);
     setReprepareFailed(false);
@@ -312,11 +314,9 @@ export function InsightFailed({
         <Button
           size="sm"
           disabled={repreparing}
-          onClick={
-            reviewWorktreeUnavailable ? () => void runReprepare() : onRetry
-          }
+          onClick={needsReprepare ? () => void runReprepare() : onRetry}
         >
-          {reviewWorktreeUnavailable
+          {needsReprepare
             ? repreparing
               ? "Re-preparing Review…"
               : "Re-prepare Review"
@@ -348,6 +348,12 @@ function failureMessage(category: InsightFailureCategory | undefined): string {
       return "The provider refused or failed this run.";
     case "invalid_result":
       return "The provider answered with a result this app could not read.";
+    case "analysis_incomplete":
+      return "The provider could not complete this Analysis.";
+    case "evidence_unavailable":
+      return "Captured evidence is unavailable. Re-prepare the Review before trying again.";
+    case "evidence_mismatch":
+      return "Captured evidence no longer matches this run. Re-prepare the Review before trying again.";
     case "unexpected_failure":
       return "The Insight failed unexpectedly.";
     default:

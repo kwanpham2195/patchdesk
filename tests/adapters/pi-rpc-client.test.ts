@@ -197,7 +197,12 @@ describe("PiRpcClient", () => {
 
     await expect(client.run(runInput)).resolves.toEqual({
       _tag: "err",
-      error: { reason: "execution_failed", phase: "tool" },
+      error: {
+        reason: "execution_failed",
+        phase: "tool",
+        code: "tool_execution_failed",
+        detail: "The provider refused or failed the run.",
+      },
     });
     expect(pi.children[0]?.received).toContainEqual({ type: "abort" });
   });
@@ -239,7 +244,12 @@ describe("PiRpcClient", () => {
 
     await expect(client.run(runInput)).resolves.toEqual({
       _tag: "err",
-      error: { reason: "authentication_required", phase: scenario.phase },
+      error: {
+        reason: "authentication_required",
+        phase: scenario.phase,
+        code: `${scenario.phase}_authentication_required`,
+        detail: "The provider requires authentication.",
+      },
     });
   });
 
@@ -263,7 +273,12 @@ describe("PiRpcClient", () => {
 
     await expect(client.run(runInput)).resolves.toEqual({
       _tag: "err",
-      error: { reason: "runtime_unavailable", phase: "session_state" },
+      error: {
+        reason: "runtime_unavailable",
+        phase: "session_state",
+        code: "session_state_runtime_unavailable",
+        detail: "The selected runtime or required capability is unavailable.",
+      },
     });
     expect(pi.children[0]?.received).not.toContainEqual(
       expect.objectContaining({ type: "prompt" }),
@@ -345,7 +360,12 @@ describe("PiRpcClient", () => {
 
     await expect(client.run(runInput)).resolves.toEqual({
       _tag: "err",
-      error: { reason: "runtime_unavailable", phase: "session_state" },
+      error: {
+        reason: "runtime_unavailable",
+        phase: "session_state",
+        code: "session_state_runtime_unavailable",
+        detail: "The selected runtime or required capability is unavailable.",
+      },
     });
     expect(pi.children[0]?.received).not.toContainEqual(
       expect.objectContaining({ type: "prompt" }),
@@ -369,7 +389,12 @@ describe("PiRpcClient", () => {
 
     await expect(running).resolves.toEqual({
       _tag: "err",
-      error: { reason: "cancelled", phase: "turn" },
+      error: {
+        reason: "cancelled",
+        phase: "turn",
+        code: "turn_cancelled",
+        detail: "The run was cancelled.",
+      },
     });
     expect(pi.children[0]?.received).toContainEqual({ type: "abort" });
   });
@@ -384,7 +409,12 @@ describe("PiRpcClient", () => {
       client.run({ ...runInput, runTimeoutMs: 50 }),
     ).resolves.toEqual({
       _tag: "err",
-      error: { reason: "timed_out", phase: "turn" },
+      error: {
+        reason: "timed_out",
+        phase: "turn",
+        code: "turn_timed_out",
+        detail: "The provider run timed out.",
+      },
     });
     expect(pi.children[0]?.received).toContainEqual({ type: "abort" });
   });
@@ -419,7 +449,12 @@ describe("PiRpcClient", () => {
       client.run({ ...runInput, runTimeoutMs: 2_000 }),
     ).resolves.toEqual({
       _tag: "err",
-      error: { reason: "execution_failed", phase: "turn" },
+      error: {
+        reason: "execution_failed",
+        phase: "turn",
+        code: "turn_execution_failed",
+        detail: "The provider refused or failed the run.",
+      },
     });
   });
 });
