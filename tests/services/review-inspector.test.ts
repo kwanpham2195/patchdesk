@@ -214,7 +214,7 @@ describe("ReviewInspector", () => {
     }
   });
 
-  it("enforces one shared eight-call inspection budget", async () => {
+  it("keeps inspection available after eight calls", async () => {
     const inspector = new ReviewInspector({
       worktreePath: "/unused",
       changedFiles: ["src/a.ts"],
@@ -224,12 +224,12 @@ describe("ReviewInspector", () => {
     for (let index = 0; index < 8; index += 1)
       expect((await inspector.listChangedFiles())._tag).toBe("ok");
     expect(await inspector.searchFiles("fixture")).toEqual({
-      _tag: "err",
-      error: { _tag: "InspectorDenied", reason: "budget_exhausted" },
+      _tag: "ok",
+      value: ["src/a.ts"],
     });
     expect(await inspector.gitShow("HEAD")).toEqual({
       _tag: "err",
-      error: { _tag: "InspectorDenied", reason: "budget_exhausted" },
+      error: { _tag: "InspectorDenied", reason: "outside_snapshot" },
     });
   });
 

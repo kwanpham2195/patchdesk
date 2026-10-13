@@ -25,7 +25,6 @@ import {
   walkthroughResultSchema,
 } from "#runtime/src/patchdesk-insight-agent";
 import {
-  MAX_AGENT_TURNS,
   canonicalizeProductionInvocation,
   parseProductionInvocation,
   resolvePatchdeskReviewSkillPath,
@@ -283,7 +282,7 @@ describe("one-shot insight runtime", () => {
     ).resolves.toEqual({ ok: true, value: walkthrough });
   });
 
-  it("gives Analysis exactly four bounded inspectors plus submission and preserves one shared budget", async () => {
+  it("gives Analysis exactly four bounded inspectors plus submission", async () => {
     const tools = createAnalysisAgent(
       analysisInvocation().input,
       {
@@ -506,26 +505,25 @@ describe("one-shot insight runtime", () => {
     expect(provider.state.callCount).toBe(2);
   });
 
-  it("names the turn cap rather than blaming the model when the budget runs out", async () => {
-    const provider = fake(
-      Array.from({ length: MAX_AGENT_TURNS + 4 }, () =>
+  it("allows submission after more than 24 inspection rounds", async () => {
+    const provider = fake([
+      ...Array.from({ length: 28 }, () =>
         fauxAssistantMessage(fauxToolCall("list_changed_files", {}), {
           stopReason: "toolUse",
         }),
       ),
-    );
+      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", analysis), {
+        stopReason: "toolUse",
+      }),
+    ]);
     await expect(
       runPatchdeskChild(analysisInvocation(), {
         providers: [provider.provider],
         inspectors: benignInspectors(),
         skillPath: reviewSkillPath,
       }),
-    ).resolves.toEqual({
-      ok: false,
-      reason: "invalid_result",
-      detail: `The model reached the ${MAX_AGENT_TURNS}-turn limit before submitting a result`,
-    });
-    expect(provider.state.callCount).toBe(MAX_AGENT_TURNS);
+    ).resolves.toEqual({ ok: true, value: analysis });
+    expect(provider.state.callCount).toBe(29);
   });
 
   it("requests a durable abort through the agent handle when the caller cancels", async () => {
@@ -694,7 +692,7 @@ describe("one-shot insight runtime", () => {
     expect(systemPrompt).toContain(instructions.trim());
   });
 
-  it("keeps one real inspector budget across turns and denies concurrent call nine", async () => {
+  it("keeps real inspection available across turns and concurrent call nine", async () => {
     const inspector = new ReviewInspector({
       worktreePath: "/immutable/worktree",
       changedFiles: ["src/a.ts"],
@@ -751,8 +749,8 @@ describe("one-shot insight runtime", () => {
     ).resolves.toEqual({ ok: true, value: analysis });
     expect(provider.state.callCount).toBe(3);
     expect(observed).toHaveLength(9);
-    expect(observed.filter((value) => "denied" in value)).toHaveLength(1);
-    expect(observed.at(-1)).toEqual({ denied: true });
+    expect(observed.filter((value) => "denied" in value)).toHaveLength(0);
+    expect(observed.at(-1)).toEqual({ files: ["src/a.ts"] });
   });
 
   it("accepts only exact app-owned production paths", () => {
