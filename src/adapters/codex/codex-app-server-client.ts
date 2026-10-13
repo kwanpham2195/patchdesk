@@ -530,9 +530,12 @@ async function paginateModelList(
   return err({ reason: "runtime_unavailable", phase: "model_list" });
 }
 
-export type CodexInsightRpc = Pick<RpcChild, "start" | "request" | "stop">;
+export type CodexInsightRpc = Pick<RpcChild, "start" | "request" | "stop"> & {
+  readonly nativeVersion?: string | undefined;
+};
 
 class RpcChild {
+  nativeVersion: string | undefined;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly listeners = new Set<(message: CodexRpcMessage) => void>();
   private child: ChildProcess | undefined;
@@ -609,6 +612,12 @@ class RpcChild {
           phase: "initialize",
         });
       }
+      const userAgent = v.safeParse(v.string(), initialized.value.userAgent);
+      this.nativeVersion = userAgent.success
+        ? new RegExp(
+            `^${CLIENT_NAME}/([0-9]+\\.[0-9]+\\.[0-9]+)(?:\\s|$)`,
+          ).exec(userAgent.output)?.[1]
+        : undefined;
       this.send({ method: "initialized", params: {} });
       return ok(undefined);
     } catch (cause: unknown) {
