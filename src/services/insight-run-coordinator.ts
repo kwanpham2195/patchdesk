@@ -1,5 +1,11 @@
-import { createHash } from "node:crypto";
-import { prepareGuidePrompt, type PreparedGuide } from "./guide-operation";
+import { InsightRunPreparation } from "./insight-run-preparation";
+import { hashReviewArtifactContent } from "./review-artifact-hash";
+import type { InsightInvoker } from "./insight-run-input";
+export type {
+  InsightInvocationInput,
+  InsightInvocationOptions,
+  InsightInvoker,
+} from "./insight-run-input";
 import { readFile } from "node:fs/promises";
 import {
   saveGuideReadingState,
@@ -19,9 +25,6 @@ import {
 import { definedProps } from "#src/domain/defined-props";
 import type { FailureKinds } from "#src/domain/failure-kind";
 
-import type { GitSha } from "#src/domain/ids";
-
-import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { InsightStore } from "#src/adapters/storage/insight-store";
 import {
@@ -34,7 +37,6 @@ import {
   type InsightRunId,
   type IsoTimestamp,
   type ReviewId,
-  type ReviewSessionId,
   type WorkspaceProfileId,
 } from "#src/domain/ids";
 import {
@@ -97,47 +99,6 @@ import {
   type InsightActivitySnapshot,
 } from "./insight-activity-buffer";
 
-export type InsightInvocationInput = {
-  readonly profileId: WorkspaceProfileId;
-  readonly reviewId: ReviewId;
-  readonly sessionId: ReviewSessionId;
-  readonly runId: InsightRunId;
-  readonly type: InsightType;
-  readonly expectedHeadSha: GitSha;
-  readonly contextPath: string;
-  readonly reviewInputPath?: string;
-  readonly patchPath: string;
-  readonly worktreePath: string;
-  readonly provider: InsightProvider;
-  readonly model: string;
-  readonly reasoning: InsightReasoning;
-  readonly language: InsightLanguage;
-  readonly guide?: PreparedGuide;
-};
-/**
- * Why one Insight invocation failed, in the app's own vocabulary. The set is
- * closed so a provider classifies its own failures at its edge, where its
- * vocabulary is in scope, rather than handing the executor a string only it
- * understands; `cancelled` stands apart because a cancelled run is not a failure.
- */
-type InsightInvocationFailure = {
-  readonly reason: InsightFailureCategory | "cancelled";
-  /** Where in the provider's own run the failure happened, for diagnostics. */
-  readonly phase?: string;
-  /** The provider's bounded, redacted account of the failure, when it gave one. */
-  readonly stderr?: string;
-};
-/** Per-invocation options; Pi has no incremental boundary and never calls `onActivity`. */
-export type InsightInvocationOptions = {
-  readonly signal: AbortSignal;
-  readonly onActivity?: InsightActivitySink | undefined;
-};
-export type InsightInvoker = {
-  invoke(
-    input: InsightInvocationInput,
-    options: InsightInvocationOptions,
-  ): Promise<Result<unknown, InsightInvocationFailure>>;
-};
 export type InsightRunResponse = {
   readonly runId: InsightRunId;
   readonly type: InsightType;
@@ -327,6 +288,7 @@ export class InsightRunCoordinator {
       this.active,
       () => this.now(),
       (input) => this.recovery.recover(input),
+      this.paths,
       this.diagnostics,
       this.reach,
       this.notifications,
@@ -434,31 +396,30 @@ export class InsightRunCoordinator {
       headSha: session.value.key.headSha,
       patchHash: hash.value,
     };
-    const guide =
-      input.type === "guide"
-        ? await prepareGuidePrompt({
-            contextPath: this.paths.preparedContextFile(
-              input.profileId,
-              session.value.id,
-            ),
-            patchPath: session.value.patchPath,
-            language: input.language,
-          })
-        : undefined;
-    if (guide?._tag === "err")
-      return err(
-        guide.error.reason === "patch_not_indexable"
-          ? "guide_patch_empty"
-          : guide.error.reason === "artifact_unreadable"
-            ? "guide_artifact_unreadable"
-            : "guide_input_too_large",
-      );
-    if (
-      guide?._tag === "ok" &&
-      createHash("sha256").update(guide.value.patchText).digest("hex") !==
-        hash.value
-    )
-      return err("stale_request");
+    const prepared = await new InsightRunPreparation(
+      this.paths,
+      this.contextPack,
+    ).prepare({
+      identity: {
+        profileId: input.profileId,
+        reviewId: input.reviewId,
+        sessionId: session.value.id,
+        runId: runId.value,
+        type: input.type,
+        headSha: session.value.key.headSha,
+        baseSha: session.value.key.baseSha,
+        patchHash: hash.value,
+        intentHash:
+          pack.value.changeIntent === undefined
+            ? null
+            : hashReviewArtifactContent(
+                JSON.stringify(pack.value.changeIntent),
+              ),
+      },
+      session: session.value,
+      language: input.language,
+    });
+    if (prepared._tag === "err") return prepared;
     const started = await this.insights.mutate({
       profileId: input.profileId,
       reviewId: input.reviewId,
@@ -500,7 +461,7 @@ export class InsightRunCoordinator {
       sessionId: session.value.id,
       runId: runId.value,
       type: input.type,
-      ...(guide?._tag === "ok" && { guide: guide.value }),
+      ...prepared.value,
       expectedHeadSha: session.value.key.headSha,
       contextPath: this.paths.preparedContextFile(
         input.profileId,

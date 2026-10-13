@@ -37,6 +37,7 @@ import {
 } from "./review-context-service";
 import { exists } from "./review-preparation-journal";
 import type { GitReadExecutor } from "./review-worktree-service";
+import { captureModelReviewSnapshots } from "./model-review-runner";
 
 export type ReviewContextPackFailure =
   | { readonly _tag: "ContextPackUnavailable" }
@@ -166,6 +167,24 @@ export class ReviewContextPackService {
     return built._tag === "ok"
       ? provenance
       : err({ _tag: "ContextPackUnavailable" });
+  }
+
+  /** Uses the same captured-blob limits as Analysis preparation, under the caller's Review lock. */
+  captureChangedHeadFiles(
+    session: ReviewSession,
+    context: string,
+  ): Promise<Readonly<Record<string, string>>> {
+    return captureModelReviewSnapshots({
+      worktreePath: session.worktree.path,
+      headSha: session.key.headSha,
+      context,
+      gitShow: async (argv) => {
+        const result = await this.dependencies.git.run(argv);
+        if (result._tag === "err")
+          throw new Error("Captured snapshot unavailable");
+        return result.value.stdout;
+      },
+    });
   }
 
   private async resolve(

@@ -92,6 +92,21 @@ export async function prepareModelReview(
   };
 }
 
+/** Captures bounded regular blobs by the supplied SHA, never current HEAD or live files. */
+export async function captureModelReviewSnapshots(input: {
+  readonly worktreePath: string;
+  readonly headSha: string;
+  readonly context: string;
+  readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string>;
+}): Promise<Readonly<Record<string, string>>> {
+  return snapshotChangedFiles(
+    input.worktreePath,
+    input.headSha,
+    changedFiles(input.context),
+    input.gitShow,
+  );
+}
+
 async function snapshotChangedFiles(
   worktreePath: string,
   headSha: string | undefined,
