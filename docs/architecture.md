@@ -167,7 +167,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results. It delegates the parts it owns: `insight-run-executor.ts` runs one invocation to its terminal state under the Review lock, `insight-recovery.ts` fails the runs a crash left marked active, `insight-result-validation.ts` validates the result a child submitted, and `insight-provider-catalog.ts` owns provider status, explicit Codex and pi CLI model discovery, and the provider, model, and effort revalidation immediately before a run.
 - `insight-activity-buffer.ts` keeps one running Insight's bounded activity trace in memory — the phase, the last reasoning line, at most 200 command rows, and the approval counts — which the run poll answers from and nothing ever persists (ADR 0043).
 - `pi-insight-child-invoker.ts` and `account-insight-invoker.ts` start model children; the account invoker serves both the Codex and pi CLI account providers.
-- `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` per symbol name — over the proposed names and over the removed symbols it derives from the patch — in a represented-review worktree it first confirms with `git rev-parse HEAD`, so no model gains a search capability (ADR 0036).
+- `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` per symbol name — over the proposed names and over the removed symbols it derives from the patch — in a represented-review worktree it first confirms with `git rev-parse HEAD`, so the model never supplies the counts (ADR 0036).
 - `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows. `merge-service.ts` performs the merge itself behind the merge controller, and `review-write-recovery-service.ts` reconciles a write whose outcome Patchdesk could not confirm, through complete GitHub reads only.
 - `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `base-branch-service.ts`, and `draft-state-service.ts` implement the conversation rail's pull-request metadata writes (ADR 0029). The shared plumbing is `pull-request-metadata-write.ts`: `resolvePullRequestWritePermission` reads the account's repository permission, and `runGuardedMetadataWrite` runs all five through the same admission, durable intent, mutation, and confirmation sequence.
 - `review-observation-service.ts` reconciles bounded GitHub state only after canonical same-revision proof, in a fixed candidate, journal, session, Review order; `review-observation-recovery.ts` replays an observation the process was interrupted partway through from that journal rather than from a new read.
@@ -209,16 +209,17 @@ Services use these adapters and also perform filesystem operations for artifacts
 - `process/login-shell-environment.ts` runs the maintainer's login shell once at startup and imports two things from it: PATH, and the Pi provider credential names (ADR "Import provider credentials and PATH from the login shell"). It never overwrites a variable this process already has, and a failure or timeout imports nothing. This is the only place the main process's own environment is written.
 - `process/login-shell-import.ts` holds that import as the launch's single awaited barrier. `startLoginShellEnvironmentImport` runs it exactly once, and `whenLoginShellEnvironmentImported` is what every reader — a child spawn, the Pi child invoker, the provider catalog, Codex and pi discovery — waits on instead of starting a second import.
 - `pi/` holds the model catalogs — the generated catalog and the runtime catalog the main process consults — and `pi-provider-catalog.ts`, which reports each built-in provider's credential name and whether this launch has it. The catalog waits on the login-shell import above before it answers, because that import is where the credential names come from.
-- `codex/` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials. `codex-app-server-client.ts` is the app-server connection, accepts command requests whose working directory resolves inside the represented-review worktree, and declines network, stdin-write, file-change, permission, and outside-worktree requests. `codex-brief-prompt.ts` composes the Brief turn, and `codex-activity.ts` maps the account's notifications to the bounded activity events the run poll projects (ADR 0043).
-- `pi-cli/` drives the maintainer's local `pi` coding agent in RPC mode (ADR 0054) without reading its login. `pi-rpc-channel.ts` owns the JSONL framing and answers extension dialogs as cancelled; `pi-rpc-client.ts` checks the installed version, lists models, and runs one prompt with pi's read-only built-in tools, no extensions, and no project trust.
+- `codex/` talks to the maintainer's local Codex CLI account through a verified private home ([ADR 0055](adr/0055-read-captured-insight-evidence-on-demand.md)). `codex-app-server-client.ts` owns the app-server connection and validates native automatic approval review and isolation before generation. `codex-insight-home.ts` handles the supported file-backed account material, source fingerprints, and guarded cleanup. `codex-brief-prompt.ts` composes the Brief turn, and `codex-activity.ts` maps notifications to bounded activity events (ADR 0043).
+- `pi-cli/` drives the maintainer's local `pi` coding agent in RPC mode (ADRs 0054 and 0055) without reading its login. `pi-rpc-channel.ts` owns JSONL framing and cancels extension dialogs; `pi-rpc-client.ts` checks the installed version, lists models, and runs one prompt with native inspection tools including Bash, with inherited resources disabled. Bash is not an enforced read-only shell.
 
 **Architecture Invariant:** the domain and sandboxed renderer perform no direct GitHub, filesystem, or process I/O.
 GitHub transport, durable JSON stores, and reusable process clients live in adapters.
 Service filesystem operations include artifact hashing in `review-artifact-hash.ts`, retained-artifact reads in `retained-insight-reader.ts`, and the local checkout workflows described above.
 [Issue #809](https://github.com/kwanpham2195/patchdesk/issues/809) tracks the remaining import-policy decisions and enforcement.
 
-**Architecture Invariant:** storage never persists sensitive values.
+**Architecture Invariant:** durable Review stores reject sensitive values.
 A read that would expose a sensitive value fails closed, and corrupt files go to quarantine instead of being loaded.
+The temporary Codex home is a separate credential boundary: ADR 0055 owns its minimal account material and cleanup.
 
 ### `src/renderer/src/`
 
@@ -236,13 +237,15 @@ It re-validates every projection: a 200 response from the API does not mean the 
 ### `runtime/insight/`
 
 The isolated model runtime (ADR 0041, superseding the runtime choice in ADR 0018).
-Each Analysis run, Walkthrough, or Brief runs in one dedicated one-shot child that builds a single `@earendil-works/pi-agent-core` agent and drives its loop once.
-The Brief model has only the result-submission tool.
-The trusted child runtime reads the bounded patch artifact at the invocation's `patchPath` through `prepareBriefPrompt` and includes it in the prompt.
-The model has no repository inspector or generic file-reading tool.
+Each Analysis, Walkthrough, Brief, or Guide runs in one dedicated one-shot child that builds a single `@earendil-works/pi-agent-core` agent and drives its loop once.
+All four Insight types start with captured revision identity and an evidence entry.
+The parent captures and publishes the evidence under the Review lock through `InsightEvidenceService`.
+The child receives the complete parent index and digests without source or page text, then validates and reads the captured bundle.
+Its `read_evidence_page` and `search_evidence` tools return bounded encoded responses.
+Analysis also has its supplementary inspectors and an explicit incomplete-outcome tool.
 
 The parent sends one bounded, strictly parsed invocation through stdin.
-The child runs the agent loop under a 24-turn ceiling, submits one strict result through its own tool, and exits.
+The child inspects without an application call-count or turn ceiling, then submits one strict result or an incomplete Analysis outcome and exits. Existing timeouts, cancellation, and retry bounds still apply.
 The parent validates the result again before it can affect retained content or GitHub state.
 Moving the exact `@earendil-works` version this runtime pins is its own procedure: see [Upgrading Pi](upgrading-pi.md).
 
@@ -281,6 +284,8 @@ the pull-request lifecycle, GitHub pending reviews as the one authoritative draf
 Test suites that mirror the production boundaries.
 See [Testing](#testing) below.
 
+The account providers consume the same captured evidence through native tools. Codex verifies native automatic approval review, managed requirements, isolated resources, and empty instruction sources in a private home. Pi enables Bash as an inspection tool, without an enforced read-only shell. [ADR 0055](adr/0055-read-captured-insight-evidence-on-demand.md) owns these boundaries and cleanup limitations.
+
 ## Shared rules
 
 ### Safety and write authority
@@ -296,7 +301,7 @@ The design concentrates authority in the main process and removes it from everyw
 - If Patchdesk cannot confirm a write outcome, it locks further writes for explicit GitHub reconciliation. It never retries automatically.
 - A coding agent's MCP tools write only Patchdesk's own state: the Local snapshot's git objects, a `refs/patchdesk/local/` ref, a cache worktree, and the Review record. They never Apply, edit Local drafts, or start an Insight run; a run an agent asks for starts only from the maintainer's Run.
 - The one write to the maintainer's checkout is Apply on a shared local Review: `git apply` without `--index`, gated by `requireFreshLocal`, with file pre- and post-image hashes recorded before the write.
-- Insight model children have no GitHub access or write access to the maintainer's checkout. Their provider clients communicate with the configured model provider; this transport does not give the model an arbitrary network tool.
+- The API Insight child has no generic shell or GitHub tool. Native account tool permissions follow ADR 0055; Pi Bash is not an enforced filesystem or network boundary. Neither generated content nor a model's tool use authorizes a GitHub write through Patchdesk.
 
 **Architecture Invariant:** the app must never start with the renderer holding authority.
 Startup fails closed when the local API cannot prove its own health.
