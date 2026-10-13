@@ -18,7 +18,6 @@ import {
   modelReviewResultSchema,
   requiredVerdictForFindings,
 } from "#app/domain/review-result";
-import { MAX_ANALYSIS_INSPECTION_CALLS } from "#app/services/review-inspector";
 import { walkthroughOutputSchema } from "#app/services/walkthrough-operation";
 
 export const MAX_RUNTIME_STDIN_BYTES = 2 * 1024 * 1024;
@@ -371,7 +370,8 @@ function inspectorTools(
   operations: InspectorOperations,
   state: SubmissionState,
 ): Array<AgentTool> {
-  const budget = `The four inspectors share a budget of ${MAX_ANALYSIS_INSPECTION_CALLS} calls per run. A call past the budget, or one that names a file or revision outside the rules above, returns {"denied":true} with no other detail; an argument that fails the parameter schema returns a tool error naming the field instead.`;
+  const boundary =
+    'A call that names a file or revision outside the rules above returns {"denied":true}; an argument that fails the parameter schema returns a tool error naming the field instead.';
   /** An inspector never ends a run of its own; it only follows a submission. */
   function inspectorResult(output: InspectorOutcome) {
     return {
@@ -384,7 +384,7 @@ function inspectorTools(
     {
       name: "list_changed_files",
       label: "List changed files",
-      description: `List the repository-relative path of every changed file this run can read: the regular text files at the prepared review head that fit the snapshot size limits. A changed file missing from the list (binary, oversized, or unreadable) is represented only by the patch. These are the only files search_files and read_file_range can see. ${budget}`,
+      description: `List the repository-relative path of every changed file this run can read: the regular text files at the prepared review head that fit the snapshot size limits. A changed file missing from the list (binary, oversized, or unreadable) is represented only by the patch. These are the only files search_files and read_file_range can see. ${boundary}`,
       parameters: jsonSchemaFor(listChangedFilesInput),
       async execute() {
         return inspectorResult(await operations.listChangedFiles());
@@ -393,7 +393,7 @@ function inspectorTools(
     {
       name: "search_files",
       label: "Search changed files",
-      description: `Find which changed files contain a literal, case-sensitive substring of 1 to 200 characters (no regular expressions). Returns matching paths only, not the matching lines; use read_file_range to see them. ${budget}`,
+      description: `Find which changed files contain a literal, case-sensitive substring of 1 to 200 characters (no regular expressions). Returns matching paths only, not the matching lines; use read_file_range to see them. ${boundary}`,
       parameters: jsonSchemaFor(searchFilesInput),
       async execute(_toolCallId, args) {
         const data = v.parse(searchFilesInput, args);
@@ -403,7 +403,7 @@ function inspectorTools(
     {
       name: "read_file_range",
       label: "Read a file range",
-      description: `Read lines startLine through endLine, inclusive and 1-based, of one changed file at the prepared review head, named by its repository-relative path. The text comes back without line numbers. A file outside the change set, an absolute path, or an endLine below startLine is denied. ${budget}`,
+      description: `Read lines startLine through endLine, inclusive and 1-based, of one changed file at the prepared review head, named by its repository-relative path. The text comes back without line numbers. A file outside the change set, an absolute path, or an endLine below startLine is denied. ${boundary}`,
       parameters: jsonSchemaFor(readFileRangeInput),
       async execute(_toolCallId, args) {
         const data = v.parse(readFileRangeInput, args);
@@ -419,7 +419,7 @@ function inspectorTools(
     {
       name: "git_show",
       label: "Show a Git revision",
-      description: `Show the prepared review head commit. revision must be exactly HEAD or the head SHA named in the review context document; any other value, and output over 512 KiB, is denied. ${budget}`,
+      description: `Show the prepared review head commit. revision must be exactly HEAD or the head SHA named in the review context document; any other value, and output over 512 KiB, is denied. ${boundary}`,
       parameters: jsonSchemaFor(gitShowInput),
       async execute(_toolCallId, args) {
         const data = v.parse(gitShowInput, args);

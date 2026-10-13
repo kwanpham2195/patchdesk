@@ -5,12 +5,10 @@ import { mapConcurrent } from "#src/domain/map-concurrent";
 import { err, ok, type Result } from "#src/domain/result";
 import { isPathContained } from "#src/adapters/storage/path-containment";
 
-/** Exported so the Analysis tool descriptions state the same number. */
-export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
 const MAX_GIT_SHOW_BYTES = 512 * 1024;
 export type InspectorDenied = {
   readonly _tag: "InspectorDenied";
-  readonly reason: "invalid_input" | "outside_snapshot" | "budget_exhausted";
+  readonly reason: "invalid_input" | "outside_snapshot";
 };
 type InspectorInput = {
   readonly worktreePath: string;
@@ -32,13 +30,11 @@ export class ReviewInspector {
   private inspectedFileCount = 0;
   private searchCount = 0;
   private gitShowCount = 0;
-  private inspectionCallCount = 0;
   constructor(private readonly input: InspectorInput) {}
 
   async listChangedFiles(): Promise<
     Result<ReadonlyArray<string>, InspectorDenied>
   > {
-    if (!this.consume()) return denied("budget_exhausted");
     return ok(
       this.input.fileSnapshots === undefined
         ? this.input.changedFiles
@@ -49,7 +45,6 @@ export class ReviewInspector {
   async searchFiles(
     query: string,
   ): Promise<Result<ReadonlyArray<string>, InspectorDenied>> {
-    if (!this.consume()) return denied("budget_exhausted");
     if (!safeQuery(query)) return denied("invalid_input");
     this.searchCount += 1;
     await this.persistDebug();
@@ -72,7 +67,6 @@ export class ReviewInspector {
     startLine: number,
     endLine: number,
   ): Promise<Result<string, InspectorDenied>> {
-    if (!this.consume()) return denied("budget_exhausted");
     if (
       !Number.isSafeInteger(startLine) ||
       !Number.isSafeInteger(endLine) ||
@@ -91,7 +85,6 @@ export class ReviewInspector {
   }
 
   async gitShow(revision: string): Promise<Result<string, InspectorDenied>> {
-    if (!this.consume()) return denied("budget_exhausted");
     const allowedRevisions = this.input.allowedRevisions ?? ["HEAD"];
     if (!allowedRevisions.includes(revision)) return denied("invalid_input");
     let worktreePath: string;
@@ -154,12 +147,6 @@ export class ReviewInspector {
     } catch {
       return denied("outside_snapshot");
     }
-  }
-
-  private consume(): boolean {
-    if (this.inspectionCallCount >= MAX_ANALYSIS_INSPECTION_CALLS) return false;
-    this.inspectionCallCount += 1;
-    return true;
   }
 
   private async persistDebug(): Promise<void> {

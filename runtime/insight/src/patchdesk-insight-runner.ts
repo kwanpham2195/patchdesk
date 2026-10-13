@@ -129,14 +129,6 @@ export function parsePatchdeskChildInvocation(
 }
 
 /**
- * The turn ceiling one child run may reach. Only a tool call continues Pi's
- * agent loop and the inspector budget stops at eight calls, so a well-behaved
- * insight settles far below this; the cap exists to bound a model that keeps
- * calling tools without ever submitting a result.
- */
-export const MAX_AGENT_TURNS = 24;
-
-/**
  * How many times the runner restarts one model turn that failed on a transient
  * provider error. Pi's own `retryProviderRequest` reaches only some provider
  * APIs and only while a stream is being opened, so the budget is spent here
@@ -195,7 +187,7 @@ export async function runPatchdeskChild(
         ...definedProps({ detail: redactedFailureDetail(cause) }),
       };
     }
-    const { agent, turnCapReached, retriesExhausted } = built;
+    const { agent, retriesExhausted } = built;
     let abortRequested = false;
     const abort = (): void => {
       if (abortRequested) return;
@@ -260,9 +252,9 @@ export async function runPatchdeskChild(
         reason: "invalid_result",
         ...definedProps({
           detail:
-            (invocation.type === "walkthrough"
+            invocation.type === "walkthrough"
               ? rejectedWalkthroughLimitDetail(agent)
-              : undefined) ?? (turnCapReached() ? TURN_CAP_DETAIL : undefined),
+              : undefined,
         }),
       };
     } catch (cause: unknown) {
@@ -344,16 +336,9 @@ export async function writeRejectedResult(
   }
 }
 
-/**
- * The one detail an exhausted turn budget reports, so a run the app's own cap
- * stopped is not read as a malformed model result.
- */
-const TURN_CAP_DETAIL = `The model reached the ${MAX_AGENT_TURNS}-turn limit before submitting a result`;
-
-/** One built agent and the budgets it ran against. */
+/** One built agent and its transient retry state. */
 type InsightAgentRun = {
   readonly agent: Agent;
-  readonly turnCapReached: () => boolean;
   readonly retriesExhausted: () => boolean;
 };
 
@@ -367,7 +352,6 @@ function createInsightAgent(
   for (const provider of providers ?? builtinProviders())
     models.setProvider(provider);
   const model = resolveModel(models, spec.model);
-  let turns = 0;
   let exhausted = false;
   const agent = new Agent({
     initialState: {
@@ -408,20 +392,9 @@ function createInsightAgent(
       return attempted;
     },
     toolExecution: "parallel",
-    finishTurn: (turn) => {
-      // Error and aborted turns end the run anyway and never counted toward the cap.
-      if (
-        turn.message.stopReason === "error" ||
-        turn.message.stopReason === "aborted"
-      )
-        return;
-      turns += 1;
-      return turns >= MAX_AGENT_TURNS ? { action: "end" } : undefined;
-    },
   });
   return {
     agent,
-    turnCapReached: () => turns >= MAX_AGENT_TURNS,
     retriesExhausted: () => exhausted,
   };
 }
