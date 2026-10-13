@@ -9,6 +9,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { InsightReasoning } from "#src/domain/insight-provider";
 import type { InsightFailureCategory } from "#src/domain/insight-record";
 import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
+import { NATIVE_INSIGHT_PROMPT_BYTES } from "#src/adapters/codex/codex-insight-policy";
 import { parseTurnJson } from "#src/adapters/codex/codex-app-server-client";
 import {
   PiRpcChannel,
@@ -22,8 +23,16 @@ import {
  */
 export const PI_CLI_MINIMUM_VERSION = "0.80.4";
 const MINIMUM_VERSION_PARTS = [0, 80, 4] as const;
-/** pi's built-in read-only tools; `--tools` also allowlists extension and custom tools by name. */
-const PI_READ_ONLY_TOOLS = ["read", "grep", "find", "ls"] as const;
+/** Bash is a native inspection tool, not an enforced read-only shell. */
+const PI_INSIGHT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
+const PI_INSIGHT_ISOLATION_FLAGS = [
+  "--no-mcp",
+  "--no-skills",
+  "--no-prompt-templates",
+  "--no-themes",
+  "--no-context-files",
+  "--offline",
+] as const;
 const VERSION_TIMEOUT_MS = 10_000;
 const MODEL_LIST_TIMEOUT_MS = 30_000;
 const RUN_TIMEOUT_MS = 5 * 60_000;
@@ -57,7 +66,8 @@ export type PiRpcFailure = {
     | "session_state"
     | "prompt"
     | "tool"
-    | "turn";
+    | "turn"
+    | "native_isolation_unsupported";
   /** Set when the installed pi is older than `PI_CLI_MINIMUM_VERSION`. */
   readonly requiredVersion?: string;
 };
@@ -142,24 +152,41 @@ export class PiRpcClient {
         ? err({ reason: "authentication_required", phase: "model_list" })
         : ok(models);
     } finally {
-      channel.stop();
+      await channel.stop();
     }
   }
 
-  /** Runs one Insight prompt with pi's read-only tools and parses the final message as JSON. */
+  /** Runs one isolated Insight with the selected native inspection tools. */
   async run(
     input: PiRpcRunInput,
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<unknown, PiRpcFailure>> {
     if (
       Buffer.byteLength(input.prompt, "utf8") >
-      (input.maxPromptBytes ?? MAX_PROMPT_BYTES)
+      Math.min(
+        input.maxPromptBytes ?? MAX_PROMPT_BYTES,
+        NATIVE_INSIGHT_PROMPT_BYTES,
+      )
     )
       return err({ reason: "invalid_result", phase: "prompt" });
+    const version = await this.readVersion();
+    if (version._tag === "err") return version;
+    const help = await this.readCliOutput("--help");
+    if (options.signal?.aborted)
+      return err({ reason: "cancelled", phase: "start" });
+    if (
+      help === undefined ||
+      !PI_INSIGHT_ISOLATION_FLAGS.every((flag) => help.includes(flag))
+    )
+      return err({
+        reason: "runtime_unavailable",
+        phase: "native_isolation_unsupported",
+      });
     const opened = await this.open(
       [
+        ...PI_INSIGHT_ISOLATION_FLAGS,
         "--tools",
-        PI_READ_ONLY_TOOLS.join(","),
+        PI_INSIGHT_TOOLS.join(","),
         "--model",
         input.model,
         "--thinking",
@@ -184,7 +211,7 @@ export class PiRpcClient {
     } finally {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
-      channel.stop();
+      await channel.stop();
     }
   }
 
@@ -217,7 +244,9 @@ export class PiRpcClient {
         "--no-approve",
         ...args,
       ],
-      cwd === undefined ? spawnOptions : { ...spawnOptions, cwd },
+      cwd === undefined
+        ? spawnOptions
+        : { ...spawnOptions, cwd, detached: true },
     );
     return opened._tag === "ok"
       ? opened
@@ -229,39 +258,7 @@ export class PiRpcClient {
       reason: "runtime_unavailable" as const,
       phase: "version" as const,
     });
-    let child: ChildProcess;
-    try {
-      child = this.processFactory(this.executablePath, ["--version"], {
-        shell: false,
-        stdio: ["ignore", "pipe", "ignore"],
-        env: allowlistedPiEnvironment(),
-      });
-    } catch {
-      return unavailable;
-    }
-    const { stdout } = child;
-    if (stdout === null) {
-      child.kill();
-      return unavailable;
-    }
-    const output = await new Promise<string | undefined>((resolve) => {
-      let text = "";
-      const timer = setTimeout(() => {
-        child.kill();
-        resolve(undefined);
-      }, VERSION_TIMEOUT_MS);
-      stdout.on("data", (chunk: Buffer | string) => {
-        if (text.length < 1024) text += chunk.toString();
-      });
-      child.once("error", () => {
-        clearTimeout(timer);
-        resolve(undefined);
-      });
-      child.once("close", (code: number | null) => {
-        clearTimeout(timer);
-        resolve(code === 0 ? text : undefined);
-      });
-    });
+    const output = await this.readCliOutput("--version");
     const match = output?.match(/(\d+)\.(\d+)\.(\d+)/u);
     if (match === null || match === undefined) return unavailable;
     const installed = [Number(match[1]), Number(match[2]), Number(match[3])];
@@ -277,11 +274,54 @@ export class PiRpcClient {
     }
     return ok(undefined);
   }
+
+  private async readCliOutput(
+    argument: "--version" | "--help",
+  ): Promise<string | undefined> {
+    let child: ChildProcess;
+    try {
+      child = this.processFactory(this.executablePath, [argument], {
+        shell: false,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: allowlistedPiEnvironment(),
+      });
+    } catch {
+      return undefined;
+    }
+    const { stdout } = child;
+    if (stdout === null) {
+      child.kill();
+      return undefined;
+    }
+    return await new Promise<string | undefined>((resolve) => {
+      let text = "";
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve(undefined);
+      }, VERSION_TIMEOUT_MS);
+      stdout.on("data", (chunk: Buffer | string) => {
+        text += chunk.toString();
+        if (Buffer.byteLength(text) > 32_768) {
+          child.kill();
+          clearTimeout(timer);
+          resolve(undefined);
+        }
+      });
+      child.once("error", () => {
+        clearTimeout(timer);
+        resolve(undefined);
+      });
+      child.once("close", (code: number | null) => {
+        clearTimeout(timer);
+        resolve(code === 0 ? text : undefined);
+      });
+    });
+  }
 }
 
 /**
  * Confirms pi resolved exactly the requested model and thinking level, sends
- * the prompt, and waits for `agent_settled`. A tool outside the read-only
+ * the prompt, and waits for `agent_settled`. A tool outside the selected
  * allowlist ends the run as failed.
  */
 async function runPrompt(
@@ -324,7 +364,7 @@ async function runPrompt(
       const tool = v.safeParse(toolExecutionStartSchema, record);
       if (
         !tool.success ||
-        !PI_READ_ONLY_TOOLS.some((name) => name === tool.output.toolName)
+        !PI_INSIGHT_TOOLS.some((name) => name === tool.output.toolName)
       ) {
         channel.send({ type: "abort" });
         resolveRun(err({ reason: "execution_failed", phase: "tool" }));

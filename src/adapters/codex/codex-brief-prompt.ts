@@ -1,9 +1,13 @@
 import { BRIEF_RESULT_CONTRACT } from "#src/domain/brief";
 import { err, ok, type Result } from "#src/domain/result";
+import {
+  NATIVE_INSIGHT_PROMPT_BYTES,
+  NATIVE_INSIGHT_INSTRUCTIONS,
+} from "./codex-insight-policy";
 import { UNSAFE_PROMPT_PATTERN } from "./codex-app-server-client";
 
-/** Hard bound for one composed Brief prompt; a Brief carries the patch but no context bundle. */
-export const MAX_BRIEF_PROMPT_BYTES = 3 * 1024 * 1024;
+/** Bounds the composed Brief instructions and captured-evidence reference, without a context bundle. */
+export const MAX_BRIEF_PROMPT_BYTES = NATIVE_INSIGHT_PROMPT_BYTES;
 
 /**
  * Builds a sanitized Codex child prompt for a Brief.
@@ -25,7 +29,7 @@ export function buildCodexBriefPrompt(input: {
   const prompt = [
     "Patchdesk owns all Review lifecycle, Finding mapping, publication, and merge authority.",
     "Insight type: brief",
-    "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
+    NATIVE_INSIGHT_INSTRUCTIONS,
     "Return exactly one JSON object. Do not wrap it in a Markdown code fence, and do not add any prose before or after it.",
     BRIEF_RESULT_CONTRACT,
     // The tree, step, depth, and label limits are stated once, by the shared Brief guidance.

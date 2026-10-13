@@ -3,22 +3,37 @@ import {
   type ChildProcess,
   type SpawnOptions,
 } from "node:child_process";
-import { realpath } from "node:fs/promises";
-import { isAbsolute } from "node:path";
 import * as v from "valibot";
+import {
+  createCodexInsightHome,
+  withCodexInsightHome,
+  discoverCodexInsightSession,
+  validateCodexInsightSession,
+  type CodexInsightSession,
+  type CodexInsightHome,
+  type CodexInsightHomeFactory,
+} from "./codex-insight-home";
 import type { JsonSchema } from "@valibot/to-json-schema";
 
 import { err, ok, type Result } from "#src/domain/result";
 import type { InsightReasoning } from "#src/domain/insight-provider";
 import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
 import type { InsightFailureCategory } from "#src/domain/insight-record";
+import { stopInsightProcess } from "#src/adapters/process/insight-process-cleanup";
 import { isNotFound } from "#src/adapters/storage/json-file";
-import { isPathContained } from "#src/adapters/storage/path-containment";
 import { createCodexActivityEmitter } from "./codex-activity";
 import type {
   CodexActivityEmitter,
   InsightActivitySink,
 } from "./codex-activity";
+
+import {
+  allowlistedCodexEnvironment,
+  NATIVE_INSIGHT_PROMPT_BYTES,
+  NATIVE_INSIGHT_INSTRUCTIONS,
+  codexInsightIsolationArgs,
+  parseCodexInsightThread,
+} from "./codex-insight-policy";
 
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
@@ -29,9 +44,9 @@ const MAX_MODELS = 512;
 const MAX_MODEL_BYTES = 4 * 1024 * 1024;
 const MAX_STREAM_BYTES = 8 * 1024 * 1024;
 const MAX_PROMPT_BYTES = 256 * 1024;
-export const MAX_WALKTHROUGH_PROMPT_BYTES = 3 * 1024 * 1024;
+export const MAX_WALKTHROUGH_PROMPT_BYTES = NATIVE_INSIGHT_PROMPT_BYTES;
 /** Hard bound for one composed Analysis prompt; mirrors MAX_ANALYSIS_PROMPT_BYTES in model-review-runner.ts. */
-export const MAX_ANALYSIS_CODEX_PROMPT_BYTES = 6 * 1024 * 1024;
+export const MAX_ANALYSIS_CODEX_PROMPT_BYTES = NATIVE_INSIGHT_PROMPT_BYTES;
 const RUN_TIMEOUT_MS = 5 * 60_000;
 
 /** Shared unsafe-prompt guard: rejects path disclosure, credential leakage, and repository-rule leakage. */
@@ -61,7 +76,10 @@ export type CodexAppServerFailure = {
     | "turn_start"
     | "turn"
     | "approval"
-    | "cleanup";
+    | "cleanup"
+    | "native_isolation_unsupported"
+    | "native_policy_unsupported"
+    | "native_auth_unsupported";
 };
 
 /** An app-owned immutable worktree and sanitized prompt bound to one run. */
@@ -158,11 +176,8 @@ const jsonValueSchema: v.GenericSchema<JsonValue> = v.lazy(() =>
 );
 /** An RPC response's `result`, confirmed to be a plain object. */
 const jsonObjectSchema = v.record(v.string(), jsonValueSchema);
-type JsonObject = v.InferOutput<typeof jsonObjectSchema>;
+export type JsonObject = v.InferOutput<typeof jsonObjectSchema>;
 
-const threadStartResultSchema = v.looseObject({
-  thread: v.looseObject({ id: v.string() }),
-});
 const turnStartResultSchema = v.looseObject({
   turn: v.looseObject({ id: v.string() }),
 });
@@ -198,43 +213,6 @@ const turnCompletedParamsSchema = v.looseObject({
 const agentMessageDeltaParamsSchema = v.looseObject({
   delta: v.optional(v.string()),
 });
-// `proposedExecpolicyAmendment` is not read because a plain `accept` becomes `ReviewDecision::Approved` upstream, which applies no amendment.
-const commandApprovalParamsSchema = v.looseObject({
-  kind: v.optional(v.string()),
-  networkApprovalContext: v.optional(v.unknown()),
-  cwd: v.optional(v.string()),
-  command: v.optional(v.string()),
-});
-type CommandApprovalParams = v.InferOutput<typeof commandApprovalParamsSchema>;
-
-/** Accepts command requests only when Codex will execute them inside the represented worktree. */
-async function isPathInsideWorktree(
-  worktreePath: string,
-  candidatePath: string,
-): Promise<boolean> {
-  if (isAbsolute(candidatePath) === false && candidatePath.includes(".."))
-    return false;
-  const [worktree, candidate] = await Promise.all([
-    realpath(worktreePath),
-    realpath(candidatePath),
-  ]).catch(() => ["", ""] as const);
-  if (worktree.length === 0 || candidate.length === 0) return false;
-  return isPathContained(worktree, candidate);
-}
-
-/** Creates the restricted environment inherited by the Codex child. */
-function allowlistedCodexEnvironment(
-  environment: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv {
-  const allowed = ["PATH", "HOME", "TMPDIR", "TMP", "TEMP"];
-  const result: NodeJS.ProcessEnv = {};
-  for (const name of allowed) {
-    const value = environment[name];
-    if (value !== undefined) result[name] = value;
-  }
-  return result;
-}
-
 /** The Analysis result contract Codex must return, kept faithful to modelReviewResultSchema. */
 const ANALYSIS_RESULT_CONTRACT = [
   '{"changeSummary":string,"verdict":"approve"|"comment"|"request_changes","summary":string,',
@@ -262,7 +240,7 @@ export function buildCodexAnalysisPrompt(input: {
   const prompt = [
     "Patchdesk owns all Review lifecycle, Finding mapping, publication, and merge authority.",
     "Insight type: analysis",
-    "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
+    NATIVE_INSIGHT_INSTRUCTIONS,
     "Return exactly one JSON object satisfying the result contract below. Do not wrap it in a Markdown code fence, and do not add any prose before or after it. Use no keys beyond those listed.",
     ANALYSIS_RESULT_CONTRACT,
     // The severity and verdict rules are stated once, by the shared Analysis prompt both providers send.
@@ -291,7 +269,7 @@ export function buildCodexWalkthroughPrompt(input: {
   const prompt = [
     "Patchdesk owns all Review lifecycle, Finding mapping, publication, and merge authority.",
     "Insight type: walkthrough",
-    "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
+    NATIVE_INSIGHT_INSTRUCTIONS,
     "Return exactly one JSON object. Do not wrap it in a Markdown code fence, and do not add any prose before or after it.",
     '{"citationVersion":2,"title":string,"focus":string,"chapters":[{"title":string,"sections":[{"title":string,"prose":string,"hunkIds":[string]}]}]}',
     // The chapter, section, and character limits are stated once, by the shared walkthrough prompt.
@@ -329,18 +307,21 @@ function stripCodeFence(text: string): string {
 export class CodexAppServerClient {
   private readonly processFactory: CodexProcessFactory;
   private readonly runTimeoutMs: number;
+  private readonly homeFactory: CodexInsightHomeFactory;
 
   constructor(
     private readonly executablePath: string,
     options: {
       readonly processFactory?: CodexProcessFactory;
       readonly runTimeoutMs?: number;
+      readonly homeFactory?: CodexInsightHomeFactory;
     } = {},
   ) {
     this.processFactory =
       options.processFactory ??
       ((file, args, spawnOptions) => spawn(file, args, spawnOptions));
     this.runTimeoutMs = options.runTimeoutMs ?? RUN_TIMEOUT_MS;
+    this.homeFactory = options.homeFactory ?? createCodexInsightHome;
   }
 
   /** Lists the complete bounded live Codex model catalog using a throwaway child. */
@@ -369,14 +350,45 @@ export class CodexAppServerClient {
       readonly onActivity?: InsightActivitySink | undefined;
     } = {},
   ): Promise<Result<unknown, CodexAppServerFailure>> {
-    const maxPromptBytes = input.maxPromptBytes ?? MAX_PROMPT_BYTES;
+    const maxPromptBytes = Math.min(
+      input.maxPromptBytes ?? MAX_PROMPT_BYTES,
+      NATIVE_INSIGHT_PROMPT_BYTES,
+    );
     if (Buffer.byteLength(input.prompt, "utf8") > maxPromptBytes)
       return err({ reason: "invalid_result", phase: "turn_start" });
+    if (options.signal?.aborted)
+      return err({ reason: "cancelled", phase: "initialize" });
+    return withCodexInsightHome(
+      this.homeFactory,
+      input.runTimeoutMs ?? this.runTimeoutMs,
+      (home) => this.runWithHome(input, options, home),
+      options.signal,
+    );
+  }
+
+  private async runWithHome(
+    input: CodexRunInput,
+    options: {
+      readonly signal?: AbortSignal;
+      readonly onActivity?: InsightActivitySink | undefined;
+    },
+    home: CodexInsightHome,
+  ): Promise<Result<unknown, CodexAppServerFailure>> {
+    const isolation = await discoverCodexInsightSession(
+      () => new RpcChild(this.processFactory),
+      this.executablePath,
+      input.worktreePath,
+      home,
+      options.signal,
+    );
+    if (isolation._tag === "err") return isolation;
     const child = new RpcChild(this.processFactory);
     const started = await child.start(
       this.executablePath,
       input.worktreePath,
       options.signal,
+      [...codexInsightIsolationArgs(), ...isolation.value.args],
+      home.directory,
     );
     if (started._tag === "err") return started;
     let resolveTimeout: (
@@ -394,7 +406,14 @@ export class CodexAppServerClient {
     try {
       return await Promise.race([
         timeout,
-        this.runTurn(child, input, options.signal, options.onActivity),
+        this.runTurn(
+          child,
+          input,
+          home,
+          isolation.value,
+          options.signal,
+          options.onActivity,
+        ),
       ]);
     } finally {
       clearTimeout(timer);
@@ -405,9 +424,19 @@ export class CodexAppServerClient {
   private async runTurn(
     child: RpcChild,
     input: CodexRunInput,
+    home: CodexInsightHome,
+    expected: CodexInsightSession,
     signal?: AbortSignal,
     onActivity?: InsightActivitySink,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
+    const validated = await validateCodexInsightSession(
+      child,
+      input.worktreePath,
+      home,
+      expected,
+      signal,
+    );
+    if (validated._tag === "err") return validated;
     const models = await paginateModelList(child, signal);
     if (models._tag === "err") return models;
     const selected = models.value.find(
@@ -418,13 +447,15 @@ export class CodexAppServerClient {
       return err({ reason: "runtime_unavailable", phase: "model_list" });
     const thread = await child.request(
       "thread/start",
-      // `untrusted` sends every command without an exec-policy Allow rule to `handleRequest`.
-      // `ephemeral` keeps the thread out of `~/.codex/sessions`; Patchdesk never resumes one (ADR 0016).
+      // Native automatic review owns permission decisions; managed requirements can refuse this policy.
       {
         model: input.model,
         cwd: input.worktreePath,
-        sandbox: "read-only",
-        approvalPolicy: "untrusted",
+        sandbox: "workspace-write",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
+        config: { model_reasoning_effort: input.reasoning },
+        developerInstructions: "",
         ephemeral: true,
       },
       signal,
@@ -434,12 +465,17 @@ export class CodexAppServerClient {
         reason: classifyRpcFailure(thread.error),
         phase: "thread_start",
       });
-    const threadParsed = v.safeParse(threadStartResultSchema, thread.value);
-    const threadId = threadParsed.success
-      ? threadParsed.output.thread.id
-      : undefined;
+    const threadId = parseCodexInsightThread(thread.value, input);
     if (threadId === undefined)
-      return err({ reason: "invalid_result", phase: "thread_start" });
+      return err({
+        reason: "runtime_unavailable",
+        phase: "native_policy_unsupported",
+      });
+    if (!(await home.unchanged(input.runTimeoutMs ?? this.runTimeoutMs)))
+      return err({
+        reason: "runtime_unavailable",
+        phase: "native_auth_unsupported",
+      });
     return await child.turn(
       threadId,
       input.prompt,
@@ -520,6 +556,8 @@ async function paginateModelList(
   return err({ reason: "runtime_unavailable", phase: "model_list" });
 }
 
+export type CodexInsightRpc = Pick<RpcChild, "start" | "request" | "stop">;
+
 class RpcChild {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly listeners = new Set<(message: CodexRpcMessage) => void>();
@@ -527,9 +565,9 @@ class RpcChild {
   private buffer = "";
   private nextId = 0;
   private stopped = false;
+  private ownsProcessGroup = false;
   private turnId: string | undefined;
   private threadId: string | undefined;
-  private approvalWorktreePath: string | undefined;
   private activity: CodexActivityEmitter | undefined;
   private readonly approvalTasks = new Set<Promise<void>>();
 
@@ -539,18 +577,31 @@ class RpcChild {
     executablePath: string,
     cwd: string | undefined,
     signal?: AbortSignal,
+    isolationArgs: ReadonlyArray<string> = [],
+    home?: string,
   ): Promise<Result<void, CodexAppServerFailure>> {
     if (signal?.aborted)
       return err({ reason: "cancelled", phase: "initialize" });
     try {
+      this.ownsProcessGroup = isolationArgs.length !== 0;
       const spawnOptions: SpawnOptions = {
+        detached: this.ownsProcessGroup,
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
-        env: allowlistedCodexEnvironment(),
+        env:
+          home === undefined
+            ? allowlistedCodexEnvironment()
+            : { ...allowlistedCodexEnvironment(), CODEX_HOME: home },
       };
       this.child = this.processFactory(
         executablePath,
-        ["app-server"],
+        [
+          ...isolationArgs,
+          ...(home === undefined
+            ? []
+            : ["-c", 'cli_auth_credentials_store="ephemeral"']),
+          "app-server",
+        ],
         cwd === undefined ? spawnOptions : { ...spawnOptions, cwd },
       );
       if (
@@ -567,17 +618,16 @@ class RpcChild {
       this.child.stderr.on("data", () => undefined);
       this.child.once("error", () => this.failPending());
       this.child.once("exit", () => this.failPending());
-      const initialized = await this.request(
-        "initialize",
-        {
-          clientInfo: {
-            name: CLIENT_NAME,
-            title: "Patchdesk",
-            version: CLIENT_VERSION,
-          },
-        },
-        signal,
-      );
+      const clientInfo = {
+        name: CLIENT_NAME,
+        title: "Patchdesk",
+        version: CLIENT_VERSION,
+      };
+      const params =
+        isolationArgs.length === 0
+          ? { clientInfo }
+          : { clientInfo, capabilities: { experimentalApi: true } };
+      const initialized = await this.request("initialize", params, signal);
       if (initialized._tag === "err") {
         await this.stop();
         return err({
@@ -650,7 +700,6 @@ class RpcChild {
     this.threadId = threadId;
     const activity = createCodexActivityEmitter(onActivity, worktreePath);
     this.activity = activity;
-    this.approvalWorktreePath = worktreePath;
     let text = "";
     let resolveTurn: (
       result: Result<unknown, CodexAppServerFailure>,
@@ -751,7 +800,8 @@ class RpcChild {
     }
     this.pending.clear();
     this.listeners.clear();
-    this.child?.kill();
+    if (this.child !== undefined)
+      await stopInsightProcess(this.child, this.ownsProcessGroup);
     this.child = undefined;
   }
 
@@ -819,19 +869,7 @@ class RpcChild {
       return;
     }
     if (id !== undefined && method !== undefined) {
-      const commandParamsParsed = v.safeParse(
-        commandApprovalParamsSchema,
-        message.params,
-      );
-      const task = this.handleRequest(
-        id,
-        method,
-        commandParamsParsed.success ? commandParamsParsed.output : undefined,
-      ).catch(() => {
-        if (method === COMMAND_APPROVAL_METHOD)
-          this.activity?.approvalAnswered("declined");
-        this.send({ id, result: { decision: "decline" } });
-      });
+      const task = this.handleRequest(id, method);
       this.approvalTasks.add(task);
       return;
     }
@@ -842,7 +880,6 @@ class RpcChild {
   private async handleRequest(
     id: string | number,
     method: string,
-    commandParams: CommandApprovalParams | undefined,
   ): Promise<void> {
     if (method === PERMISSIONS_APPROVAL_METHOD) {
       // An empty profile grants no filesystem root or network, which is the denial; the response has no `decision` field.
@@ -854,16 +891,9 @@ class RpcChild {
       return;
     }
     if (method === COMMAND_APPROVAL_METHOD) {
-      const worktreePath = commandParams?.cwd;
-      const allowed =
-        (commandParams?.kind ?? "command") === "command" &&
-        commandParams?.networkApprovalContext === undefined &&
-        worktreePath !== undefined &&
-        commandParams?.command !== undefined &&
-        this.approvalWorktreePath !== undefined &&
-        (await isPathInsideWorktree(this.approvalWorktreePath, worktreePath));
-      this.activity?.approvalAnswered(allowed ? "accepted" : "declined");
-      this.send({ id, result: { decision: allowed ? "accept" : "decline" } });
+      // An unexpected user approval cannot substitute for the selected native reviewer.
+      this.activity?.approvalAnswered("declined");
+      this.send({ id, result: { decision: "decline" } });
       return;
     }
     this.send({ id, error: { code: -32601, message: "unsupported_request" } });

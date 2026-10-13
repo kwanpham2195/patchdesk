@@ -70,7 +70,7 @@ describe("PiRpcClient", () => {
         },
       ],
     });
-    const rpc = pi.spawned.find((spawn) => spawn.args[0] !== "--version");
+    const rpc = pi.spawned.find((spawn) => spawn.args[0] === "--mode");
     expect(rpc?.args).toEqual([
       "--mode",
       "rpc",
@@ -99,7 +99,7 @@ describe("PiRpcClient", () => {
     });
   });
 
-  it("runs one prompt in the worktree with the read-only tools and parses the final message", async () => {
+  it("runs one prompt in the worktree with the selected inspection tools and parses the final message", async () => {
     const pi = fakePi({
       rpc: runScript((write) => {
         write({ type: "agent_start" });
@@ -122,15 +122,21 @@ describe("PiRpcClient", () => {
       _tag: "ok",
       value: { title: "Fixture" },
     });
-    const rpc = pi.spawned.find((spawn) => spawn.args[0] !== "--version");
+    const rpc = pi.spawned.find((spawn) => spawn.args[0] === "--mode");
     expect(rpc?.args).toEqual([
       "--mode",
       "rpc",
       "--no-session",
       "--no-extensions",
       "--no-approve",
+      "--no-mcp",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-themes",
+      "--no-context-files",
+      "--offline",
       "--tools",
-      "read,grep,find,ls",
+      "read,grep,find,ls,bash",
       "--model",
       "anthropic/claude-sonnet-5",
       "--thinking",
@@ -174,14 +180,14 @@ describe("PiRpcClient", () => {
     });
   });
 
-  it("fails a run and aborts pi when a tool outside the read-only allowlist starts", async () => {
+  it("fails a run and aborts pi when a tool outside the inspection allowlist starts", async () => {
     const pi = fakePi({
       rpc: runScript((write) =>
         write({
           type: "tool_execution_start",
           toolCallId: "call-1",
-          toolName: "bash",
-          args: { command: "rm -rf ." },
+          toolName: "edit",
+          args: { path: "src/a.ts", oldText: "old", newText: "new" },
         }),
       ),
     });

@@ -1,6 +1,7 @@
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import * as v from "valibot";
 
+import { stopInsightProcess } from "#src/adapters/process/insight-process-cleanup";
 import { err, ok, type Result } from "#src/domain/result";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -59,7 +60,10 @@ export class PiRpcChannel {
   private nextId = 0;
   private exited = false;
 
-  private constructor(private readonly child: ChildProcess) {}
+  private constructor(
+    private readonly child: ChildProcess,
+    private readonly ownsProcessGroup: boolean,
+  ) {}
 
   /** Spawns the child and wires its streams; a spawn that throws or has no pipes is a missing runtime. */
   static open(
@@ -82,7 +86,7 @@ export class PiRpcChannel {
       child.kill();
       return err("spawn_failed");
     }
-    const channel = new PiRpcChannel(child);
+    const channel = new PiRpcChannel(child, options.detached === true);
     child.stdout.on("data", (chunk: Buffer | string) => channel.read(chunk));
     // pi writes diagnostics to stderr; it must be drained or a full pipe stalls the child.
     child.stderr.on("data", () => undefined);
@@ -143,10 +147,9 @@ export class PiRpcChannel {
   }
 
   /** Closes stdin, which asks pi to shut down, then kills the child. */
-  stop(): void {
+  async stop(): Promise<void> {
     this.markExited();
-    this.child.stdin?.end();
-    this.child.kill();
+    await stopInsightProcess(this.child, this.ownsProcessGroup);
   }
 
   private read(chunk: Buffer | string): void {
@@ -160,7 +163,7 @@ export class PiRpcChannel {
         (line) => Buffer.byteLength(line, "utf8") > MAX_RECORD_BYTES,
       )
     ) {
-      this.stop();
+      void this.stop();
       return;
     }
     for (const rawLine of lines) {

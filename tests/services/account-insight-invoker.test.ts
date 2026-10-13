@@ -14,6 +14,7 @@ import { prepareGuidePrompt } from "#src/services/guide-operation";
 import type { InsightInvocationInput } from "#src/services/insight-run-coordinator";
 import type { AccountInsightProvider } from "#src/domain/insight-provider";
 import { ok } from "#src/domain/result";
+import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
 import { insightEvidenceReference } from "#src/services/insight-evidence-reference";
 
 // Matches PiInsightChildInvoker's Analysis run bound.
@@ -88,6 +89,23 @@ async function fixture(
     "/usr/bin/codex",
     async () => "a".repeat(40),
   );
+  const directory = paths.insightEvidenceDirectory(
+    profileId,
+    sessionId,
+    "insight-analysis-1-aaaaaaaaaaaa-review" as never,
+  );
+  const entryPageId = `${"d".repeat(64)}-p1`;
+  const entryText =
+    JSON.stringify({
+      kind: "page",
+      bundleId: "d".repeat(64),
+      pageId: entryPageId,
+    }) +
+    "\n" +
+    JSON.stringify({ kind: "continuation", pageId: null }) +
+    "\n";
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, `${entryPageId}.ndjson`), entryText);
   // SAFETY: AccountInsightInvoker.invoke only compares/forwards these fields (realpath checks and
   // string equality); it never calls their branded parsers, so plain strings exercise the same
   // code paths as real InsightInvocationInput values.
@@ -120,9 +138,16 @@ async function fixture(
         intentHash: null,
       },
       bundleId: "d".repeat(64),
-      directory: "/captured",
-      entryPageId: `${"d".repeat(64)}-p1`,
-      pages: [],
+      directory,
+      entryPageId,
+      pages: [
+        {
+          id: entryPageId,
+          sha256: hashReviewArtifactContent(entryText),
+          text: entryText,
+          records: [],
+        },
+      ],
       sources: [],
       manifestText: "{}",
       patchPath: patch,
@@ -151,7 +176,15 @@ describe("AccountInsightInvoker", () => {
         { signal: new AbortController().signal },
       );
       expect(value.calls).toHaveLength(1);
-      expect(value.calls[0]?.[0].prompt).toBe(prepared.value.prompt);
+      expect(value.calls[0]?.[0].prompt).toBe(
+        [
+          prepared.value.prompt,
+          "Inspect only the captured evidence for this Review. Do not modify files, access credentials, use network tools, or publish anything. Honor native permission decisions and report a denied required read without bypassing it.",
+          `Native evidence directory: ${JSON.stringify(value.input.evidence.directory)}`,
+          `Native evidence entry file: ${JSON.stringify(join(value.input.evidence.directory, `${value.input.evidence.entryPageId}.ndjson`))}`,
+          "Use native inspection tools to read this NDJSON entry, then the referenced page IDs as files in the same directory with the .ndjson suffix. Follow continuation references as needed. Read complete bounded pages without truncating their contents. Fragment text and original source coordinates are the captured evidence; page line numbers are not source citations.",
+        ].join("\n\n"),
+      );
       expect(value.calls[0]?.[0].prompt).not.toContain(
         "submit_patchdesk_result",
       );
