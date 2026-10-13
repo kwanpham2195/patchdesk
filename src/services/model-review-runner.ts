@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { isAbsolute, win32 } from "node:path";
 
 import * as v from "valibot";
@@ -6,17 +5,17 @@ import * as v from "valibot";
 import { ReviewInspector } from "./review-inspector";
 import type { InsightLanguage } from "#src/domain/insight-provider";
 import { composeReviewPrompt } from "./review-rubric";
+import {
+  parseEvidencePageId,
+  type EvidenceRecord,
+  type InsightEvidenceBundle,
+} from "#src/domain/insight-evidence";
+import { insightEvidenceReference } from "./insight-evidence-reference";
 
 const MAX_SNAPSHOT_FILE_BYTES = 512 * 1024;
 const MAX_SNAPSHOT_TOTAL_BYTES = 4 * 1024 * 1024;
 /** Hard bound for one composed Analysis prompt; mirrors the child protocol prompt cap. */
-const MAX_ANALYSIS_PROMPT_BYTES = 6 * 1024 * 1024;
-const GIT_SHA = /^[a-f0-9]{40,64}$/;
-
-/** The one field this module reads out of a stored review context document. */
-const contextHeadShaSchema = v.looseObject({
-  pr: v.looseObject({ headSha: v.pipe(v.string(), v.regex(GIT_SHA)) }),
-});
+const MAX_ANALYSIS_PROMPT_BYTES = 32_768;
 /** Only the changed-file list; non-string entries are dropped, not rejected. */
 const contextChangedFilesSchema = v.looseObject({
   changedFiles: v.pipe(
@@ -44,6 +43,7 @@ export class AnalysisPromptTooLargeError extends Error {
 }
 
 type PrepareModelReviewInput = {
+  readonly evidence: InsightEvidenceBundle;
   readonly worktreePath: string;
   readonly contextPath: string;
   readonly reviewInputPath: string;
@@ -57,31 +57,112 @@ type PrepareModelReviewInput = {
 export async function prepareModelReview(
   input: PrepareModelReviewInput,
 ): Promise<PreparedModelReview> {
-  const [context, reviewInput, fullPatch] = await Promise.all([
-    readFile(input.contextPath, "utf8"),
-    readFile(input.reviewInputPath, "utf8"),
-    readFile(input.patchPath, "utf8"),
-  ]);
-  const files = changedFiles(context);
-  const headSha = reviewHeadSha(context);
-  const fileSnapshots = await snapshotChangedFiles(
-    input.worktreePath,
-    headSha,
-    files,
-    input.gitShow,
+  const headSha = input.evidence.identity.headSha;
+  const fileSnapshots: Record<string, string> = {};
+  const inventorySchema = v.looseObject({
+    id: v.string(),
+    newPath: v.string(),
+    snapshot: v.literal("captured"),
+  });
+  const extraSnapshotSchema = v.looseObject({
+    snapshotPath: v.string(),
+    snapshot: v.literal("captured"),
+  });
+  const pages = new Map(input.evidence.pages.map((page) => [page.id, page]));
+  const inventoryLink = pages
+    .get(input.evidence.entryPageId)
+    ?.records.find(
+      (record) => record.kind === "link" && record.relation === "inventory",
+    );
+  if (inventoryLink?.kind !== "link")
+    throw new Error("Captured inventory reference is missing");
+  let inventoryPageId: typeof inventoryLink.pageId | undefined =
+    inventoryLink.pageId;
+  const inventoryRecords: EvidenceRecord[] = [];
+  const visited = new Set<string>();
+  while (inventoryPageId !== undefined) {
+    const page = pages.get(inventoryPageId);
+    if (page === undefined || visited.has(inventoryPageId))
+      throw new Error("Captured inventory continuation is invalid");
+    visited.add(inventoryPageId);
+    inventoryRecords.push(...page.records);
+    const continuation = v.parse(
+      v.strictObject({
+        kind: v.literal("continuation"),
+        pageId: v.nullable(v.string()),
+      }),
+      JSON.parse(page.text.trimEnd().split("\n").at(-1) ?? ""),
+    );
+    inventoryPageId =
+      continuation.pageId === null
+        ? undefined
+        : parseEvidencePageId(continuation.pageId);
+    if (continuation.pageId !== null && inventoryPageId === undefined)
+      throw new Error("Captured inventory continuation is invalid");
+  }
+  const sources = new Map(
+    input.evidence.sources.map((source) => [source.id, source]),
   );
+  const metadataIds = new Set<string>();
+  for (const [index, record] of inventoryRecords.entries()) {
+    if (record.kind !== "fragment" || metadataIds.has(record.sourceId))
+      continue;
+    metadataIds.add(record.sourceId);
+    const source = sources.get(record.sourceId);
+    if (source === undefined)
+      throw new Error("Captured inventory source is missing");
+    let metadata: unknown;
+    try {
+      metadata = JSON.parse(source.text);
+    } catch {
+      continue;
+    }
+    const file = v.safeParse(inventorySchema, metadata);
+    const extra = v.safeParse(extraSnapshotSchema, metadata);
+    const path = file.success
+      ? file.output.newPath
+      : extra.success
+        ? extra.output.snapshotPath
+        : undefined;
+    if (path === undefined) continue;
+    let snapshotPage: (typeof input.evidence.pages)[number] | undefined;
+    for (const candidate of inventoryRecords.slice(index + 1)) {
+      if (candidate.kind === "fragment" && candidate.sourceId !== source.id)
+        break;
+      if (
+        candidate.kind === "link" &&
+        candidate.relation === "snapshot" &&
+        (!file.success || candidate.fileId === file.output.id)
+      ) {
+        snapshotPage = pages.get(candidate.pageId);
+        break;
+      }
+    }
+    if (snapshotPage === undefined)
+      throw new Error("Captured snapshot reference is missing");
+    const fragment = snapshotPage.records.find(
+      (record) => record.kind === "fragment",
+    );
+    const snapshot =
+      fragment?.kind === "fragment"
+        ? sources.get(fragment.sourceId)
+        : undefined;
+    if (snapshot === undefined)
+      throw new Error("Captured snapshot source is missing");
+    fileSnapshots[path] = snapshot.text;
+  }
+  const files = Object.keys(fileSnapshots);
   const inspector = new ReviewInspector({
     worktreePath: input.worktreePath,
     changedFiles: files,
     fileSnapshots,
     debugPath: input.debugPath,
-    allowedRevisions: headSha === undefined ? ["HEAD"] : ["HEAD", headSha],
+    allowedRevisions: ["HEAD", headSha],
+    capturedHeadSha: headSha,
     gitShow: input.gitShow,
   });
   const prompt = composeReviewPrompt({
-    reviewInput,
-    context,
-    fullPatch,
+    evidence: insightEvidenceReference(input.evidence),
     language: input.language,
   });
   if (Buffer.byteLength(prompt, "utf8") > MAX_ANALYSIS_PROMPT_BYTES)
@@ -170,14 +251,6 @@ function parseBlobByteLength(raw: string): number | undefined {
   return /^(?:0|[1-9]\d*)$/.test(bytes) && Number.isSafeInteger(Number(bytes))
     ? Number(bytes)
     : undefined;
-}
-function reviewHeadSha(context: string): string | undefined {
-  try {
-    const parsed = v.safeParse(contextHeadShaSchema, JSON.parse(context));
-    return parsed.success ? parsed.output.pr.headSha : undefined;
-  } catch {
-    return undefined;
-  }
 }
 function changedFiles(context: string): ReadonlyArray<string> {
   try {

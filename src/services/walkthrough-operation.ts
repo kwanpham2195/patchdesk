@@ -12,6 +12,11 @@ import {
   type BoundedArtifactReadError,
 } from "./walkthrough-artifact-reader";
 
+import {
+  evidenceReferencePrompt,
+  type InsightEvidenceReference,
+} from "./insight-evidence-reference";
+
 const MAX_WALKTHROUGH_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_WALKTHROUGH_CONTEXT_BYTES = 512 * 1024;
 const MAX_TITLE_LENGTH = 200;
@@ -206,6 +211,7 @@ export async function prepareWalkthroughPrompt(input: {
   readonly contextPath: string;
   readonly patchPath: string;
   readonly language: InsightLanguage;
+  readonly evidence: InsightEvidenceReference;
 }): Promise<Result<string, WalkthroughPromptFailure>> {
   const [contextRead, patchRead] = await Promise.all([
     readBoundedArtifact(input.contextPath, MAX_WALKTHROUGH_CONTEXT_BYTES),
@@ -215,7 +221,6 @@ export async function prepareWalkthroughPrompt(input: {
     return err(artifactFailure("context", contextRead.error));
   if (patchRead._tag === "err")
     return err(artifactFailure("patch", patchRead.error));
-  const context = contextRead.value;
   const patch = patchRead.value;
   const manifest = narrativeHunkManifest(patch);
   if (manifest._tag === "err") return err({ reason: "patch_not_indexable" });
@@ -235,16 +240,9 @@ export async function prepareWalkthroughPrompt(input: {
       largePatchGuidance,
       "Hunks you do not cite are not explained in the reading path. Patchdesk counts all uncited hunks and offers the full Diff, including changes that may matter. Do not describe them as mechanical or unimportant.",
       "Each chapter follows a coherent behavior; a chapter for a single isolated hunk is the exception.",
-      "Set citationVersion to 2. In each section's prose, state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
+      "Set citationVersion to 2. In each section's prose, state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the captured citation pages; never invent aliases, paths, lines, or actions.",
       `Use at most ${MAX_CHAPTERS} chapters and at most ${MAX_TOTAL_SECTIONS} sections in total. Keep the title within ${MAX_TITLE_LENGTH} characters, the focus within ${MAX_FOCUS_LENGTH}, each chapter title within ${MAX_CHAPTER_TITLE_LENGTH}, each section title within ${MAX_SECTION_TITLE_LENGTH}, and each section's prose within ${MAX_PROSE_LENGTH}.`,
-      "HUNK ALIAS MANIFEST:",
-      manifest.value
-        .map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`)
-        .join("\n"),
-      "CONTEXT ARTIFACT:",
-      context,
-      "PATCH ARTIFACT:",
-      patch,
+      evidenceReferencePrompt(input.evidence),
     ].join("\n\n"),
   );
 }

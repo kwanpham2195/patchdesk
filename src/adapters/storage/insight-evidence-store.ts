@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { mapConcurrent } from "#src/domain/map-concurrent";
+import { encodedEvidenceResponseBytes } from "#src/domain/insight-evidence-pages";
 import { definedProps } from "#src/domain/defined-props";
 import {
   EVIDENCE_PAGE_BYTES,
@@ -134,6 +135,8 @@ export class InsightEvidenceStore {
     const page = bundle.pages.find((candidate) => candidate.id === id);
     if (!this.owns(bundle) || id === undefined || page === undefined)
       return err({ _tag: "InsightEvidenceFailure", reason: "invalid_input" });
+    const checked = await this.validate(bundle);
+    if (checked._tag === "err") return checked;
     return readEvidenceFile({
       root: this.paths.dataDirectory(),
       path: join(bundle.directory, `${id}.ndjson`),
@@ -218,7 +221,7 @@ export class InsightEvidenceStore {
         };
         const next = `${prefix}${sourceIndex}:${found + 1}`;
         if (
-          Buffer.byteLength(
+          encodedEvidenceResponseBytes(
             JSON.stringify({ matches: [...matches, match], cursor: next }),
           ) > EVIDENCE_PAGE_BYTES
         )

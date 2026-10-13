@@ -21,7 +21,19 @@ async function briefPromptResult(patch: string | Buffer) {
   try {
     const patchPath = join(root, "patch.diff");
     await writeFile(patchPath, patch);
-    return await prepareBriefPrompt({ patchPath, language: "en" });
+    return await prepareBriefPrompt({
+      patchPath,
+      language: "en",
+      evidence: {
+        identity: {
+          headSha: "a".repeat(40),
+          baseSha: "b".repeat(40),
+          patchHash: "c".repeat(64),
+        },
+        bundleId: "d".repeat(64),
+        entryPageId: `${"d".repeat(64)}-p1`,
+      } as never,
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -79,7 +91,7 @@ describe("prepareBriefPrompt", () => {
     if (prepared._tag === "err") throw new Error(prepared.error.reason);
     const facts = prepared.value.slice(
       prepared.value.indexOf("PATCH FACTS"),
-      prepared.value.indexOf("PATCH ARTIFACT"),
+      prepared.value.indexOf("EVIDENCE ENTRY"),
     );
     expect(facts).toContain("Changed files: 2 (2 renamed)");
     expect(facts).toContain("job/ -> deploy/: 2 files, 0 also edited");

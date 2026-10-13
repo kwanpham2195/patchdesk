@@ -1,13 +1,144 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import {
-  AnalysisPromptTooLargeError,
-  prepareModelReview,
+  captureModelReviewSnapshots,
+  prepareModelReview as prepareCapturedModelReview,
 } from "#src/services/model-review-runner";
+
+import { InsightEvidencePages } from "#src/domain/insight-evidence-pages";
+import type {
+  EvidenceFragment,
+  EvidenceRecord,
+  EvidenceSource,
+  InsightEvidenceBundle,
+} from "#src/domain/insight-evidence";
+import { insightEvidenceReferenceSchema } from "#src/services/insight-evidence-reference";
+import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
+import * as v from "valibot";
+
+async function prepareModelReview(
+  input: Omit<Parameters<typeof prepareCapturedModelReview>[0], "evidence">,
+) {
+  const context = await readFile(input.contextPath, "utf8");
+  const headSha = v.parse(
+    v.looseObject({ pr: v.looseObject({ headSha: v.string() }) }),
+    JSON.parse(context),
+  ).pr.headSha;
+  const snapshots = await captureModelReviewSnapshots({
+    ...input,
+    headSha,
+    context,
+  });
+  const patch = await readFile(input.patchPath, "utf8");
+  const bundleId = hashReviewArtifactContent(patch);
+  const pages = new InsightEvidencePages(bundleId);
+  const sources: EvidenceSource[] = [];
+  const addSource = (text: string) => {
+    const source = {
+      id: `s${sources.length + 1}`,
+      name: `source-${sources.length + 1}.txt`,
+      text,
+      sha256: hashReviewArtifactContent(text),
+    };
+    sources.push(source);
+    return source;
+  };
+  // These snapshot-unit fixtures keep captured bytes in memory, not thousands of published files.
+  const fragments = (source: EvidenceSource): EvidenceFragment[] => {
+    const records: EvidenceFragment[] = [];
+    let byteStart = 0;
+    for (let start = 0; start < source.text.length;) {
+      let end = Math.min(start + 256, source.text.length);
+      if (
+        end < source.text.length &&
+        /[\uD800-\uDBFF]/.test(source.text[end - 1] ?? "")
+      )
+        end--;
+      const text = source.text.slice(start, end);
+      const byteEnd = byteStart + Buffer.byteLength(text);
+      records.push({
+        kind: "fragment",
+        sourceId: source.id,
+        byteStart,
+        byteEnd,
+        fragmentIndex: records.length,
+        continued: end < source.text.length,
+        text,
+      });
+      start = end;
+      byteStart = byteEnd;
+    }
+    return records;
+  };
+  pages.add(fragments(addSource(patch)));
+  const contextPages = [
+    context,
+    await readFile(input.reviewInputPath, "utf8"),
+  ].map((text) => pages.add(fragments(addSource(text))));
+  const inventory: EvidenceRecord[] = [];
+  for (const [snapshotPath, text] of Object.entries(snapshots)) {
+    const snapshotPage = pages.add(fragments(addSource(text)));
+    const metadata = addSource(
+      JSON.stringify({
+        snapshotPath,
+        snapshot: "captured",
+        diff: "not_represented",
+      }),
+    );
+    inventory.push(...fragments(metadata), {
+      kind: "link",
+      relation: "snapshot",
+      pageId: snapshotPage,
+    });
+  }
+  const inventoryPage = pages.add(inventory);
+  const entryPageId = pages.add([
+    { kind: "link", relation: "inventory", pageId: inventoryPage },
+    ...contextPages.map((pageId) => ({
+      kind: "link" as const,
+      relation: "context" as const,
+      pageId,
+    })),
+  ]);
+  const identity = v.parse(insightEvidenceReferenceSchema, {
+    identity: {
+      profileId: "profile",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      sessionId:
+        "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__0123456789ab",
+      runId: "insight-analysis-1-aaaaaaaaaaaa-review",
+      type: "analysis",
+      headSha,
+      baseSha: "b".repeat(40),
+      patchHash: bundleId,
+      intentHash: null,
+    },
+    bundleId,
+    directory: input.worktreePath,
+    entryPageId,
+    pages: [],
+    sources: [],
+    manifest: { sha256: bundleId, bytes: 0 },
+  }).identity;
+  const evidence: InsightEvidenceBundle = {
+    identity,
+    bundleId,
+    directory: input.worktreePath,
+    entryPageId,
+    sources,
+    pages: pages.pages().map((page) => ({
+      ...page,
+      sha256: hashReviewArtifactContent(page.text),
+    })),
+    manifestText: "{}",
+    patchPath: input.patchPath,
+  };
+  return prepareCapturedModelReview({ ...input, evidence });
+}
 
 type GitObjectFixture =
   | string
@@ -90,11 +221,12 @@ describe("model review preparation", () => {
         }),
       });
 
-      expect(prepared.prompt).toContain("Source: Pull request #42");
+      expect(prepared.prompt).toContain("EVIDENCE ENTRY:");
+      expect(prepared.prompt).not.toContain("Source: Pull request #42");
       expect(prepared.prompt).toContain(
         "Review the complete represented change and decide whether it should merge.",
       );
-      expect(prepared.prompt).toContain("export const review");
+      expect(prepared.prompt).not.toContain("export const review");
       await expect(
         prepared.inspector.readFileRange("src/review.ts", 1, 1),
       ).resolves.toEqual({
@@ -297,7 +429,7 @@ describe("model review preparation", () => {
     }
   });
 
-  it("rejects a composed prompt above the bounded model input size", async () => {
+  it("keeps a large captured patch outside the bounded model input", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-model-review-large-"));
     try {
       const headSha = "f".repeat(40);
@@ -322,17 +454,17 @@ describe("model review preparation", () => {
         `diff --git a/src/review.ts b/src/review.ts\n+${"x".repeat(7 * 1024 * 1024)}\n`,
       );
 
-      await expect(
-        prepareModelReview({
-          contextPath,
-          reviewInputPath,
-          patchPath,
-          worktreePath: root,
-          debugPath: join(root, "debug.json"),
-          language: "en",
-          gitShow: async () => "",
-        }),
-      ).rejects.toBeInstanceOf(AnalysisPromptTooLargeError);
+      const prepared = await prepareModelReview({
+        contextPath,
+        reviewInputPath,
+        patchPath,
+        worktreePath: root,
+        debugPath: join(root, "debug.json"),
+        language: "en",
+        gitShow: async () => "",
+      });
+      expect(Buffer.byteLength(prepared.prompt)).toBeLessThanOrEqual(32_768);
+      expect(prepared.prompt).not.toContain("x".repeat(100));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

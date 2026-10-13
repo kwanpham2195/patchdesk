@@ -750,9 +750,15 @@ describe("buildCodexAnalysisPrompt", () => {
 
   it("carries the shared Analysis prompt and adds no second severity or verdict rule", () => {
     const shared = composeReviewPrompt({
-      reviewInput: "# Review input",
-      context: '{"projectReviewCriteria":[]}',
-      fullPatch: "diff --git a/src/a.ts b/src/a.ts",
+      evidence: {
+        identity: {
+          headSha: "a".repeat(40),
+          baseSha: "b".repeat(40),
+          patchHash: "c".repeat(64),
+        },
+        bundleId: "d".repeat(64),
+        entryPageId: `${"d".repeat(64)}-p1`,
+      } as never,
       language: "en",
     });
     const result = buildCodexAnalysisPrompt({
@@ -774,9 +780,9 @@ describe("buildCodexAnalysisPrompt", () => {
       "P2 is a defect with a workaround, or a real maintainability risk.",
     );
     expect(result.value).toContain("P3 is a nit.");
-    expect(result.value).toContain("REVIEW INPUT:");
-    expect(result.value).toContain("REVIEW CONTEXT DOCUMENT:");
-    expect(result.value).toContain("PATCH ARTIFACT:");
+    expect(result.value).toContain("EVIDENCE ENTRY:");
+    expect(result.value).toContain("Captured head:");
+    expect(result.value).not.toContain("PATCH ARTIFACT:");
     expect(
       result.value.split("The verdict must match the findings").length - 1,
     ).toBe(1);

@@ -1,5 +1,9 @@
 import { insightOutputGuidance } from "#src/domain/insight-output-guidance";
 import type { InsightLanguage } from "#src/domain/insight-provider";
+import {
+  evidenceReferencePrompt,
+  type InsightEvidenceReference,
+} from "./insight-evidence-reference";
 
 /**
  * The severity scale the profile's merge policy keys on: it blocks or asks for
@@ -37,9 +41,7 @@ const DESCRIPTION_CHECK = [
 
 /** Builds the one full represented-revision Analysis prompt both providers send. */
 export function composeReviewPrompt(input: {
-  readonly reviewInput: string;
-  readonly context: string;
-  readonly fullPatch: string;
+  readonly evidence: InsightEvidenceReference;
   readonly language: InsightLanguage;
 }): string {
   return [
@@ -49,11 +51,7 @@ export function composeReviewPrompt(input: {
     FINDING_CONTENT,
     REPOSITORY_RULES,
     DESCRIPTION_CHECK,
-    "REVIEW INPUT:",
-    input.reviewInput,
-    "REVIEW CONTEXT DOCUMENT:",
-    input.context,
-    "PATCH ARTIFACT:",
-    input.fullPatch,
+    evidenceReferencePrompt(input.evidence),
+    "git_show is supplementary commit evidence, not the canonical represented Review diff. HEAD resolves to the captured head SHA.",
   ].join("\n\n");
 }

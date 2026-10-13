@@ -8,10 +8,29 @@ import * as v from "valibot";
 import { readBoundedArtifact } from "#src/services/walkthrough-artifact-reader";
 import {
   parseWalkthroughOutput,
-  prepareWalkthroughPrompt,
+  prepareWalkthroughPrompt as prepareCapturedWalkthroughPrompt,
   walkthroughOutputSchema,
   walkthroughOutputLimitDiagnostic,
 } from "#src/services/walkthrough-operation";
+
+const prepareWalkthroughPrompt = (
+  input: Omit<
+    Parameters<typeof prepareCapturedWalkthroughPrompt>[0],
+    "evidence"
+  >,
+) =>
+  prepareCapturedWalkthroughPrompt({
+    ...input,
+    evidence: {
+      identity: {
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40),
+        patchHash: "c".repeat(64),
+      },
+      bundleId: "d".repeat(64),
+      entryPageId: `${"d".repeat(64)}-p1`,
+    } as never,
+  });
 
 const validOutput = {
   citationVersion: 2,
@@ -257,8 +276,8 @@ describe("walkthrough prompt preparation", () => {
       expect(prompt).toContain(
         "State what the patch does, never why it was made",
       );
-      expect(prompt).toContain("HUNK ALIAS MANIFEST");
-      expect(prompt).toContain("h1 | src/recovery.ts | @@ -1,1 +1,1 @@");
+      expect(prompt).toContain("EVIDENCE ENTRY:");
+      expect(prompt).not.toContain("h1 | src/recovery.ts | @@ -1,1 +1,1 @@");
       expect(prompt).toContain("citationVersion to 2");
       expect(prompt).toContain("representative hunks");
       expect(prompt).toContain("at most 36 distinct hunks");
@@ -267,7 +286,7 @@ describe("walkthrough prompt preparation", () => {
         "Hunks you do not cite are not explained in the reading path",
       );
       expect(prompt).not.toContain("Cite every hunk that carries behavior");
-      expect(prompt).toContain("context artifact");
+      expect(prompt).not.toContain("context artifact");
       expect(prompt).not.toMatch(
         /review completion|review failure|workflow:review-pr|commenting|persist(?:ence|ed|ing)/i,
       );
@@ -318,7 +337,8 @@ describe("walkthrough prompt preparation", () => {
       });
       if (prepared._tag === "err")
         throw new Error("Expected a large patch prompt");
-      expect(prepared.value).toContain("h952 | src/module-200.ts");
+      expect(prepared.value).not.toContain("h952 | src/module-200.ts");
+      expect(prepared.value).toContain("EVIDENCE ENTRY:");
       expect(prepared.value).toContain("at most 36 distinct hunks");
       expect(prepared.value).toContain(
         "This patch spans 200 files and 952 hunks",

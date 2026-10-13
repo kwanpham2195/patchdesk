@@ -14,6 +14,7 @@ import { prepareGuidePrompt } from "#src/services/guide-operation";
 import type { InsightInvocationInput } from "#src/services/insight-run-coordinator";
 import type { AccountInsightProvider } from "#src/domain/insight-provider";
 import { ok } from "#src/domain/result";
+import { insightEvidenceReference } from "#src/services/insight-evidence-reference";
 
 // Matches PiInsightChildInvoker's Analysis run bound.
 const EXPECTED_ANALYSIS_TIMEOUT_MS = 10 * 60_000;
@@ -106,6 +107,26 @@ async function fixture(
     model: "codex",
     reasoning: "medium",
     language: options.language ?? "en",
+    evidence: {
+      identity: {
+        profileId,
+        reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+        sessionId,
+        runId: "insight-analysis-1-aaaaaaaaaaaa-review",
+        type: options.type ?? "analysis",
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40),
+        patchHash: "c".repeat(64),
+        intentHash: null,
+      },
+      bundleId: "d".repeat(64),
+      directory: "/captured",
+      entryPageId: `${"d".repeat(64)}-p1`,
+      pages: [],
+      sources: [],
+      manifestText: "{}",
+      patchPath: patch,
+    } as never,
   };
   return { invoker, input, calls, worktree, reviewInput, context, patch };
 }
@@ -115,10 +136,13 @@ describe("AccountInsightInvoker", () => {
     "uses captured complete Guide evidence on %s without unavailable tools",
     async (provider) => {
       const value = await fixture({ provider, language: "vi" });
+      if (value.input.evidence === undefined)
+        throw new Error("Missing fixture evidence");
       const prepared = await prepareGuidePrompt({
         contextPath: value.context,
         patchPath: value.patch,
         language: "vi",
+        evidence: insightEvidenceReference(value.input.evidence),
       });
       if (prepared._tag === "err") throw new Error("Guide preparation failed");
       await writeFile(value.context, "Changed after capture");
@@ -270,8 +294,8 @@ describe("AccountInsightInvoker", () => {
     expect(invocation.prompt).toEqual(expect.any(String));
     // SAFETY: the prompt assertion just above proves invocation.prompt is a string.
     const prompt = invocation.prompt as string;
-    expect(prompt).toContain("HUNK ALIAS MANIFEST");
-    expect(prompt).toContain("diff --git a/a.ts b/a.ts");
+    expect(prompt).toContain("EVIDENCE ENTRY:");
+    expect(prompt).not.toContain("diff --git a/a.ts b/a.ts");
     expect(invocation.maxPromptBytes).toBe(MAX_WALKTHROUGH_PROMPT_BYTES);
     expect(invocation.runTimeoutMs).toBe(EXPECTED_WALKTHROUGH_TIMEOUT_MS);
     expect(value.calls[0]?.[0].outputSchema).toMatchObject({
@@ -316,7 +340,8 @@ describe("AccountInsightInvoker", () => {
     expect(invocation.prompt).toEqual(expect.any(String));
     // SAFETY: the prompt assertion just above proves invocation.prompt is a string.
     const prompt = invocation.prompt as string;
-    expect(prompt).toContain("diff --git a/a.ts b/a.ts");
+    expect(prompt).toContain("EVIDENCE ENTRY:");
+    expect(prompt).not.toContain("diff --git a/a.ts b/a.ts");
     expect(prompt).toContain(
       "The verdict must match the findings: use request_changes when any finding is P0 or P1",
     );

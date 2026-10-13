@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,11 +10,21 @@ import {
   getCurrentTools,
 } from "@earendil-works/pi-ai";
 import { PatchdeskPaths } from "#app/adapters/storage/patchdesk-paths";
-import { parseReviewSessionId, parseWorkspaceProfileId } from "#app/domain/ids";
+import {
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+  parseReviewId,
+  parseInsightRunId,
+  parseGitSha,
+  parseContentHash,
+} from "#app/domain/ids";
 import {
   prepareGuidePrompt,
   MAX_GUIDE_PROMPT_BYTES,
 } from "#app/services/guide-operation";
+import { InsightEvidenceService } from "#app/services/insight-evidence-service";
+import { insightEvidenceReference } from "#app/services/insight-evidence-reference";
+import { hashReviewArtifactContent } from "#app/services/review-artifact-hash";
 import { createGuideAgent } from "#runtime/src/patchdesk-insight-agent";
 import {
   parseProductionInvocation,
@@ -33,7 +42,9 @@ const result = {
   ],
 };
 
-async function fixture() {
+async function fixture(
+  patch = "diff --git a/a.ts b/a.ts\nold mode 100644\nnew mode 100755\n",
+) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-guide-runtime-"));
   const paths = PatchdeskPaths.forTest(root);
   const profile = parseWorkspaceProfileId("profile");
@@ -52,15 +63,45 @@ async function fixture() {
   await mkdir(dirname(contextPath), { recursive: true });
   await Promise.all([
     writeFile(contextPath, "Complete context"),
-    writeFile(
-      patchPath,
-      "diff --git a/a.ts b/a.ts\nold mode 100644\nnew mode 100755\n",
-    ),
+    writeFile(patchPath, patch),
   ]);
+  const review = parseReviewId(
+    "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
+  );
+  const run = parseInsightRunId("insight-guide-1-aaaaaaaaaaaa-review");
+  const head = parseGitSha("a".repeat(40));
+  const base = parseGitSha("b".repeat(40));
+  const patchHash = parseContentHash(hashReviewArtifactContent(patch));
+  if (
+    review._tag === "err" ||
+    run._tag === "err" ||
+    head._tag === "err" ||
+    base._tag === "err" ||
+    patchHash._tag === "err"
+  )
+    throw new Error("Invalid fixture identity");
+  const captured = await new InsightEvidenceService(paths).prepare({
+    identity: {
+      profileId,
+      sessionId,
+      reviewId: review.value,
+      runId: run.value,
+      type: "guide",
+      headSha: head.value,
+      baseSha: base.value,
+      patchHash: patchHash.value,
+      intentHash: null,
+    },
+    patchPath,
+    snapshots: async () => ({}),
+  });
+  if (captured._tag === "err") throw new Error(captured.error.reason);
+  const evidence = insightEvidenceReference(captured.value);
   const prepared = await prepareGuidePrompt({
     contextPath,
     patchPath,
     language: "vi",
+    evidence,
   });
   if (prepared._tag === "err") throw new Error("Invalid evidence");
   const input = {
@@ -71,9 +112,7 @@ async function fixture() {
     model: "faux/test",
     reasoning: "low" as const,
     language: "vi" as const,
-    expectedPromptHash: createHash("sha256")
-      .update(prepared.value.prompt)
-      .digest("hex"),
+    evidence,
   };
   const provider = fauxProvider({ provider: "faux", models: [{ id: "test" }] });
   return { root, paths, input, prepared: prepared.value, provider };
@@ -103,27 +142,25 @@ describe("Guide runtime contract", () => {
       await rm(value.root, { recursive: true, force: true });
     }
   });
-  it("reserves submission bytes in production preparation before invoking a provider", async () => {
-    const value = await fixture();
+  it("sends a bounded reference request for a valid large captured Guide", async () => {
+    const marker = "captured-guide-payload-821";
+    const patch =
+      "diff --git a/a.ts b/a.ts\n--- /dev/null\n+++ b/a.ts\n@@ -0,0 +1,12000 @@\n" +
+      Array.from({ length: 12000 }, (_, index) => `+${marker}-${index}\n`).join(
+        "",
+      );
+    const value = await fixture(patch);
     try {
-      const header = "diff --git a/a.ts b/a.ts\n";
-      const metadata = "z".repeat(512 * 1024 - 500) + "\n";
-      const hunk = "@@ -0,0 +1 @@\n+";
-      const patch =
-        header +
-        metadata +
-        hunk +
-        "x".repeat(
-          2 * 1024 * 1024 - header.length - metadata.length - hunk.length,
-        );
-      await writeFile(value.input.patchPath, patch);
-      await writeFile(value.input.contextPath, "");
-      const base = await prepareGuidePrompt(value.input);
-      if (base._tag === "err") throw new Error("Invalid bounded workload");
-      const contextBytes =
-        MAX_GUIDE_PROMPT_BYTES - Buffer.byteLength(base.value.prompt) - 1;
-      expect(contextBytes).toBeLessThanOrEqual(512 * 1024);
-      await writeFile(value.input.contextPath, "c".repeat(contextBytes));
+      let prompt = "";
+      value.provider.setResponses([
+        (context) => {
+          prompt = getCurrentSystemPrompt(context.messages);
+          return fauxAssistantMessage(
+            fauxToolCall("submit_patchdesk_result", result),
+            { stopReason: "toolUse" },
+          );
+        },
+      ]);
       expect(
         await runProductionChild(
           { type: "guide", input: value.input },
@@ -134,12 +171,22 @@ describe("Guide runtime contract", () => {
             onHandle: () => undefined,
           },
         ),
-      ).toEqual({
-        ok: false,
-        reason: "invalid_input",
-        detail: "prompt_too_large",
-      });
-      expect(value.provider.state.callCount).toBe(0);
+      ).toEqual({ ok: true, value: result });
+      expect(Buffer.byteLength(patch)).toBeGreaterThan(
+        MAX_GUIDE_PROMPT_BYTES * 10,
+      );
+      expect(value.prepared.patchText).toBe(patch);
+      expect(prompt).toContain(
+        `EVIDENCE ENTRY: ${value.input.evidence.entryPageId}`,
+      );
+      expect(prompt).not.toContain(marker);
+      expect(prompt).not.toContain("Complete context");
+      expect(
+        Buffer.byteLength(
+          prompt + "Complete the prepared Patchdesk operation.",
+        ),
+      ).toBeLessThanOrEqual(MAX_GUIDE_PROMPT_BYTES);
+      expect(value.provider.state.callCount).toBe(1);
     } finally {
       await rm(value.root, { recursive: true, force: true });
     }
@@ -174,7 +221,11 @@ describe("Guide runtime contract", () => {
       expect(prompt).toBe(
         `${value.prepared.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
       );
-      expect(tools).toEqual(["submit_patchdesk_result"]);
+      expect(tools).toEqual([
+        "submit_patchdesk_result",
+        "read_evidence_page",
+        "search_evidence",
+      ]);
       expect(value.provider.state.callCount).toBe(1);
       expect(
         parseProductionInvocation({
@@ -189,7 +240,10 @@ describe("Guide runtime contract", () => {
   it("refuses changed complete evidence before invoking the provider", async () => {
     const value = await fixture();
     try {
-      await writeFile(value.input.contextPath, "Changed context");
+      await writeFile(
+        join(value.input.evidence.directory, "source-2.txt"),
+        "Changed context",
+      );
       expect(
         await runProductionChild(
           { type: "guide", input: value.input },

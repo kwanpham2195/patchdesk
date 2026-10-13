@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import { loadInsightEvidenceReference } from "#app/services/insight-evidence-reference";
+import { InsightEvidenceStore } from "#app/adapters/storage/insight-evidence-store";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   prepareGuidePrompt,
   guidePromptFitsTransport,
@@ -42,6 +44,7 @@ import {
   productionGuideInvocationSchema,
   guideResultSchema,
   createGuideAgent,
+  createEvidenceTools,
   MAX_RUNTIME_STDIN_BYTES,
   MAX_RUNTIME_STDOUT_BYTES,
   analysisInvocationSchema,
@@ -151,6 +154,7 @@ export async function runPatchdeskChild(
   invocation: PatchdeskChildInvocation,
   options: {
     readonly providers?: ReadonlyArray<Provider>;
+    readonly evidenceTools?: ReadonlyArray<AgentTool>;
     readonly skillPath?: string;
     readonly inspectors?: InspectorOperations;
     readonly signal?: AbortSignal;
@@ -175,8 +179,22 @@ export async function runPatchdeskChild(
       return { ok: false, reason: "runtime_unavailable" };
     let built: InsightAgentRun;
     try {
+      if (
+        Buffer.byteLength(
+          created.spec.systemPrompt +
+            "Complete the prepared Patchdesk operation.",
+        ) > 32_768
+      )
+        return {
+          ok: false,
+          reason: "invalid_input",
+          detail: "prompt_too_large",
+        };
       built = createInsightAgent(
-        created.spec,
+        {
+          ...created.spec,
+          tools: [...created.spec.tools, ...(options.evidenceTools ?? [])],
+        },
         options.providers,
         options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS,
       );
@@ -547,83 +565,118 @@ export async function runProductionChild(
 ): Promise<PatchdeskChildResult> {
   const canonical = canonicalizeProductionInvocation(invocation, options.paths);
   if (canonical === undefined) return { ok: false, reason: "invalid_input" };
-  const childOptions = {
-    signal,
-    onHandle: options.onHandle,
-    rejectedResultPath: canonical.rejectedResultPath,
-    ...definedProps({ providers: options.providers }),
-  };
-  // The language shapes only the prompt composed here; the agent invocation takes the finished prompt.
-  if (canonical.type === "guide") {
-    const { language, expectedPromptHash, ...input } = canonical.input;
-    const prepared = await prepareGuidePrompt({ ...input, language });
-    if (prepared._tag === "err")
-      return {
-        ok: false,
-        reason: "invalid_input",
-        detail: prepared.error.reason,
-      };
-    if (
-      createHash("sha256").update(prepared.value.prompt).digest("hex") !==
-      expectedPromptHash
-    )
-      return { ok: false, reason: "invalid_input" };
-    return runPatchdeskChild(
-      { type: "guide", input: { ...input, prompt: prepared.value.prompt } },
-      childOptions,
-    );
-  }
-  if (canonical.type === "walkthrough") {
-    const { language, ...input } = canonical.input;
-    const prompt = await prepareWalkthroughPrompt({ ...input, language });
-    if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
-    return await runPatchdeskChild(
-      { type: "walkthrough", input: { ...input, prompt: prompt.value } },
-      childOptions,
-    );
-  }
-  if (canonical.type === "brief") {
-    const { language, ...input } = canonical.input;
-    const prompt = await prepareBriefPrompt({ ...input, language });
-    if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
-    return await runPatchdeskChild(
-      { type: "brief", input: { ...input, prompt: prompt.value } },
-      childOptions,
-    );
-  }
-  const { language, ...analysisInput } = canonical.input;
-  const commands = new CommandRunner();
-  let prepared: PreparedModelReview;
-  try {
-    prepared = await prepareModelReview({
-      ...analysisInput,
-      language,
-      debugPath: canonical.debugPath ?? "",
-      async gitShow(argv) {
-        const output = await commands.runText({
-          argv,
-          timeoutMs: 15_000,
-          signal,
-        });
-        return output._tag === "ok" ? output.value : "";
-      },
-    });
-  } catch (cause) {
-    if (cause instanceof AnalysisPromptTooLargeError)
-      return { ok: false, reason: "invalid_input" };
-    throw cause;
-  }
-  return await runPatchdeskChild(
-    {
-      type: "analysis",
-      input: { ...analysisInput, prompt: prepared.prompt },
-    },
-    {
-      ...childOptions,
-      skillPath: resolvePatchdeskReviewSkillPath(),
-      inspectors: inspectorOperations(prepared.inspector),
-    },
+  const paths = options.paths ?? PatchdeskPaths.fromEnvironment(process.env);
+  const loaded = await loadInsightEvidenceReference(
+    canonical.input.evidence,
+    paths,
   );
+  if (loaded._tag === "err")
+    return { ok: false, reason: "invalid_input", detail: loaded.error.reason };
+  const bundle = loaded.value;
+  const store = new InsightEvidenceStore(paths);
+  const evidenceTools = createEvidenceTools(bundle, store);
+  const execute = async (): Promise<PatchdeskChildResult> => {
+    const childOptions = {
+      evidenceTools,
+      signal,
+      onHandle: options.onHandle,
+      rejectedResultPath: canonical.rejectedResultPath,
+      ...definedProps({ providers: options.providers }),
+    };
+    // The language shapes only the prompt composed here; the agent invocation takes the finished prompt.
+    if (canonical.type === "guide") {
+      const { language, ...input } = canonical.input;
+      const prepared = await prepareGuidePrompt({
+        ...input,
+        patchPath: bundle.patchPath,
+        contextPath: join(
+          bundle.directory,
+          bundle.sources[1]?.name ?? "missing",
+        ),
+        language,
+      });
+      if (prepared._tag === "err")
+        return {
+          ok: false,
+          reason: "invalid_input",
+          detail: prepared.error.reason,
+        };
+      return runPatchdeskChild(
+        { type: "guide", input: { ...input, prompt: prepared.value.prompt } },
+        childOptions,
+      );
+    }
+    if (canonical.type === "walkthrough") {
+      const { language, ...input } = canonical.input;
+      const prompt = await prepareWalkthroughPrompt({
+        ...input,
+        patchPath: bundle.patchPath,
+        contextPath: join(
+          bundle.directory,
+          bundle.sources[1]?.name ?? "missing",
+        ),
+        language,
+      });
+      if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
+      return await runPatchdeskChild(
+        { type: "walkthrough", input: { ...input, prompt: prompt.value } },
+        childOptions,
+      );
+    }
+    if (canonical.type === "brief") {
+      const { language, ...input } = canonical.input;
+      const prompt = await prepareBriefPrompt({
+        ...input,
+        patchPath: bundle.patchPath,
+        language,
+      });
+      if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
+      return await runPatchdeskChild(
+        { type: "brief", input: { ...input, prompt: prompt.value } },
+        childOptions,
+      );
+    }
+    const { language, ...analysisInput } = canonical.input;
+    const commands = new CommandRunner();
+    let prepared: PreparedModelReview;
+    try {
+      prepared = await prepareModelReview({
+        ...analysisInput,
+        evidence: bundle,
+        language,
+        debugPath: canonical.debugPath ?? "",
+        async gitShow(argv) {
+          const output = await commands.runText({
+            argv,
+            timeoutMs: 15_000,
+            signal,
+          });
+          return output._tag === "ok" ? output.value : "";
+        },
+      });
+    } catch (cause) {
+      if (cause instanceof AnalysisPromptTooLargeError)
+        return { ok: false, reason: "invalid_input" };
+      throw cause;
+    }
+    return await runPatchdeskChild(
+      {
+        type: "analysis",
+        input: { ...analysisInput, prompt: prepared.prompt },
+      },
+      {
+        ...childOptions,
+        skillPath: resolvePatchdeskReviewSkillPath(),
+        inspectors: inspectorOperations(prepared.inspector),
+      },
+    );
+  };
+  const result = await execute();
+  if (signal.aborted) return { ok: false, reason: "cancelled" };
+  const validated = await store.validate(bundle);
+  return validated._tag === "err"
+    ? { ok: false, reason: "invalid_input", detail: validated.error.reason }
+    : result;
 }
 
 function resolvePatchdeskReviewSkillPath(): string {
@@ -661,6 +714,13 @@ export function canonicalizeProductionInvocation(
   const profile = parseWorkspaceProfileId(invocation.input.profileId);
   const session = parseReviewSessionId(invocation.input.sessionId);
   if (profile._tag === "err" || session._tag === "err") return undefined;
+  const identity = invocation.input.evidence.identity;
+  if (
+    identity.profileId !== profile.value ||
+    identity.sessionId !== session.value ||
+    identity.type !== invocation.type
+  )
+    return undefined;
   if (
     invocation.input.patchPath !== paths.patchFile(profile.value, session.value)
   )
