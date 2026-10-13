@@ -65,10 +65,8 @@ export class InsightEvidenceStore {
       temporary = undefined;
       return await this.validate(bundle);
     } catch {
-      return err({
-        _tag: "InsightEvidenceFailure",
-        reason: "evidence_unavailable",
-      });
+      // A crash can publish this run directory before its Insight record commits.
+      return this.validate(bundle);
     } finally {
       if (
         temporary !== undefined &&
