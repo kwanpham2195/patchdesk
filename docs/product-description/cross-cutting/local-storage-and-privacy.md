@@ -44,6 +44,14 @@ Review preparation journals paths before creating worktrees or artifacts. GitHub
 
 ### While the action runs
 
+Insight generation retains a captured evidence bundle in Local data for its run. It contains represented source text and citation coordinates, so it has the same privacy needs as the prepared patch. Integrity checks use the complete expected file set and digests held by Patchdesk, rather than trusting a mutable manifest.
+
+Codex account generation uses a private temporary home and native automatic approval review with a workspace-write sandbox. The home holds minimal same-account material in a private file, including an access token but no refresh token. Unsupported authentication stores, insufficient token lifetime, loaded instructions, or effective-policy mismatches prevent generation. Patchdesk checks the source login and configuration for changes and does not refresh or rewrite them. Pi account generation enables Bash alongside its inspection tools; Bash is not an enforced read-only shell. Edit and write tools are excluded, and inherited extensions, MCP, skills, templates, themes, and context files are disabled. Neither provider is a general filesystem confidentiality boundary.
+
+Private-home cleanup follows confirmed process cessation. If cessation cannot be confirmed, Patchdesk preserves the home and reports cleanup failure. An early directory identity failure can leave an empty directory. Cleanup does not promise secure erasure.
+
+Insight failures retain only an allowlisted provider phase, code, and safe detail. Arbitrary provider prose, source excerpts, credentials, and sensitive paths do not become diagnostic content. Safe detail survives a diagnostic reload.
+
 The previous complete file remains authoritative until the replacement is safely installed. A storage or directory-sync failure is reported as a local failure rather than loading partial bytes.
 
 Invalid JSON, invalid domain values, secret-shaped keys, or token-shaped content is rejected. Invalid Review entries are quarantined so valid neighboring evidence remains usable. When the Visited pull requests column reads a profile's Review records, an unreadable record is skipped rather than emptying the column, and a recovery Diagnostic records how many were skipped. Active Reviews, active Insights, protected writes, pending merges, and preparation journals protect their sessions from Clear local review data.
@@ -123,3 +131,5 @@ Clear cache removes rebuildable children while durable Review history remains. C
 - Confirm startup presentation after interrupted atomic writes and preparation-journal recovery.
 
 Baseline drafted from Patchdesk application source commit `3100615`.
+
+Insight evidence and native account behavior revised through source commit `d0d37c1` for #821. A current Codex PR Walkthrough completed with observed owned process and private-home absence. An earlier cleanup failure remains unexplained, with its unidentified home untouched. Managed-refusal runtime behavior and the complete provider matrix remain unverified.

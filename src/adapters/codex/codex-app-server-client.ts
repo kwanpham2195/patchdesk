@@ -542,6 +542,7 @@ class RpcChild {
   private buffer = "";
   private nextId = 0;
   private stopped = false;
+  private stopPromise: Promise<void> | undefined;
   private ownsProcessGroup = false;
   private turnId: string | undefined;
   private threadId: string | undefined;
@@ -771,21 +772,24 @@ class RpcChild {
       });
   }
 
-  async stop(): Promise<void> {
-    if (this.stopped) return;
-    this.cancel();
-    await Promise.allSettled([...this.approvalTasks]);
-    this.approvalTasks.clear();
-    this.stopped = true;
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject("stopped");
-    }
-    this.pending.clear();
-    this.listeners.clear();
-    if (this.child !== undefined)
-      await stopInsightProcess(this.child, this.ownsProcessGroup);
-    this.child = undefined;
+  stop(): Promise<void> {
+    // Repeated shutdown must preserve failed cessation so the private home remains guarded.
+    this.stopPromise ??= (async () => {
+      this.cancel();
+      await Promise.allSettled([...this.approvalTasks]);
+      this.approvalTasks.clear();
+      this.stopped = true;
+      for (const pending of this.pending.values()) {
+        clearTimeout(pending.timer);
+        pending.reject("stopped");
+      }
+      this.pending.clear();
+      this.listeners.clear();
+      if (this.child !== undefined)
+        await stopInsightProcess(this.child, this.ownsProcessGroup);
+      this.child = undefined;
+    })();
+    return this.stopPromise;
   }
 
   private listenersAdd(

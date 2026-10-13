@@ -59,6 +59,7 @@ export class PiRpcChannel {
   private buffer = "";
   private nextId = 0;
   private exited = false;
+  private stopPromise: Promise<void> | undefined;
 
   private constructor(
     private readonly child: ChildProcess,
@@ -147,9 +148,12 @@ export class PiRpcChannel {
   }
 
   /** Closes stdin, which asks pi to shut down, then kills the child. */
-  async stop(): Promise<void> {
-    this.markExited();
-    await stopInsightProcess(this.child, this.ownsProcessGroup);
+  stop(): Promise<void> {
+    this.stopPromise ??= (async () => {
+      this.markExited();
+      await stopInsightProcess(this.child, this.ownsProcessGroup);
+    })();
+    return this.stopPromise;
   }
 
   private read(chunk: Buffer | string): void {
@@ -163,7 +167,8 @@ export class PiRpcChannel {
         (line) => Buffer.byteLength(line, "utf8") > MAX_RECORD_BYTES,
       )
     ) {
-      void this.stop();
+      // The run finalizer awaits the same cleanup failure; the stream callback cannot own a rejection.
+      void this.stop().catch(() => undefined);
       return;
     }
     for (const rawLine of lines) {

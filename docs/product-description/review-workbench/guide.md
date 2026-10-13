@@ -49,6 +49,8 @@ A file row expands or collapses only that appearance. Text diffs show code witho
 
 ### While the action runs
 
+The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
+
 A previous result remains readable during regeneration. Failure and run progress appear separately from that result. Stop requests cancellation; cancellation is not complete until the run settles.
 
 Reading progress updates immediately while Patchdesk saves it. A failed save keeps the displayed progress and offers Retry reading progress. Navigation that would leave the Review waits for its registered progress saves. If they fail, Patchdesk keeps the current Review open.
@@ -120,3 +122,5 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 - Publishing replies, edits, deletions, and review submissions from Guide was not exercised against a real pull request. Owning tests cover those actions; a disposable live write pass remains pending.
 
 Drafted against Patchdesk application source commit `b960ff0c292053dd514e6bd33950c542bf92cd10`. Layout checked through CDP; native and fixture evidence limits are stated above.
+
+Captured input and failure behavior revised from source commit `1148d23c` for #821. Provider generation across every Insight and Review source remains unverified.
