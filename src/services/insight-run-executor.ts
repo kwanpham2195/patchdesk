@@ -1,6 +1,7 @@
 import {
   insightFailureDiagnostic,
   insightEvidenceFailureCategory,
+  sanitizedInsightFailureDetail,
 } from "#src/domain/insight-failure-diagnostic";
 import * as v from "valibot";
 
@@ -235,10 +236,14 @@ export class InsightRunExecutor {
             category,
             invocation._tag === "err" ? invocation.error.phase : undefined,
           );
+          const detail =
+            invocation._tag === "err" && invocation.error.stderr !== undefined
+              ? sanitizedInsightFailureDetail(invocation.error.stderr)
+              : diagnostic.detail;
           await this.recordDiagnostic(
             input,
             type,
-            `${input.provider}:${diagnostic.code}:${diagnostic.detail}`,
+            `${input.provider}:${diagnostic.code}:${detail}`,
           );
         }
         return;
