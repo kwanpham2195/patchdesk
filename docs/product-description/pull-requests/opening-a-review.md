@@ -44,6 +44,8 @@ The main process resolves the profile, reads current pull-request identity and r
 
 ### While the action runs
 
+When a local checkout is available, Patchdesk captures its diff directly to disk, so a patch larger than the ordinary command-output limit can still be prepared.
+
 Opening reads the pull request again at preparation checkpoints. It obtains diff data, writes the represented patch, and prepares a managed worktree when the watched repository has a local path. Without a usable local checkout, the workbench can use a GitHub snapshot and names the local-checkout limitation. Opening no longer gathers the repository rules and pull-request evidence an Insight reads; the first Insight run gathers those, so opening takes less and the first Insight run on a Review takes a moment longer than later ones.
 
 > Technical note: preparation writes only the patch and the worktree. The context pack an Insight run reads — repository rules, comments, checks, and the changed-file list — is built when a run first needs it and rebuilt whenever it does not describe the session's patch. An Insight therefore describes the pull request as of the run rather than as of the open.

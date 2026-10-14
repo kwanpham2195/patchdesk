@@ -15,6 +15,7 @@ import type {
   GitHubReader,
   GitHubReadFailure,
 } from "#src/adapters/github/github-adapter";
+import { writeAtomicFile } from "#src/adapters/storage/json-file";
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
@@ -167,6 +168,23 @@ function github(
       checkReads += 1;
       return ok({ overall: "passing" as const, checks: [] });
     },
+    async capturePullRequestDiff(
+      input: Parameters<GitHubReader["capturePullRequestDiff"]>[0],
+    ) {
+      const diff = await this.getPullRequestDiff({
+        profile: input.profile,
+        pr: pullRequest,
+        fetchedRefs: input.fetchedRefs,
+      });
+      if (diff._tag === "err") return diff;
+      const saved = await writeAtomicFile(input.path, diff.value);
+      return saved._tag === "ok"
+        ? saved
+        : err({
+            _tag: "GitHubReadFailed" as const,
+            operation: "get_diff" as const,
+          });
+    },
     async getPullRequestDiff(input: DiffInput) {
       diffs += 1;
       diffCalls.push(input);
@@ -180,6 +198,7 @@ function github(
     | "getPullRequestComments"
     | "getPullRequestChecks"
     | "getPullRequestDiff"
+    | "capturePullRequestDiff"
   > & {
     readonly counts: { readonly pullRequests: number; readonly diffs: number };
     readonly diffCalls: ReadonlyArray<DiffInput>;

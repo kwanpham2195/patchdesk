@@ -1,3 +1,4 @@
+import { writeAtomicFile } from "#src/adapters/storage/json-file";
 import type {
   AssignableUserListing,
   CheckSummary,
@@ -587,6 +588,16 @@ export class FakeGitHubAdapter
           message: "delete_comment",
         })
       : ok(undefined);
+  }
+
+  async capturePullRequestDiff(
+    input: Parameters<GitHubReader["capturePullRequestDiff"]>[0],
+  ): Promise<Result<void, GitHubReadFailure>> {
+    if (this.values.diff === undefined) return missing("get_diff");
+    const saved = await writeAtomicFile(input.path, this.values.diff);
+    return saved._tag === "ok"
+      ? saved
+      : err({ _tag: "GitHubReadFailed", operation: "get_diff" });
   }
 
   async getPullRequestDiff(

@@ -94,7 +94,10 @@ type WriteArtifactsResult = { readonly canonicalPatchHash?: ContentHash };
 type PreparationDependencies = {
   readonly profiles: ProfileStore;
   readonly sessions: ReviewSessionStore;
-  readonly github: Pick<GitHubReader, "getPullRequest" | "getPullRequestDiff">;
+  readonly github: Pick<
+    GitHubReader,
+    "getPullRequest" | "getPullRequestDiff" | "capturePullRequestDiff"
+  >;
   readonly paths: PatchdeskPaths;
   readonly now: () => IsoTimestamp;
   readonly worktrees: ReviewWorktreeService;
@@ -457,40 +460,46 @@ export class ReviewSessionPreparation {
             pr: input.input.pullRequest,
             snapshot: { baseSha: input.baseSha, headSha: input.headSha },
           });
+    if ((await input.journal.record(patchPath))._tag === "err")
+      return await this.abort(input.journal, {
+        _tag: "SessionStorageUnavailable",
+      });
     const [diff, canonical] = await Promise.all([
-      this.dependencies.github.getPullRequestDiff({
-        profile: input.profile,
-        pr: input.input.pullRequest,
-        ...(fetchedRefs === undefined
-          ? { snapshot: { baseSha: input.baseSha, headSha: input.headSha } }
-          : { fetchedRefs: fetchedRefs.value }),
-      }),
+      fetchedRefs === undefined
+        ? this.dependencies.github.getPullRequestDiff({
+            profile: input.profile,
+            pr: input.input.pullRequest,
+            snapshot: { baseSha: input.baseSha, headSha: input.headSha },
+          })
+        : this.dependencies.github.capturePullRequestDiff({
+            profile: input.profile,
+            fetchedRefs: fetchedRefs.value,
+            path: patchPath,
+          }),
       canonicalDiff ?? Promise.resolve(undefined),
     ]);
     if (diff._tag === "err")
       return await this.abort(input.journal, {
         _tag: "PreparationUnavailable",
       });
-    if ((await input.journal.record(patchPath))._tag === "err")
-      return await this.abort(input.journal, {
-        _tag: "SessionStorageUnavailable",
-      });
-    const normalizedPatch = normalizeReviewPatch(diff.value);
-    const wrotePatch = await writeAtomicFile(patchPath, normalizedPatch);
-    if (wrotePatch._tag === "err")
-      return await this.abort(input.journal, {
-        _tag: "PreparationUnavailable",
-      });
+    if (diff.value !== undefined) {
+      const wrotePatch = await writeAtomicFile(
+        patchPath,
+        normalizeReviewPatch(diff.value),
+      );
+      if (wrotePatch._tag === "err")
+        return await this.abort(input.journal, {
+          _tag: "PreparationUnavailable",
+        });
+    }
     // The canonical hash always comes from GitHub's compare rendering: when
     // there is no worktree, `diff` already is that rendering; otherwise it
     // is the extra `canonical` fetch above. A failed fetch or an unparsable
     // hash leaves the hash absent rather than failing preparation — opening
     // a PR must never become more fragile because of this proof (ADR 0026).
     let canonicalPatchHash: ContentHash | undefined;
-    if (fetchedRefs === undefined) {
-      const parsed = parseContentHash(
-        hashReviewArtifactContent(normalizedPatch),
-      );
+    if (fetchedRefs === undefined && diff.value !== undefined) {
+      const parsed = parseContentHash(hashReviewArtifactContent(diff.value));
       if (parsed._tag === "ok") canonicalPatchHash = parsed.value;
     } else if (canonical !== undefined && canonical._tag === "ok") {
       const parsed = parseContentHash(

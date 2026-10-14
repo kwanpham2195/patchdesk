@@ -4,6 +4,7 @@ import type { PullRequestReviewsRead } from "./github-pull-request-reviews";
 import type {
   AuthenticatedGitHubAccount,
   BranchProtectionEvidence,
+  FetchedDiffRefs,
   PullRequestDiffSource,
   RepositoryPermissionEvidence,
 } from "./github-adapter";
@@ -199,6 +200,12 @@ export interface GitHubReader {
       readonly pr: PullRequestRef;
     } & PullRequestDiffSource,
   ): Promise<Result<string, GitHubReadFailure>>;
+  /** Capture verified local refs atomically without buffering the diff in process output. */
+  capturePullRequestDiff(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly fetchedRefs: FetchedDiffRefs;
+    readonly path: string;
+  }): Promise<Result<void, GitHubReadFailure>>;
   /** Fetch one bounded text blob at an immutable revision for local diff hydration. */
   getFileContents(input: {
     readonly profile: WorkspaceProfileConfig;
