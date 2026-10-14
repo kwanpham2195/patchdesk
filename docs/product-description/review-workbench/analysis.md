@@ -91,7 +91,7 @@ A generation run follows the lifecycle described in [Brief](brief.md#while-the-a
 
 ### Settle
 
-An incomplete Analysis ends as a failed run with **Analysis incomplete**. It supplies no new merge verdict. A previous Analysis remains readable with its original revision; without one, no verdict card is created. A complete result can have low confidence and still pass validation. Reading every page is not a success requirement.
+An incomplete Analysis ends as a failed run with **Analysis incomplete**. It supplies no new merge verdict. A previous Analysis remains readable with its original revision; without one, no verdict card is created. A complete result can have low confidence and still pass validation. A completed pi CLI Analysis does not need to include unused failure details; its Findings, verdict, and citations still pass the same validation. Reading every page is not a success requirement.
 
 An exact pending-review projection updates the canonical workbench immediately without an advisory full Review load. A Finding becomes pending review only when the projection's unresolved Finding identity matches the run, Finding, session, head, patch, and pending-review node. It becomes published only from matching recent-write evidence. A suggestion is confirmed against the comment Patchdesk composed and returned, not against text the reader assembled, and its cited range is preserved whole whether the write started the pending review or appended to one. Once the review is submitted, GitHub renders that comment as a suggested change the pull request author can commit or add to a batch; Patchdesk neither applies it nor tracks what the author does with it.
 
