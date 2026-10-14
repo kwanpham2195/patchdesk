@@ -257,7 +257,7 @@ describe("MCP read tool refusals", () => {
     app = await startAppWithLinkedWorktree();
     await writeFile(
       join(app.repositoryPath, "bundle.js"),
-      "export const line = 0;\n".repeat(140_000),
+      "export const line = 0;\n".repeat(280_000),
     );
     const client = await connectLegacyClient(app.socketPath);
 

@@ -5,7 +5,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { CodexRunInput, JsonObject } from "./codex-app-server-client";
 
 /** The complete text request, including native reader instructions, fits this bound. */
-export const NATIVE_INSIGHT_PROMPT_BYTES = 32_768;
+export const NATIVE_INSIGHT_PROMPT_BYTES = 65_536;
 /** Native review decides requests; this instruction grants no client approval. */
 export const NATIVE_INSIGHT_INSTRUCTIONS =
   "Inspect only the captured evidence for this Review. Do not modify files, access credentials, use network tools, or publish anything. Honor native permission decisions and report a denied required read without bypassing it.";

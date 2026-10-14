@@ -1,5 +1,6 @@
 import {
   insightFailureDiagnostic,
+  analysisIncompleteDiagnostic,
   insightEvidenceFailureCategory,
 } from "#src/domain/insight-failure-diagnostic";
 import { NATIVE_INSIGHT_PROMPT_BYTES } from "#src/adapters/codex/codex-insight-policy";
@@ -145,7 +146,9 @@ export class AccountInsightInvoker implements InsightInvoker {
           "evidence",
         ),
       });
-    const runNative = (run: CodexRunInput) => {
+    const runNative = (
+      run: CodexRunInput,
+    ): Promise<Result<unknown, AccountRunFailure>> => {
       const prompt = `${run.prompt}\n\n${nativeInstructions.value}`;
       if (Buffer.byteLength(prompt) > NATIVE_INSIGHT_PROMPT_BYTES)
         return Promise.resolve(
@@ -191,6 +194,7 @@ export class AccountInsightInvoker implements InsightInvoker {
             ...insightFailureDiagnostic(
               result.error.reason,
               result.error.phase,
+              result.error.detail,
             ),
           });
     }
@@ -235,6 +239,7 @@ export class AccountInsightInvoker implements InsightInvoker {
             ...insightFailureDiagnostic(
               result.error.reason,
               result.error.phase,
+              result.error.detail,
             ),
           });
     }
@@ -296,7 +301,11 @@ export class AccountInsightInvoker implements InsightInvoker {
     if (result._tag === "err")
       return err({
         reason: result.error.reason,
-        ...insightFailureDiagnostic(result.error.reason, result.error.phase),
+        ...insightFailureDiagnostic(
+          result.error.reason,
+          result.error.phase,
+          result.error.detail,
+        ),
       });
     const outcome =
       this.provider === "pi-cli-account"
@@ -311,10 +320,7 @@ export class AccountInsightInvoker implements InsightInvoker {
       ? ok(outcome.value.result)
       : err({
           reason: "analysis_incomplete" as const,
-          ...insightFailureDiagnostic(
-            "analysis_incomplete",
-            outcome.value.incomplete.reason,
-          ),
+          ...analysisIncompleteDiagnostic(outcome.value.incomplete),
         });
   }
 }
@@ -327,7 +333,11 @@ function strictRunResult(
   if (result._tag === "err")
     return err({
       reason: result.error.reason,
-      ...insightFailureDiagnostic(result.error.reason, result.error.phase),
+      ...insightFailureDiagnostic(
+        result.error.reason,
+        result.error.phase,
+        result.error.detail,
+      ),
     });
   const value = parseCodexStrictResult(result.value);
   return value === undefined

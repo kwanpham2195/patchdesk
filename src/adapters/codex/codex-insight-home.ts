@@ -1,3 +1,7 @@
+import {
+  insightCleanupFailureDetail,
+  insightOriginalInvocationDetail,
+} from "#src/domain/insight-failure-diagnostic";
 import { constants } from "node:fs";
 import {
   open,
@@ -192,6 +196,43 @@ export const createCodexInsightHome: CodexInsightHomeFactory = async (
   }
 };
 
+class CodexInsightProcessCleanupError extends InsightProcessCleanupError {
+  readonly _tag = "CodexInsightProcessCleanupError" as const;
+  constructor(readonly detail: string) {
+    super();
+  }
+}
+
+/** Failed process cessation retains the private home and the safe preceding outcome. */
+export async function withCodexInsightProcessCleanup(
+  action: () => Promise<Result<unknown, CodexAppServerFailure>>,
+  stop: () => Promise<void>,
+): Promise<Result<unknown, CodexAppServerFailure>> {
+  let result: Result<unknown, CodexAppServerFailure>;
+  try {
+    result = await action();
+  } catch (cause) {
+    await stopCodexInsightProcess(stop);
+    throw cause;
+  }
+  await stopCodexInsightProcess(stop, result);
+  return result;
+}
+
+async function stopCodexInsightProcess(
+  stop: () => Promise<void>,
+  result?: Result<unknown, CodexAppServerFailure>,
+): Promise<void> {
+  const original = insightOriginalInvocationDetail(result);
+  try {
+    await stop();
+  } catch {
+    throw new CodexInsightProcessCleanupError(
+      insightCleanupFailureDetail("process", original),
+    );
+  }
+}
+
 export async function withCodexInsightHome(
   factory: CodexInsightHomeFactory,
   requiredMs: number,
@@ -201,6 +242,7 @@ export async function withCodexInsightHome(
   signal?: AbortSignal,
 ): Promise<Result<unknown, CodexAppServerFailure>> {
   let home: CodexInsightHome | undefined;
+  let invocationDetail: string | undefined;
   let result: Result<unknown, CodexAppServerFailure>;
   try {
     const prepared = await factory(requiredMs);
@@ -208,6 +250,7 @@ export async function withCodexInsightHome(
       return err({ reason: "runtime_unavailable", phase: prepared.error });
     home = prepared.value;
     result = await action(home);
+    invocationDetail = insightOriginalInvocationDetail(result);
     if (!(await home.unchanged()))
       result = err({
         reason: "runtime_unavailable",
@@ -219,6 +262,10 @@ export async function withCodexInsightHome(
       return err({
         reason: signal?.aborted ? "cancelled" : "runtime_unavailable",
         phase: "cleanup",
+        detail:
+          cause instanceof CodexInsightProcessCleanupError
+            ? cause.detail
+            : insightCleanupFailureDetail("process"),
       });
     result = err({
       reason: "runtime_unavailable",
@@ -231,6 +278,7 @@ export async function withCodexInsightHome(
     return err({
       reason: signal?.aborted ? "cancelled" : "runtime_unavailable",
       phase: "cleanup",
+      detail: insightCleanupFailureDetail("home", invocationDetail),
     });
   }
   return signal?.aborted ? err({ reason: "cancelled", phase: "turn" }) : result;

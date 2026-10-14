@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Increased desktop request waits to 60 seconds and Analysis execution to 20 minutes, with larger bounded native prompts, evidence pages, and buffered command output. Incomplete Analysis and Codex cleanup failures retain safe explanations in Review activity. #821
+
 - Fixed opening large pull requests with a local checkout by capturing the diff directly to disk instead of applying the command-output limit.
 
 - Changed Brief, Walkthrough, Analysis, and Guide to read captured revision evidence on demand instead of sending the complete patch in the first model request. Missing or changed evidence and incomplete Analysis preserve the previous result and explain the failure. Pi CLI retains completed Analysis results without requiring unused failure fields. #821

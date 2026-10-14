@@ -231,10 +231,16 @@ export class InsightRunExecutor {
             ),
           "invocation",
         );
-        if (category !== undefined) {
+        if (
+          category !== undefined ||
+          (invocation._tag === "err" && invocation.error.phase === "cleanup")
+        ) {
           const diagnostic = insightFailureDiagnostic(
-            category,
+            category ?? "cancelled",
             invocation._tag === "err" ? invocation.error.phase : undefined,
+            invocation._tag === "err" && "detail" in invocation.error
+              ? invocation.error.detail
+              : undefined,
           );
           const detail =
             invocation._tag === "err" && invocation.error.stderr !== undefined
