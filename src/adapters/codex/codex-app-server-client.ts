@@ -12,6 +12,7 @@ import * as v from "valibot";
 import {
   createCodexInsightHome,
   withCodexInsightHome,
+  withCodexInsightProcessCleanup,
   discoverCodexInsightSession,
   validateCodexInsightSession,
   type CodexInsightSession,
@@ -334,7 +335,11 @@ export class CodexAppServerClient {
     return result._tag === "err"
       ? err({
           ...result.error,
-          ...insightFailureDiagnostic(result.error.reason, result.error.phase),
+          ...insightFailureDiagnostic(
+            result.error.reason,
+            result.error.phase,
+            result.error.detail,
+          ),
           phase: result.error.phase,
         })
       : result;
@@ -377,22 +382,24 @@ export class CodexAppServerClient {
       child.cancel();
       resolveTimeout(err({ reason: "timed_out", phase: "turn" }));
     }, input.runTimeoutMs ?? this.runTimeoutMs);
-    try {
-      return await Promise.race([
-        timeout,
-        this.runTurn(
-          child,
-          input,
-          home,
-          isolation.value,
-          options.signal,
-          options.onActivity,
-        ),
-      ]);
-    } finally {
-      clearTimeout(timer);
-      await child.stop();
-    }
+    return await withCodexInsightProcessCleanup(
+      () =>
+        Promise.race([
+          timeout,
+          this.runTurn(
+            child,
+            input,
+            home,
+            isolation.value,
+            options.signal,
+            options.onActivity,
+          ),
+        ]),
+      () => {
+        clearTimeout(timer);
+        return child.stop();
+      },
+    );
   }
 
   private async runTurn(

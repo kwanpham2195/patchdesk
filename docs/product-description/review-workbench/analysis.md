@@ -79,6 +79,10 @@ A Finding card's Open in Analysis opens Insights on the Analysis reader, opens L
 
 The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
 
+Analysis execution has a 20-minute limit for every provider. A desktop request waits up to 60 seconds for its response. Evidence preparation still finishes before the start request returns a run ID.
+
+> Technical note: a native account run's initial text request is bounded to 64 KiB. Encoded evidence pages are bounded to 32 KiB. Ordinary local commands buffer at most 4 MiB on each output stream; local pull request diff capture streams directly to disk.
+
 Each Finding owns its pending and error state. Add to review reads Adding…, Confirm dismissal reads Dismissing…, and Restore reads Restoring… while their requests run. Add, Dismiss, or Restore is admitted once synchronously for that Finding, while another Finding can remain usable. Reverse settlement of concurrent Finding actions does not move an error or confirmation to the wrong Finding.
 
 During Add all to review, the Findings card reads "Adding N of M…" with a Stop adding button, the Finding being written reads Adding…, and every other Finding action and the Add all button are disabled. Patchdesk treats the batch as a GitHub write in flight: leaving the Review waits for it, and Finish review and inline review comments stay disabled. Stop adding lets the in-flight write finish and sends nothing more. If the Review session, reviewed head, patch, or Analysis run changes during the batch, it stops: the Finding whose write was in flight is not counted as added, nothing after it is written, and the Findings card reads "Review changed: added N of M" beside Add all to review, which can be run again on the new revision.
@@ -139,6 +143,8 @@ A Finding that no longer maps to the represented diff, or an Add while the pendi
 
 **Feedback, errors, and diagnostics.** Pending, pending review, published, dismissed, failed, and recovery-required are distinct. A Codex CLI account run's command trace and one reasoning line enter the renderer projection, bounded as [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md) records; raw prompts, command output, raw provider events, and unbounded errors do not.
 
+Review activity retains the incomplete reason and a fixed summary of recognizable explanations, such as required evidence being unavailable or the complete change remaining uninspected. Unknown wording receives a generic summary. Provider prose, source excerpts, and prompts do not enter these diagnostics. A Codex cleanup failure names process or private-home cleanup and keeps a safe summary of the preceding invocation outcome when known. An unavailable earlier outcome stays explicitly unknown. Failed process cessation preserves the private home.
+
 **Preferences, keyboard commands, and desktop integration.** Analysis remembers provider, model, reasoning, and language defaults. No desktop menu shortcut accepts a Finding.
 
 **Supported input and accessibility limits.** Findings, evidence, checkboxes, fields, and dialogs support keyboard and mouse. Patchdesk does not claim screen-reader, touch, or pen support.
@@ -169,6 +175,7 @@ A Finding that no longer maps to the represented diff, or an Add while the pendi
 - Confirm evidence expansion, highlighted range, Open in Analysis focus, dismissal navigation, provider cancellation and timeout, and error placement.
 - A disposable pull request confirmed separate verdict and change summaries. Another confirmed GitHub's single-line suggestion action after submission; multi-line ranges are covered only by [adapter tests](../verification/insights-and-cross-cutting.md#review-workbenchanalysismd). Model wording may vary.
 - Empty replacements remain refused until GitHub deletion-suggestion behavior is verified.
+- The #821 limits and diagnostic follow-up has source and automated evidence only. The main-process restart, actual start response, and Review activity presentation still need a live check.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`. The Finding suggestion behavior is revised against `c47a211f`: its Suggested change panel and Add suggestion to review label were seen in the running app on a fixture Analysis, and on 2026-09-23 a single-line suggestion was published from a real Analysis on disposable pull request #341, submitted, and rendered by GitHub with Apply suggestion. The verification rules and the multi-line range are read from source and tests and are not live-verified. The Analysis prose limits are revised against `0add29ea`; a new Analysis on disposable pull request #345 was retained and viewed over CDP on 2026-09-23. Terminology guidance is revised from the current source change and is not live-verified. The Codex output schema is revised from source (#597) and verified live on 2026-09-29: Brief, Analysis, and Walkthrough runs on gpt-6-luna completed on pull request #113. The pi CLI account provider is revised from source (#551) and not yet live-verified.
 

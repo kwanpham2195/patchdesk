@@ -11,7 +11,7 @@ import type {
 import type { InsightType } from "./insight-record";
 
 /** Bounds apply to final NDJSON encoding, including metadata and links. */
-export const EVIDENCE_PAGE_BYTES = 16_384;
+export const EVIDENCE_PAGE_BYTES = 32_768;
 /** Physical NDJSON lines, not source citation lines. */
 export const EVIDENCE_PAGE_LINES = 256;
 /** Final serialized record bytes, including its newline. */

@@ -18,7 +18,7 @@ import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
 import { insightEvidenceReference } from "#src/services/insight-evidence-reference";
 
 // Matches PiInsightChildInvoker's Analysis run bound.
-const EXPECTED_ANALYSIS_TIMEOUT_MS = 10 * 60_000;
+const EXPECTED_ANALYSIS_TIMEOUT_MS = 20 * 60_000;
 
 // Five-minute floor plus one step for this fixture's single-hunk patch.
 const EXPECTED_WALKTHROUGH_TIMEOUT_MS = 6 * 60_000;

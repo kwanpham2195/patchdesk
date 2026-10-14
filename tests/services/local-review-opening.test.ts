@@ -654,10 +654,10 @@ describe("LocalReviewOpening", () => {
     const { root, repositoryPath } = await checkout();
     await writeFile(join(repositoryPath, "tracked.txt"), "two\n");
     await mkdir(join(repositoryPath, "generated"));
-    // Three MiB of short lines: over the 2 MiB cap, under the untracked limits.
+    // Six MiB of short lines: over the 4 MiB cap, under the untracked limits.
     await writeFile(
       join(repositoryPath, "generated", "bundle.js"),
-      "export const line = 0;\n".repeat(140_000),
+      "export const line = 0;\n".repeat(280_000),
     );
 
     const opened = await (

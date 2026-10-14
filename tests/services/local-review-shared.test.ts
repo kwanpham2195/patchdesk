@@ -161,10 +161,10 @@ describe("the shared local Review (#555)", () => {
     const { repositoryPath } = harness;
     git(repositoryPath, "checkout", "-q", "-b", "feature");
     await mkdir(join(repositoryPath, "generated"));
-    // Three MiB committed, then deleted in the working tree: Combined is empty.
+    // Six MiB committed, then deleted in the working tree: Combined is empty.
     await writeFile(
       join(repositoryPath, "generated", "bundle.js"),
-      "export const line = 0;\n".repeat(140_000),
+      "export const line = 0;\n".repeat(280_000),
     );
     git(repositoryPath, "add", "generated");
     git(repositoryPath, "commit", "-q", "-m", "generated");

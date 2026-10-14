@@ -4,14 +4,8 @@ import {
   walkthroughTimeoutMs,
 } from "./walkthrough-timeout";
 
-/**
- * How long a one-shot Insight child may run an Analysis, for every provider.
- *
- * The caller bounds the prepared bundle before Analysis reads it, so Analysis
- * uses a fixed timeout rather than the walkthrough's size-scaled timeout.
- * Both `PiInsightChildInvoker` and `AccountInsightInvoker` use this constant.
- */
-export const ANALYSIS_RUN_TIMEOUT_MS = 10 * 60_000;
+/** Every provider shares one total Analysis budget; continuation spends only its remaining time. */
+export const ANALYSIS_RUN_TIMEOUT_MS = 20 * 60_000;
 
 /**
  * How long a one-shot Insight child may run a Brief, for every provider.

@@ -11,7 +11,7 @@ import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-s
 
 const FORCE_KILL_AFTER_MS = 2_000;
 /** Buffered stdout and stderr remain bounded; artifact stdout sent to a file does not enter this buffer. */
-export const COMMAND_OUTPUT_CAP_BYTES = 2 * 1024 * 1024;
+export const COMMAND_OUTPUT_CAP_BYTES = 4 * 1024 * 1024;
 
 /**
  * Carries a route's `AbortSignal` through the async call chain without adding
@@ -111,7 +111,7 @@ export type CommandFailure =
   | { readonly _tag: "CommandRuntimeUnavailable" }
   | { readonly _tag: "CommandFailed"; readonly stderr?: string }
   | { readonly _tag: "CommandInvalidJson" }
-  /** The child wrote more than the 2 MiB cap to stdout or stderr and was terminated. */
+  /** The child wrote more than the 4 MiB cap to stdout or stderr and was terminated. */
   | { readonly _tag: "CommandOutputExceeded" }
   /**
    * The caller's request was abandoned (renderer bridge timeout or the

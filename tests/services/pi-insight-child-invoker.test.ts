@@ -293,7 +293,7 @@ describe("PiInsightChildInvoker", () => {
     });
     expect(result._tag).toBe("ok");
     expect(executor.requests[0]?.timeoutMs).toBe(ANALYSIS_RUN_TIMEOUT_MS);
-    expect(executor.requests[0]?.timeoutMs).toBe(10 * 60_000);
+    expect(executor.requests[0]?.timeoutMs).toBe(20 * 60_000);
   });
 
   it("rejects a successful child response with no result envelope", async () => {
