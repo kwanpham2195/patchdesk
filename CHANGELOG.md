@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Changed Brief, Walkthrough, Analysis, and Guide to read captured revision evidence on demand instead of sending the complete patch in the first model request. Missing or changed evidence and incomplete Analysis preserve the previous result and explain the failure. #821
+- Changed Brief, Walkthrough, Analysis, and Guide to read captured revision evidence on demand instead of sending the complete patch in the first model request. Missing or changed evidence and incomplete Analysis preserve the previous result and explain the failure. Pi CLI retains completed Analysis results without requiring unused failure fields. #821
 
 - Added explicit root and Insight package checks, runtime typechecking, and one full check per commit, serialized across worktrees.
 

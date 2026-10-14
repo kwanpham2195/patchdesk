@@ -39,6 +39,7 @@ import {
   walkthroughCodexOutputSchema,
 } from "./codex-output-schema";
 import { composeReviewPrompt } from "./review-rubric";
+import { parsePiCliAnalysisOutcome } from "./pi-cli-analysis-outcome";
 import {
   prepareWalkthroughPrompt,
   type WalkthroughPromptFailure,
@@ -297,7 +298,10 @@ export class AccountInsightInvoker implements InsightInvoker {
         reason: result.error.reason,
         ...insightFailureDiagnostic(result.error.reason, result.error.phase),
       });
-    const outcome = parseCodexAnalysisOutcome(result.value);
+    const outcome =
+      this.provider === "pi-cli-account"
+        ? parsePiCliAnalysisOutcome(result.value)
+        : parseCodexAnalysisOutcome(result.value);
     if (outcome._tag === "err")
       return err({
         reason: "invalid_result" as const,
