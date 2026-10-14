@@ -1,4 +1,7 @@
 import * as v from "valibot";
+import { randomUUID } from "node:crypto";
+import { chmod, mkdir, open, rename, rm } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 import { canonicalPatchFlags } from "#src/adapters/process/git-patch-flags";
 import type { CommandFailure, CommandRunner } from "./command-runner";
@@ -166,6 +169,60 @@ export class GitHubDiffReader {
     return exact._tag === "ok"
       ? exact
       : this.commandFailure("get_diff", exact.error, input.profile.githubHost);
+  }
+
+  /** The temporary file belongs to this capture until a successful atomic rename. */
+  async capturePullRequestDiff(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly fetchedRefs: FetchedDiffRefs;
+    readonly path: string;
+  }): Promise<Result<void, GitHubReadFailure>> {
+    const verified = await this.verifyFetchedRefs(input.fetchedRefs);
+    if (verified._tag === "err") return verified;
+    const directory = dirname(input.path);
+    const temporary = join(
+      directory,
+      `.${basename(input.path)}.${randomUUID()}.tmp`,
+    );
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      await chmod(directory, 0o700);
+      handle = await open(temporary, "wx", 0o600);
+      const captured = await this.commands.runText({
+        argv: [
+          "git",
+          "-C",
+          input.fetchedRefs.repositoryPath,
+          "diff",
+          ...canonicalPatchFlags,
+          `${input.fetchedRefs.baseRef}...${input.fetchedRefs.headRef}`,
+        ],
+        stdoutFileDescriptor: handle.fd,
+        timeoutMs: commandTimeoutMs,
+      });
+      if (captured._tag === "err")
+        return this.commandFailure(
+          "get_diff",
+          captured.error,
+          input.profile.githubHost,
+        );
+      await handle.sync();
+      await handle.close();
+      handle = undefined;
+      await rename(temporary, input.path);
+      const parent = await open(directory, "r").catch(() => undefined);
+      if (parent !== undefined) {
+        await parent.sync().catch(() => undefined);
+        await parent.close().catch(() => undefined);
+      }
+      return ok(undefined);
+    } catch {
+      return err({ _tag: "GitHubReadFailed", operation: "get_diff" });
+    } finally {
+      await handle?.close().catch(() => undefined);
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
   }
 
   async getFileContents(input: {

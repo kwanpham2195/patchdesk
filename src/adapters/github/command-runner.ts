@@ -10,7 +10,7 @@ import { discoverExecutable } from "#src/adapters/process/executable-discovery";
 import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-shell-import";
 
 const FORCE_KILL_AFTER_MS = 2_000;
-/** A child writing more than this to stdout or stderr is terminated as `OutputExceeded`. */
+/** Buffered stdout and stderr remain bounded; artifact stdout sent to a file does not enter this buffer. */
 export const COMMAND_OUTPUT_CAP_BYTES = 2 * 1024 * 1024;
 
 /**
@@ -36,6 +36,8 @@ export type CommandRequest = {
   readonly cwd?: string;
   /** Non-secret JSON payload supplied directly to the child process, never through a shell. */
   readonly stdin?: string;
+  /** Adapter-owned open file; stdout goes directly to disk instead of the bounded text buffer. */
+  readonly stdoutFileDescriptor?: number;
   /** Adapter-owned environment additions; renderer input never reaches this field. */
   readonly environment?: Readonly<Record<string, string>>;
   /** Set false only for a child launched with a complete explicit environment. */
@@ -216,7 +218,7 @@ export class NodeCommandExecutor implements CommandExecutor {
             : input.environment === undefined
               ? process.env
               : { ...process.env, ...input.environment },
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["pipe", input.stdoutFileDescriptor ?? "pipe", "pipe"],
       });
       let stdout = "";
       let stderr = "";

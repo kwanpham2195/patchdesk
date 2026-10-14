@@ -457,6 +457,12 @@ export class GitHubAdapter
     return this.diffs.getPullRequestChecks(input);
   }
 
+  async capturePullRequestDiff(
+    input: Parameters<GitHubReader["capturePullRequestDiff"]>[0],
+  ): Promise<Result<void, GitHubReadFailure>> {
+    return this.diffs.capturePullRequestDiff(input);
+  }
+
   async getPullRequestDiff(
     input: {
       readonly profile: WorkspaceProfileConfig;
