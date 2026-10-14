@@ -264,7 +264,12 @@ describe("local API current Review capability boundary", () => {
     });
   });
   it("requires both per-launch capability and allowed origin on a real loopback server", async () => {
-    const api = await start();
+    const api = await start({
+      // An empty profile store probes gh; this boundary test must not use the maintainer's accounts.
+      commands: new CommandRunner({
+        execute: async () => ({ _tag: "Unavailable" }),
+      }),
+    });
     await expect(fetch(new URL("v1/profiles", api.url))).resolves.toMatchObject(
       { status: 401 },
     );
