@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { startLocalApiServer, type LocalApiServer } from "#src/main/local-api";
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import {
+  CommandRunner,
+  type CommandExecution,
+} from "#src/adapters/github/command-runner";
 import { AppLogService } from "#src/services/app-log-service";
 
 const capability = "test-only-capability";
@@ -202,6 +206,12 @@ describe("local API log stream", () => {
       allowedOrigin,
       paths,
       logs,
+      // An empty profile store probes gh; request logging needs no real account discovery.
+      commands: new CommandRunner({
+        async execute(): Promise<CommandExecution> {
+          return { _tag: "Unavailable" };
+        },
+      }),
     });
     if (startup._tag !== "started")
       throw new Error("Expected local API startup");
@@ -250,6 +260,12 @@ describe("local API log stream", () => {
       allowedOrigin,
       paths,
       logs,
+      // An empty profile store probes gh; request logging needs no real account discovery.
+      commands: new CommandRunner({
+        async execute(): Promise<CommandExecution> {
+          return { _tag: "Unavailable" };
+        },
+      }),
     });
     if (startup._tag !== "started")
       throw new Error("Expected local API startup");
