@@ -2,7 +2,7 @@ import * as v from "valibot";
 
 import { parseRepoRelativePath } from "./ids";
 import { err, ok, type Result } from "./result";
-import { tokenizeUnifiedPatch } from "./unified-patch";
+import { iterateUnifiedPatch } from "./unified-patch";
 
 const fileIdSchema = v.pipe(
   v.string(),
@@ -70,72 +70,67 @@ export type GuideError = {
 export function buildGuideInventory(
   patchText: string,
 ): Result<ReadonlyArray<GuideInventoryEntry>, GuideError> {
-  const tokens = tokenizeUnifiedPatch(patchText);
-  const headers = tokens.filter((token) => token.kind === "file_header");
-  if (headers.length === 0) return err({ reason: "patch_not_indexable" });
   const inventory: Array<GuideInventoryEntry> = [];
-  for (const [index, header] of headers.entries()) {
-    if (header.oldPath === undefined || header.newPath === undefined)
-      return err({ reason: "patch_not_indexable" });
-    const block = tokens.slice(
-      header.index,
-      headers[index + 1]?.index ?? tokens.length,
-    );
-    const oldPath = header.oldPath;
-    const newPath = header.newPath;
-    let status: GuideInventoryEntry["status"] = "modified";
-    let evidence: GuideInventoryEntry["evidence"] = "metadata";
-    let additions = 0;
-    let deletions = 0;
-    const metadata: Array<string> = [];
-    for (const token of block) {
-      if (token.kind === "rename_from") {
-        status = "renamed";
-      }
-      if (token.kind === "rename_to") {
-        status = "renamed";
-      }
-      if (token.kind === "old_file_path" && token.path === "/dev/null")
-        status = "added";
-      if (token.kind === "new_file_path" && token.path === "/dev/null")
-        status = "removed";
-      if (token.kind === "other" && token.raw.startsWith("new file mode "))
-        status = "added";
-      if (token.kind === "other" && token.raw.startsWith("deleted file mode "))
-        status = "removed";
-      if (token.kind === "binary" || token.raw === "GIT binary patch")
-        evidence = "binary";
-      else if (token.kind === "omitted") evidence = "omitted";
-      else if (token.kind === "submodule") evidence = "submodule";
-      else if (token.kind === "hunk_header" && evidence === "metadata")
-        evidence = "text";
-      if (token.kind === "body" && token.marker === "added") additions += 1;
-      if (token.kind === "body" && token.marker === "removed") deletions += 1;
-      if (
-        token.kind !== "body" &&
-        token.kind !== "hunk_header" &&
-        token.raw.length > 0
-      )
-        metadata.push(token.raw);
-    }
-    if (
-      parseRepoRelativePath(oldPath)._tag === "err" ||
-      parseRepoRelativePath(newPath)._tag === "err"
-    )
-      return err({ reason: "patch_not_indexable" });
+  let file: Omit<GuideInventoryEntry, "id"> | undefined;
+  const finishFile = (): boolean => {
+    if (file === undefined) return true;
     const entry = v.safeParse(inventoryEntrySchema, {
-      id: `f${index + 1}`,
-      oldPath,
-      newPath,
-      status,
-      evidence,
-      additions,
-      deletions,
-      metadata,
+      ...file,
+      id: `f${inventory.length + 1}`,
     });
-    if (!entry.success) return err({ reason: "patch_not_indexable" });
+    if (!entry.success) return false;
     inventory.push(entry.output);
+    return true;
+  };
+  for (const token of iterateUnifiedPatch(patchText)) {
+    if (token.kind === "file_header") {
+      if (
+        !finishFile() ||
+        token.oldPath === undefined ||
+        token.newPath === undefined ||
+        parseRepoRelativePath(token.oldPath)._tag === "err" ||
+        parseRepoRelativePath(token.newPath)._tag === "err"
+      )
+        return err({ reason: "patch_not_indexable" });
+      file = {
+        oldPath: token.oldPath,
+        newPath: token.newPath,
+        status: "modified",
+        evidence: "metadata",
+        additions: 0,
+        deletions: 0,
+        metadata: [],
+      };
+    }
+    if (file === undefined) continue;
+    if (token.kind === "rename_from" || token.kind === "rename_to")
+      file.status = "renamed";
+    if (token.kind === "old_file_path" && token.path === "/dev/null")
+      file.status = "added";
+    if (token.kind === "new_file_path" && token.path === "/dev/null")
+      file.status = "removed";
+    if (token.kind === "other" && token.raw.startsWith("new file mode "))
+      file.status = "added";
+    if (token.kind === "other" && token.raw.startsWith("deleted file mode "))
+      file.status = "removed";
+    if (token.kind === "binary" || token.raw === "GIT binary patch")
+      file.evidence = "binary";
+    else if (token.kind === "omitted") file.evidence = "omitted";
+    else if (token.kind === "submodule") file.evidence = "submodule";
+    else if (token.kind === "hunk_header" && file.evidence === "metadata")
+      file.evidence = "text";
+    if (token.kind === "body" && token.marker === "added") file.additions += 1;
+    if (token.kind === "body" && token.marker === "removed")
+      file.deletions += 1;
+    if (
+      token.kind !== "body" &&
+      token.kind !== "hunk_header" &&
+      token.raw.length > 0
+    )
+      file.metadata.push(token.raw);
   }
+  if (!finishFile() || inventory.length === 0)
+    return err({ reason: "patch_not_indexable" });
   return ok(inventory);
 }
 
@@ -180,10 +175,8 @@ export function parseRetainedGuide(
   const parsed = v.safeParse(retainedGuideSchema, input);
   if (!parsed.success) return err({ reason: "invalid_result" });
   if (
-    new TextEncoder().encode(parsed.output.patchText).length >
-      2 * 1024 * 1024 ||
     new TextEncoder().encode(JSON.stringify(parsed.output.inventory)).length >
-      512 * 1024
+    512 * 1024
   )
     return err({ reason: "invalid_result" });
   const inventory = buildGuideInventory(parsed.output.patchText);

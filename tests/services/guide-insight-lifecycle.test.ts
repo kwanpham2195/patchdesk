@@ -252,8 +252,8 @@ describe("retained Guide lifecycle", () => {
       ).toBe(first.runId);
     },
   );
-  it.each(["empty", "oversized"] as const)(
-    "refuses %s input without invoking or replacing its prior value",
+  it.each(["empty", "unindexable"] as const)(
+    "fails queued %s input without invoking or replacing its prior value",
     async (size) => {
       let invocations = 0;
       const value = await fixture({
@@ -276,9 +276,18 @@ describe("retained Guide lifecycle", () => {
         value.session.patchPath,
         size === "empty" ? "" : "x".repeat(2 * 1024 * 1024 + 1),
       );
-      expect(await value.coordinator.start(input)).toEqual({
-        _tag: "err",
-        error: size === "empty" ? "guide_patch_empty" : "guide_input_too_large",
+      const replacement = must(await value.coordinator.start(input));
+      expect(replacement.status).toBe("queued");
+      expect(
+        await settled(
+          value.coordinator,
+          value.review.id,
+          replacement.runId,
+          "guide",
+        ),
+      ).toMatchObject({
+        status: "failed",
+        failureCategory: "guide_patch_empty",
       });
       expect(invocations).toBe(1);
       const loaded = must(

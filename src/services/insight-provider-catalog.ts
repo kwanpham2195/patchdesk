@@ -304,6 +304,9 @@ function piCliCatalogFailure(
     case "runtime_unavailable":
     case "review_worktree_unavailable":
     case "unexpected_failure":
+    case "guide_patch_empty":
+    case "guide_artifact_unreadable":
+    case "guide_input_too_large":
       return { ...unavailable, reason: "runtime_unavailable" };
     default:
       return casesHandled(failure.reason);
@@ -346,6 +349,9 @@ function mapCodexFailure(
     case "runtime_unavailable":
     case "review_worktree_unavailable":
     case "unexpected_failure":
+    case "guide_patch_empty":
+    case "guide_artifact_unreadable":
+    case "guide_input_too_large":
       return "runtime_unavailable";
     default:
       return casesHandled(failure.reason);

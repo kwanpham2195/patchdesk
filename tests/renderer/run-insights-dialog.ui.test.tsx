@@ -76,6 +76,9 @@ function installRuns(answer: (type: string) => DesktopResponse) {
     // SAFETY: the provider catalog fixture is JSON-compatible data.
     "/v1/insight-providers": () =>
       success(structuredClone(catalog) as RawJsonValue),
+    "/v1/reviews/load": () =>
+      // SAFETY: this workbench fixture contains only JSON-compatible values.
+      success(structuredClone(projection()) as RawJsonValue),
     ...routes,
   });
   return bodies;
@@ -201,6 +204,7 @@ describe("Run Insights dialog", () => {
           walkthrough: {
             status: "running",
             activeRun: {
+              status: "running",
               runId: "run-walkthrough",
               sessionId: "session-a",
               startedAt: "2026-08-01T00:00:00.000Z",
@@ -231,7 +235,7 @@ describe("Run Insights dialog", () => {
     expect(bodies.walkthrough).toEqual([]);
   });
 
-  it("shows Running on each started Insight's tab until its run ends, then the result's status (#670)", async () => {
+  it("shows Preparing on each queued Insight's tab until its run ends, then the result's status (#670)", async () => {
     const workbench = withAnalysis("actionable");
     let finishBrief: (response: DesktopResponse) => void = () => undefined;
     const briefPoll = new Promise<DesktopResponse>((resolve) => {
@@ -247,6 +251,7 @@ describe("Run Insights dialog", () => {
       "/v1/reviews/insights/runs/run-walkthrough": () => new Promise(() => {}),
       "/v1/reviews/load": () =>
         success(
+          // SAFETY: the workbench and Brief fixtures contain only JSON-compatible values.
           structuredClone({
             ...workbench,
             insights: { ...workbench.insights, brief: briefInsight() },
@@ -266,10 +271,10 @@ describe("Run Insights dialog", () => {
     );
 
     expect(
-      await rail.findByRole("tab", { name: "Brief: Running" }),
+      await rail.findByRole("tab", { name: "Brief: Preparing" }),
     ).toBeTruthy();
     expect(
-      rail.getByRole("tab", { name: "Walkthrough: Running" }),
+      rail.getByRole("tab", { name: "Walkthrough: Preparing" }),
     ).toBeTruthy();
 
     finishBrief(
@@ -278,7 +283,7 @@ describe("Run Insights dialog", () => {
 
     expect(await rail.findByRole("tab", { name: "Brief" })).toBeTruthy();
     expect(
-      rail.getByRole("tab", { name: "Walkthrough: Running" }),
+      rail.getByRole("tab", { name: "Walkthrough: Preparing" }),
     ).toBeTruthy();
   });
 });

@@ -1,4 +1,5 @@
 import { toJsonSchema } from "@valibot/to-json-schema";
+import { readFile } from "node:fs/promises";
 
 import {
   buildGuideInventory,
@@ -58,7 +59,7 @@ but must contain no raw HTML or embedded images.
 Use at most 12 groups, 200 characters per title, 4,000 per explanation,
 and 500 per relevance note. Every field must be nonblank.`;
 
-/** Reads bounded complete artifacts and builds the shared account/runtime prompt. */
+/** Captures complete local validation evidence without adding it to model text. */
 export async function captureGuideEvidence(input: {
   readonly contextPath: string;
   readonly patchPath: string;
@@ -66,7 +67,10 @@ export async function captureGuideEvidence(input: {
 }): Promise<Result<Omit<PreparedGuide, "prompt">, GuidePromptFailure>> {
   const [context, patch] = await Promise.all([
     readBoundedArtifact(input.contextPath, 512 * 1024),
-    readBoundedArtifact(input.patchPath, 2 * 1024 * 1024),
+    readFile(input.patchPath, "utf8").then(
+      (patch) => ok(patch),
+      () => err({ reason: "read_failed" as const }),
+    ),
   ]);
   if (context._tag === "err")
     return err({
@@ -77,13 +81,7 @@ export async function captureGuideEvidence(input: {
       artifact: "context",
     });
   if (patch._tag === "err")
-    return err({
-      reason:
-        patch.error.reason === "input_too_large"
-          ? "artifact_too_large"
-          : "artifact_unreadable",
-      artifact: "patch",
-    });
+    return err({ reason: "artifact_unreadable", artifact: "patch" });
   const inventory = buildGuideInventory(patch.value);
   if (inventory._tag === "err") return err({ reason: "patch_not_indexable" });
   const serialized = JSON.stringify(inventory.value);
@@ -109,7 +107,7 @@ export function composeGuidePrompt(
   ].join("\n\n");
 }
 
-/** Reads bounded canonical artifacts for result validation, never for initial model text. */
+/** Captures canonical artifacts for validation and bounds only the model transport. */
 export async function prepareGuidePrompt(input: {
   readonly contextPath: string;
   readonly patchPath: string;

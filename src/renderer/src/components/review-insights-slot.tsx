@@ -561,6 +561,9 @@ function InsightDocument({
             type={selectedInsight}
             projection={selectedProjection}
             activity={selectedRunning?.activity}
+            status={
+              selectedRunning?.starting ? "queued" : selectedRunning?.status
+            }
           />
         ) : selectedProjection?.status === "failed" ? (
           <InsightFailed
@@ -612,7 +615,9 @@ function agentRunBlockedReason(
   type: InsightRunDialogType,
 ): string | undefined {
   if (!runEnabled) return "No model configured";
-  return run.busy ? `${INSIGHT_NOUNS[type]} is running` : undefined;
+  return run.busy
+    ? `${INSIGHT_NOUNS[type]} is ${run.starting || run.status === "queued" ? "preparing" : run.status === "cancelling" ? "cancelling" : "running"}`
+    : undefined;
 }
 
 function RunInsightsControls({

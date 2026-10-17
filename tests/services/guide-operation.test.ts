@@ -59,7 +59,7 @@ describe("complete Guide preparation", () => {
     );
   });
   it.each(["patch", "context"] as const)(
-    "refuses oversized %s before producing a prompt",
+    "refuses invalid %s before producing a prompt",
     async (artifact) => {
       const input = await artifacts();
       await writeFile(
@@ -68,7 +68,10 @@ describe("complete Guide preparation", () => {
       );
       expect(await prepareGuidePrompt(input)).toEqual({
         _tag: "err",
-        error: { reason: "artifact_too_large", artifact },
+        error:
+          artifact === "patch"
+            ? { reason: "patch_not_indexable" }
+            : { reason: "artifact_too_large", artifact },
       });
     },
   );

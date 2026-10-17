@@ -44,7 +44,12 @@ it("names each Insight tab with its status and leaves a current result unmarked"
       }}
       selectedInsight="analysis"
       setSelectedInsight={vi.fn()}
-      runs={{ brief: {}, walkthrough: {}, analysis: {}, guide: {} }}
+      runs={{
+        brief: { status: "idle" },
+        walkthrough: { status: "idle" },
+        analysis: { status: "idle" },
+        guide: { status: "idle" },
+      }}
     />,
   );
 
@@ -64,6 +69,7 @@ it("renders a running Insight's command trace", () => {
       projection={{
         status: "running",
         activeRun: {
+          status: "running",
           runId: "run-a",
           sessionId: "session-a",
           startedAt: "2026-09-17T00:00:00.000Z",

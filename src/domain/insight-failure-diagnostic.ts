@@ -41,6 +41,11 @@ const FAILURE_DETAILS = {
   evidence_unavailable: "Captured evidence is unavailable.",
   evidence_mismatch: "Captured evidence does not match this run.",
   analysis_incomplete: "The provider could not complete the Analysis.",
+  guide_patch_empty: "The represented patch has no changes Guide can index.",
+  guide_artifact_unreadable:
+    "Guide could not read the represented Review evidence.",
+  guide_input_too_large:
+    "The represented Review input exceeds Guide's supported size.",
 } as const satisfies Record<InsightFailureCategory | "cancelled", string>;
 
 const INCOMPLETE_DETAILS = {

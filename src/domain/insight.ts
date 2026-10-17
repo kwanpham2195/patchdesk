@@ -11,6 +11,7 @@ import {
   type InsightFailureCategory,
   type AnalysisVerification,
   type InsightRecord,
+  type InsightRun,
   type RetainedInsight,
   type WalkthroughProgress,
 } from "./insight-record";
@@ -61,6 +62,7 @@ export type InsightProjection<T> = {
   readonly readingState?: GuideReadingState;
   readonly verification?: AnalysisVerification;
   readonly activeRun?: {
+    readonly status: InsightRun["status"];
     readonly runId?: InsightRunId;
     readonly sessionId: ReviewSessionId;
     readonly startedAt: IsoTimestamp;
@@ -134,6 +136,7 @@ export function projectStoredInsight<T>(
       }),
       ...(retained !== undefined && { retained }),
       activeRun: {
+        status: record.activeRun.status,
         runId: record.activeRun.id,
         sessionId: record.activeRun.revision.sessionId,
         startedAt: record.activeRun.startedAt,

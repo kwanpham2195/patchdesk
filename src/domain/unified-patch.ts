@@ -169,7 +169,27 @@ function parseUnifiedSidePath(value: string): string {
 export function tokenizeUnifiedPatch(
   patch: string,
 ): ReadonlyArray<UnifiedPatchToken> {
-  return tokenizeUnifiedPatchLines(patch.split("\n"));
+  return Array.from(iterateUnifiedPatch(patch));
+}
+
+/** Classifies patch lines without retaining a whole-patch line or token array. */
+export function iterateUnifiedPatch(
+  patch: string,
+): Generator<UnifiedPatchToken, void> {
+  return iterateUnifiedPatchLines(unifiedPatchLines(patch));
+}
+
+function* unifiedPatchLines(patch: string): Generator<string, void> {
+  let start = 0;
+  while (start <= patch.length) {
+    const end = patch.indexOf("\n", start);
+    if (end === -1) {
+      yield patch.slice(start);
+      return;
+    }
+    yield patch.slice(start, end);
+    start = end + 1;
+  }
 }
 
 /**
@@ -206,30 +226,36 @@ export function filterUnifiedPatchFiles(
 export function tokenizeUnifiedPatchLines(
   lines: ReadonlyArray<string>,
 ): ReadonlyArray<UnifiedPatchToken> {
-  const tokens: Array<UnifiedPatchToken> = [];
+  return Array.from(iterateUnifiedPatchLines(lines));
+}
+
+function* iterateUnifiedPatchLines(
+  lines: Iterable<string>,
+): Generator<UnifiedPatchToken, void> {
   let inHunk = false;
   let oldRemaining = 0;
   let newRemaining = 0;
   let oldLine = 0;
   let newLine = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    const raw = lines[index] ?? "";
+  const iterator = lines[Symbol.iterator]();
+  let next = iterator.next();
+  for (let index = 0; !next.done; index += 1) {
+    const raw = next.value;
+    next = iterator.next();
     if (isUnifiedFileHeader(raw)) {
       inHunk = false;
       oldRemaining = 0;
       newRemaining = 0;
       const paths = matchUnifiedFileHeader(raw);
-      tokens.push(
-        paths === undefined
-          ? { kind: "file_header", index, raw }
-          : {
-              kind: "file_header",
-              index,
-              raw,
-              oldPath: paths.oldPath,
-              newPath: paths.newPath,
-            },
-      );
+      yield paths === undefined
+        ? { kind: "file_header", index, raw }
+        : {
+            kind: "file_header",
+            index,
+            raw,
+            oldPath: paths.oldPath,
+            newPath: paths.newPath,
+          };
       continue;
     }
     const range = matchUnifiedHunkHeader(raw);
@@ -239,7 +265,7 @@ export function tokenizeUnifiedPatchLines(
       newRemaining = range.newLines;
       oldLine = range.oldStart;
       newLine = range.newStart;
-      tokens.push({ kind: "hunk_header", index, raw, range });
+      yield { kind: "hunk_header", index, raw, range };
       continue;
     }
     // `\ No newline at end of file` is part of the hunk whether or not the
@@ -247,13 +273,13 @@ export function tokenizeUnifiedPatchLines(
     // count, so it must be classified before the exhaustion gate below can
     // end the hunk early and reclassify it as a bare `other` line.
     if (inHunk && raw.startsWith("\\")) {
-      tokens.push({
+      yield {
         kind: "body",
         index,
         raw,
         marker: "no_newline",
         text: raw,
-      });
+      };
       continue;
     }
     // A hunk body only runs for the line count its header declared. Past that
@@ -263,7 +289,7 @@ export function tokenizeUnifiedPatchLines(
     // patch's closing newline is never real content either, even when a hunk
     // header declares more lines than its body actually delivers (a patch cut
     // short mid-hunk) and so never exhausts its own counts on its own.
-    const isTrailingSplitArtifact = index === lines.length - 1 && raw === "";
+    const isTrailingSplitArtifact = next.done && raw === "";
     const inBody =
       inHunk &&
       (oldRemaining > 0 || newRemaining > 0) &&
@@ -271,43 +297,43 @@ export function tokenizeUnifiedPatchLines(
     if (!inBody) {
       const prefix = prefixToken(raw, index);
       if (prefix !== undefined) {
-        tokens.push(prefix);
+        yield prefix;
         continue;
       }
     }
     if (!inBody) {
-      tokens.push({ kind: "other", index, raw });
+      yield { kind: "other", index, raw };
       continue;
     }
     if (raw.startsWith("-")) {
-      tokens.push({
+      yield {
         kind: "body",
         index,
         raw,
         marker: "removed",
         text: raw.slice(1),
         oldLine,
-      });
+      };
       oldLine += 1;
       oldRemaining -= 1;
       continue;
     }
     if (raw.startsWith("+")) {
-      tokens.push({
+      yield {
         kind: "body",
         index,
         raw,
         marker: "added",
         text: raw.slice(1),
         newLine,
-      });
+      };
       newLine += 1;
       newRemaining -= 1;
       continue;
     }
     // An unmarked body line is a context line whose leading space was stripped;
     // it advances both sides so every projection agrees on later line numbers.
-    tokens.push({
+    yield {
       kind: "body",
       index,
       raw,
@@ -315,13 +341,12 @@ export function tokenizeUnifiedPatchLines(
       text: raw.startsWith(" ") ? raw.slice(1) : raw,
       oldLine,
       newLine,
-    });
+    };
     oldLine += 1;
     newLine += 1;
     oldRemaining -= 1;
     newRemaining -= 1;
   }
-  return tokens;
 }
 
 function prefixToken(

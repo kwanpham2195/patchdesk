@@ -52,7 +52,11 @@ export type ReviewContextPackFailure =
  */
 export type PackChangeIntent =
   | { readonly _tag: "Unread" }
-  | { readonly _tag: "Read"; readonly intent: ChangeIntent | undefined };
+  | { readonly _tag: "Read"; readonly intent: ChangeIntent | undefined }
+  | {
+      readonly _tag: "Captured";
+      readonly resolved: ResolvedChangeIntent | undefined;
+    };
 
 /**
  * Reads only what decides whether a pack on disk still describes this
@@ -187,12 +191,14 @@ export class ReviewContextPackService {
     });
   }
 
-  private async resolve(
+  /** Resolves pinned intent before admission, without constructing or rewriting a pack. */
+  async resolve(
     session: ReviewSession,
     changeIntent: PackChangeIntent,
   ): Promise<
     Result<ResolvedChangeIntent | undefined, ReviewContextPackFailure>
   > {
+    if (changeIntent._tag === "Captured") return ok(changeIntent.resolved);
     if (changeIntent._tag === "Unread" || changeIntent.intent === undefined)
       return ok(undefined);
     const resolved = await resolveChangeIntent(

@@ -47,6 +47,7 @@ export const insightFields = {
   artifactStatus: v.optional(v.picklist(["verified", "mismatch"])),
   activeRun: v.optional(
     v.strictObject({
+      status: v.picklist(["queued", "running", "cancelling"]),
       runId: v.optional(v.pipe(v.string(), v.minLength(1))),
       sessionId: v.pipe(v.string(), v.minLength(1)),
       startedAt: v.pipe(v.string(), v.isoTimestamp()),

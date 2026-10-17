@@ -58,6 +58,7 @@ describe("Insight terminal persistence lock", () => {
     });
     if (started._tag === "err") throw new Error("expected an active run");
 
+    await invocationStarted.wait;
     const holder = barrier();
     const lockEntered = barrier();
     const held = operations.withReviewLock(
@@ -71,7 +72,6 @@ describe("Insight terminal persistence lock", () => {
 
     let terminal: Awaited<ReturnType<typeof settled>> | undefined;
     try {
-      await invocationStarted.wait;
       await lockEntered.wait;
       const terminalLockRequested = operations.watchNextLockRequest();
       finishInvocation(err({ reason: "execution_failed" }));

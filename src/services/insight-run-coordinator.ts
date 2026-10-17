@@ -1,3 +1,4 @@
+import { changeIntentProvenance } from "#src/domain/change-intent";
 import { InsightRunPreparation } from "./insight-run-preparation";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { InsightInvoker } from "./insight-run-input";
@@ -41,7 +42,6 @@ import {
 } from "#src/domain/ids";
 import {
   beginInsightRun,
-  failInsightRun,
   dismissInsightFinding,
   requestInsightCancellation,
   restoreInsightFinding,
@@ -213,6 +213,10 @@ const changeIntentRefusal = {
 export type Active = {
   readonly runId: InsightRunId;
   readonly controller: AbortController;
+  preparing: boolean;
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly type: InsightType;
 };
 
 /**
@@ -250,6 +254,7 @@ export class InsightRunCoordinator {
   >();
   private readonly recovery: InsightRecovery;
   private readonly executor: InsightRunExecutor;
+  private readonly preparation: InsightRunPreparation;
 
   constructor(
     private readonly reviews: Pick<ReviewStore, "load" | "findOwner" | "list">,
@@ -271,6 +276,11 @@ export class InsightRunCoordinator {
     /** Announces a settled run outside the window (ADR 0044). */
     private readonly notifications?: InsightSettledNotifier,
   ) {
+    this.preparation = new InsightRunPreparation(
+      this.paths,
+      this.contextPack,
+      this.diagnostics,
+    );
     this.recovery = new InsightRecovery(
       this.reviews,
       this.insights,
@@ -300,9 +310,21 @@ export class InsightRunCoordinator {
     input: InsightCoordinatorInput,
     hooks?: InsightStartHooks,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
-    return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
-      this.startUnlocked(input, hooks),
+    const began = performance.now();
+    const result = await this.operations.withReviewLock(
+      input.profileId,
+      input.reviewId,
+      () => this.startUnlocked(input, hooks),
     );
+    const durationMs = Math.round(performance.now() - began);
+    setImmediate(() => {
+      void this.preparation.recordAdmission(
+        input,
+        durationMs,
+        result._tag === "ok" ? result.value.runId : undefined,
+      );
+    });
+    return result;
   }
 
   private async startUnlocked(
@@ -368,23 +390,22 @@ export class InsightRunCoordinator {
     // Refused before the pack step, which may rewrite the Change intent a running Analysis has yet to read.
     if (record._tag === "ok" && record.value.activeRun !== undefined)
       return err("already_running");
-    // The context pack is built here, not at prepare, and this runs under
-    // `withReviewLock` so concurrent runs on one Review cannot build twice.
-    // It precedes `beginInsightRun` so a failed build leaves no started run.
-    const pack = await this.contextPack.ensure({
-      session: session.value,
-      patchHash: hash.value,
-      changeIntent:
-        input.type === "analysis"
-          ? { _tag: "Read", intent: review.value.changeIntent }
-          : { _tag: "Unread" },
-    });
-    if (pack._tag === "err")
+    const resolved = await this.contextPack.resolve(
+      session.value,
+      input.type === "analysis"
+        ? { _tag: "Read", intent: review.value.changeIntent }
+        : { _tag: "Unread" },
+    );
+    if (resolved._tag === "err")
       return err(
-        pack.error._tag === "ChangeIntentUnreadable"
-          ? changeIntentRefusal[pack.error.reason]
+        resolved.error._tag === "ChangeIntentUnreadable"
+          ? changeIntentRefusal[resolved.error.reason]
           : "storage_unavailable",
       );
+    const changeIntent =
+      resolved.value === undefined
+        ? undefined
+        : changeIntentProvenance(resolved.value);
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "err") return err("storage_unavailable");
     const token = record._tag === "ok" ? record.value.nextToken : 1;
@@ -397,48 +418,13 @@ export class InsightRunCoordinator {
       headSha: session.value.key.headSha,
       patchHash: hash.value,
     };
-    const prepared = await new InsightRunPreparation(
-      this.paths,
-      this.contextPack,
-    ).prepare({
-      identity: {
-        profileId: input.profileId,
-        reviewId: input.reviewId,
-        sessionId: session.value.id,
-        runId: runId.value,
-        type: input.type,
-        headSha: session.value.key.headSha,
-        baseSha: session.value.key.baseSha,
-        patchHash: hash.value,
-        intentHash:
-          pack.value.changeIntent === undefined
-            ? null
-            : hashReviewArtifactContent(
-                JSON.stringify(pack.value.changeIntent),
-              ),
-      },
-      session: session.value,
-      language: input.language,
-    });
-    const preparationFailure =
-      prepared._tag === "err" &&
-      (prepared.error === "evidence_unavailable" ||
-        prepared.error === "evidence_mismatch")
-        ? prepared.error
-        : undefined;
-    if (
-      prepared._tag === "err" &&
-      prepared.error !== "evidence_unavailable" &&
-      prepared.error !== "evidence_mismatch"
-    )
-      return err(prepared.error);
     const started = await this.insights.mutate({
       profileId: input.profileId,
       reviewId: input.reviewId,
       type: input.type,
       now: timestamp.value,
-      operation: (current) => {
-        const begun = beginInsightRun(current, {
+      operation: (current) =>
+        beginInsightRun(current, {
           id: runId.value,
           revision,
           provider,
@@ -446,40 +432,27 @@ export class InsightRunCoordinator {
           reasoning: input.reasoning,
           language: input.language,
           startedAt: timestamp.value,
-          ...definedProps({ changeIntent: pack.value.changeIntent }),
-        });
-        // A published capture can outlive a crash before the run record commits.
-        return begun._tag === "err" || preparationFailure === undefined
-          ? begun
-          : failInsightRun(
-              begun.value,
-              runId.value,
-              {
-                runId: runId.value,
-                reason: "failed",
-                category: preparationFailure,
-                retryable: true,
-                failedAt: timestamp.value,
-              },
-              timestamp.value,
-            );
-      },
+          ...definedProps({ changeIntent }),
+        }),
     });
     if (started._tag === "err")
       return started.error === "already_running"
         ? err("already_running")
         : err("storage_unavailable");
-    await hooks?.started(review.value, runId.value);
-    if (prepared._tag === "err")
-      return ok({
-        runId: runId.value,
-        type: input.type,
-        status: "failed",
-        failureReason: "failed",
-        ...definedProps({ failureCategory: preparationFailure }),
-      });
     const controller = new AbortController();
-    this.active.set(runId.value, { runId: runId.value, controller });
+    this.active.set(runId.value, {
+      runId: runId.value,
+      controller,
+      preparing: true,
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      type: input.type,
+    });
+    try {
+      await hooks?.started(review.value, runId.value);
+    } catch {
+      // Request linkage cannot strand a run that already has a saved identity.
+    }
     // A provider that streams no activity keeps the panel that shows the run's start time.
     const activity = insightProviderReportsActivity(provider)
       ? new InsightActivityBuffer()
@@ -497,7 +470,6 @@ export class InsightRunCoordinator {
       sessionId: session.value.id,
       runId: runId.value,
       type: input.type,
-      ...prepared.value,
       expectedHeadSha: session.value.key.headSha,
       contextPath: this.paths.preparedContextFile(
         input.profileId,
@@ -514,14 +486,40 @@ export class InsightRunCoordinator {
       reasoning: input.reasoning,
       language: input.language,
     };
-    void this.executor.execute(
-      invocation,
-      input.type,
-      runId.value,
-      hash.value,
-      controller,
-      activity === undefined ? undefined : (event) => activity.append(event),
-    );
+    // Yield to the response before acquiring the Review lock for expensive capture.
+    setImmediate(() => {
+      void this.executor.prepareAndExecute(
+        invocation,
+        session.value,
+        hash.value,
+        controller,
+        activity === undefined ? undefined : (event) => activity.append(event),
+        () =>
+          this.preparation.prepareRun({
+            identity: {
+              profileId: input.profileId,
+              reviewId: input.reviewId,
+              sessionId: session.value.id,
+              runId: runId.value,
+              type: input.type,
+              headSha: session.value.key.headSha,
+              baseSha: session.value.key.baseSha,
+              patchHash: hash.value,
+              intentHash:
+                changeIntent === undefined
+                  ? null
+                  : hashReviewArtifactContent(JSON.stringify(changeIntent)),
+            },
+            session: session.value,
+            language: input.language,
+            changeIntent:
+              input.type === "analysis"
+                ? { _tag: "Captured", resolved: resolved.value }
+                : { _tag: "Unread" },
+            signal: controller.signal,
+          }),
+      );
+    });
     return ok({ runId: runId.value, type: input.type, status: "queued" });
   }
 
@@ -531,6 +529,14 @@ export class InsightRunCoordinator {
     readonly type: InsightType;
     readonly runId: InsightRunId;
   }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const active = this.active.get(input.runId);
+    if (
+      active?.preparing === true &&
+      active.profileId === input.profileId &&
+      active.reviewId === input.reviewId &&
+      active.type === input.type
+    )
+      active.controller.abort();
     return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
       this.cancelUnlocked(input),
     );
